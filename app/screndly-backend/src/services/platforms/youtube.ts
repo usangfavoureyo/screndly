@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 import { OAuth2Client } from 'google-auth-library';
+import { env } from '../../lib/env';
 
 export const youtubeService = {
     /**
@@ -8,9 +9,9 @@ export const youtubeService = {
      */
     getClient(accessToken: string, refreshToken?: string): OAuth2Client {
         const oauth2Client = new google.auth.OAuth2(
-            process.env.YOUTUBE_CLIENT_ID,
-            process.env.YOUTUBE_CLIENT_SECRET,
-            process.env.FRONTEND_URL // Redirect URI
+            env.YOUTUBE_CLIENT_ID,
+            env.YOUTUBE_CLIENT_SECRET,
+            env.FRONTEND_URL // Redirect URI
         );
 
         oauth2Client.setCredentials({
