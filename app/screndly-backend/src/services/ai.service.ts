@@ -1,0 +1,740 @@
+/**
+ * AI Service - Unified Model Routing
+ * Routes requests to appropriate AI model (OpenAI, Flash 3/Jordanite)
+ */
+
+import prisma from '../lib/prisma';
+
+// ============================================
+// TYPES
+// ============================================
+
+export type AIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo' | 'flash-3';
+
+export interface AIRequest {
+    model: AIModel;
+    prompt: string;
+    systemPrompt?: string;
+    maxTokens?: number;
+    temperature?: number;
+    jsonMode?: boolean;
+}
+
+export interface AIResponse {
+    success: boolean;
+    content: string;
+    model: AIModel;
+    tokens?: {
+        prompt: number;
+        completion: number;
+        total: number;
+    };
+    error?: string;
+}
+
+export interface ValidationResult {
+    isValid: boolean;
+    isUSProduction: boolean;
+    isEnglishOriginal: boolean;
+    isNotDocumentary: boolean;
+    isNotSportsWWE: boolean;
+    reasoning: string;
+}
+
+// ============================================
+// API KEY RETRIEVAL
+// ============================================
+
+async function getOpenAIKey(): Promise<string | null> {
+    // Try environment variable first
+    if (process.env.OPENAI_API_KEY) {
+        return process.env.OPENAI_API_KEY;
+    }
+
+    // Fallback to database
+    try {
+        const setting = await prisma.setting.findUnique({
+            where: { key: 'openaiKey' }
+        });
+        return setting?.value as string || null;
+    } catch {
+        return null;
+    }
+}
+
+async function getFlash3Key(): Promise<string | null> {
+    // Try environment variable first
+    if (process.env.FLASH3_API_KEY) {
+        return process.env.FLASH3_API_KEY;
+    }
+
+    // Fallback to database
+    try {
+        const setting = await prisma.setting.findUnique({
+            where: { key: 'flash3Key' }
+        });
+        return setting?.value as string || null;
+    } catch {
+        return null;
+    }
+}
+
+// ============================================
+// OPENAI COMPLETION
+// ============================================
+
+async function callOpenAI(request: AIRequest): Promise<AIResponse> {
+    const apiKey = await getOpenAIKey();
+
+    if (!apiKey) {
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: 'OpenAI API key not configured'
+        };
+    }
+
+    try {
+        const body: any = {
+            model: request.model,
+            messages: [
+                ...(request.systemPrompt ? [{ role: 'system', content: request.systemPrompt }] : []),
+                { role: 'user', content: request.prompt }
+            ],
+            max_tokens: request.maxTokens || 1024,
+            temperature: request.temperature || 0.7,
+        };
+
+        if (request.jsonMode) {
+            body.response_format = { type: 'json_object' };
+        }
+
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json() as { error?: { message?: string } };
+            throw new Error(errorData.error?.message || 'OpenAI API error');
+        }
+
+        const data = await response.json() as {
+            choices?: Array<{ message?: { content?: string } }>;
+            usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+        };
+
+        return {
+            success: true,
+            content: data.choices?.[0]?.message?.content || '',
+            model: request.model,
+            tokens: {
+                prompt: data.usage?.prompt_tokens || 0,
+                completion: data.usage?.completion_tokens || 0,
+                total: data.usage?.total_tokens || 0
+            }
+        };
+    } catch (error) {
+        console.error('[AI] OpenAI error:', error);
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
+// ============================================
+// FLASH 3 (JORDANITE) COMPLETION
+// ============================================
+
+async function callFlash3(request: AIRequest): Promise<AIResponse> {
+    const apiKey = await getFlash3Key();
+
+    if (!apiKey) {
+        // Fallback to OpenAI if Flash 3 key not configured
+        console.log('[AI] Flash 3 key not configured, falling back to gpt-4o-mini');
+        return callOpenAI({ ...request, model: 'gpt-4o-mini' });
+    }
+
+    try {
+        // Flash 3 API endpoint (Gemini Flash 3)
+        const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{
+                        text: request.systemPrompt
+                            ? `${request.systemPrompt}\n\n${request.prompt}`
+                            : request.prompt
+                    }]
+                }],
+                generationConfig: {
+                    maxOutputTokens: request.maxTokens || 1024,
+                    temperature: request.temperature || 0.7,
+                    ...(request.jsonMode ? { responseMimeType: 'application/json' } : {})
+                }
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json() as { error?: { message?: string } };
+            throw new Error(errorData.error?.message || 'Flash 3 API error');
+        }
+
+        const data = await response.json() as {
+            candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+            usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number };
+        };
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+        return {
+            success: true,
+            content,
+            model: 'flash-3',
+            tokens: {
+                prompt: data.usageMetadata?.promptTokenCount || 0,
+                completion: data.usageMetadata?.candidatesTokenCount || 0,
+                total: data.usageMetadata?.totalTokenCount || 0
+            }
+        };
+    } catch (error) {
+        console.error('[AI] Flash 3 error:', error);
+        // Fallback to OpenAI on error
+        console.log('[AI] Flash 3 failed, falling back to gpt-4o-mini');
+        return callOpenAI({ ...request, model: 'gpt-4o-mini' });
+    }
+}
+
+// ============================================
+// MAIN ROUTER
+// ============================================
+
+export async function generateCompletion(request: AIRequest): Promise<AIResponse> {
+    if (request.model === 'flash-3') {
+        return callFlash3(request);
+    }
+    return callOpenAI(request);
+}
+
+// ============================================
+// TMDB VALIDATION CROSS-CHECK
+// ============================================
+
+export async function validateTMDbContent(
+    title: string,
+    overview: string,
+    genres: string[],
+    originalLanguage: string,
+    productionCountries: string[],
+    model: AIModel = 'flash-3'
+): Promise<ValidationResult> {
+    const systemPrompt = `You are a content validator. Analyze the provided movie/TV show information and determine if it meets all criteria. Respond ONLY in valid JSON format.`;
+
+    const prompt = `Analyze this content:
+Title: ${title}
+Overview: ${overview}
+Genres: ${genres.join(', ')}
+Original Language: ${originalLanguage}
+Production Countries: ${productionCountries.join(', ')}
+
+You are the 'Mainstream Filter'. We only want high-quality, mainstream US entertainment.
+Reject (isValid: false) if:
+- It is a documentary, talk show, or news program.
+- It is sports content (WWE, UFC, NFL, etc).
+- It is a low-budget indie with no recognizable appeal.
+- It is a foreign production merely distributed in the US (unless it is a massive global hit like 'Squid Game').
+- It feels like "content farm" junk or amateur production.
+
+Respond in JSON format:
+{
+  "isValid": boolean (true only if it is Mainstream US Entertainment),
+  "isUSProduction": boolean,
+  "isEnglishOriginal": boolean,
+  "isNotDocumentary": boolean,
+  "isNotSportsWWE": boolean,
+  "reasoning": "Brief, blunt explanation of rejection"
+}`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 500,
+        temperature: 0.3,
+        jsonMode: true
+    });
+
+    if (!response.success) {
+        return {
+            isValid: false,
+            isUSProduction: false,
+            isEnglishOriginal: false,
+            isNotDocumentary: false,
+            isNotSportsWWE: false,
+            reasoning: response.error || 'Validation failed'
+        };
+    }
+
+    try {
+        const result = JSON.parse(response.content);
+        return {
+            isValid: result.isValid === true,
+            isUSProduction: result.isUSProduction === true,
+            isEnglishOriginal: result.isEnglishOriginal === true,
+            isNotDocumentary: result.isNotDocumentary === true,
+            isNotSportsWWE: result.isNotSportsWWE === true,
+            reasoning: result.reasoning || ''
+        };
+    } catch {
+        return {
+            isValid: false,
+            isUSProduction: false,
+            isEnglishOriginal: false,
+            isNotDocumentary: false,
+            isNotSportsWWE: false,
+            reasoning: 'Failed to parse validation response'
+        };
+    }
+}
+
+// ============================================
+// YOUTUBE TRAILER VALIDATION
+// ============================================
+
+export async function validateYouTubeTrailer(
+    title: string,
+    channelName: string,
+    description: string,
+    model: AIModel = 'flash-3'
+): Promise<{ isValid: boolean; isTrailer: boolean; isUSProduction: boolean; reasoning: string }> {
+    const systemPrompt = `You are a YouTube trailer validator. Analyze the video information and determine if it's a valid US movie/TV trailer. Respond ONLY in valid JSON format.`;
+
+    const prompt = `Analyze this YouTube video:
+Title: ${title}
+Channel: ${channelName}
+Description: ${description}
+
+Validate:
+1. Is this a movie or TV show trailer/teaser?
+2. Does it appear to be a US production?
+3. Is it NOT a documentary, sports, WWE, or fan-made content?
+
+Respond in JSON:
+{
+  "isValid": boolean (true only if ALL criteria pass),
+  "isTrailer": boolean,
+  "isUSProduction": boolean,
+  "reasoning": "Brief explanation"
+}`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 300,
+        temperature: 0.3,
+        jsonMode: true
+    });
+
+    if (!response.success) {
+        return {
+            isValid: false,
+            isTrailer: false,
+            isUSProduction: false,
+            reasoning: response.error || 'Validation failed'
+        };
+    }
+
+    try {
+        const result = JSON.parse(response.content);
+        return {
+            isValid: result.isValid === true,
+            isTrailer: result.isTrailer === true,
+            isUSProduction: result.isUSProduction === true,
+            reasoning: result.reasoning || ''
+        };
+    } catch {
+        return {
+            isValid: false,
+            isTrailer: false,
+            isUSProduction: false,
+            reasoning: 'Failed to parse validation response'
+        };
+    }
+}
+
+// ============================================
+// TMDB CAPTION GENERATOR (COPYWRITER MODE)
+// ============================================
+
+export interface CaptionContext {
+    title: string;
+    mediaType: 'movie' | 'tv';
+    temporalTag: 'releasing_today' | 'releasing_this_week' | 'releasing_this_month' | 'anniversary' | 'already_released';
+    daysUntil: number;
+    cast: string[];
+    genres: string[];
+    platform: 'X' | 'Threads' | 'Facebook' | 'Instagram';
+    tone?: string;
+}
+
+export async function generateTMDbCaption(
+    context: CaptionContext,
+    model: AIModel = 'flash-3',
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const defaultSystemPrompt = `You are a social media copywriter for a movie/TV tracking account.
+Your goal is to write a single, punchy, engaging caption based STRICTLY on the provided context.
+- Use 1-2 relevant emojis at the start.
+- NO hashtags unless specifically asked (system will add them later).
+- NO "Click link in bio" or CTAs.
+- Length: Under 280 chars (tweet style) but impactful.
+- TENSE RULES:
+  - releasing_today -> PRESENT Tense ("Out now", "Streaming today")
+  - releasing_this_week -> ANTICIPATORY ("Coming this week", "Just X days left")
+  - releasing_this_month -> PREVIEW ("Look ahead", "Mark your calendars")
+  - anniversary -> NOSTALGIC ("Released X years ago", "A classic turns X")
+`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+
+    const prompt = `Generate a caption for this content:
+Title: ${context.title}
+Type: ${context.mediaType}
+Tag: ${context.temporalTag}
+Days Until: ${context.daysUntil}
+Cast: ${context.cast.join(', ')}
+Genres: ${context.genres.join(', ')}
+Platform: ${context.platform}
+
+Write ONLY the caption text. No preamble.`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 150,
+        temperature: customTemperature !== undefined ? customTemperature : 0.7, // Custom temp or default high temp for creativity
+        jsonMode: false
+    });
+
+    if (!response.success) {
+        // Fallback to basic template if AI fails
+        return `${context.temporalTag === 'releasing_today' ? '🚨 OUT NOW:' : '🎬'} ${context.title} ${context.daysUntil > 0 ? `(In ${context.daysUntil} days)` : ''}`;
+    }
+
+    return response.content.trim().replace(/^"|"$/g, ''); // Remove quotes if AI added them
+}
+
+// ============================================
+// RSS CAPTION GENERATOR
+// ============================================
+
+export interface RSSContext {
+    articleTitle: string;
+    feedName: string;
+    summary: string;
+    platform: 'X' | 'Threads' | 'Facebook' | 'LinkedIn';
+    tone?: string;
+}
+
+export async function generateRSSCaption(
+    context: RSSContext,
+    model: AIModel = 'flash-3',
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const defaultSystemPrompt = `You are a social media curator sharing news/articles.
+Goal: Summarize the value prop and encourage a click (without saying "click here").
+- Use 1 relevant emoji.
+- Tone: Professional but engaging (LinkedIn/X style).
+- Length: Under 280 chars.
+- NO hashtags unless asked.
+`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+
+    const prompt = `Generate a caption for this article:
+Feed: ${context.feedName}
+Title: ${context.articleTitle}
+Summary: ${context.summary.slice(0, 500)}...
+Platform: ${context.platform}
+
+Write ONLY the caption.`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 150,
+        temperature: customTemperature !== undefined ? customTemperature : 0.6,
+        jsonMode: false
+    });
+
+    if (!response.success) {
+        return `📰 ${context.articleTitle}`;
+    }
+    return response.content.trim().replace(/^"|"$/g, '');
+}
+
+
+// ============================================
+// YOUTUBE CAPTION GENERATOR
+// ============================================
+
+export interface YouTubeContext {
+    videoTitle: string;
+    channelName: string;
+    description: string;
+    platform: 'X' | 'Threads' | 'Facebook';
+}
+
+export async function generateYouTubeCaption(
+    context: YouTubeContext,
+    model: AIModel = 'flash-3',
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const defaultSystemPrompt = `You are a video content promoter.
+Goal: Drive views to the video with high-energy copy.
+- Use 2-3 emojis (🔥, 📺, etc).
+- Highlight the "Hook" or main topic.
+- Tone: Enthusiastic and Viral.
+- Length: Under 280 chars.
+`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+
+    const prompt = `Generate a caption for this video:
+Channel: ${context.channelName}
+Title: ${context.videoTitle}
+Description: ${context.description.slice(0, 300)}...
+Platform: ${context.platform}
+
+Write ONLY the caption.`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 150,
+        temperature: customTemperature !== undefined ? customTemperature : 0.8,
+        jsonMode: false
+    });
+
+    if (!response.success) {
+        return `📺 New Video from ${context.channelName}: ${context.videoTitle}`;
+    }
+    return response.content.trim().replace(/^"|"$/g, '');
+}
+
+// ============================================
+// COMMENT REPLY GENERATOR
+// ============================================
+
+export interface CommentContext {
+    originalComment: string;
+    description?: string; // Metadata about the item being thanked/replied to
+    platform: 'X' | 'Threads' | 'Facebook' | 'Instagram';
+    tone?: string;
+}
+
+export async function generateCommentReply(
+    context: CommentContext,
+    model: AIModel = 'flash-3',
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const defaultSystemPrompt = `You are a social media manager.
+Goal: Write a friendly, engaging reply to a user comment.
+- Tone: Helpful, positive, slightly informal.
+- Length: Under 140 chars.
+- NO hashtags.
+- If the comment is negative, be polite and professional.
+`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+
+    const prompt = `Generate a reply to this comment:
+Platform: ${context.platform}
+Comment: "${context.originalComment}"
+Context: ${context.description || 'General post'}
+
+Write ONLY the reply text.`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 100,
+        temperature: customTemperature !== undefined ? customTemperature : 0.7,
+        jsonMode: false
+    });
+
+    if (!response.success) {
+        return `Thanks for your comment! 🙌`;
+    }
+    return response.content.trim().replace(/^"|"$/g, '');
+}
+
+// ============================================
+// STUDIO CAPTION GENERATOR (Generic)
+// ============================================
+
+export interface StudioContext {
+    fileName: string;
+    fileDescription?: string;
+    detectedObjects?: string[]; // From Vision AI if available
+    platform?: 'X' | 'Threads' | 'Facebook' | 'Instagram' | 'TikTok';
+    tone?: string;
+}
+
+export async function generateStudioCaption(
+    context: StudioContext,
+    model: AIModel = 'flash-3',
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const defaultSystemPrompt = `You are a creative director.
+Goal: Write a compelling caption for a media upload.
+- Use 1-3 emojis.
+- Tone: ${context.tone || 'Creative and Professional'}.
+- Length: Under 280 chars.
+- Add 3 relevant hashtags at the end.
+`;
+
+    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+
+    const prompt = `Generate a caption for this file:
+File Name: ${context.fileName}
+Description: ${context.fileDescription || 'No description provided'}
+Detected: ${context.detectedObjects?.join(', ') || 'N/A'}
+Platform: ${context.platform || 'General'}
+
+Write ONLY the caption text.`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        systemPrompt,
+        maxTokens: 200,
+        temperature: customTemperature !== undefined ? customTemperature : 0.8,
+        jsonMode: false
+    });
+
+    if (!response.success) {
+        return `✨ Checking this out: ${context.fileName} #Design #Creative`;
+    }
+    return response.content.trim().replace(/^"|"$/g, '');
+}
+
+// ============================================
+// YOUTUBE PLAYLIST DETECTOR
+// ============================================
+
+export async function detectYouTubePlaylists(
+    videoTitle: string,
+    description: string,
+    availablePlaylists: string[],
+    model: AIModel = 'flash-3',
+    customPrompt?: string
+): Promise<string[]> {
+    const defaultPrompt = `Analyze the video metadata and select matching playlists from the available list.
+    Respond ONLY with a JSON array of strings.`;
+
+    const prompt = `Video Title: ${videoTitle}
+    Description: ${description}
+    
+    Available Playlists:
+    ${availablePlaylists.map(p => `- ${p}`).join('\n')}
+    
+    Select the most appropriate playlists for this video.
+    ${customPrompt || defaultPrompt}`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        jsonMode: true,
+        temperature: 0.1
+    });
+
+    if (!response.success) return [];
+
+    try {
+        const result = JSON.parse(response.content);
+        if (Array.isArray(result)) return result;
+        if (result.playlists && Array.isArray(result.playlists)) return result.playlists;
+        return [];
+    } catch {
+        return [];
+    }
+}
+
+// ============================================
+// PINTEREST METADATA GENERATOR
+// ============================================
+
+export async function generatePinterestMetadata(
+    context: { title: string; description: string; cast?: string[] },
+    model: AIModel = 'flash-3',
+    titlePrompt?: string,
+    descPrompt?: string
+): Promise<{ title: string; description: string }> {
+
+    // generate title
+    const tPrompt = `Generate a Pinterest Pin Title for:
+    Title: ${context.title}
+    Cast: ${context.cast?.join(', ')}
+    
+    ${titlePrompt || 'Create a searchable, SEO-friendly title under 100 chars.'}
+    Return ONLY the title text.`;
+
+    // generate description
+    const dPrompt = `Generate a Pinterest Pin Description for:
+    Title: ${context.title}
+    Desc: ${context.description}
+    
+    ${descPrompt || 'Create an engaging, keyword-rich description under 500 chars with 2-3 hashtags.'}
+    Return ONLY the description text.`;
+
+    const [titleRes, descRes] = await Promise.all([
+        generateCompletion({ model, prompt: tPrompt, temperature: 0.7 }),
+        generateCompletion({ model, prompt: dPrompt, temperature: 0.7 })
+    ]);
+
+    return {
+        title: titleRes.success ? titleRes.content.trim().replace(/^"|"$/g, '') : context.title,
+        description: descRes.success ? descRes.content.trim().replace(/^"|"$/g, '') : context.description
+    };
+}
+
+// ============================================
+// EXPORTS
+// ============================================
+
+export default {
+    generateCompletion,
+    validateTMDbContent,
+    validateYouTubeTrailer,
+    generateTMDbCaption,
+    generateRSSCaption,
+    generateYouTubeCaption,
+    generateCommentReply,
+    generateStudioCaption,
+    detectYouTubePlaylists,
+    generatePinterestMetadata,
+    getOpenAIKey,
+    getFlash3Key
+};
