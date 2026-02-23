@@ -78,13 +78,12 @@ function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) 
 
     // Only handle horizontal swipe (left only for delete)
     if (swipeDirection === 'horizontal') {
-      e.stopPropagation();
-      e.preventDefault();
-
       const diff = currentX.current - startX.current;
 
       // Only allow left swipe (negative values)
       if (diff <= 0) {
+        // We only call preventDefault if we are actually swiping horizontally
+        // Note: touch-action: pan-y in CSS handles most of this natively now
         const maxSwipe = 120;
         const clampedDiff = Math.max(-maxSwipe, diff);
         setSwipeX(clampedDiff);
@@ -182,7 +181,7 @@ function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) 
       </div>
 
       <div
-        className="bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group"
+        className="bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y"
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'

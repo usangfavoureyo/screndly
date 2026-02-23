@@ -54,12 +54,12 @@ interface FeedCardProps {
   onRunNow: (feedId: string) => void;
 }
 
-export function FeedCard({ 
-  feed, 
-  onEdit, 
-  onDelete, 
-  onPreview, 
-  onTest, 
+export function FeedCard({
+  feed,
+  onEdit,
+  onDelete,
+  onPreview,
+  onTest,
   onTogglePlatform,
   onToggleEnabled,
   onRunNow
@@ -93,10 +93,10 @@ export function FeedCard({
   const handleTouchMove = (e: React.TouchEvent) => {
     currentX.current = e.touches[0].clientX;
     currentY.current = e.touches[0].clientY;
-    
+
     const deltaX = Math.abs(currentX.current - startX.current);
     const deltaY = Math.abs(currentY.current - startY.current);
-    
+
     // Determine swipe direction on first significant movement
     if (swipeDirection === 'none' && (deltaX > 10 || deltaY > 10)) {
       // If horizontal movement is greater than vertical, it's a horizontal swipe
@@ -108,20 +108,17 @@ export function FeedCard({
         setSwipeDirection('vertical');
       }
     }
-    
+
     // Only handle horizontal swipe (left only for delete)
     if (swipeDirection === 'horizontal') {
-      e.stopPropagation();
-      e.preventDefault(); // Prevent scrolling while swiping horizontally
-      
       const diff = currentX.current - startX.current;
-      
+
       // Only allow left swipe (negative values)
       if (diff <= 0) {
         // Limit swipe distance
         const maxSwipe = 120;
         const clampedDiff = Math.max(-maxSwipe, diff);
-        
+
         setSwipeX(clampedDiff);
       }
     }
@@ -131,14 +128,14 @@ export function FeedCard({
     // Only process swipe action if it was a horizontal swipe
     if (swipeDirection === 'horizontal') {
       const threshold = 90;
-      
+
       // Swipe left (delete)
       if (swipeX < -threshold) {
         haptics.medium();
         onDelete(feed.id);
       }
     }
-    
+
     // Reset state
     setIsSwiping(false);
     setSwipeDirection('none');
@@ -176,9 +173,9 @@ export function FeedCard({
     <div className="relative overflow-hidden rounded-2xl group">
       {/* Background delete button */}
       <div className="absolute inset-0 flex justify-end items-center bg-[#ec1e24] rounded-2xl">
-        <div 
+        <div
           className="flex items-center justify-center px-6 text-white transition-opacity h-full"
-          style={{ 
+          style={{
             opacity: swipeX < 0 ? 1 : 0,
             width: '120px'
           }}
@@ -191,8 +188,8 @@ export function FeedCard({
       </div>
 
       {/* Card Content */}
-      <div 
-        className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200"
+      <div
+        className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200 touch-pan-y"
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -201,124 +198,123 @@ export function FeedCard({
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-start gap-3 flex-1 min-w-0">
-          {feed.favicon && !faviconError ? (
-            <img
-              src={feed.favicon}
-              alt=""
-              className="w-5 h-5 rounded flex-shrink-0 mt-0.5"
-              onError={() => setFaviconError(true)}
-            />
-          ) : (
-            <div className="w-5 h-5 rounded flex-shrink-0 mt-0.5 bg-gray-200 dark:bg-[#374151] flex items-center justify-center">
-              <Globe className="w-3 h-3 text-gray-500 dark:text-[#6B7280]" />
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
+            {feed.favicon && !faviconError ? (
+              <img
+                src={feed.favicon}
+                alt=""
+                className="w-5 h-5 rounded flex-shrink-0 mt-0.5"
+                onError={() => setFaviconError(true)}
+              />
+            ) : (
+              <div className="w-5 h-5 rounded flex-shrink-0 mt-0.5 bg-gray-200 dark:bg-[#374151] flex items-center justify-center">
+                <Globe className="w-3 h-3 text-gray-500 dark:text-[#6B7280]" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-gray-900 dark:text-white truncate mb-1">{feed.name}</h3>
+              <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
             </div>
-          )}
-          <div className="flex-1 min-w-0">
-            <h3 className="text-gray-900 dark:text-white truncate mb-1">{feed.name}</h3>
-            <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Desktop Delete Button - Shows on hover */}
+            <button
+              onClick={() => {
+                haptics.medium();
+                onDelete(feed.id);
+              }}
+              className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
+              aria-label="Delete feed"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+
+            <Switch
+              checked={feed.enabled}
+              onCheckedChange={(checked) => {
+                haptics.light();
+                onToggleEnabled(feed.id, checked);
+              }}
+              className="flex-shrink-0"
+            />
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Desktop Delete Button - Shows on hover */}
-          <button
+
+        {/* Metadata */}
+        <div className="space-y-1.5 mb-4 text-sm">
+          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
+            <span>Next run:</span>
+            <span>{feed.nextRunAt || 'Not scheduled'}</span>
+          </div>
+          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
+            <span>Last item:</span>
+            <span>{feed.lastProcessedAt || 'Never'}</span>
+          </div>
+        </div>
+
+        {/* Platform Toggles */}
+        <div className="mb-4 pb-4 border-b border-gray-200 dark:border-[#1F1F1F]">
+          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-xs mb-2">Platforms</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            {Object.entries(feed.platformsEnabled || {}).map(([platform, enabled]) => {
+              const Icon = platformIcons[platform];
+              return Icon ? (
+                <button
+                  key={platform}
+                  onClick={() => {
+                    haptics.light();
+                    onTogglePlatform(feed.id, platform, !enabled);
+                  }}
+                  className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${enabled
+                      ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                      : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                    }`}
+                  title={platform}
+                >
+                  <Icon className={platform === 'x' ? 'w-4 h-4' : platform === 'instagram' || platform === 'facebook' ? 'w-6 h-6' : 'w-5 h-5'} />
+                </button>
+              ) : null;
+            })}
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
-              haptics.medium();
-              onDelete(feed.id);
-            }}
-            className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
-            aria-label="Delete feed"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-          
-          <Switch
-            checked={feed.enabled}
-            onCheckedChange={(checked) => {
               haptics.light();
-              onToggleEnabled(feed.id, checked);
+              onPreview(feed.id);
             }}
-            className="flex-shrink-0"
-          />
+            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
+          >
+            Preview
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTest}
+            disabled={isTestRunning}
+            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
+          >
+            {isTestRunning ? 'Testing...' : 'Test'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              haptics.light();
+              onEdit(feed.id);
+            }}
+            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
+          >
+            Edit
+          </Button>
         </div>
-      </div>
-
-      {/* Metadata */}
-      <div className="space-y-1.5 mb-4 text-sm">
-        <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
-          <span>Next run:</span>
-          <span>{feed.nextRunAt || 'Not scheduled'}</span>
-        </div>
-        <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
-          <span>Last item:</span>
-          <span>{feed.lastProcessedAt || 'Never'}</span>
-        </div>
-      </div>
-
-      {/* Platform Toggles */}
-      <div className="mb-4 pb-4 border-b border-gray-200 dark:border-[#1F1F1F]">
-        <p className="text-[#6B7280] dark:text-[#9CA3AF] text-xs mb-2">Platforms</p>
-        <div className="flex items-center gap-3 flex-wrap">
-          {Object.entries(feed.platformsEnabled || {}).map(([platform, enabled]) => {
-            const Icon = platformIcons[platform];
-            return Icon ? (
-              <button
-                key={platform}
-                onClick={() => {
-                  haptics.light();
-                  onTogglePlatform(feed.id, platform, !enabled);
-                }}
-                className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${
-                  enabled 
-                    ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]' 
-                    : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
-                }`}
-                title={platform}
-              >
-                <Icon className={platform === 'x' ? 'w-4 h-4' : platform === 'instagram' || platform === 'facebook' ? 'w-6 h-6' : 'w-5 h-5'} />
-              </button>
-            ) : null;
-          })}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="grid grid-cols-3 gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            haptics.light();
-            onPreview(feed.id);
-          }}
-          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
-        >
-          Preview
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleTest}
-          disabled={isTestRunning}
-          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
-        >
-          {isTestRunning ? 'Testing...' : 'Test'}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            haptics.light();
-            onEdit(feed.id);
-          }}
-          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
-        >
-          Edit
-        </Button>
-      </div>
       </div>
     </div>
   );

@@ -42,15 +42,15 @@ export function useSwipeNavigation({
       // Check if touch started on an interactive form element
       const element = touchStartElement.current;
       const tagName = element.tagName.toLowerCase();
-      const isInteractiveElement = 
-        tagName === 'input' || 
-        tagName === 'textarea' || 
-        tagName === 'select' || 
+      const isInteractiveElement =
+        tagName === 'input' ||
+        tagName === 'textarea' ||
+        tagName === 'select' ||
         tagName === 'button' ||
         element.closest('input') !== null ||
         element.closest('textarea') !== null ||
         element.closest('select') !== null;
-      
+
       if (isInteractiveElement) {
         touchStartX.current = null;
         touchEndX.current = null;
@@ -66,7 +66,7 @@ export function useSwipeNavigation({
         while (element) {
           const style = window.getComputedStyle(element);
           const overflowX = style.overflowX;
-          
+
           // If element has horizontal scroll and content is wider than container
           if ((overflowX === 'auto' || overflowX === 'scroll') && element.scrollWidth > element.clientWidth) {
             touchStartX.current = null;
@@ -76,7 +76,7 @@ export function useSwipeNavigation({
             touchStartElement.current = null;
             return; // Don't trigger page swipe on scrollable elements
           }
-          
+
           element = element.parentElement;
         }
       }
@@ -84,11 +84,11 @@ export function useSwipeNavigation({
       const distanceX = touchStartX.current - touchEndX.current;
       const distanceY = Math.abs(touchStartY.current - touchEndY.current);
       const effectiveMinDistance = increasedMinSwipeDistance || minSwipeDistance;
-      
+
       // Only trigger swipe if horizontal movement is much greater than vertical
       // This prevents accidental swipes while scrolling vertically
       const isHorizontalSwipe = Math.abs(distanceX) > distanceY * 2;
-      
+
       if (isHorizontalSwipe) {
         const isLeftSwipe = distanceX > effectiveMinDistance;
         const isRightSwipe = distanceX < -effectiveMinDistance;
@@ -107,9 +107,9 @@ export function useSwipeNavigation({
       touchStartElement.current = null;
     };
 
-    window.addEventListener('touchstart', handleTouchStart);
-    window.addEventListener('touchmove', handleTouchMove);
-    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
       window.removeEventListener('touchstart', handleTouchStart);
