@@ -192,8 +192,8 @@ Respond ONLY "YES" or "NO".`,
                 const available = settings.videoYoutubePlaylists.split(',').map((s: string) => s.trim());
                 if (available.length > 0) {
                     playlistIds = await aiService.detectYouTubePlaylists(
-                        video.title,
-                        details.description,
+                        video.title || '',
+                        details.description || '',
                         available,
                         settings.videoOpenaiModel,
                         settings.videoYoutubePlaylistPrompt
