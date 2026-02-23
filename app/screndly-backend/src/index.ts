@@ -1,11 +1,12 @@
+import dotenv from 'dotenv';
+// Load environment variables immediately before any other imports
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import prisma from './lib/prisma';
 import { env } from './lib/env';
-
-dotenv.config();
 
 const app = express();
 const PORT = env.PORT;
@@ -14,7 +15,11 @@ const PORT = env.PORT;
 app.use(helmet());
 app.use(cors({
     origin: ['https://screndly.vercel.app', 'http://localhost:5173', env.FRONTEND_URL],
-    credentials: true
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    credentials: true,
+    preflightContinue: false,
+    optionsSuccessStatus: 204
 }));
 app.use(express.json());
 
