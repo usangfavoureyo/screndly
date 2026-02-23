@@ -10,15 +10,22 @@ import { env } from '../lib/env';
  * 2. JWT Token - User authentication tokens (production/development)
  */
 export function authenticate(req: Request, res: Response, next: NextFunction) {
+    // Handle OPTIONS preflight requests automatically (Browser safety)
+    if (req.method === 'OPTIONS') {
+        return next();
+    }
+
     const authHeader = req.headers.authorization;
     const { ADMIN_SECRET, JWT_SECRET, APP_PASSWORD } = env;
 
     if (!authHeader) {
+        console.warn(`[Auth] Missing auth header for ${req.method} ${req.originalUrl}`);
         return res.status(401).json({ success: false, error: 'Unauthorized: No token provided' });
     }
 
     // Support "Bearer <token>" or just "<token>"
-    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const rawToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const token = rawToken.trim(); // Remove any accidental whitespace
 
     // Method 1: Check against ADMIN_SECRET (production API access)
     if (ADMIN_SECRET && token === ADMIN_SECRET) {
@@ -29,10 +36,13 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     try {
         // Attempt to verify as a standard JWT first (Production Mode)
         const decoded = jwt.verify(token, JWT_SECRET) as any;
-        if (decoded && decoded.app === 'screndly') {
+        if (decoded && (decoded.app === 'screndly' || decoded.authenticated)) {
             return next();
         }
-    } catch (err) {
+    } catch (err: any) {
+        // If it's a signed JWT but failed verification, it might be an expired or wrong-secret token
+        const isLikelySignedJWT = token.includes('.');
+
         // Not a valid signed JWT, fallback to base64 check for dev-mode tokens
         try {
             const payload = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
@@ -52,7 +62,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
                 return next();
             }
         } catch {
-            // Failed both signed JWT and base64 decode
+            // Failed base64 decode
+        }
+
+        if (isLikelySignedJWT) {
+            console.warn(`[Auth] JWT Verification failed for ${req.method} ${req.originalUrl}: ${err.message}`);
         }
     }
 
