@@ -1,0 +1,505 @@
+import { useState, useEffect, useRef } from 'react';
+import { Image as ImageIcon, RefreshCw, Clock, Upload, Loader2, X } from 'lucide-react';
+import { toast } from "sonner";
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { Textarea } from '../ui/textarea';
+import { DatePicker } from '../ui/date-picker';
+import { TimePicker } from '../ui/time-picker';
+import { haptics } from '../../utils/haptics';
+import { useUndo } from '../UndoContext';
+import { useTMDbModalStore } from '../../stores/tmdbModalStore';
+import { useTMDbPosts } from '../../contexts/TMDbPostsContext';
+import { XIcon } from '../icons/XIcon';
+import { ThreadsIcon } from '../icons/ThreadsIcon';
+import { FacebookIcon } from '../icons/FacebookIcon';
+import { YouTubeIcon } from '../icons/YouTubeIcon';
+import { PinterestIcon } from '../icons/PinterestIcon';
+import { generateTMDbCaption, getFeedTypeFromSource, formatTMDbCaptionSettingsForLog } from '../../utils/tmdbCaptionGenerator';
+import { logFeedUpdate, logFeedDeletion } from '../../utils/tmdbLogger';
+import { ChangeImageBottomSheet } from './ChangeImageBottomSheet';
+import {
+    BottomSheet,
+    BottomSheetHeader,
+    BottomSheetTitle,
+    BottomSheetDescription,
+    BottomSheetBody,
+    BottomSheetFooter
+} from '../ui/bottom-sheet';
+import {
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    DialogDescription,
+} from '../ui/dialog';
+import { VisuallyHidden } from '../ui/visually-hidden';
+
+/**
+ * TMDbModals - Portal Rendered Modals
+ * 
+ * CRITICAL ARCHITECTURE:
+ * - This component renders ALL TMDb modals at the app level
+ * - Modals mount ONCE and never unmount during session
+ * - Feed card state changes do NOT affect these modals
+ * - Opening/closing is controlled by Zustand store
+ * 
+ * This prevents:
+ * - Flicker when opening modals
+ * - Black frames during image change
+ * - Re-renders cascading to feed cards
+ */
+export function TMDbModals() {
+    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
+    const { showUndo } = useUndo();
+
+    // Modal states from store
+    const editCaptionModal = useTMDbModalStore(s => s.editCaptionModal);
+    const changeImageModal = useTMDbModalStore(s => s.changeImageModal);
+    const rescheduleModal = useTMDbModalStore(s => s.rescheduleModal);
+    const deleteModal = useTMDbModalStore(s => s.deleteModal);
+    const platformSelectModal = useTMDbModalStore(s => s.platformSelectModal);
+    const imagePreviewModal = useTMDbModalStore(s => s.imagePreviewModal);
+
+    // Modal actions
+    const closeEditCaption = useTMDbModalStore(s => s.closeEditCaption);
+    const closeChangeImage = useTMDbModalStore(s => s.closeChangeImage);
+    const closeReschedule = useTMDbModalStore(s => s.closeReschedule);
+    const closeDelete = useTMDbModalStore(s => s.closeDelete);
+    const closePlatformSelect = useTMDbModalStore(s => s.closePlatformSelect);
+    const closeImagePreview = useTMDbModalStore(s => s.closeImagePreview);
+
+    // Local state for form inputs (only for active modal)
+    const [editedCaption, setEditedCaption] = useState('');
+    const [selectedImageType, setSelectedImageType] = useState<'poster' | 'backdrop'>('poster');
+    const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+    const [isLoadingImage, setIsLoadingImage] = useState(false);
+    const [isSaving, setIsSaving] = useState(false); // New saving state for schedule/publish
+    const [isRegenerating, setIsRegenerating] = useState(false);
+    const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+    const [scheduledTime, setScheduledTime] = useState('');
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+
+    // Sync form state when modal opens
+    useEffect(() => {
+        if (editCaptionModal.open && editCaptionModal.feed) {
+            setEditedCaption(editCaptionModal.feed.caption);
+        }
+    }, [editCaptionModal.open, editCaptionModal.feed]);
+
+    useEffect(() => {
+        if (changeImageModal.open && changeImageModal.feed) {
+            setSelectedImageType(changeImageModal.feed.imageType);
+            setPreviewImageUrl(null); // Reset preview on open
+        }
+    }, [changeImageModal.open, changeImageModal.feed]);
+
+    useEffect(() => {
+        if (rescheduleModal.open && rescheduleModal.feed) {
+            const date = new Date(rescheduleModal.feed.scheduledTime);
+            setScheduledDate(date);
+            setScheduledTime(date.toTimeString().slice(0, 5));
+        }
+    }, [rescheduleModal.open, rescheduleModal.feed]);
+    useEffect(() => {
+        if (platformSelectModal.open) {
+            setSelectedPlatforms([]);
+        }
+    }, [platformSelectModal.open]);
+
+    // === BACK NAVIGATION FOR IMAGE PREVIEW ===
+    useEffect(() => {
+        if (imagePreviewModal.open) {
+            // Push history state when modal opens
+            window.history.pushState({ modal: 'tmdb-image-preview' }, '');
+        }
+
+        const handlePopState = (event: PopStateEvent) => {
+            // If we're on the image preview modal, close it
+            // We check the store state directly since this effect depends on the open state
+            if (useTMDbModalStore.getState().imagePreviewModal.open) {
+                closeImagePreview();
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    }, [imagePreviewModal.open]);
+
+    // === EDIT CAPTION HANDLERS ===
+    const handleSaveCaption = () => {
+        haptics.success(); // Haptic on save
+        if (!editCaptionModal.feed) return;
+        if (editedCaption.trim().length === 0) {
+            toast.error('Caption cannot be empty');
+            return;
+        }
+        if (editedCaption.length > 200) {
+            toast.error('Caption too long (max 200 characters)');
+            return;
+        }
+
+        updatePost(editCaptionModal.feed.id, { caption: editedCaption });
+        toast.success('Caption updated');
+        closeEditCaption();
+    };
+
+    const handleRegenerateCaption = async () => {
+        haptics.light(); // Haptic on refresh
+        if (!editCaptionModal.feed) return;
+        setIsRegenerating(true);
+
+        try {
+            const feedType = getFeedTypeFromSource(editCaptionModal.feed.source);
+            const result = await generateTMDbCaption(
+                editCaptionModal.feed.title,
+                editCaptionModal.feed.releaseDate,
+                feedType
+            );
+            setEditedCaption(result.caption);
+            toast.success('Caption regenerated');
+        } catch (error) {
+            toast.error('Failed to regenerate caption');
+        } finally {
+            setIsRegenerating(false);
+        }
+    };
+
+    // === CHANGE IMAGE HANDLERS ===
+    // Handled by ChangeImageBottomSheet component directly
+
+
+
+    // === RESCHEDULE HANDLERS ===
+    const handleSaveSchedule = () => {
+        if (!rescheduleModal.feed || !scheduledDate || !scheduledTime) {
+            toast.error('Please select date and time');
+            return;
+        }
+
+        haptics.success(); // Haptic on schedule
+
+        // Optimistic close
+        closeReschedule();
+        toast.success('Post scheduled');
+
+        const [hours, minutes] = scheduledTime.split(':').map(Number);
+        const newDate = new Date(scheduledDate);
+        newDate.setHours(hours, minutes, 0, 0);
+
+        schedulePost({
+            ...rescheduleModal.feed,
+            scheduledTime: newDate.toISOString(),
+            status: 'scheduled',
+            platforms: selectedPlatforms,
+        }).catch(error => {
+            console.error('Failed to save schedule', error);
+            toast.error('Failed to save schedule');
+        });
+    };
+
+    // === DELETE HANDLERS ===
+    const handleConfirmDelete = () => {
+        haptics.success(); // Haptic on delete
+        if (!deleteModal.feed) return;
+
+        // Store feed data and original index for undo
+        const deletedFeed = { ...deleteModal.feed };
+        const feedId = deleteModal.feed.id;
+        const originalIndex = posts.findIndex(post => post.id === feedId);
+
+        deletePost(feedId);
+
+        // Show undo toast using existing UndoContext
+        showUndo({
+            id: feedId,
+            itemName: deletedFeed.title,
+            onUndo: () => {
+                haptics.light();
+                // Restore to original position
+                restorePost(deletedFeed, originalIndex);
+            },
+            onConfirm: () => {
+                // Log final deletion
+            }
+        });
+
+        logFeedDeletion(
+            deleteModal.feed.id,
+            deleteModal.feed.title,
+            'System',
+            { tmdbId: deleteModal.feed.tmdbId }
+        );
+
+        closeDelete();
+    };
+
+    // === PLATFORM SELECT HANDLERS ===
+    const togglePlatform = (platform: string) => {
+        haptics.light(); // Haptic on toggle
+        setSelectedPlatforms(prev =>
+            prev.includes(platform)
+                ? prev.filter(p => p !== platform)
+                : [...prev, platform]
+        );
+    };
+
+    const handleSchedulePost = () => {
+        if (!platformSelectModal.feed) return;
+
+        haptics.success(); // Haptic on publish/schedule
+
+        if (selectedPlatforms.length === 0) {
+            toast.error('Select at least one platform');
+            return;
+        }
+
+        const isPublishNow = platformSelectModal.isPostNow;
+
+        // Optimistic close
+        closePlatformSelect();
+        toast.success(isPublishNow ? 'Post published' : 'Post scheduled');
+
+        // For immediate publish, we set status to 'published' and set publishedTime
+        // For schedule, we set status to 'scheduled' and keep scheduledTime
+        const status = isPublishNow ? 'published' : 'scheduled';
+
+        const updateData = {
+            ...platformSelectModal.feed,
+            status: status,
+            platforms: selectedPlatforms,
+            // If publishing now, set publishedTime and clear scheduledTime (conceptually)
+            // If scheduling, use existing scheduledTime
+            scheduledTime: isPublishNow ? new Date().toISOString() : platformSelectModal.feed.scheduledTime,
+            publishedTime: isPublishNow ? new Date().toISOString() : undefined
+        };
+
+        schedulePost(updateData).then(() => {
+            logFeedUpdate(
+                platformSelectModal.feed!.id,
+                platformSelectModal.feed!.title,
+                status,
+                'System',
+                { platforms: selectedPlatforms }
+            );
+        }).catch(error => {
+            console.error('Failed to publish/schedule post', error);
+            toast.error(isPublishNow ? 'Failed to publish post' : 'Failed to schedule post');
+        });
+    };
+
+    return (
+        <>
+            {/* Image Preview Modal */}
+            <Dialog open={imagePreviewModal.open} onOpenChange={(open) => !open && closeImagePreview()}>
+                <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
+                    <VisuallyHidden>
+                        <DialogTitle>{imagePreviewModal.feed?.title}</DialogTitle>
+                        <DialogDescription>Full size image</DialogDescription>
+                    </VisuallyHidden>
+                    {/* Close Button - Translucent dark background */}
+                    <button
+                        onClick={() => {
+                            haptics.light();
+                            // Go back in history which triggers the popstate listener to close the modal
+                            window.history.back();
+                        }}
+                        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black hover:bg-[#111111] transition-colors"
+                        aria-label="Close image"
+                    >
+                        <X className="w-6 h-6 text-white" />
+                    </button>
+                    {imagePreviewModal.feed && (
+                        <img
+                            src={imagePreviewModal.feed.imageUrl}
+                            alt={imagePreviewModal.feed.title}
+                            className="w-full h-auto max-h-[90vh] object-contain"
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Caption Modal */}
+            <BottomSheet open={editCaptionModal.open} onOpenChange={(open) => !open && closeEditCaption()}>
+                <BottomSheetHeader>
+                    <BottomSheetTitle>Edit Caption</BottomSheetTitle>
+                    <BottomSheetDescription>Customize the caption for this post</BottomSheetDescription>
+                </BottomSheetHeader>
+                <BottomSheetBody>
+                    <div className="space-y-4">
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <Label htmlFor="caption">Caption</Label>
+                                <button
+                                    onClick={handleRegenerateCaption}
+                                    disabled={isRegenerating}
+                                    className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                                >
+                                    <RefreshCw className={`w-4 h-4 ${isRegenerating ? 'animate-spin' : ''}`} />
+                                </button>
+                            </div>
+                            <Textarea
+                                id="caption"
+                                value={editedCaption}
+                                onChange={(e) => setEditedCaption(e.target.value)}
+                                className="min-h-[100px] bg-white dark:bg-black border-gray-200 dark:border-[#333333]"
+                                maxLength={200}
+                                onTouchStart={() => haptics.light()} // Tap to type haptic
+                                onKeyDown={() => haptics.light()} // Typing haptic
+                            />
+                            <p className="text-xs text-gray-500 mt-1">{editedCaption.length}/200</p>
+                        </div>
+                    </div>
+                </BottomSheetBody>
+                <BottomSheetFooter>
+                    <Button variant="outline" onClick={() => { haptics.light(); closeEditCaption(); }}>Cancel</Button>
+                    <Button onClick={handleSaveCaption}>Save</Button>
+                </BottomSheetFooter>
+            </BottomSheet>
+
+            {/* Change Image Modal */}
+            {changeImageModal.feed && (
+                <ChangeImageBottomSheet
+                    open={changeImageModal.open}
+                    onOpenChange={(open) => !open && closeChangeImage()}
+                    title={changeImageModal.feed.title}
+                    mediaType={changeImageModal.feed.mediaType}
+                    tmdbId={changeImageModal.feed.tmdbId}
+                    currentImageType={changeImageModal.feed.imageType}
+                    onSave={(imageUrl, imageType) => {
+                        if (changeImageModal.feed) {
+                            // Logic is handled in the component
+                            updatePost(changeImageModal.feed.id, {
+                                imageUrl,
+                                imageType
+                            }).catch(error => {
+                                console.error('Failed to update image', error);
+                                // Note: Component has already dismissed and toasted success optimistically.
+                                // If this fails, we might want to show an error, but that's handled by global error handlers usually.
+                            });
+                        }
+                    }}
+                />
+            )}
+
+            {/* Reschedule Modal */}
+            <BottomSheet open={rescheduleModal.open} onOpenChange={(open) => !open && closeReschedule()}>
+                <BottomSheetHeader>
+                    <BottomSheetTitle>Schedule Post</BottomSheetTitle>
+                    <BottomSheetDescription>Set date and time for publishing</BottomSheetDescription>
+                </BottomSheetHeader>
+                <BottomSheetBody>
+                    <div className="space-y-4">
+                        {/* Platform Selection - same 3-column grid as Publish modal */}
+                        <div>
+                            <Label>Platforms</Label>
+                            <div className="py-4 flex justify-center">
+                                <div className="grid grid-cols-3 gap-3">
+                                    {['x', 'threads', 'facebook', 'youtube', 'pinterest'].map(p => (
+                                        <button
+                                            key={p}
+                                            onClick={() => togglePlatform(p)}
+                                            className={`w-14 h-14 rounded-lg flex items-center justify-center transition-all ${selectedPlatforms.includes(p)
+                                                ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                                                : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                                                }`}
+                                        >
+                                            {p === 'x' && <XIcon className="w-4 h-4" />}
+                                            {p === 'threads' && <ThreadsIcon className="w-5 h-5" />}
+                                            {p === 'facebook' && <FacebookIcon className="w-5 h-5" />}
+                                            {p === 'youtube' && <YouTubeIcon className="w-6 h-6" />}
+                                            {p === 'pinterest' && <PinterestIcon className="w-5 h-5" />}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <Label>Date</Label>
+                            <DatePicker date={scheduledDate} onDateChange={(d) => { if (d) haptics.light(); setScheduledDate(d); }} className="mt-2" />
+                        </div>
+                        <div>
+                            <Label>Time</Label>
+                            <TimePicker value={scheduledTime} onChange={(t) => { haptics.light(); setScheduledTime(t); }} className="mt-2" />
+                        </div>
+                        <div className="bg-white dark:bg-black border border-gray-200 dark:border-[#333333] rounded-lg p-3">
+                            <div className="flex items-start gap-2">
+                                <Clock className="w-4 h-4 text-[#ec1e24] mt-0.5" />
+                                <p className="text-xs">Posts are spaced automatically to prevent overlap.</p>
+                            </div>
+                        </div>
+                    </div>
+                </BottomSheetBody>
+                <BottomSheetFooter>
+                    <Button variant="outline" onClick={() => { haptics.light(); closeReschedule(); }}>Cancel</Button>
+                    <Button onClick={handleSaveSchedule} disabled={isSaving}>
+                        {isSaving ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                        ) : 'Schedule'}
+                    </Button>
+                </BottomSheetFooter>
+            </BottomSheet>
+
+            {/* Delete Confirmation Modal */}
+            <BottomSheet open={deleteModal.open} onOpenChange={(open) => !open && closeDelete()}>
+                <BottomSheetHeader>
+                    <BottomSheetTitle>Delete Feed</BottomSheetTitle>
+                    <BottomSheetDescription>This action cannot be undone.</BottomSheetDescription>
+                </BottomSheetHeader>
+                <BottomSheetBody>
+                    <div className="flex gap-3">
+                        <Button variant="outline" onClick={() => { haptics.light(); closeDelete(); }} className="flex-1">
+                            Cancel
+                        </Button>
+                        <Button onClick={handleConfirmDelete} className="flex-1 bg-red-500 hover:bg-red-600">
+                            Delete
+                        </Button>
+                    </div>
+                </BottomSheetBody>
+            </BottomSheet>
+
+            {/* Platform Select Modal */}
+            <BottomSheet open={platformSelectModal.open} onOpenChange={(open) => !open && closePlatformSelect()}>
+                <BottomSheetHeader>
+                    <BottomSheetTitle>Select Platforms</BottomSheetTitle>
+                    <BottomSheetDescription>
+                        Choose platforms to {platformSelectModal.isPostNow ? 'post on' : 'schedule'}
+                    </BottomSheetDescription>
+                </BottomSheetHeader>
+                <BottomSheetBody>
+                    <div className="py-4 flex justify-center">
+                        <div className="grid grid-cols-3 gap-3">
+                            {['x', 'threads', 'facebook', 'youtube', 'pinterest'].map(p => (
+                                <button
+                                    key={p}
+                                    onClick={() => togglePlatform(p)}
+                                    className={`w-14 h-14 rounded-lg flex items-center justify-center transition-all ${selectedPlatforms.includes(p)
+                                        ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                                        : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                                        }`}
+                                >
+                                    {p === 'x' && <XIcon className="w-4 h-4" />}
+                                    {p === 'threads' && <ThreadsIcon className="w-5 h-5" />}
+                                    {p === 'facebook' && <FacebookIcon className="w-5 h-5" />}
+                                    {p === 'youtube' && <YouTubeIcon className="w-6 h-6" />}
+                                    {p === 'pinterest' && <PinterestIcon className="w-5 h-5" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </BottomSheetBody>
+                <BottomSheetFooter>
+                    <Button variant="outline" onClick={() => { haptics.light(); closePlatformSelect(); }} className="flex-1">
+                        Cancel
+                    </Button>
+                    <Button onClick={handleSchedulePost} className="flex-1 bg-[#ec1e24]" disabled={isSaving}>
+                        {isSaving ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {platformSelectModal.isPostNow ? 'Publishing...' : 'Scheduling...'}</>
+                        ) : (
+                            platformSelectModal.isPostNow ? 'Publish' : 'Schedule'
+                        )}
+                    </Button>
+                </BottomSheetFooter>
+            </BottomSheet>
+        </>
+    );
+}
