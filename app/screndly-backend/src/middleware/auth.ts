@@ -1,23 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { env } from '../lib/env';
 
 /**
  * Authentication Middleware
  * 
  * Accepts two forms of authentication:
  * 1. ADMIN_SECRET - Direct backend API access (production)
- * 2. JWT Token - User authentication tokens (development/PWA)
+ * 2. JWT Token - User authentication tokens (production/development)
  */
 export function authenticate(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
-    const adminSecret = process.env.ADMIN_SECRET;
-    const jwtSecret = process.env.JWT_SECRET;
-    const appPassword = process.env.APP_PASSWORD;
-
-    // Strict Mode: If no secret is configured, fail closed
-    if (!adminSecret && !jwtSecret && !appPassword) {
-        console.error('No authentication secrets configured. Blocking all secure requests.');
-        return res.status(500).json({ success: false, error: 'Server configuration error' });
-    }
+    const { ADMIN_SECRET, JWT_SECRET, APP_PASSWORD } = env;
 
     if (!authHeader) {
         return res.status(401).json({ success: false, error: 'Unauthorized: No token provided' });
@@ -27,14 +21,20 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
 
     // Method 1: Check against ADMIN_SECRET (production API access)
-    if (adminSecret && token === adminSecret) {
+    if (ADMIN_SECRET && token === ADMIN_SECRET) {
         return next();
     }
 
     // Method 2: Verify JWT token (user authentication)
-    if (jwtSecret || appPassword) {
+    try {
+        // Attempt to verify as a standard JWT first (Production Mode)
+        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        if (decoded && decoded.app === 'screndly') {
+            return next();
+        }
+    } catch (err) {
+        // Not a valid signed JWT, fallback to base64 check for dev-mode tokens
         try {
-            // Simple base64 JWT verification (matches frontend dev mode)
             const payload = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
 
             // Check expiration
@@ -42,17 +42,17 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
                 return res.status(401).json({ success: false, error: 'Token expired' });
             }
 
-            // Verify password matches app password
-            if (appPassword && payload.password === appPassword) {
+            // Verify password matches app password (Dev fallback)
+            if (APP_PASSWORD && payload.password === APP_PASSWORD) {
                 return next();
             }
 
-            // Check if it's a valid Screndly token
+            // Check if it's a valid Screndly dev token
             if (payload.app === 'screndly' && payload.authenticated) {
                 return next();
             }
         } catch {
-            // Not a valid base64 JWT, continue to check other methods
+            // Failed both signed JWT and base64 decode
         }
     }
 
