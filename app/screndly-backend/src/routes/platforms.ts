@@ -235,33 +235,108 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
 import axios from 'axios';
 
 // POST /api/platforms/callback (Protected)
-// Exchanges the auth code for an access token
+// Exchanges the auth code for an access token and performs deep integration (long-lived tokens, Page/IG IDs)
 router.post('/callback', authenticate, async (req, res) => {
     try {
         const { platform, code, redirectUri } = req.body;
         if (!platform || !code) throw new Error('Platform and code are required');
 
-        let accessToken = '';
+        const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
 
-        if (platform.toLowerCase() === 'instagram' || platform.toLowerCase() === 'facebook') {
+        if (normalizedPlatform === 'Instagram' || normalizedPlatform === 'Facebook' || normalizedPlatform === 'Threads') {
             const appId = env.META_APP_ID;
             const appSecret = env.META_APP_SECRET;
             if (!appId || !appSecret) throw new Error('Meta App credentials not configured');
 
-            // Exchange code for token
+            // 1. Exchange code for short-lived token
             const tokenResponse = await axios.get(`https://graph.facebook.com/v19.0/oauth/access_token?client_id=${appId}&redirect_uri=${redirectUri}&client_secret=${appSecret}&code=${code}`);
-            accessToken = tokenResponse.data.access_token;
+            const shortToken = tokenResponse.data.access_token;
+
+            // 2. Exchange for long-lived (60 days) token
+            const longTokenData = await metaService.exchangeForLongLivedToken(shortToken);
+            const userAccessToken = longTokenData.access_token;
+            const expiresAt = longTokenData.expires_in ? new Date(Date.now() + longTokenData.expires_in * 1000) : null;
+
+            // 3. Perform Discovery
+            if (normalizedPlatform === 'Facebook') {
+                const pages = await metaService.getPages(userAccessToken);
+                if (pages && pages.length > 0) {
+                    // Use the first page for now - in a multi-user app we'd let them choose
+                    const page = pages[0];
+                    await prisma.platformConnection.upsert({
+                        where: { platform: 'Facebook' },
+                        update: {
+                            accessToken: page.access_token, // Page Token
+                            userId: page.id,               // Page ID
+                            username: page.name,
+                            expiresAt,
+                            metadata: { userToken: userAccessToken }
+                        },
+                        create: {
+                            platform: 'Facebook',
+                            accessToken: page.access_token,
+                            userId: page.id,
+                            username: page.name,
+                            expiresAt,
+                            metadata: { userToken: userAccessToken }
+                        }
+                    });
+                }
+            } else if (normalizedPlatform === 'Instagram') {
+                const pages = await metaService.getPages(userAccessToken);
+                let igId = null;
+                let pageName = '';
+
+                for (const page of pages) {
+                    igId = await metaService.getInstagramBusinessId(page.id, page.access_token);
+                    if (igId) {
+                        pageName = page.name;
+                        break;
+                    }
+                }
+
+                if (igId) {
+                    await prisma.platformConnection.upsert({
+                        where: { platform: 'Instagram' },
+                        update: {
+                            accessToken: userAccessToken,
+                            userId: igId,
+                            username: pageName,
+                            expiresAt
+                        },
+                        create: {
+                            platform: 'Instagram',
+                            accessToken: userAccessToken,
+                            userId: igId,
+                            username: pageName,
+                            expiresAt
+                        }
+                    });
+                } else {
+                    throw new Error('No Instagram Business Account found connected to your Facebook Pages');
+                }
+            } else if (normalizedPlatform === 'Threads') {
+                const profile = await metaService.getThreadsProfile(userAccessToken);
+                await prisma.platformConnection.upsert({
+                    where: { platform: 'Threads' },
+                    update: {
+                        accessToken: userAccessToken,
+                        userId: profile.id,
+                        username: profile.username || profile.threads_profile?.name,
+                        expiresAt
+                    },
+                    create: {
+                        platform: 'Threads',
+                        accessToken: userAccessToken,
+                        userId: profile.id,
+                        username: profile.username || profile.threads_profile?.name,
+                        expiresAt
+                    }
+                });
+            }
         } else {
             throw new Error('Unsupported platform for callback exchange');
         }
-
-        // Save to DB
-        const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
-        await prisma.platformConnection.upsert({
-            where: { platform: normalizedPlatform },
-            update: { accessToken, updatedAt: new Date() },
-            create: { platform: normalizedPlatform, accessToken }
-        });
 
         res.json({ success: true, data: { message: 'Authentication successful', platform: normalizedPlatform } });
     } catch (error: any) {
