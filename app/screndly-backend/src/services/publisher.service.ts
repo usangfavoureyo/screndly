@@ -186,8 +186,9 @@ export class PublisherService {
                                         title: content.title || content.text.slice(0, 100),
                                         description: content.text,
                                         privacyStatus: 'public',
+                                        thumbnailPath: undefined,
                                         playlistIds: options.youtubePlaylistIds // Pass playlists
-                                    },
+                                    } as any,
                                     connection.refreshToken || undefined
                                 );
                                 result = {
