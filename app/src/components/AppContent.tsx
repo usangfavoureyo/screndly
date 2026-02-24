@@ -55,6 +55,43 @@ const PageLoader = () => (
   </div>
 );
 
+// ABSOLUTE TRUTH: STALE CLIENT SENTRY
+const StaleVersionBanner = () => {
+  const [isStale, setIsStale] = useState(false);
+  const [version, setVersion] = useState('unknown');
+
+  useEffect(() => {
+    const checkVersion = async () => {
+      const { CLIENT_VERSION } = await import('../lib/api/authToken');
+      const TARGET_VERSION = '1.0.1-auth-debug-phase-5-final';
+      setVersion(CLIENT_VERSION);
+      if (CLIENT_VERSION !== TARGET_VERSION) {
+        setIsStale(true);
+      }
+    };
+    checkVersion();
+  }, []);
+
+  if (!isStale) return null;
+
+  return (
+    <div className="fixed top-0 left-0 right-0 z-[9999] bg-[#ec1e24] text-white p-3 text-center font-bold shadow-xl animate-bounce">
+      <p className="text-sm">
+        ⚠️ STALE VERSION DETECTED (Running: {version})
+      </p>
+      <button
+        onClick={async () => {
+          const { nukeApp } = await import('../utils/pwa');
+          await nukeApp();
+        }}
+        className="mt-2 bg-white text-[#ec1e24] px-4 py-1 rounded-full text-xs hover:bg-gray-100 transition-colors uppercase tracking-widest"
+      >
+        Force Clear Cache & Update Now
+      </button>
+    </div>
+  );
+};
+
 // Helper: Get page from URL pathname
 function getPageFromURL(): string {
   if (typeof window === 'undefined') return 'dashboard';
@@ -482,6 +519,7 @@ export function AppContent() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#000000]">
+      <StaleVersionBanner />
       {/* Skip to main content link for screen readers */}
       <a href="#main-content" className="skip-to-main">
         Skip to main content
