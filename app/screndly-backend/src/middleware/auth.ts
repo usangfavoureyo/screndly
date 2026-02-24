@@ -91,6 +91,6 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
         }
     }
 
-    console.error(`[Auth Alert] All auth methods failed for ${req.originalUrl}. Token type: ${token.includes('.') ? 'JWT' : 'Other'}`);
+    console.error(`[Auth Alert] All auth methods failed for ${req.originalUrl}. Token type: ${token.includes('.') ? 'JWT' : 'Other'}. Preview: ${token.substring(0, 10)}... (Len: ${token.length})`);
     return res.status(403).json({ success: false, error: 'Forbidden: Invalid token' });
 }

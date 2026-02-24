@@ -55,6 +55,22 @@ import dashboardRoutes from './routes/dashboard';
 import videoStudioRoutes from './routes/video-studio';
 import designStudioRoutes from './routes/design-studio';
 
+// Token Echo (Safe preview)
+app.get('/api/diag/echo-token', (req, res) => {
+    const auth = req.headers.authorization || '';
+    const hasBearer = auth.startsWith('Bearer ');
+    const token = hasBearer ? auth.slice(7) : auth;
+    console.log(`[Diag] Echo request from ${req.ip}. Header: ${auth.substring(0, 15)}... (Total Len: ${auth.length})`);
+    res.json({
+        hasHeader: !!auth,
+        hasBearer,
+        tokenLength: token.length,
+        tokenPreview: token.length > 5 ? `${token.substring(0, 3)}...${token.substring(token.length - 2)}` : token,
+        tokenType: token.includes('.') ? 'JWT' : 'Other',
+        headersReceived: Object.keys(req.headers)
+    });
+});
+
 // Diagnostic Route (Safe)
 import { createHash } from 'crypto';
 app.get('/api/diag/secret-check', (req, res) => {
