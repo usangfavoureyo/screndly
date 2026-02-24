@@ -84,11 +84,14 @@ export class ApiClient {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
+      const { CLIENT_VERSION } = await import('./authToken');
+
       // Build request options
       const requestOptions: RequestInit = {
         method,
         headers: {
           'Content-Type': 'application/json',
+          'X-Screndly-Version': CLIENT_VERSION,
           ...this.getAuthHeaders(),
           ...options?.headers,
         },
@@ -96,12 +99,6 @@ export class ApiClient {
         signal: controller.signal,
         ...options,
       };
-
-      // Log request for debugging (Enabled in dev and for Production to debug auth)
-      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
-      const isProductionDebug = hostname.includes('railway') || hostname.includes('vercel.app') || hostname === 'screndly.com';
-
-      const { CLIENT_VERSION } = await import('./authToken');
 
       if (import.meta.env.DEV || isProductionDebug) {
         const authHeader = requestOptions.headers && (requestOptions.headers as any)['Authorization'];

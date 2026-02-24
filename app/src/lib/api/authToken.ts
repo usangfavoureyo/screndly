@@ -30,7 +30,7 @@ export function migrateLegacyToken(): void {
     }
 }
 
-export const CLIENT_VERSION = '1.0.1-auth-debug-phase-3';
+export const CLIENT_VERSION = '1.0.1-auth-debug-phase-4';
 
 /**
  * Get the stored authentication token
@@ -44,11 +44,12 @@ export function getToken(): string | null {
     try {
         const token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 
-        // Sanitize: sometimes "undefined", "null" or "[object Object]" strings get stored by accident
+        // Sanitize: aggressively strip poison strings
+        const poisonStrings = ['undefined', 'null', '[object Object]', 'nan', 'false', 'true'];
+        const stringifiedToken = String(token).toLowerCase();
+
         if (!token ||
-            token === 'undefined' ||
-            token === 'null' ||
-            token === '[object Object]' ||
+            poisonStrings.includes(stringifiedToken) ||
             token.trim() === '') {
             return null;
         }
