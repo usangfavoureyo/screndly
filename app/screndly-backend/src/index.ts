@@ -55,6 +55,22 @@ import dashboardRoutes from './routes/dashboard';
 import videoStudioRoutes from './routes/video-studio';
 import designStudioRoutes from './routes/design-studio';
 
+// Diagnostic Route (Safe)
+import { createHash } from 'crypto';
+app.get('/api/diag/secret-check', (req, res) => {
+    const secret = process.env.JWT_SECRET || '';
+    const hash = createHash('sha256').update(secret).digest('hex');
+    console.log(`[Diag] Secret check initiated. Length: ${secret.length}, Hash (parts): ${hash.substring(0, 8)}...${hash.substring(hash.length - 8)}`);
+    res.json({
+        success: true,
+        message: 'Secret diagnostic logged to backend console',
+        details: {
+            length: secret.length,
+            set: secret.length > 0
+        }
+    });
+});
+
 app.use('/api/settings', settingsRoutes);
 app.use('/api/tmdb', tmdbRoutes);
 app.use('/api/rss', rssRoutes);
