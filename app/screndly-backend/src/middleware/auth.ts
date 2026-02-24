@@ -29,6 +29,21 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     // Support "Bearer <token>" or just "<token>"
     const rawToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
     const token = rawToken.trim(); // Remove any accidental whitespace
+    const version = req.headers['x-screndly-version'] || 'legacy';
+
+    // 1. Explicitly reject "null" or poison string tokens
+    const poisonStrings = ['null', 'undefined', '[object object]', 'nan', 'false', 'true'];
+    if (poisonStrings.includes(token.toLowerCase())) {
+        console.error(`[Auth Alert] [v:${version}] Poison token detected in header: "${token}". Rejecting.`);
+        // Set a hint for the frontend that it's stale
+        res.setHeader('X-Screndly-Hint', 'STALE_CLIENT_DETECTED');
+        return res.status(401).json({
+            success: false,
+            error: 'Authentication state corrupted. Please perform a hard-refresh (Ctrl+Shift+R).',
+            code: 'POISON_TOKEN',
+            version: version
+        });
+    }
 
     // Method 1: Check against ADMIN_SECRET (production API access)
     if (ADMIN_SECRET && token === ADMIN_SECRET) {
