@@ -9,7 +9,7 @@ import "./index.css";
 // ==========================================
 if (typeof window !== 'undefined') {
   const TOKEN_KEY = 'screndly_auth_token';
-  const VERSION = '1.0.1-auth-debug-phase-4';
+  const VERSION = '1.0.1-auth-debug-phase-5-final';
 
   // 1. Startup Fix: Nuke poison strings immediately
   const startupToken = localStorage.getItem(TOKEN_KEY);

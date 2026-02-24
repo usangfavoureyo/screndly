@@ -1,5 +1,5 @@
 // Screndly PWA Service Worker - Enhanced with Advanced Caching Strategies
-const CACHE_NAME = 'screndly-v1.2.1';
+const CACHE_NAME = 'screndly-v1.2.2-force-nuke';
 const RUNTIME_CACHE = 'screndly-runtime';
 const IMAGE_CACHE = 'screndly-images';
 const API_CACHE = 'screndly-api';
@@ -27,7 +27,7 @@ const CORE_ASSETS = [
 
 // Install event - cache core assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.2.1...');
+  console.log('[SW] Installing service worker v1.2.2-force-nuke...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching core assets');

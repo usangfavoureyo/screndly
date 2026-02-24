@@ -215,6 +215,34 @@ export async function unsubscribeFromPushNotifications(
 }
 
 /**
+ * Force-nuke the entire PWA state (Caches, Service Workers, Storage)
+ * Use this only for critical debug recovery
+ */
+export async function nukeApp(): Promise<void> {
+  console.warn('[PWA] !!! NUKING APP STATE !!!');
+
+  // 1. Unregister all service workers
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    for (const registration of registrations) {
+      await registration.unregister();
+      console.log('[PWA] Unregistered:', registration.scope);
+    }
+  }
+
+  // 2. Clear all caches
+  await clearAllCaches();
+
+  // 3. Clear all storage (Caution: Logs out user)
+  localStorage.clear();
+  sessionStorage.clear();
+
+  // 4. Force reload
+  console.log('[PWA] Nuke complete. Reloading...');
+  window.location.href = window.location.origin + '?cache_bust=' + Date.now();
+}
+
+/**
  * Clear all caches
  */
 export async function clearAllCaches(): Promise<void> {
