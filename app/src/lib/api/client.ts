@@ -97,11 +97,15 @@ export class ApiClient {
         ...options,
       };
 
-      // Log request for debugging (Enabled in dev and for Railway production to debug auth)
-      const isRailway = typeof window !== 'undefined' && window.location.hostname.includes('railway');
-      if (import.meta.env.DEV || isRailway) {
-        const hasAuth = !!requestOptions.headers && 'Authorization' in (requestOptions.headers as any);
-        console.log(`[API Client] ${method} ${url} (Auth: ${hasAuth ? 'YES' : 'NO'})`);
+      // Log request for debugging (Enabled in dev and for Production to debug auth)
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+      const isProductionDebug = hostname.includes('railway') || hostname.includes('vercel.app') || hostname === 'screndly.com';
+
+      if (import.meta.env.DEV || isProductionDebug) {
+        const authHeader = requestOptions.headers && (requestOptions.headers as any)['Authorization'];
+        const authType = authHeader ? (authHeader.startsWith('Bearer') ? 'JWT' : 'SECRET') : 'NONE';
+        const tokenPreview = authHeader && authHeader.length > 20 ? `${authHeader.substring(0, 15)}...` : 'N/A';
+        console.log(`[API Client] ${method} ${url} | Auth: ${authType} | Token: ${tokenPreview}`);
       }
 
       // Make request

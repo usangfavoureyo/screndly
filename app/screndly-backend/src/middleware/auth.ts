@@ -34,7 +34,6 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     if (ADMIN_SECRET && token === ADMIN_SECRET) {
         return next();
     }
-
     // Method 2: Verify JWT token (user authentication)
     try {
         if (!JWT_SECRET) {
@@ -48,10 +47,14 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
         }
         console.warn(`[Auth] JWT Decoded but payload invalid for ${req.originalUrl}. Payload:`, JSON.stringify(decoded));
     } catch (err: any) {
-        // Log verification failure details
+        // Log verification failure details with specificity
         const isLikelySignedJWT = token.includes('.');
         if (isLikelySignedJWT) {
-            console.error(`[Auth] JWT Verification failed: ${err.message}. Secret length: ${JWT_SECRET?.length || 0}. Token preview: ${token.substring(0, 10)}...`);
+            let reason = 'Unknown verification error';
+            if (err.name === 'TokenExpiredError') reason = 'Token Expired';
+            if (err.name === 'JsonWebTokenError') reason = `Invalid Signature / Malformed (${err.message})`;
+
+            console.error(`[Auth Alert] JWT Verification failed (${reason}) for ${req.originalUrl}. Secret length: ${JWT_SECRET?.length || 0}. Token preview: ${token.substring(0, 15)}...`);
         }
 
         // Not a valid signed JWT, fallback to base64 check for dev-mode tokens
