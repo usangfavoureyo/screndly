@@ -105,7 +105,7 @@ export class ApiClient {
         const authHeader = requestOptions.headers && (requestOptions.headers as any)['Authorization'];
         const authType = authHeader ? (authHeader.startsWith('Bearer') ? 'JWT' : 'SECRET') : 'NONE';
         const tokenPreview = authHeader && authHeader.length > 20 ? `${authHeader.substring(0, 15)}...` : 'N/A';
-        console.log(`[API Client] ${method} ${url} | Auth: ${authType} | Token: ${tokenPreview}`);
+        console.info(`[API Request] ${method} ${url} | Auth: ${authType} | Token: ${tokenPreview}`);
       }
 
       // Make request

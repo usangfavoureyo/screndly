@@ -58,15 +58,16 @@ import designStudioRoutes from './routes/design-studio';
 // Diagnostic Route (Safe)
 import { createHash } from 'crypto';
 app.get('/api/diag/secret-check', (req, res) => {
-    const secret = process.env.JWT_SECRET || '';
-    const hash = createHash('sha256').update(secret).digest('hex');
-    console.log(`[Diag] Secret check initiated. Length: ${secret.length}, Hash (parts): ${hash.substring(0, 8)}...${hash.substring(hash.length - 8)}`);
+    const jwtHash = createHash('sha256').update(process.env.JWT_SECRET || '').digest('hex');
+    const adminHash = createHash('sha256').update(process.env.ADMIN_SECRET || '').digest('hex');
+    console.log(`[Diag] Secret check: JWT_SECRET=${process.env.JWT_SECRET?.length || 0} chars (Hash: ${jwtHash.substring(0, 8)}...), ADMIN_SECRET=${process.env.ADMIN_SECRET?.length || 0} chars (Hash: ${adminHash.substring(0, 8)}...)`);
     res.json({
         success: true,
         message: 'Secret diagnostic logged to backend console',
         details: {
-            length: secret.length,
-            set: secret.length > 0
+            jwtSet: !!process.env.JWT_SECRET,
+            adminSet: !!process.env.ADMIN_SECRET,
+            nodeEnv: process.env.NODE_ENV
         }
     });
 });
