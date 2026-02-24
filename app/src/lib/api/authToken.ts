@@ -40,7 +40,14 @@ export function getToken(): string | null {
     migrateLegacyToken();
 
     try {
-        return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+        const token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+
+        // Sanitize: sometimes "undefined" or "null" strings get stored by accident
+        if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
+            return null;
+        }
+
+        return token;
     } catch (e) {
         return null;
     }
