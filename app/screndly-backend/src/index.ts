@@ -29,12 +29,14 @@ app.use(cors({
     optionsSuccessStatus: 204
 }));
 app.use((req, res, next) => {
-    // Definitive logger for raw Auth header
+    // Definitive logger for raw Auth header and Client Version
     const auth = req.headers.authorization;
+    const version = req.headers['x-screndly-version'] || 'legacy';
+
     if (auth) {
-        console.log(`[Raw Header Decode] ${req.method} ${req.originalUrl} | Auth: ${auth.substring(0, 20)}... (Len: ${auth.length})`);
+        console.log(`[Raw Header Decode] [v:${version}] ${req.method} ${req.originalUrl} | Auth: ${auth.substring(0, 20)}... (Len: ${auth.length})`);
     } else {
-        console.log(`[Raw Header Decode] ${req.method} ${req.originalUrl} | Auth: MISSING`);
+        console.log(`[Raw Header Decode] [v:${version}] ${req.method} ${req.originalUrl} | Auth: MISSING`);
     }
     next();
 });
