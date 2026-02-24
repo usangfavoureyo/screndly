@@ -143,16 +143,8 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
 
   const fetchCommentData = async () => {
     try {
-      setIsLoading(true);
-      setError(null);
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
-      const response = await fetch(`${BACKEND_URL}/api/comments/automation/stats`, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('screndly_token')}`
-        }
-      });
-      const data = await response.json();
+      const { apiClient } = await import('../lib/api/client');
+      const data = await apiClient.get<any[]>('/api/comments/automation/stats');
 
       if (data.success && Array.isArray(data.data)) {
         // Map color and enabled state (using local defaults for UI)

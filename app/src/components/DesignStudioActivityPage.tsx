@@ -59,9 +59,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       setIsLoadingActivities(true);
       try {
         const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
+        const { getToken } = await import('../lib/auth');
         const res = await fetch(`${BACKEND_URL}/api/design-studio`, {
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('screndly_token')}`,
+            'Authorization': `Bearer ${getToken()}`,
           }
         });
         if (res.ok) {

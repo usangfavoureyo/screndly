@@ -110,18 +110,10 @@ export const useJobsStore = create<JobsState>()(
       // Job management
       addJob: async (job) => {
         try {
-          const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
-          const res = await fetch(`${BACKEND_URL}/api/jobs`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('screndly_token')}`
-            },
-            body: JSON.stringify(job)
-          });
-
-          if (!res.ok) throw new Error('Failed to create job');
-          const { data } = await res.json();
+          const { apiClient } = await import('../lib/api/client');
+          const response = await apiClient.post<any>('/api/jobs', job);
+          if (!response.success) throw new Error(response.error?.message || 'Failed to create job');
+          const data = response.data;
 
           const newJob = data;
 
@@ -308,14 +300,10 @@ export const useJobsStore = create<JobsState>()(
           try {
             // In a real app we would only fetch active jobs or rely on websockets.
             // For now we just poll the list of jobs to refresh state.
-            const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
-            const res = await fetch(`${BACKEND_URL}/api/jobs`, {
-              headers: {
-                'Authorization': `Bearer ${localStorage.getItem('screndly_token')}`
-              }
-            });
-            if (res.ok) {
-              const { data } = await res.json();
+            const { apiClient } = await import('../lib/api/client');
+            const response = await apiClient.get<any[]>('/api/jobs');
+            if (response.success && response.data) {
+              const data = response.data;
 
               // Merge new data with existing store, firing events if stage changed
               const currentJobs = get().jobs;

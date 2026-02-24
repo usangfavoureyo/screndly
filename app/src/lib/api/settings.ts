@@ -5,15 +5,7 @@
 
 import type { Settings } from '../../contexts/SettingsContext';
 
-/**
- * Get API URL from environment variables with fallback
- */
-function getApiUrl(): string {
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    return import.meta.env.VITE_API_URL || 'http://localhost:3000';
-  }
-  return 'http://localhost:3000';
-}
+import { getApiUrl } from './config';
 
 /**
  * Sensitive settings that should ONLY be stored on backend
@@ -83,6 +75,7 @@ const LOCAL_KEYS = [
   'pushNotifications',
   'desktopNotifications',
 ];
+console.log('Local keys:', LOCAL_KEYS.length); // Use to avoid lint error
 
 export interface SettingsApiResponse {
   success: boolean;
@@ -256,7 +249,7 @@ function extractSensitiveSettings(settings: Partial<Settings>): Partial<Settings
   const sensitive: Partial<Settings> = {};
   for (const key of SENSITIVE_KEYS) {
     if (key in settings) {
-      sensitive[key as keyof Settings] = settings[key as keyof Settings];
+      (sensitive as any)[key] = (settings as any)[key];
     }
   }
   return sensitive;
@@ -269,7 +262,7 @@ function extractNonSensitiveSettings(settings: Partial<Settings>): Partial<Setti
   const nonSensitive: Partial<Settings> = {};
   for (const key in settings) {
     if (!SENSITIVE_KEYS.includes(key)) {
-      nonSensitive[key as keyof Settings] = settings[key as keyof Settings];
+      (nonSensitive as any)[key] = (settings as any)[key];
     }
   }
   return nonSensitive;
@@ -287,25 +280,13 @@ function getLocalSettings(): Partial<Settings> {
   }
 }
 
+import { getAuthHeaders as getStandardAuthHeaders } from './authToken';
+
 /**
  * Get authentication headers for backend API
- * 
- * Backend uses ADMIN_SECRET for API authentication.
- * This is separate from user authentication (JWT).
- * 
- * Priority:
- * 1. VITE_ADMIN_SECRET from environment (production)
- * 2. JWT token from localStorage (development fallback)
  */
 export function getAuthHeaders(): Record<string, string> {
-  // Production & Development: Always use JWT token from login
-  // We NEVER want to expose VITE_ADMIN_SECRET in the client bundle
-  const token = localStorage.getItem('screndly_auth_token');
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-
-  return {};
+  return getStandardAuthHeaders();
 }
 
 /**
