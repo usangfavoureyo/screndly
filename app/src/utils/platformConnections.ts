@@ -101,16 +101,16 @@ export async function connectPlatform(
 ): Promise<PlatformConnection> {
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 1500));
-  
+
   const connections = getPlatformConnections();
-  
+
   // Simulate successful OAuth connection
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(); // 60 days
-  
+
   // Generate mock username and profile URL
   const username = mockData?.username || `screenrender_user${Math.floor(Math.random() * 1000)}`;
-  
+
   // Generate platform-specific profile URLs
   const profileUrls: Record<PlatformType, string> = {
     Instagram: `https://www.instagram.com/${username.replace('@', '')}`,
@@ -121,7 +121,7 @@ export async function connectPlatform(
     YouTube: `https://youtube.com/@${username.replace('@', '')}`,
     Pinterest: `https://www.pinterest.com/${username.replace('@', '')}`,
   };
-  
+
   const connection: PlatformConnection = {
     platform,
     connected: true,
@@ -134,10 +134,10 @@ export async function connectPlatform(
     username: username.startsWith('@') ? username : `@${username}`,
     profileUrl: profileUrls[platform],
   };
-  
+
   connections[platform] = connection;
   saveConnections(connections);
-  
+
   return connection;
 }
 
@@ -146,12 +146,12 @@ export async function connectPlatform(
  */
 export function disconnectPlatform(platform: PlatformType): void {
   const connections = getPlatformConnections();
-  
+
   connections[platform] = {
     platform,
     connected: false,
   };
-  
+
   saveConnections(connections);
 }
 
@@ -160,18 +160,18 @@ export function disconnectPlatform(platform: PlatformType): void {
  */
 export async function refreshPlatformConnection(platform: PlatformType): Promise<PlatformConnection> {
   const connection = getPlatformConnection(platform);
-  
+
   if (!connection.connected) {
     throw new Error('Platform is not connected');
   }
-  
+
   // Simulate API delay
   await new Promise(resolve => setTimeout(resolve, 800));
-  
+
   const connections = getPlatformConnections();
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-  
+
   connections[platform] = {
     ...connection,
     lastSync: now,
@@ -179,9 +179,25 @@ export async function refreshPlatformConnection(platform: PlatformType): Promise
     expiresAt,
     error: undefined,
   };
-  
+
   saveConnections(connections);
   return connections[platform];
+}
+
+import { getToken as getSharedToken, migrateLegacyToken as sharedMigrateLegacyToken } from '../lib/api/authToken';
+
+/**
+ * Migrate legacy tokens to the new unified key
+ */
+export function migrateLegacyToken(): void {
+  sharedMigrateLegacyToken();
+}
+
+/**
+ * Get stored token
+ */
+export function getToken(): string | null {
+  return getSharedToken();
 }
 
 /**
@@ -189,34 +205,34 @@ export async function refreshPlatformConnection(platform: PlatformType): Promise
  */
 export function getConnectionStatus(platform: PlatformType): ConnectionStatus {
   const connection = getPlatformConnection(platform);
-  
+
   if (!connection.connected) {
     return {
       health: 'disconnected',
       message: 'Not connected',
     };
   }
-  
+
   if (connection.error) {
     return {
       health: 'error',
       message: connection.error,
     };
   }
-  
+
   // Check token expiration
   if (connection.expiresAt) {
     const expiresAt = new Date(connection.expiresAt);
     const now = new Date();
     const daysUntilExpiry = Math.floor((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    
+
     if (daysUntilExpiry < 0) {
       return {
         health: 'error',
         message: 'Token expired - reconnect required',
       };
     }
-    
+
     if (daysUntilExpiry < 7) {
       return {
         health: 'warning',
@@ -224,7 +240,7 @@ export function getConnectionStatus(platform: PlatformType): ConnectionStatus {
       };
     }
   }
-  
+
   return {
     health: 'healthy',
     message: 'Connected',
@@ -238,19 +254,19 @@ export function formatLastConnection(connection: PlatformConnection): string {
   if (!connection.connectedAt) {
     return 'Never';
   }
-  
+
   const date = new Date(connection.connectedAt);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  
+
   if (diffMins < 1) return 'Just now';
   if (diffMins < 60) return `${diffMins} min ago`;
   if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
   if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-  
+
   return date.toLocaleDateString();
 }
 
@@ -259,14 +275,14 @@ export function formatLastConnection(connection: PlatformConnection): string {
  */
 export async function checkPlatformHealth(platform: PlatformType): Promise<boolean> {
   const connection = getPlatformConnection(platform);
-  
+
   if (!connection.connected) {
     return false;
   }
-  
+
   // Simulate API call
   await new Promise(resolve => setTimeout(resolve, 500));
-  
+
   // Randomly simulate success/failure for demo purposes
   // In production, this would be an actual API health check
   return Math.random() > 0.1; // 90% success rate
@@ -286,7 +302,7 @@ export function getOAuthUrl(platform: PlatformType, redirectUri: string): string
     YouTube: process.env.YOUTUBE_CLIENT_ID || 'YOUR_YOUTUBE_CLIENT_ID',
     Pinterest: process.env.PINTEREST_CLIENT_ID || 'YOUR_PINTEREST_CLIENT_ID',
   };
-  
+
   const scopes: Record<PlatformType, string> = {
     Instagram: 'instagram_basic instagram_content_publish',
     Facebook: 'pages_manage_posts pages_read_engagement',
@@ -296,7 +312,7 @@ export function getOAuthUrl(platform: PlatformType, redirectUri: string): string
     YouTube: 'youtube.upload youtube.readonly',
     Pinterest: 'boards:read boards:write pins:read pins:write user_accounts:read',
   };
-  
+
   const authUrls: Record<PlatformType, string> = {
     Instagram: 'https://api.instagram.com/oauth/authorize',
     Facebook: 'https://www.facebook.com/v18.0/dialog/oauth',
@@ -306,7 +322,7 @@ export function getOAuthUrl(platform: PlatformType, redirectUri: string): string
     YouTube: 'https://accounts.google.com/o/oauth2/v2/auth',
     Pinterest: 'https://www.pinterest.com/oauth/',
   };
-  
+
   const params = new URLSearchParams({
     client_id: clientIds[platform],
     redirect_uri: redirectUri,
@@ -314,7 +330,7 @@ export function getOAuthUrl(platform: PlatformType, redirectUri: string): string
     response_type: 'code',
     state: `${platform}_${Date.now()}`,
   });
-  
+
   return `${authUrls[platform]}?${params.toString()}`;
 }
 
@@ -353,7 +369,7 @@ export function getConnectionStats(): {
 } {
   const connections = getPlatformConnections();
   const allConnections = Object.values(connections);
-  
+
   return {
     total: allConnections.length,
     connected: allConnections.filter(c => c.connected).length,

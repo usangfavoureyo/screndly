@@ -4,18 +4,12 @@
 // Centralized HTTP client with error handling, retries, and interceptors
 
 import { ApiResponse, ApiError } from './types';
+import { getAuthHeaders as getStandardAuthHeaders, getToken } from './authToken';
 
 /**
  * Get API URL from environment variables with fallback
  */
-function getApiUrl(): string {
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-    if (import.meta.env.DEV) return 'http://localhost:3000';
-    if (import.meta.env.PROD) return 'https://screndly-production.up.railway.app';
-  }
-  return 'https://screndly-production.up.railway.app';
-}
+import { getApiUrl } from './config';
 
 export class ApiClient {
   private baseUrl: string;
@@ -103,6 +97,13 @@ export class ApiClient {
         ...options,
       };
 
+      // Log request for debugging (Enabled in dev and for Railway production to debug auth)
+      const isRailway = typeof window !== 'undefined' && window.location.hostname.includes('railway');
+      if (import.meta.env.DEV || isRailway) {
+        const hasAuth = !!requestOptions.headers && 'Authorization' in (requestOptions.headers as any);
+        console.log(`[API Client] ${method} ${url} (Auth: ${hasAuth ? 'YES' : 'NO'})`);
+      }
+
       // Make request
       const response = await fetch(url, requestOptions);
       clearTimeout(timeoutId);
@@ -170,11 +171,7 @@ export class ApiClient {
   }
 
   private getAuthHeaders(): Record<string, string> {
-    const token = localStorage.getItem('screndly_auth_token') || sessionStorage.getItem('screndly_auth_token');
-    if (token) {
-      return { Authorization: `Bearer ${token}` };
-    }
-    return {};
+    return getStandardAuthHeaders();
   }
 
   /**
@@ -261,7 +258,7 @@ export class ApiClient {
       xhr.open('POST', `${this.baseUrl}${endpoint}`);
 
       // Add auth header
-      const token = localStorage.getItem('screndly_auth_token') || sessionStorage.getItem('screndly_auth_token');
+      const token = getToken();
       if (token) {
         xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       }

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Trash2, Globe } from 'lucide-react';
@@ -68,11 +68,95 @@ export function FeedCard({
   const [faviconError, setFaviconError] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
-  const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
+  const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
   const startX = useRef(0);
   const startY = useRef(0);
   const currentX = useRef(0);
   const currentY = useRef(0);
+
+  // Swipe state using refs for the listener to avoid stale closures
+  const swipeXRef = useRef(0);
+  const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
+  const isSwipingRef = useRef(false);
+
+  // Card reference for native listeners
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      startX.current = e.touches[0].clientX;
+      startY.current = e.touches[0].clientY;
+      swipeDirectionRef.current = 'none';
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // If we've already committed to a vertical scroll, ignore
+      if (swipeDirectionRef.current === 'vertical') return;
+
+      currentX.current = e.touches[0].clientX;
+      currentY.current = e.touches[0].clientY;
+
+      const deltaX = Math.abs(currentX.current - startX.current);
+      const deltaY = Math.abs(currentY.current - startY.current);
+
+      // Determine swipe direction on first significant movement
+      if (swipeDirectionRef.current === 'none' && (deltaX > 10 || deltaY > 10)) {
+        if (deltaX > deltaY * 1.5) {
+          swipeDirectionRef.current = 'horizontal';
+          isSwipingRef.current = true;
+          setSwipeDirection('horizontal'); // Trigger re-render for UI state
+          setIsSwiping(true);
+        } else {
+          swipeDirectionRef.current = 'vertical';
+          setSwipeDirection('vertical');
+        }
+      }
+
+      // Handle horizontal swipe
+      if (swipeDirectionRef.current === 'horizontal') {
+        const diff = currentX.current - startX.current;
+        if (diff <= 0) {
+          const maxSwipe = 120;
+          const clampedDiff = Math.max(-maxSwipe, diff);
+          swipeXRef.current = clampedDiff;
+          setSwipeX(clampedDiff);
+        }
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (swipeDirectionRef.current === 'horizontal') {
+        const threshold = 90;
+        if (swipeXRef.current < -threshold) {
+          haptics.medium();
+          onDelete(feed.id);
+        }
+      }
+
+      // Reset
+      swipeDirectionRef.current = 'none';
+      swipeXRef.current = 0;
+      isSwipingRef.current = false;
+
+      setSwipeX(0);
+      setIsSwiping(false);
+      setSwipeDirection('none');
+    };
+
+    // Attach native passive listeners
+    card.addEventListener('touchstart', onTouchStart, { passive: true });
+    card.addEventListener('touchmove', onTouchMove, { passive: true });
+    card.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      card.removeEventListener('touchstart', onTouchStart);
+      card.removeEventListener('touchmove', onTouchMove);
+      card.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [feed.id, onDelete]);
 
   const handleTest = async () => {
     haptics.medium();
@@ -82,64 +166,6 @@ export function FeedCard({
     } finally {
       setIsTestRunning(false);
     }
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    startX.current = e.touches[0].clientX;
-    startY.current = e.touches[0].clientY;
-    setSwipeDirection('none');
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    currentX.current = e.touches[0].clientX;
-    currentY.current = e.touches[0].clientY;
-
-    const deltaX = Math.abs(currentX.current - startX.current);
-    const deltaY = Math.abs(currentY.current - startY.current);
-
-    // Determine swipe direction on first significant movement
-    if (swipeDirection === 'none' && (deltaX > 10 || deltaY > 10)) {
-      // If horizontal movement is greater than vertical, it's a horizontal swipe
-      if (deltaX > deltaY * 1.5) {
-        setSwipeDirection('horizontal');
-        setIsSwiping(true);
-      } else {
-        // Otherwise, it's vertical scrolling
-        setSwipeDirection('vertical');
-      }
-    }
-
-    // Only handle horizontal swipe (left only for delete)
-    if (swipeDirection === 'horizontal') {
-      const diff = currentX.current - startX.current;
-
-      // Only allow left swipe (negative values)
-      if (diff <= 0) {
-        // Limit swipe distance
-        const maxSwipe = 120;
-        const clampedDiff = Math.max(-maxSwipe, diff);
-
-        setSwipeX(clampedDiff);
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    // Only process swipe action if it was a horizontal swipe
-    if (swipeDirection === 'horizontal') {
-      const threshold = 90;
-
-      // Swipe left (delete)
-      if (swipeX < -threshold) {
-        haptics.medium();
-        onDelete(feed.id);
-      }
-    }
-
-    // Reset state
-    setIsSwiping(false);
-    setSwipeDirection('none');
-    setSwipeX(0);
   };
 
   const getStatusColor = () => {
@@ -189,14 +215,12 @@ export function FeedCard({
 
       {/* Card Content */}
       <div
+        ref={cardRef}
         className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200 touch-pan-y"
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
@@ -215,7 +239,12 @@ export function FeedCard({
             )}
             <div className="flex-1 min-w-0">
               <h3 className="text-gray-900 dark:text-white truncate mb-1">{feed.name}</h3>
-              <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase ${getStatusColor()}`}>
+                  {feed.status}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -269,8 +298,8 @@ export function FeedCard({
                     onTogglePlatform(feed.id, platform, !enabled);
                   }}
                   className={`flex items-center justify-center w-9 h-9 rounded-lg transition-all ${enabled
-                      ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
-                      : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                    ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                    : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
                     }`}
                   title={platform}
                 >

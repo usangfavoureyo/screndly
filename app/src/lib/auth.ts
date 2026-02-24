@@ -5,8 +5,15 @@
  */
 
 import { AUTH_CONFIG } from '../config/auth.config';
+import {
+  TOKEN_KEY as SHARED_TOKEN_KEY,
+  getToken as sharedGetToken,
+  setToken as sharedSetToken,
+  clearAuth as sharedClearAuth
+} from './api/authToken';
+import { getApiUrl } from './api/config';
 
-export const TOKEN_KEY = 'screndly_auth_token';
+export const TOKEN_KEY = SHARED_TOKEN_KEY;
 const KEEP_SIGNED_IN_KEY = 'screndly_keep_signed_in';
 const SESSION_ACTIVE_KEY = 'screndly_session_active';
 
@@ -64,7 +71,7 @@ export async function login(password: string, rememberMe: boolean = true): Promi
 }> {
   try {
     // First, try production API (Vercel serverless function)
-    const backendUrl = import.meta.env.VITE_API_URL || 'https://screndly-production.up.railway.app';
+    const backendUrl = getApiUrl();
     const response = await fetch(`${backendUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -77,16 +84,8 @@ export async function login(password: string, rememberMe: boolean = true): Promi
       const data = await response.json();
 
       if (response.ok && data.success) {
-        // MANDATORY: Use localStorage for token persistence
-        localStorage.setItem(TOKEN_KEY, data.token); // Keep token in persistent storage
-        localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe)); // Persist preference
-
-        // Mark session as active
-        sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
-
-        // Clean up potentially conflicting duplicate storage if migrating
-        sessionStorage.removeItem(TOKEN_KEY);
-
+        // MANDATORY: Use unified token storage
+        sharedSetToken(data.token, rememberMe);
         return { success: true };
       }
 
@@ -207,7 +206,7 @@ export async function verifyAuth(): Promise<boolean> {
 
   try {
     // Try production API first
-    const backendUrl = import.meta.env.VITE_API_URL || 'https://screndly-production.up.railway.app';
+    const backendUrl = getApiUrl();
     const response = await fetch(`${backendUrl}/api/auth/verify`, {
       method: 'POST',
       headers: {
@@ -248,21 +247,13 @@ export async function verifyAuth(): Promise<boolean> {
  * Logout user
  */
 export function logout(): void {
-  // Clear ALL auth state
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(KEEP_SIGNED_IN_KEY);
-  sessionStorage.removeItem(SESSION_ACTIVE_KEY);
-
-  // Safety legacy clear
-  sessionStorage.removeItem(TOKEN_KEY);
-
+  sharedClearAuth();
   window.location.reload();
 }
 
 /**
  * Get stored token
- * Prioritize localStorage as per requirements
  */
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+  return sharedGetToken();
 }

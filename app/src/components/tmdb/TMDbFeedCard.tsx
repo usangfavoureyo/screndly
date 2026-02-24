@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useRef } from 'react';
+import { useCallback, useState, useRef, useEffect, memo } from 'react';
 import { MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
@@ -9,7 +9,6 @@ import {
   BottomSheetTitle,
   BottomSheetBody,
 } from '../ui/bottom-sheet';
-import { Separator } from '../ui/separator';
 
 interface TMDbFeedCardProps {
   feed: TMDbFeed;
@@ -31,7 +30,7 @@ interface TMDbFeedCardProps {
  * - Changing image type
  * - Other cards update
  */
-function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) {
+function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'onDelete'>) {
   // Modal controls from Zustand store - NO local useState for modals!
   const openEditCaption = useTMDbModalStore(s => s.openEditCaption);
   const openChangeImage = useTMDbModalStore(s => s.openChangeImage);
@@ -46,63 +45,19 @@ function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) 
   // Swipe state for mobile/tablet delete
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
-  const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
+  const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
   const startX = useRef(0);
   const startY = useRef(0);
   const currentX = useRef(0);
   const currentY = useRef(0);
 
-  // Touch handlers for swipe-to-delete
-  const handleTouchStart = (e: React.TouchEvent) => {
-    startX.current = e.touches[0].clientX;
-    startY.current = e.touches[0].clientY;
-    setSwipeDirection('none');
-  };
+  // Swipe state using refs for the listener to avoid stale closures
+  const swipeXRef = useRef(0);
+  const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
+  const isSwipingRef = useRef(false);
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    currentX.current = e.touches[0].clientX;
-    currentY.current = e.touches[0].clientY;
-
-    const deltaX = Math.abs(currentX.current - startX.current);
-    const deltaY = Math.abs(currentY.current - startY.current);
-
-    // Determine swipe direction on first significant movement
-    if (swipeDirection === 'none' && (deltaX > 10 || deltaY > 10)) {
-      if (deltaX > deltaY * 1.5) {
-        setSwipeDirection('horizontal');
-        setIsSwiping(true);
-      } else {
-        setSwipeDirection('vertical');
-      }
-    }
-
-    // Only handle horizontal swipe (left only for delete)
-    if (swipeDirection === 'horizontal') {
-      const diff = currentX.current - startX.current;
-
-      // Only allow left swipe (negative values)
-      if (diff <= 0) {
-        // We only call preventDefault if we are actually swiping horizontally
-        // Note: touch-action: pan-y in CSS handles most of this natively now
-        const maxSwipe = 120;
-        const clampedDiff = Math.max(-maxSwipe, diff);
-        setSwipeX(clampedDiff);
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (swipeDirection === 'horizontal') {
-      const threshold = 90;
-      if (swipeX < -threshold) {
-        haptics.medium();
-        handleDelete();
-      }
-    }
-    setIsSwiping(false);
-    setSwipeDirection('none');
-    setSwipeX(0);
-  };
+  // Card reference for native listeners
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Stable handlers that don't change identity
   const handleImageClick = useCallback(() => {
@@ -134,6 +89,82 @@ function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) 
     haptics.light();
     openDelete(feed);
   }, [feed, openDelete]);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+
+    const onTouchStart = (e: TouchEvent) => {
+      startX.current = e.touches[0].clientX;
+      startY.current = e.touches[0].clientY;
+      swipeDirectionRef.current = 'none';
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      // If we've already committed to a vertical scroll, ignore
+      if (swipeDirectionRef.current === 'vertical') return;
+
+      currentX.current = e.touches[0].clientX;
+      currentY.current = e.touches[0].clientY;
+
+      const deltaX = Math.abs(currentX.current - startX.current);
+      const deltaY = Math.abs(currentY.current - startY.current);
+
+      // Determine swipe direction on first significant movement
+      if (swipeDirectionRef.current === 'none' && (deltaX > 10 || deltaY > 10)) {
+        if (deltaX > deltaY * 1.5) {
+          swipeDirectionRef.current = 'horizontal';
+          isSwipingRef.current = true;
+          setSwipeDirection('horizontal'); // Trigger re-render for UI state
+          setIsSwiping(true);
+        } else {
+          swipeDirectionRef.current = 'vertical';
+          setSwipeDirection('vertical');
+        }
+      }
+
+      // Handle horizontal swipe
+      if (swipeDirectionRef.current === 'horizontal') {
+        const diff = currentX.current - startX.current;
+        if (diff <= 0) {
+          const maxSwipe = 120;
+          const clampedDiff = Math.max(-maxSwipe, diff);
+          swipeXRef.current = clampedDiff;
+          setSwipeX(clampedDiff);
+        }
+      }
+    };
+
+    const onTouchEnd = () => {
+      if (swipeDirectionRef.current === 'horizontal') {
+        const threshold = 90;
+        if (swipeXRef.current < -threshold) {
+          haptics.medium();
+          handleDelete();
+        }
+      }
+
+      // Reset
+      swipeDirectionRef.current = 'none';
+      swipeXRef.current = 0;
+      isSwipingRef.current = false;
+
+      setSwipeX(0);
+      setIsSwiping(false);
+      setSwipeDirection('none');
+    };
+
+    // Attach native passive listeners
+    card.addEventListener('touchstart', onTouchStart, { passive: true });
+    card.addEventListener('touchmove', onTouchMove, { passive: true });
+    card.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      card.removeEventListener('touchstart', onTouchStart);
+      card.removeEventListener('touchmove', onTouchMove);
+      card.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [handleDelete]);
 
   // Format functions (pure, no state)
   const formatDate = (dateString: string) => {
@@ -181,14 +212,12 @@ function TMDbFeedCardComponent({ feed, onUpdate, onDelete }: TMDbFeedCardProps) 
       </div>
 
       <div
+        ref={cardRef}
         className="bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y"
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
       >
         <div className="flex flex-col sm:flex-row">
           {/* Image Section */}

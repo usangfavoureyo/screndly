@@ -12,15 +12,29 @@ const app = express();
 const PORT = env.PORT;
 
 // Middleware
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
-    origin: ['https://screndly.vercel.app', 'http://localhost:5173', env.FRONTEND_URL],
+    origin: [
+        'https://screndly.vercel.app',
+        'https://screndly-production.up.railway.app',
+        'http://localhost:5173',
+        'http://localhost:3000',
+        env.FRONTEND_URL
+    ].filter(Boolean),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204
 }));
+app.use((req, res, next) => {
+    // Log host headers for debugging "Host validation failed"
+    if (process.env.NODE_ENV === 'production') {
+        console.log(`[Host Debug] Host: ${req.headers.host}, X-Forwarded-Host: ${req.headers['x-forwarded-host']}, Origin: ${req.headers.origin}`);
+    }
+    next();
+});
 app.use(express.json());
 
 // Routes

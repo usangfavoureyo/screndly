@@ -1,9 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { getSettingsForBackend } from '../lib/tmdb';
-import { getAuthHeaders } from '../lib/api/settings';
-
-// Railway backend URL
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
 
 export interface TMDbPost {
   id: string;
@@ -57,17 +53,12 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts`, {
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        }
-      });
-      const data = await response.json();
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.get<any[]>('/api/tmdb/posts');
 
-      if (data.success && Array.isArray(data.data)) {
+      if (response.success && Array.isArray(response.data)) {
         // Transform backend data to match frontend interface
-        const transformedPosts: TMDbPost[] = data.data.map((post: any) => ({
+        const transformedPosts: TMDbPost[] = response.data.map((post: any) => ({
           id: post.id,
           tmdbId: post.tmdbId,
           mediaType: post.mediaType,
@@ -94,11 +85,11 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
         // Also cache to localStorage for offline access
         localStorage.setItem('screndlyTMDbPosts', JSON.stringify(transformedPosts));
       } else {
-        throw new Error(data.error?.message || 'Failed to fetch posts');
+        throw new Error(response.error?.message || 'Failed to fetch posts');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch TMDb posts from backend:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch posts');
+      setError(err.message || 'Failed to fetch posts');
 
       // Fall back to localStorage if backend fails
       const saved = localStorage.getItem('screndlyTMDbPosts');
@@ -115,32 +106,23 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Trigger refresh from TMDb API (fetches fresh movies)
-  // Sends settings from frontend to backend for enforcement
   const refreshFromTMDb = useCallback(async (): Promise<{ added: number; errors: string[] }> => {
     try {
-      // Get current settings to send to backend
       const settings = getSettingsForBackend();
+      const { apiClient } = await import('../lib/api/client');
 
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/refresh`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({ settings })
-      });
-      const data = await response.json();
+      const response = await apiClient.post<any>('/api/tmdb/refresh', { settings });
 
-      if (data.success) {
+      if (response.success) {
         // Refetch posts after refresh
         await fetchPosts();
-        return { added: data.data.added || 0, errors: data.data.errors || [] };
+        return { added: response.data.added || 0, errors: response.data.errors || [] };
       } else {
-        throw new Error(data.error?.message || 'Refresh failed');
+        throw new Error(response.error?.message || 'Refresh failed');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('TMDb refresh failed:', err);
-      return { added: 0, errors: [err instanceof Error ? err.message : 'Refresh failed'] };
+      return { added: 0, errors: [err.message || 'Refresh failed'] };
     }
   }, [fetchPosts]);
 
@@ -153,33 +135,26 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     // Optimistic update
     setPosts(prev => {
       const existingIndex = prev.findIndex(p => p.id === post.id);
+      const updated = [...prev];
       if (existingIndex !== -1) {
-        const updated = [...prev];
         updated[existingIndex] = { ...post, status: 'scheduled' };
-        return updated;
+      } else {
+        updated.push({ ...post, status: 'scheduled' });
       }
-      return [...prev, { ...post, status: 'scheduled' }];
+      return updated;
     });
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts/${post.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({ ...post, status: 'scheduled' })
-      });
-      if (!response.ok) throw new Error('Failed to schedule post');
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.put(`/api/tmdb/posts/${post.id}`, { ...post, status: 'scheduled' });
+      if (!response.success) throw new Error(response.error?.message || 'Failed to schedule post');
     } catch (err) {
       console.error('Failed to schedule post:', err);
-      // Revert optimistic update (simplified: refetch)
       fetchPosts();
     }
   };
 
   const addPost = async (post: TMDbPost) => {
-    // ... logic ...
     setPosts(prev => {
       const existingIndex = prev.findIndex(p => p.id === post.id);
       if (existingIndex !== -1) {
@@ -192,24 +167,16 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const restorePost = async (post: TMDbPost, index: number) => {
-    // Optimistic
     setPosts(prev => {
       const updated = [...prev];
       updated.splice(index, 0, post);
       return updated;
     });
 
-    // We need to re-create it in backend because it was deleted
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify(post)
-      });
-      if (!response.ok) throw new Error('Failed to restore post');
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.post('/api/tmdb/posts', post);
+      if (!response.success) throw new Error(response.error?.message || 'Failed to restore post');
     } catch (err) {
       console.error('Failed to restore post:', err);
       fetchPosts();
@@ -217,7 +184,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const reschedulePost = async (postId: string, newScheduledTime: string) => {
-    // Optimistic
     setPosts(prev =>
       prev.map(post =>
         post.id === postId
@@ -227,15 +193,9 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts/${postId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({ scheduledTime: newScheduledTime })
-      });
-      if (!response.ok) throw new Error('Failed to reschedule post');
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, { scheduledTime: newScheduledTime });
+      if (!response.success) throw new Error(response.error?.message || 'Failed to reschedule post');
     } catch (err) {
       console.error('Failed to reschedule post:', err);
       fetchPosts();
@@ -262,15 +222,9 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts/${postId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({ status, publishedTime, errorMessage })
-      });
-      if (!response.ok) throw new Error('Failed to update status');
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, { status, publishedTime, errorMessage });
+      if (!response.success) throw new Error(response.error?.message || 'Failed to update status');
     } catch (err) {
       console.error('Failed to update status:', err);
       fetchPosts();
@@ -288,23 +242,15 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/tmdb/posts/${postId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify(updates)
-      });
-      if (!response.ok) throw new Error('Failed to update post');
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, updates);
+      if (!response.success) throw new Error(response.error?.message || 'Failed to update post');
     } catch (err) {
       console.error('Failed to update post:', err);
       fetchPosts();
       throw err;
     }
   };
-
-
 
   const deletePost = async (postId: string) => {
     setPosts(prev => {
@@ -314,15 +260,10 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      await fetch(`${BACKEND_URL}/api/tmdb/posts/${postId}`, {
-        method: 'DELETE',
-        headers: {
-          ...getAuthHeaders()
-        }
-      });
+      const { apiClient } = await import('../lib/api/client');
+      await apiClient.delete(`/api/tmdb/posts/${postId}`);
     } catch (err) {
       console.error('Failed to delete from backend:', err);
-      // No refetch needed usually as delete is final, but maybe warn user
     }
   };
 

@@ -41,7 +41,7 @@ export const metaService = {
                 }
             };
         } catch (error: any) {
-            console.error('[Meta] Facebook Post Error:', error?.response?.data || error.message);
+            console.error('[Meta] Facebook Post Error:', error?.response?.data || error);
             return {
                 success: false,
                 error: error?.response?.data?.error?.message || error.message
@@ -146,7 +146,7 @@ export const metaService = {
                 }
             };
         } catch (error: any) {
-            console.error('[Meta] Instagram Post Error:', error?.response?.data || error.message);
+            console.error('[Meta] Instagram Post Error:', error?.response?.data || error);
             return {
                 success: false,
                 error: error?.response?.data?.error?.message || error.message
@@ -198,7 +198,7 @@ export const metaService = {
             };
 
         } catch (error: any) {
-            console.error('[Meta] Threads Post Error:', error?.response?.data || error.message);
+            console.error('[Meta] Threads Post Error:', error?.response?.data || error);
             return {
                 success: false,
                 error: error?.response?.data?.error?.message || error.message

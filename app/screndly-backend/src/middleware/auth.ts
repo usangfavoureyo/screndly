@@ -18,8 +18,11 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
     const { ADMIN_SECRET, JWT_SECRET, APP_PASSWORD } = env;
 
+    // Log the incoming request for debugging
+    console.log(`[Auth] Request: ${req.method} ${req.originalUrl} from Host: ${req.headers.host || req.hostname}`);
+
     if (!authHeader) {
-        console.warn(`[Auth] Missing auth header for ${req.method} ${req.originalUrl}`);
+        console.warn(`[Auth] Missing auth header for ${req.method} ${req.originalUrl}. Headers keys: ${Object.keys(req.headers).join(', ')}`);
         return res.status(401).json({ success: false, error: 'Unauthorized: No token provided' });
     }
 
@@ -34,14 +37,22 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
     // Method 2: Verify JWT token (user authentication)
     try {
+        if (!JWT_SECRET) {
+            console.error('[Auth] JWT_SECRET is missing or empty in environment!');
+        }
+
         // Attempt to verify as a standard JWT first (Production Mode)
         const decoded = jwt.verify(token, JWT_SECRET) as any;
         if (decoded && (decoded.app === 'screndly' || decoded.authenticated)) {
             return next();
         }
+        console.warn(`[Auth] JWT Decoded but payload invalid for ${req.originalUrl}. Payload:`, JSON.stringify(decoded));
     } catch (err: any) {
-        // If it's a signed JWT but failed verification, it might be an expired or wrong-secret token
+        // Log verification failure details
         const isLikelySignedJWT = token.includes('.');
+        if (isLikelySignedJWT) {
+            console.error(`[Auth] JWT Verification failed: ${err.message}. Secret length: ${JWT_SECRET?.length || 0}. Token preview: ${token.substring(0, 10)}...`);
+        }
 
         // Not a valid signed JWT, fallback to base64 check for dev-mode tokens
         try {
@@ -66,7 +77,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
         }
 
         if (isLikelySignedJWT) {
-            console.warn(`[Auth] JWT Verification failed for ${req.method} ${req.originalUrl}: ${err.message}`);
+            console.warn(`[Auth] JWT Verification totally failed for ${req.method} ${req.originalUrl}: ${err.message}`);
         }
     }
 

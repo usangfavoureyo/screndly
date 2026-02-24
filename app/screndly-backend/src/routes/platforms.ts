@@ -210,7 +210,7 @@ router.delete('/:platform', authenticate, async (req, res) => {
 router.get('/auth/:platform', authenticate, async (req, res) => {
     try {
         const { platform } = req.params;
-        const redirectUri = req.query.redirectUri as string || `${env.FRONTEND_URL}/platforms/callback`;
+        const redirectUri = `${env.FRONTEND_URL}/platforms/callback`;
         let oauthUrl = '';
 
         switch (platform.toLowerCase()) {
@@ -340,7 +340,7 @@ router.post('/callback', authenticate, async (req, res) => {
 
         res.json({ success: true, data: { message: 'Authentication successful', platform: normalizedPlatform } });
     } catch (error: any) {
-        console.error('OAuth Callback Error:', error?.response?.data || error.message);
+        console.error('OAuth Callback Error:', error?.response?.data || error);
         res.status(500).json({ success: false, error: { message: error?.response?.data?.error?.message || error.message || 'OAuth callback failed' } });
     }
 });
