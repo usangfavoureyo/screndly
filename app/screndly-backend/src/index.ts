@@ -29,12 +29,16 @@ app.use(cors({
     optionsSuccessStatus: 204
 }));
 app.use((req, res, next) => {
-    // Log host headers for debugging "Host validation failed"
-    if (process.env.NODE_ENV === 'production') {
-        console.log(`[Host Debug] Host: ${req.headers.host}, X-Forwarded-Host: ${req.headers['x-forwarded-host']}, Origin: ${req.headers.origin}`);
+    // Definitive logger for raw Auth header
+    const auth = req.headers.authorization;
+    if (auth) {
+        console.log(`[Raw Header Decode] ${req.method} ${req.originalUrl} | Auth: ${auth.substring(0, 20)}... (Len: ${auth.length})`);
+    } else {
+        console.log(`[Raw Header Decode] ${req.method} ${req.originalUrl} | Auth: MISSING`);
     }
     next();
 });
+
 app.use(express.json());
 
 // Routes

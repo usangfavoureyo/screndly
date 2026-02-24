@@ -86,6 +86,27 @@ export function AppContent() {
     'comment-automation', 'upload-manager', 'not-found'
   ];
 
+  // Global Auth Watcher for Production Debugging
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      const { getToken, CLIENT_VERSION } = await import('../lib/api/authToken');
+      const token = getToken();
+      const hostname = window.location.hostname;
+      const isProduction = hostname.includes('railway') || hostname.includes('vercel.app') || hostname === 'screndly.com';
+
+      if (isProduction) {
+        console.warn(`[System v${CLIENT_VERSION}] App initialized on ${hostname}`);
+        if (!token) {
+          console.warn('[System] No auth token found on startup.');
+        } else {
+          const type = token.includes('.') ? 'JWT' : 'OTHER';
+          console.warn(`[System] Auth token found (Type: ${type}, Len: ${token.length})`);
+        }
+      }
+    };
+    checkAuthStatus();
+  }, []);
+
   // Wrapper to update URL when page changes
   const setCurrentPage = (page: string) => {
     setCurrentPageState(page);

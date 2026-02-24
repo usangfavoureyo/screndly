@@ -30,6 +30,8 @@ export function migrateLegacyToken(): void {
     }
 }
 
+export const CLIENT_VERSION = '1.0.1-auth-debug-phase-3';
+
 /**
  * Get the stored authentication token
  */
@@ -42,8 +44,12 @@ export function getToken(): string | null {
     try {
         const token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
 
-        // Sanitize: sometimes "undefined" or "null" strings get stored by accident
-        if (!token || token === 'undefined' || token === 'null' || token.trim() === '') {
+        // Sanitize: sometimes "undefined", "null" or "[object Object]" strings get stored by accident
+        if (!token ||
+            token === 'undefined' ||
+            token === 'null' ||
+            token === '[object Object]' ||
+            token.trim() === '') {
             return null;
         }
 
@@ -67,8 +73,14 @@ export function getAuthHeaders(): Record<string, string> {
 /**
  * Store the token and persistence preference
  */
-export function setToken(token: string, rememberMe: boolean = true): void {
+export function setToken(token: string | null | undefined, rememberMe: boolean = true): void {
     if (typeof window === 'undefined') return;
+
+    if (!token || token === 'undefined' || token === 'null') {
+        console.warn(`[Auth Warning] Attempted to set nullish token: ${token}. Clearing instead.`);
+        clearAuth();
+        return;
+    }
 
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe));

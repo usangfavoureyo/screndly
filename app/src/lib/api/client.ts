@@ -101,11 +101,13 @@ export class ApiClient {
       const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
       const isProductionDebug = hostname.includes('railway') || hostname.includes('vercel.app') || hostname === 'screndly.com';
 
+      const { CLIENT_VERSION } = await import('./authToken');
+
       if (import.meta.env.DEV || isProductionDebug) {
         const authHeader = requestOptions.headers && (requestOptions.headers as any)['Authorization'];
         const authType = authHeader ? (authHeader.startsWith('Bearer') ? 'JWT' : 'SECRET') : 'NONE';
         const tokenPreview = authHeader && authHeader.length > 20 ? `${authHeader.substring(0, 15)}...` : 'N/A';
-        console.info(`[API Request] ${method} ${url} | Auth: ${authType} | Token: ${tokenPreview}`);
+        console.warn(`[API v${CLIENT_VERSION}] ${method} ${url} | Auth: ${authType} | Token: ${tokenPreview}`);
       }
 
       // Make request
