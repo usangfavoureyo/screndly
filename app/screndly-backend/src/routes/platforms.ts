@@ -216,10 +216,11 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
         switch (platform.toLowerCase()) {
             case 'instagram':
             case 'facebook':
+            case 'threads':
                 const appId = env.META_APP_ID;
                 if (!appId) throw new Error('Meta App ID not configured in environment');
                 // Standard Facebook/Instagram Graph API OAuth URL
-                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_manage_posts`;
+                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_manage_posts,threads_basic,threads_content_publish`;
                 break;
             default:
                 throw new Error('Unsupported platform for automated OAuth yet');

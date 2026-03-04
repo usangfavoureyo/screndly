@@ -118,15 +118,15 @@ export function PlatformConnectionModal({
     haptics.medium();
 
     try {
-      if (platform.toLowerCase() === 'instagram' || platform.toLowerCase() === 'facebook') {
+      if (platform.toLowerCase() === 'instagram' || platform.toLowerCase() === 'facebook' || platform.toLowerCase() === 'threads') {
         const { apiClient } = await import('../lib/api/client');
         const response = await apiClient.get(`/api/platforms/auth/${platform}`);
 
-        if (response.data?.success && response.data?.data?.url) {
+        if (response.success && response.data?.url) {
           // Redirect the user to the OAuth provider URL
-          window.location.href = response.data.data.url;
+          window.location.href = response.data.url;
         } else {
-          throw new Error('Failed to get OAuth URL');
+          throw new Error(response.error?.message || 'Failed to get OAuth URL');
         }
       } else {
         // Mock non-implemented platforms
