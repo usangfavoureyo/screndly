@@ -11,6 +11,11 @@ import { getAuthHeaders as getStandardAuthHeaders, getToken } from './authToken'
  */
 import { getApiUrl } from './config';
 
+const isProductionDebug =
+  typeof window !== 'undefined' &&
+  (window.localStorage.getItem('screndly_debug_api') === '1' ||
+    window.location.search.includes('debugApi=1'));
+
 export class ApiClient {
   private baseUrl: string;
   private timeout: number;

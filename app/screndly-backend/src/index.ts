@@ -23,7 +23,7 @@ app.use(cors({
         env.FRONTEND_URL
     ].filter(Boolean),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Screndly-Version', 'x-screndly-version'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204

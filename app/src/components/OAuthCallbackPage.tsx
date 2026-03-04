@@ -20,18 +20,18 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             }
 
             try {
-                const response = await apiClient.post('/platforms/callback', {
+                const response = await apiClient.post('/api/platforms/callback', {
                     platform,
                     code,
                     redirectUri: `${window.location.origin}/platforms/callback`
                 });
 
-                if (response.data.success) {
+                if (response.success) {
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);
                 } else {
-                    throw new Error(response.data.error?.message || 'Authentication failed');
+                    throw new Error(response.error?.message || 'Authentication failed');
                 }
             } catch (err: any) {
                 console.error('Callback error:', err);

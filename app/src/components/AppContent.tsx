@@ -120,6 +120,7 @@ export function AppContent() {
     'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
     'privacy', 'terms', 'disclaimer',
     'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'api-usage',
+    'platforms/callback',
     'comment-automation', 'upload-manager', 'not-found'
   ];
 
