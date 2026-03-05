@@ -96,6 +96,7 @@ const StaleVersionBanner = () => {
 function getPageFromURL(): string {
   if (typeof window === 'undefined') return 'dashboard';
   const pathname = window.location.pathname.replace(/^\//, '').replace(/\/$/, '');
+  if (pathname === 'callback') return 'platforms/callback';
   return pathname || 'dashboard';
 }
 
@@ -120,6 +121,7 @@ export function AppContent() {
     'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
     'privacy', 'terms', 'disclaimer',
     'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'api-usage',
+    'callback',
     'platforms/callback',
     'comment-automation', 'upload-manager', 'not-found'
   ];
