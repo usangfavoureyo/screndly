@@ -246,7 +246,7 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 const appId = env.META_APP_ID;
                 if (!appId) throw new Error('Meta App ID not configured in environment');
                 // Standard Facebook/Instagram Graph API OAuth URL
-                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&scope=${encodeURIComponent(scopes.join(','))}`;
+                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&response_type=code&scope=${encodeURIComponent(scopes.join(','))}`;
                 break;
         }
 

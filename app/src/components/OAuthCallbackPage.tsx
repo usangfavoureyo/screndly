@@ -10,8 +10,18 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     useEffect(() => {
         const processCallback = async () => {
             const urlParams = new URLSearchParams(window.location.search);
-            const code = urlParams.get('code');
-            const platform = urlParams.get('state'); // State was used to pass platform
+            const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+
+            const providerError = urlParams.get('error') || hashParams.get('error');
+            const providerErrorDescription = urlParams.get('error_description') || hashParams.get('error_description');
+            if (providerError) {
+                setStatus('error');
+                setErrorMsg(providerErrorDescription || providerError);
+                return;
+            }
+
+            const code = urlParams.get('code') || hashParams.get('code');
+            const platform = urlParams.get('state') || hashParams.get('state') || localStorage.getItem('screndly_oauth_platform');
 
             if (!code || !platform) {
                 setStatus('error');
@@ -27,6 +37,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 });
 
                 if (response.success) {
+                    localStorage.removeItem('screndly_oauth_platform');
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);
