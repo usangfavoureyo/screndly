@@ -94,6 +94,24 @@ app.get('/api/diag/secret-check', (req, res) => {
     });
 });
 
+// OAuth config diagnostic (safe values only)
+app.get('/api/diag/oauth-config', (req, res) => {
+    const frontendUrl = process.env.FRONTEND_URL || env.FRONTEND_URL || '';
+    const normalizedFrontend = frontendUrl.replace(/\/+$/, '');
+    const redirectUri = `${normalizedFrontend}/platforms/callback`;
+
+    res.json({
+        success: true,
+        data: {
+            nodeEnv: process.env.NODE_ENV || env.NODE_ENV,
+            frontendUrl,
+            redirectUri,
+            hasMetaAppId: !!process.env.META_APP_ID,
+            hasMetaAppSecret: !!process.env.META_APP_SECRET
+        }
+    });
+});
+
 app.use('/api/settings', settingsRoutes);
 app.use('/api/tmdb', tmdbRoutes);
 app.use('/api/rss', rssRoutes);
