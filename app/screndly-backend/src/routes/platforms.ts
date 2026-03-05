@@ -212,6 +212,32 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
         const { platform } = req.params;
         const redirectUri = `${env.FRONTEND_URL}/platforms/callback`;
         let oauthUrl = '';
+        let scopes: string[] = [];
+
+        switch (platform.toLowerCase()) {
+            case 'instagram':
+                scopes = [
+                    'instagram_basic',
+                    'instagram_content_publish',
+                    'pages_show_list',
+                    'pages_manage_posts'
+                ];
+                break;
+            case 'facebook':
+                scopes = [
+                    'pages_show_list',
+                    'pages_manage_posts'
+                ];
+                break;
+            case 'threads':
+                scopes = [
+                    'threads_basic',
+                    'threads_content_publish'
+                ];
+                break;
+            default:
+                throw new Error('Unsupported platform for automated OAuth yet');
+        }
 
         switch (platform.toLowerCase()) {
             case 'instagram':
@@ -220,10 +246,8 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 const appId = env.META_APP_ID;
                 if (!appId) throw new Error('Meta App ID not configured in environment');
                 // Standard Facebook/Instagram Graph API OAuth URL
-                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&scope=instagram_basic,instagram_content_publish,pages_show_list,pages_manage_posts,threads_basic,threads_content_publish`;
+                oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${appId}&redirect_uri=${redirectUri}&state=${platform}&scope=${encodeURIComponent(scopes.join(','))}`;
                 break;
-            default:
-                throw new Error('Unsupported platform for automated OAuth yet');
         }
 
         res.json({ success: true, data: { url: oauthUrl } });
