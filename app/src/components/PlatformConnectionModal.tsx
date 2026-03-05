@@ -123,6 +123,7 @@ export function PlatformConnectionModal({
         const response = await apiClient.get(`/api/platforms/auth/${platform}`);
 
         if (response.success && response.data?.url) {
+          localStorage.setItem('screndly_oauth_platform', platform);
           // Redirect the user to the OAuth provider URL
           window.location.href = response.data.url;
         } else {
