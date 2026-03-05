@@ -53,24 +53,34 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             try {
                 console.warn('[OAuthCallback] Exchanging authorization code with backend');
+                const controller = new AbortController();
+                const timeoutId = window.setTimeout(() => controller.abort(), 25000);
                 const rawResponse = await fetch('https://screndly-production.up.railway.app/api/platforms/callback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         ...getAuthHeaders(),
                     },
+                    signal: controller.signal,
                     body: JSON.stringify({
                         platform,
                         code,
                         redirectUri: `${window.location.origin}/platforms/callback`
                     })
                 });
+                window.clearTimeout(timeoutId);
 
                 const response = await rawResponse.json().catch(() => ({}));
+                console.warn('[OAuthCallback] Backend exchange response', {
+                    status: rawResponse.status,
+                    ok: rawResponse.ok,
+                    success: response?.success
+                });
 
                 if (rawResponse.ok && response.success) {
                     localStorage.removeItem('screndly_oauth_platform');
                     sessionStorage.removeItem(callbackLockKey);
+                    console.warn('[OAuthCallback] Platform connection completed successfully');
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);
@@ -81,7 +91,8 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 console.error('Callback error:', err);
                 sessionStorage.removeItem(callbackLockKey);
                 setStatus('error');
-                setErrorMsg(err.message || 'An error occurred during authentication.');
+                const isTimeout = err?.name === 'AbortError';
+                setErrorMsg(isTimeout ? 'Request timed out while contacting backend. Please retry.' : (err.message || 'An error occurred during authentication.'));
             }
         };
 
