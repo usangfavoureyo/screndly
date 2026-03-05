@@ -7,6 +7,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
     const [errorMsg, setErrorMsg] = useState('');
     const hasProcessedRef = useRef(false);
+    const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
 
     useEffect(() => {
         const processCallback = async () => {
@@ -33,6 +34,14 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 return;
             }
 
+            const callbackLockKey = `${CALLBACK_LOCK_PREFIX}${code}`;
+            if (sessionStorage.getItem(callbackLockKey) === '1') {
+                setStatus('error');
+                setErrorMsg('This authorization code has already been processed. Please start the connection again.');
+                return;
+            }
+            sessionStorage.setItem(callbackLockKey, '1');
+
             // Remove one-time auth values from URL immediately to prevent accidental reuse.
             window.history.replaceState({}, '', '/platforms/callback');
 
@@ -50,10 +59,11 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     })
                 });
 
-                const response = await rawResponse.json();
+                const response = await rawResponse.json().catch(() => ({}));
 
                 if (rawResponse.ok && response.success) {
                     localStorage.removeItem('screndly_oauth_platform');
+                    sessionStorage.removeItem(callbackLockKey);
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);

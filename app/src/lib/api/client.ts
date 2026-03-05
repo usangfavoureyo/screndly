@@ -121,7 +121,7 @@ export class ApiClient {
         const error = await this.handleErrorResponse(response);
 
         // Retry on 5xx errors or network issues
-        if (this.shouldRetry(error) && attempt < this.retryAttempts) {
+        if (this.shouldRetry(method, error) && attempt < this.retryAttempts) {
           await this.delay(Math.pow(2, attempt) * 1000); // Exponential backoff
           return this.request<T>(method, endpoint, data, options, attempt + 1);
         }
@@ -148,7 +148,7 @@ export class ApiClient {
       };
 
       // Retry on network errors
-      if (attempt < this.retryAttempts) {
+      if (this.shouldRetry(method, apiError) && attempt < this.retryAttempts) {
         await this.delay(Math.pow(2, attempt) * 1000);
         return this.request<T>(method, endpoint, data, options, attempt + 1);
       }
@@ -186,7 +186,12 @@ export class ApiClient {
   /**
    * Determine if request should be retried
    */
-  private shouldRetry(error: ApiError): boolean {
+  private shouldRetry(method: string, error: ApiError): boolean {
+    // Avoid retrying non-idempotent methods to prevent duplicate side effects
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase())) {
+      return false;
+    }
+
     // Retry on 5xx errors or timeout
     return error.statusCode >= 500 || error.code === 'NETWORK_ERROR';
   }
