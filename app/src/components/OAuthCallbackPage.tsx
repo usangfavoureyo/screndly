@@ -27,6 +27,12 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             const code = urlParams.get('code') || hashParams.get('code');
             const platform = urlParams.get('state') || hashParams.get('state') || localStorage.getItem('screndly_oauth_platform');
+            console.warn('[OAuthCallback] Parsed callback params', {
+                hasCode: !!code,
+                platform,
+                path: window.location.pathname,
+                hasSearch: !!window.location.search
+            });
 
             if (!code || !platform) {
                 setStatus('error');
@@ -46,6 +52,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             window.history.replaceState({}, '', '/platforms/callback');
 
             try {
+                console.warn('[OAuthCallback] Exchanging authorization code with backend');
                 const rawResponse = await fetch('https://screndly-production.up.railway.app/api/platforms/callback', {
                     method: 'POST',
                     headers: {
@@ -72,6 +79,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 }
             } catch (err: any) {
                 console.error('Callback error:', err);
+                sessionStorage.removeItem(callbackLockKey);
                 setStatus('error');
                 setErrorMsg(err.message || 'An error occurred during authentication.');
             }
