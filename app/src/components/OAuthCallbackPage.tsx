@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
-import { apiClient } from '../lib/api/client';
+import { useEffect, useRef, useState } from 'react';
+import { getAuthHeaders } from '../lib/api/authToken';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 
 export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) => void }) {
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
     const [errorMsg, setErrorMsg] = useState('');
+    const hasProcessedRef = useRef(false);
 
     useEffect(() => {
         const processCallback = async () => {
+            if (hasProcessedRef.current) return;
+            hasProcessedRef.current = true;
+
             const urlParams = new URLSearchParams(window.location.search);
             const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
@@ -29,25 +33,37 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 return;
             }
 
+            // Remove one-time auth values from URL immediately to prevent accidental reuse.
+            window.history.replaceState({}, '', '/platforms/callback');
+
             try {
-                const response = await apiClient.post('/api/platforms/callback', {
-                    platform,
-                    code,
-                    redirectUri: `${window.location.origin}/platforms/callback`
+                const rawResponse = await fetch('https://screndly-production.up.railway.app/api/platforms/callback', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getAuthHeaders(),
+                    },
+                    body: JSON.stringify({
+                        platform,
+                        code,
+                        redirectUri: `${window.location.origin}/platforms/callback`
+                    })
                 });
 
-                if (response.success) {
+                const response = await rawResponse.json();
+
+                if (rawResponse.ok && response.success) {
                     localStorage.removeItem('screndly_oauth_platform');
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);
                 } else {
-                    throw new Error(response.error?.message || 'Authentication failed');
+                    throw new Error(response?.error?.message || response?.message || 'Authentication failed');
                 }
             } catch (err: any) {
                 console.error('Callback error:', err);
                 setStatus('error');
-                setErrorMsg(err.response?.data?.error?.message || err.message || 'An error occurred during authentication.');
+                setErrorMsg(err.message || 'An error occurred during authentication.');
             }
         };
 
