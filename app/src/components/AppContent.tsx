@@ -238,7 +238,9 @@ export function AppContent() {
   // Push initial history state on mount (for URL support, not back navigation)
   useEffect(() => {
     if (!window.history.state?.page) {
-      window.history.replaceState({ page: currentPage }, '', `/${currentPage === 'dashboard' ? '' : currentPage}`);
+      const basePath = `/${currentPage === 'dashboard' ? '' : currentPage}`;
+      const preservedSuffix = `${window.location.search || ''}${window.location.hash || ''}`;
+      window.history.replaceState({ page: currentPage }, '', `${basePath}${preservedSuffix}`);
     }
   }, []);
 
