@@ -163,10 +163,11 @@ export class ApiClient {
   private async handleErrorResponse(response: Response): Promise<ApiError> {
     try {
       const errorData = await response.json();
+      const nestedError = errorData?.error;
       return {
-        code: errorData.code || 'API_ERROR',
-        message: errorData.message || response.statusText,
-        details: errorData.details,
+        code: errorData.code || nestedError?.code || 'API_ERROR',
+        message: errorData.message || nestedError?.message || response.statusText,
+        details: errorData.details || nestedError?.details,
         statusCode: response.status,
       };
     } catch {
