@@ -259,12 +259,22 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
 
 import axios from 'axios';
 
+const isAuthorizationCodeReusedError = (error: any): boolean => {
+    const message = String(
+        error?.response?.data?.error?.message ||
+        error?.message ||
+        ''
+    ).toLowerCase();
+    return message.includes('authorization code has been used');
+};
+
 // POST /api/platforms/callback (Protected)
 // Exchanges the auth code for an access token and performs deep integration (long-lived tokens, Page/IG IDs)
 router.post('/callback', authenticate, async (req, res) => {
     try {
         const { platform, code, redirectUri } = req.body;
         if (!platform || !code) throw new Error('Platform and code are required');
+        if (!redirectUri) throw new Error('redirectUri is required');
 
         const normalizedPlatform = platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase();
 
@@ -366,7 +376,21 @@ router.post('/callback', authenticate, async (req, res) => {
         res.json({ success: true, data: { message: 'Authentication successful', platform: normalizedPlatform } });
     } catch (error: any) {
         console.error('OAuth Callback Error:', error?.response?.data || error);
-        res.status(500).json({ success: false, error: { message: error?.response?.data?.error?.message || error.message || 'OAuth callback failed' } });
+        if (isAuthorizationCodeReusedError(error)) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'This authorization code has been used. Please connect again from Platforms.' }
+            });
+        }
+
+        const statusCode = error?.response?.status && Number.isInteger(error.response.status)
+            ? error.response.status
+            : 500;
+
+        res.status(statusCode).json({
+            success: false,
+            error: { message: error?.response?.data?.error?.message || error.message || 'OAuth callback failed' }
+        });
     }
 });
 
