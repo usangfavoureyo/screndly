@@ -9,6 +9,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const [errorMsg, setErrorMsg] = useState('');
     const hasProcessedRef = useRef(false);
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
+    const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
     useEffect(() => {
         const decodePlatformFromState = (value: string | null): string | null => {
@@ -98,6 +99,9 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 const response = await rawResponse.json().catch(() => ({}));
 
                 if (rawResponse.ok && response.success) {
+                    if (platform) {
+                        sessionStorage.setItem(OAUTH_REFRESH_KEY, platform);
+                    }
                     localStorage.removeItem('screndly_oauth_platform');
                     sessionStorage.removeItem(callbackLockKey);
                     setStatus('success');

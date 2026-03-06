@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 import { Button } from './ui/button';
-import { Loader2, CheckCircle2, Shield, Key } from 'lucide-react';
+import { Loader2, CheckCircle2, Shield, Key, AlertCircle } from 'lucide-react';
 import { PlatformType } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
@@ -26,6 +26,7 @@ export function PlatformConnectionModal({
 }: PlatformConnectionModalProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const platformInfo = {
     Instagram: {
@@ -110,9 +111,18 @@ export function PlatformConnectionModal({
 
   const info = platformInfo[platform];
 
+  useEffect(() => {
+    if (!isOpen) {
+      setIsConnecting(false);
+      setStep('info');
+      setErrorMessage('');
+    }
+  }, [isOpen]);
+
   const handleConnect = async () => {
     setIsConnecting(true);
     setStep('connecting');
+    setErrorMessage('');
     haptics.medium();
 
     try {
@@ -129,6 +139,7 @@ export function PlatformConnectionModal({
       console.error('Connection error:', error);
       haptics.error();
       const errorMessage = error instanceof Error ? error.message : `Failed to connect to ${info.name}`;
+      setErrorMessage(errorMessage);
       toast.error(errorMessage);
       setStep('info');
     } finally {
@@ -141,6 +152,7 @@ export function PlatformConnectionModal({
       haptics.light();
       onClose();
       setStep('info');
+      setErrorMessage('');
     }
   };
 
@@ -165,6 +177,13 @@ export function PlatformConnectionModal({
       <BottomSheetBody>
         {step === 'info' && (
           <div className="space-y-6">
+            {errorMessage && (
+              <div className="flex gap-3 rounded-lg border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-[#991B1B] dark:border-[#7F1D1D] dark:bg-[#2A0F11] dark:text-[#FCA5A5]">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
+                <p className="text-sm">{errorMessage}</p>
+              </div>
+            )}
+
             {/* Permissions */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm text-[#9CA3AF]">
