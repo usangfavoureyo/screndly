@@ -8,23 +8,45 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
     const [errorMsg, setErrorMsg] = useState('');
     const hasProcessedRef = useRef(false);
+    const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
     useEffect(() => {
+        const getStoredPlatform = (): string | null => {
+            return localStorage.getItem(PLATFORM_STORAGE_KEY) || sessionStorage.getItem(PLATFORM_STORAGE_KEY);
+        };
+
+        const clearStoredPlatform = () => {
+            localStorage.removeItem(PLATFORM_STORAGE_KEY);
+            sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
+        };
+
+        const decodeJwtPayload = (value: string): string | null => {
+            const parts = value.split('.');
+            if (parts.length !== 3) return null;
+
+            const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+            const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
+
+            try {
+                return atob(`${normalized}${padding}`);
+            } catch {
+                return null;
+            }
+        };
+
         const decodePlatformFromState = (value: string | null): string | null => {
             if (!value) return null;
             if (['Instagram', 'Facebook', 'Threads', 'TikTok', 'X', 'YouTube', 'Pinterest'].includes(value)) {
                 return value;
             }
 
-            const parts = value.split('.');
-            if (parts.length !== 3) return null;
-
             try {
-                const payload = JSON.parse(
-                    atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
-                ) as { platform?: string };
+                const payloadRaw = decodeJwtPayload(value);
+                if (!payloadRaw) return null;
+
+                const payload = JSON.parse(payloadRaw) as { platform?: string };
 
                 return payload.platform || null;
             } catch {
@@ -50,7 +72,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 hashParams.get('error_description') ||
                 hashParams.get('error_message');
             if (providerError) {
-                localStorage.removeItem('screndly_oauth_platform');
+                clearStoredPlatform();
                 setStatus('error');
                 setErrorMsg(providerErrorDescription || providerError);
                 return;
@@ -58,7 +80,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             const code = urlParams.get('code') || hashParams.get('code');
             const rawState = urlParams.get('state') || hashParams.get('state');
-            const platform = localStorage.getItem('screndly_oauth_platform') || decodePlatformFromState(rawState);
+            const platform = getStoredPlatform() || decodePlatformFromState(rawState);
 
             if (!code || (!platform && !rawState)) {
                 setStatus('error');
@@ -102,7 +124,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     if (platform) {
                         sessionStorage.setItem(OAUTH_REFRESH_KEY, platform);
                     }
-                    localStorage.removeItem('screndly_oauth_platform');
+                    clearStoredPlatform();
                     sessionStorage.removeItem(callbackLockKey);
                     setStatus('success');
                     // Auto redirect after a few seconds

@@ -24,6 +24,7 @@ export function PlatformConnectionModal({
   isOpen,
   onClose
 }: PlatformConnectionModalProps) {
+  const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
   const [errorMessage, setErrorMessage] = useState('');
@@ -130,7 +131,8 @@ export function PlatformConnectionModal({
       const response = await apiClient.get<{ url?: string }>(`/api/platforms/auth/${platform}`);
 
       if (response.success && response.data?.url) {
-        localStorage.setItem('screndly_oauth_platform', platform);
+        localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+        sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
         window.location.href = response.data.url;
       } else {
         throw new Error(response.error?.message || 'Failed to get OAuth URL');
