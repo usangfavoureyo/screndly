@@ -1,8 +1,10 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useActivity } from '../hooks/useActivity';
 import { useUndo } from './UndoContext';
 import { haptics } from '../utils/haptics';
 import { SwipeableActivityItem } from './SwipeableActivityItem';
+import { apiClient } from '../lib/api/client';
+import { toast } from 'sonner';
 
 interface Activity {
   id: string;
@@ -37,12 +39,15 @@ export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
   const { showUndo } = useUndo();
 
   const { activities: logs } = useActivity({ limit: 20 });
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
 
-  // Initialize activities with timestamps (stored in localStorage)
+  // Activity list is sourced from backend logs via useActivity()
   // Mapped from logs
   const activities = useMemo<Activity[]>(() => {
     if (!Array.isArray(logs)) return [];
-    return logs.map((log: any) => {
+    return logs
+      .filter((log: any) => !deletedIds.includes(log.id))
+      .map((log: any) => {
       const metadata = log.metadata || {};
       const timestamp = new Date(log.timestamp).getTime();
       return {
@@ -54,8 +59,8 @@ export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
         type: (metadata.type as any) || 'system',
         timestamp: timestamp,
       };
-    });
-  }, [logs]);
+      });
+  }, [logs, deletedIds]);
 
   // Scroll to top when page loads
   useEffect(() => {
@@ -66,25 +71,28 @@ export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
 
   const handleDelete = (id: string) => {
     haptics.medium();
-
-    // NOTE: This assumes we can delete via API, but for now we are just suppressing the error for the UI.
-    // Real implementation requires DELETE /api/logs/:id endpoint support or local filtering on the mapped array (which is read-only from useMemo).
-    // So we will just show the undo toast for now, and maybe optimistic update if we had state.
-
-    // Since 'activities' is memoized from 'logs' (which is from useActivity), we cannot setActivities directly.
-    // We would need to update 'logs' via useActivity's mutate/refresh or local state wrapper.
-    // For now, disabling the delete logic's state update part to prevent crash.
-
-    // Find the activity to delete
     const deletedActivity = activities.find(activity => activity.id === id);
     if (!deletedActivity) return;
 
-    // Show undo toast
+    setDeletedIds((prev) => [...prev, id]);
+    void (async () => {
+      try {
+        const response = await apiClient.delete(`/api/logs/${id}`);
+        if (!response.success) {
+          throw new Error(response.error?.message || 'Failed to delete activity');
+        }
+      } catch (error) {
+        console.error('Failed to delete recent activity:', error);
+        setDeletedIds((prev) => prev.filter((entryId) => entryId !== id));
+        toast.error('Failed to delete activity');
+      }
+    })();
+
     showUndo({
       id,
       itemName: deletedActivity.title,
       onUndo: () => {
-        // No-op since we didn't actually delete it from server yet
+        setDeletedIds((prev) => prev.filter((entryId) => entryId !== id));
       }
     });
   };

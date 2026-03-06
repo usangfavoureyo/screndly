@@ -1,93 +1,158 @@
 import { apiClient } from './client';
 import { ApiResponse } from './types';
 
-// ============================================================================
-// DASHBOARD TYPES
-// ============================================================================
-
 export interface SystemStats {
-    cacheHitRate: number;
-    systemErrors: number;
-    dailyFailures: number;
-    dailySuccess: number;
+  cacheHitRate: number;
+  systemErrors: number;
+  dailyFailures: number;
+  dailySuccess: number;
+}
+
+export interface CommentReplySummary {
+  id: string;
+  comment: string;
+  reply: string;
+  platform: string;
+  repliedAt: string;
 }
 
 export interface CommentStats {
-    repliesToday: number;
-    successRate: number;
-    recentReplies: Array<{
-        comment: string;
-        reply: string;
-        platform: string;
-    }>;
+  repliesToday: number;
+  successRate: number;
+  recentReplies: CommentReplySummary[];
+  activePlatforms: number;
+}
+
+export interface VideoTrendPoint {
+  date: string;
+  videos: number;
+}
+
+export interface VideoRecentItem {
+  id: string;
+  title: string;
+  channelName: string;
+  publishedAt: string;
+}
+
+export interface VideoStats {
+  activeChannels: number;
+  dailyVideos: number;
+  trends: VideoTrendPoint[];
+  recentActivity: VideoRecentItem[];
+}
+
+export interface RSSFeedSummary {
+  id: string;
+  name: string;
+  status: string;
+  lastProcessedAt: string | null;
+  nextRunAt: string | null;
+}
+
+export interface RSSStats {
+  activeFeeds: number;
+  dailyPosted: number;
+  recentFeeds: RSSFeedSummary[];
+}
+
+export interface TMDbUpcomingItem {
+  id: string;
+  title: string;
+  source: string;
+  scheduledTime: string;
+  dateLabel: string;
+  timeLabel: string;
+}
+
+export interface TMDbStats {
+  readyCount: number;
+  coverageDays: number;
+  upcoming: TMDbUpcomingItem[];
+}
+
+export interface DesignStudioActivitySummary {
+  id: string;
+  title: string;
+  type: string;
+  createdAt: string;
+  status: string;
+}
+
+export interface DesignStudioStats {
+  generated: number;
+  published: number;
+  recentActivity: DesignStudioActivitySummary[];
+}
+
+export interface VideoStudioActivitySummary {
+  id: string;
+  title: string;
+  type: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface VideoStudioStats {
+  generated: number;
+  published: number;
+  recentActivity: VideoStudioActivitySummary[];
+}
+
+export interface UploadPipelineItem {
+  id: string;
+  fileName: string;
+  stage: string;
+  progress: number;
+  status: string;
 }
 
 export interface UploadStats {
-    activeUploads: number;
-    completedToday: number;
-    pipeline: Array<{
-        title: string;
-        stage: string;
-        progress: number;
-    }>;
+  activeUploads: number;
+  completedToday: number;
+  pipeline: UploadPipelineItem[];
 }
 
 export interface ApiUsageStats {
-    openai: number;
-    serper: number;
-    tmdb: number;
-    shotstack: number;
-    googleSearch: number;
-    googleVideo: number;
+  openai: number;
+  serper: number;
+  tmdb: number;
+  shotstack: number;
+  googleSearch: number;
+  googleVideo: number;
+  total: number;
+}
+
+export interface RecentActivityItem {
+  id: string;
+  title: string;
+  platform: string;
+  status: 'success' | 'failed';
+  type: string;
+  timestamp: string;
 }
 
 export interface DashboardStats {
-    system: SystemStats;
-    comments: CommentStats;
-    uploads: UploadStats;
-    usage: ApiUsageStats;
+  system: SystemStats;
+  comments: CommentStats;
+  video: VideoStats;
+  rss: RSSStats;
+  tmdb: TMDbStats;
+  designStudio: DesignStudioStats;
+  videoStudio: VideoStudioStats;
+  uploads: UploadStats;
+  usage: ApiUsageStats;
+  recentActivity: RecentActivityItem[];
 }
 
-// ============================================================================
-// DASHBOARD API CLIENT
-// ============================================================================
-
 export class DashboardApi {
-    /**
-     * Get aggregated dashboard stats
-     * In a real app, this might be a single endpoint or parallel calls
-     */
-    async getStats(): Promise<ApiResponse<DashboardStats>> {
-        return apiClient.get<DashboardStats>('/api/dashboard/stats');
-    }
+  async getStats(): Promise<ApiResponse<DashboardStats>> {
+    return apiClient.get<DashboardStats>('/api/dashboard/stats');
+  }
 
-    /**
-     * Get system logs stats
-     */
-    async getSystemStats(): Promise<ApiResponse<SystemStats>> {
-        return apiClient.get<SystemStats>('/api/dashboard/system-stats');
-    }
-
-    /**
-     * Get comment automation stats
-     */
-    async getCommentStats(): Promise<ApiResponse<CommentStats>> {
-        return apiClient.get<CommentStats>('/api/dashboard/comment-stats');
-    }
-
-    /**
-     * Get upload manager stats
-     */
-    async getUploadStats(): Promise<ApiResponse<UploadStats>> {
-        return apiClient.get<UploadStats>('/api/dashboard/upload-stats');
-    }
-
-    /**
-     * Get API usage stats
-     */
-    async getApiUsage(): Promise<ApiResponse<ApiUsageStats>> {
-        return apiClient.get<ApiUsageStats>('/api/dashboard/api-usage');
-    }
+  async getSystemStats(): Promise<ApiResponse<SystemStats>> {
+    return apiClient.get<SystemStats>('/api/dashboard/system-stats');
+  }
 }
 
 export const dashboardApi = new DashboardApi();

@@ -18,7 +18,7 @@ interface LogEntry {
 interface SwipeableLogRowProps {
   log: LogEntry;
   onDelete: (id: string) => void;
-  onRetry: (logId: string, videoTitle: string) => void;
+  onRetry?: (logId: string, videoTitle: string) => void;
   platformUrls: Record<string, string>;
 }
 
@@ -276,7 +276,7 @@ export function SwipeableLogRow({
         }}
       >
         <div className="flex items-center gap-3">
-          {log.status === 'failed' ? (
+          {log.status === 'failed' && onRetry ? (
             <Button
               size="sm"
               variant="outline"

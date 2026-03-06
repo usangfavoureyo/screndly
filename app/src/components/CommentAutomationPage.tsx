@@ -1,3 +1,4 @@
+import { formatDistanceToNow } from 'date-fns';
 import { haptics } from '../utils/haptics';
 import { XIcon } from './icons/XIcon';
 import { ThreadsIcon } from './icons/ThreadsIcon';
@@ -10,21 +11,24 @@ import { useCommentAutomation } from '../contexts/CommentAutomationContext';
 
 interface CommentAutomationPageProps {
   onBack: () => void;
+  previousPage?: string | null;
+}
+
+function formatReplyTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unknown time';
+  return formatDistanceToNow(date, { addSuffix: true });
 }
 
 export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
   const { platformData } = useCommentAutomation();
+  const enabledPlatforms = platformData.filter((platform) => platform.enabled);
 
-  // Filter to only show enabled platforms
-  const enabledPlatforms = platformData.filter(p => p.enabled);
+  const totalReplies = enabledPlatforms.reduce((sum, platform) => sum + platform.repliesToday, 0);
+  const avgSuccessRate = enabledPlatforms.length > 0
+    ? Math.round(enabledPlatforms.reduce((sum, platform) => sum + parseFloat(platform.successRate), 0) / enabledPlatforms.length)
+    : 0;
 
-  // Calculate overall stats
-  const totalReplies = enabledPlatforms.reduce((sum, p) => sum + p.repliesToday, 0);
-  const avgSuccessRate = Math.round(
-    enabledPlatforms.reduce((sum, p) => sum + parseFloat(p.successRate), 0) / enabledPlatforms.length
-  );
-
-  // Helper function to get platform icon
   const getPlatformIcon = (platformName: string) => {
     switch (platformName) {
       case 'X':
@@ -48,9 +52,7 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
 
   return (
     <div className="min-h-screen bg-white dark:bg-[#000000]">
-      {/* Content */}
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex items-start gap-4">
           <button
             onClick={() => {
@@ -60,7 +62,7 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
             className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
           >
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7"/>
+              <path d="M22 12H2M9 19l-7-7 7-7" />
             </svg>
           </button>
           <div>
@@ -69,17 +71,16 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
           </div>
         </div>
 
-        {/* Overall Summary */}
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6">
           <div className="mb-6">
             <h2 className="text-gray-900 dark:text-white">Overall Performance</h2>
-            <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Today's activity</p>
+            <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Current automation activity</p>
           </div>
-          
+
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="bg-white dark:bg-[#000000] rounded-xl p-4 border border-gray-200 dark:border-[#333333] col-span-2 lg:col-span-1">
               <p className="text-2xl text-gray-900 dark:text-white mb-1">{totalReplies}</p>
-              <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Total Replies Today</p>
+              <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Replies Today</p>
             </div>
             <div className="bg-white dark:bg-[#000000] rounded-xl p-4 border border-gray-200 dark:border-[#333333]">
               <p className="text-2xl text-gray-900 dark:text-white mb-1">{avgSuccessRate}%</p>
@@ -87,14 +88,17 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
             </div>
             <div className="bg-white dark:bg-[#000000] rounded-xl p-4 border border-gray-200 dark:border-[#333333]">
               <p className="text-2xl text-gray-900 dark:text-white mb-1">{enabledPlatforms.length}</p>
-              <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Active Platforms</p>
+              <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">Tracked Platforms</p>
             </div>
           </div>
         </div>
 
-        {/* Platform Breakdown */}
-        {enabledPlatforms.map((data, index) => (
-          <div key={index} className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6">
+        {enabledPlatforms.length === 0 ? (
+          <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-8 text-center">
+            <p className="text-gray-600 dark:text-[#9CA3AF]">No comment automation activity recorded yet.</p>
+          </div>
+        ) : enabledPlatforms.map((data) => (
+          <div key={data.platform} className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center">
@@ -107,7 +111,6 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
               </div>
             </div>
 
-            {/* Platform Stats */}
             <div className="grid grid-cols-2 gap-4 mb-6">
               <div className="bg-white dark:bg-[#000000] rounded-xl p-4 border border-gray-200 dark:border-[#333333]">
                 <p className="text-2xl text-gray-900 dark:text-white mb-1">{data.repliesToday}</p>
@@ -119,20 +122,23 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
               </div>
             </div>
 
-            {/* Recent Replies */}
             <div className="space-y-3">
               <h4 className="text-sm text-gray-900 dark:text-white">Recent Replies</h4>
-              {data.recentReplies.map((item, idx) => (
+              {data.recentReplies.length === 0 ? (
+                <div className="w-full text-left p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                  <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">No recent replies for {data.platform} yet.</p>
+                </div>
+              ) : data.recentReplies.map((item, index) => (
                 <button
-                  key={idx}
+                  key={`${data.platform}-${index}`}
                   onClick={() => haptics.light()}
                   className="w-full text-left p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] hover:border-[#ec1e24] dark:hover:border-[#ec1e24] transition-all cursor-pointer"
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <p className="text-sm text-gray-600 dark:text-[#9CA3AF] italic flex-1">\"{item.comment}\"</p>
-                    <span className="text-xs text-gray-500 dark:text-[#6B7280] ml-2">{item.time}</span>
+                  <div className="flex items-start justify-between mb-2 gap-3">
+                    <p className="text-sm text-gray-600 dark:text-[#9CA3AF] italic flex-1">&quot;{item.comment}&quot;</p>
+                    <span className="text-xs text-gray-500 dark:text-[#6B7280] ml-2 whitespace-nowrap">{formatReplyTime(item.time)}</span>
                   </div>
-                  <p className="text-sm text-gray-900 dark:text-white">↳ {item.reply}</p>
+                  <p className="text-sm text-gray-900 dark:text-white">↳ {item.reply || 'No reply saved'}</p>
                 </button>
               ))}
             </div>

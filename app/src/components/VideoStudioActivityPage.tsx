@@ -16,8 +16,9 @@ import { useState, useEffect } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { useUndo } from './UndoContext';
-import { VideoStudioActivity, updateVideoStudioActivity, addRecentActivity, addLogEntry } from '../utils/activityStore';
+import type { VideoStudioActivity } from '../utils/activityStore';
 import { Skeleton } from './ui/skeleton';
+import { apiClient } from '../lib/api/client';
 
 interface VideoStudioActivityPageProps {
   onNavigate: (page: string) => void;
@@ -60,15 +61,9 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   const fetchActivities = async () => {
     setIsLoadingActivities(true);
     try {
-      const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://screndly-production.up.railway.app';
-      const { getToken } = await import('../lib/auth');
-      const res = await fetch(`${BACKEND_URL}/api/video-studio/recent`, {
-        headers: {
-          'Authorization': `Bearer ${getToken()}`,
-        }
-      });
-      if (res.ok) {
-        const { data } = await res.json();
+      const response = await apiClient.get<any[]>('/api/video-studio/activity');
+      if (response.success && Array.isArray(response.data)) {
+        const data = response.data;
         // Convert database entity to expected struct
         const mappedActivities = data.map((item: any) => ({
           id: item.id,
@@ -88,11 +83,44 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
         setActivities(mappedActivities);
       } else {
         console.error("Failed to fetch video studio activities");
+        setActivities([]);
       }
     } catch (error) {
       console.error("Video studio fetch error", error);
+      setActivities([]);
     } finally {
       setIsLoadingActivities(false);
+    }
+  };
+
+  const updateActivityRecord = async (activityId: string, updates: Partial<VideoStudioActivity>) => {
+    const response = await apiClient.put(`/api/video-studio/activity/${activityId}`, updates);
+    if (!response.success) {
+      throw new Error(response.error?.message || 'Failed to update video studio activity');
+    }
+  };
+
+  const deleteActivityRecord = async (activityId: string) => {
+    const response = await apiClient.delete(`/api/video-studio/activity/${activityId}`);
+    if (!response.success) {
+      throw new Error(response.error?.message || 'Failed to delete video studio activity');
+    }
+  };
+
+  const createVideoStudioLog = async (title: string, platform: string) => {
+    const response = await apiClient.post('/api/logs', {
+      level: 'info',
+      message: `Video studio publish: ${title}`,
+      service: 'video-studio',
+      metadata: {
+        videoTitle: title,
+        platform,
+        type: 'videostudio',
+      },
+    });
+
+    if (!response.success) {
+      throw new Error(response.error?.message || 'Failed to write activity log');
     }
   };
 
@@ -129,81 +157,57 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [captionEditMode, setCaptionEditMode] = useState(false);
 
-  // Generate caption from video content
+  const getSelectedPlatformLabel = () => {
+    if (selectedPlatforms.youtube) return 'YouTube';
+    if (selectedPlatforms.instagram) return 'Instagram';
+    if (selectedPlatforms.facebook) return 'Facebook';
+    if (selectedPlatforms.threads) return 'Threads';
+    if (selectedPlatforms.tiktok) return 'TikTok';
+    if (selectedPlatforms.pinterest) return 'Pinterest';
+    return 'X';
+  };
+  const getCaptionPrompt = (activity: typeof activities[0]) => {
+    const settingsWithPrompts = settings as typeof settings & {
+      captionReviewPrompt?: string;
+      captionReleasesPrompt?: string;
+      captionScenesPrompt?: string;
+    };
+
+    if (activity.type === 'review') return settingsWithPrompts.captionReviewPrompt;
+    if (activity.type === 'scenes') return settingsWithPrompts.captionScenesPrompt;
+    return settingsWithPrompts.captionReleasesPrompt;
+  };
+
+  // Use the shared AI route so caption generation here is not a local mock.
   const generateCaption = async (activity: typeof activities[0]) => {
     setIsGeneratingCaption(true);
     setCaptionEditMode(false);
     haptics.light();
-
     try {
-      // Use caption settings from context
-      const captionSettings = {
-        captionOpenaiModel: settings.captionOpenaiModel || 'gpt-4o',
-        captionTemperature: settings.captionTemperature || 0.7,
-        captionMaxTokens: 500,
-        captionSystemPrompt: 'You are a social media caption writer...',
-        captionMaxLength: 280,
-        captionTone: 'engaging'
-      };
-
-      // Simulate voiceover transcript based on video type and title
-      const mockTranscript = activity.type === 'review'
-        ? `${activity.title} - Experience the cinematic masterpiece everyone's talking about. Coming to theaters soon.`
-        : activity.type === 'scenes'
-          ? `${activity.title} - Exclusive scene cut from the movie.`
-          : `${activity.title} - Your monthly dose of the best new releases in cinema. Don't miss these incredible films.`;
-
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Generate mock caption based on tone
-      let caption = '';
-
-      if (activity.type === 'scenes') {
-        // Special captions for scene cuts
-        switch (captionSettings.captionTone) {
-          case 'hype':
-            caption = `🎬 EXCLUSIVE SCENE! ${activity.title.toUpperCase()} ✂️\n\nCheck out this EPIC moment!\n\n#MovieScenes #BehindTheScenes #Cinema #FilmClips`;
-            break;
-          case 'professional':
-            caption = `${activity.title}\n\nPrecision-cut scene showcasing a key moment.\n\n#Cinema #MovieClips #FilmAnalysis`;
-            break;
-          case 'casual':
-            caption = `Just cut this sick scene! ${activity.title} 🎬✂️\n\n#MovieMoments #FilmClips #Cinema`;
-            break;
-          default:
-            caption = `${activity.title} ✨\n\nA perfectly crafted scene moment.\n\n#MovieScenes #Cinema #FilmClips`;
-        }
-      } else {
-        switch (captionSettings.captionTone) {
-          case 'hype':
-            caption = activity.type === 'review'
-              ? `🔥 ${activity.title.toUpperCase()} 🎬\n\nThis is THE movie event you can't miss!\n\n#Movies #MustWatch #Cinema #FilmTwitter #Premiere`
-              : `🎬 ${activity.title.toUpperCase()} 🚀\n\nYour cinema guide is HERE! Check out what's hitting screens!\n\n#NewReleases #Movies #Cinema #FilmLovers #MustWatch`;
-            break;
-          case 'professional':
-            caption = activity.type === 'review'
-              ? `${activity.title}\n\nA compelling addition to this year's theatrical releases. Now in theaters.\n\n#Cinema #NewRelease #Film #Movies`
-              : `${activity.title}\n\nComprehensive overview of this month's most anticipated theatrical releases.\n\n#NewMovies #FilmReleases #Cinema`;
-            break;
-          case 'casual':
-            caption = activity.type === 'review'
-              ? `Yo ${activity.title} looks absolutely FIRE 🔥🍿\n\nGotta see this one!\n\n#Movies #MustWatch #FilmTwitter #Cinema`
-              : `This month's movie lineup is STACKED 🎬✨\n\nSo many good ones!\n\n#Movies #NewReleases #FilmTwitter #Cinema`;
-            break;
-          default: // engaging
-            caption = activity.type === 'review'
-              ? `${activity.title} ✨\n\nThe cinematic experience you've been waiting for. Don't miss it.\n\n#Movies #ComingSoon #MustWatch #Cinema #Film`
-              : `${activity.title} 🎬\n\nYour complete guide to this month's must-see releases.\n\n#NewReleases #Movies #MustWatch #Cinema #FilmLovers`;
-        }
+      const response = await apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', {
+        fileName: activity.title,
+        fileDescription: [
+          `Video Studio ${activity.type} activity`,
+          activity.aspectRatio ? `Aspect ratio: ${activity.aspectRatio}` : '',
+          activity.duration ? `Duration: ${activity.duration}` : '',
+        ].filter(Boolean).join('. '),
+        detectedObjects: [activity.type, activity.aspectRatio, activity.duration].filter(Boolean),
+        platform: getSelectedPlatformLabel(),
+        tone: settings.captionTone || 'engaging',
+        model: settings.captionOpenaiModel || 'gpt-4o',
+        customSystemPrompt: getCaptionPrompt(activity),
+        customTemperature: settings.captionTemperature || 0.7,
+      });
+      if (!response.success || !response.data?.content) {
+        throw new Error(response.error?.message || 'Failed to generate caption');
       }
-
-      // Trim to max length if needed
-      if (caption.length > captionSettings.captionMaxLength) {
-        caption = caption.substring(0, captionSettings.captionMaxLength - 3) + '...';
+      let caption = response.data.content.trim();
+      const maxLength = settings.captionMaxLength || 280;
+      if (caption.length > maxLength) {
+        caption = `${caption.substring(0, maxLength - 3).trimEnd()}...`;
       }
-
       setGeneratedCaption(caption);
+      toast.success('Caption generated');
     } catch (error) {
       console.error('Error generating caption:', error);
       setGeneratedCaption('Failed to generate caption. Please try again.');
@@ -246,27 +250,20 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
         setActivities(prev => [...prev, deletedActivity]);
       },
       onConfirm: () => {
-        // Show final confirmation
-        toast.success('Deleted', {
-          description: `\"${title}\" has been removed`,
-        });
+        void (async () => {
+          try {
+            await deleteActivityRecord(id);
+            toast.success('Deleted', {
+              description: `\"${title}\" has been removed`,
+            });
+          } catch (error) {
+            console.error('Failed to delete video studio activity:', error);
+            setActivities(prev => [...prev, deletedActivity]);
+            toast.error('Failed to delete activity');
+          }
+        })();
       }
     });
-  };
-
-  const handleRepublish = (activity: VideoStudioActivity) => {
-    // Simulate republishing logic
-    toast.success('Republishing', {
-      description: `Republishing "${activity.title}"`,
-    });
-
-    // Update activity status to processing
-    setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, status: 'processing' } : a));
-
-    // Simulate processing delay
-    setTimeout(() => {
-      setActivities(prev => prev.map(a => a.id === activity.id ? { ...a, status: 'completed' } : a));
-    }, 5000);
   };
 
   return (
@@ -528,24 +525,6 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                             </Button>
                           </>
                         )}
-
-                        {activity.status === 'failed' && (
-                          <Button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              haptics.light();
-                              toast.success('Retry Initiated', {
-                                description: `Retrying "${activity.title}"`,
-                              });
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="gap-2 bg-white dark:bg-black border-gray-200 dark:border-[#333333] whitespace-nowrap"
-                          >
-                            <RefreshCw className="w-4 h-4" />
-                            Retry
-                          </Button>
-                        )}
                       </div>
                     </div>
                   </SwipeableActivityCard>
@@ -734,15 +713,13 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                 Cancel
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   haptics.medium();
 
                   if (!selectedActivity) return;
 
-                  // Optimistic Update: Close immediately
                   setIsPublishDialogOpen(false);
 
-                  // Get selected platforms as array
                   const platforms: string[] = [];
                   if (selectedPlatforms.x) platforms.push('X');
                   if (selectedPlatforms.threads) platforms.push('Threads');
@@ -752,46 +729,35 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                   if (selectedPlatforms.tiktok) platforms.push('TikTok');
                   if (selectedPlatforms.pinterest) platforms.push('Pinterest');
 
-                  // Update activity with published status (Optimistic local update)
                   const updatedActivity = {
                     ...selectedActivity,
                     published: true,
                     platforms
                   };
 
-                  updateVideoStudioActivity(updatedActivity);
+                  try {
+                    await updateActivityRecord(selectedActivity.id, {
+                      published: true,
+                      platforms,
+                    });
 
-                  // Update local state
-                  setActivities(prev => prev.map(a =>
-                    a.id === selectedActivity.id ? updatedActivity : a
-                  ));
+                    setActivities(prev => prev.map(a =>
+                      a.id === selectedActivity.id ? updatedActivity : a
+                    ));
 
-                  // Show success toast
-                  toast.success(selectedActivity.published ? 'Republished' : 'Published', {
-                    description: `"${selectedActivity.title}" published to ${platforms.join(', ')}`,
-                  });
+                    await createVideoStudioLog(selectedActivity.title, platforms.join(', '));
 
-                  // Add recent activity
-                  addRecentActivity({
-                    title: selectedActivity.title,
-                    platform: platforms.join(', '),
-                    status: 'success',
-                    type: 'videostudio'
-                  });
-
-                  // Add log entry
-                  addLogEntry({
-                    videoTitle: selectedActivity.title,
-                    platform: platforms.join(', '),
-                    status: 'success',
-                    type: 'videostudio'
-                  });
-
-                  // Close dialog and reset
-                  setIsPublishDialogOpen(false);
-                  setGeneratedCaption('');
-                  setCaptionEditMode(false);
-                  setSelectedActivity(null);
+                    toast.success(selectedActivity.published ? 'Republished' : 'Published', {
+                      description: `"${selectedActivity.title}" published to ${platforms.join(', ')}`,
+                    });
+                  } catch (error) {
+                    console.error('Failed to update video studio publish state:', error);
+                    toast.error('Failed to update publish state');
+                  } finally {
+                    setGeneratedCaption('');
+                    setCaptionEditMode(false);
+                    setSelectedActivity(null);
+                  }
                 }}
                 className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white shadow-none hover:shadow-none active:shadow-none focus:shadow-none hover:scale-100 active:scale-100"
               >
@@ -804,3 +770,4 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
     </div>
   );
 }
+

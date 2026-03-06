@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Trash2, Play, Pause, Plus } from 'lucide-react';
+import { Trash2, Play, Pause, RefreshCw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { useJobsStore, UploadJob } from '../../store/useJobsStore';
@@ -26,9 +26,9 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
     getActiveJobs,
     getFailedJobs,
     getJobsByStatus,
-    addJob,
     retryJob,
     duplicateJob,
+    refreshJobs,
   } = useJobsStore();
 
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
@@ -38,16 +38,20 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
 
   // Start polling on mount
   useEffect(() => {
+    let active = true;
     startPolling();
-    
-    // Simulate initial load
-    const timer = setTimeout(() => setLoading(false), 800);
-    
+    void (async () => {
+      await refreshJobs();
+      if (active) {
+        setLoading(false);
+      }
+    })();
+
     return () => {
+      active = false;
       stopPolling();
-      clearTimeout(timer);
     };
-  }, [startPolling, stopPolling]);
+  }, [refreshJobs, startPolling, stopPolling]);
 
   const activeJobs = getActiveJobs();
   const failedJobs = getFailedJobs();
@@ -67,32 +71,6 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
   };
 
   const filteredJobs = getFilteredJobs();
-
-  const handleAddMockJob = () => {
-    haptics.medium();
-    
-    const mockFileNames = [
-      'Dune_Part_Three_Official_Trailer.mp4',
-      'Gladiator_II_Final_Trailer.mp4',
-      'Avatar_3_Teaser.mp4',
-      'Wicked_Part_Two_Trailer.mp4',
-      'Mission_Impossible_8_Trailer.mp4',
-    ];
-
-    const randomFileName = mockFileNames[Math.floor(Math.random() * mockFileNames.length)];
-    const randomSize = Math.floor(Math.random() * 500000000) + 50000000; // 50MB - 500MB
-
-    addJob({
-      fileName: randomFileName,
-      fileSize: randomSize,
-      status: 'pending',
-      stage: 'queued',
-      progress: 0,
-      metadata: {
-        thumbnailAvailable: false,
-      },
-    });
-  };
 
   const handleClearJobs = () => {
     haptics.medium();
@@ -170,15 +148,17 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
             {isPolling ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           </Button>
 
-          {/* Add Mock Job (for demo) */}
           <Button
-            onClick={handleAddMockJob}
+            onClick={() => {
+              haptics.light();
+              refreshJobs();
+            }}
             variant="outline"
             size="sm"
             className="border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#111111]"
           >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Job (Demo)
+            <RefreshCw className="w-4 h-4 mr-2" />
+            Refresh
           </Button>
         </div>
       </div>
@@ -245,7 +225,7 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
         {/* All Jobs */}
         <TabsContent value="all" className="mt-6">
           {jobs.length === 0 ? (
-            <EmptyState type="no-jobs" onAction={handleAddMockJob} />
+            <EmptyState type="no-jobs" />
           ) : (
             <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg overflow-hidden">
               <JobTable

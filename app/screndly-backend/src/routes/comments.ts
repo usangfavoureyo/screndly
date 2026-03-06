@@ -8,46 +8,50 @@ const router = Router();
 // GET /api/comments/automation/stats
 router.get('/automation/stats', authenticate, async (req, res) => {
     try {
-        // Aggregate comments by platform
         const comments = await prisma.comment.findMany({
             where: {
-                repliedAt: { not: null } // Only considering replied comments
-            }
+                repliedAt: { not: null }
+            },
+            orderBy: { repliedAt: 'desc' }
         });
 
-        // Current platform requirements:
-        const enabledPlatforms = ['X', 'YouTube', 'Facebook', 'Instagram'];
+        const allPlatforms = ['X', 'Instagram', 'TikTok', 'Facebook', 'YouTube', 'Threads', 'Pinterest'];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-        const platformData = enabledPlatforms.map(platform => {
+        const platformData = allPlatforms.map(platform => {
             const platformComments = comments.filter(c => c.platform === platform);
-
-            // Filter for "today"
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
             const repliesToday = platformComments.filter(c => c.repliedAt && new Date(c.repliedAt) >= today).length;
+            const successfulReplies = platformComments.filter(c => !!c.reply).length;
+            const successRate = platformComments.length > 0
+                ? Math.round((successfulReplies / platformComments.length) * 100)
+                : 0;
 
-            // Note: successRate and pending are mocked per platform for now
-            // until we add deeper queue concepts for comments.
             return {
                 platform,
                 repliesToday,
                 totalReplies: platformComments.length,
                 pending: 0,
-                successRate: 100
+                successRate,
+                recentReplies: platformComments.slice(0, 5).map(comment => ({
+                    comment: comment.content,
+                    reply: comment.reply || '',
+                    time: comment.repliedAt?.toISOString() || comment.updatedAt.toISOString()
+                }))
             };
         });
 
         res.json({ success: true, data: platformData });
     } catch (error) {
         console.error('Error fetching comment automation stats:', error);
-        // Return valid structure with zeros instead of 500
-        const defaultPlatforms = ['X', 'YouTube', 'Facebook', 'Instagram'];
+        const defaultPlatforms = ['X', 'Instagram', 'TikTok', 'Facebook', 'YouTube', 'Threads', 'Pinterest'];
         const fallbackData = defaultPlatforms.map(p => ({
             platform: p,
             repliesToday: 0,
             totalReplies: 0,
             pending: 0,
-            successRate: 100
+            successRate: 0,
+            recentReplies: []
         }));
         res.json({ success: true, data: fallbackData });
     }

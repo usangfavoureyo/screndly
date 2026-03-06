@@ -15,9 +15,9 @@ import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useTMDbPosts } from '../contexts/TMDbPostsContext';
 import { useChatInputKeyHandler } from '../contexts/KeyboardContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { useUndo } from './UndoContext';
-import { addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Textarea } from './ui/textarea';
@@ -39,6 +39,7 @@ import {
 } from './ui/bottom-sheet';
 import { Separator } from './ui/separator';
 import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
+import { apiClient } from '../lib/api/client';
 
 interface TMDbActivityItem {
   id: string;
@@ -65,7 +66,8 @@ interface TMDbActivityPageProps {
 }
 
 export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageProps) {
-  const { posts, reschedulePost, updatePostStatus, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
+  const { posts, refreshFromTMDb, reschedulePost, updatePostStatus, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
+  const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -80,22 +82,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [editedCaption, setEditedCaption] = useState('');
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
 
-  // Get retention period from TMDb settings (default 24 hours)
-  const getTMDbSettings = () => {
-    try {
-      const savedSettings = localStorage.getItem('screndly_tmdb_settings');
-      if (savedSettings) {
-        const parsed = JSON.parse(savedSettings);
-        return parsed;
-      }
-    } catch (error) {
-      console.error('Error loading TMDb settings:', error);
-    }
-    return { tmdbActivityRetention: 24 };
-  };
-
-  const tmdbSettings = getTMDbSettings();
-  const retentionHours = tmdbSettings.tmdbActivityRetention || 24;
+  const retentionHours = settings.tmdbActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
 
   // Helper function to check if an item should be filtered based on retention
@@ -132,6 +119,64 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       return true;
     });
 
+  const getCaptionPlatform = (platforms?: string[]): 'X' | 'Threads' | 'Facebook' | 'Instagram' => {
+    const supportedPlatforms = ['X', 'Threads', 'Facebook', 'Instagram'] as const;
+    const match = supportedPlatforms.find((platform) => platforms?.includes(platform));
+    return match || 'X';
+  };
+
+  const getTemporalTag = (source: TMDbActivityItem['source']) => {
+    switch (source) {
+      case 'tmdb_today':
+        return 'releasing_today' as const;
+      case 'tmdb_weekly':
+        return 'releasing_this_week' as const;
+      case 'tmdb_monthly':
+        return 'releasing_this_month' as const;
+      case 'tmdb_anniversary':
+        return 'anniversary' as const;
+      default:
+        return 'already_released' as const;
+    }
+  };
+
+  const getDaysUntilRelease = (releaseDate?: string) => {
+    if (!releaseDate) return 0;
+    const diffMs = new Date(releaseDate).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  };
+
+  const generateTmdbCaption = async (post: TMDbActivityItem) => {
+    const response = await apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', {
+      title: post.title,
+      mediaType: post.mediaType,
+      temporalTag: getTemporalTag(post.source),
+      daysUntil: getDaysUntilRelease(post.releaseDate),
+      cast: post.cast || [],
+      genres: [],
+      platform: getCaptionPlatform(post.platforms),
+    });
+
+    if (!response.success || !response.data?.content) {
+      throw new Error(response.error?.message || 'Failed to generate caption');
+    }
+
+    return response.data.content;
+  };
+
+  const createTmdbLog = async (title: string, platform: string) => {
+    await apiClient.post('/api/logs', {
+      level: 'info',
+      message: `TMDb post published: ${title}`,
+      service: 'tmdb',
+      metadata: {
+        videoTitle: title,
+        platform,
+        type: 'tmdb',
+      },
+    });
+  };
+
   const getStatusConfig = (status: TMDbActivityItem['status']) => {
     switch (status) {
       case 'queued':
@@ -158,44 +203,43 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
   };
 
-  const handleRetry = (e: React.MouseEvent, id: string, title: string) => {
+  const handleRetry = async (e: React.MouseEvent, id: string, title: string) => {
     e.stopPropagation();
     haptics.medium();
-    toast.success('Retry Initiated', {
-      description: `Retrying TMDb feed: \"${title}\"`,
-    });
-    // Add logic to retry the TMDb feed processing here
+
+    try {
+      await updatePost(id, {
+        status: 'queued',
+        errorMessage: undefined,
+        publishedTime: undefined,
+      });
+
+      toast.success('Retry Initiated', {
+        description: `Retrying TMDb feed: \"${title}\"`,
+      });
+    } catch (error) {
+      console.error('Failed to retry TMDb item:', error);
+      toast.error('Failed to retry TMDb feed');
+    }
   };
 
-  const handlePostImmediately = (id: string, title: string) => {
+  const handlePostImmediately = async (id: string, title: string) => {
     haptics.medium();
 
-    // Find the post to get platform info
     const post = posts.find(p => p.id === id);
     const platforms = post?.platforms?.join(', ') || 'Social Media';
 
-    // Update post status to published
-    updatePostStatus(id, 'published', new Date().toISOString());
+    try {
+      await updatePostStatus(id, 'published', new Date().toISOString());
+      await createTmdbLog(title, platforms);
 
-    // Add to recent activity
-    addRecentActivity({
-      title,
-      platform: platforms,
-      status: 'success',
-      type: 'tmdb'
-    });
-
-    // Add to logs
-    addLogEntry({
-      videoTitle: title,
-      platform: platforms,
-      status: 'success',
-      type: 'tmdb'
-    });
-
-    toast.success('Posted Successfully', {
-      description: `"${title}" has been published`,
-    });
+      toast.success('Posted Successfully', {
+        description: `"${title}" has been published`,
+      });
+    } catch (error) {
+      console.error('Failed to publish TMDb item:', error);
+      toast.error('Failed to publish item');
+    }
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -259,10 +303,13 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     setIsRefreshing(true);
 
     try {
-      toast.success('Refreshed TMDb Activity');
-
-      // Simulate refresh - replace with actual refresh logic
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await refreshFromTMDb();
+      if (result.errors.length > 0) {
+        throw new Error(result.errors[0]);
+      }
+      toast.success('Refreshed TMDb Activity', {
+        description: result.added > 0 ? `${result.added} new feed item${result.added === 1 ? '' : 's'} added.` : 'No new TMDb feed items were added.',
+      });
     } catch (error) {
       console.error('[TMDbActivityPage] Refresh failed:', error);
       toast.error('Failed to refresh activity');
@@ -350,24 +397,22 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     haptics.light();
     setIsRegenerating(true);
 
-    // Simulate AI caption generation
-    setTimeout(() => {
+    try {
       const selectedPost = posts.find(p => p.id === id);
-      if (selectedPost) {
-        const regeneratedCaptions = [
-          `🎬 ${selectedPost.title} (${selectedPost.year}) - An unforgettable cinematic experience! #NowWatching`,
-          `✨ Don't miss ${selectedPost.title}! Coming to theaters ${new Date(selectedPost.releaseDate).toLocaleDateString()}`,
-          `🍿 ${selectedPost.title} is here! Featuring ${selectedPost.cast[0]} and more incredible talent.`,
-          `🎥 Experience ${selectedPost.title} like never before. ${selectedPost.mediaType === 'movie' ? 'In theaters now!' : 'Streaming now!'}`,
-        ];
-
-        const newCaption = regeneratedCaptions[Math.floor(Math.random() * regeneratedCaptions.length)];
-        updatePost(id, { caption: newCaption });
-        setIsRegenerating(false);
-        haptics.success();
-        toast.success('Caption regenerated with AI');
+      if (!selectedPost) {
+        throw new Error(`Unable to find "${title}"`);
       }
-    }, 1500);
+
+      const newCaption = await generateTmdbCaption(selectedPost);
+      await updatePost(id, { caption: newCaption });
+      haptics.success();
+      toast.success('Caption regenerated with AI');
+    } catch (error) {
+      console.error('Failed to regenerate TMDb caption:', error);
+      toast.error('Failed to regenerate caption');
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   return (
@@ -813,29 +858,27 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => {
-                    if (selectedItemId) {
-                      haptics.light();
-                      setIsRegenerating(true);
+                  onClick={async () => {
+                    if (!selectedItemId) return;
 
-                      // Simulate AI caption generation
-                      setTimeout(() => {
-                        const selectedPost = posts.find(p => p.id === selectedItemId);
-                        if (selectedPost) {
-                          const regeneratedCaptions = [
-                            `🎬 ${selectedPost.title} (${selectedPost.year}) - An unforgettable cinematic experience! #NowWatching`,
-                            `✨ Don't miss ${selectedPost.title}! Coming to theaters ${new Date(selectedPost.releaseDate).toLocaleDateString()}`,
-                            `🍿 ${selectedPost.title} is here! Featuring ${selectedPost.cast[0]} and more incredible talent.`,
-                            `🎥 Experience ${selectedPost.title} like never before. ${selectedPost.mediaType === 'movie' ? 'In theaters now!' : 'Streaming now!'}`,
-                          ];
+                    haptics.light();
+                    setIsRegenerating(true);
 
-                          const newCaption = regeneratedCaptions[Math.floor(Math.random() * regeneratedCaptions.length)];
-                          setEditedCaption(newCaption);
-                          setIsRegenerating(false);
-                          haptics.success();
-                          toast.success('Caption regenerated with AI');
-                        }
-                      }, 1500);
+                    try {
+                      const selectedPost = posts.find(p => p.id === selectedItemId);
+                      if (!selectedPost) {
+                        throw new Error('Unable to find selected TMDb item');
+                      }
+
+                      const newCaption = await generateTmdbCaption(selectedPost);
+                      setEditedCaption(newCaption);
+                      haptics.success();
+                      toast.success('Caption regenerated with AI');
+                    } catch (error) {
+                      console.error('Failed to regenerate TMDb caption:', error);
+                      toast.error('Failed to regenerate caption');
+                    } finally {
+                      setIsRegenerating(false);
                     }
                   }}
                   disabled={isRegenerating}

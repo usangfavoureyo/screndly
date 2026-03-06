@@ -8,6 +8,8 @@ import { SwipeableLogRow } from './SwipeableLogRow';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useActivity } from '../hooks/useActivity';
+import { apiClient } from '../lib/api/client';
+import { toast } from 'sonner';
 
 export interface LogEntry {
   id: string;
@@ -37,6 +39,7 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
   const [typeFilter, setTypeFilter] = useState('all');
   const [timeFilter, setTimeFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const logsPerPage = 10;
 
   // Get retention period from settings (default 168 hours / 7 days)
@@ -58,31 +61,37 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
     return connection.profileUrl || platformUrls[platformName];
   };
 
-  const handleRetry = (logId: string, videoTitle: string) => {
-    haptics.medium();
-
-    if (onNewNotification) {
-      onNewNotification(
-        'Retry Initiated',
-        `Retrying upload for "${videoTitle}"`,
-        'success'
-      );
-    }
-  };
-
   const handleDelete = async (logId: string) => {
-    // NOTE: Deletion is not fully implemented in useActivity yet, 
-    // so this would realistically just filter locally or call an API.
-    // For now we'll rely on the optimistic update pattern if we added it to useActivity,
-    // or just assume read-only/soft-delete for logs.
-    // Implementing local state override for UI responsiveness would be ideal here if we had full CRUD.
     haptics.medium();
+    setDeletedIds((prev) => [...prev, logId]);
+    const deletedLog = mappedLogs.find((log) => log.id === logId);
+
+    try {
+      const response = await apiClient.delete(`/api/logs/${logId}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete log');
+      }
+      showUndo({
+        id: logId,
+        itemName: deletedLog?.videoTitle || 'Log entry',
+        onUndo: () => {
+          setDeletedIds((prev) => prev.filter((id) => id !== logId));
+          void refresh();
+        }
+      });
+    } catch (error) {
+      console.error('Failed to delete log', error);
+      setDeletedIds((prev) => prev.filter((id) => id !== logId));
+      toast.error('Failed to delete log');
+    }
   };
 
   // Transform ActivityLog from hook to LogEntry for display
   // Use useMemo to avoid re-calculating on every render
   const mappedLogs = useMemo<LogEntry[]>(() => {
-    return logs.map((log: any) => {
+    return logs
+      .filter((log: any) => !deletedIds.includes(log.id))
+      .map((log: any) => {
       // Try to extract metadata if it exists
       const metadata = log.metadata || {};
 
@@ -97,7 +106,7 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
         type: (metadata.type as any) || 'system',
       };
     });
-  }, [logs]);
+  }, [logs, deletedIds]);
 
   const filteredLogs = mappedLogs
     .filter(log => {
@@ -280,7 +289,6 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
                   key={log.id}
                   log={log}
                   onDelete={handleDelete}
-                  onRetry={handleRetry}
                   platformUrls={platformUrls}
                 />
               ))}
