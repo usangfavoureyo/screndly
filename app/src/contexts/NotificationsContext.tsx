@@ -3,6 +3,16 @@ import { useSettings } from './SettingsContext';
 import { desktopNotifications } from '../utils/desktopNotifications';
 import { apiClient } from '../lib/api/client';
 
+export type NotificationSource =
+  | 'upload'
+  | 'rss'
+  | 'tmdb'
+  | 'videostudio'
+  | 'system'
+  | 'design_studio'
+  | 'youtube'
+  | 'comment';
+
 export interface Notification {
   id: string;
   type: 'success' | 'error' | 'info' | 'warning';
@@ -10,7 +20,7 @@ export interface Notification {
   message: string;
   timestamp: string;
   read: boolean;
-  source: 'upload' | 'rss' | 'tmdb' | 'videostudio' | 'system' | 'design_studio';
+  source: NotificationSource;
   actionPage?: string;
 }
 
@@ -22,7 +32,7 @@ interface NotificationsContextType {
     title: string;
     message: string;
     type: 'success' | 'error' | 'info' | 'warning';
-    source: 'upload' | 'rss' | 'tmdb' | 'videostudio' | 'system';
+    source: NotificationSource;
     actionPage?: string;
   }) => void;
   markAsRead: (id: string) => void;
@@ -33,6 +43,37 @@ interface NotificationsContextType {
 }
 
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
+
+function normalizeSource(source: string | undefined): NotificationSource {
+  if (source === 'video_studio') return 'videostudio';
+  if (source === 'design_studio') return 'design_studio';
+  if (source === 'youtube') return 'youtube';
+  if (source === 'comment') return 'comment';
+  if (source === 'upload' || source === 'rss' || source === 'tmdb' || source === 'videostudio' || source === 'system') {
+    return source;
+  }
+  return 'system';
+}
+
+function formatNotificationTimestamp(value?: string | Date): string {
+  if (!value) return new Date().toLocaleString();
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return new Date().toLocaleString();
+  return date.toLocaleString();
+}
+
+function normalizeNotification(notification: any): Notification {
+  return {
+    id: notification.id,
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    timestamp: formatNotificationTimestamp(notification.timestamp || notification.createdAt),
+    read: Boolean(notification.read),
+    source: normalizeSource(notification.source),
+    actionPage: notification.actionPage || undefined,
+  };
+}
 
 export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -45,7 +86,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     try {
       const response = await apiClient.get<Notification[]>('/api/notifications');
       if (response.success && response.data) {
-        setNotifications(response.data);
+        setNotifications(response.data.map(normalizeNotification));
       }
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
@@ -67,7 +108,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     title: string;
     message: string;
     type: 'success' | 'error' | 'info' | 'warning';
-    source: 'upload' | 'rss' | 'tmdb' | 'videostudio' | 'system';
+    source: NotificationSource;
     actionPage?: string;
   }) => {
     // Optimistic update
@@ -75,7 +116,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const newNotification: Notification = {
       id: tempId,
       ...notification,
-      timestamp: new Date().toISOString(),
+      timestamp: formatNotificationTimestamp(new Date()),
       read: false,
     };
 
@@ -112,12 +153,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const markAllAsRead = async () => {
     // Optimistic update
-    setNotifications(prev =>
-      prev.map(notif => ({ ...notif, read: true }))
-    );
+    const previous = notifications;
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
 
-    // We would need a bulk update endpoint, but for now we'll just loop or assume client state is enough until refresh
-    // Ideally: await apiClient.post('/api/notifications/mark-all-read');
+    try {
+      const response = await apiClient.post('/api/notifications/mark-all-read');
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to mark notifications as read');
+      }
+    } catch (error) {
+      console.error('Failed to mark all notifications as read:', error);
+      setNotifications(previous);
+    }
   };
 
   const deleteNotification = async (id: string) => {
@@ -133,8 +180,18 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   const clearAll = async () => {
     // Optimistic update
+    const previous = notifications;
     setNotifications([]);
-    // Ideally: await apiClient.delete('/api/notifications');
+
+    try {
+      const response = await apiClient.delete('/api/notifications');
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to clear notifications');
+      }
+    } catch (error) {
+      console.error('Failed to clear notifications:', error);
+      setNotifications(previous);
+    }
   };
 
   return (

@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import prisma from '../lib/prisma';
-import { refreshTMDbContent, isTMDbConfigured, getTMDbSettings } from './tmdb.service';
+import { refreshTMDbContent, isTMDbConfigured, getTMDbSettings, cleanupQueuedTMDbPosts } from './tmdb.service';
 import { youtubePollerService } from './youtube-poller.service';
 import { publisherService } from './publisher.service';
 import { refreshAllFeeds } from './rss.service';
@@ -332,6 +332,20 @@ export async function initCronJobs() {
             await commentsService.processUnrepliedComments();
         } catch (error) {
             await logCron('error', `Comment processing failed: ${error}`);
+        }
+    }, cronOptions);
+
+    // TMDb queued item cleanup - Every hour
+    cron.schedule('0 * * * *', async () => {
+        try {
+            const settings = await getTMDbSettings();
+            const deletedCount = await cleanupQueuedTMDbPosts(settings.tmdbQueuedRetentionHours || 168);
+
+            if (deletedCount > 0) {
+                await logCron('info', `Deleted ${deletedCount} stale queued TMDb posts`);
+            }
+        } catch (error) {
+            await logCron('error', `TMDb queued cleanup failed: ${error}`);
         }
     }, cronOptions);
 

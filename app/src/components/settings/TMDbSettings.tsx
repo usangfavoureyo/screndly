@@ -110,6 +110,7 @@ const defaultSettings = {
   preferredImage: 'poster',
   rehostImages: true,
   dedupeWindow: '30',
+  tmdbQueuedRetentionHours: '168',
   discoveryCacheTTL: '12',
   creditsCacheTTL: '30',
   captionCacheTTL: '30',
@@ -1689,6 +1690,35 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
           />
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
             Prevent same title from posting within this window
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="queued-retention" className="text-[#9CA3AF]">Queued Feed Retention</Label>
+          <Select
+            value={tmdbSettings.tmdbQueuedRetentionHours}
+            onValueChange={(value) => {
+              haptics.light();
+              updateSetting('tmdbQueuedRetentionHours', value);
+            }}
+          >
+            <SelectTrigger
+              id="queued-retention"
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+            >
+              <SelectValue placeholder="Select retention window" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24">24 hours</SelectItem>
+              <SelectItem value="48">48 hours</SelectItem>
+              <SelectItem value="72">72 hours</SelectItem>
+              <SelectItem value="168">7 days</SelectItem>
+              <SelectItem value="336">14 days</SelectItem>
+              <SelectItem value="720">30 days</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+            Queued TMDb items that are still unposted will be deleted automatically after this window.
           </p>
         </div>
 

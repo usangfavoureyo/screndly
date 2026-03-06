@@ -9,7 +9,7 @@ interface Notification {
   message: string;
   timestamp: string;
   read: boolean;
-  source?: 'tmdb' | 'rss' | 'upload' | 'videostudio' | 'system';
+  source?: 'tmdb' | 'rss' | 'upload' | 'videostudio' | 'system' | 'design_studio' | 'youtube' | 'comment';
   actions?: any[];
 }
 
@@ -18,13 +18,15 @@ interface SwipeableNotificationCardProps {
   onMarkAsRead: (id: string) => void;
   onDelete: (id: string) => void;
   onActionClick?: (notificationId: string, actionType: string, e: React.MouseEvent) => void;
+  onOpen?: (notification: Notification) => void;
 }
 
 export function SwipeableNotificationCard({ 
   notification, 
   onMarkAsRead, 
   onDelete,
-  onActionClick 
+  onActionClick,
+  onOpen
 }: SwipeableNotificationCardProps) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -101,7 +103,10 @@ export function SwipeableNotificationCard({
 
   const handleClick = () => {
     if (Math.abs(swipeX) < 5) {
-      onMarkAsRead(notification.id);
+      if (!notification.read) {
+        onMarkAsRead(notification.id);
+      }
+      onOpen?.(notification);
     }
   };
 
