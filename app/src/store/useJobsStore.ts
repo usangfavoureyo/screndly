@@ -89,6 +89,7 @@ interface JobsState {
   // Polling
   startPolling: () => void;
   stopPolling: () => void;
+  refreshJobs: () => Promise<void>;
 
   // Bulk operations
   clearCompletedJobs: () => void;
@@ -106,6 +107,21 @@ export const useJobsStore = create<JobsState>()(
       selectedJobId: null,
       isPolling: false,
       lastPollTime: null,
+
+      refreshJobs: async () => {
+        try {
+          const { apiClient } = await import('../lib/api/client');
+          const response = await apiClient.get<any[]>('/api/jobs');
+          if (response.success && response.data) {
+            set({
+              jobs: response.data,
+              lastPollTime: new Date(),
+            });
+          }
+        } catch (error) {
+          console.error('Refresh jobs failed', error);
+        }
+      },
 
       // Job management
       addJob: async (job) => {
@@ -164,6 +180,19 @@ export const useJobsStore = create<JobsState>()(
           jobs: state.jobs.filter(j => j.id !== id),
           selectedJobId: state.selectedJobId === id ? null : state.selectedJobId,
         }));
+
+        void (async () => {
+          try {
+            const { apiClient } = await import('../lib/api/client');
+            const response = await apiClient.delete(`/api/jobs/${id}`);
+            if (!response.success) {
+              throw new Error(response.error?.message || 'Failed to delete job');
+            }
+          } catch (error) {
+            console.error('Delete job failed', error);
+            await get().refreshJobs();
+          }
+        })();
 
         if (job) {
           get().addSystemLog({
@@ -224,6 +253,20 @@ export const useJobsStore = create<JobsState>()(
           message: `Job retry: ${job.fileName}`,
           details: `Job ID: ${id}`,
         });
+
+        void (async () => {
+          try {
+            const { apiClient } = await import('../lib/api/client');
+            const response = await apiClient.post(`/api/jobs/${id}/retry`);
+            if (!response.success) {
+              throw new Error(response.error?.message || 'Retry failed');
+            }
+            await get().refreshJobs();
+          } catch (error) {
+            console.error('Retry job failed', error);
+            await get().refreshJobs();
+          }
+        })();
       },
 
       // Job selection
@@ -295,6 +338,7 @@ export const useJobsStore = create<JobsState>()(
         if (pollingInterval) return;
 
         set({ isPolling: true });
+        void get().refreshJobs();
 
         pollingInterval = setInterval(async () => {
           try {
@@ -341,9 +385,20 @@ export const useJobsStore = create<JobsState>()(
       // Bulk operations
       clearCompletedJobs: () => {
         const completedCount = get().jobs.filter(j => j.status === 'completed').length;
+        const completedIds = get().jobs.filter(j => j.status === 'completed').map(j => j.id);
         set(state => ({
           jobs: state.jobs.filter(job => job.status !== 'completed'),
         }));
+
+        void (async () => {
+          try {
+            const { apiClient } = await import('../lib/api/client');
+            await Promise.all(completedIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
+          } catch (error) {
+            console.error('Clear completed jobs failed', error);
+            await get().refreshJobs();
+          }
+        })();
 
         get().addSystemLog({
           severity: 'info',
@@ -353,9 +408,20 @@ export const useJobsStore = create<JobsState>()(
 
       clearFailedJobs: () => {
         const failedCount = get().jobs.filter(j => j.status === 'failed').length;
+        const failedIds = get().jobs.filter(j => j.status === 'failed').map(j => j.id);
         set(state => ({
           jobs: state.jobs.filter(job => job.status !== 'failed'),
         }));
+
+        void (async () => {
+          try {
+            const { apiClient } = await import('../lib/api/client');
+            await Promise.all(failedIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
+          } catch (error) {
+            console.error('Clear failed jobs failed', error);
+            await get().refreshJobs();
+          }
+        })();
 
         get().addSystemLog({
           severity: 'info',
@@ -365,10 +431,21 @@ export const useJobsStore = create<JobsState>()(
 
       clearAllJobs: () => {
         const jobCount = get().jobs.length;
+        const jobIds = get().jobs.map(job => job.id);
         set({
           jobs: [],
           selectedJobId: null,
         });
+
+        void (async () => {
+          try {
+            const { apiClient } = await import('../lib/api/client');
+            await Promise.all(jobIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
+          } catch (error) {
+            console.error('Clear all jobs failed', error);
+            await get().refreshJobs();
+          }
+        })();
 
         get().addSystemLog({
           severity: 'warning',

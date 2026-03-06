@@ -83,6 +83,50 @@ router.post('/generate/comment-reply', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/ai/generate/tmdb-caption
+ * Strict TMDb caption generator
+ */
+router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
+    try {
+        const {
+            title,
+            mediaType,
+            temporalTag,
+            daysUntil,
+            cast,
+            genres,
+            platform,
+            model,
+            customSystemPrompt,
+            customTemperature
+        } = req.body;
+
+        if (!title || !mediaType || !temporalTag || typeof daysUntil !== 'number' || !platform) {
+            return res.status(400).json({ success: false, error: { message: 'TMDb caption context is incomplete' } });
+        }
+
+        const caption = await aiService.generateTMDbCaption(
+            {
+                title,
+                mediaType,
+                temporalTag,
+                daysUntil,
+                cast: Array.isArray(cast) ? cast : [],
+                genres: Array.isArray(genres) ? genres : [],
+                platform
+            },
+            model,
+            customSystemPrompt,
+            customTemperature
+        );
+
+        res.json({ success: true, data: { content: caption } });
+    } catch (e) {
+        res.status(500).json({ success: false, error: { message: 'Failed to generate TMDb caption' } });
+    }
+});
+
+/**
  * POST /api/ai/generate/studio-caption
  * Strict "Creative Director" Caption Generator
  */

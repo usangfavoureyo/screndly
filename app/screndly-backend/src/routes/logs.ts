@@ -55,4 +55,17 @@ router.get('/errors', async (req, res) => {
     }
 });
 
+// DELETE /api/logs/:id
+router.delete('/:id', async (req, res) => {
+    try {
+        await prisma.log.delete({
+            where: { id: req.params.id }
+        });
+        res.json({ success: true, data: { message: 'Log deleted successfully' } });
+    } catch (error) {
+        console.error('Failed to delete log:', error);
+        res.status(500).json({ success: false, error: { message: 'Failed to delete log' } });
+    }
+});
+
 export default router;
