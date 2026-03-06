@@ -9,6 +9,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const [errorMsg, setErrorMsg] = useState('');
     const hasProcessedRef = useRef(false);
     const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
+    const STATE_STORAGE_KEY = 'screndly_oauth_state';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
@@ -17,9 +18,15 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             return localStorage.getItem(PLATFORM_STORAGE_KEY) || sessionStorage.getItem(PLATFORM_STORAGE_KEY);
         };
 
+        const getStoredState = (): string | null => {
+            return localStorage.getItem(STATE_STORAGE_KEY) || sessionStorage.getItem(STATE_STORAGE_KEY);
+        };
+
         const clearStoredPlatform = () => {
             localStorage.removeItem(PLATFORM_STORAGE_KEY);
             sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
+            localStorage.removeItem(STATE_STORAGE_KEY);
+            sessionStorage.removeItem(STATE_STORAGE_KEY);
         };
 
         const decodeJwtPayload = (value: string): string | null => {
@@ -80,9 +87,11 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             const code = urlParams.get('code') || hashParams.get('code');
             const rawState = urlParams.get('state') || hashParams.get('state');
-            const platform = getStoredPlatform() || decodePlatformFromState(rawState);
+            const storedState = getStoredState();
+            const effectiveState = rawState || storedState;
+            const platform = getStoredPlatform() || decodePlatformFromState(effectiveState);
 
-            if (!code || (!platform && !rawState)) {
+            if (!code || (!platform && !effectiveState)) {
                 setStatus('error');
                 setErrorMsg('Missing authorization code or platform identifier.');
                 return;
@@ -112,7 +121,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     body: JSON.stringify({
                         platform,
                         code,
-                        state: rawState,
+                        state: effectiveState,
                         redirectUri: `${window.location.origin}/platforms/callback`
                     })
                 });
