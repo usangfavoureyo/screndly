@@ -88,8 +88,11 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             const code = urlParams.get('code') || hashParams.get('code');
             const rawState = urlParams.get('state') || hashParams.get('state');
             const storedState = getStoredState();
-            const effectiveState = rawState || storedState;
-            const platform = getStoredPlatform() || decodePlatformFromState(effectiveState);
+            // Use the exact signed state captured before redirect when available.
+            // Some providers can round-trip state in a way that breaks signature
+            // verification even though the original value is still available locally.
+            const effectiveState = storedState || rawState;
+            const platform = getStoredPlatform() || decodePlatformFromState(effectiveState) || decodePlatformFromState(rawState);
 
             if (!code || (!platform && !effectiveState)) {
                 setStatus('error');
