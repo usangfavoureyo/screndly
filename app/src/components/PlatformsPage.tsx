@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { PlatformCard } from './PlatformCard';
 import { PlatformConnectionModal } from './PlatformConnectionModal';
+import { PlatformTestPublishModal } from './PlatformTestPublishModal';
 import {
   getPlatformConnections,
   PlatformType,
@@ -32,11 +33,15 @@ interface BackendPlatformStatus {
   connected: boolean;
   username?: string;
   lastPost?: string;
+  profileUrl?: string;
+  expiresAt?: string;
 }
 
 export function PlatformsPage() {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformType | null>(null);
+  const [testPublishModalOpen, setTestPublishModalOpen] = useState(false);
+  const [selectedTestPlatform, setSelectedTestPlatform] = useState<PlatformType | null>(null);
 
   // Map platform IDs to PlatformType
   const getPlatformType = (id: string): PlatformType | null => {
@@ -266,6 +271,25 @@ export function PlatformsPage() {
     void loadConnectionStatus();
   };
 
+  const handleCloseConnectionModal = () => {
+    setConnectionModalOpen(false);
+    setSelectedPlatform(null);
+  };
+
+  const handleCloseTestPublishModal = () => {
+    setTestPublishModalOpen(false);
+    setSelectedTestPlatform(null);
+  };
+
+  const handleOpenTestPublishModal = (platformId: string) => {
+    const platformType = getPlatformType(platformId);
+    if (!platformType) return;
+
+    setSelectedTestPlatform(platformType);
+    setTestPublishModalOpen(true);
+    haptics.light();
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -281,6 +305,7 @@ export function PlatformsPage() {
             onUpdate={updatePlatform}
             onConnect={handleOpenConnectionModal}
             onDisconnect={handleDisconnect}
+            onTestPublish={handleOpenTestPublishModal}
           />
         ))}
       </div>
@@ -289,8 +314,16 @@ export function PlatformsPage() {
         <PlatformConnectionModal
           platform={selectedPlatform}
           isOpen={connectionModalOpen}
-          onClose={() => setConnectionModalOpen(false)}
-          onSuccess={handleConnectionSuccess}
+          onClose={handleCloseConnectionModal}
+        />
+      )}
+
+      {selectedTestPlatform && (
+        <PlatformTestPublishModal
+          platform={selectedTestPlatform}
+          isOpen={testPublishModalOpen}
+          onClose={handleCloseTestPublishModal}
+          onPublished={handleConnectionSuccess}
         />
       )}
     </div>

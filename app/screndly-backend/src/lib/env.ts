@@ -17,8 +17,15 @@ const envSchema = z.object({
     META_APP_SECRET: z.string().optional(),
     X_API_KEY: z.string().optional(),
     X_API_SECRET: z.string().optional(),
+    X_CLIENT_ID: z.string().optional(),
+    X_CLIENT_SECRET: z.string().optional(),
+    X_BEARER_TOKEN: z.string().optional(),
     YOUTUBE_CLIENT_ID: z.string().optional(),
     YOUTUBE_CLIENT_SECRET: z.string().optional(),
+    TIKTOK_CLIENT_KEY: z.string().optional(),
+    TIKTOK_CLIENT_SECRET: z.string().optional(),
+    PINTEREST_APP_ID: z.string().optional(),
+    PINTEREST_APP_SECRET: z.string().optional(),
 
     // External APIs
     TMDB_API_KEY: z.string().optional(),

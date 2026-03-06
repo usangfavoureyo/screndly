@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2, Shield, Key } from 'lucide-react';
-import { PlatformType, connectPlatform } from '../utils/platformConnections';
+import { PlatformType } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { InstagramIcon } from './icons/InstagramIcon';
@@ -17,14 +17,12 @@ interface PlatformConnectionModalProps {
   platform: PlatformType;
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
 }
 
 export function PlatformConnectionModal({
   platform,
   isOpen,
-  onClose,
-  onSuccess
+  onClose
 }: PlatformConnectionModalProps) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
@@ -118,34 +116,20 @@ export function PlatformConnectionModal({
     haptics.medium();
 
     try {
-      if (platform.toLowerCase() === 'instagram' || platform.toLowerCase() === 'facebook' || platform.toLowerCase() === 'threads') {
-        const { apiClient } = await import('../lib/api/client');
-        const response = await apiClient.get(`/api/platforms/auth/${platform}`);
+      const { apiClient } = await import('../lib/api/client');
+      const response = await apiClient.get<{ url?: string }>(`/api/platforms/auth/${platform}`);
 
-        if (response.success && response.data?.url) {
-          localStorage.setItem('screndly_oauth_platform', platform);
-          // Redirect the user to the OAuth provider URL
-          window.location.href = response.data.url;
-        } else {
-          throw new Error(response.error?.message || 'Failed to get OAuth URL');
-        }
+      if (response.success && response.data?.url) {
+        localStorage.setItem('screndly_oauth_platform', platform);
+        window.location.href = response.data.url;
       } else {
-        // Mock non-implemented platforms
-        await connectPlatform(platform);
-        setStep('success');
-        haptics.success();
-
-        setTimeout(() => {
-          onSuccess();
-          onClose();
-          setStep('info');
-          toast.success(`${info.name} connected successfully!`);
-        }, 1500);
+        throw new Error(response.error?.message || 'Failed to get OAuth URL');
       }
     } catch (error) {
       console.error('Connection error:', error);
       haptics.error();
-      toast.error(`Failed to connect to ${info.name}. Has the OAuth App been configured?`);
+      const errorMessage = error instanceof Error ? error.message : `Failed to connect to ${info.name}`;
+      toast.error(errorMessage);
       setStep('info');
     } finally {
       setIsConnecting(false);

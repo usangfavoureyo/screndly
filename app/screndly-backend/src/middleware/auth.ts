@@ -18,11 +18,7 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
     const authHeader = req.headers.authorization;
     const { ADMIN_SECRET, JWT_SECRET, APP_PASSWORD } = env;
 
-    // Log the incoming request for debugging
-    console.log(`[Auth] Request: ${req.method} ${req.originalUrl} from Host: ${req.headers.host || req.hostname}`);
-
     if (!authHeader) {
-        console.warn(`[Auth] Missing auth header for ${req.method} ${req.originalUrl}. Headers keys: ${Object.keys(req.headers).join(', ')}`);
         return res.status(401).json({ success: false, error: 'Unauthorized: No token provided' });
     }
 
@@ -47,7 +43,6 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
     // Method 1: Check against ADMIN_SECRET (production API access)
     if (ADMIN_SECRET && token === ADMIN_SECRET) {
-        console.log(`[Auth Success] Method: ADMIN_SECRET for ${req.originalUrl}`);
         return next();
     }
 
@@ -59,12 +54,10 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
 
         // Attempt to verify as a standard JWT first (Production Mode)
         const decoded = jwt.verify(token, JWT_SECRET) as any;
-        console.log(`[Auth Debug] JWT Verified for ${req.originalUrl}. Payload: ${JSON.stringify(decoded)}`);
 
         if (decoded && (decoded.app === 'screndly' || decoded.authenticated)) {
             return next();
         }
-        console.warn(`[Auth Alert] JWT Decoded but payload invalid for ${req.originalUrl}. Payload: ${JSON.stringify(decoded)}`);
     } catch (err: any) {
         // Log verification failure details with specificity
         const isLikelySignedJWT = token.includes('.');
@@ -79,23 +72,19 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
         // Not a valid signed JWT, fallback to base64 check for dev-mode tokens
         try {
             const payload = JSON.parse(Buffer.from(token, 'base64').toString('utf8'));
-            console.log(`[Auth Debug] Fallback Base64 Payload for ${req.originalUrl}: ${JSON.stringify(payload)}`);
 
             // Check expiration
             if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-                console.warn(`[Auth Alert] Fallback token expired for ${req.originalUrl}`);
                 return res.status(401).json({ success: false, error: 'Token expired' });
             }
 
             // Verify password matches app password (Dev fallback)
             if (APP_PASSWORD && payload.password === APP_PASSWORD) {
-                console.log(`[Auth Success] Method: DEV_PASSWORD for ${req.originalUrl}`);
                 return next();
             }
 
             // Check if it's a valid Screndly dev token
             if (payload.app === 'screndly' && payload.authenticated) {
-                console.log(`[Auth Success] Method: DEV_TOKEN for ${req.originalUrl}`);
                 return next();
             }
         } catch {

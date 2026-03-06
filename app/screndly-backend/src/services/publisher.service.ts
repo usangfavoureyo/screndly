@@ -5,6 +5,7 @@ import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
 import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
+import { ensureFreshPlatformConnection } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
 
 export interface PublishContent {
@@ -57,9 +58,10 @@ export class PublisherService {
 
         for (const platform of platforms) {
             // Get platform connection
-            const connection = await prisma.platformConnection.findUnique({
+            let connection = await prisma.platformConnection.findUnique({
                 where: { platform }
             });
+            connection = await ensureFreshPlatformConnection(connection);
 
             let result: PublishResult = {
                 platform,
@@ -205,7 +207,7 @@ export class PublisherService {
                         case 'Pinterest':
                             if (connection.accessToken) {
                                 // Use options boardId OR settings default
-                                const boardId = options.pinterestBoardId || (connection.metadata as any)?.defaultBoardId;
+                                const boardId = options.pinterestBoardId || (connection.metadata as any)?.boardId || (connection.metadata as any)?.defaultBoardId;
 
                                 if (boardId && content.imageUrl) {
                                     const pinResult = await pinterestService.createPin(

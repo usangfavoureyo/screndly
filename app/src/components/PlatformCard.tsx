@@ -30,9 +30,10 @@ interface PlatformCardProps {
   onUpdate: (id: string, updates: Partial<Platform>) => void;
   onConnect: (id: string) => void;
   onDisconnect?: (id: string) => void;
+  onTestPublish?: (id: string) => void;
 }
 
-export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect }: PlatformCardProps) {
+export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect, onTestPublish }: PlatformCardProps) {
   const getStatusConfig = () => {
     switch (platform.status) {
       case 'valid':
@@ -82,8 +83,19 @@ export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect }: Pl
   // Get the profile URL based on connection status
   const getProfileUrl = () => {
     if (platform.connected) {
-      // Map platform.id to PlatformType (capitalize first letter)
-      const platformType = platform.name as PlatformType;
+      const platformTypeMap: Record<string, PlatformType> = {
+        instagram: 'Instagram',
+        facebook: 'Facebook',
+        tiktok: 'TikTok',
+        threads: 'Threads',
+        x: 'X',
+        youtube: 'YouTube',
+        pinterest: 'Pinterest',
+      };
+      const platformType = platformTypeMap[platform.id];
+      if (!platformType) {
+        return platformUrls[platform.id];
+      }
       const connection = getPlatformConnection(platformType);
 
       // Return user's profile URL if connected, otherwise fall back to Screen Render's URL
@@ -199,16 +211,9 @@ export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect }: Pl
 
             <Button
               variant="outline"
-              style={
-                platform.autoPost
-                  ? { backgroundColor: '#ec1e24', borderColor: '#ec1e24' }
-                  : undefined
-              }
-              className={`w-full rounded-lg gap-2 mt-4 transition-all duration-300 hover:scale-105 active:scale-95 ${platform.autoPost
-                  ? "text-white hover:bg-[#d11b20] hover:border-[#d11b20] border-[#ec1e24]"
-                  : "bg-white dark:bg-[#000000] text-gray-900 dark:text-white border-gray-300 dark:border-[#333333] opacity-50 cursor-not-allowed"
-                }`}
-              disabled={!platform.autoPost}
+              style={{ backgroundColor: '#ec1e24', borderColor: '#ec1e24' }}
+              className="w-full rounded-lg gap-2 mt-4 transition-all duration-300 hover:scale-105 active:scale-95 text-white hover:bg-[#d11b20] hover:border-[#d11b20] border-[#ec1e24]"
+              onClick={() => onTestPublish?.(platform.id)}
             >
               <Send className="w-4 h-4 transition-transform duration-200" />
               Test Publish
