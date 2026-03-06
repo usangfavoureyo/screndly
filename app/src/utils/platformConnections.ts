@@ -197,7 +197,7 @@ export function getConnectionStatus(platform: PlatformType): ConnectionStatus {
     };
   }
 
-  // Check token expiration
+  // Only treat a connection as unhealthy when the token is already expired.
   if (connection.expiresAt) {
     const expiresAt = new Date(connection.expiresAt);
     const now = new Date();
@@ -210,12 +210,6 @@ export function getConnectionStatus(platform: PlatformType): ConnectionStatus {
       };
     }
 
-    if (daysUntilExpiry < 7) {
-      return {
-        health: 'warning',
-        message: `Token expires in ${daysUntilExpiry} days`,
-      };
-    }
   }
 
   return {
