@@ -1,8 +1,9 @@
 // Screndly PWA Service Worker - Enhanced with Advanced Caching Strategies
-const CACHE_NAME = 'screndly-v1.2.2-force-nuke';
-const RUNTIME_CACHE = 'screndly-runtime';
-const IMAGE_CACHE = 'screndly-images';
-const API_CACHE = 'screndly-api';
+const SW_VERSION = 'v1.2.3-network-first-app-shell';
+const CACHE_NAME = `screndly-${SW_VERSION}`;
+const RUNTIME_CACHE = `screndly-runtime-${SW_VERSION}`;
+const IMAGE_CACHE = `screndly-images-${SW_VERSION}`;
+const API_CACHE = `screndly-api-${SW_VERSION}`;
 
 // Cache expiration times (in milliseconds)
 const CACHE_EXPIRATION = {
@@ -27,7 +28,7 @@ const CORE_ASSETS = [
 
 // Install event - cache core assets
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing service worker v1.2.2-force-nuke...');
+  console.log(`[SW] Installing service worker ${SW_VERSION}...`);
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Caching core assets');
@@ -93,6 +94,19 @@ function createCachedResponse(response) {
       headers: headers
     });
   });
+}
+
+function isAppShellRequest(request, url) {
+  return (
+    request.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html' ||
+    url.pathname === '/manifest.json' ||
+    url.pathname.startsWith('/assets/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.html')
+  );
 }
 
 // Strategy: Cache First (for images)
@@ -200,7 +214,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategy 3: Stale While Revalidate for everything else
+  // Strategy 3: Network First for the app shell so users do not get stale JS after deploys.
+  if (isAppShellRequest(event.request, url)) {
+    event.respondWith(
+      networkFirst(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
+        if (event.request.mode === 'navigate') {
+          return caches.match('/');
+        }
+        return new Response('Offline', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: new Headers({ 'Content-Type': 'text/plain' })
+        });
+      })
+    );
+    return;
+  }
+
+  // Strategy 4: Stale While Revalidate for everything else
   event.respondWith(
     staleWhileRevalidate(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
       // Fallback for navigation requests
