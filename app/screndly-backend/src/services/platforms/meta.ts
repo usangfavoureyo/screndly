@@ -110,7 +110,10 @@ export const metaService = {
      */
     async getPages(userAccessToken: string) {
         const response = await axios.get(`${BASE_URL}/me/accounts`, {
-            params: { access_token: userAccessToken }
+            params: {
+                access_token: userAccessToken,
+                fields: 'id,name,access_token,category,tasks'
+            }
         });
 
         return response.data.data; // Array of { name, id, access_token (Page token), category, tasks[] }

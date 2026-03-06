@@ -68,12 +68,12 @@ export const tiktokService = {
                         'Authorization': `Bearer ${accessToken}`
                     },
                     params: {
-                        fields: 'open_id,union_id,avatar_url,display_name'
+                        fields: 'open_id,union_id,avatar_url,avatar_url_100,avatar_large_url,display_name,username,profile_deep_link'
                     }
                 }
             );
 
-            return response.data.data;
+            return response.data?.data?.user || response.data?.data || null;
         } catch (error) {
             console.error('[TikTok] User Info Error:', error);
             return null;

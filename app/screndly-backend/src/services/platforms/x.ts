@@ -28,8 +28,7 @@ export class XService {
         }
 
         try {
-            // Twitter API v2 endpoint
-            const response = await fetch('https://api.twitter.com/2/tweets', {
+            const response = await fetch('https://api.x.com/2/tweets', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${authToken}`,
@@ -50,7 +49,7 @@ export class XService {
             return {
                 success: true,
                 postId: data.data?.id,
-                postUrl: `https://twitter.com/i/web/status/${data.data?.id}`,
+                postUrl: `https://x.com/i/web/status/${data.data?.id}`,
             };
         } catch (error) {
             return { success: false, error: `X API error: ${error}` };
