@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { PlatformCard } from './PlatformCard';
 import { PlatformConnectionModal } from './PlatformConnectionModal';
 import { PlatformTestPublishModal } from './PlatformTestPublishModal';
@@ -36,6 +36,8 @@ interface BackendPlatformStatus {
   profileUrl?: string;
   expiresAt?: string;
 }
+
+const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
 export function PlatformsPage() {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
@@ -190,7 +192,7 @@ export function PlatformsPage() {
 
   const [platforms, setPlatforms] = useState<Platform[]>(() => buildPlatforms());
 
-  const loadConnectionStatus = async () => {
+  const loadConnectionStatus = useCallback(async () => {
     try {
       const response = await apiClient.get<Record<string, BackendPlatformStatus>>('/api/platforms/status');
       if (response.success && response.data) {
@@ -206,11 +208,47 @@ export function PlatformsPage() {
       console.error('Error loading connection status:', error);
       setPlatforms(buildPlatforms());
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadConnectionStatus();
-  }, []);
+  }, [loadConnectionStatus]);
+
+  useEffect(() => {
+    const refreshPlatform = sessionStorage.getItem(OAUTH_REFRESH_KEY);
+    if (!refreshPlatform) return;
+
+    sessionStorage.removeItem(OAUTH_REFRESH_KEY);
+    toast.success(`${refreshPlatform} connected successfully`);
+
+    const timeoutId = window.setTimeout(() => {
+      void loadConnectionStatus();
+    }, 1500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadConnectionStatus]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      void loadConnectionStatus();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void loadConnectionStatus();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadConnectionStatus]);
 
   const updatePlatform = (id: string, updates: Partial<Platform>) => {
     setPlatforms(prevPlatforms => {
@@ -274,6 +312,7 @@ export function PlatformsPage() {
   const handleCloseConnectionModal = () => {
     setConnectionModalOpen(false);
     setSelectedPlatform(null);
+    void loadConnectionStatus();
   };
 
   const handleCloseTestPublishModal = () => {
