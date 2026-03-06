@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAuthHeaders } from '../lib/api/authToken';
+import { getApiUrl } from '../lib/api/config';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -55,7 +56,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 console.warn('[OAuthCallback] Exchanging authorization code with backend');
                 const controller = new AbortController();
                 const timeoutId = window.setTimeout(() => controller.abort(), 25000);
-                const rawResponse = await fetch('https://screndly-production.up.railway.app/api/platforms/callback', {
+                const rawResponse = await fetch(`${getApiUrl()}/api/platforms/callback`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
