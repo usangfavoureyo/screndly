@@ -30,7 +30,7 @@ export function migrateLegacyToken(): void {
     }
 }
 
-export const CLIENT_VERSION = '1.0.1-auth-debug-phase-5-final';
+export const CLIENT_VERSION = '1.0.1';
 
 /**
  * Get the stored authentication token

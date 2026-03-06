@@ -27,6 +27,12 @@ export interface ConnectionStatus {
   message: string;
 }
 
+interface BackendPlatformStatus {
+  connected: boolean;
+  username?: string;
+  lastPost?: string;
+}
+
 const STORAGE_KEY = 'screndly_platform_connections';
 
 /**
@@ -69,6 +75,58 @@ function saveConnections(connections: Record<PlatformType, PlatformConnection>):
   } catch (error) {
     console.error('Error saving platform connections:', error);
   }
+}
+
+function buildProfileUrl(platform: PlatformType, username?: string): string | undefined {
+  if (!username) return undefined;
+
+  const cleanUsername = username.replace(/^@/, '');
+  const profileUrls: Record<PlatformType, string> = {
+    Instagram: `https://www.instagram.com/${cleanUsername}`,
+    Facebook: `https://www.facebook.com/${cleanUsername}`,
+    Threads: `https://www.threads.net/@${cleanUsername}`,
+    TikTok: `https://www.tiktok.com/@${cleanUsername}`,
+    X: `https://x.com/${cleanUsername}`,
+    YouTube: `https://youtube.com/@${cleanUsername}`,
+    Pinterest: `https://www.pinterest.com/${cleanUsername}`,
+  };
+
+  return profileUrls[platform];
+}
+
+export function syncPlatformConnectionsFromBackend(
+  backendStatus: Partial<Record<PlatformType, BackendPlatformStatus>>
+): Record<PlatformType, PlatformConnection> {
+  const existing = getPlatformConnections();
+  const nextConnections = getDefaultConnections();
+
+  (Object.keys(nextConnections) as PlatformType[]).forEach((platform) => {
+    const serverConnection = backendStatus[platform];
+    const existingConnection = existing[platform];
+
+    if (serverConnection?.connected) {
+      const username = serverConnection.username || existingConnection?.username;
+      nextConnections[platform] = {
+        platform,
+        connected: true,
+        connectedAt: existingConnection?.connectedAt || serverConnection.lastPost || new Date().toISOString(),
+        lastSync: serverConnection.lastPost || new Date().toISOString(),
+        expiresAt: existingConnection?.expiresAt,
+        userId: existingConnection?.userId,
+        username,
+        profileUrl: buildProfileUrl(platform, username) || existingConnection?.profileUrl,
+      };
+      return;
+    }
+
+    nextConnections[platform] = {
+      platform,
+      connected: false,
+    };
+  });
+
+  saveConnections(nextConnections);
+  return nextConnections;
 }
 
 /**

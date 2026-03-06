@@ -198,7 +198,7 @@ router.post('/connect', authenticate, async (req, res) => {
 router.delete('/:platform', authenticate, async (req, res) => {
     // ... existing logic ...
     try {
-        await prisma.platformConnection.delete({ where: { platform: req.params.platform } });
+        await prisma.platformConnection.deleteMany({ where: { platform: req.params.platform } });
         res.json({ success: true, data: { message: 'Disconnected' } });
     } catch (error) {
         res.status(500).json({ success: false, error: { message: 'Disconnect failed' } });
