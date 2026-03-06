@@ -550,7 +550,7 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 const codeChallenge = createCodeChallenge(codeVerifier);
                 const scopes = ['tweet.read', 'tweet.write', 'users.read', 'offline.access'];
 
-                oauthUrl = `https://twitter.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(env.X_CLIENT_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
+                oauthUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(env.X_CLIENT_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
                 break;
             }
 
@@ -568,7 +568,7 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                     'https://www.googleapis.com/auth/youtube.force-ssl'
                 ];
 
-                oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(env.YOUTUBE_CLIENT_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256&access_type=offline&prompt=consent`;
+                oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${encodeURIComponent(env.YOUTUBE_CLIENT_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256&access_type=offline&include_granted_scopes=true&prompt=consent`;
                 break;
             }
 
@@ -651,36 +651,44 @@ router.post('/callback', authenticate, async (req, res) => {
             // 3. Perform Discovery
             if (normalizedPlatform === 'Facebook') {
                 const pages = await metaService.getPages(userAccessToken);
-                if (pages && pages.length > 0) {
-                    // Use the first page for now - in a multi-user app we'd let them choose
-                    const page = pages[0];
-                    await prisma.platformConnection.upsert({
-                        where: { platform: 'Facebook' },
-                        update: {
-                            accessToken: page.access_token, // Page Token
-                            userId: page.id,               // Page ID
-                            username: page.name,
-                            expiresAt,
-                            metadata: {
-                                userToken: userAccessToken,
-                                profileUrl: `https://www.facebook.com/${page.id}`
-                            }
-                        },
-                        create: {
-                            platform: 'Facebook',
-                            accessToken: page.access_token,
-                            userId: page.id,
-                            username: page.name,
-                            expiresAt,
-                            metadata: {
-                                userToken: userAccessToken,
-                                profileUrl: `https://www.facebook.com/${page.id}`
-                            }
-                        }
-                    });
+                if (!pages || pages.length === 0) {
+                    throw new Error('No Facebook Pages were found for this account. Connect an account that manages at least one Facebook Page.');
                 }
+
+                const page = pages[0];
+                if (!page?.id || !page?.access_token) {
+                    throw new Error('Facebook returned an incomplete Page record. Please reconnect and ensure page permissions are granted.');
+                }
+
+                await prisma.platformConnection.upsert({
+                    where: { platform: 'Facebook' },
+                    update: {
+                        accessToken: page.access_token, // Page Token
+                        userId: page.id,               // Page ID
+                        username: page.name,
+                        expiresAt,
+                        metadata: {
+                            userToken: userAccessToken,
+                            profileUrl: `https://www.facebook.com/${page.id}`
+                        }
+                    },
+                    create: {
+                        platform: 'Facebook',
+                        accessToken: page.access_token,
+                        userId: page.id,
+                        username: page.name,
+                        expiresAt,
+                        metadata: {
+                            userToken: userAccessToken,
+                            profileUrl: `https://www.facebook.com/${page.id}`
+                        }
+                    }
+                });
             } else if (normalizedPlatform === 'Instagram') {
                 const pages = await metaService.getPages(userAccessToken);
+                if (!pages || pages.length === 0) {
+                    throw new Error('No Facebook Pages were found for this account. Instagram Business connections require a Facebook Page linked to an Instagram professional account.');
+                }
                 let igId = null;
 
                 for (const page of pages) {
@@ -804,6 +812,9 @@ router.post('/callback', authenticate, async (req, res) => {
             });
 
             const profile = profileResponse.data?.data || {};
+            if (!profile?.id) {
+                throw new Error('X did not return the authenticated user profile. Check that the app has access to users.read.');
+            }
 
             await prisma.platformConnection.upsert({
                 where: { platform: 'X' },
@@ -946,9 +957,16 @@ router.post('/callback', authenticate, async (req, res) => {
                 token_type?: string;
                 open_id?: string;
             };
+            if (!tokenData.access_token) {
+                throw new Error('TikTok did not return an access token.');
+            }
 
             const userInfo = await tiktokService.getUserInfo(tokenData.access_token);
-            const username = userInfo?.display_name || userInfo?.open_id || tokenData.open_id || 'TikTok User';
+            const username = userInfo?.display_name || userInfo?.username || userInfo?.open_id || tokenData.open_id || 'TikTok User';
+            const userId = userInfo?.open_id || tokenData.open_id || null;
+            if (!userId) {
+                throw new Error('TikTok did not return the account identifier required to save the connection.');
+            }
 
             await prisma.platformConnection.upsert({
                 where: { platform: 'TikTok' },
@@ -956,10 +974,11 @@ router.post('/callback', authenticate, async (req, res) => {
                     accessToken: tokenData.access_token,
                     refreshToken: tokenData.refresh_token || null,
                     expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: userInfo?.open_id || tokenData.open_id || null,
+                    userId,
                     username,
                     metadata: {
-                        avatarUrl: userInfo?.avatar_url,
+                        avatarUrl: userInfo?.avatar_url || userInfo?.avatar_large_url || userInfo?.avatar_url_100,
+                        profileUrl: userInfo?.profile_deep_link,
                         refreshExpiresAt: tokenData.refresh_expires_in ? new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString() : undefined,
                         scope: tokenData.scope,
                         tokenType: tokenData.token_type
@@ -970,10 +989,11 @@ router.post('/callback', authenticate, async (req, res) => {
                     accessToken: tokenData.access_token,
                     refreshToken: tokenData.refresh_token || null,
                     expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: userInfo?.open_id || tokenData.open_id || null,
+                    userId,
                     username,
                     metadata: {
-                        avatarUrl: userInfo?.avatar_url,
+                        avatarUrl: userInfo?.avatar_url || userInfo?.avatar_large_url || userInfo?.avatar_url_100,
+                        profileUrl: userInfo?.profile_deep_link,
                         refreshExpiresAt: tokenData.refresh_expires_in ? new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString() : undefined,
                         scope: tokenData.scope,
                         tokenType: tokenData.token_type

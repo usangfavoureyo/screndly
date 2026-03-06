@@ -64,8 +64,32 @@ app.get('/api/diag/oauth-config', (req, res) => {
             nodeEnv: process.env.NODE_ENV || env.NODE_ENV,
             frontendUrl,
             redirectUri,
-            hasMetaAppId: !!process.env.META_APP_ID,
-            hasMetaAppSecret: !!process.env.META_APP_SECRET
+            providers: {
+                meta: {
+                    hasAppId: !!process.env.META_APP_ID,
+                    hasAppSecret: !!process.env.META_APP_SECRET,
+                },
+                threads: {
+                    hasAppId: !!process.env.THREADS_APP_ID,
+                    hasAppSecret: !!process.env.THREADS_APP_SECRET,
+                },
+                x: {
+                    hasClientId: !!process.env.X_CLIENT_ID,
+                    hasClientSecret: !!process.env.X_CLIENT_SECRET,
+                },
+                youtube: {
+                    hasClientId: !!process.env.YOUTUBE_CLIENT_ID,
+                    hasClientSecret: !!process.env.YOUTUBE_CLIENT_SECRET,
+                },
+                tiktok: {
+                    hasClientKey: !!process.env.TIKTOK_CLIENT_KEY,
+                    hasClientSecret: !!process.env.TIKTOK_CLIENT_SECRET,
+                },
+                pinterest: {
+                    hasAppId: !!process.env.PINTEREST_APP_ID,
+                    hasAppSecret: !!process.env.PINTEREST_APP_SECRET,
+                }
+            }
         }
     });
 });
