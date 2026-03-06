@@ -2,6 +2,7 @@ import { PlatformConnection, Prisma } from '@prisma/client';
 import axios from 'axios';
 import prisma from '../../lib/prisma';
 import { env } from '../../lib/env';
+import { metaService } from './meta';
 
 const REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
@@ -194,6 +195,22 @@ async function refreshPinterestConnection(connection: PlatformConnection): Promi
     });
 }
 
+async function refreshThreadsConnection(connection: PlatformConnection): Promise<PlatformConnection> {
+    if (!connection.accessToken) {
+        return connection;
+    }
+
+    const tokenData = await metaService.refreshThreadsLongLivedToken(connection.accessToken);
+
+    return persistConnectionUpdate(connection, {
+        accessToken: tokenData.access_token,
+        expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : connection.expiresAt,
+        metadataPatch: {
+            tokenType: tokenData.token_type || undefined,
+        },
+    });
+}
+
 export async function ensureFreshPlatformConnection(connection: PlatformConnection | null): Promise<PlatformConnection | null> {
     if (!connection || !needsRefresh(connection)) {
         return connection;
@@ -208,6 +225,8 @@ export async function ensureFreshPlatformConnection(connection: PlatformConnecti
             return refreshTikTokConnection(connection);
         case 'Pinterest':
             return refreshPinterestConnection(connection);
+        case 'Threads':
+            return refreshThreadsConnection(connection);
         default:
             return connection;
     }

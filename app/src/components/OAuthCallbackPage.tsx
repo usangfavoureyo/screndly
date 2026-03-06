@@ -38,9 +38,18 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             const urlParams = new URLSearchParams(window.location.search);
             const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
 
-            const providerError = urlParams.get('error') || hashParams.get('error');
-            const providerErrorDescription = urlParams.get('error_description') || hashParams.get('error_description');
+            const providerError =
+                urlParams.get('error') ||
+                urlParams.get('error_code') ||
+                hashParams.get('error') ||
+                hashParams.get('error_code');
+            const providerErrorDescription =
+                urlParams.get('error_description') ||
+                urlParams.get('error_message') ||
+                hashParams.get('error_description') ||
+                hashParams.get('error_message');
             if (providerError) {
+                localStorage.removeItem('screndly_oauth_platform');
                 setStatus('error');
                 setErrorMsg(providerErrorDescription || providerError);
                 return;

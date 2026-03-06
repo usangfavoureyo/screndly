@@ -2,6 +2,8 @@ import axios from 'axios';
 
 const FACEBOOK_API_VERSION = 'v19.0';
 const BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
+const THREADS_API_VERSION = 'v1.0';
+const THREADS_BASE_URL = `https://graph.threads.net/${THREADS_API_VERSION}`;
 
 export const metaService = {
     /**
@@ -71,6 +73,39 @@ export const metaService = {
     },
 
     /**
+     * Exchange short-lived Threads User Access Token for long-lived (~60 days)
+     */
+    async exchangeThreadsForLongLivedToken(shortToken: string) {
+        const appSecret = process.env.THREADS_APP_SECRET;
+
+        if (!appSecret) throw new Error('Threads App credentials missing');
+
+        const response = await axios.get('https://graph.threads.net/access_token', {
+            params: {
+                grant_type: 'th_exchange_token',
+                client_secret: appSecret,
+                access_token: shortToken
+            }
+        });
+
+        return response.data; // { access_token, token_type, expires_in }
+    },
+
+    /**
+     * Refresh long-lived Threads User Access Token
+     */
+    async refreshThreadsLongLivedToken(accessToken: string) {
+        const response = await axios.get('https://graph.threads.net/refresh_access_token', {
+            params: {
+                grant_type: 'th_refresh_token',
+                access_token: accessToken
+            }
+        });
+
+        return response.data; // { access_token, token_type, expires_in }
+    },
+
+    /**
      * Get list of Facebook Pages managed by the user
      */
     async getPages(userAccessToken: string) {
@@ -99,14 +134,14 @@ export const metaService = {
      * Get Threads Profile connected to the User
      */
     async getThreadsProfile(userAccessToken: string) {
-        const response = await axios.get(`${BASE_URL}/me`, {
+        const response = await axios.get(`${THREADS_BASE_URL}/me`, {
             params: {
-                fields: 'threads_profile_picture_url,threads_profile,username',
+                fields: 'id,username,name,threads_profile_picture_url,threads_biography,is_verified',
                 access_token: userAccessToken
             }
         });
 
-        return response.data; // { id, username, threads_profile }
+        return response.data; // { id, username, name, threads_profile_picture_url, threads_biography, is_verified }
     },
 
     /**
@@ -164,29 +199,34 @@ export const metaService = {
         accessToken: string
     ) {
         try {
-            // Threads API is similar to Instagram
-            // Step 1: Create Media Container
-            const payload: any = {
+            // Step 1: Create a Threads media container
+            const payload = new URLSearchParams({
                 media_type: imageUrl ? 'IMAGE' : 'TEXT',
                 text: text,
                 access_token: accessToken
-            };
+            });
+            if (imageUrl) payload.append('image_url', imageUrl);
 
-            if (imageUrl) {
-                payload.image_url = imageUrl;
-            }
-
-            const containerRes = await axios.post(`${BASE_URL}/${userId}/threads`, payload);
+            const containerRes = await axios.post(`${THREADS_BASE_URL}/${userId}/threads`, payload.toString(), {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            });
 
             if (!containerRes.data.id) {
                 throw new Error('Failed to create Threads media container');
             }
             const creationId = containerRes.data.id;
 
-            // Step 2: Publish
-            const publishRes = await axios.post(`${BASE_URL}/${userId}/threads_publish`, {
+            // Step 2: Publish the container
+            const publishPayload = new URLSearchParams({
                 creation_id: creationId,
                 access_token: accessToken
+            });
+            const publishRes = await axios.post(`${THREADS_BASE_URL}/${userId}/threads_publish`, publishPayload.toString(), {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
             });
 
             return {

@@ -125,16 +125,32 @@ export interface Settings {
   rssEnabled: boolean;
   globalEnabled?: boolean;
   postingInterval?: string;
+  globalRSSPosting?: boolean;
+  rssEventDrivenPosting?: boolean;
+  rssPostingInterval?: string;
   rssImageCount: string;
   rssPlatforms: string[];
   rssFetchInterval: string;
   rssDeduplication: boolean;
   rssLogLevel: string;
+  dailyQuotaX?: number;
+  dailyQuotaThreads?: number;
+  dailyQuotaFacebook?: number;
+  dailyQuotaPinterest?: number;
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: number;
+  quietHoursEnd?: number;
   rssCaptionModel?: string;
   rssCaptionTemperature?: number;
   rssCaptionTone?: string;
   rssCaptionMaxLength?: number;
   rssCaptionPrompt?: string;
+  rssPinterestTitlePrompt?: string;
+  rssPinterestDescriptionPrompt?: string;
+  rssPinterestBoardPrompt?: string;
+  rssPinterestLinkStrategy?: string;
+  rssPinterestDefaultLink?: string;
+  rssActivityRetention?: number;
 
   // TMDb
   tmdbCaptionModel?: string;
@@ -326,15 +342,26 @@ Guidelines:
     rssEnabled: false,
     globalEnabled: false,
     postingInterval: '10',
+    globalRSSPosting: true,
+    rssEventDrivenPosting: true,
+    rssPostingInterval: '10',
     rssImageCount: 'random',
     rssPlatforms: ['x', 'threads'],
     rssFetchInterval: '5',
     rssDeduplication: true,
     rssLogLevel: 'standard',
+    dailyQuotaX: 50,
+    dailyQuotaThreads: 100,
+    dailyQuotaFacebook: 25,
+    dailyQuotaPinterest: 100,
+    quietHoursEnabled: true,
+    quietHoursStart: 0,
+    quietHoursEnd: 7,
     rssCaptionModel: 'gpt-4o',
     rssCaptionTemperature: 0.7,
     rssCaptionTone: 'Engaging',
     rssCaptionMaxLength: 280,
+    rssActivityRetention: 24,
     rssCaptionPrompt: `You are a social media caption writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized captions for RSS article content.
 
 INPUT: RSS article title, description, and content
@@ -349,6 +376,11 @@ Guidelines:
 - No generic "Check this out" openers
 - Focus on the key news or reveal from the article
 - Make it shareable and clickable`,
+    rssPinterestTitlePrompt: '',
+    rssPinterestDescriptionPrompt: '',
+    rssPinterestBoardPrompt: '',
+    rssPinterestLinkStrategy: 'article',
+    rssPinterestDefaultLink: '',
 
     // TMDb
     tmdbCaptionModel: 'gpt-4o',

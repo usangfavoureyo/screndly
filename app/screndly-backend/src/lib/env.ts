@@ -15,6 +15,8 @@ const envSchema = z.object({
     // Platform Keys
     META_APP_ID: z.string().optional(),
     META_APP_SECRET: z.string().optional(),
+    THREADS_APP_ID: z.string().optional(),
+    THREADS_APP_SECRET: z.string().optional(),
     X_API_KEY: z.string().optional(),
     X_API_SECRET: z.string().optional(),
     X_CLIENT_ID: z.string().optional(),

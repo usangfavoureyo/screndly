@@ -49,12 +49,33 @@ const SENSITIVE_KEYS = [
   'videoPinterestDefaultLink',
   'videoFilterPrompt',
   // RSS Settings
+  'globalRSSPosting',
+  'rssEventDrivenPosting',
+  'rssPostingInterval',
   'rssCaptionModel',
+  'rssCaptionTemperature',
+  'rssCaptionTone',
+  'rssCaptionMaxLength',
+  'rssCaptionPrompt',
   'rssDailyLimit',
   'rssStartHour',
   'rssEndHour',
   'rssDefaultInterval',
+  'dailyQuotaX',
+  'dailyQuotaThreads',
+  'dailyQuotaFacebook',
+  'dailyQuotaPinterest',
+  'quietHoursEnabled',
+  'quietHoursStart',
+  'quietHoursEnd',
   'rssPinterestBoard',
+  'rssPinterestTitlePrompt',
+  'rssPinterestDescriptionPrompt',
+  'rssPinterestBoardPrompt',
+  'rssPinterestLinkStrategy',
+  'rssPinterestDefaultLink',
+  'rssActivityRetention',
+  'rssLogLevel',
   // Platform Configuration (Auto-post toggles)
   'platformSettings',
 
@@ -75,7 +96,7 @@ const LOCAL_KEYS = [
   'pushNotifications',
   'desktopNotifications',
 ];
-console.log('Local keys:', LOCAL_KEYS.length); // Use to avoid lint error
+void LOCAL_KEYS.length;
 
 export interface SettingsApiResponse {
   success: boolean;
