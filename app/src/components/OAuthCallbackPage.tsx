@@ -28,12 +28,6 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             const code = urlParams.get('code') || hashParams.get('code');
             const platform = urlParams.get('state') || hashParams.get('state') || localStorage.getItem('screndly_oauth_platform');
-            console.warn('[OAuthCallback] Parsed callback params', {
-                hasCode: !!code,
-                platform,
-                path: window.location.pathname,
-                hasSearch: !!window.location.search
-            });
 
             if (!code || !platform) {
                 setStatus('error');
@@ -53,7 +47,6 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             window.history.replaceState({}, '', '/platforms/callback');
 
             try {
-                console.warn('[OAuthCallback] Exchanging authorization code with backend');
                 const controller = new AbortController();
                 const timeoutId = window.setTimeout(() => controller.abort(), 25000);
                 const rawResponse = await fetch(`${getApiUrl()}/api/platforms/callback`, {
@@ -72,16 +65,10 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 window.clearTimeout(timeoutId);
 
                 const response = await rawResponse.json().catch(() => ({}));
-                console.warn('[OAuthCallback] Backend exchange response', {
-                    status: rawResponse.status,
-                    ok: rawResponse.ok,
-                    success: response?.success
-                });
 
                 if (rawResponse.ok && response.success) {
                     localStorage.removeItem('screndly_oauth_platform');
                     sessionStorage.removeItem(callbackLockKey);
-                    console.warn('[OAuthCallback] Platform connection completed successfully');
                     setStatus('success');
                     // Auto redirect after a few seconds
                     setTimeout(() => onNavigate('platforms'), 2000);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PlatformCard } from './PlatformCard';
 import { PlatformConnectionModal } from './PlatformConnectionModal';
 import {
@@ -6,10 +6,12 @@ import {
   PlatformType,
   getConnectionStatus,
   formatLastConnection,
-  disconnectPlatform
+  disconnectPlatform,
+  syncPlatformConnectionsFromBackend,
 } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
 import { updateSetting } from '../lib/api/settings';
+import { apiClient } from '../lib/api/client';
 import { toast } from "sonner";
 
 interface Platform {
@@ -23,6 +25,12 @@ interface Platform {
   autoHashtag: boolean;
   commentAutomation: boolean;
   status: 'valid' | 'expiring' | 'invalid' | 'disconnected';
+  lastPost?: string;
+}
+
+interface BackendPlatformStatus {
+  connected: boolean;
+  username?: string;
   lastPost?: string;
 }
 
@@ -44,9 +52,8 @@ export function PlatformsPage() {
     return mapping[id] || null;
   };
 
-  // Initialize platforms with connection status from storage
-  const initializePlatforms = (): Platform[] => {
-    const initialPlatforms = [
+  const createInitialPlatforms = (): Platform[] => {
+    return [
       {
         id: 'instagram',
         name: 'Instagram',
@@ -139,11 +146,12 @@ export function PlatformsPage() {
         lastPost: undefined
       },
     ];
+  };
 
-    // Load connection status AND saved platform settings
+  const buildPlatforms = (connections = getPlatformConnections()): Platform[] => {
+    const initialPlatforms = createInitialPlatforms();
+
     try {
-      const connections = getPlatformConnections();
-
       // Load saved platform settings from localStorage
       const savedSettings = localStorage.getItem('screndly_platformSettings');
       const platformSettings = savedSettings ? JSON.parse(savedSettings) : {};
@@ -175,34 +183,29 @@ export function PlatformsPage() {
     }
   };
 
-  const [platforms, setPlatforms] = useState<Platform[]>(initializePlatforms());
+  const [platforms, setPlatforms] = useState<Platform[]>(() => buildPlatforms());
 
-  // Load connection status from storage
-  const loadConnectionStatus = () => {
+  const loadConnectionStatus = async () => {
     try {
-      const connections = getPlatformConnections();
+      const response = await apiClient.get<Record<string, BackendPlatformStatus>>('/api/platforms/status');
+      if (response.success && response.data) {
+        const connections = syncPlatformConnectionsFromBackend(
+          response.data as Partial<Record<PlatformType, BackendPlatformStatus>>
+        );
+        setPlatforms(buildPlatforms(connections));
+        return;
+      }
 
-      setPlatforms(prev => prev.map(platform => {
-        const platformType = getPlatformType(platform.id);
-
-        if (!platformType) return platform;
-
-        const connection = connections[platformType];
-        const status = getConnectionStatus(platformType);
-
-        return {
-          ...platform,
-          connected: connection?.connected || false,
-          status: status.health === 'healthy' ? 'valid' :
-            status.health === 'warning' ? 'expiring' :
-              status.health === 'error' ? 'invalid' : 'disconnected',
-          lastPost: connection?.connected ? formatLastConnection(connection) : undefined,
-        };
-      }));
+      setPlatforms(buildPlatforms());
     } catch (error) {
       console.error('Error loading connection status:', error);
+      setPlatforms(buildPlatforms());
     }
   };
+
+  useEffect(() => {
+    void loadConnectionStatus();
+  }, []);
 
   const updatePlatform = (id: string, updates: Partial<Platform>) => {
     setPlatforms(prevPlatforms => {
@@ -242,19 +245,25 @@ export function PlatformsPage() {
     }
   };
 
-  const handleDisconnect = (platformId: string) => {
+  const handleDisconnect = async (platformId: string) => {
     const platformType = getPlatformType(platformId);
 
     if (platformType) {
+      try {
+        await apiClient.delete(`/api/platforms/${platformType}`);
+      } catch (error) {
+        console.error('Failed to disconnect platform on backend:', error);
+      }
+
       disconnectPlatform(platformType);
       haptics.light();
       toast.success(`Disconnected from ${platformType}`);
-      loadConnectionStatus();
+      await loadConnectionStatus();
     }
   };
 
   const handleConnectionSuccess = () => {
-    loadConnectionStatus();
+    void loadConnectionStatus();
   };
 
   return (
