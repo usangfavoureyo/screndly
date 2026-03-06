@@ -1,9 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { toast } from 'sonner';
-
-// ============================================
-// TYPES (matching backend and frontend needs)
-// ============================================
+import { apiClient } from '../lib/api';
 
 export interface FilterItem {
   text: string;
@@ -47,6 +44,61 @@ export interface RSSFeed {
   updatedAt?: string;
 }
 
+export interface RSSPreviewSampleItem {
+  title: string;
+  link: string;
+  description?: string;
+  pubDate: string;
+  imageUrl?: string;
+}
+
+export interface RSSFeedPreview {
+  title: string;
+  description?: string;
+  link?: string;
+  favicon?: string;
+  itemCount: number;
+  sampleItems: RSSPreviewSampleItem[];
+}
+
+export interface RSSActivityItem {
+  id: string;
+  feedId?: string;
+  feedName: string;
+  title: string;
+  link?: string;
+  description?: string;
+  imageUrl?: string;
+  status: 'pending' | 'published' | 'failed';
+  timestamp: string;
+  publishedAt?: string;
+  platforms: string[];
+  error?: string;
+}
+
+export interface RSSActivitySummary {
+  total: number;
+  published: number;
+  pending: number;
+  failed: number;
+}
+
+export interface RSSActivityResponse {
+  items: RSSActivityItem[];
+  summary: RSSActivitySummary;
+}
+
+export interface RSSRefreshResult {
+  feedId: string;
+  feedName: string;
+  itemsAdded: number;
+  checkedCount: number;
+  pendingCount: number;
+  failedCount: number;
+  latestItemTitle?: string;
+  error?: string;
+}
+
 interface RSSFeedsContextType {
   feeds: RSSFeed[];
   isLoading: boolean;
@@ -54,8 +106,11 @@ interface RSSFeedsContextType {
   addFeed: (feed: Partial<RSSFeed> & { url: string }) => Promise<RSSFeed | null>;
   updateFeed: (feedId: string, updates: Partial<RSSFeed>) => Promise<void>;
   deleteFeed: (feedId: string) => Promise<void>;
-  refreshFeed: (feedId: string) => Promise<void>;
+  refreshFeed: (feedId: string, options?: { showToast?: boolean }) => Promise<RSSRefreshResult | null>;
   refreshAllFeeds: () => Promise<void>;
+  previewFeed: (url: string) => Promise<RSSFeedPreview | null>;
+  getActivity: (limit?: number) => Promise<RSSActivityResponse | null>;
+  deleteActivity: (activityId: string) => Promise<void>;
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
   togglePlatform: (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => Promise<void>;
   getFeedsByStatus: (status: RSSFeed['status']) => RSSFeed[];
@@ -64,32 +119,31 @@ interface RSSFeedsContextType {
 
 const RSSFeedsContext = createContext<RSSFeedsContextType | undefined>(undefined);
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? 'https://screndly-production.up.railway.app' : 'http://localhost:3001');
+function buildRefreshToastMessage(result: RSSRefreshResult): string {
+  const segments: string[] = [];
+  if (result.itemsAdded > 0) segments.push(`${result.itemsAdded} published`);
+  if (result.pendingCount > 0) segments.push(`${result.pendingCount} pending`);
+  if (result.failedCount > 0) segments.push(`${result.failedCount} failed`);
+  if (segments.length === 0) return `${result.feedName}: no new items`;
+  return `${result.feedName}: ${segments.join(', ')}`;
+}
 
 export function RSSFeedsProvider({ children }: { children: ReactNode }) {
   const [feeds, setFeeds] = useState<RSSFeed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch feeds from backend
   const fetchFeeds = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch(`${BACKEND_URL}/api/rss/feeds`);
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch RSS feeds');
+      const response = await apiClient.get<RSSFeed[]>('/api/rss/feeds');
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to fetch RSS feeds');
       }
 
-      const data = await response.json();
-
-      if (data.success && Array.isArray(data.data)) {
-        setFeeds(data.data);
-      } else {
-        setFeeds([]);
-      }
+      setFeeds(Array.isArray(response.data) ? response.data : []);
     } catch (err) {
       console.error('Error fetching RSS feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch feeds');
@@ -99,140 +153,160 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Load feeds on mount
   useEffect(() => {
     fetchFeeds();
   }, [fetchFeeds]);
 
-  // Add a new feed
   const addFeed = async (feedData: Partial<RSSFeed> & { url: string }): Promise<RSSFeed | null> => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/rss/feeds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(feedData),
-      });
-
-      if (!response.ok) throw new Error('Failed to add feed');
-
-      const data = await response.json();
-      if (data.success && data.data) {
-        setFeeds(prev => [data.data, ...prev]);
-        toast.success('Feed added successfully');
-        return data.data;
+      const response = await apiClient.post<RSSFeed>('/api/rss/feeds', feedData);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to add feed');
       }
-      return null;
+
+      setFeeds((prev) => [response.data!, ...prev]);
+      toast.success('Feed added successfully');
+      return response.data;
     } catch (err) {
-      console.error('Error adding feed:', err);
-      toast.error('Failed to add feed');
+      console.error('Error adding RSS feed:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to add feed');
       return null;
     }
   };
 
-  // Update a feed
   const updateFeed = async (feedId: string, updates: Partial<RSSFeed>) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/rss/feeds/${feedId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) throw new Error('Failed to update feed');
-
-      const data = await response.json();
-      if (data.success && data.data) {
-        setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, ...data.data } : f));
+      const response = await apiClient.put<RSSFeed>(`/api/rss/feeds/${feedId}`, updates);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to update feed');
       }
+
+      setFeeds((prev) => prev.map((feed) => (feed.id === feedId ? { ...feed, ...response.data! } : feed)));
     } catch (err) {
-      console.error('Error updating feed:', err);
-      toast.error('Failed to update feed');
+      console.error('Error updating RSS feed:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to update feed');
     }
   };
 
-  // Delete a feed
   const deleteFeed = async (feedId: string) => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/rss/feeds/${feedId}`, {
-        method: 'DELETE',
-      });
+      const response = await apiClient.delete(`/api/rss/feeds/${feedId}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete feed');
+      }
 
-      if (!response.ok) throw new Error('Failed to delete feed');
-
-      setFeeds(prev => prev.filter(f => f.id !== feedId));
+      setFeeds((prev) => prev.filter((feed) => feed.id !== feedId));
       toast.success('Feed deleted');
     } catch (err) {
-      console.error('Error deleting feed:', err);
-      toast.error('Failed to delete feed');
+      console.error('Error deleting RSS feed:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to delete feed');
     }
   };
 
-  // Toggle feed enabled/disabled
   const toggleFeedEnabled = async (feedId: string, enabled: boolean) => {
     await updateFeed(feedId, {
       enabled,
-      status: enabled ? 'active' : 'paused'
+      status: enabled ? 'active' : 'paused',
     });
     toast.info(enabled ? 'Feed activated' : 'Feed paused');
   };
 
-  // Toggle platform
   const togglePlatform = async (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => {
-    const feed = feeds.find(f => f.id === feedId);
+    const feed = feeds.find((entry) => entry.id === feedId);
     if (!feed) return;
 
-    const newPlatformsEnabled = {
+    const platformsEnabled = {
       ...feed.platformsEnabled,
-      [platform]: enabled
+      [platform]: enabled,
     };
 
-    await updateFeed(feedId, { platformsEnabled: newPlatformsEnabled });
+    await updateFeed(feedId, { platformsEnabled });
   };
 
-  // Refresh a single feed
-  const refreshFeed = async (feedId: string) => {
+  const refreshFeed = async (
+    feedId: string,
+    options: { showToast?: boolean } = { showToast: true }
+  ): Promise<RSSRefreshResult | null> => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/rss/feeds/${feedId}/refresh`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) throw new Error('Failed to refresh feed');
-
-      const data = await response.json();
-      if (data.success) {
-        toast.success(`Refreshed: ${data.data.feedName}`);
-        await fetchFeeds();
+      const response = await apiClient.post<RSSRefreshResult>(`/api/rss/feeds/${feedId}/refresh`);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to refresh feed');
       }
+
+      await fetchFeeds();
+      if (options.showToast !== false) {
+        toast.success(buildRefreshToastMessage(response.data));
+      }
+      return response.data;
     } catch (err) {
-      console.error('Error refreshing feed:', err);
-      toast.error('Failed to refresh feed');
+      console.error('Error refreshing RSS feed:', err);
+      if (options.showToast !== false) {
+        toast.error(err instanceof Error ? err.message : 'Failed to refresh feed');
+      }
+      return null;
     }
   };
 
-  // Refresh all feeds
   const refreshAllFeeds = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/rss/refresh`, {
-        method: 'POST',
-      });
-
-      if (!response.ok) throw new Error('Failed to refresh feeds');
-
-      const data = await response.json();
-      if (data.success) {
-        toast.success(`Refreshed ${data.data.success} of ${data.data.total} feeds`);
-        await fetchFeeds();
+      const response = await apiClient.post<{ total: number; success: number; failed: number }>('/api/rss/refresh');
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to refresh feeds');
       }
+
+      await fetchFeeds();
+      toast.success(`Refreshed ${response.data.success} of ${response.data.total} feeds`);
     } catch (err) {
-      console.error('Error refreshing feeds:', err);
-      toast.error('Failed to refresh feeds');
+      console.error('Error refreshing RSS feeds:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to refresh feeds');
     }
   };
 
-  // Filter helpers
-  const getFeedsByStatus = (status: RSSFeed['status']) => {
-    return feeds.filter(feed => feed.status === status);
+  const previewFeed = async (url: string): Promise<RSSFeedPreview | null> => {
+    try {
+      const response = await apiClient.post<RSSFeedPreview>('/api/rss/preview', { url });
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to preview feed');
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error('Error previewing RSS feed:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to preview feed');
+      return null;
+    }
   };
+
+  const getActivity = async (limit: number = 100): Promise<RSSActivityResponse | null> => {
+    try {
+      const response = await apiClient.get<RSSActivityResponse>(`/api/rss/activity?limit=${limit}`);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to fetch activity');
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error('Error fetching RSS activity:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to fetch RSS activity');
+      return null;
+    }
+  };
+
+  const deleteActivity = async (activityId: string) => {
+    try {
+      const response = await apiClient.delete(`/api/rss/activity/${activityId}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete activity');
+      }
+
+      toast.success('Activity entry deleted');
+    } catch (err) {
+      console.error('Error deleting RSS activity:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to delete activity');
+    }
+  };
+
+  const getFeedsByStatus = (status: RSSFeed['status']) => feeds.filter((feed) => feed.status === status);
 
   return (
     <RSSFeedsContext.Provider
@@ -245,6 +319,9 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         deleteFeed,
         refreshFeed,
         refreshAllFeeds,
+        previewFeed,
+        getActivity,
+        deleteActivity,
         toggleFeedEnabled,
         togglePlatform,
         getFeedsByStatus,
@@ -258,8 +335,8 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
 
 export function useRSSFeeds() {
   const context = useContext(RSSFeedsContext);
-  if (context === undefined) {
-    throw new Error('useRSSFeeds must be used within a RSSFeedsProvider');
+  if (!context) {
+    throw new Error('useRSSFeeds must be used within RSSFeedsProvider');
   }
   return context;
 }

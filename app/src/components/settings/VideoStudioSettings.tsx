@@ -187,6 +187,15 @@ Examples:
 Tone: Clear, category-focused, SEO-friendly`,
 };
 
+function getGlobalVideoStudioSettings(globalSettings: Record<string, any>) {
+  return Object.keys(defaultSettings).reduce<Record<string, any>>((accumulator, key) => {
+    if (globalSettings[key] !== undefined) {
+      accumulator[key] = globalSettings[key];
+    }
+    return accumulator;
+  }, {});
+}
+
 export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps) {
   const { settings: globalSettings, updateSetting: updateGlobalSetting } = useSettings();
   const [settings, setSettings] = useState(defaultSettings);
@@ -195,16 +204,20 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   // Load settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('screndly_video_studio_settings');
+    const sharedSettings = getGlobalVideoStudioSettings(globalSettings as Record<string, any>);
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...defaultSettings, ...parsed });
+        setSettings({ ...defaultSettings, ...sharedSettings, ...parsed });
       } catch (error) {
         console.error('Error loading Video Studio settings:', error);
+        setSettings({ ...defaultSettings, ...sharedSettings });
       }
+    } else {
+      setSettings({ ...defaultSettings, ...sharedSettings });
     }
     setIsLoaded(true);
-  }, []);
+  }, [globalSettings]);
 
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -215,6 +228,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
 
   const updateSetting = (key: string, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
+    updateGlobalSetting(key, value);
 
     // Show toast notifications for important settings
     if (key === 'openaiModel') {
@@ -246,6 +260,9 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
 
   const resetToDefaults = () => {
     setSettings(defaultSettings);
+    Object.entries(defaultSettings).forEach(([key, value]) => {
+      updateGlobalSetting(key, value);
+    });
     toast.success('Reset to recommended settings');
   };
 

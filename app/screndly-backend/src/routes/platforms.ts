@@ -525,16 +525,22 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
 
         switch (platform) {
             case 'Instagram':
-            case 'Facebook':
-            case 'Threads': {
+            case 'Facebook': {
                 assertConfigured('Meta', { META_APP_ID: env.META_APP_ID });
                 const scopes = platform === 'Instagram'
                     ? ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_manage_posts', 'pages_read_engagement']
-                    : platform === 'Facebook'
-                        ? ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement']
-                        : ['threads_basic', 'threads_content_publish'];
+                    : ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement'];
 
                 oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${env.META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateFor())}&response_type=code&scope=${encodeURIComponent(scopes.join(','))}`;
+                break;
+            }
+
+            case 'Threads': {
+                assertConfigured('Threads', {
+                    THREADS_APP_ID: env.THREADS_APP_ID,
+                });
+                const scopes = ['threads_basic', 'threads_content_publish'];
+                oauthUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(env.THREADS_APP_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(','))}&response_type=code&state=${encodeURIComponent(stateFor())}`;
                 break;
             }
 
@@ -621,7 +627,7 @@ router.post('/callback', authenticate, async (req, res) => {
 
         if (!normalizedPlatform) throw new Error('Platform is required');
 
-        if (normalizedPlatform === 'Instagram' || normalizedPlatform === 'Facebook' || normalizedPlatform === 'Threads') {
+        if (normalizedPlatform === 'Instagram' || normalizedPlatform === 'Facebook') {
             const appId = env.META_APP_ID;
             const appSecret = env.META_APP_SECRET;
             if (!appId || !appSecret) throw new Error('Meta App credentials not configured');
@@ -711,33 +717,59 @@ router.post('/callback', authenticate, async (req, res) => {
                 } else {
                     throw new Error('No Instagram Business Account found connected to your Facebook Pages');
                 }
-            } else if (normalizedPlatform === 'Threads') {
-                const profile = await metaService.getThreadsProfile(userAccessToken);
-                await prisma.platformConnection.upsert({
-                    where: { platform: 'Threads' },
-                    update: {
-                        accessToken: userAccessToken,
-                        userId: profile.id,
-                        username: profile.username || profile.threads_profile?.name,
-                        expiresAt,
-                        metadata: {
-                            profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
-                            profileImageUrl: profile.threads_profile_picture_url
-                        }
-                    },
-                    create: {
-                        platform: 'Threads',
-                        accessToken: userAccessToken,
-                        userId: profile.id,
-                        username: profile.username || profile.threads_profile?.name,
-                        expiresAt,
-                        metadata: {
-                            profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
-                            profileImageUrl: profile.threads_profile_picture_url
-                        }
-                    }
-                });
             }
+        } else if (normalizedPlatform === 'Threads') {
+            assertConfigured('Threads', {
+                THREADS_APP_ID: env.THREADS_APP_ID,
+                THREADS_APP_SECRET: env.THREADS_APP_SECRET
+            });
+
+            const params = new URLSearchParams({
+                client_id: env.THREADS_APP_ID || '',
+                client_secret: env.THREADS_APP_SECRET || '',
+                code,
+                grant_type: 'authorization_code',
+                redirect_uri: effectiveRedirectUri
+            });
+
+            const tokenResponse = await axios.post('https://graph.threads.net/oauth/access_token', params.toString(), {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            });
+
+            const shortToken = tokenResponse.data.access_token;
+            const longTokenData = await metaService.exchangeThreadsForLongLivedToken(shortToken);
+            const userAccessToken = longTokenData.access_token;
+            const expiresAt = longTokenData.expires_in ? new Date(Date.now() + longTokenData.expires_in * 1000) : null;
+
+            const profile = await metaService.getThreadsProfile(userAccessToken);
+            await prisma.platformConnection.upsert({
+                where: { platform: 'Threads' },
+                update: {
+                    accessToken: userAccessToken,
+                    userId: profile.id,
+                    username: profile.username || profile.name || profile.id,
+                    expiresAt,
+                    metadata: {
+                        profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
+                        profileImageUrl: profile.threads_profile_picture_url,
+                        bio: profile.threads_biography,
+                        isVerified: profile.is_verified
+                    }
+                },
+                create: {
+                    platform: 'Threads',
+                    accessToken: userAccessToken,
+                    userId: profile.id,
+                    username: profile.username || profile.name || profile.id,
+                    expiresAt,
+                    metadata: {
+                        profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
+                        profileImageUrl: profile.threads_profile_picture_url,
+                        bio: profile.threads_biography,
+                        isVerified: profile.is_verified
+                    }
+                }
+            });
         } else if (normalizedPlatform === 'X') {
             if (!decodedState?.codeVerifier) throw new Error('Missing PKCE verifier for X OAuth');
             assertConfigured('X', { X_CLIENT_ID: env.X_CLIENT_ID });
@@ -1033,9 +1065,16 @@ router.post('/callback', authenticate, async (req, res) => {
             ? error.response.status
             : 500;
 
+        const providerMessage =
+            error?.response?.data?.error?.message ||
+            error?.response?.data?.error_message ||
+            error?.response?.data?.message ||
+            error.message ||
+            'OAuth callback failed';
+
         res.status(statusCode).json({
             success: false,
-            error: { message: error?.response?.data?.error?.message || error.message || 'OAuth callback failed' }
+            error: { message: providerMessage }
         });
     }
 });

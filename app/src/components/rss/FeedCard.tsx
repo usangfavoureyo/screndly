@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Trash2, Globe } from 'lucide-react';
@@ -48,10 +49,16 @@ interface FeedCardProps {
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
   onPreview: (id: string) => void;
-  onTest: (id: string) => Promise<void>;
   onTogglePlatform: (feedId: string, platform: string, enabled: boolean) => void;
   onToggleEnabled: (feedId: string, enabled: boolean) => void;
-  onRunNow: (feedId: string) => void;
+  onRunNow: (feedId: string) => Promise<void>;
+}
+
+function formatTimestamp(value?: string): string {
+  if (!value) return 'Never';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return formatDistanceToNow(date, { addSuffix: true });
 }
 
 export function FeedCard({
@@ -59,12 +66,11 @@ export function FeedCard({
   onEdit,
   onDelete,
   onPreview,
-  onTest,
   onTogglePlatform,
   onToggleEnabled,
-  onRunNow
+  onRunNow,
 }: FeedCardProps) {
-  const [isTestRunning, setIsTestRunning] = useState(false);
+  const [isRefreshRunning, setIsRefreshRunning] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -73,13 +79,9 @@ export function FeedCard({
   const startY = useRef(0);
   const currentX = useRef(0);
   const currentY = useRef(0);
-
-  // Swipe state using refs for the listener to avoid stale closures
   const swipeXRef = useRef(0);
   const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
   const isSwipingRef = useRef(false);
-
-  // Card reference for native listeners
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,7 +95,6 @@ export function FeedCard({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // If we've already committed to a vertical scroll, ignore
       if (swipeDirectionRef.current === 'vertical') return;
 
       currentX.current = e.touches[0].clientX;
@@ -102,12 +103,11 @@ export function FeedCard({
       const deltaX = Math.abs(currentX.current - startX.current);
       const deltaY = Math.abs(currentY.current - startY.current);
 
-      // Determine swipe direction on first significant movement
       if (swipeDirectionRef.current === 'none' && (deltaX > 10 || deltaY > 10)) {
         if (deltaX > deltaY * 1.5) {
           swipeDirectionRef.current = 'horizontal';
           isSwipingRef.current = true;
-          setSwipeDirection('horizontal'); // Trigger re-render for UI state
+          setSwipeDirection('horizontal');
           setIsSwiping(true);
         } else {
           swipeDirectionRef.current = 'vertical';
@@ -115,7 +115,6 @@ export function FeedCard({
         }
       }
 
-      // Handle horizontal swipe
       if (swipeDirectionRef.current === 'horizontal') {
         const diff = currentX.current - startX.current;
         if (diff <= 0) {
@@ -136,17 +135,14 @@ export function FeedCard({
         }
       }
 
-      // Reset
       swipeDirectionRef.current = 'none';
       swipeXRef.current = 0;
       isSwipingRef.current = false;
-
       setSwipeX(0);
       setIsSwiping(false);
       setSwipeDirection('none');
     };
 
-    // Attach native passive listeners
     card.addEventListener('touchstart', onTouchStart, { passive: true });
     card.addEventListener('touchmove', onTouchMove, { passive: true });
     card.addEventListener('touchend', onTouchEnd, { passive: true });
@@ -158,13 +154,13 @@ export function FeedCard({
     };
   }, [feed.id, onDelete]);
 
-  const handleTest = async () => {
+  const handleRunNow = async () => {
     haptics.medium();
-    setIsTestRunning(true);
+    setIsRefreshRunning(true);
     try {
-      await onTest(feed.id);
+      await onRunNow(feed.id);
     } finally {
-      setIsTestRunning(false);
+      setIsRefreshRunning(false);
     }
   };
 
@@ -190,21 +186,16 @@ export function FeedCard({
   let domain = '';
   try {
     domain = new URL(feed.url).hostname.replace('www.', '');
-  } catch (e) {
-    // Invalid URL, use empty string or fallback
+  } catch {
     domain = feed.url || '';
   }
 
   return (
     <div className="relative overflow-hidden rounded-2xl group">
-      {/* Background delete button */}
       <div className="absolute inset-0 flex justify-end items-center bg-[#ec1e24] rounded-2xl">
         <div
           className="flex items-center justify-center px-6 text-white transition-opacity h-full"
-          style={{
-            opacity: swipeX < 0 ? 1 : 0,
-            width: '120px'
-          }}
+          style={{ opacity: swipeX < 0 ? 1 : 0, width: '120px' }}
         >
           <div className="flex flex-col items-center gap-1">
             <Trash2 className="w-5 h-5" />
@@ -213,16 +204,14 @@ export function FeedCard({
         </div>
       </div>
 
-      {/* Card Content */}
       <div
         ref={cardRef}
         className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200 touch-pan-y"
         style={{
           transform: `translateX(${swipeX}px)`,
-          transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+          transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
         }}
       >
-        {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {feed.favicon && !faviconError ? (
@@ -249,7 +238,6 @@ export function FeedCard({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {/* Desktop Delete Button - Shows on hover */}
             <button
               onClick={() => {
                 haptics.medium();
@@ -272,19 +260,17 @@ export function FeedCard({
           </div>
         </div>
 
-        {/* Metadata */}
         <div className="space-y-1.5 mb-4 text-sm">
-          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
+          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF] gap-3">
             <span>Next run:</span>
-            <span>{feed.nextRunAt || 'Not scheduled'}</span>
+            <span className="text-right">{formatTimestamp(feed.nextRunAt)}</span>
           </div>
-          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF]">
+          <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF] gap-3">
             <span>Last item:</span>
-            <span>{feed.lastProcessedAt || 'Never'}</span>
+            <span className="text-right">{formatTimestamp(feed.lastProcessedAt)}</span>
           </div>
         </div>
 
-        {/* Platform Toggles */}
         <div className="mb-4 pb-4 border-b border-gray-200 dark:border-[#1F1F1F]">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-xs mb-2">Platforms</p>
           <div className="flex items-center gap-3 flex-wrap">
@@ -310,7 +296,6 @@ export function FeedCard({
           </div>
         </div>
 
-        {/* Actions */}
         <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
@@ -326,11 +311,11 @@ export function FeedCard({
           <Button
             variant="outline"
             size="sm"
-            onClick={handleTest}
-            disabled={isTestRunning}
+            onClick={handleRunNow}
+            disabled={isRefreshRunning}
             className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white text-xs border-gray-300 dark:border-[#333333]"
           >
-            {isTestRunning ? 'Testing...' : 'Test'}
+            {isRefreshRunning ? 'Running...' : 'Run Now'}
           </Button>
           <Button
             variant="outline"

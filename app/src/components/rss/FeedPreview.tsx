@@ -112,10 +112,10 @@ export function FeedPreview({ isOpen, onClose, preview, onRunPipeline }: FeedPre
               className="w-full bg-[#ec1e24] hover:bg-[#ec1e24]/90 text-white gap-2"
             >
               <Zap className="w-4 h-4" />
-              Run Full Pipeline Now (Test)
+              Run Feed Now
             </Button>
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-xs text-center">
-              This will process the item but won't publish it live
+              This refreshes the feed immediately and follows the feed's current posting settings.
             </p>
           </div>
         </BottomSheetFooter>

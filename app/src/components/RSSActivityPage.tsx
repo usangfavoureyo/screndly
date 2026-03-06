@@ -1,144 +1,122 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { formatDistanceToNow } from 'date-fns';
 import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
-import { toast } from "sonner";
-import { useRSSFeeds } from '../contexts/RSSFeedsContext';
+import { toast } from 'sonner';
+import { useRSSFeeds, RSSActivityItem } from '../contexts/RSSFeedsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
-import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
-
-
-interface QueueItem {
-  id: string;
-  feedName: string;
-  title: string;
-  status: 'queued' | 'published' | 'failed';
-  timestamp: string;
-  platforms?: string[];
-  error?: string;
-}
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
   previousPage?: string | null;
 }
 
+function formatActivityTimestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
-  const { feeds, deleteFeed, addFeed } = useRSSFeeds();
-  const { showUndo } = useUndo();
+  const { getActivity, deleteActivity, refreshFeed } = useRSSFeeds();
   const { settings } = useSettings();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [items, setItems] = useState<RSSActivityItem[]>([]);
 
-  // Get retention period from settings (default 24 hours)
-  const retentionHours = settings.rssActivityRetention || 24;
-  const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
-
-  // Helper function to check if an item is within retention period
-  const isWithinRetention = (timestamp: string): boolean => {
-    try {
-      const itemDate = new Date(timestamp);
-      const now = new Date();
-      const ageMs = now.getTime() - itemDate.getTime();
-      return ageMs <= retentionMs;
-    } catch (error) {
-      // If parsing fails, keep the item
-      return true;
+  const loadActivity = async () => {
+    setIsRefreshing(true);
+    const response = await getActivity(200);
+    if (response) {
+      setItems(response.items);
     }
+    setIsRefreshing(false);
   };
 
-  // Convert RSS feeds context to queue items format and filter by retention
-  const queueItems: QueueItem[] = feeds
-    .filter(feed => isWithinRetention(feed.publishedDate))
-    .map(feed => {
-      // Map feed status to queue item status
-      let status: 'queued' | 'published' | 'failed' = 'queued';
-      if (feed.status === 'published') {
-        status = 'published';
-      } else if (feed.status === 'failed') {
-        status = 'failed';
-      } else if (feed.status === 'pending' || feed.status === 'scheduled') {
-        status = 'queued';
-      }
+  useEffect(() => {
+    loadActivity();
+  }, []);
 
-      return {
-        id: feed.id,
-        feedName: feed.source,
-        title: feed.title,
-        status,
-        timestamp: feed.publishedDate,
-        platforms: feed.platforms,
-        error: feed.errorMessage,
-      };
+  const retentionHours = settings.rssActivityRetention || 24;
+  const retentionMs = retentionHours * 60 * 60 * 1000;
+
+  const retainedItems = useMemo(() => {
+    const cutoff = Date.now() - retentionMs;
+    return items.filter((item) => {
+      const timestamp = new Date(item.timestamp).getTime();
+      return Number.isNaN(timestamp) || timestamp >= cutoff;
     });
+  }, [items, retentionMs]);
 
-  const filteredItems = queueItems.filter((item) => {
+  const filteredItems = retainedItems.filter((item) => {
     if (filter === 'failures') return item.status === 'failed';
     if (filter === 'published') return item.status === 'published';
-    if (filter === 'pending') return item.status === 'queued';
+    if (filter === 'pending') return item.status === 'pending';
     return true;
   });
 
-  const getStatusConfig = (status: QueueItem['status']) => {
+  const summary = {
+    total: retainedItems.length,
+    published: retainedItems.filter((item) => item.status === 'published').length,
+    pending: retainedItems.filter((item) => item.status === 'pending').length,
+    failed: retainedItems.filter((item) => item.status === 'failed').length,
+  };
+
+  const getStatusConfig = (status: RSSActivityItem['status']) => {
     switch (status) {
-      case 'queued':
-        return { icon: Clock, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Queued' };
+      case 'pending':
+        return {
+          icon: Clock,
+          color: 'text-gray-700 dark:text-[#9CA3AF]',
+          bg: 'bg-gray-200 dark:bg-[#1f1f1f]',
+          label: 'Pending',
+        };
       case 'published':
-        return { icon: CheckCircle, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Published' };
+        return {
+          icon: CheckCircle,
+          color: 'text-gray-700 dark:text-[#9CA3AF]',
+          bg: 'bg-gray-200 dark:bg-[#1f1f1f]',
+          label: 'Published',
+        };
       case 'failed':
-        return { icon: XCircle, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]', label: 'Failed' };
+        return {
+          icon: XCircle,
+          color: 'text-[#EF4444]',
+          bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]',
+          label: 'Failed',
+        };
     }
   };
 
-  const handleRetry = (e: React.MouseEvent, id: string, title: string) => {
-    e.stopPropagation(); // Prevent triggering the parent button click
+  const handleRetry = async (event: React.MouseEvent, item: RSSActivityItem) => {
+    event.stopPropagation();
+    if (!item.feedId) {
+      toast.error('This activity entry is missing its feed reference');
+      return;
+    }
+
     haptics.medium();
-    toast.success('Retry Initiated', {
-      description: `Retrying RSS feed: \"${title}\"`,
-    });
-    // Add logic to retry the RSS feed processing here
+    await refreshFeed(item.feedId);
+    await loadActivity();
   };
 
-  const handleDelete = (id: string, title: string) => {
+  const handleDelete = async (id?: string) => {
+    if (!id) return;
     haptics.medium();
-
-    // Find the feed to delete
-    const deletedFeed = feeds.find(feed => feed.id === id);
-    if (!deletedFeed) return;
-
-    // Temporarily remove from state
-    deleteFeed(id);
-
-    // Show undo toast
-    showUndo({
-      id,
-      itemName: title,
-      onUndo: () => {
-        // Restore the feed
-        addFeed(deletedFeed);
-      },
-      onConfirm: () => {
-        // Show final confirmation
-        toast.success('Deleted', {
-          description: `\"${title}\" has been removed`,
-        });
-      }
-    });
+    await deleteActivity(id);
+    await loadActivity();
   };
 
   const handleRefresh = async () => {
     haptics.light();
-    toast.success('Refreshed RSS Activity');
-
-    // Simulate refresh - replace with actual refresh logic
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await loadActivity();
+    toast.success('RSS activity refreshed');
   };
 
   return (
-
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <div className="flex items-start gap-4 mb-4">
           <button
@@ -155,69 +133,68 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           <div className="flex-1">
             <h1 className="text-gray-900 dark:text-white mb-2">RSS Feeds Activity</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">
-              Track all RSS feed processing activity and status
+              Track processing, publishing, and failures for your RSS feeds.
             </p>
           </div>
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Processed</p>
-          <p className="text-gray-900 dark:text-white text-2xl">{queueItems.length}</p>
+          <p className="text-gray-900 dark:text-white text-2xl">{summary.total}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Published</p>
-          <p className="text-gray-900 dark:text-white text-2xl">
-            {queueItems.filter(item => item.status === 'published').length}
-          </p>
+          <p className="text-gray-900 dark:text-white text-2xl">{summary.published}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Pending</p>
-          <p className="text-gray-900 dark:text-white text-2xl">
-            {queueItems.filter(item => item.status === 'queued').length}
-          </p>
+          <p className="text-gray-900 dark:text-white text-2xl">{summary.pending}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failed</p>
-          <p className="text-gray-900 dark:text-white text-2xl">
-            {queueItems.filter(item => item.status === 'failed').length}
-          </p>
+          <p className="text-gray-900 dark:text-white text-2xl">{summary.failed}</p>
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
-        {/* Filters */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {[
             { value: 'all', label: 'All' },
             { value: 'published', label: 'Published' },
             { value: 'pending', label: 'Pending' },
             { value: 'failures', label: 'Failures' },
-          ].map((filterOption) => (
+          ].map((option) => (
             <button
-              key={filterOption.value}
+              key={option.value}
               onClick={() => {
                 haptics.light();
-                setFilter(filterOption.value as any);
+                setFilter(option.value as typeof filter);
               }}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === filterOption.value
-                  ? 'bg-[#ec1e24] text-white'
-                  : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
+              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === option.value
+                ? 'bg-[#ec1e24] text-white'
+                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
                 }`}
             >
-              {filterOption.label}
+              {option.label}
             </button>
           ))}
         </div>
 
-        {/* Items List */}
         <div className="space-y-3">
           {filteredItems.length === 0 ? (
             <div className="text-center py-12 text-[#6B7280] dark:text-[#9CA3AF]">
-              No items to display
+              No RSS activity within the configured retention window.
             </div>
           ) : (
             filteredItems.map((item) => {
@@ -228,19 +205,20 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                 <SwipeableActivityCard
                   key={item.id}
                   id={item.id}
-                  onDelete={() => handleDelete(item.id, item.title)}
+                  onDelete={handleDelete}
                   className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
+                  deleteLabel="Delete"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-gray-900 dark:text-white mb-1">{item.title}</p>
-                      <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
+                      <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2 flex-wrap">
                         <span>{item.feedName}</span>
-                        <span>•</span>
-                        <span>{item.timestamp}</span>
+                        <span>&bull;</span>
+                        <span>{formatActivityTimestamp(item.timestamp)}</span>
                       </div>
-                      {item.platforms && item.platforms.length > 0 && (
-                        <div className="flex items-center gap-1.5 mb-2">
+                      {item.platforms.length > 0 && (
+                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                           {item.platforms.map((platform) => (
                             <span
                               key={platform}
@@ -260,14 +238,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                         <StatusIcon className="w-4 h-4" />
                         {statusConfig.label}
                       </span>
-                      {item.status === 'failed' && (
+                      {item.status === 'failed' && item.feedId && (
                         <Button
-                          onClick={(e) => handleRetry(e, item.id, item.title)}
-                          size="sm"
                           variant="outline"
-                          className="gap-2 bg-white dark:bg-black"
+                          size="sm"
+                          onClick={(event) => handleRetry(event, item)}
+                          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                         >
-                          <RefreshCw className="w-4 h-4" />
                           Retry
                         </Button>
                       )}
@@ -280,6 +257,5 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         </div>
       </div>
     </div>
-
   );
 }
