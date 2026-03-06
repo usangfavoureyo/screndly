@@ -26,6 +26,7 @@ export function PlatformConnectionModal({
 }: PlatformConnectionModalProps) {
   const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
   const STATE_STORAGE_KEY = 'screndly_oauth_state';
+  const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
   const [errorMessage, setErrorMessage] = useState('');
@@ -128,6 +129,20 @@ export function PlatformConnectionModal({
     haptics.medium();
 
     try {
+      const decodeJwtPayload = (value: string): string | null => {
+        const parts = value.split('.');
+        if (parts.length !== 3) return null;
+
+        const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
+
+        try {
+          return atob(`${normalized}${padding}`);
+        } catch {
+          return null;
+        }
+      };
+
       const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.get<{ url?: string }>(`/api/platforms/auth/${platform}`);
 
@@ -139,6 +154,19 @@ export function PlatformConnectionModal({
         if (oauthState) {
           localStorage.setItem(STATE_STORAGE_KEY, oauthState);
           sessionStorage.setItem(STATE_STORAGE_KEY, oauthState);
+
+          try {
+            const payloadRaw = decodeJwtPayload(oauthState);
+            if (payloadRaw) {
+              const payload = JSON.parse(payloadRaw) as { codeVerifier?: string };
+              if (payload.codeVerifier) {
+                localStorage.setItem(CODE_VERIFIER_STORAGE_KEY, payload.codeVerifier);
+                sessionStorage.setItem(CODE_VERIFIER_STORAGE_KEY, payload.codeVerifier);
+              }
+            }
+          } catch {
+            // Best-effort storage only.
+          }
         }
         window.location.href = response.data.url;
       } else {

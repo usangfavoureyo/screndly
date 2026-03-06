@@ -10,6 +10,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const hasProcessedRef = useRef(false);
     const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
     const STATE_STORAGE_KEY = 'screndly_oauth_state';
+    const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
@@ -22,11 +23,17 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             return localStorage.getItem(STATE_STORAGE_KEY) || sessionStorage.getItem(STATE_STORAGE_KEY);
         };
 
+        const getStoredCodeVerifier = (): string | null => {
+            return localStorage.getItem(CODE_VERIFIER_STORAGE_KEY) || sessionStorage.getItem(CODE_VERIFIER_STORAGE_KEY);
+        };
+
         const clearStoredPlatform = () => {
             localStorage.removeItem(PLATFORM_STORAGE_KEY);
             sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
             localStorage.removeItem(STATE_STORAGE_KEY);
             sessionStorage.removeItem(STATE_STORAGE_KEY);
+            localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+            sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
         };
 
         const decodeJwtPayload = (value: string): string | null => {
@@ -93,6 +100,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             // verification even though the original value is still available locally.
             const effectiveState = storedState || rawState;
             const platform = getStoredPlatform() || decodePlatformFromState(effectiveState) || decodePlatformFromState(rawState);
+            const codeVerifier = getStoredCodeVerifier();
 
             if (!code || (!platform && !effectiveState)) {
                 setStatus('error');
@@ -125,6 +133,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                         platform,
                         code,
                         state: effectiveState,
+                        codeVerifier,
                         redirectUri: `${window.location.origin}/platforms/callback`
                     })
                 });
