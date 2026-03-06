@@ -7,7 +7,6 @@
  */
 export function getApiUrl(): string {
     if (typeof import.meta !== 'undefined' && import.meta.env) {
-        if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
         if (import.meta.env.DEV) return 'http://localhost:3000';
     }
 
@@ -18,6 +17,10 @@ export function getApiUrl(): string {
         const hostname = window.location.hostname;
         const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
         if (!isLocalHost) return '';
+    }
+
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
     }
 
     // Non-browser production fallback
