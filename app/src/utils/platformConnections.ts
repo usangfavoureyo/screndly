@@ -1,8 +1,8 @@
 /**
  * Platform Connection Management
- * 
- * Handles connection state, OAuth simulation, and connection health
- * for social media platforms. Ready for backend integration.
+ *
+ * Stores the last known backend connection state locally so the
+ * Platforms page can render quickly and survive refreshes.
  */
 
 export type PlatformType = 'Instagram' | 'Facebook' | 'Threads' | 'TikTok' | 'X' | 'YouTube' | 'Pinterest';
@@ -31,6 +31,8 @@ interface BackendPlatformStatus {
   connected: boolean;
   username?: string;
   lastPost?: string;
+  profileUrl?: string;
+  expiresAt?: string;
 }
 
 const STORAGE_KEY = 'screndly_platform_connections';
@@ -111,10 +113,10 @@ export function syncPlatformConnectionsFromBackend(
         connected: true,
         connectedAt: existingConnection?.connectedAt || serverConnection.lastPost || new Date().toISOString(),
         lastSync: serverConnection.lastPost || new Date().toISOString(),
-        expiresAt: existingConnection?.expiresAt,
+        expiresAt: serverConnection.expiresAt || existingConnection?.expiresAt,
         userId: existingConnection?.userId,
         username,
-        profileUrl: buildProfileUrl(platform, username) || existingConnection?.profileUrl,
+        profileUrl: serverConnection.profileUrl || buildProfileUrl(platform, username) || existingConnection?.profileUrl,
       };
       return;
     }
@@ -146,60 +148,6 @@ export function isPlatformConnected(platform: PlatformType): boolean {
 }
 
 /**
- * Connect to a platform (simulates OAuth flow)
- * In production, this would redirect to OAuth provider
- */
-export async function connectPlatform(
-  platform: PlatformType,
-  mockData?: {
-    userId?: string;
-    username?: string;
-    accessToken?: string;
-  }
-): Promise<PlatformConnection> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-
-  const connections = getPlatformConnections();
-
-  // Simulate successful OAuth connection
-  const now = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString(); // 60 days
-
-  // Generate mock username and profile URL
-  const username = mockData?.username || `screenrender_user${Math.floor(Math.random() * 1000)}`;
-
-  // Generate platform-specific profile URLs
-  const profileUrls: Record<PlatformType, string> = {
-    Instagram: `https://www.instagram.com/${username.replace('@', '')}`,
-    Facebook: `https://www.facebook.com/${mockData?.userId || `user.${Math.random().toString(36).substr(2, 9)}`}`,
-    Threads: `https://www.threads.net/@${username.replace('@', '')}`,
-    TikTok: `https://www.tiktok.com/@${username.replace('@', '')}`,
-    X: `https://x.com/${username.replace('@', '')}`,
-    YouTube: `https://youtube.com/@${username.replace('@', '')}`,
-    Pinterest: `https://www.pinterest.com/${username.replace('@', '')}`,
-  };
-
-  const connection: PlatformConnection = {
-    platform,
-    connected: true,
-    connectedAt: now,
-    lastSync: now,
-    accessToken: mockData?.accessToken || `mock_access_token_${Date.now()}`,
-    refreshToken: `mock_refresh_token_${Date.now()}`,
-    expiresAt,
-    userId: mockData?.userId || `user_${Math.random().toString(36).substr(2, 9)}`,
-    username: username.startsWith('@') ? username : `@${username}`,
-    profileUrl: profileUrls[platform],
-  };
-
-  connections[platform] = connection;
-  saveConnections(connections);
-
-  return connection;
-}
-
-/**
  * Disconnect from a platform
  */
 export function disconnectPlatform(platform: PlatformType): void {
@@ -211,35 +159,6 @@ export function disconnectPlatform(platform: PlatformType): void {
   };
 
   saveConnections(connections);
-}
-
-/**
- * Refresh platform connection (simulate token refresh)
- */
-export async function refreshPlatformConnection(platform: PlatformType): Promise<PlatformConnection> {
-  const connection = getPlatformConnection(platform);
-
-  if (!connection.connected) {
-    throw new Error('Platform is not connected');
-  }
-
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-
-  const connections = getPlatformConnections();
-  const now = new Date().toISOString();
-  const expiresAt = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
-
-  connections[platform] = {
-    ...connection,
-    lastSync: now,
-    accessToken: `mock_access_token_${Date.now()}`,
-    expiresAt,
-    error: undefined,
-  };
-
-  saveConnections(connections);
-  return connections[platform];
 }
 
 import { getToken as getSharedToken, migrateLegacyToken as sharedMigrateLegacyToken } from '../lib/api/authToken';
@@ -326,84 +245,6 @@ export function formatLastConnection(connection: PlatformConnection): string {
   if (diffDays < 30) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
 
   return date.toLocaleDateString();
-}
-
-/**
- * Simulate platform API health check
- */
-export async function checkPlatformHealth(platform: PlatformType): Promise<boolean> {
-  const connection = getPlatformConnection(platform);
-
-  if (!connection.connected) {
-    return false;
-  }
-
-  // Simulate API call
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // Randomly simulate success/failure for demo purposes
-  // In production, this would be an actual API health check
-  return Math.random() > 0.1; // 90% success rate
-}
-
-/**
- * Get OAuth authorization URL (for backend integration)
- * This is where you'd redirect users in production
- */
-export function getOAuthUrl(platform: PlatformType, redirectUri: string): string {
-  const clientIds: Record<PlatformType, string> = {
-    Instagram: process.env.INSTAGRAM_CLIENT_ID || 'YOUR_INSTAGRAM_CLIENT_ID',
-    Facebook: process.env.FACEBOOK_CLIENT_ID || 'YOUR_FACEBOOK_CLIENT_ID',
-    Threads: process.env.THREADS_CLIENT_ID || 'YOUR_THREADS_CLIENT_ID',
-    TikTok: process.env.TIKTOK_CLIENT_ID || 'YOUR_TIKTOK_CLIENT_ID',
-    X: process.env.X_CLIENT_ID || 'YOUR_X_CLIENT_ID',
-    YouTube: process.env.YOUTUBE_CLIENT_ID || 'YOUR_YOUTUBE_CLIENT_ID',
-    Pinterest: process.env.PINTEREST_CLIENT_ID || 'YOUR_PINTEREST_CLIENT_ID',
-  };
-
-  const scopes: Record<PlatformType, string> = {
-    Instagram: 'instagram_basic instagram_content_publish',
-    Facebook: 'pages_manage_posts pages_read_engagement',
-    Threads: 'threads_basic threads_content_publish',
-    TikTok: 'user.info.basic video.list video.upload',
-    X: 'tweet.read tweet.write users.read offline.access',
-    YouTube: 'youtube.upload youtube.readonly',
-    Pinterest: 'boards:read boards:write pins:read pins:write user_accounts:read',
-  };
-
-  const authUrls: Record<PlatformType, string> = {
-    Instagram: 'https://api.instagram.com/oauth/authorize',
-    Facebook: 'https://www.facebook.com/v18.0/dialog/oauth',
-    Threads: 'https://threads.net/oauth/authorize',
-    TikTok: 'https://www.tiktok.com/auth/authorize',
-    X: 'https://twitter.com/i/oauth2/authorize',
-    YouTube: 'https://accounts.google.com/o/oauth2/v2/auth',
-    Pinterest: 'https://www.pinterest.com/oauth/',
-  };
-
-  const params = new URLSearchParams({
-    client_id: clientIds[platform],
-    redirect_uri: redirectUri,
-    scope: scopes[platform],
-    response_type: 'code',
-    state: `${platform}_${Date.now()}`,
-  });
-
-  return `${authUrls[platform]}?${params.toString()}`;
-}
-
-/**
- * Handle OAuth callback (for backend integration)
- * This would process the authorization code from OAuth provider
- */
-export async function handleOAuthCallback(
-  platform: PlatformType,
-  code: string,
-  state: string
-): Promise<PlatformConnection> {
-  // In production, this would exchange code for access token via backend
-  // For now, simulate the connection
-  return connectPlatform(platform);
 }
 
 /**

@@ -11,6 +11,26 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
 
     useEffect(() => {
+        const decodePlatformFromState = (value: string | null): string | null => {
+            if (!value) return null;
+            if (['Instagram', 'Facebook', 'Threads', 'TikTok', 'X', 'YouTube', 'Pinterest'].includes(value)) {
+                return value;
+            }
+
+            const parts = value.split('.');
+            if (parts.length !== 3) return null;
+
+            try {
+                const payload = JSON.parse(
+                    atob(parts[1].replace(/-/g, '+').replace(/_/g, '/'))
+                ) as { platform?: string };
+
+                return payload.platform || null;
+            } catch {
+                return null;
+            }
+        };
+
         const processCallback = async () => {
             if (hasProcessedRef.current) return;
             hasProcessedRef.current = true;
@@ -27,9 +47,10 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             }
 
             const code = urlParams.get('code') || hashParams.get('code');
-            const platform = urlParams.get('state') || hashParams.get('state') || localStorage.getItem('screndly_oauth_platform');
+            const rawState = urlParams.get('state') || hashParams.get('state');
+            const platform = localStorage.getItem('screndly_oauth_platform') || decodePlatformFromState(rawState);
 
-            if (!code || !platform) {
+            if (!code || (!platform && !rawState)) {
                 setStatus('error');
                 setErrorMsg('Missing authorization code or platform identifier.');
                 return;
@@ -59,6 +80,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     body: JSON.stringify({
                         platform,
                         code,
+                        state: rawState,
                         redirectUri: `${window.location.origin}/platforms/callback`
                     })
                 });

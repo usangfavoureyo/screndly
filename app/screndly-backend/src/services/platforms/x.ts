@@ -22,8 +22,9 @@ export class XService {
     }
 
     async postTweet(text: string, imageUrl?: string, connection?: PlatformConnection): Promise<XPostResult> {
-        if (!this.apiKey || !this.bearerToken) {
-            return { success: false, error: 'X API credentials not configured' };
+        const authToken = connection?.accessToken || this.bearerToken;
+        if (!authToken) {
+            return { success: false, error: 'X access token not configured' };
         }
 
         try {
@@ -31,7 +32,7 @@ export class XService {
             const response = await fetch('https://api.twitter.com/2/tweets', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${connection?.accessToken || this.bearerToken}`,
+                    'Authorization': `Bearer ${authToken}`,
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
