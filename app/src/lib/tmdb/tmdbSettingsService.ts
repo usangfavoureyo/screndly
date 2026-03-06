@@ -64,6 +64,7 @@ export interface TMDbSettings {
 
     // Cache settings
     dedupeWindow: string;
+    tmdbQueuedRetentionHours: string;
     discoveryCacheTTL: string;
     creditsCacheTTL: string;
     captionCacheTTL: string;
@@ -129,6 +130,7 @@ const defaultSettings: TMDbSettings = {
     onlyPopular: true,
     languageFilter: 'en',
     dedupeWindow: '30',
+    tmdbQueuedRetentionHours: '168',
     discoveryCacheTTL: '12',
     creditsCacheTTL: '30',
     captionCacheTTL: '30',
@@ -349,6 +351,7 @@ export function getSettingsForBackend(): Record<string, any> {
         languageFilter: settings.languageFilter,
         onlyPopular: settings.onlyPopular,
         dedupeWindow: parseInt(settings.dedupeWindow) || 30,
+        tmdbQueuedRetentionHours: parseInt(settings.tmdbQueuedRetentionHours) || 168,
         anniversaryYears: getAnniversaryYears(),
         maxPerAnniversary: getMaxPerAnniversary(),
     };

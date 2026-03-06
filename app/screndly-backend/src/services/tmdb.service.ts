@@ -558,6 +558,7 @@ interface RefreshSettings {
     languageFilter?: string;
     onlyPopular?: boolean;
     dedupeWindow?: number;
+    tmdbQueuedRetentionHours?: number;
     anniversaryYears?: string[] | number[];
     tmdbCaptionModel?: string; // AI Model
     todayPrompt?: string; // Custom prompts
@@ -582,7 +583,8 @@ const defaultRefreshSettings: RefreshSettings = {
     selectedGenres: [],
     languageFilter: 'en',
     onlyPopular: true,
-    dedupeWindow: 30
+    dedupeWindow: 30,
+    tmdbQueuedRetentionHours: 168
 };
 
 /**
@@ -801,7 +803,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-        'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow',
+        'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'anniversaryYears', 'tmdbCaptionModel',
         'todayPrompt', 'weeklyPrompt', 'monthlyPrompt', 'anniversaryPrompt'
     ];      // Note: Time settings (e.g. tmdbRefreshTimeToday) would be fetched here if supported by Cron
@@ -832,6 +834,27 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
     if (result.tmdbCaptionTemperature) result.tmdbCaptionTemperature = Number(result.tmdbCaptionTemperature);
 
     return result;
+}
+
+export async function cleanupQueuedTMDbPosts(retentionHours: number): Promise<number> {
+    const safeRetentionHours = Number.isFinite(retentionHours) && retentionHours > 0
+        ? Math.max(1, Math.floor(retentionHours))
+        : defaultRefreshSettings.tmdbQueuedRetentionHours || 168;
+
+    const cutoff = new Date(Date.now() - safeRetentionHours * 60 * 60 * 1000);
+
+    const result = await prisma.tMDbPost.deleteMany({
+        where: {
+            status: 'queued',
+            createdAt: { lt: cutoff }
+        }
+    });
+
+    if (result.count > 0) {
+        console.log(`[TMDb] Deleted ${result.count} queued posts older than ${safeRetentionHours} hours`);
+    }
+
+    return result.count;
 }
 
 /**

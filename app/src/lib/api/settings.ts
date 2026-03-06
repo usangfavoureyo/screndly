@@ -61,7 +61,7 @@ const SENSITIVE_KEYS = [
   // TMDb Configuration (Required for Cron Jobs)
   'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
   'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-  'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow',
+  'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
 ];
 
 /**

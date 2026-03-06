@@ -311,6 +311,15 @@ export function AppContent() {
     setIsSettingsOpen(false);
   };
 
+  const handleOpenNotificationPage = (page: string, tab?: 'rss' | 'tmdb') => {
+    if (page === 'feeds' && tab) {
+      localStorage.setItem('feedsActiveTab', tab);
+    }
+
+    setIsNotificationsOpen(false);
+    handleNavigate(page);
+  };
+
   // Handle notification actions (approve, schedule, view, dismiss)
   const handleNotificationAction = (notificationId: string, actionType: string) => {
     haptics.medium();
@@ -566,6 +575,7 @@ export function AppContent() {
         onClearAll={clearAll}
         onDeleteNotification={deleteNotification}
         onNotificationAction={handleNotificationAction}
+        onOpenPage={handleOpenNotificationPage}
       />
 
       {/* Undo Toast */}
