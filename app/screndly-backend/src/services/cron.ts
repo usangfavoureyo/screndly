@@ -275,7 +275,13 @@ export async function initCronJobs() {
                     const platforms = post.platforms || [];
                     if (platforms.length === 0) {
                         await logCron('warn', `Post ${post.id} has no target platforms, marking skipped`);
-                        await prisma.tMDbPost.update({ where: { id: post.id }, data: { status: 'failed' } });
+                        await prisma.tMDbPost.update({
+                            where: { id: post.id },
+                            data: {
+                                status: 'failed',
+                                errorMessage: 'No target platforms configured for this TMDb post'
+                            }
+                        });
                         continue;
                     }
 
@@ -287,12 +293,17 @@ export async function initCronJobs() {
 
                     const results = await publisherService.publish(platforms, content);
                     const success = results.some(r => r.status === 'posted');
+                    const failureMessage = results
+                        .filter(r => r.status !== 'posted')
+                        .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
+                        .join(', ');
 
                     await prisma.tMDbPost.update({
                         where: { id: post.id },
                         data: {
                             status: success ? 'published' : 'failed',
                             publishedTime: now,
+                            errorMessage: success ? null : (failureMessage || 'Failed to publish TMDb post'),
                         }
                     });
 
@@ -313,7 +324,13 @@ export async function initCronJobs() {
 
                 } catch (postError) {
                     console.error(`Failed to process post ${post.id}`, postError);
-                    await prisma.tMDbPost.update({ where: { id: post.id }, data: { status: 'failed' } });
+                    await prisma.tMDbPost.update({
+                        where: { id: post.id },
+                        data: {
+                            status: 'failed',
+                            errorMessage: postError instanceof Error ? postError.message : 'Failed to process TMDb post'
+                        }
+                    });
                     await logCron('error', `Error processing post ${post.title}: ${postError}`);
                 }
             }

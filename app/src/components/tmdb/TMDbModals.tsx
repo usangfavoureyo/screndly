@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
-import { Image as ImageIcon, RefreshCw, Clock, Upload, Loader2, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { RefreshCw, Clock, Loader2, X } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -15,8 +15,9 @@ import { ThreadsIcon } from '../icons/ThreadsIcon';
 import { FacebookIcon } from '../icons/FacebookIcon';
 import { YouTubeIcon } from '../icons/YouTubeIcon';
 import { PinterestIcon } from '../icons/PinterestIcon';
-import { generateTMDbCaption, getFeedTypeFromSource, formatTMDbCaptionSettingsForLog } from '../../utils/tmdbCaptionGenerator';
+import { generateTMDbCaption, getFeedTypeFromSource } from '../../utils/tmdbCaptionGenerator';
 import { logFeedUpdate, logFeedDeletion } from '../../utils/tmdbLogger';
+import { getInitialTMDbPlatformKeys, publishTMDbPost, toTMDbPlatformNames } from '../../lib/tmdb/tmdbPublish';
 import { ChangeImageBottomSheet } from './ChangeImageBottomSheet';
 import {
     BottomSheet,
@@ -98,13 +99,14 @@ export function TMDbModals() {
             const date = new Date(rescheduleModal.feed.scheduledTime);
             setScheduledDate(date);
             setScheduledTime(date.toTimeString().slice(0, 5));
+            setSelectedPlatforms(getInitialTMDbPlatformKeys(rescheduleModal.feed.source, rescheduleModal.feed.platforms));
         }
     }, [rescheduleModal.open, rescheduleModal.feed]);
     useEffect(() => {
-        if (platformSelectModal.open) {
-            setSelectedPlatforms([]);
+        if (platformSelectModal.open && platformSelectModal.feed) {
+            setSelectedPlatforms(getInitialTMDbPlatformKeys(platformSelectModal.feed.source, platformSelectModal.feed.platforms));
         }
-    }, [platformSelectModal.open]);
+    }, [platformSelectModal.open, platformSelectModal.feed]);
 
     // === BACK NAVIGATION FOR IMAGE PREVIEW ===
     useEffect(() => {
@@ -170,31 +172,51 @@ export function TMDbModals() {
 
 
     // === RESCHEDULE HANDLERS ===
-    const handleSaveSchedule = () => {
+    const handleSaveSchedule = async () => {
         if (!rescheduleModal.feed || !scheduledDate || !scheduledTime) {
             toast.error('Please select date and time');
             return;
         }
 
-        haptics.success(); // Haptic on schedule
+        if (selectedPlatforms.length === 0) {
+            toast.error('Select at least one platform');
+            return;
+        }
 
-        // Optimistic close
-        closeReschedule();
-        toast.success('Post scheduled');
+        setIsSaving(true);
 
-        const [hours, minutes] = scheduledTime.split(':').map(Number);
-        const newDate = new Date(scheduledDate);
-        newDate.setHours(hours, minutes, 0, 0);
+        try {
+            const [hours, minutes] = scheduledTime.split(':').map(Number);
+            const newDate = new Date(scheduledDate);
+            newDate.setHours(hours, minutes, 0, 0);
 
-        schedulePost({
-            ...rescheduleModal.feed,
-            scheduledTime: newDate.toISOString(),
-            status: 'scheduled',
-            platforms: selectedPlatforms,
-        }).catch(error => {
+            const platformNames = toTMDbPlatformNames(selectedPlatforms);
+
+            await schedulePost({
+                ...rescheduleModal.feed,
+                scheduledTime: newDate.toISOString(),
+                status: 'scheduled',
+                platforms: platformNames,
+                publishedTime: undefined,
+                errorMessage: undefined,
+            });
+
+            haptics.success();
+            closeReschedule();
+            toast.success('Post scheduled');
+            logFeedUpdate(
+                rescheduleModal.feed.id,
+                rescheduleModal.feed.title,
+                'scheduled',
+                'System',
+                { platforms: platformNames, scheduledTime: newDate.toISOString() }
+            );
+        } catch (error) {
             console.error('Failed to save schedule', error);
             toast.error('Failed to save schedule');
-        });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     // === DELETE HANDLERS ===
@@ -243,10 +265,8 @@ export function TMDbModals() {
         );
     };
 
-    const handleSchedulePost = () => {
+    const handleSchedulePost = async () => {
         if (!platformSelectModal.feed) return;
-
-        haptics.success(); // Haptic on publish/schedule
 
         if (selectedPlatforms.length === 0) {
             toast.error('Select at least one platform');
@@ -254,37 +274,77 @@ export function TMDbModals() {
         }
 
         const isPublishNow = platformSelectModal.isPostNow;
+        const platformNames = toTMDbPlatformNames(selectedPlatforms);
 
-        // Optimistic close
-        closePlatformSelect();
-        toast.success(isPublishNow ? 'Post published' : 'Post scheduled');
+        setIsSaving(true);
 
-        // For immediate publish, we set status to 'published' and set publishedTime
-        // For schedule, we set status to 'scheduled' and keep scheduledTime
-        const status = isPublishNow ? 'published' : 'scheduled';
+        try {
+            if (isPublishNow) {
+                const publishResult = await publishTMDbPost(platformSelectModal.feed, selectedPlatforms);
 
-        const updateData = {
-            ...platformSelectModal.feed,
-            status: status,
-            platforms: selectedPlatforms,
-            // If publishing now, set publishedTime and clear scheduledTime (conceptually)
-            // If scheduling, use existing scheduledTime
-            scheduledTime: isPublishNow ? new Date().toISOString() : platformSelectModal.feed.scheduledTime,
-            publishedTime: isPublishNow ? new Date().toISOString() : undefined
-        };
+                if (publishResult.postedPlatforms.length === 0) {
+                    await updatePost(platformSelectModal.feed.id, {
+                        status: 'failed',
+                        platforms: publishResult.platformNames,
+                        publishedTime: undefined,
+                        errorMessage: publishResult.errorMessage || 'Failed to publish TMDb post',
+                    });
+                    throw new Error(publishResult.errorMessage || 'Failed to publish TMDb post');
+                }
 
-        schedulePost(updateData).then(() => {
+                const publishedTime = new Date().toISOString();
+                await updatePost(platformSelectModal.feed.id, {
+                    status: 'published',
+                    platforms: publishResult.platformNames,
+                    publishedTime,
+                    errorMessage: undefined,
+                });
+
+                haptics.success();
+                closePlatformSelect();
+                logFeedUpdate(
+                    platformSelectModal.feed.id,
+                    platformSelectModal.feed.title,
+                    'published',
+                    'System',
+                    { platforms: publishResult.platformNames }
+                );
+
+                const failedPlatforms = publishResult.failedResults.map((result) => result.platform);
+                toast.success(
+                    failedPlatforms.length > 0
+                        ? `Published to ${publishResult.postedPlatforms.join(', ')}. Failed on ${failedPlatforms.join(', ')}.`
+                        : `Published to ${publishResult.postedPlatforms.join(', ')}.`
+                );
+                return;
+            }
+
+            await schedulePost({
+                ...platformSelectModal.feed,
+                status: 'scheduled',
+                platforms: platformNames,
+                scheduledTime: platformSelectModal.feed.scheduledTime,
+                publishedTime: undefined,
+                errorMessage: undefined,
+            });
+
+            haptics.success();
+            closePlatformSelect();
+            toast.success('Post scheduled');
             logFeedUpdate(
-                platformSelectModal.feed!.id,
-                platformSelectModal.feed!.title,
-                status,
+                platformSelectModal.feed.id,
+                platformSelectModal.feed.title,
+                'scheduled',
                 'System',
-                { platforms: selectedPlatforms }
+                { platforms: platformNames }
             );
-        }).catch(error => {
+        } catch (error) {
             console.error('Failed to publish/schedule post', error);
-            toast.error(isPublishNow ? 'Failed to publish post' : 'Failed to schedule post');
-        });
+            const message = error instanceof Error ? error.message : (isPublishNow ? 'Failed to publish post' : 'Failed to schedule post');
+            toast.error(message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (

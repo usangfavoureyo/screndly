@@ -23,6 +23,10 @@ export interface TMDbFeed {
     cast: string[];
     popularity: number;
     cacheHit: boolean;
+    platforms?: string[];
+    status?: 'queued' | 'scheduled' | 'published' | 'failed';
+    publishedTime?: string;
+    errorMessage?: string;
 }
 
 interface ModalState {

@@ -219,7 +219,7 @@ export async function saveTMDbPost(
     source: string,
     scheduledTime: Date,
     preferredImage: 'poster' | 'backdrop' | 'random' = 'poster',
-    platforms: string[] = ['X', 'Threads'],
+    platforms: string[] = [],
     config?: RefreshSettings & { autoPost?: boolean }
 ): Promise<void> {
     const title = movie.title || movie.name || 'Unknown';
@@ -306,18 +306,28 @@ export async function saveTMDbPost(
             break;
         case 'random':
         default:
-            // Smart random: prefer backdrop for landscape, poster for portrait
-            // For now, alternate based on availability
-            if (movie.backdrop_path && movie.poster_path) {
-                // Use backdrop for landscape-oriented (more common on social)
-                imageUrl = `${TMDB_IMAGE_BASE}${movie.backdrop_path}`;
-                imageType = 'backdrop';
-            } else if (movie.poster_path) {
-                imageUrl = `${TMDB_IMAGE_BASE}${movie.poster_path}`;
-                imageType = 'poster';
-            } else if (movie.backdrop_path) {
-                imageUrl = `${TMDB_IMAGE_BASE}${movie.backdrop_path}`;
-                imageType = 'backdrop';
+            {
+                const availableImages: Array<{ url: string; type: 'poster' | 'backdrop' }> = [];
+
+                if (movie.poster_path) {
+                    availableImages.push({
+                        url: `${TMDB_IMAGE_BASE}${movie.poster_path}`,
+                        type: 'poster'
+                    });
+                }
+
+                if (movie.backdrop_path) {
+                    availableImages.push({
+                        url: `${TMDB_IMAGE_BASE}${movie.backdrop_path}`,
+                        type: 'backdrop'
+                    });
+                }
+
+                if (availableImages.length > 0) {
+                    const selectedImage = availableImages[Math.floor(Math.random() * availableImages.length)];
+                    imageUrl = selectedImage.url;
+                    imageType = selectedImage.type;
+                }
             }
             break;
     }
@@ -560,11 +570,64 @@ interface RefreshSettings {
     dedupeWindow?: number;
     tmdbQueuedRetentionHours?: number;
     anniversaryYears?: string[] | number[];
+    maxPerAnniversary?: number;
+    anniversaryStartYear?: string | number;
+    captionMaxLength?: number;
+    includeCast?: boolean;
+    includeDate?: boolean;
+    rehostImages?: boolean;
+    discoveryCacheTTL?: number;
+    creditsCacheTTL?: number;
+    captionCacheTTL?: number;
+    todayPlatforms?: {
+        x?: boolean;
+        threads?: boolean;
+        facebook?: boolean;
+        youtube?: boolean;
+        pinterest?: boolean;
+    };
+    weeklyPlatforms?: {
+        x?: boolean;
+        threads?: boolean;
+        facebook?: boolean;
+        youtube?: boolean;
+        pinterest?: boolean;
+    };
+    monthlyPlatforms?: {
+        x?: boolean;
+        threads?: boolean;
+        facebook?: boolean;
+        youtube?: boolean;
+        pinterest?: boolean;
+    };
+    anniversaryPlatforms?: {
+        x?: boolean;
+        threads?: boolean;
+        facebook?: boolean;
+        youtube?: boolean;
+        pinterest?: boolean;
+    };
     tmdbCaptionModel?: string; // AI Model
     todayPrompt?: string; // Custom prompts
     weeklyPrompt?: string;
     monthlyPrompt?: string;
     anniversaryPrompt?: string;
+    todayPinterestTitlePrompt?: string;
+    todayPinterestDescriptionPrompt?: string;
+    todayPinterestBoard?: string;
+    todayPinterestLinkStrategy?: string;
+    weeklyPinterestTitlePrompt?: string;
+    weeklyPinterestDescriptionPrompt?: string;
+    weeklyPinterestBoard?: string;
+    weeklyPinterestLinkStrategy?: string;
+    monthlyPinterestTitlePrompt?: string;
+    monthlyPinterestDescriptionPrompt?: string;
+    monthlyPinterestBoard?: string;
+    monthlyPinterestLinkStrategy?: string;
+    anniversaryPinterestTitlePrompt?: string;
+    anniversaryPinterestDescriptionPrompt?: string;
+    anniversaryPinterestBoard?: string;
+    anniversaryPinterestLinkStrategy?: string;
 }
 
 /**
@@ -584,8 +647,34 @@ const defaultRefreshSettings: RefreshSettings = {
     languageFilter: 'en',
     onlyPopular: true,
     dedupeWindow: 30,
-    tmdbQueuedRetentionHours: 168
+    tmdbQueuedRetentionHours: 168,
+    todayPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
+    weeklyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
+    monthlyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
+    anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false }
 };
+
+function getPlatformsForSource(sourceLabel: string, config: RefreshSettings): string[] {
+    const platformConfig = sourceLabel === 'tmdb_today'
+        ? config.todayPlatforms
+        : sourceLabel === 'tmdb_weekly'
+            ? config.weeklyPlatforms
+            : sourceLabel === 'tmdb_monthly'
+                ? config.monthlyPlatforms
+                : config.anniversaryPlatforms;
+
+    if (!platformConfig) {
+        return [];
+    }
+
+    const platforms: string[] = [];
+    if (platformConfig.x) platforms.push('X');
+    if (platformConfig.threads) platforms.push('Threads');
+    if (platformConfig.facebook) platforms.push('Facebook');
+    if (platformConfig.youtube) platforms.push('YouTube');
+    if (platformConfig.pinterest) platforms.push('Pinterest');
+    return platforms;
+}
 
 /**
  * Refresh TMDb content - fetch and save new posts with proper source labels
@@ -749,7 +838,15 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
                 else if (sourceLabel === 'tmdb_monthly') shouldAutoPost = !!config.monthlyAutoPost;
                 else if (sourceLabel === 'tmdb_anniversary') shouldAutoPost = !!config.anniversaryAutoPost;
 
-                await saveTMDbPost(candidate, type, sourceLabel, scheduleTime, config.preferredImage, undefined, { ...config, autoPost: shouldAutoPost });
+                await saveTMDbPost(
+                    candidate,
+                    type,
+                    sourceLabel,
+                    scheduleTime,
+                    config.preferredImage,
+                    getPlatformsForSource(sourceLabel, config),
+                    { ...config, autoPost: shouldAutoPost }
+                );
                 scheduleTime.setHours(scheduleTime.getHours() + 4);
                 added++;
             }
@@ -800,12 +897,18 @@ export async function isTMDbConfigured(): Promise<boolean> {
 export async function getTMDbSettings(): Promise<RefreshSettings> {
     const keys = [
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
-        'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
         'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
-        'selectedGenres', 'anniversaryYears', 'tmdbCaptionModel',
-        'todayPrompt', 'weeklyPrompt', 'monthlyPrompt', 'anniversaryPrompt'
+        'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
+        'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
+        'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL',
+        'todayPlatforms', 'weeklyPlatforms', 'monthlyPlatforms', 'anniversaryPlatforms',
+        'tmdbCaptionModel', 'todayPrompt', 'weeklyPrompt', 'monthlyPrompt', 'anniversaryPrompt',
+        'todayPinterestTitlePrompt', 'todayPinterestDescriptionPrompt', 'todayPinterestBoard', 'todayPinterestLinkStrategy',
+        'weeklyPinterestTitlePrompt', 'weeklyPinterestDescriptionPrompt', 'weeklyPinterestBoard', 'weeklyPinterestLinkStrategy',
+        'monthlyPinterestTitlePrompt', 'monthlyPinterestDescriptionPrompt', 'monthlyPinterestBoard', 'monthlyPinterestLinkStrategy',
+        'anniversaryPinterestTitlePrompt', 'anniversaryPinterestDescriptionPrompt', 'anniversaryPinterestBoard', 'anniversaryPinterestLinkStrategy'
     ];      // Note: Time settings (e.g. tmdbRefreshTimeToday) would be fetched here if supported by Cron
 
     const settings = await prisma.setting.findMany({
@@ -813,20 +916,31 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
     });
 
     const result: any = {};
+    const structuredKeys = new Set([
+        'selectedGenres',
+        'movieGenres',
+        'tvGenres',
+        'anniversaryYears',
+        'todayPlatforms',
+        'weeklyPlatforms',
+        'monthlyPlatforms',
+        'anniversaryPlatforms'
+    ]);
+
     settings.forEach(s => {
         // Parse boolean/number values if stored as strings/json
         if (s.value === 'true' || s.value === true) result[s.key] = true;
         else if (s.value === 'false' || s.value === false) result[s.key] = false;
-        else if (!isNaN(Number(s.value))) result[s.key] = Number(s.value);
-        else if (s.key === 'selectedGenres' || s.key === 'anniversaryYears') {
+        else if (typeof s.value === 'string' && structuredKeys.has(s.key)) {
             // Safe parse for arrays
             try {
-                result[s.key] = typeof s.value === 'string' ? JSON.parse(s.value) : s.value;
+                result[s.key] = JSON.parse(s.value);
             } catch (e) {
                 console.error(`Failed to parse ${s.key}`, e);
-                result[s.key] = [];
+                result[s.key] = s.key.endsWith('Platforms') ? {} : [];
             }
         }
+        else if (typeof s.value === 'string' && !isNaN(Number(s.value))) result[s.key] = Number(s.value);
         else result[s.key] = s.value;
     });
 

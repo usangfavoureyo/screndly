@@ -41,6 +41,20 @@ interface TMDbPostsContextType {
 
 const TMDbPostsContext = createContext<TMDbPostsContextType | undefined>(undefined);
 
+function normalizeTmdbPayload(payload: Record<string, any>) {
+  const normalized: Record<string, any> = { ...payload };
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'publishedTime') && payload.publishedTime === undefined) {
+    normalized.publishedTime = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, 'errorMessage') && payload.errorMessage === undefined) {
+    normalized.errorMessage = null;
+  }
+
+  return normalized;
+}
+
 export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<TMDbPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -146,7 +160,10 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
     try {
       const { apiClient } = await import('../lib/api/client');
-      const response = await apiClient.put(`/api/tmdb/posts/${post.id}`, { ...post, status: 'scheduled' });
+      const response = await apiClient.put(
+        `/api/tmdb/posts/${post.id}`,
+        normalizeTmdbPayload({ ...post, status: 'scheduled' })
+      );
       if (!response.success) throw new Error(response.error?.message || 'Failed to schedule post');
     } catch (err) {
       console.error('Failed to schedule post:', err);
@@ -223,7 +240,10 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
     try {
       const { apiClient } = await import('../lib/api/client');
-      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, { status, publishedTime, errorMessage });
+      const response = await apiClient.put(
+        `/api/tmdb/posts/${postId}`,
+        normalizeTmdbPayload({ status, publishedTime, errorMessage })
+      );
       if (!response.success) throw new Error(response.error?.message || 'Failed to update status');
     } catch (err) {
       console.error('Failed to update status:', err);
@@ -243,7 +263,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
     try {
       const { apiClient } = await import('../lib/api/client');
-      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, updates);
+      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, normalizeTmdbPayload(updates));
       if (!response.success) throw new Error(response.error?.message || 'Failed to update post');
     } catch (err) {
       console.error('Failed to update post:', err);
