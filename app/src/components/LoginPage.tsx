@@ -1,8 +1,7 @@
 import { useState, useRef } from 'react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
-import { Checkbox } from './ui/checkbox';
-import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Check } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { login } from '../lib/auth';
@@ -195,17 +194,30 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
             </div>
 
             <div className="flex items-center gap-2">
-              <Checkbox
+              <button
                 id="remember"
-                checked={rememberMe}
-                onCheckedChange={(checked) => {
-                  haptics.light();
-                  setRememberMe(checked as boolean);
-                }}
+                type="button"
+                role="checkbox"
+                aria-checked={rememberMe}
+                aria-labelledby="remember-label"
                 disabled={loading}
-                className="border-gray-300 dark:border-[#333333] data-[state=checked]:bg-[#ec1e24] data-[state=checked]:border-[#ec1e24] data-[state=checked]:text-white"
-              />
-              <Label htmlFor="remember" className="text-gray-600 dark:text-[#9CA3AF] cursor-pointer">
+                onClick={() => {
+                  haptics.light();
+                  setRememberMe((current) => !current);
+                }}
+                className={`flex h-6 w-6 items-center justify-center rounded-[6px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                  rememberMe
+                    ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                    : 'border-gray-300 bg-white text-transparent dark:border-[#333333] dark:bg-[#000000]'
+                }`}
+              >
+                <Check className={`h-4 w-4 stroke-[3] ${rememberMe ? 'opacity-100' : 'opacity-0'}`} />
+              </button>
+              <Label
+                id="remember-label"
+                htmlFor="remember"
+                className="text-gray-600 dark:text-[#9CA3AF] cursor-pointer"
+              >
                 Keep me signed in
               </Label>
             </div>

@@ -17,6 +17,10 @@ import { useBackNavigation } from "../contexts/BackNavigationContext";
 import { setupInstallPrompt, registerServiceWorker } from "../utils/pwa";
 import { logout } from "../lib/auth";
 
+const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
+const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
+const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = "5rem";
+
 // Lazy load heavy components for better performance
 const ChannelsPage = lazy(() => import("./ChannelsPage").then(m => ({ default: m.ChannelsPage })));
 const PlatformsPage = lazy(() => import("./PlatformsPage").then(m => ({ default: m.PlatformsPage })));
@@ -76,6 +80,7 @@ export function AppContent() {
   const [isCaptionEditorOpen, setIsCaptionEditorOpen] = useState(false);
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
   const [isNavDragging, setIsNavDragging] = useState(false);
+  const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
   // List of all valid pages
   const validPages = [
@@ -472,8 +477,29 @@ export function AppContent() {
     registerServiceWorker();
   }, []);
 
+  useEffect(() => {
+    const savedSidebarState = window.localStorage.getItem(DESKTOP_SIDEBAR_STORAGE_KEY);
+    if (savedSidebarState !== null) {
+      setIsDesktopSidebarCollapsed(savedSidebarState === "true");
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      DESKTOP_SIDEBAR_STORAGE_KEY,
+      String(isDesktopSidebarCollapsed),
+    );
+  }, [isDesktopSidebarCollapsed]);
+
+  const desktopSidebarWidth = isDesktopSidebarCollapsed
+    ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH
+    : DESKTOP_SIDEBAR_EXPANDED_WIDTH;
+
   return (
-    <div className="min-h-screen bg-white dark:bg-[#000000]">
+    <div
+      className="min-h-screen bg-white dark:bg-[#000000]"
+      style={{ ["--desktop-sidebar-width" as string]: desktopSidebarWidth }}
+    >
       {/* Skip to main content link for screen readers */}
       <a href="#main-content" className="skip-to-main">
         Skip to main content
@@ -486,9 +512,15 @@ export function AppContent() {
         onToggleNotifications={handleToggleNotifications}
         onLogout={handleLogout}
         unreadNotifications={unreadCount}
+        isDesktopSidebarCollapsed={isDesktopSidebarCollapsed}
+        onToggleDesktopSidebar={() => setIsDesktopSidebarCollapsed((previous) => !previous)}
       />
 
-      <main id="main-content" className="lg:ml-64 mb-16 lg:mb-0 relative z-10 bg-white dark:bg-black" role="main">
+      <main
+        id="main-content"
+        className="relative z-10 mb-16 bg-white transition-[margin-left] duration-200 ease-in-out dark:bg-black lg:mb-0 lg:ml-[var(--desktop-sidebar-width)]"
+        role="main"
+      >
         <div className="p-4 sm:p-6 lg:p-8 transition-opacity duration-200">
           {displayPage === "dashboard" && (
             <DashboardOverview onNavigate={handleNavigate} />

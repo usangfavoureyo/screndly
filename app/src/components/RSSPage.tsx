@@ -310,12 +310,13 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
+                  size="sm"
                   onClick={async () => {
                     haptics.light();
                     await refreshAllFeeds();
                     await loadActivity();
                   }}
-                  className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                  className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </Button>

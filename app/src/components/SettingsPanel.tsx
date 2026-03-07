@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, type ReactNode } from 'react';
 import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
@@ -54,6 +54,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   const [activeSettingsPage, setActiveSettingsPage] = useState<string | null>(initialPage || null);
   const [searchQuery, setSearchQuery] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const staticPageScrollRef = useRef<HTMLDivElement>(null);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
 
   // Track active page in ref for synchronous access in popstate listener
@@ -111,6 +112,25 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
       scrollContainerRef.current.scrollTop = savedScrollPosition;
     }
   }, [activeSettingsPage, savedScrollPosition, isOpen]);
+
+  useEffect(() => {
+    if (
+      activeSettingsPage &&
+      [
+        'privacy',
+        'terms',
+        'disclaimer',
+        'cookie',
+        'data-deletion',
+        'contact',
+        'about',
+        'design-system',
+        'app-info',
+      ].includes(activeSettingsPage)
+    ) {
+      staticPageScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    }
+  }, [activeSettingsPage]);
 
   const handleOpenSettingsPage = (pageId: string) => {
     if (scrollContainerRef.current) {
@@ -358,6 +378,20 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
 
   if (!isOpen) return null;
 
+  const renderStaticSettingsPage = (content: ReactNode) => (
+    <>
+      <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
+      <div
+        key={activeSettingsPage}
+        ref={staticPageScrollRef}
+        className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto overscroll-y-contain touch-pan-y"
+        style={{ WebkitOverflowScrolling: 'touch' }}
+      >
+        {content}
+      </div>
+    </>
+  );
+
   // Render sub-page if one is active
 
   if (activeSettingsPage === 'video') {
@@ -541,96 +575,33 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
 
   // Legal Pages
   if (activeSettingsPage === 'privacy') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <PrivacyPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<PrivacyPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'terms') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <TermsPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<TermsPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'disclaimer') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <DisclaimerPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<DisclaimerPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'cookie') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <CookiePage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<CookiePage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'data-deletion') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <DataDeletionPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<DataDeletionPage onNavigate={() => handleCloseSubpage()} />);
   }
 
   // Company Pages
   if (activeSettingsPage === 'contact') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <ContactPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<ContactPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'about') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <AboutPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<AboutPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'design-system') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <DesignSystemPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<DesignSystemPage onNavigate={() => handleCloseSubpage()} />);
   }
   if (activeSettingsPage === 'app-info') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
-        <div ref={(el) => el && (el.scrollTop = 0)} className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-          <AppInfoPage onNavigate={() => handleCloseSubpage()} />
-        </div>
-      </>
-    );
+    return renderStaticSettingsPage(<AppInfoPage onNavigate={() => handleCloseSubpage()} />);
   }
 
   return (
