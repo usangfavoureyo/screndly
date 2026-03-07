@@ -234,8 +234,14 @@ export class ApiClient {
       xhr.addEventListener('load', () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
-            const data = JSON.parse(xhr.responseText);
-            resolve({ success: true, data });
+            const result = JSON.parse(xhr.responseText);
+
+            if (result && typeof result === 'object' && 'success' in result && ('data' in result || 'error' in result)) {
+              resolve(result as ApiResponse<T>);
+              return;
+            }
+
+            resolve({ success: true, data: result });
           } catch {
             resolve({
               success: false,
