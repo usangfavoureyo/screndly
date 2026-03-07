@@ -4,6 +4,7 @@ import axios from 'axios';
 import prisma from '../lib/prisma';
 import { env } from '../lib/env';
 import { assertXOAuthConfigured, buildXTokenRequest, getXOAuthClientId } from '../lib/xOAuth';
+import { getTikTokClientKey, getTikTokClientSecret } from '../lib/tiktokOAuth';
 import multer from 'multer';
 import { xService } from '../services/platforms/x';
 import { metaService } from '../services/platforms/meta';
@@ -647,13 +648,15 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
             }
 
             case 'TikTok': {
+                const tiktokClientKey = getTikTokClientKey();
+                const tiktokClientSecret = getTikTokClientSecret();
                 assertConfigured('TikTok', {
-                    TIKTOK_CLIENT_KEY: env.TIKTOK_CLIENT_KEY,
-                    TIKTOK_CLIENT_SECRET: env.TIKTOK_CLIENT_SECRET
+                    TIKTOK_CLIENT_KEY: tiktokClientKey,
+                    TIKTOK_CLIENT_SECRET: tiktokClientSecret
                 });
 
                 const scopes = ['user.info.basic', 'video.publish', 'video.upload'];
-                oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${encodeURIComponent(env.TIKTOK_CLIENT_KEY || '')}&scope=${encodeURIComponent(scopes.join(','))}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateFor())}`;
+                oauthUrl = `https://www.tiktok.com/v2/auth/authorize/?client_key=${encodeURIComponent(tiktokClientKey)}&scope=${encodeURIComponent(scopes.join(','))}&response_type=code&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateFor())}`;
                 break;
             }
 
@@ -1010,14 +1013,16 @@ router.post('/callback', async (req, res) => {
                 }
             });
         } else if (normalizedPlatform === 'TikTok') {
+            const tiktokClientKey = getTikTokClientKey();
+            const tiktokClientSecret = getTikTokClientSecret();
             assertConfigured('TikTok', {
-                TIKTOK_CLIENT_KEY: env.TIKTOK_CLIENT_KEY,
-                TIKTOK_CLIENT_SECRET: env.TIKTOK_CLIENT_SECRET
+                TIKTOK_CLIENT_KEY: tiktokClientKey,
+                TIKTOK_CLIENT_SECRET: tiktokClientSecret
             });
 
             const params = new URLSearchParams({
-                client_key: env.TIKTOK_CLIENT_KEY || '',
-                client_secret: env.TIKTOK_CLIENT_SECRET || '',
+                client_key: tiktokClientKey,
+                client_secret: tiktokClientSecret,
                 code,
                 grant_type: 'authorization_code',
                 redirect_uri: effectiveRedirectUri
