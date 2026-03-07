@@ -2,6 +2,7 @@ import { PlatformConnection, Prisma } from '@prisma/client';
 import axios from 'axios';
 import prisma from '../../lib/prisma';
 import { env } from '../../lib/env';
+import { buildXTokenRequest, getXOAuthClientId } from '../../lib/xOAuth';
 import { metaService } from './meta';
 
 const REFRESH_WINDOW_MS = 5 * 60 * 1000;
@@ -46,22 +47,19 @@ async function persistConnectionUpdate(
 }
 
 async function refreshXConnection(connection: PlatformConnection): Promise<PlatformConnection> {
-    if (!connection.refreshToken || !env.X_CLIENT_ID) {
+    const xClientId = getXOAuthClientId();
+    if (!connection.refreshToken || !xClientId) {
         return connection;
     }
 
     const params = new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: connection.refreshToken,
-        client_id: env.X_CLIENT_ID,
     });
+    const { params: tokenParams, headers: tokenHeaders } = buildXTokenRequest(params);
 
-    if (env.X_CLIENT_SECRET) {
-        params.append('client_secret', env.X_CLIENT_SECRET);
-    }
-
-    const response = await axios.post('https://api.x.com/2/oauth2/token', params.toString(), {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    const response = await axios.post('https://api.x.com/2/oauth2/token', tokenParams.toString(), {
+        headers: tokenHeaders,
     });
 
     const tokenData = response.data as {

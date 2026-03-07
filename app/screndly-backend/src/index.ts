@@ -7,6 +7,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import prisma from './lib/prisma';
 import { env } from './lib/env';
+import { getXOAuthClientId, getXOAuthClientSecret } from './lib/xOAuth';
 
 const app = express();
 const PORT = env.PORT;
@@ -57,6 +58,8 @@ app.get('/api/diag/oauth-config', (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || env.FRONTEND_URL || '';
     const normalizedFrontend = frontendUrl.replace(/\/+$/, '');
     const redirectUri = `${normalizedFrontend}/platforms/callback`;
+    const xClientId = getXOAuthClientId();
+    const xClientSecret = getXOAuthClientSecret();
 
     res.json({
         success: true,
@@ -74,8 +77,9 @@ app.get('/api/diag/oauth-config', (req, res) => {
                     hasAppSecret: !!process.env.THREADS_APP_SECRET,
                 },
                 x: {
-                    hasClientId: !!process.env.X_CLIENT_ID,
-                    hasClientSecret: !!process.env.X_CLIENT_SECRET,
+                    hasClientId: !!xClientId,
+                    hasClientSecret: !!xClientSecret,
+                    usingLegacyKeyNames: !process.env.X_CLIENT_ID && !!process.env.X_API_KEY,
                 },
                 youtube: {
                     hasClientId: !!process.env.YOUTUBE_CLIENT_ID,
