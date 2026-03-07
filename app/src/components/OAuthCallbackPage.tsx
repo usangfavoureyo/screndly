@@ -3,6 +3,7 @@ import { getAuthHeaders } from '../lib/api/authToken';
 import { getApiUrl } from '../lib/api/config';
 import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from './ui/button';
+import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 
 export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) => void }) {
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -134,7 +135,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                         code,
                         state: effectiveState,
                         codeVerifier,
-                        redirectUri: `${window.location.origin}/platforms/callback`
+                        redirectUri: getOAuthRedirectUri(platform || undefined)
                     })
                 });
                 window.clearTimeout(timeoutId);

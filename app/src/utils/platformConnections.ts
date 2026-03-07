@@ -33,6 +33,7 @@ interface BackendPlatformStatus {
   lastPost?: string;
   profileUrl?: string;
   expiresAt?: string;
+  error?: string;
 }
 
 const STORAGE_KEY = 'screndly_platform_connections';
@@ -117,6 +118,7 @@ export function syncPlatformConnectionsFromBackend(
         userId: existingConnection?.userId,
         username,
         profileUrl: serverConnection.profileUrl || buildProfileUrl(platform, username) || existingConnection?.profileUrl,
+        error: serverConnection.error,
       };
       return;
     }

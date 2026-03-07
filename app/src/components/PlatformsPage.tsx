@@ -26,6 +26,7 @@ interface Platform {
   autoHashtag: boolean;
   commentAutomation: boolean;
   status: 'valid' | 'expiring' | 'invalid' | 'disconnected';
+  statusMessage?: string;
   lastPost?: string;
 }
 
@@ -35,6 +36,7 @@ interface BackendPlatformStatus {
   lastPost?: string;
   profileUrl?: string;
   expiresAt?: string;
+  error?: string;
 }
 
 const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
@@ -181,6 +183,7 @@ export function PlatformsPage() {
           status: status.health === 'healthy' ? 'valid' as const :
             status.health === 'warning' ? 'expiring' as const :
               status.health === 'error' ? 'invalid' as const : 'disconnected' as const,
+          statusMessage: status.message,
           lastPost: connection?.connected ? formatLastConnection(connection) : undefined,
         };
       });

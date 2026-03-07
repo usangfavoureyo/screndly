@@ -31,6 +31,7 @@ interface BackendPlatformStatus {
     lastPost?: string;
     profileUrl?: string;
     expiresAt?: string;
+    error?: string;
 }
 
 interface OAuthStatePayload {
@@ -72,6 +73,59 @@ function getRedirectUri(override?: string): string {
     }
 
     return `${(env.FRONTEND_URL || '').replace(/\/+$/, '')}/platforms/callback`;
+}
+
+function getRequestedRedirectUri(value: unknown): string | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return undefined;
+    }
+
+    try {
+        const parsed = new URL(trimmed);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+            return undefined;
+        }
+
+        return parsed.toString().replace(/\/+$/, '');
+    } catch {
+        return undefined;
+    }
+}
+
+function extractProviderMessage(error: any): string {
+    const data = error?.response?.data;
+    const oauthError = typeof data?.error === 'string' ? data.error : undefined;
+    const oauthErrorDescription = typeof data?.error_description === 'string'
+        ? data.error_description
+        : undefined;
+
+    if (oauthErrorDescription) {
+        return oauthError ? `${oauthError}: ${oauthErrorDescription}` : oauthErrorDescription;
+    }
+
+    return (
+        data?.error?.message ||
+        data?.error_message ||
+        data?.message ||
+        data?.detail ||
+        data?.title ||
+        data?.errors?.[0]?.message ||
+        oauthError ||
+        error.message ||
+        'OAuth callback failed'
+    );
+}
+
+function createProviderStageError(stage: string, error: any): Error {
+    const message = extractProviderMessage(error);
+    const wrapped = new Error(`${stage}: ${message}`);
+    (wrapped as Error & { response?: unknown }).response = error?.response;
+    return wrapped;
 }
 
 function getStateSecret(): string {
@@ -449,6 +503,23 @@ router.get('/status', authenticate, async (req, res) => {
     // ... existing logic ...
     try {
         const connections = await prisma.platformConnection.findMany();
+        const refreshedConnections = await Promise.all(
+            connections.map(async (connection) => {
+                try {
+                    const freshConnection = await ensureFreshPlatformConnection(connection);
+                    return {
+                        connection: freshConnection || connection,
+                        error: undefined as string | undefined,
+                    };
+                } catch (error: any) {
+                    console.error(`[Platforms] Failed to refresh ${connection.platform} status:`, error?.response?.data || error);
+                    return {
+                        connection,
+                        error: extractProviderMessage(error),
+                    };
+                }
+            })
+        );
         const status: Record<SupportedPlatform, BackendPlatformStatus> = {
             X: { connected: false },
             Facebook: { connected: false },
@@ -458,7 +529,7 @@ router.get('/status', authenticate, async (req, res) => {
             TikTok: { connected: false },
             Pinterest: { connected: false }
         };
-        connections.forEach(conn => {
+        refreshedConnections.forEach(({ connection: conn, error }) => {
             const platform = normalizePlatform(conn.platform);
             if (!platform) return;
 
@@ -468,7 +539,8 @@ router.get('/status', authenticate, async (req, res) => {
                 username: conn.username || undefined,
                 lastPost: getJsonString(metadata, 'lastPostAt'),
                 profileUrl: buildProfileUrl(platform, conn.username, conn.userId, metadata),
-                expiresAt: conn.expiresAt?.toISOString()
+                expiresAt: conn.expiresAt?.toISOString(),
+                error,
             };
         });
         res.json({ success: true, data: status });
@@ -520,7 +592,7 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
         const platform = normalizePlatform(req.params.platform);
         if (!platform) throw new Error('Unsupported platform');
 
-        const redirectUri = getRedirectUri();
+        const redirectUri = getRedirectUri(getRequestedRedirectUri(req.query.redirectUri));
         let oauthUrl = '';
         const stateFor = (codeVerifier?: string) => createOAuthState(platform, redirectUri, codeVerifier);
 
@@ -794,9 +866,14 @@ router.post('/callback', async (req, res) => {
             });
             const { params: tokenParams, headers: tokenHeaders } = buildXTokenRequest(params);
 
-            const tokenResponse = await axios.post('https://api.x.com/2/oauth2/token', tokenParams.toString(), {
-                headers: tokenHeaders
-            });
+            let tokenResponse;
+            try {
+                tokenResponse = await axios.post('https://api.x.com/2/oauth2/token', tokenParams.toString(), {
+                    headers: tokenHeaders
+                });
+            } catch (error) {
+                throw createProviderStageError('X token exchange failed', error);
+            }
 
             const tokenData = tokenResponse.data as {
                 access_token: string;
@@ -806,10 +883,15 @@ router.post('/callback', async (req, res) => {
                 token_type?: string;
             };
 
-            const profileResponse = await axios.get('https://api.x.com/2/users/me', {
-                headers: { Authorization: `Bearer ${tokenData.access_token}` },
-                params: { 'user.fields': 'username,profile_image_url' }
-            });
+            let profileResponse;
+            try {
+                profileResponse = await axios.get('https://api.x.com/2/users/me', {
+                    headers: { Authorization: `Bearer ${tokenData.access_token}` },
+                    params: { 'user.fields': 'username,profile_image_url' }
+                });
+            } catch (error) {
+                throw createProviderStageError('X profile lookup failed', error);
+            }
 
             const profile = profileResponse.data?.data || {};
             if (!profile?.id) {
@@ -941,12 +1023,17 @@ router.post('/callback', async (req, res) => {
                 redirect_uri: effectiveRedirectUri
             });
 
-            const tokenResponse = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', params.toString(), {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Cache-Control': 'no-cache'
-                }
-            });
+            let tokenResponse;
+            try {
+                tokenResponse = await axios.post('https://open.tiktokapis.com/v2/oauth/token/', params.toString(), {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+            } catch (error) {
+                throw createProviderStageError('TikTok token exchange failed', error);
+            }
 
             const tokenData = (tokenResponse.data?.data || tokenResponse.data) as {
                 access_token: string;
@@ -1085,12 +1172,7 @@ router.post('/callback', async (req, res) => {
             ? error.response.status
             : 500;
 
-        const providerMessage =
-            error?.response?.data?.error?.message ||
-            error?.response?.data?.error_message ||
-            error?.response?.data?.message ||
-            error.message ||
-            'OAuth callback failed';
+        const providerMessage = extractProviderMessage(error);
 
         res.status(statusCode).json({
             success: false,

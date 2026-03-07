@@ -12,6 +12,7 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { XIcon } from './icons/XIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
+import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
@@ -144,7 +145,10 @@ export function PlatformConnectionModal({
       };
 
       const { apiClient } = await import('../lib/api/client');
-      const response = await apiClient.get<{ url?: string }>(`/api/platforms/auth/${platform}`);
+      const redirectUri = getOAuthRedirectUri(platform);
+      const response = await apiClient.get<{ url?: string }>(
+        `/api/platforms/auth/${platform}?redirectUri=${encodeURIComponent(redirectUri)}`
+      );
 
       if (response.success && response.data?.url) {
         const oauthUrl = new URL(response.data.url);
