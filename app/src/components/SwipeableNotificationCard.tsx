@@ -28,6 +28,7 @@ export function SwipeableNotificationCard({
   onActionClick,
   onOpen
 }: SwipeableNotificationCardProps) {
+  const touchSwipeEnabled = false;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
@@ -40,6 +41,7 @@ export function SwipeableNotificationCard({
   const hasDraggedRef = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (!touchSwipeEnabled) return;
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
     swipeDirectionRef.current = 'none';
@@ -49,6 +51,7 @@ export function SwipeableNotificationCard({
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchSwipeEnabled) return;
     currentX.current = e.touches[0].clientX;
     currentY.current = e.touches[0].clientY;
     
@@ -92,6 +95,7 @@ export function SwipeableNotificationCard({
   };
 
   const handleTouchEnd = () => {
+    if (!touchSwipeEnabled) return;
     if (swipeDirectionRef.current === 'horizontal') {
       const threshold = 90; // Increased from 60 to make less sensitive
       
@@ -197,9 +201,9 @@ export function SwipeableNotificationCard({
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
+        onTouchStart={touchSwipeEnabled ? handleTouchStart : undefined}
+        onTouchMove={touchSwipeEnabled ? handleTouchMove : undefined}
+        onTouchEnd={touchSwipeEnabled ? handleTouchEnd : undefined}
         onClick={handleClick}
       >
         {/* Desktop delete button - only visible on hover */}

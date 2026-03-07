@@ -347,24 +347,17 @@
 html {
   font-size: var(--font-size);
   scroll-behavior: auto;
-  -webkit-overflow-scrolling: auto;
-  /* Reduce scroll sensitivity */
   scroll-padding: 1rem;
 }
 
 body {
   scroll-behavior: auto;
-  -webkit-overflow-scrolling: auto;
-  /* Reduce scroll sensitivity */
-  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
-/* Auto scrolling for all scrollable containers */
+/* Let scroll gestures bubble to the real scroll container on mobile. */
 * {
   scroll-behavior: auto;
-  -webkit-overflow-scrolling: auto;
-  /* Reduce scroll sensitivity and prevent over-scrolling */
-  overscroll-behavior: contain;
 }
 
 /* Smooth transitions for page changes */

@@ -72,6 +72,7 @@ export function FeedCard({
 }: FeedCardProps) {
   const [isRefreshRunning, setIsRefreshRunning] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
+  const touchSwipeEnabled = false;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
@@ -85,6 +86,10 @@ export function FeedCard({
   const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!touchSwipeEnabled) {
+      return;
+    }
+
     const card = cardRef.current;
     if (!card) return;
 
@@ -160,7 +165,7 @@ export function FeedCard({
       card.removeEventListener('touchmove', onTouchMove);
       card.removeEventListener('touchend', onTouchEnd);
     };
-  }, [feed.id, onDelete]);
+  }, [feed.id, onDelete, touchSwipeEnabled]);
 
   const handleRunNow = async () => {
     haptics.medium();

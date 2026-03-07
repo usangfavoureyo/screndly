@@ -1,6 +1,11 @@
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { haptics } from '../../utils/haptics';
+import {
+  applyThemeToDocument,
+  dispatchThemeChange,
+  persistThemePreference,
+} from '../../lib/theme/themeStorage';
 
 interface AppearanceSettingsProps {
   theme: 'dark' | 'light';
@@ -39,8 +44,11 @@ export function AppearanceSettings({ theme, setTheme, updateSetting, onBack }: A
             onValueChange={(value: string) => {
               const themeValue = value as 'dark' | 'light';
               haptics.light();
-              updateSetting('darkMode', themeValue === 'dark');
+              applyThemeToDocument(themeValue);
+              persistThemePreference(themeValue, window.localStorage);
+              dispatchThemeChange(themeValue);
               setTheme(themeValue);
+              updateSetting('darkMode', themeValue === 'dark');
             }}
           >
             <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] !text-gray-900 dark:!text-white mt-1">
