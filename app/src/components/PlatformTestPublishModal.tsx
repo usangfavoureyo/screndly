@@ -31,6 +31,7 @@ interface PublishConfig {
   requiresText?: boolean;
   requiresImageUrl?: boolean;
   requiresVideoUrl?: boolean;
+  supportsVideoFile?: boolean;
   supportsLink?: boolean;
   textLabel: string;
 }
@@ -62,10 +63,11 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
   },
   TikTok: {
     title: 'Test TikTok Publish',
-    description: 'Send a live TikTok video post using a public video URL.',
-    liveWarning: 'TikTok test publishing creates a real post and requires a public video URL.',
+    description: 'Send a live TikTok video post using a video file or public video URL.',
+    liveWarning: 'TikTok test publishing creates a real post. File upload is recommended because public URLs can fail if Screndly cannot fetch the video file.',
     requiresTitle: true,
     requiresVideoUrl: true,
+    supportsVideoFile: true,
     textLabel: 'Caption',
   },
   X: {
@@ -77,10 +79,11 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
   },
   YouTube: {
     title: 'Test YouTube Publish',
-    description: 'Upload a live YouTube video from a public video URL.',
+    description: 'Upload a live YouTube video from a video file or public video URL.',
     liveWarning: 'YouTube test publishing uploads a real video and defaults it to private.',
     requiresTitle: true,
     requiresVideoUrl: true,
+    supportsVideoFile: true,
     textLabel: 'Description',
   },
   Pinterest: {
@@ -105,6 +108,7 @@ export function PlatformTestPublishModal({
   const [text, setText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [link, setLink] = useState('');
   const [isPublishing, setIsPublishing] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -116,6 +120,7 @@ export function PlatformTestPublishModal({
       setText('');
       setImageUrl('');
       setVideoUrl('');
+      setMediaFile(null);
       setLink('');
       setIsPublishing(false);
       setLastError(null);
@@ -146,8 +151,10 @@ export function PlatformTestPublishModal({
       return 'A public image URL is required.';
     }
 
-    if (config.requiresVideoUrl && !videoUrl.trim()) {
-      return 'A public video URL is required.';
+    if (config.requiresVideoUrl && !videoUrl.trim() && !mediaFile) {
+      return config.supportsVideoFile
+        ? 'A video file or public video URL is required.'
+        : 'A public video URL is required.';
     }
 
     return null;
@@ -172,7 +179,7 @@ export function PlatformTestPublishModal({
       imageUrl: imageUrl.trim() || undefined,
       videoUrl: videoUrl.trim() || undefined,
       link: link.trim() || undefined,
-    });
+    }, mediaFile || undefined);
 
     setIsPublishing(false);
 
@@ -266,6 +273,30 @@ export function PlatformTestPublishModal({
               onChange={(event) => setVideoUrl(event.target.value)}
               placeholder="https://example.com/video.mp4"
             />
+            {platform === 'TikTok' && (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Screndly will try to download the video and upload it to TikTok for you.
+              </p>
+            )}
+          </div>
+        )}
+
+        {config.supportsVideoFile && (
+          <div className="space-y-2">
+            <label className="text-sm text-gray-900 dark:text-white">Video file</label>
+            <Input
+              type="file"
+              accept="video/*"
+              onChange={(event) => setMediaFile(event.target.files?.[0] || null)}
+            />
+            {mediaFile && (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{mediaFile.name}</p>
+            )}
+            {platform === 'TikTok' && (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Preferred for TikTok. It avoids TikTok URL ownership verification checks.
+              </p>
+            )}
           </div>
         )}
 

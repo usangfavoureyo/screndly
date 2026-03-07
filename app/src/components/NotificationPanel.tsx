@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft,
   CheckCheck,
   Clapperboard,
   ExternalLink,
@@ -13,6 +12,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
+import { BackIconButton } from './BackIconButton';
 import { SwipeableNotificationCard } from './SwipeableNotificationCard';
 import { apiClient } from '../lib/api/client';
 import type { Notification, NotificationSource } from '../contexts/NotificationsContext';
@@ -373,12 +373,7 @@ export function NotificationPanel({
         )}
       </div>
 
-      <div
-        className="p-4 space-y-3"
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchMove={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
-      >
+      <div className="p-4 space-y-3">
         {filteredNotifications.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-gray-200 dark:bg-[#1A1A1A] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -413,16 +408,14 @@ export function NotificationPanel({
         <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 z-10">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
-              <button
-                className="text-black dark:text-white p-1"
+              <BackIconButton
                 onClick={() => {
-                  haptics.light();
                   setSelectedNotification(null);
                   setDetail(null);
                 }}
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
+                className="text-black dark:text-white hover:text-[#ec1e24] p-1 -ml-1"
+                ariaLabel="Back to notifications"
+              />
               <div className="min-w-0">
                 <h2 className="text-black dark:text-white text-xl truncate">Notification</h2>
                 <p className="text-xs text-[#6B7280]">{getSourceLabel(selectedNotification.source)}</p>

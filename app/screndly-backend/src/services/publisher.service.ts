@@ -159,10 +159,12 @@ export class PublisherService {
                         case 'TikTok':
                             if (connection.accessToken) {
                                 if (content.videoUrl || (mediaFilePath && !this.isImage(mediaFilePath))) {
-                                    const videoSource = content.videoUrl || mediaFilePath;
-                                    if (videoSource) {
+                                    if (content.videoUrl || mediaFilePath) {
                                         const ttResult = await tiktokService.postVideo(
-                                            videoSource,
+                                            {
+                                                filePath: mediaFilePath && !this.isImage(mediaFilePath) ? mediaFilePath : undefined,
+                                                videoUrl: content.videoUrl || undefined,
+                                            },
                                             content.title || content.text,
                                             connection.accessToken
                                         );

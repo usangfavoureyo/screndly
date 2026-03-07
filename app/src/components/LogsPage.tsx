@@ -3,6 +3,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Button } from './ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { haptics } from '../utils/haptics';
+import { BackIconButton } from './BackIconButton';
 import { getPlatformConnection, PlatformType } from '../utils/platformConnections';
 import { SwipeableLogRow } from './SwipeableLogRow';
 import { useUndo } from './UndoContext';
@@ -150,17 +151,11 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
     <div className="space-y-6">
       <div className="flex items-start gap-4">
         {onNavigate && (
-          <button
-            onClick={() => {
-              haptics.light();
-              onNavigate('dashboard');
-            }}
+          <BackIconButton
+            onClick={() => onNavigate('dashboard')}
             className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7" />
-            </svg>
-          </button>
+            ariaLabel="Back to dashboard"
+          />
         )}
         <div>
           <h1 className="text-gray-900 dark:text-white mb-2">Logs Activity</h1>

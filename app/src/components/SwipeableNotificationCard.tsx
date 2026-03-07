@@ -35,10 +35,16 @@ export function SwipeableNotificationCard({
   const startY = useRef(0);
   const currentX = useRef(0);
   const currentY = useRef(0);
+  const swipeXRef = useRef(0);
+  const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
+  const hasDraggedRef = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
+    swipeDirectionRef.current = 'none';
+    swipeXRef.current = 0;
+    hasDraggedRef.current = false;
     setSwipeDirection('none');
   };
 
@@ -46,48 +52,56 @@ export function SwipeableNotificationCard({
     currentX.current = e.touches[0].clientX;
     currentY.current = e.touches[0].clientY;
     
-    const deltaX = Math.abs(currentX.current - startX.current);
-    const deltaY = Math.abs(currentY.current - startY.current);
+    const deltaX = currentX.current - startX.current;
+    const deltaY = currentY.current - startY.current;
+    const absDeltaX = Math.abs(deltaX);
+    const absDeltaY = Math.abs(deltaY);
     
-    // Determine swipe direction on first significant movement
-    if (swipeDirection === 'none' && (deltaX > 10 || deltaY > 10)) {
-      // If horizontal movement is greater than vertical, it's a horizontal swipe
-      if (deltaX > deltaY * 1.5) {
+    if (absDeltaX > 6 || absDeltaY > 6) {
+      hasDraggedRef.current = true;
+    }
+
+    // Determine swipe direction only after a deliberate gesture so vertical
+    // scrolling on mobile wins over card swipe.
+    if (swipeDirectionRef.current === 'none') {
+      if (absDeltaY >= 10 && absDeltaY > absDeltaX) {
+        swipeDirectionRef.current = 'vertical';
+        setSwipeDirection('vertical');
+        return;
+      }
+
+      if (absDeltaX >= 24 && absDeltaX > absDeltaY * 2) {
+        swipeDirectionRef.current = 'horizontal';
         setSwipeDirection('horizontal');
         setIsSwiping(true);
       } else {
-        // Otherwise, it's vertical scrolling
-        setSwipeDirection('vertical');
+        return;
       }
     }
     
-    // Only handle horizontal swipe
-    if (swipeDirection === 'horizontal') {
+    if (swipeDirectionRef.current === 'horizontal') {
       e.stopPropagation();
       e.preventDefault(); // Prevent scrolling while swiping horizontally
       
-      const diff = currentX.current - startX.current;
-      
-      // Limit swipe distance
       const maxSwipe = 120;
-      const clampedDiff = Math.max(-maxSwipe, Math.min(maxSwipe, diff));
-      
+      const clampedDiff = Math.max(-maxSwipe, Math.min(maxSwipe, deltaX));
+
+      swipeXRef.current = clampedDiff;
       setSwipeX(clampedDiff);
     }
   };
 
   const handleTouchEnd = () => {
-    // Only process swipe action if it was a horizontal swipe
-    if (swipeDirection === 'horizontal') {
+    if (swipeDirectionRef.current === 'horizontal') {
       const threshold = 90; // Increased from 60 to make less sensitive
       
       // Swipe left (delete)
-      if (swipeX < -threshold) {
+      if (swipeXRef.current < -threshold) {
         haptics.medium();
         onDelete(notification.id);
       }
       // Swipe right (mark as read)
-      else if (swipeX > threshold) {
+      else if (swipeXRef.current > threshold) {
         haptics.medium();
         if (!notification.read) {
           onMarkAsRead(notification.id);
@@ -96,13 +110,15 @@ export function SwipeableNotificationCard({
     }
     
     // Reset state
+    swipeDirectionRef.current = 'none';
+    swipeXRef.current = 0;
     setIsSwiping(false);
     setSwipeDirection('none');
     setSwipeX(0);
   };
 
   const handleClick = () => {
-    if (Math.abs(swipeX) < 5) {
+    if (!hasDraggedRef.current && Math.abs(swipeXRef.current) < 5) {
       if (!notification.read) {
         onMarkAsRead(notification.id);
       }
@@ -172,7 +188,7 @@ export function SwipeableNotificationCard({
 
       {/* Notification Card */}
       <div
-        className={`relative w-full text-left p-4 rounded-lg shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-shadow select-none group ${
+        className={`relative w-full text-left p-4 rounded-lg shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-shadow select-none group touch-pan-y ${
           notification.read
             ? 'bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333]'
             : 'bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] !border-l-4 !border-l-[#ec1e24]'

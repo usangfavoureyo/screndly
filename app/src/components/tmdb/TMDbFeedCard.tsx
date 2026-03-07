@@ -107,28 +107,35 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
       currentX.current = e.touches[0].clientX;
       currentY.current = e.touches[0].clientY;
 
-      const deltaX = Math.abs(currentX.current - startX.current);
-      const deltaY = Math.abs(currentY.current - startY.current);
+      const diffX = currentX.current - startX.current;
+      const diffY = currentY.current - startY.current;
+      const deltaX = Math.abs(diffX);
+      const deltaY = Math.abs(diffY);
 
-      // Determine swipe direction on first significant movement
-      if (swipeDirectionRef.current === 'none' && (deltaX > 10 || deltaY > 10)) {
-        if (deltaX > deltaY * 1.5) {
+      // Prefer vertical page scrolling. Horizontal swipe should only latch
+      // after a deliberate left swipe.
+      if (swipeDirectionRef.current === 'none') {
+        if (deltaY >= 10 && deltaY > deltaX) {
+          swipeDirectionRef.current = 'vertical';
+          setSwipeDirection('vertical');
+          return;
+        }
+
+        if (diffX < 0 && deltaX >= 24 && deltaX > deltaY * 2) {
           swipeDirectionRef.current = 'horizontal';
           isSwipingRef.current = true;
           setSwipeDirection('horizontal'); // Trigger re-render for UI state
           setIsSwiping(true);
         } else {
-          swipeDirectionRef.current = 'vertical';
-          setSwipeDirection('vertical');
+          return;
         }
       }
 
       // Handle horizontal swipe
       if (swipeDirectionRef.current === 'horizontal') {
-        const diff = currentX.current - startX.current;
-        if (diff <= 0) {
+        if (diffX <= 0) {
           const maxSwipe = 120;
-          const clampedDiff = Math.max(-maxSwipe, diff);
+          const clampedDiff = Math.max(-maxSwipe, diffX);
           swipeXRef.current = clampedDiff;
           setSwipeX(clampedDiff);
         }

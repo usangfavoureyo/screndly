@@ -369,15 +369,21 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         break;
 
                     case 'TikTok':
-                        // TikTok needs videoUrl (Pull from URL) OR File Upload
-                        // If we have a local file, we would need to upload it to a public URL first or use a different API endpoint
-                        // For now, assuming videoUrl is provided or we leverage the file if strictly supported
                         if (connection?.accessToken) {
-                            if (videoUrl) {
-                                const ttResult = await tiktokService.postVideo(videoUrl, title || text, connection.accessToken);
+                            if (localFilePath || videoUrl) {
+                                const ttResult = await tiktokService.postVideo(
+                                    {
+                                        filePath: localFilePath || undefined,
+                                        fileName: req.file?.originalname,
+                                        mimeType: req.file?.mimetype,
+                                        videoUrl: videoUrl || undefined,
+                                    },
+                                    title || text,
+                                    connection.accessToken
+                                );
                                 result = { platform, ...ttResult, status: ttResult.success ? 'posted' : 'failed' };
                             } else {
-                                result = { platform, status: 'failed', error: 'TikTok requires a public video URL' };
+                                result = { platform, status: 'failed', error: 'TikTok requires a video file upload or public video URL' };
                             }
                         }
                         break;
