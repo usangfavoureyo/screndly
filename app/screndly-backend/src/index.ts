@@ -7,6 +7,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import prisma from './lib/prisma';
 import { env } from './lib/env';
+import { getTikTokClientKey, getTikTokClientSecret, hasTikTokCredentialWhitespace } from './lib/tiktokOAuth';
 import { getXOAuthClientId, getXOAuthClientSecret } from './lib/xOAuth';
 
 const app = express();
@@ -60,6 +61,8 @@ app.get('/api/diag/oauth-config', (req, res) => {
     const redirectUri = `${normalizedFrontend}/platforms/callback`;
     const xClientId = getXOAuthClientId();
     const xClientSecret = getXOAuthClientSecret();
+    const tiktokClientKey = getTikTokClientKey();
+    const tiktokClientSecret = getTikTokClientSecret();
 
     res.json({
         success: true,
@@ -86,8 +89,9 @@ app.get('/api/diag/oauth-config', (req, res) => {
                     hasClientSecret: !!process.env.YOUTUBE_CLIENT_SECRET,
                 },
                 tiktok: {
-                    hasClientKey: !!process.env.TIKTOK_CLIENT_KEY,
-                    hasClientSecret: !!process.env.TIKTOK_CLIENT_SECRET,
+                    hasClientKey: !!tiktokClientKey,
+                    hasClientSecret: !!tiktokClientSecret,
+                    hasCredentialWhitespace: hasTikTokCredentialWhitespace(),
                 },
                 pinterest: {
                     hasAppId: !!process.env.PINTEREST_APP_ID,

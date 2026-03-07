@@ -2,6 +2,7 @@ import { PlatformConnection, Prisma } from '@prisma/client';
 import axios from 'axios';
 import prisma from '../../lib/prisma';
 import { env } from '../../lib/env';
+import { getTikTokClientKey, getTikTokClientSecret } from '../../lib/tiktokOAuth';
 import { buildXTokenRequest, getXOAuthClientId } from '../../lib/xOAuth';
 import { metaService } from './meta';
 
@@ -115,13 +116,15 @@ async function refreshYouTubeConnection(connection: PlatformConnection): Promise
 }
 
 async function refreshTikTokConnection(connection: PlatformConnection): Promise<PlatformConnection> {
-    if (!connection.refreshToken || !env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
+    const tiktokClientKey = getTikTokClientKey();
+    const tiktokClientSecret = getTikTokClientSecret();
+    if (!connection.refreshToken || !tiktokClientKey || !tiktokClientSecret) {
         return connection;
     }
 
     const params = new URLSearchParams({
-        client_key: env.TIKTOK_CLIENT_KEY,
-        client_secret: env.TIKTOK_CLIENT_SECRET,
+        client_key: tiktokClientKey,
+        client_secret: tiktokClientSecret,
         refresh_token: connection.refreshToken,
         grant_type: 'refresh_token',
     });
