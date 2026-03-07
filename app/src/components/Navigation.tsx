@@ -1,9 +1,20 @@
-import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image } from 'lucide-react';
+import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
-import { useState } from 'react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { useState, type ReactNode } from 'react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import brandIcon from '../assets/brand-icon.png';
+import { cn } from './ui/utils';
+
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'channels', label: 'Channels', icon: Youtube },
+  { id: 'platforms', label: 'Platforms', icon: Share2 },
+  { id: 'feeds', label: 'Feeds', icon: Rss },
+  { id: 'design-studio', label: 'Design Studio', icon: Image },
+  { id: 'video-studio', label: 'Video Studio', icon: Film },
+] as const;
 
 interface NavigationProps {
   currentPage: string;
@@ -12,79 +23,156 @@ interface NavigationProps {
   onToggleNotifications: () => void;
   onLogout: () => void;
   unreadNotifications: number;
+  isDesktopSidebarCollapsed: boolean;
+  onToggleDesktopSidebar: () => void;
 }
 
-export function Navigation({ currentPage, onNavigate, onToggleSettings, onToggleNotifications, onLogout, unreadNotifications }: NavigationProps) {
+export function Navigation({
+  currentPage,
+  onNavigate,
+  onToggleSettings,
+  onToggleNotifications,
+  onLogout,
+  unreadNotifications,
+  isDesktopSidebarCollapsed,
+  onToggleDesktopSidebar,
+}: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const scrollDirection = useScrollDirection();
+  const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
 
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'channels', label: 'Channels', icon: Youtube },
-    { id: 'platforms', label: 'Platforms', icon: Share2 },
-    { id: 'feeds', label: 'Feeds', icon: Rss },
-    { id: 'design-studio', label: 'Design Studio', icon: Image },
-    { id: 'video-studio', label: 'Video Studio', icon: Film },
-  ];
+  const handleNavClick = (page: string) => {
+    onNavigate(page);
+    setIsMobileMenuOpen(false);
+  };
 
-  const NavContent = () => (
+  const renderTooltipButton = (label: string, child: ReactNode, enabled: boolean) => {
+    if (!enabled) {
+      return <>{child}</>;
+    }
+
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{child}</TooltipTrigger>
+        <TooltipContent side="right" sideOffset={12}>
+          {label}
+        </TooltipContent>
+      </Tooltip>
+    );
+  };
+
+  const NavContent = ({ isCollapsed, isDesktop }: { isCollapsed: boolean; isDesktop: boolean }) => (
     <>
-      <div className="p-6 border-b border-gray-200 dark:border-[#333333]">
-        <button
-          onClick={() => {
-            onNavigate('dashboard');
-            setIsMobileMenuOpen(false);
-          }}
-          className="cursor-pointer flex items-center gap-3 w-full transition-transform duration-300 hover:scale-105 active:scale-95"
-        >
-          <img src={brandIcon} alt="Screndly" className="w-10 h-10 transition-transform duration-300 rounded-md object-contain" />
-        </button>
+      <div className={cn(
+        'border-b border-gray-200 dark:border-[#333333]',
+        isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
+      )}>
+        <div className={cn('flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
+          <button
+            onClick={() => handleNavClick('dashboard')}
+            className={cn(
+              'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
+              isCollapsed && isDesktop ? 'justify-center' : 'gap-3',
+            )}
+            aria-label="Go to dashboard"
+          >
+            <img src={brandIcon} alt="Screndly" className="h-10 w-10 rounded-md object-contain transition-transform duration-300" />
+          </button>
+
+          {isDesktop && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={onToggleDesktopSidebar}
+                  className={cn(
+                    'hidden lg:inline-flex h-10 w-10 rounded-xl border border-gray-200/80 text-gray-600 shadow-sm transition-all duration-200 hover:border-[#ec1e24]/30 hover:bg-gray-100 hover:text-[#ec1e24] dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
+                    isCollapsed && 'absolute top-5 right-3',
+                  )}
+                  aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                  aria-pressed={isCollapsed}
+                >
+                  {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={12}>
+                {isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
+      <nav className={cn('flex-1 space-y-1', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')} aria-label="Primary navigation">
+        {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
-          return (
+          const button = (
             <button
               key={item.id}
-              onClick={() => {
-                onNavigate(item.id);
-                setIsMobileMenuOpen(false);
-              }}
+              onClick={() => handleNavClick(item.id)}
               onPointerDown={(e) => {
-                // Fallback: capture mouse/pen events at pointer level
                 if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-                  onNavigate(item.id);
-                  setIsMobileMenuOpen(false);
+                  handleNavClick(item.id);
                 }
               }}
-              className={`cursor-pointer w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 ${isActive
-                ? 'bg-[#ec1e24] text-white'
-                : 'text-gray-600 dark:text-[#9CA3AF] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] hover:translate-x-1'
-                }`}
+              className={cn(
+                'group relative cursor-pointer w-full overflow-hidden rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
+                isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex items-center gap-3 px-4 py-3 text-left',
+                isActive
+                  ? 'bg-[#ec1e24] text-white shadow-[0_10px_24px_rgba(236,30,36,0.22)]'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A] dark:hover:text-white',
+              )}
+              aria-current={isActive ? 'page' : undefined}
+              aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
-              <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? '' : 'group-hover:scale-110'}`} />
-              <span>{item.label}</span>
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'absolute inset-y-2 left-0 rounded-r-full bg-white/90 transition-all duration-200',
+                  isActive ? 'w-1.5 opacity-100' : 'w-0 opacity-0',
+                )}
+              />
+              <Icon className={cn('h-5 w-5 shrink-0 transition-transform duration-200', !isActive && 'group-hover:scale-110')} />
+              {(!isCollapsed || !isDesktop) && (
+                <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
+              )}
             </button>
+          );
+
+          return (
+            <div key={item.id}>
+              {renderTooltipButton(item.label, button, isCollapsed && isDesktop)}
+            </div>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-gray-200 dark:border-[#333333]">
-        <Button
-          onClick={onLogout}
-          onPointerDown={(e) => {
-            if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-              onLogout();
-            }
-          }}
-          variant="ghost"
-          className="cursor-pointer w-full justify-start gap-3 text-gray-600 dark:text-[#9CA3AF] hover:bg-gray-100 dark:hover:bg-[#1A1A1A] rounded-xl transition-all duration-300 hover:translate-x-1 hover:text-[#ec1e24]"
-        >
-          <LogOut className="w-5 h-5 transition-transform duration-300" />
-          <span>Logout</span>
-        </Button>
+      <div className={cn('border-t border-gray-200 dark:border-[#333333]', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')}>
+        {renderTooltipButton(
+          'Logout',
+          <Button
+            type="button"
+            onClick={onLogout}
+            onPointerDown={(e) => {
+              if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+                onLogout();
+              }
+            }}
+            variant="ghost"
+            className={cn(
+              'cursor-pointer rounded-xl text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
+              isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'w-full justify-start gap-3 px-4 py-3',
+            )}
+            aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
+          >
+            <LogOut className="h-5 w-5 shrink-0 transition-transform duration-200" />
+            {(!isCollapsed || !isDesktop) && <span className="truncate">Logout</span>}
+          </Button>,
+          isCollapsed && isDesktop,
+        )}
       </div>
     </>
   );
@@ -93,9 +181,9 @@ export function Navigation({ currentPage, onNavigate, onToggleSettings, onToggle
     <>
       {/* Desktop/Mobile Header */}
       <div
-        className={`fixed left-0 right-0 h-16 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] z-40 flex items-center justify-between px-4 lg:pl-64 transition-transform duration-300 ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'
+        className={`fixed left-0 right-0 h-16 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] z-40 flex items-center justify-between px-4 transition-[padding,transform] duration-200 ease-in-out lg:pl-[var(--desktop-sidebar-width)] ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'
           }`}
-        style={{ top: 0 }}
+        style={{ top: 0, ["--desktop-sidebar-width" as string]: desktopSidebarWidth }}
       >
         {/* Logo on mobile/tablet, sidebar on desktop */}
         <div className="flex items-center lg:flex-1">
@@ -147,15 +235,20 @@ export function Navigation({ currentPage, onNavigate, onToggleSettings, onToggle
 
           {/* Mobile Menu Drawer */}
           <aside className="fixed top-0 left-0 h-full w-64 bg-white dark:bg-[#000000] border-r border-gray-200 dark:border-[#333333] flex-col z-50 lg:hidden flex">
-            <NavContent />
+            <NavContent isCollapsed={false} isDesktop={false} />
           </aside>
         </>
       )}
 
       {/* Sidebar - Desktop Only (lg and above) */}
-      <aside className="hidden lg:flex fixed top-0 left-0 h-full w-64 bg-white dark:bg-[#000000] border-r border-gray-200 dark:border-[#333333] flex-col z-50 pointer-events-auto" style={{ isolation: 'isolate' }}>
-        <NavContent />
-      </aside>
+      <TooltipProvider delayDuration={0}>
+        <aside
+          className="pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
+          style={{ isolation: 'isolate', width: desktopSidebarWidth }}
+        >
+          <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
+        </aside>
+      </TooltipProvider>
 
       {/* Spacer for fixed header */}
       <div className="h-16" />
