@@ -5,7 +5,9 @@
 import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import Parser from 'rss-parser';
+import { getSecretSetting } from '../lib/settings';
 import aiService, { type AIModel } from './ai.service';
+import { trackApiUsage } from './api-usage.service';
 import { publisherService } from './publisher.service';
 
 export interface RSSFeedFilters {
@@ -22,6 +24,8 @@ export interface RSSFeedFilters {
     caseSensitive: boolean;
     active: boolean;
   }>;
+  onlyFetchNewItems?: boolean;
+  startFromNowAt?: string | null;
 }
 
 export interface PlatformsEnabled {
@@ -45,6 +49,8 @@ export interface RSSFeedInput {
   autoPost?: boolean;
   platformsEnabled?: PlatformsEnabled;
   status?: string;
+  onlyFetchNewItems?: boolean;
+  startFromNowAt?: string | null;
 }
 
 interface RSSItem {
@@ -65,6 +71,12 @@ interface RSSFeedData {
   lastBuildDate?: Date;
 }
 
+interface SerperImagesResponse {
+  images?: Array<{
+    imageUrl?: string;
+  }>;
+}
+
 export interface RefreshResult {
   feedId: string;
   feedName: string;
@@ -74,6 +86,11 @@ export interface RefreshResult {
   failedCount: number;
   latestItemTitle?: string;
   error?: string;
+  selectionMode?: 'backlog' | 'latest_item';
+}
+
+interface RefreshFeedOptions {
+  manualRun?: boolean;
 }
 
 export interface RSSActivityItem {
@@ -190,7 +207,14 @@ function stripHtml(value?: string): string {
 }
 
 function ensureFeedFilters(filters?: RSSFeedFilters): RSSFeedFilters {
-  return filters ?? { scope: 'title_or_body', required: [], blocked: [] };
+  return {
+    scope: filters?.scope ?? 'title_or_body',
+    required: Array.isArray(filters?.required) ? filters!.required : [],
+    blocked: Array.isArray(filters?.blocked) ? filters!.blocked : [],
+    onlyFetchNewItems: filters?.onlyFetchNewItems ?? false,
+    startFromNowAt:
+      typeof filters?.startFromNowAt === 'string' ? filters.startFromNowAt : null,
+  };
 }
 
 function ensurePlatformsEnabled(platforms?: PlatformsEnabled): PlatformsEnabled {
@@ -215,6 +239,52 @@ function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolea
           return key;
       }
     });
+}
+
+function resolveForwardOnlySettings(
+  filters?: RSSFeedFilters,
+  overrides?: {
+    previousFilters?: RSSFeedFilters;
+    explicitOnlyFetchNewItems?: boolean;
+    explicitStartFromNowAt?: string | null;
+  }
+): RSSFeedFilters {
+  const normalizedFilters = ensureFeedFilters(filters);
+  const previousFilters = ensureFeedFilters(overrides?.previousFilters);
+
+  const onlyFetchNewItems =
+    overrides?.explicitOnlyFetchNewItems ??
+    normalizedFilters.onlyFetchNewItems ??
+    previousFilters.onlyFetchNewItems ??
+    false;
+
+  let startFromNowAt: string | null = previousFilters.startFromNowAt ?? null;
+
+  if (onlyFetchNewItems) {
+    if (!previousFilters.onlyFetchNewItems) {
+      startFromNowAt = new Date().toISOString();
+    } else {
+      startFromNowAt =
+        overrides?.explicitStartFromNowAt ??
+        normalizedFilters.startFromNowAt ??
+        previousFilters.startFromNowAt ??
+        new Date().toISOString();
+    }
+  } else {
+    startFromNowAt = null;
+  }
+
+  return {
+    ...normalizedFilters,
+    onlyFetchNewItems,
+    startFromNowAt,
+  };
+}
+
+function parseFilterTimestamp(value?: string | null): Date | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function toAIModel(value: string): AIModel {
@@ -263,6 +333,82 @@ function extractImageUrl(item: Record<string, any>): string | undefined {
   const htmlContent = item['content:encoded'] || item.contentEncoded || item.content || item.contentSnippet || item.summary;
   const imageMatch = typeof htmlContent === 'string' ? htmlContent.match(/<img[^>]*src=["']([^"']+)["']/i) : null;
   return imageMatch?.[1];
+}
+
+async function searchSerperImage(query: string): Promise<string | undefined> {
+  const apiKey = await getSecretSetting('serperKey');
+  if (!apiKey) {
+    return undefined;
+  }
+
+  let tracked = false;
+
+  try {
+    const response = await fetch('https://google.serper.dev/images', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-KEY': apiKey,
+      },
+      body: JSON.stringify({
+        q: query,
+        num: 8,
+        gl: 'us',
+        hl: 'en',
+        type: 'images',
+        engine: 'google',
+      }),
+    });
+
+    const data = await response.json().catch(() => null) as SerperImagesResponse | null;
+    await trackApiUsage({
+      service: 'serper',
+      endpoint: '/images',
+      success: response.ok,
+    });
+    tracked = true;
+
+    if (!response.ok) {
+      console.error('[RSS] Serper image request failed:', data);
+      return undefined;
+    }
+
+    return Array.isArray(data?.images)
+      ? data!.images.find((image) => typeof image?.imageUrl === 'string' && image.imageUrl.startsWith('http'))?.imageUrl
+      : undefined;
+  } catch (error) {
+    if (!tracked) {
+      await trackApiUsage({
+        service: 'serper',
+        endpoint: '/images',
+        success: false,
+      });
+    }
+
+    console.error('[RSS] Serper image lookup failed:', error);
+    return undefined;
+  }
+}
+
+async function resolveRSSItemImage(feed: { serperPriority: boolean }, item: RSSItem): Promise<string | undefined> {
+  if (!feed.serperPriority) {
+    return item.imageUrl;
+  }
+
+  const queries = [
+    item.title,
+    item.author ? `${item.title} ${item.author}` : null,
+    item.description ? `${item.title} ${item.description.slice(0, 120)}` : null,
+  ].filter((query): query is string => Boolean(query && query.trim()));
+
+  for (const query of queries) {
+    const serperImageUrl = await searchSerperImage(query);
+    if (serperImageUrl) {
+      return serperImageUrl;
+    }
+  }
+
+  return item.imageUrl;
 }
 
 function buildRSSCaptionSystemPrompt(
@@ -473,7 +619,13 @@ async function getPublishingBlockReason(platforms: string[], settings: RSSRuntim
   return null;
 }
 
-async function persistFeedSnapshot(feedId: string, item: RSSItem | undefined, caption: string | null, platforms: string[]): Promise<void> {
+async function persistFeedSnapshot(
+  feedId: string,
+  item: RSSItem | undefined,
+  caption: string | null,
+  platforms: string[],
+  imageUrlOverride?: string
+): Promise<void> {
   if (!item) return;
 
   await prisma.rSSFeed.update({
@@ -481,7 +633,7 @@ async function persistFeedSnapshot(feedId: string, item: RSSItem | undefined, ca
     data: {
       title: item.title,
       description: item.description,
-      imageUrl: item.imageUrl,
+      imageUrl: imageUrlOverride || item.imageUrl,
       publishedDate: item.pubDate,
       platforms,
       caption,
@@ -565,6 +717,11 @@ async function createFeed(data: RSSFeedInput) {
     console.warn('[RSS] Could not fetch feed during creation:', error);
   }
 
+  const resolvedFilters = resolveForwardOnlySettings(data.filters, {
+    explicitOnlyFetchNewItems: data.onlyFetchNewItems,
+    explicitStartFromNowAt: data.startFromNowAt,
+  });
+
   return prisma.rSSFeed.create({
     data: {
       name: feedTitle || data.name,
@@ -574,7 +731,7 @@ async function createFeed(data: RSSFeedInput) {
       interval: data.interval ?? 10,
       imageCount: data.imageCount ?? '2',
       dedupeDays: data.dedupeDays ?? 30,
-      filters: ensureFeedFilters(data.filters) as unknown as Prisma.InputJsonValue,
+      filters: resolvedFilters as unknown as Prisma.InputJsonValue,
       serperPriority: data.serperPriority ?? true,
       rehostImages: data.rehostImages ?? false,
       autoPost: data.autoPost ?? true,
@@ -589,6 +746,15 @@ async function updateFeed(
   id: string,
   data: Partial<RSSFeedInput> & { lastProcessedAt?: Date; nextRunAt?: Date; errorMessage?: string }
 ) {
+  const existingFeed = await prisma.rSSFeed.findUnique({
+    where: { id },
+    select: { filters: true },
+  });
+
+  if (!existingFeed) {
+    throw new Error('Feed not found');
+  }
+
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
 
   if (data.name !== undefined) updateData.name = data.name;
@@ -598,7 +764,17 @@ async function updateFeed(
   if (data.interval !== undefined) updateData.interval = data.interval;
   if (data.imageCount !== undefined) updateData.imageCount = data.imageCount;
   if (data.dedupeDays !== undefined) updateData.dedupeDays = data.dedupeDays;
-  if (data.filters !== undefined) updateData.filters = data.filters;
+  if (
+    data.filters !== undefined ||
+    data.onlyFetchNewItems !== undefined ||
+    data.startFromNowAt !== undefined
+  ) {
+    updateData.filters = resolveForwardOnlySettings(data.filters, {
+      previousFilters: existingFeed.filters as unknown as RSSFeedFilters,
+      explicitOnlyFetchNewItems: data.onlyFetchNewItems,
+      explicitStartFromNowAt: data.startFromNowAt,
+    }) as unknown as Prisma.InputJsonValue;
+  }
   if (data.serperPriority !== undefined) updateData.serperPriority = data.serperPriority;
   if (data.rehostImages !== undefined) updateData.rehostImages = data.rehostImages;
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
@@ -620,7 +796,7 @@ async function deleteFeed(id: string) {
   });
 }
 
-async function refreshFeed(id: string): Promise<RefreshResult> {
+async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promise<RefreshResult> {
   const feed = await prisma.rSSFeed.findUnique({ where: { id } });
 
   if (!feed) {
@@ -641,10 +817,27 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
   try {
     const xml = await fetchRSSFeed(feed.url);
     const parsed = await parseRSSFeed(xml);
-    const cutoffDate = feed.lastProcessedAt || new Date(Date.now() - DEFAULT_ITEM_LOOKBACK_MS);
+    const feedFilters = ensureFeedFilters(feed.filters as unknown as RSSFeedFilters);
+    const startFromNowDate = parseFilterTimestamp(feedFilters.startFromNowAt);
+    const effectiveCutoffDate = (() => {
+      if (feed.lastProcessedAt && startFromNowDate) {
+        return feed.lastProcessedAt > startFromNowDate ? feed.lastProcessedAt : startFromNowDate;
+      }
+      if (feed.lastProcessedAt) return feed.lastProcessedAt;
+      if (startFromNowDate) return startFromNowDate;
+      return new Date(Date.now() - DEFAULT_ITEM_LOOKBACK_MS);
+    })();
+
     const newItems = parsed.items
-      .filter((item) => item.pubDate > cutoffDate)
+      .filter((item) => item.pubDate > effectiveCutoffDate)
       .sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
+    const latestItem = [...parsed.items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime()).at(-1);
+    const itemsToProcess =
+      options.manualRun && feedFilters.onlyFetchNewItems
+        ? latestItem ? [latestItem] : []
+        : newItems;
+    const selectionMode =
+      options.manualRun && feedFilters.onlyFetchNewItems ? 'latest_item' : 'backlog';
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
     let publishedCount = 0;
@@ -652,9 +845,10 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
     let failedCount = 0;
     let latestHandledItem: RSSItem | undefined;
     let latestCaption: string | null = null;
+    let latestPublishedImageUrl: string | undefined;
     let retryFromDate: Date | null = null;
 
-    for (const item of newItems) {
+    for (const item of itemsToProcess) {
       latestHandledItem = item;
 
       if (runtimeSettings.rssDeduplication && await wasRecentlyPublished(feed.id, item, feed.dedupeDays)) {
@@ -705,6 +899,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
       }
 
       try {
+        const publishImageUrl = await resolveRSSItemImage(feed, item);
         const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
           tone: runtimeSettings.rssCaptionTone,
           maxLength: runtimeSettings.rssCaptionMaxLength,
@@ -725,7 +920,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
           text: caption,
           title: item.title,
           link: item.link,
-          imageUrl: item.imageUrl,
+          imageUrl: publishImageUrl,
         });
 
         const successfulPlatforms = publishResults
@@ -741,7 +936,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
             itemTitle: item.title,
             itemLink: item.link,
             description: item.description,
-            imageUrl: item.imageUrl,
+            imageUrl: publishImageUrl,
             publishedAt: item.pubDate.toISOString(),
             status: 'failed',
             platforms,
@@ -754,6 +949,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
 
         publishedCount += 1;
         latestCaption = caption;
+        latestPublishedImageUrl = publishImageUrl;
         await logRSSActivity({
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -761,7 +957,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
           itemTitle: item.title,
           itemLink: item.link,
           description: item.description,
-          imageUrl: item.imageUrl,
+          imageUrl: publishImageUrl,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: successfulPlatforms,
@@ -796,16 +992,17 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
       },
     });
 
-    await persistFeedSnapshot(feed.id, latestHandledItem || parsed.items[0], latestCaption, platforms);
+    await persistFeedSnapshot(feed.id, latestHandledItem || parsed.items[0], latestCaption, platforms, latestPublishedImageUrl);
 
     return {
       feedId: feed.id,
       feedName: feed.name,
       itemsAdded: publishedCount,
-      checkedCount: newItems.length,
+      checkedCount: itemsToProcess.length,
       pendingCount,
       failedCount,
       latestItemTitle: latestHandledItem?.title || parsed.items[0]?.title,
+      selectionMode,
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -828,6 +1025,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
       pendingCount: 0,
       failedCount: 1,
       error: errorMessage,
+      selectionMode: options.manualRun ? 'latest_item' : 'backlog',
     };
   }
 }

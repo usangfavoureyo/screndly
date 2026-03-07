@@ -9,7 +9,6 @@ import { NotFoundPage } from "./NotFoundPage";
 import { UndoToast } from "./UndoToast";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TMDbModals } from "./tmdb/TMDbModals";
-import { useSwipeNavigation } from "../hooks/useSwipeNavigation";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
 import { haptics } from "../utils/haptics";
 import { useNotifications } from "../contexts/NotificationsContext";
@@ -79,7 +78,6 @@ export function AppContent() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isCaptionEditorOpen, setIsCaptionEditorOpen] = useState(false);
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
-  const [isNavDragging, setIsNavDragging] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
 
   // List of all valid pages
@@ -347,115 +345,6 @@ export function AppContent() {
     }
   };
 
-  // Bottom navigation pages in order - read from localStorage to match user's custom order
-  const [bottomNavPages, setBottomNavPages] = useState<string[]>(() => {
-    const savedOrder = localStorage.getItem('bottomNavOrder');
-    if (savedOrder) {
-      try {
-        const parsed = JSON.parse(savedOrder);
-        // Migrate old 'rss' and 'tmdb' to 'feeds'
-        const migrated = parsed.map((page: string) => {
-          if (page === 'rss' || page === 'tmdb') return 'feeds';
-          return page;
-        });
-        // Remove duplicates (in case both rss and tmdb existed)
-        const unique = Array.from(new Set(migrated));
-        // Save the migrated version back to localStorage
-        localStorage.setItem('bottomNavOrder', JSON.stringify(unique));
-        return unique;
-      } catch {
-        return ['dashboard', 'channels', 'platforms', 'feeds', 'design-studio', 'video-studio'];
-      }
-    }
-    return ['dashboard', 'channels', 'platforms', 'feeds', 'design-studio', 'video-studio'];
-  });
-
-  // Listen for changes to bottomNavOrder in localStorage
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const savedOrder = localStorage.getItem('bottomNavOrder');
-      if (savedOrder) {
-        try {
-          setBottomNavPages(JSON.parse(savedOrder));
-        } catch {
-          // Ignore parse errors
-        }
-      }
-    };
-
-    // Listen for storage events (from other tabs/windows)
-    window.addEventListener('storage', handleStorageChange);
-
-    // Also check periodically for changes from same tab
-    const interval = setInterval(handleStorageChange, 1000);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Swipe navigation handlers
-  const handleSwipeLeft = () => {
-    // Disable swipe when caption editor is open
-    if (isCaptionEditorOpen) {
-      return;
-    }
-
-    // If notifications panel is open, close it
-    if (isNotificationsOpen) {
-      haptics.light();
-      setIsNotificationsOpen(false);
-      return;
-    }
-
-    const currentIndex = bottomNavPages.indexOf(currentPage);
-
-    if (currentIndex !== -1 && currentIndex < bottomNavPages.length - 1) {
-      haptics.light();
-      handleNavigate(bottomNavPages[currentIndex + 1]);
-    }
-  };
-
-  const handleSwipeRight = () => {
-    // Disable swipe when caption editor is open
-    if (isCaptionEditorOpen) {
-      return;
-    }
-
-    // Disable swipe right when notifications panel is open
-    if (isNotificationsOpen) {
-      return;
-    }
-
-    // If settings panel is open, close it (swipe to logs page)
-    if (isSettingsOpen) {
-      haptics.light();
-      handleCloseSettings();
-      return;
-    }
-
-    const currentIndex = bottomNavPages.indexOf(currentPage);
-
-    if (currentIndex > 0) {
-      haptics.light();
-      handleNavigate(bottomNavPages[currentIndex - 1]);
-    }
-  };
-
-  // Only enable swipe navigation on bottom nav pages or when notifications/settings are open
-  // Disable swipe when caption editor is open or nav is being dragged
-  const isBottomNavPage = bottomNavPages.includes(currentPage);
-  const isSwipeEnabled = (isBottomNavPage || isNotificationsOpen || isSettingsOpen) && !isCaptionEditorOpen && !isNavDragging;
-
-  useSwipeNavigation({
-    onSwipeLeft: isSwipeEnabled ? handleSwipeLeft : () => { },
-    onSwipeRight: isSwipeEnabled ? handleSwipeRight : () => { },
-    // Decreased sensitivity (increased swipe distance) - 80px default, 120px for logs
-    minSwipeDistance: 80,
-    increasedMinSwipeDistance: currentPage === 'logs' ? 120 : undefined,
-  });
-
   // Desktop shortcuts (keyboard + trackpad gestures)
   useDesktopShortcuts({
     onNavigate: handleNavigate,
@@ -585,7 +474,6 @@ export function AppContent() {
       <MobileBottomNav
         currentPage={currentPage}
         onNavigate={handleNavigate}
-        onDragStateChange={setIsNavDragging}
       />
       {isSettingsOpen && (
         <SettingsPanel

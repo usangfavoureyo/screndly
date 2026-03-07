@@ -1,0 +1,503 @@
+- generic:
+  - generic:
+    - generic:
+      - link:
+        - /url: "#main-content"
+        - text: Skip to main content
+      - generic:
+        - generic:
+          - button:
+            - img
+            - generic: "4"
+          - button:
+            - img
+      - complementary [ref=e16]:
+        - generic [ref=e466]:
+          - button [ref=e468] [cursor=pointer]:
+            - img [ref=e469]
+          - button [ref=e470]:
+            - img
+        - navigation [ref=e471]:
+          - button [ref=e473] [cursor=pointer]:
+            - img [ref=e474]
+            - generic [ref=e479]: Dashboard
+          - button [ref=e481] [cursor=pointer]:
+            - img [ref=e482]
+            - generic [ref=e485]: Channels
+          - button [ref=e487] [cursor=pointer]:
+            - img [ref=e488]
+            - generic [ref=e494]: Platforms
+          - button [ref=e496] [cursor=pointer]:
+            - img [ref=e497]
+            - generic [ref=e501]: Feeds
+          - button [ref=e503] [cursor=pointer]:
+            - img [ref=e504]
+            - generic [ref=e508]: Design Studio
+          - button [ref=e510] [cursor=pointer]:
+            - img [ref=e511]
+            - generic [ref=e513]: Video Studio
+        - button [ref=e515] [cursor=pointer]:
+          - img
+          - generic [ref=e516]: Logout
+      - main:
+        - generic:
+          - generic:
+            - generic:
+              - heading [level=1]: Feeds
+              - paragraph: Automated feed ingestion and posting
+            - generic:
+              - generic:
+                - button:
+                  - generic: RSS Feeds
+                - button:
+                  - generic: TMDb Feeds
+            - generic:
+              - generic:
+                - generic:
+                  - paragraph: Total Feeds
+                  - paragraph: "1"
+                - generic:
+                  - paragraph: Active
+                  - paragraph: "1"
+                - generic:
+                  - paragraph: Published Today
+                  - paragraph: "2"
+                - generic:
+                  - paragraph: Errors
+                  - paragraph: "0"
+              - generic:
+                - generic:
+                  - generic:
+                    - button:
+                      - img
+                      - text: Add Feed
+                    - generic:
+                      - generic:
+                        - generic: Global RSS Posting
+                        - switch [checked]
+                      - generic:
+                        - generic: Event-Driven Posting
+                        - switch [checked]
+                      - generic:
+                        - generic: Minimum Gap
+                        - button:
+                          - generic: 5 min
+                          - img
+                      - generic:
+                        - generic: Deduplication
+                        - switch [checked]
+                  - generic:
+                    - generic:
+                      - heading [level=3]: Feeds (1)
+                      - generic:
+                        - button:
+                          - img
+                        - button: View Activity
+                    - generic:
+                      - generic:
+                        - generic:
+                          - generic:
+                            - generic:
+                              - img
+                              - generic: Delete
+                        - generic:
+                          - generic:
+                            - generic:
+                              - generic:
+                                - img
+                              - generic:
+                                - heading [level=3]: Comicbook
+                                - generic:
+                                  - paragraph: comicbook.com
+                                  - generic: active
+                            - generic:
+                              - button:
+                                - img
+                              - switch [checked]
+                          - generic:
+                            - generic:
+                              - generic: "Next run:"
+                              - generic: in 1 minute
+                            - generic:
+                              - generic: "Last item:"
+                              - generic: about 23 hours ago
+                          - generic:
+                            - paragraph: Platforms
+                            - generic:
+                              - button:
+                                - img
+                              - button:
+                                - img
+                              - button:
+                                - img
+                              - button:
+                                - img
+                          - generic:
+                            - button: Preview
+                            - button: Run Now
+                            - button: Edit
+  - dialog:
+    - generic [ref=e176]:
+      - generic [ref=e177]:
+        - heading [level=2] [ref=e517]: Edit Caption
+        - paragraph [ref=e179]: Customize the caption for this post
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: Caption
+          - button [ref=e185]:
+            - img [ref=e186]
+        - textbox [ref=e518]
+        - paragraph [ref=e192]: 0/200
+      - generic [ref=e193]:
+        - button [ref=e519]: Cancel
+        - button [ref=e520]: Save
+  - dialog:
+    - generic [ref=e199]:
+      - generic [ref=e200]:
+        - heading [level=2] [ref=e521]: Schedule Post
+        - paragraph [ref=e202]: Set date and time for publishing
+      - generic [ref=e204]:
+        - generic [ref=e205]:
+          - generic [ref=e206]: Platforms
+          - generic [ref=e208]:
+            - button [ref=e209]:
+              - img [ref=e210]
+            - button [ref=e212]:
+              - img [ref=e213]
+            - button [ref=e215]:
+              - img [ref=e216]
+            - button [ref=e218]:
+              - img [ref=e219]
+            - button [ref=e222]:
+              - img [ref=e223]
+        - generic [ref=e225]:
+          - generic [ref=e226]: Date
+          - button [ref=e522]:
+            - img
+            - generic [ref=e228]: Pick a date
+        - generic [ref=e229]:
+          - generic [ref=e230]: Time
+          - button [ref=e523]:
+            - img
+            - generic [ref=e232]: 12:00 AM
+        - generic [ref=e234]:
+          - img [ref=e235]
+          - paragraph [ref=e238]: Posts are spaced automatically to prevent overlap.
+      - generic [ref=e239]:
+        - button [ref=e524]: Cancel
+        - button [ref=e525]: Schedule
+  - dialog:
+    - generic [ref=e245]:
+      - generic [ref=e246]:
+        - heading [level=2] [ref=e526]: Delete Feed
+        - paragraph [ref=e248]: This action cannot be undone.
+      - generic [ref=e250]:
+        - button [ref=e527]: Cancel
+        - button [ref=e528]: Delete
+  - dialog:
+    - generic [ref=e256]:
+      - generic [ref=e257]:
+        - heading [level=2] [ref=e529]: Select Platforms
+        - paragraph [ref=e259]: Choose platforms to schedule
+      - generic [ref=e262]:
+        - button [ref=e263]:
+          - img [ref=e264]
+        - button [ref=e266]:
+          - img [ref=e267]
+        - button [ref=e269]:
+          - img [ref=e270]
+        - button [ref=e272]:
+          - img [ref=e273]
+        - button [ref=e276]:
+          - img [ref=e277]
+      - generic [ref=e279]:
+        - button [ref=e530]: Cancel
+        - button [ref=e531]: Schedule
+  - dialog "Edit Caption":
+    - generic [ref=e285]:
+      - heading [level=2] [ref=e532]: Select Date
+      - generic [ref=e292]:
+        - generic [ref=e293]:
+          - generic [ref=e294]: March 2026
+          - button [ref=e533]:
+            - img
+          - button [ref=e534]:
+            - img
+        - grid [ref=e535]:
+          - rowgroup [ref=e298]:
+            - row [ref=e536]:
+              - columnheader [ref=e537]: Su
+              - columnheader [ref=e538]: Mo
+              - columnheader [ref=e539]: Tu
+              - columnheader [ref=e540]: We
+              - columnheader [ref=e541]: Th
+              - columnheader [ref=e542]: Fr
+              - columnheader [ref=e543]: Sa
+          - rowgroup [ref=e307]:
+            - row [ref=e544]:
+              - gridcell [ref=e545]: "1"
+              - gridcell [ref=e546]: "2"
+              - gridcell [ref=e547]: "3"
+              - gridcell [ref=e548]: "4"
+              - gridcell [ref=e549]: "5"
+              - gridcell [ref=e550]: "6"
+              - gridcell [ref=e551]: "7"
+            - row [ref=e552]:
+              - gridcell [ref=e553]: "8"
+              - gridcell [ref=e554]: "9"
+              - gridcell [ref=e555]: "10"
+              - gridcell [ref=e556]: "11"
+              - gridcell [ref=e557]: "12"
+              - gridcell [ref=e558]: "13"
+              - gridcell [ref=e559]: "14"
+            - row [ref=e560]:
+              - gridcell [ref=e561]: "15"
+              - gridcell [ref=e562]: "16"
+              - gridcell [ref=e563]: "17"
+              - gridcell [ref=e564]: "18"
+              - gridcell [ref=e565]: "19"
+              - gridcell [ref=e566]: "20"
+              - gridcell [ref=e567]: "21"
+            - row [ref=e568]:
+              - gridcell [ref=e569]: "22"
+              - gridcell [ref=e570]: "23"
+              - gridcell [ref=e571]: "24"
+              - gridcell [ref=e572]: "25"
+              - gridcell [ref=e573]: "26"
+              - gridcell [ref=e574]: "27"
+              - gridcell [ref=e575]: "28"
+            - row [ref=e576]:
+              - gridcell [ref=e577]: "29"
+              - gridcell [ref=e578]: "30"
+              - gridcell [ref=e579]: "31"
+              - gridcell [ref=e580]: "1"
+              - gridcell [ref=e581]: "2"
+              - gridcell [ref=e582]: "3"
+              - gridcell [ref=e583]: "4"
+      - generic [ref=e349]:
+        - button [ref=e584]: Cancel
+        - button [ref=e585]: Done
+  - dialog:
+    - generic [ref=e355]:
+      - heading [level=2] [ref=e586]: Select Time
+      - generic [ref=e359]:
+        - generic [ref=e362]:
+          - button [ref=e587]: "1"
+          - button [ref=e588]: "2"
+          - button [ref=e589]: "3"
+          - button [ref=e590]: "4"
+          - button [ref=e591]: "5"
+          - button [ref=e592]: "6"
+          - button [ref=e593]: "7"
+          - button [ref=e594]: "8"
+          - button [ref=e595]: "9"
+          - button [ref=e596]: "10"
+          - button [ref=e597]: "11"
+          - button [ref=e598]: "12"
+        - generic [ref=e377]:
+          - button [ref=e599]: "00"
+          - button [ref=e600]: "01"
+          - button [ref=e601]: "02"
+          - button [ref=e602]: "03"
+          - button [ref=e603]: "04"
+          - button [ref=e604]: "05"
+          - button [ref=e605]: "06"
+          - button [ref=e606]: "07"
+          - button [ref=e607]: "08"
+          - button [ref=e608]: "09"
+          - button [ref=e609]: "10"
+          - button [ref=e610]: "11"
+          - button [ref=e611]: "12"
+          - button [ref=e612]: "13"
+          - button [ref=e613]: "14"
+          - button [ref=e614]: "15"
+          - button [ref=e615]: "16"
+          - button [ref=e616]: "17"
+          - button [ref=e617]: "18"
+          - button [ref=e618]: "19"
+          - button [ref=e619]: "20"
+          - button [ref=e620]: "21"
+          - button [ref=e621]: "22"
+          - button [ref=e622]: "23"
+          - button [ref=e623]: "24"
+          - button [ref=e624]: "25"
+          - button [ref=e625]: "26"
+          - button [ref=e626]: "27"
+          - button [ref=e627]: "28"
+          - button [ref=e628]: "29"
+          - button [ref=e629]: "30"
+          - button [ref=e630]: "31"
+          - button [ref=e631]: "32"
+          - button [ref=e632]: "33"
+          - button [ref=e633]: "34"
+          - button [ref=e634]: "35"
+          - button [ref=e635]: "36"
+          - button [ref=e636]: "37"
+          - button [ref=e637]: "38"
+          - button [ref=e638]: "39"
+          - button [ref=e639]: "40"
+          - button [ref=e640]: "41"
+          - button [ref=e641]: "42"
+          - button [ref=e642]: "43"
+          - button [ref=e643]: "44"
+          - button [ref=e644]: "45"
+          - button [ref=e645]: "46"
+          - button [ref=e646]: "47"
+          - button [ref=e647]: "48"
+          - button [ref=e648]: "49"
+          - button [ref=e649]: "50"
+          - button [ref=e650]: "51"
+          - button [ref=e651]: "52"
+          - button [ref=e652]: "53"
+          - button [ref=e653]: "54"
+          - button [ref=e654]: "55"
+          - button [ref=e655]: "56"
+          - button [ref=e656]: "57"
+          - button [ref=e657]: "58"
+          - button [ref=e658]: "59"
+        - generic [ref=e440]:
+          - button [ref=e659]: AM
+          - button [ref=e660]: PM
+      - generic [ref=e444]:
+        - button [ref=e661]: Cancel
+        - button [ref=e662]: Done
+  - dialog:
+    - generic [ref=e451]:
+      - option [selected] [ref=e663] [cursor=pointer]:
+        - generic [ref=e453]: 5 min
+        - img [ref=e455]
+      - option [ref=e664] [cursor=pointer]:
+        - generic [ref=e458]: 10 min
+      - option [ref=e665] [cursor=pointer]:
+        - generic [ref=e460]: 15 min
+      - option [ref=e666] [cursor=pointer]:
+        - generic [ref=e462]: 30 min
+      - option [ref=e667] [cursor=pointer]:
+        - generic [ref=e464]: 60 min
+  - dialog "Add New Feed" [ref=e669]:
+    - generic [ref=e670]:
+      - heading "Add New Feed" [level=2] [ref=e671]
+      - paragraph [ref=e672]: Enter the details for the new feed.
+    - generic [ref=e673]:
+      - generic [ref=e674]:
+        - heading "Basic" [level=3] [ref=e675]
+        - generic [ref=e676]:
+          - generic [ref=e677]:
+            - generic [ref=e678]: Feed Name
+            - textbox "e.g., Variety - Film News" [active] [ref=e679]
+          - generic [ref=e680]:
+            - generic [ref=e681]: Feed URL
+            - textbox "https://example.com/feed" [ref=e682]
+          - generic [ref=e683]:
+            - generic [ref=e684]: Polling Interval (minutes)
+            - button "10 minutes" [ref=e685]:
+              - generic [ref=e686]: 10 minutes
+              - img
+      - generic [ref=e687]:
+        - heading "Filters & Rules" [level=3] [ref=e688]
+        - generic [ref=e689]:
+          - generic [ref=e690]:
+            - generic [ref=e691]: Scope
+            - button "Title OR Body" [ref=e692]:
+              - generic [ref=e693]: Title OR Body
+              - img
+          - generic [ref=e695]:
+            - generic [ref=e696]: Required Keywords (Whitelist)
+            - button "Add" [ref=e697]:
+              - img
+              - text: Add
+          - generic [ref=e699]:
+            - generic [ref=e700]: Blocked Keywords (Blacklist)
+            - button "Add" [ref=e701]:
+              - img
+              - text: Add
+      - generic [ref=e702]:
+        - heading "Posting Controls" [level=3] [ref=e703]
+        - generic [ref=e704]:
+          - generic [ref=e705]:
+            - generic [ref=e706]: Default Image Count
+            - button "1 Image" [ref=e707]:
+              - generic [ref=e708]: 1 Image
+              - img
+          - generic [ref=e709]:
+            - generic [ref=e710]: Per-Platform Image Count
+            - checkbox [ref=e711]
+          - generic [ref=e712]:
+            - generic [ref=e713]: Auto-post
+            - switch [checked] [ref=e714]
+          - generic [ref=e715]:
+            - generic [ref=e716]: Deduplication Window (days)
+            - spinbutton [ref=e717]: "30"
+          - generic [ref=e718]:
+            - generic [ref=e719]: Trickle
+            - button "Post Newest Items First" [ref=e720]:
+              - generic [ref=e721]: Post Newest Items First
+              - img
+      - generic [ref=e722]:
+        - heading "Advanced" [level=3] [ref=e723]
+        - generic [ref=e724]:
+          - generic [ref=e725]:
+            - generic [ref=e726]:
+              - generic [ref=e727]: Serper Priority
+              - paragraph [ref=e728]: Use Serper images first
+            - switch [checked] [ref=e729]
+          - generic [ref=e730]:
+            - generic [ref=e731]:
+              - generic [ref=e732]: Rehost Images to S3
+              - paragraph [ref=e733]: Store images on your server
+            - switch [ref=e734]
+      - generic [ref=e735]:
+        - button "Save Feed" [disabled]
+    - button "Close" [ref=e736]:
+      - img [ref=e737]
+      - generic [ref=e740]: Close
+  - dialog "Edit Caption":
+    - generic [ref=e745]:
+      - option "1 minute" [ref=e746] [cursor=pointer]:
+        - generic [ref=e747]: 1 minute
+      - option "2 minutes" [ref=e748] [cursor=pointer]:
+        - generic [ref=e749]: 2 minutes
+      - option "3 minutes" [ref=e750] [cursor=pointer]:
+        - generic [ref=e751]: 3 minutes
+      - option "4 minutes" [ref=e752] [cursor=pointer]:
+        - generic [ref=e753]: 4 minutes
+      - option "5 minutes" [ref=e754] [cursor=pointer]:
+        - generic [ref=e755]: 5 minutes
+      - option "10 minutes" [selected] [ref=e756] [cursor=pointer]:
+        - generic [ref=e757]: 10 minutes
+        - img [ref=e759]
+      - option "15 minutes" [ref=e761] [cursor=pointer]:
+        - generic [ref=e762]: 15 minutes
+      - option "30 minutes" [ref=e763] [cursor=pointer]:
+        - generic [ref=e764]: 30 minutes
+      - option "60 minutes" [ref=e765] [cursor=pointer]:
+        - generic [ref=e766]: 60 minutes
+  - dialog "Edit Caption":
+    - generic [ref=e771]:
+      - option "Title only" [ref=e772] [cursor=pointer]:
+        - generic [ref=e773]: Title only
+      - option "Body only" [ref=e774] [cursor=pointer]:
+        - generic [ref=e775]: Body only
+      - option "Title OR Body" [selected] [ref=e776] [cursor=pointer]:
+        - generic [ref=e777]: Title OR Body
+        - img [ref=e779]
+      - option "Title AND Body" [ref=e781] [cursor=pointer]:
+        - generic [ref=e782]: Title AND Body
+  - dialog "Edit Caption":
+    - generic [ref=e787]:
+      - option "1 Image" [selected] [ref=e788] [cursor=pointer]:
+        - generic [ref=e789]: 1 Image
+        - img [ref=e791]
+      - option "2 Images" [ref=e793] [cursor=pointer]:
+        - generic [ref=e794]: 2 Images
+      - option "3 Images" [ref=e795] [cursor=pointer]:
+        - generic [ref=e796]: 3 Images
+      - option "Random (1-2)" [ref=e797] [cursor=pointer]:
+        - generic [ref=e798]: Random (1-2)
+  - dialog "Edit Caption":
+    - generic [ref=e803]:
+      - option "Post Newest Items First" [selected] [ref=e804] [cursor=pointer]:
+        - generic [ref=e805]: Post Newest Items First
+        - img [ref=e807]
+      - option "Post Oldest Items First" [ref=e809] [cursor=pointer]:
+        - generic [ref=e810]: Post Oldest Items First

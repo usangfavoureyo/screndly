@@ -1,0 +1,367 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=e6]:
+      - button "Notifications (4 unread)" [ref=e7]:
+        - img [ref=e8]
+        - generic "4 unread notifications" [ref=e11]: "4"
+      - button "Open settings" [ref=e12]:
+        - img [ref=e13]
+    - complementary [ref=e16]:
+      - generic [ref=e18]:
+        - button "Go to dashboard" [ref=e20] [cursor=pointer]:
+          - img "Screndly" [ref=e21]
+        - button "Collapse sidebar" [ref=e22]:
+          - img
+      - navigation "Primary navigation" [ref=e23]:
+        - button "Dashboard" [ref=e25] [cursor=pointer]:
+          - img [ref=e26]
+          - generic [ref=e31]: Dashboard
+        - button "Channels" [ref=e33] [cursor=pointer]:
+          - img [ref=e34]
+          - generic [ref=e37]: Channels
+        - button "Platforms" [ref=e39] [cursor=pointer]:
+          - img [ref=e40]
+          - generic [ref=e46]: Platforms
+        - button "Feeds" [ref=e48] [cursor=pointer]:
+          - img [ref=e49]
+          - generic [ref=e53]: Feeds
+        - button "Design Studio" [ref=e55] [cursor=pointer]:
+          - img [ref=e56]
+          - generic [ref=e60]: Design Studio
+        - button "Video Studio" [ref=e62] [cursor=pointer]:
+          - img [ref=e63]
+          - generic [ref=e65]: Video Studio
+      - button "Logout" [ref=e67] [cursor=pointer]:
+        - img
+        - generic [ref=e68]: Logout
+    - main [ref=e70]:
+      - generic [ref=e72]:
+        - generic [ref=e73]:
+          - heading "Feeds" [level=1] [ref=e74]
+          - paragraph [ref=e75]: Automated feed ingestion and posting
+        - generic [ref=e77]:
+          - button "RSS Feeds" [ref=e78]:
+            - generic [ref=e79]: RSS Feeds
+          - button "TMDb Feeds" [ref=e80]:
+            - generic [ref=e81]: TMDb Feeds
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - paragraph [ref=e85]: Total Feeds
+              - paragraph [ref=e86]: "1"
+            - generic [ref=e87]:
+              - paragraph [ref=e88]: Active
+              - paragraph [ref=e89]: "1"
+            - generic [ref=e90]:
+              - paragraph [ref=e91]: Published Today
+              - paragraph [ref=e92]: "2"
+            - generic [ref=e93]:
+              - paragraph [ref=e94]: Errors
+              - paragraph [ref=e95]: "0"
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - button "Add Feed" [ref=e99]:
+                - img
+                - text: Add Feed
+              - generic [ref=e100]:
+                - generic [ref=e101]:
+                  - generic [ref=e102]: Global RSS Posting
+                  - switch [checked] [ref=e103]
+                - generic [ref=e104]:
+                  - generic [ref=e105]: Event-Driven Posting
+                  - switch [checked] [ref=e106]
+                - generic [ref=e107]:
+                  - generic [ref=e108]: Minimum Gap
+                  - button "5 min" [ref=e109]:
+                    - generic [ref=e110]: 5 min
+                    - img
+                - generic [ref=e111]:
+                  - generic [ref=e112]: Deduplication
+                  - switch [checked] [ref=e113]
+            - generic [ref=e114]:
+              - generic [ref=e115]:
+                - heading "Feeds (1)" [level=3] [ref=e116]
+                - generic [ref=e117]:
+                  - button [ref=e118]:
+                    - img
+                  - button "View Activity" [ref=e119]
+              - generic [ref=e121]:
+                - generic [ref=e124]:
+                  - img [ref=e125]
+                  - generic [ref=e128]: Delete
+                - generic [ref=e129]:
+                  - generic [ref=e130]:
+                    - generic [ref=e131]:
+                      - img [ref=e133]
+                      - generic [ref=e136]:
+                        - heading "Comicbook" [level=3] [ref=e137]
+                        - generic [ref=e138]:
+                          - paragraph [ref=e139]: comicbook.com
+                          - generic [ref=e140]: active
+                    - generic [ref=e141]:
+                      - button "Delete feed" [ref=e142]:
+                        - img [ref=e143]
+                      - switch [checked] [ref=e146]
+                  - generic [ref=e147]:
+                    - generic [ref=e148]:
+                      - generic [ref=e149]: "Next run:"
+                      - generic [ref=e150]: in 1 minute
+                    - generic [ref=e151]:
+                      - generic [ref=e152]: "Last item:"
+                      - generic [ref=e153]: about 23 hours ago
+                  - generic [ref=e154]:
+                    - paragraph [ref=e155]: Platforms
+                    - generic [ref=e156]:
+                      - button "x" [ref=e157]:
+                        - img [ref=e158]
+                      - button "threads" [ref=e160]:
+                        - img [ref=e161]
+                      - button "facebook" [ref=e163]:
+                        - img [ref=e164]
+                      - button "pinterest" [ref=e166]:
+                        - img [ref=e167]
+                  - generic [ref=e169]:
+                    - button "Preview" [ref=e170]
+                    - button "Run Now" [ref=e171]
+                    - button "Edit" [ref=e172]
+  - dialog "Edit Caption":
+    - generic [ref=e176]:
+      - generic [ref=e177]:
+        - heading "Edit Caption" [level=2] [ref=e178]
+        - paragraph [ref=e179]: Customize the caption for this post
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]: Caption
+          - button [ref=e185]:
+            - img [ref=e186]
+        - textbox "Caption" [ref=e191]
+        - paragraph [ref=e192]: 0/200
+      - generic [ref=e193]:
+        - button "Cancel" [ref=e194]
+        - button "Save" [ref=e195]
+  - dialog "Edit Caption":
+    - generic [ref=e199]:
+      - generic [ref=e200]:
+        - heading "Schedule Post" [level=2] [ref=e201]
+        - paragraph [ref=e202]: Set date and time for publishing
+      - generic [ref=e204]:
+        - generic [ref=e205]:
+          - generic [ref=e206]: Platforms
+          - generic [ref=e208]:
+            - button [ref=e209]:
+              - img [ref=e210]
+            - button [ref=e212]:
+              - img [ref=e213]
+            - button [ref=e215]:
+              - img [ref=e216]
+            - button [ref=e218]:
+              - img [ref=e219]
+            - button [ref=e222]:
+              - img [ref=e223]
+        - generic [ref=e225]:
+          - generic [ref=e226]: Date
+          - button "Pick a date" [ref=e227]:
+            - img
+            - generic [ref=e228]: Pick a date
+        - generic [ref=e229]:
+          - generic [ref=e230]: Time
+          - button "12:00 AM" [ref=e231]:
+            - img
+            - generic [ref=e232]: 12:00 AM
+        - generic [ref=e234]:
+          - img [ref=e235]
+          - paragraph [ref=e238]: Posts are spaced automatically to prevent overlap.
+      - generic [ref=e239]:
+        - button "Cancel" [ref=e240]
+        - button "Schedule" [ref=e241]
+  - dialog "Edit Caption":
+    - generic [ref=e245]:
+      - generic [ref=e246]:
+        - heading "Delete Feed" [level=2] [ref=e247]
+        - paragraph [ref=e248]: This action cannot be undone.
+      - generic [ref=e250]:
+        - button "Cancel" [ref=e251]
+        - button "Delete" [ref=e252]
+  - dialog "Edit Caption":
+    - generic [ref=e256]:
+      - generic [ref=e257]:
+        - heading "Select Platforms" [level=2] [ref=e258]
+        - paragraph [ref=e259]: Choose platforms to schedule
+      - generic [ref=e262]:
+        - button [ref=e263]:
+          - img [ref=e264]
+        - button [ref=e266]:
+          - img [ref=e267]
+        - button [ref=e269]:
+          - img [ref=e270]
+        - button [ref=e272]:
+          - img [ref=e273]
+        - button [ref=e276]:
+          - img [ref=e277]
+      - generic [ref=e279]:
+        - button "Cancel" [ref=e280]
+        - button "Schedule" [ref=e281]
+  - dialog "Edit Caption":
+    - generic [ref=e285]:
+      - heading "Select Date" [level=2] [ref=e287]
+      - generic [ref=e292]:
+        - generic [ref=e293]:
+          - generic [ref=e294]: March 2026
+          - generic:
+            - button "Go to previous month" [ref=e295]:
+              - img
+            - button "Go to next month" [ref=e296]:
+              - img
+        - grid "March 2026" [ref=e297]:
+          - rowgroup [ref=e298]:
+            - row "Sunday Monday Tuesday Wednesday Thursday Friday Saturday" [ref=e299]:
+              - columnheader "Sunday" [ref=e300]: Su
+              - columnheader "Monday" [ref=e301]: Mo
+              - columnheader "Tuesday" [ref=e302]: Tu
+              - columnheader "Wednesday" [ref=e303]: We
+              - columnheader "Thursday" [ref=e304]: Th
+              - columnheader "Friday" [ref=e305]: Fr
+              - columnheader "Saturday" [ref=e306]: Sa
+          - rowgroup [ref=e307]:
+            - row "1 2 3 4 5 6 7" [ref=e308]:
+              - gridcell "1" [ref=e309]
+              - gridcell "2" [ref=e310]
+              - gridcell "3" [ref=e311]
+              - gridcell "4" [ref=e312]
+              - gridcell "5" [ref=e313]
+              - gridcell "6" [ref=e314]
+              - gridcell "7" [active] [ref=e315]
+            - row "8 9 10 11 12 13 14" [ref=e316]:
+              - gridcell "8" [ref=e317]
+              - gridcell "9" [ref=e318]
+              - gridcell "10" [ref=e319]
+              - gridcell "11" [ref=e320]
+              - gridcell "12" [ref=e321]
+              - gridcell "13" [ref=e322]
+              - gridcell "14" [ref=e323]
+            - row "15 16 17 18 19 20 21" [ref=e324]:
+              - gridcell "15" [ref=e325]
+              - gridcell "16" [ref=e326]
+              - gridcell "17" [ref=e327]
+              - gridcell "18" [ref=e328]
+              - gridcell "19" [ref=e329]
+              - gridcell "20" [ref=e330]
+              - gridcell "21" [ref=e331]
+            - row "22 23 24 25 26 27 28" [ref=e332]:
+              - gridcell "22" [ref=e333]
+              - gridcell "23" [ref=e334]
+              - gridcell "24" [ref=e335]
+              - gridcell "25" [ref=e336]
+              - gridcell "26" [ref=e337]
+              - gridcell "27" [ref=e338]
+              - gridcell "28" [ref=e339]
+            - row "29 30 31 1 2 3 4" [ref=e340]:
+              - gridcell "29" [ref=e341]
+              - gridcell "30" [ref=e342]
+              - gridcell "31" [ref=e343]
+              - gridcell "1" [ref=e344]
+              - gridcell "2" [ref=e345]
+              - gridcell "3" [ref=e346]
+              - gridcell "4" [ref=e347]
+      - generic [ref=e349]:
+        - button "Cancel" [ref=e350]
+        - button "Done" [ref=e351]
+  - dialog "Edit Caption":
+    - generic [ref=e355]:
+      - heading "Select Time" [level=2] [ref=e357]
+      - generic [ref=e359]:
+        - generic [ref=e362]:
+          - button "1" [ref=e363]
+          - button "2" [ref=e364]
+          - button "3" [ref=e365]
+          - button "4" [ref=e366]
+          - button "5" [ref=e367]
+          - button "6" [ref=e368]
+          - button "7" [ref=e369]
+          - button "8" [ref=e370]
+          - button "9" [ref=e371]
+          - button "10" [ref=e372]
+          - button "11" [ref=e373]
+          - button "12" [ref=e374]
+        - generic [ref=e377]:
+          - button "00" [ref=e378]
+          - button "01" [ref=e379]
+          - button "02" [ref=e380]
+          - button "03" [ref=e381]
+          - button "04" [ref=e382]
+          - button "05" [ref=e383]
+          - button "06" [ref=e384]
+          - button "07" [ref=e385]
+          - button "08" [ref=e386]
+          - button "09" [ref=e387]
+          - button "10" [ref=e388]
+          - button "11" [ref=e389]
+          - button "12" [ref=e390]
+          - button "13" [ref=e391]
+          - button "14" [ref=e392]
+          - button "15" [ref=e393]
+          - button "16" [ref=e394]
+          - button "17" [ref=e395]
+          - button "18" [ref=e396]
+          - button "19" [ref=e397]
+          - button "20" [ref=e398]
+          - button "21" [ref=e399]
+          - button "22" [ref=e400]
+          - button "23" [ref=e401]
+          - button "24" [ref=e402]
+          - button "25" [ref=e403]
+          - button "26" [ref=e404]
+          - button "27" [ref=e405]
+          - button "28" [ref=e406]
+          - button "29" [ref=e407]
+          - button "30" [ref=e408]
+          - button "31" [ref=e409]
+          - button "32" [ref=e410]
+          - button "33" [ref=e411]
+          - button "34" [ref=e412]
+          - button "35" [ref=e413]
+          - button "36" [ref=e414]
+          - button "37" [ref=e415]
+          - button "38" [ref=e416]
+          - button "39" [ref=e417]
+          - button "40" [ref=e418]
+          - button "41" [ref=e419]
+          - button "42" [ref=e420]
+          - button "43" [ref=e421]
+          - button "44" [ref=e422]
+          - button "45" [ref=e423]
+          - button "46" [ref=e424]
+          - button "47" [ref=e425]
+          - button "48" [ref=e426]
+          - button "49" [ref=e427]
+          - button "50" [ref=e428]
+          - button "51" [ref=e429]
+          - button "52" [ref=e430]
+          - button "53" [ref=e431]
+          - button "54" [ref=e432]
+          - button "55" [ref=e433]
+          - button "56" [ref=e434]
+          - button "57" [ref=e435]
+          - button "58" [ref=e436]
+          - button "59" [ref=e437]
+        - generic [ref=e440]:
+          - button "AM" [ref=e441]
+          - button "PM" [ref=e442]
+      - generic [ref=e444]:
+        - button "Cancel" [ref=e445]
+        - button "Done" [ref=e446]
+  - dialog "Edit Caption":
+    - generic [ref=e451]:
+      - option "5 min" [selected] [ref=e452] [cursor=pointer]:
+        - generic [ref=e453]: 5 min
+        - img [ref=e455]
+      - option "10 min" [ref=e457] [cursor=pointer]:
+        - generic [ref=e458]: 10 min
+      - option "15 min" [ref=e459] [cursor=pointer]:
+        - generic [ref=e460]: 15 min
+      - option "30 min" [ref=e461] [cursor=pointer]:
+        - generic [ref=e462]: 30 min
+      - option "60 min" [ref=e463] [cursor=pointer]:
+        - generic [ref=e464]: 60 min

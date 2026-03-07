@@ -135,7 +135,9 @@ router.delete('/feeds/:id', async (req: Request, res: Response) => {
 
 router.post('/feeds/:id/refresh', async (req: Request, res: Response) => {
   try {
-    const result = await refreshFeed(req.params.id);
+    const result = await refreshFeed(req.params.id, {
+      manualRun: Boolean(req.body?.manualRun),
+    });
     const statusCode = result.error ? 500 : 200;
     res.status(statusCode).json({
       success: !result.error,

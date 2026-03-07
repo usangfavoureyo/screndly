@@ -19,55 +19,59 @@ interface FeedEditorProps {
   isOpen: boolean;
 }
 
-export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEditorProps) {
-  const [formData, setFormData] = useState<Partial<Feed>>(({
+const DEFAULT_FILTERS: Feed['filters'] = {
+  scope: 'title_or_body',
+  required: [],
+  blocked: [],
+  onlyFetchNewItems: false,
+  startFromNowAt: null,
+};
+
+function createDefaultFormData(): Partial<Feed> {
+  return {
     name: '',
     url: '',
     enabled: true,
     interval: 10,
     imageCount: '1',
     dedupeDays: 30,
-    filters: {
-      scope: 'title_or_body',
-      required: [],
-      blocked: [],
-    },
+    filters: DEFAULT_FILTERS,
     serperPriority: true,
     rehostImages: false,
     platformsEnabled: { x: true, threads: true, facebook: false, pinterest: false },
     autoPost: true,
     status: 'active',
     trickle: 'newest_first',
-  } as any));
+  } as any;
+}
+
+export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEditorProps) {
+  const [formData, setFormData] = useState<Partial<Feed>>(createDefaultFormData());
 
   const [perPlatformImageCount, setPerPlatformImageCount] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const formFilters: Feed['filters'] = {
+    ...DEFAULT_FILTERS,
+    ...formData.filters,
+    required: formData.filters?.required ?? [],
+    blocked: formData.filters?.blocked ?? [],
+  };
 
   useEffect(() => {
     if (feed) {
-      setFormData(feed);
+      setFormData({
+        ...feed,
+        filters: {
+          ...DEFAULT_FILTERS,
+          ...feed.filters,
+          required: feed.filters?.required ?? [],
+          blocked: feed.filters?.blocked ?? [],
+        },
+      });
       setPerPlatformImageCount(!!feed.platformImageCounts);
     } else {
       // Reset to defaults when adding new feed
-      setFormData({
-        name: '',
-        url: '',
-        enabled: true,
-        interval: 10,
-        imageCount: '1',
-        dedupeDays: 30,
-        filters: {
-          scope: 'title_or_body',
-          required: [],
-          blocked: [],
-        },
-        serperPriority: true,
-        rehostImages: false,
-        platformsEnabled: { x: true, threads: true, facebook: false, pinterest: false },
-        autoPost: true,
-        status: 'active',
-        trickle: 'newest_first',
-      });
+      setFormData(createDefaultFormData());
       setPerPlatformImageCount(false);
     }
   }, [feed, isOpen]);
@@ -84,7 +88,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
         interval: formData.interval || 10,
         imageCount: formData.imageCount || '1',
         dedupeDays: formData.dedupeDays || 30,
-        filters: formData.filters || { scope: 'title_or_body', required: [], blocked: [] },
+        filters: formFilters,
         serperPriority: formData.serperPriority ?? true,
         rehostImages: formData.rehostImages ?? false,
         platformsEnabled: formData.platformsEnabled || { x: true, threads: true, facebook: false, pinterest: false },
@@ -106,8 +110,8 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     setFormData({
       ...formData,
       filters: {
-        ...formData.filters!,
-        [type]: [...(formData.filters?.[type] || []), newKeyword],
+        ...formFilters,
+        [type]: [...formFilters[type], newKeyword],
       },
     });
   };
@@ -117,19 +121,19 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     setFormData({
       ...formData,
       filters: {
-        ...formData.filters!,
-        [type]: formData.filters?.[type].filter((_, i) => i !== index) || [],
+        ...formFilters,
+        [type]: formFilters[type].filter((_, i) => i !== index),
       },
     });
   };
 
   const updateKeyword = (type: 'required' | 'blocked', index: number, field: string, value: any) => {
-    const keywords = [...(formData.filters?.[type] || [])];
+    const keywords = [...formFilters[type]];
     keywords[index] = { ...keywords[index], [field]: value };
     setFormData({
       ...formData,
       filters: {
-        ...formData.filters!,
+        ...formFilters,
         [type]: keywords,
       },
     });
@@ -155,7 +159,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     setFormData({
       ...formData,
       filters: {
-        ...formData.filters!,
+        ...formFilters,
         required: presets[preset],
       },
     });
@@ -234,6 +238,32 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   </SelectContent>
                 </Select>
               </div>
+
+              <div className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1A1A1A] dark:bg-[#050505]">
+                <div className="space-y-1">
+                  <Label className="text-gray-600 dark:text-[#9CA3AF]">Only fetch new items from now on</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                    Ignore older feed entries and start monitoring from the current time.
+                  </p>
+                  {feed && formFilters.onlyFetchNewItems ? (
+                    <p className="text-xs text-[#ec1e24]">
+                      Saving this change skips older backlog items and makes Run Now test only the latest item.
+                    </p>
+                  ) : null}
+                </div>
+                <Switch
+                  checked={formFilters.onlyFetchNewItems ?? false}
+                  onCheckedChange={(checked) =>
+                    setFormData({
+                      ...formData,
+                      filters: {
+                        ...formFilters,
+                        onlyFetchNewItems: checked,
+                      },
+                    })
+                  }
+                />
+              </div>
             </div>
           </div>
 
@@ -246,10 +276,10 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
               <div>
                 <Label className="text-gray-600 dark:text-[#9CA3AF]">Scope</Label>
                 <Select
-                  value={formData.filters?.scope}
+                  value={formFilters.scope}
                   onValueChange={(value: any) => setFormData({
                     ...formData,
-                    filters: { ...formData.filters!, scope: value },
+                    filters: { ...formFilters, scope: value },
                   })}
                 >
                   <SelectTrigger 
@@ -283,7 +313,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {formData.filters?.required.map((keyword, index) => (
+                  {formFilters.required.map((keyword, index) => (
                     <div key={index} className="flex gap-2 items-center">
                       <Input
                         value={keyword.text}
@@ -337,7 +367,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   </Button>
                 </div>
                 <div className="space-y-2">
-                  {formData.filters?.blocked.map((keyword, index) => (
+                  {formFilters.blocked.map((keyword, index) => (
                     <div key={index} className="flex gap-2 items-center">
                       <Input
                         value={keyword.text}

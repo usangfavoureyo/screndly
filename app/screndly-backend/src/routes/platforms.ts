@@ -12,6 +12,7 @@ import { youtubeService } from '../services/platforms/youtube';
 import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
 import { ensureFreshPlatformConnection } from '../services/platforms/connectionAuth';
+import { uploadLocalFileToBackblaze } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
 import fs from 'fs';
@@ -306,6 +307,15 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
         let imageUrl = parsedContent.imageUrl;
         let videoUrl = parsedContent.videoUrl;
+
+        if (!imageUrl && req.file?.mimetype?.startsWith('image/') && localFilePath) {
+            const uploadedImage = await uploadLocalFileToBackblaze(localFilePath, req.file.originalname, {
+                bucketTypes: ['general', 'design'],
+                prefix: 'platform-posts/images',
+                contentType: req.file.mimetype,
+            });
+            imageUrl = uploadedImage.url;
+        }
 
         const results = [];
         let platformList = typeof platforms === 'string' ? JSON.parse(platforms) : platforms;

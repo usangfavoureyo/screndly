@@ -139,24 +139,28 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
       }
 
       const latestItem = preview.sampleItems[0];
-      const enrichmentResult = await enrichArticleWithImages(
-        {
-          title: latestItem.title,
-          description: latestItem.description || '',
-          link: latestItem.link,
-          pubDate: latestItem.pubDate,
-        },
-        settings,
-        getImageCountValue(feed.imageCount)
-      );
-
       const fallbackImages = latestItem.imageUrl
         ? [{ url: latestItem.imageUrl, reason: 'Feed image' }]
         : [];
 
-      const selectedImages = enrichmentResult.success && enrichmentResult.images.length > 0
-        ? enrichmentResult.images.map((image) => ({ url: image.url, reason: image.reason }))
-        : fallbackImages;
+      let selectedImages = fallbackImages;
+
+      if (feed.serperPriority) {
+        const enrichmentResult = await enrichArticleWithImages(
+          {
+            title: latestItem.title,
+            description: latestItem.description || '',
+            link: latestItem.link,
+            pubDate: latestItem.pubDate,
+          },
+          settings,
+          getImageCountValue(feed.imageCount)
+        );
+
+        if (enrichmentResult.success && enrichmentResult.images.length > 0) {
+          selectedImages = enrichmentResult.images.map((image) => ({ url: image.url, reason: image.reason }));
+        }
+      }
 
       const captionResult = await generateRSSCaption(
         {
@@ -204,7 +208,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
 
   const handleRunNow = async (feedId: string) => {
     haptics.light();
-    await refreshFeed(feedId);
+    await refreshFeed(feedId, { manualRun: true });
     await loadActivity();
   };
 

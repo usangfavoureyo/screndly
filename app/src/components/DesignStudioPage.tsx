@@ -9,10 +9,17 @@ import { BackblazeTemplateBrowser } from './BackblazeTemplateBrowser';
 import { SwipeableTemplateCard } from './SwipeableTemplateCard';
 import { VisuallyHidden } from './ui/visually-hidden';
 import { haptics } from '../utils/haptics';
-import { addDesignStudioActivity, addRecentActivity, addLogEntry } from '../utils/activityStore';
+import { addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { getPhotopeaService } from '../utils/photopeaService';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { useUndo } from './UndoContext';
+import {
+  createDesignStudioActivity,
+  fetchDesignStudioState,
+  saveDesignStudioState,
+  uploadDesignStudioAsset,
+} from '../lib/api/designStudio';
+import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 
 interface DesignStudioPageProps {
   onNavigate: (page: string) => void;
@@ -46,46 +53,101 @@ interface RenderedDesign {
   contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
 }
 
+function parseTemplate(template: any): Template {
+  return {
+    ...template,
+    lastEdited: new Date(template.lastEdited),
+  };
+}
+
+function parseRenderedDesign(renderedDesign: any): RenderedDesign {
+  return {
+    ...renderedDesign,
+    createdAt: new Date(renderedDesign.createdAt),
+  };
+}
+
+function serializeTemplates(templates: Template[]) {
+  return templates.map((template) => ({
+    ...template,
+    lastEdited: template.lastEdited.toISOString(),
+  }));
+}
+
+function serializeRenderedDesigns(renderedDesigns: RenderedDesign[]) {
+  return renderedDesigns.map((renderedDesign) => ({
+    ...renderedDesign,
+    createdAt: renderedDesign.createdAt.toISOString(),
+  }));
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string): File {
+  const [meta, content] = dataUrl.split(',');
+  if (!meta || !content) {
+    throw new Error('Invalid preview data');
+  }
+
+  const mimeMatch = meta.match(/data:(.*?);base64/);
+  const mimeType = mimeMatch?.[1] || 'image/png';
+  const binary = atob(content);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return new File([bytes], fileName, { type: mimeType });
+}
+
 export default function DesignStudioPage({ onNavigate, previousPage }: DesignStudioPageProps) {
   const { addNotification } = useNotifications();
   const { showUndo } = useUndo();
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>(() => {
-    // Load from localStorage on mount
-    const stored = localStorage.getItem('renderedDesigns');
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        // Convert createdAt strings back to Date objects
-        return parsed.map((design: any) => ({
-          ...design,
-          createdAt: new Date(design.createdAt)
-        }));
-      } catch (error) {
-        console.error('Error loading rendered designs:', error);
-        return [];
-      }
-    }
-    return [];
-  });
+  const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedTemplate, setExpandedTemplate] = useState<Template | null>(null);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false);
-  const [currentDesignData, setCurrentDesignData] = useState<DesignData | null>(null);
   const [livePreviewData, setLivePreviewData] = useState<DesignData | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
+  const [isLoadingState, setIsLoadingState] = useState(true);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Save renderedDesigns to localStorage whenever it changes
   useEffect(() => {
-    localStorage.setItem('renderedDesigns', JSON.stringify(renderedDesigns));
-  }, [renderedDesigns]);
+    let mounted = true;
+
+    const loadState = async () => {
+      try {
+        const state = await fetchDesignStudioState();
+        if (!mounted) {
+          return;
+        }
+
+        setTemplates((state.templates || []).map(parseTemplate));
+        setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
+      } catch (error) {
+        console.error('Failed to load Design Studio state:', error);
+        if (mounted) {
+          toast.error('Failed to load Design Studio data');
+        }
+      } finally {
+        if (mounted) {
+          setIsLoadingState(false);
+        }
+      }
+    };
+
+    loadState();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Calculate aspect ratio from dimensions
   const calculateAspectRatio = (width: number, height: number): string => {
@@ -106,6 +168,13 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
     return `${w}:${h}`;
   };
 
+  const persistState = async (nextTemplates: Template[], nextRenderedDesigns: RenderedDesign[]) => {
+    await saveDesignStudioState({
+      templates: serializeTemplates(nextTemplates),
+      renderedDesigns: serializeRenderedDesigns(nextRenderedDesigns),
+    });
+  };
+
   const handleUploadPSD = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -119,26 +188,22 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
     toast.success('Processing PSD template with Photopea...');
 
     try {
-      // Get Photopea service
       const photopeaService = getPhotopeaService();
-
-      // Initialize Photopea
       await photopeaService.initialize();
-
-      // Load PSD file
       await photopeaService.loadPSD(file);
-
-      // Analyze layer structure
       const analysis = await photopeaService.analyzeLayers();
-
-      // Generate preview
       const previewDataUrl = await photopeaService.getPreview();
+      const previewFile = dataUrlToFile(previewDataUrl, `${file.name.replace(/\.psd$/i, '')}-preview.png`);
 
-      // Create template from analysis
+      const [templateUpload, previewUpload] = await Promise.all([
+        uploadDesignStudioAsset(file, 'templates'),
+        uploadDesignStudioAsset(previewFile, 'template-previews'),
+      ]);
+
       const template: Template = {
         id: `template-${Date.now()}`,
         name: file.name.replace('.psd', ''),
-        previewUrl: previewDataUrl,
+        previewUrl: previewUpload.url,
         aspectRatio: calculateAspectRatio(analysis.width, analysis.height),
         width: analysis.width,
         height: analysis.height,
@@ -150,98 +215,27 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         psdData: {
           layers: analysis.layers,
           detectedLayers: analysis.detectedLayers,
-          fileUrl: URL.createObjectURL(file), // Store file URL for later use
+          b2Url: templateUpload.url,
+          fileName: templateUpload.fileName,
+          previewFileName: previewUpload.fileName,
         },
       };
 
-      setTemplates([template, ...templates]);
-      
-      addDesignStudioActivity({
-        id: `activity-${Date.now()}`,
-        type: 'template_uploaded',
-        timestamp: new Date().toISOString(),
-        details: {
-          templateName: template.name,
-        },
+      const nextTemplates = [template, ...templates];
+      await persistState(nextTemplates, renderedDesigns);
+      setTemplates(nextTemplates);
+      await createDesignStudioActivity('template_uploaded', {
+        templateName: template.name,
       });
 
       toast.success(`Template "${template.name}" analyzed and uploaded!`);
-      
-      // Close document to free memory
       await photopeaService.closeDocument();
-      
     } catch (error) {
       console.error('Photopea analysis error:', error);
-      
-      // Fallback to mock processing
-      toast('Using mock processing (Photopea unavailable)', {
-        description: 'Real Photopea integration will be used in production',
-      });
-
-      setTimeout(() => {
-        const foundLayers = {
-          category: Math.random() > 0.5,
-          header: true,
-          subtext: Math.random() > 0.5,
-          source: Math.random() > 0.5,
-          image: true,
-        };
-
-        const detectedLayers = {
-          hasCategory: foundLayers.category,
-          hasHeaderText: foundLayers.header,
-          hasSubtext: foundLayers.subtext,
-          hasSource: foundLayers.source,
-          hasImageLayer: foundLayers.image,
-          textLayers: [
-            foundLayers.category && 'category',
-            foundLayers.header && 'header',
-            foundLayers.subtext && 'subtext',
-            foundLayers.source && 'source',
-          ].filter(Boolean),
-          imageLayers: foundLayers.image ? ['background'] : [],
-        };
-
-        const mockTemplate: Template = {
-          id: `template-${Date.now()}`,
-          name: file.name.replace('.psd', ''),
-          previewUrl: 'https://images.unsplash.com/photo-1611162616475-46b635cb6868?w=800',
-          aspectRatio: '16:9',
-          width: 1920,
-          height: 1080,
-          source: 'upload',
-          lastEdited: new Date(),
-          hasSubtext: detectedLayers.hasSubtext,
-          hasCategory: detectedLayers.hasCategory,
-          hasSource: detectedLayers.hasSource,
-          psdData: {
-            layerMap: {
-              category: foundLayers.category ? 'category' : null,
-              headerText: foundLayers.header ? 'header' : null,
-              subtext: foundLayers.subtext ? 'subtext' : null,
-              source: foundLayers.source ? 'source' : null,
-              backgroundImage: foundLayers.image ? 'background' : null,
-            },
-            detectedLayers,
-          },
-        };
-
-        setTemplates([mockTemplate, ...templates]);
-        
-        addDesignStudioActivity({
-          id: `activity-${Date.now()}`,
-          type: 'template_uploaded',
-          timestamp: new Date().toISOString(),
-          details: {
-            templateName: mockTemplate.name,
-          },
-        });
-
-        toast.success(`Template "${mockTemplate.name}" uploaded (mock mode)`);
-      }, 1500);
+      toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
+    } finally {
+      e.target.value = '';
     }
-
-    e.target.value = '';
   };
 
   const handleLoadFromBackblaze = async () => {
@@ -249,40 +243,33 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
     setShowBackblazeBrowser(true);
   };
 
-  const handleLoadSelectedTemplates = (selectedFiles: any[]) => {
-    // Convert selected B2 files to Template objects
+  const handleLoadSelectedTemplates = async (selectedFiles: any[]) => {
     const b2Templates: Template[] = selectedFiles.map(file => ({
       id: `bb-${file.fileId}-${Date.now()}`,
       name: file.fileName.replace('.psd', '').replace('templates/', ''),
-      previewUrl: file.url.replace('.psd', '_preview.jpg'), // Assume preview images exist
-      aspectRatio: '4:5', // Default, will be determined when loaded
+      previewUrl: file.url.replace('.psd', '_preview.jpg'),
+      aspectRatio: '4:5',
       width: 1080,
       height: 1350,
       source: 'backblaze',
       lastEdited: file.lastModified,
-      hasSubtext: true, // Default assumption
+      hasSubtext: true,
       psdData: {
         b2Url: file.url,
         fileName: file.fileName,
       },
     }));
 
-    setTemplates([...b2Templates, ...templates]);
-    
-    addDesignStudioActivity({
-      id: `activity-${Date.now()}`,
-      type: 'templates_loaded',
-      timestamp: new Date().toISOString(),
-      details: {
-        source: 'backblaze',
-        count: b2Templates.length,
-      },
+    const nextTemplates = [...b2Templates, ...templates];
+    await persistState(nextTemplates, renderedDesigns);
+    setTemplates(nextTemplates);
+    await createDesignStudioActivity('templates_loaded', {
+      source: 'backblaze',
+      count: b2Templates.length,
     });
 
     toast.success(`${b2Templates.length} template${b2Templates.length !== 1 ? 's' : ''} loaded from Backblaze`);
     haptics.success();
-
-    // Close the bottom sheet
     setShowBackblazeBrowser(false);
   };
 
@@ -328,17 +315,14 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
     toast.success('Rendering design with Photopea...');
 
     try {
-      // Get Photopea service
       const photopeaService = getPhotopeaService();
-
-      // Initialize if needed
       await photopeaService.initialize();
+      const psdUrl = selectedTemplate.psdData?.b2Url || selectedTemplate.psdData?.fileUrl;
+      if (!psdUrl) {
+        throw new Error('Template source file is missing');
+      }
 
-      // Load the PSD template (in production, load from stored file/URL)
-      // For now, we'll simulate since we don't have actual PSD files stored
-      // await photopeaService.loadPSDFromURL(selectedTemplate.psdData?.fileUrl);
-
-      // Render the design using Photopea
+      await photopeaService.loadPSDFromURL(psdUrl);
       const renderedBlob = await photopeaService.renderDesign(data, {
         width: selectedTemplate.width,
         height: selectedTemplate.height,
@@ -346,14 +330,18 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         hasOverlay: true,
       });
 
-      // Convert blob to object URL for display
-      const outputUrl = URL.createObjectURL(renderedBlob);
+      const renderedFile = new File(
+        [renderedBlob],
+        `${selectedTemplate.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}.jpg`,
+        { type: 'image/jpeg' }
+      );
+      const renderedUpload = await uploadDesignStudioAsset(renderedFile, 'renders');
 
       const renderedDesign: RenderedDesign = {
         id: `design-${Date.now()}`,
         templateId: selectedTemplate.id,
         templateName: selectedTemplate.name,
-        outputUrl,
+        outputUrl: renderedUpload.url,
         data,
         createdAt: new Date(),
         aspectRatio: selectedTemplate.aspectRatio,
@@ -361,21 +349,16 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         contentType: data.contentType,
       };
 
-      setRenderedDesigns([renderedDesign, ...renderedDesigns]);
-      setCurrentDesignData(data);
+      const nextRenderedDesigns = [renderedDesign, ...renderedDesigns];
+      await persistState(templates, nextRenderedDesigns);
+      setRenderedDesigns(nextRenderedDesigns);
       setIsRendering(false);
 
-      addDesignStudioActivity({
-        id: `activity-${Date.now()}`,
-        type: 'design_rendered',
-        timestamp: new Date().toISOString(),
-        details: {
-          templateName: selectedTemplate.name,
-          designId: renderedDesign.id,
-        },
+      await createDesignStudioActivity('design_rendered', {
+        templateName: selectedTemplate.name,
+        designId: renderedDesign.id,
       });
 
-      // Add to recent activity
       addRecentActivity({
         title: selectedTemplate.name,
         platform: 'Design Studio',
@@ -383,7 +366,6 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         type: 'designstudio',
       });
 
-      // Add to logs
       addLogEntry({
         videoTitle: selectedTemplate.name,
         platform: 'Design Studio',
@@ -391,134 +373,140 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         type: 'designstudio',
       });
 
-      // Send notification
       addNotification({
         type: 'success',
         title: 'Design Rendered',
         message: `"${selectedTemplate.name}" rendered successfully`,
+        source: 'design_studio',
+        actionPage: 'design-studio-activity',
       });
 
+      await photopeaService.closeDocument();
       toast.success('Design rendered successfully!');
       haptics.success();
     } catch (error) {
       console.error('Photopea rendering error:', error);
-      
-      // Fallback to mock rendering
-      toast('Using mock rendering (Photopea unavailable)', {
-        description: 'Real Photopea integration will be used in production',
-      });
-
-      setTimeout(() => {
-        const renderedDesign: RenderedDesign = {
-          id: `design-${Date.now()}`,
-          templateId: selectedTemplate.id,
-          templateName: selectedTemplate.name,
-          outputUrl: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800',
-          data,
-          createdAt: new Date(),
-          aspectRatio: selectedTemplate.aspectRatio,
-          caption: data.caption,
-          contentType: data.contentType,
-        };
-
-        setRenderedDesigns([renderedDesign, ...renderedDesigns]);
-        setCurrentDesignData(data);
-        setIsRendering(false);
-
-        addDesignStudioActivity({
-          id: `activity-${Date.now()}`,
-          type: 'design_rendered',
-          timestamp: new Date().toISOString(),
-          details: {
-            templateName: selectedTemplate.name,
-            designId: renderedDesign.id,
-          },
-        });
-
-        toast.success('Design rendered (mock mode)');
-        haptics.success();
-      }, 2000);
+      setIsRendering(false);
+      toast.error(error instanceof Error ? error.message : 'Failed to render design');
     }
   };
 
-  const handlePublish = (caption: string, platforms: any) => {
+  const handlePublish = async (caption: string, platforms: PlatformSelection) => {
     if (!publishTarget) return;
 
     haptics.medium();
-    
-    const platformsList = Object.keys(platforms).filter(k => platforms[k]).join(', ');
-    
-    addDesignStudioActivity({
-      id: `activity-${Date.now()}`,
-      type: 'design_published',
-      timestamp: new Date().toISOString(),
-      details: {
+    try {
+      const result = await publishContent(platforms, {
+        text: caption || publishTarget.caption || publishTarget.templateName,
+        title: publishTarget.templateName,
+        imageUrl: publishTarget.outputUrl,
+      });
+
+      if (!result.success || !result.data) {
+        toast.error(result.error?.message || 'Failed to publish design');
+        return;
+      }
+
+      const successfulPlatforms = result.data.results
+        .filter((item: any) => item.status === 'posted')
+        .map((item: any) => item.platform);
+      const failedPlatforms = result.data.results
+        .filter((item: any) => item.status === 'failed')
+        .map((item: any) => `${item.platform}${item.error ? `: ${item.error}` : ''}`);
+
+      if (successfulPlatforms.length === 0) {
+        toast.error(failedPlatforms[0] || 'Failed to publish design');
+        return;
+      }
+
+      const nextRenderedDesigns = renderedDesigns.map((design) =>
+        design.id === publishTarget.id
+          ? { ...design, caption: caption || design.caption }
+          : design
+      );
+      await persistState(templates, nextRenderedDesigns);
+      setRenderedDesigns(nextRenderedDesigns);
+
+      const platformsList = successfulPlatforms.join(', ');
+
+      await createDesignStudioActivity('design_published', {
         templateName: publishTarget.templateName,
         designId: publishTarget.id,
         platforms: platformsList,
-      },
-    });
+      });
 
-    // Add to recent activity
-    addRecentActivity({
-      title: publishTarget.templateName,
-      platform: platformsList || 'Multiple platforms',
-      status: 'success',
-      type: 'designstudio',
-    });
+      addRecentActivity({
+        title: publishTarget.templateName,
+        platform: platformsList,
+        status: 'success',
+        type: 'designstudio',
+      });
 
-    // Add to logs
-    addLogEntry({
-      videoTitle: publishTarget.templateName,
-      platform: platformsList || 'Multiple platforms',
-      status: 'success',
-      type: 'designstudio',
-    });
+      addLogEntry({
+        videoTitle: publishTarget.templateName,
+        platform: platformsList,
+        status: 'success',
+        type: 'designstudio',
+        errorDetails: failedPlatforms.length > 0 ? failedPlatforms.join(' | ') : undefined,
+      });
 
-    // Send notification
-    addNotification({
-      type: 'success',
-      title: 'Design Published',
-      message: `"${publishTarget.templateName}" published to ${platformsList || 'selected platforms'}`,
-    });
+      addNotification({
+        type: 'success',
+        title: 'Design Published',
+        message: `"${publishTarget.templateName}" published to ${platformsList}`,
+        source: 'design_studio',
+        actionPage: 'design-studio-activity',
+      });
 
-    toast.success('Design published to selected platforms!');
+      if (failedPlatforms.length > 0) {
+        toast.success(`Published to ${platformsList}`, {
+          description: `Failed: ${failedPlatforms.join(' | ')}`,
+        });
+        return;
+      }
+
+      toast.success('Design published to selected platforms!');
+    } catch (error) {
+      console.error('Failed to finish Design Studio publish flow:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to publish design');
+    }
   };
 
-  const handleDeleteTemplate = (id: string) => {
+  const handleDeleteTemplate = async (id: string) => {
     const template = templates.find(t => t.id === id);
     if (!template) return;
 
     const previousTemplates = [...templates];
     const previousRenderedDesigns = [...renderedDesigns];
+    const nextTemplates = templates.filter(t => t.id !== id);
+    const nextRenderedDesigns = renderedDesigns.filter(d => d.templateId !== id);
 
-    setTemplates(templates.filter(t => t.id !== id));
-    
-    // Also remove any rendered designs for this template
-    setRenderedDesigns(renderedDesigns.filter(d => d.templateId !== id));
-    
-    addDesignStudioActivity({
-      id: `activity-${Date.now()}`,
-      type: 'template_deleted',
-      timestamp: new Date().toISOString(),
-      details: {
+    try {
+      await persistState(nextTemplates, nextRenderedDesigns);
+      setTemplates(nextTemplates);
+      setRenderedDesigns(nextRenderedDesigns);
+      await createDesignStudioActivity('template_deleted', {
         templateName: template.name,
-      },
-    });
+      });
 
-    haptics.medium();
-    toast.success(`Template deleted`);
+      haptics.medium();
+      toast.success(`Template deleted`);
 
-    showUndo({
-      id: `undo-template-${id}`,
-      itemName: template.name,
-      onUndo: () => {
-        setTemplates(previousTemplates);
-        setRenderedDesigns(previousRenderedDesigns);
-        haptics.light();
-        toast.success('Template restored');
-      }
-    });
+      showUndo({
+        id: `undo-template-${id}`,
+        itemName: template.name,
+        onUndo: async () => {
+          await persistState(previousTemplates, previousRenderedDesigns);
+          setTemplates(previousTemplates);
+          setRenderedDesigns(previousRenderedDesigns);
+          haptics.light();
+          toast.success('Template restored');
+        }
+      });
+    } catch (error) {
+      console.error('Failed to delete template:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete template');
+    }
   };
 
   return (
@@ -569,7 +557,16 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
       </div>
 
       {/* Templates Grid */}
-      {templates.length === 0 ? (
+      {isLoadingState ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3].map((item) => (
+            <div
+              key={item}
+              className="h-72 rounded-2xl border border-gray-200 dark:border-[#333333] bg-gray-100 dark:bg-[#111111] animate-pulse"
+            />
+          ))}
+        </div>
+      ) : templates.length === 0 ? (
         <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
           <FileImage className="w-12 h-12 text-gray-400 dark:text-[#666666] mx-auto mb-4" />
           <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No templates yet</p>
@@ -620,9 +617,10 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
           onOpenChange={setIsPublishSheetOpen}
           title="Publish Design"
           description="Select platforms and customize your caption"
+          initialCaption={publishTarget.caption || ''}
           onPublish={(caption, platforms) => handlePublish(caption, platforms)}
           onCaptionGenerate={() => {
-            return publishTarget.name || 'New design created!';
+            return publishTarget.caption || publishTarget.templateName || 'New design created!';
           }}
         />
       )}
@@ -661,36 +659,10 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
       <BackblazeTemplateBrowser
         open={showBackblazeBrowser}
         onSelectTemplate={(file) => {
-          // Convert B2 file to Template object
-          const template: Template = {
-            id: `bb-${file.fileId}-${Date.now()}`,
-            name: file.fileName.replace('.psd', '').replace('templates/', ''),
-            previewUrl: file.url.replace('.psd', '_preview.jpg'), // Assume preview images exist
-            aspectRatio: '4:5', // Default, will be determined when loaded
-            width: 1080,
-            height: 1350,
-            source: 'backblaze',
-            lastEdited: file.lastModified,
-            hasSubtext: true, // Default assumption
-            psdData: {
-              b2Url: file.url,
-              fileName: file.fileName,
-            },
-          };
-
-          setTemplates([template, ...templates]);
-          
-          addDesignStudioActivity({
-            id: `activity-${Date.now()}`,
-            type: 'templates_loaded',
-            timestamp: new Date().toISOString(),
-            details: {
-              source: 'backblaze',
-              count: 1,
-            },
+          handleLoadSelectedTemplates([file]).catch((error) => {
+            console.error('Failed to load template from Backblaze:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to load template');
           });
-
-          haptics.success();
         }}
         onClose={() => {
           haptics.light();
