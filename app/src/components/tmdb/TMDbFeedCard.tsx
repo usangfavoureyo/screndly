@@ -41,7 +41,7 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
 
   // Menu bottom sheet state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const touchSwipeEnabled = false;
+  const touchSwipeEnabled = true;
 
   // Swipe state for mobile/tablet delete
   const [swipeX, setSwipeX] = useState(0);

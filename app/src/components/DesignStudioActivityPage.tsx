@@ -13,6 +13,8 @@ interface DesignStudioActivityRecord {
     templateName?: string;
     designId?: string;
     platforms?: string;
+    source?: string;
+    count?: number;
   };
   createdAt: string;
 }
@@ -32,10 +34,14 @@ function activityTitle(type: string): string {
   switch (type) {
     case 'template_uploaded':
       return 'Template Uploaded';
+    case 'templates_loaded':
+      return 'Templates Loaded';
     case 'design_rendered':
       return 'Design Rendered';
     case 'design_published':
       return 'Design Published';
+    case 'template_deleted':
+      return 'Template Deleted';
     default:
       return 'Design Activity';
   }
@@ -43,10 +49,17 @@ function activityTitle(type: string): string {
 
 function activityDescription(activity: DesignStudioActivityRecord): string {
   const templateName = activity.details?.templateName || 'Untitled design';
-  if (activity.type === 'design_published') {
-    return `${templateName}${activity.details?.platforms ? ` → ${activity.details.platforms}` : ''}`;
+
+  switch (activity.type) {
+    case 'templates_loaded': {
+      const count = Number(activity.details?.count || 0);
+      return `${count} template${count === 1 ? '' : 's'} loaded from ${activity.details?.source || 'storage'}`;
+    }
+    case 'design_published':
+      return `${templateName}${activity.details?.platforms ? ` -> ${activity.details.platforms}` : ''}`;
+    default:
+      return templateName;
   }
-  return templateName;
 }
 
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
@@ -101,6 +114,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         return <Send className="w-5 h-5 text-[#ec1e24]" />;
       case 'design_rendered':
       case 'template_uploaded':
+      case 'templates_loaded':
+      case 'template_deleted':
         return <Image className="w-5 h-5 text-[#ec1e24]" />;
       default:
         return <Calendar className="w-5 h-5 text-[#ec1e24]" />;

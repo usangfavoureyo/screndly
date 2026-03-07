@@ -6,7 +6,7 @@ export interface PlatformSelection {
     instagram: boolean;
     threads: boolean;
     youtube: boolean;
-    tiktok: boolean;
+    tiktok?: boolean;
     pinterest: boolean;
 }
 

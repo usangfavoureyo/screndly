@@ -133,7 +133,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           <div className="flex-1">
             <h1 className="text-gray-900 dark:text-white mb-2">RSS Feeds Activity</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">
-              Track processing, publishing, and failures for your RSS feeds.
+              <span className="block">Track processing, publishing, and</span>
+              <span className="block">failures for your RSS feeds.</span>
             </p>
           </div>
           <Button

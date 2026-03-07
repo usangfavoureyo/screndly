@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Trash2, Check, CheckCheck, AlertCircle, Settings as SettingsIcon, Clapperboard, Film } from 'lucide-react';
+import { Trash2, Check, CheckCheck, AlertCircle, Settings as SettingsIcon, Film, Rss } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 
 interface Notification {
@@ -28,7 +28,7 @@ export function SwipeableNotificationCard({
   onActionClick,
   onOpen
 }: SwipeableNotificationCardProps) {
-  const touchSwipeEnabled = false;
+  const touchSwipeEnabled = true;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
@@ -131,9 +131,8 @@ export function SwipeableNotificationCard({
   };
 
   const getIcon = (notification: Notification) => {
-    // Check if it's a TMDb notification
-    if (notification.source === 'tmdb') {
-      return <Clapperboard className="w-5 h-5 text-[#ec1e24]" />;
+    if (notification.source === 'rss' || notification.source === 'tmdb') {
+      return <Rss className="w-5 h-5 text-[#ec1e24]" />;
     }
     
     // Check if it's a Video Studio notification

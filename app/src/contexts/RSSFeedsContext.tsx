@@ -13,6 +13,8 @@ export interface FeedFilters {
   scope: 'title' | 'body' | 'title_or_body' | 'title_and_body';
   required: FilterItem[];
   blocked: FilterItem[];
+  onlyFetchNewItems?: boolean;
+  startFromNowAt?: string | null;
 }
 
 export interface PlatformsEnabled {
@@ -97,6 +99,7 @@ export interface RSSRefreshResult {
   failedCount: number;
   latestItemTitle?: string;
   error?: string;
+  selectionMode?: 'backlog' | 'latest_item';
 }
 
 interface RSSFeedsContextType {
@@ -106,7 +109,10 @@ interface RSSFeedsContextType {
   addFeed: (feed: Partial<RSSFeed> & { url: string }) => Promise<RSSFeed | null>;
   updateFeed: (feedId: string, updates: Partial<RSSFeed>) => Promise<void>;
   deleteFeed: (feedId: string) => Promise<void>;
-  refreshFeed: (feedId: string, options?: { showToast?: boolean }) => Promise<RSSRefreshResult | null>;
+  refreshFeed: (
+    feedId: string,
+    options?: { showToast?: boolean; manualRun?: boolean }
+  ) => Promise<RSSRefreshResult | null>;
   refreshAllFeeds: () => Promise<void>;
   previewFeed: (url: string) => Promise<RSSFeedPreview | null>;
   getActivity: (limit?: number) => Promise<RSSActivityResponse | null>;
@@ -124,6 +130,13 @@ function buildRefreshToastMessage(result: RSSRefreshResult): string {
   if (result.itemsAdded > 0) segments.push(`${result.itemsAdded} published`);
   if (result.pendingCount > 0) segments.push(`${result.pendingCount} pending`);
   if (result.failedCount > 0) segments.push(`${result.failedCount} failed`);
+
+  if (result.selectionMode === 'latest_item') {
+    if (result.checkedCount === 0) return `${result.feedName}: no items available to test`;
+    if (segments.length === 0) return `${result.feedName}: latest item checked`;
+    return `${result.feedName}: latest item ${segments.join(', ')}`;
+  }
+
   if (segments.length === 0) return `${result.feedName}: no new items`;
   return `${result.feedName}: ${segments.join(', ')}`;
 }
@@ -225,10 +238,12 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
 
   const refreshFeed = async (
     feedId: string,
-    options: { showToast?: boolean } = { showToast: true }
+    options: { showToast?: boolean; manualRun?: boolean } = { showToast: true, manualRun: false }
   ): Promise<RSSRefreshResult | null> => {
     try {
-      const response = await apiClient.post<RSSRefreshResult>(`/api/rss/feeds/${feedId}/refresh`);
+      const response = await apiClient.post<RSSRefreshResult>(`/api/rss/feeds/${feedId}/refresh`, {
+        manualRun: Boolean(options.manualRun),
+      });
       if (!response.success || !response.data) {
         throw new Error(response.error?.message || 'Failed to refresh feed');
       }

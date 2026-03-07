@@ -33,6 +33,8 @@ export interface Feed {
       caseSensitive: boolean;
       active: boolean;
     }>;
+    onlyFetchNewItems?: boolean;
+    startFromNowAt?: string | null;
   };
   serperPriority: boolean;
   rehostImages: boolean;
@@ -72,7 +74,7 @@ export function FeedCard({
 }: FeedCardProps) {
   const [isRefreshRunning, setIsRefreshRunning] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
-  const touchSwipeEnabled = false;
+  const touchSwipeEnabled = true;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
