@@ -3,6 +3,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import prisma from '../lib/prisma';
 import { env } from '../lib/env';
+import { assertXOAuthConfigured, buildXTokenRequest, getXOAuthClientId } from '../lib/xOAuth';
 import multer from 'multer';
 import { xService } from '../services/platforms/x';
 import { metaService } from '../services/platforms/meta';
@@ -545,12 +546,13 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
             }
 
             case 'X': {
-                assertConfigured('X', { X_CLIENT_ID: env.X_CLIENT_ID });
+                assertXOAuthConfigured();
+                const xClientId = getXOAuthClientId();
                 const codeVerifier = createCodeVerifier();
                 const codeChallenge = createCodeChallenge(codeVerifier);
                 const scopes = ['tweet.read', 'tweet.write', 'users.read', 'offline.access'];
 
-                oauthUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(env.X_CLIENT_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
+                oauthUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(xClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
                 break;
             }
 
@@ -782,22 +784,18 @@ router.post('/callback', async (req, res) => {
             });
         } else if (normalizedPlatform === 'X') {
             if (!effectiveCodeVerifier) throw new Error('Missing PKCE verifier for X OAuth');
-            assertConfigured('X', { X_CLIENT_ID: env.X_CLIENT_ID });
+            assertXOAuthConfigured();
 
             const params = new URLSearchParams({
                 code,
                 grant_type: 'authorization_code',
-                client_id: env.X_CLIENT_ID || '',
                 redirect_uri: effectiveRedirectUri,
                 code_verifier: effectiveCodeVerifier
             });
+            const { params: tokenParams, headers: tokenHeaders } = buildXTokenRequest(params);
 
-            if (env.X_CLIENT_SECRET) {
-                params.append('client_secret', env.X_CLIENT_SECRET);
-            }
-
-            const tokenResponse = await axios.post('https://api.x.com/2/oauth2/token', params.toString(), {
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+            const tokenResponse = await axios.post('https://api.x.com/2/oauth2/token', tokenParams.toString(), {
+                headers: tokenHeaders
             });
 
             const tokenData = tokenResponse.data as {
