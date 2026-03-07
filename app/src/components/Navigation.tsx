@@ -59,14 +59,14 @@ export function Navigation({
               className={cn(
                 'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop ? 'justify-center' : 'gap-3',
-                isDesktop && isDesktopSidebarHovered && 'opacity-0 pointer-events-none',
+                isDesktop && isCollapsed && isDesktopSidebarHovered && 'opacity-0 pointer-events-none',
               )}
               aria-label="Go to dashboard"
             >
               <img src={brandIcon} alt="Screndly" className="h-10 w-10 rounded-md object-contain transition-transform duration-300" />
             </button>
 
-            {isDesktop && (
+            {isDesktop && isCollapsed && (
               <Button
                 type="button"
                 size="icon"
@@ -84,7 +84,19 @@ export function Navigation({
             )}
           </div>
 
-          {isDesktop && !isCollapsed && <div className="h-10 w-10 shrink-0" aria-hidden="true" />}
+          {isDesktop && !isCollapsed && (
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={onToggleDesktopSidebar}
+              className="hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 transition-colors duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
+              aria-label="Collapse sidebar"
+              aria-pressed={false}
+            >
+              <PanelLeftClose className="h-5 w-5" />
+            </Button>
+          )}
         </div>
       </div>
 
