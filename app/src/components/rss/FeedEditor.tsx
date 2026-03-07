@@ -239,7 +239,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                 </Select>
               </div>
 
-              <div className="flex items-start justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#1A1A1A] dark:bg-[#050505]">
+              <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                   <Label className="text-gray-600 dark:text-[#9CA3AF]">Only fetch new items from now on</Label>
                   <p className="text-xs text-gray-500 dark:text-[#6B7280]">

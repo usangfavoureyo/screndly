@@ -141,10 +141,10 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             variant="outline"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+            aria-label="Refresh RSS activity"
+            className="h-11 w-11 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-            Refresh
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
