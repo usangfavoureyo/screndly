@@ -163,6 +163,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
           title: latestItem.title,
           description: latestItem.description || '',
           link: latestItem.link,
+          feedName: feed.name,
         },
         settings
       );
@@ -316,8 +317,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
                   }}
                   className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Refresh All
+                  <RefreshCw className="w-4 h-4" />
                 </Button>
                 <Button
                   variant="outline"

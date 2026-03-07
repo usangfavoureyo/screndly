@@ -388,6 +388,13 @@ export function MetaSettings({ onSave }: MetaSettingsProps) {
             <ExternalLink className="w-3 h-3" />
             Privacy Policy
           </a>
+          <a
+            href="/legal/data-deletion"
+            className="flex items-center gap-2 text-xs text-[#ec1e24] hover:underline"
+          >
+            <ExternalLink className="w-3 h-3" />
+            Data Deletion Instructions
+          </a>
         </div>
       </Card>
     </div>

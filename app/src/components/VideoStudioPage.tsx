@@ -36,7 +36,7 @@ import { analyzeTrailer, TrailerAnalysis, VideoMoment } from '../lib/api/googleV
 import { generateShotstackJSON, renderVideo } from '../lib/api/shotstack';
 import { analyzeMultipleTrailers, MonthlyTrailerAnalysis, generateMonthlyCompilationJSON, getCompilationStats } from '../lib/api/monthlyCompilation';
 import { performWebSearch, formatSearchResultsForPrompt, buildSceneSearchQuery } from '../lib/api/webSearch';
-import { generateVideoStudioCaption, VideoContentType } from '../utils/videoStudioCaptionGenerator';
+import { generateVideoStudioCaption, type VideoContent, VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { publishContent } from '../lib/api/platforms';
 import { VideoStudioHeader } from './video-studio/VideoStudioHeader';
 import { ReviewModule } from './video-studio/ReviewModule';
@@ -953,10 +953,14 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
       };
 
       const contentType = contentTypeMap[module];
+      const activePlatforms = Object.entries(selectedPlatforms)
+        .filter(([, isSelected]) => isSelected)
+        .map(([platform]) => platform);
 
       // Build content context based on module
-      let content: any = {
-        contentType
+      let content: VideoContent = {
+        contentType,
+        platforms: activePlatforms,
       };
 
       if (module === 'scenes') {
@@ -970,21 +974,24 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
           startTime: scenesStartTime,
           endTime: scenesEndTime,
           duration,
-          transcript: ''
+          transcript: '',
+          description: scenesMovieTitle ? `Scene-based clip from ${scenesMovieTitle}` : 'Scene-based clip',
         };
       } else if (module === 'review') {
         // For review module, use voiceover transcript if available
         content = {
           ...content,
           transcript: reviewVoiceover ? 'Review voiceover content' : undefined,
-          movieTitle: Object.values(reviewVideoTitles).map(t => t.title).join(', ')
+          movieTitle: Object.values(reviewVideoTitles).map(t => t.title).join(', '),
+          description: 'Review-driven video content',
         };
       } else {
         // For monthly/releases module
         content = {
           ...content,
           transcript: monthlyVoiceover ? 'Monthly releases voiceover content' : undefined,
-          movieTitle: Object.values(monthlyVideoTitles).map(t => t.title).join(', ')
+          movieTitle: Object.values(monthlyVideoTitles).map(t => t.title).join(', '),
+          description: 'Monthly releases roundup',
         };
       }
 

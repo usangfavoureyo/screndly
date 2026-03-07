@@ -31,6 +31,7 @@ import {
 import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
 import { apiClient } from '../lib/api/client';
 import { publishTMDbPost } from '../lib/tmdb/tmdbPublish';
+import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFromSource } from '../utils/tmdbCaptionGenerator';
 
 interface TMDbActivityItem {
   id: string;
@@ -111,49 +112,17 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       return true;
     });
 
-  const getCaptionPlatform = (platforms?: string[]): 'X' | 'Threads' | 'Facebook' | 'Instagram' => {
-    const supportedPlatforms = ['X', 'Threads', 'Facebook', 'Instagram'] as const;
-    const match = supportedPlatforms.find((platform) => platforms?.includes(platform));
-    return match || 'X';
-  };
-
-  const getTemporalTag = (source: TMDbActivityItem['source']) => {
-    switch (source) {
-      case 'tmdb_today':
-        return 'releasing_today' as const;
-      case 'tmdb_weekly':
-        return 'releasing_this_week' as const;
-      case 'tmdb_monthly':
-        return 'releasing_this_month' as const;
-      case 'tmdb_anniversary':
-        return 'anniversary' as const;
-      default:
-        return 'already_released' as const;
-    }
-  };
-
-  const getDaysUntilRelease = (releaseDate?: string) => {
-    if (!releaseDate) return 0;
-    const diffMs = new Date(releaseDate).getTime() - Date.now();
-    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
-  };
-
   const generateTmdbCaption = async (post: TMDbActivityItem) => {
-    const response = await apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', {
+    const result = await generateTMDbCaptionWithSettings({
       title: post.title,
       mediaType: post.mediaType,
-      temporalTag: getTemporalTag(post.source),
-      daysUntil: getDaysUntilRelease(post.releaseDate),
+      releaseDate: post.releaseDate || new Date().toISOString(),
       cast: post.cast || [],
-      genres: [],
-      platform: getCaptionPlatform(post.platforms),
-    });
+      year: post.year,
+      platforms: post.platforms,
+    }, getFeedTypeFromSource(post.source));
 
-    if (!response.success || !response.data?.content) {
-      throw new Error(response.error?.message || 'Failed to generate caption');
-    }
-
-    return response.data.content;
+    return result.caption;
   };
 
   const createTmdbLog = async (title: string, platform: string) => {

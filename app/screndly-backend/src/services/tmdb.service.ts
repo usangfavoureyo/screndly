@@ -5,6 +5,8 @@ import { env } from '../lib/env';
  */
 
 import prisma from '../lib/prisma';
+import { getSecretSetting } from '../lib/settings';
+import { trackApiUsage } from './api-usage.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -25,6 +27,8 @@ interface TMDbMovie {
     media_type?: string;
 }
 
+type MediaType = 'movie' | 'tv';
+
 interface TMDbCredits {
     cast: Array<{ name: string; character: string; order: number }>;
 }
@@ -38,20 +42,12 @@ export async function getTmdbApiKey(): Promise<string | null> {
         return env.TMDB_API_KEY;
     }
 
-    // Then try database settings
-    try {
-        const setting = await prisma.setting.findUnique({
-            where: { key: 'tmdbApiKey' }
-        });
-        if (setting?.value) {
-            const value = setting.value as { value?: string };
-            return value.value || null;
-        }
-    } catch (error) {
-        console.error('Failed to get TMDb API key from settings:', error);
+    const modernKey = await getSecretSetting('tmdbKey');
+    if (modernKey) {
+        return modernKey;
     }
 
-    return null;
+    return getSecretSetting('tmdbApiKey');
 }
 
 /**
@@ -69,13 +65,39 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {
         url.searchParams.set(key, value);
     });
 
-    const response = await fetch(url.toString());
-    if (!response.ok) {
-        throw new Error(`TMDb API error: ${response.status} ${response.statusText}`);
-    }
+    let tracked = false;
 
-    const data = await response.json() as T;
-    return data;
+    try {
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            await trackApiUsage({
+                service: 'tmdb',
+                endpoint,
+                success: false,
+            });
+            tracked = true;
+            throw new Error(`TMDb API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json() as T;
+        await trackApiUsage({
+            service: 'tmdb',
+            endpoint,
+            success: true,
+        });
+        tracked = true;
+        return data;
+    } catch (error) {
+        if (!tracked) {
+            await trackApiUsage({
+                service: 'tmdb',
+                endpoint,
+                success: false,
+            });
+        }
+
+        throw error;
+    }
 }
 
 /**
@@ -146,15 +168,16 @@ export async function fetchAnniversaryMovies(settings?: RefreshSettings): Promis
     const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
     const currentDay = String(today.getDate()).padStart(2, '0');
     const anniversaryMovies: TMDbMovie[] = [];
+    const config = { ...defaultRefreshSettings, ...settings };
 
     // Use settings or defaults
     // Default milestones: 10, 20, 25, 30, 40, 50
     const defaultMilestones = [10, 20, 25, 30, 40, 50];
     let milestones = defaultMilestones;
 
-    if (settings?.anniversaryYears && Array.isArray(settings.anniversaryYears)) {
+    if (config.anniversaryYears && Array.isArray(config.anniversaryYears)) {
         // Convert string array ["10", "20"] to numbers [10, 20]
-        milestones = settings.anniversaryYears.map(y => parseInt(y.toString())).filter(n => !isNaN(n));
+        milestones = config.anniversaryYears.map(y => parseInt(y.toString())).filter(n => !isNaN(n));
     }
 
     // Fallback if settings empty
@@ -165,24 +188,73 @@ export async function fetchAnniversaryMovies(settings?: RefreshSettings): Promis
     for (const years of milestones) {
         const targetYear = today.getFullYear() - years;
         const releaseDate = `${targetYear}-${currentMonth}-${currentDay}`;
-        // ... (rest of loop)
 
         try {
-            const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', {
+            const params: Record<string, string> = {
                 'primary_release_date.gte': releaseDate,
                 'primary_release_date.lte': releaseDate,
                 'sort_by': 'popularity.desc'
-            });
+            };
+            applyCommonDiscoverFilters(params, 'movie', config);
+
+            const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
 
             if (data.results.length > 0) {
-                anniversaryMovies.push(...data.results.slice(0, 2));
+                anniversaryMovies.push(...data.results.slice(0, config.maxPerAnniversary || 2));
             }
         } catch (error) {
             console.error(`Failed to fetch ${years}yr anniversaries:`, error);
         }
     }
 
-    return anniversaryMovies;
+    return anniversaryMovies.slice(0, config.anniversaryMaxItems || 5);
+}
+
+/**
+ * Fetch anniversary TV shows (premiered X years ago today)
+ */
+export async function fetchAnniversaryTV(settings?: RefreshSettings): Promise<TMDbMovie[]> {
+    const today = new Date();
+    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
+    const currentDay = String(today.getDate()).padStart(2, '0');
+    const anniversaryShows: TMDbMovie[] = [];
+    const config = { ...defaultRefreshSettings, ...settings };
+
+    const defaultMilestones = [10, 20, 25, 30, 40, 50];
+    let milestones = defaultMilestones;
+
+    if (config.anniversaryYears && Array.isArray(config.anniversaryYears)) {
+        milestones = config.anniversaryYears.map(y => parseInt(y.toString())).filter(n => !isNaN(n));
+    }
+
+    if (milestones.length === 0) milestones = defaultMilestones;
+
+    console.log(`[TMDb] Checking TV anniversaries for years: ${milestones.join(', ')}`);
+
+    for (const years of milestones) {
+        const targetYear = today.getFullYear() - years;
+        const premiereDate = `${targetYear}-${currentMonth}-${currentDay}`;
+
+        try {
+            const params: Record<string, string> = {
+                'first_air_date.gte': premiereDate,
+                'first_air_date.lte': premiereDate,
+                'sort_by': 'popularity.desc',
+                'watch_region': 'US'
+            };
+            applyCommonDiscoverFilters(params, 'tv', config);
+
+            const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
+
+            if (data.results.length > 0) {
+                anniversaryShows.push(...data.results.slice(0, config.maxPerAnniversary || 2));
+            }
+        } catch (error) {
+            console.error(`Failed to fetch TV ${years}yr anniversaries:`, error);
+        }
+    }
+
+    return anniversaryShows.slice(0, config.anniversaryMaxItems || 5);
 }
 
 /**
@@ -210,12 +282,37 @@ export function generateDefaultCaption(
     return `${emoji} "${title}" (${year})\n\n${castStr}\n\n#Trending #${mediaType === 'movie' ? 'Movie' : 'TVShow'}`;
 }
 
+function buildTMDbCaptionSystemPrompt(
+    basePrompt: string | undefined,
+    options: {
+        maxLength?: number;
+        includeCast?: boolean;
+        includeDate?: boolean;
+    }
+): string | undefined {
+    const constraints = [
+        options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
+        options.includeCast === false
+            ? '- Do not mention cast members.'
+            : '- Mention cast only when it strengthens the caption.',
+        options.includeDate === false
+            ? '- Do not mention the exact release date or year unless absolutely necessary.'
+            : '- You may mention the release date or year when it improves clarity.',
+    ].filter(Boolean).join('\n');
+
+    if (!basePrompt && !constraints) {
+        return undefined;
+    }
+
+    return [basePrompt, constraints].filter(Boolean).join('\n\nAdditional Constraints:\n');
+}
+
 /**
  * Save TMDb content to database for scheduling
  */
 export async function saveTMDbPost(
     movie: TMDbMovie,
-    mediaType: 'movie' | 'tv',
+    mediaType: MediaType,
     source: string,
     scheduledTime: Date,
     preferredImage: 'poster' | 'backdrop' | 'random' = 'poster',
@@ -228,7 +325,7 @@ export async function saveTMDbPost(
 
     // Check for duplicates
     const existing = await prisma.tMDbPost.findFirst({
-        where: { tmdbId: movie.id, source }
+        where: { tmdbId: movie.id, source, mediaType }
     });
 
     if (existing) {
@@ -243,6 +340,7 @@ export async function saveTMDbPost(
 
     // Generate caption (AI or Template)
     const daysUntil = Math.ceil((new Date(releaseDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+    const anniversaryYears = source === 'tmdb_anniversary' ? new Date().getFullYear() - year : undefined;
 
     // Determine temporal tag
     let temporalTag: CaptionContext['temporalTag'] = 'already_released';
@@ -250,6 +348,7 @@ export async function saveTMDbPost(
     else if (daysUntil > 0 && daysUntil <= 7) temporalTag = 'releasing_this_week';
     else if (daysUntil > 7 && daysUntil <= 31) temporalTag = 'releasing_this_month';
     else if (source === 'tmdb_anniversary') temporalTag = 'anniversary';
+    const captionCast = config?.includeCast === false ? [] : cast.slice(0, 3);
 
     let caption = '';
 
@@ -264,6 +363,11 @@ export async function saveTMDbPost(
     try {
         // Fetch model from settings (passed in config if available, or default)
         const model = (config as any)?.tmdbCaptionModel || 'flash-3'; // Default to Flash 3 for speed/cost
+        const systemPrompt = buildTMDbCaptionSystemPrompt(customPrompt, {
+            maxLength: config?.captionMaxLength,
+            includeCast: config?.includeCast,
+            includeDate: config?.includeDate,
+        });
 
         // Construct Director Payload
         const context: CaptionContext = {
@@ -271,17 +375,19 @@ export async function saveTMDbPost(
             mediaType,
             temporalTag,
             daysUntil,
-            cast: cast.slice(0, 3), // Top 3 cast
+            releaseDate: config?.includeDate === false ? undefined : releaseDate,
+            anniversaryYears,
+            cast: captionCast,
             genres: [], // TODO: Pass genres if available in movie object
             platform: 'X', // Default to generic short form. TODO: Generate variants for Threads?
             tone: 'mainstream_hype'
         };
 
         // Pass custom prompt if available
-        caption = await generateTMDbCaption(context, model as any, customPrompt);
+        caption = await generateTMDbCaption(context, model as any, systemPrompt);
     } catch (error) {
         console.error(`[TMDb] AI Caption failed for ${title}, falling back to template.`, error);
-        caption = generateDefaultCaption(title, year, mediaType, cast, source);
+        caption = generateDefaultCaption(title, year, mediaType, captionCast, source);
     }
 
 
@@ -371,14 +477,9 @@ export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TM
         'primary_release_date.gte': dateStr,
         'primary_release_date.lte': dateStr,
         'sort_by': 'popularity.desc',
-        'region': 'US',
-        'with_original_language': config.languageFilter || 'en'
+        'region': 'US'
     };
-
-    // Add genre filter if specified
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'movie', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
 
@@ -404,13 +505,9 @@ export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<T
         'primary_release_date.gte': today.toISOString().split('T')[0],
         'primary_release_date.lte': nextWeek.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
-        'region': 'US',
-        'with_original_language': config.languageFilter || 'en'
+        'region': 'US'
     };
-
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'movie', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
 
@@ -435,13 +532,9 @@ export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<
         'primary_release_date.gte': today.toISOString().split('T')[0],
         'primary_release_date.lte': thirtyDaysLater.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
-        'region': 'US',
-        'with_original_language': config.languageFilter || 'en'
+        'region': 'US'
     };
-
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'movie', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
 
@@ -467,13 +560,9 @@ export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TM
         'first_air_date.gte': dateStr,
         'first_air_date.lte': dateStr,
         'sort_by': 'popularity.desc',
-        'with_original_language': config.languageFilter || 'en',
         'watch_region': 'US'
     };
-
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'tv', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
 
@@ -498,13 +587,9 @@ export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<T
         'first_air_date.gte': today.toISOString().split('T')[0],
         'first_air_date.lte': nextWeek.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
-        'with_original_language': config.languageFilter || 'en',
         'watch_region': 'US'
     };
-
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'tv', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
 
@@ -529,13 +614,9 @@ export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<
         'first_air_date.gte': today.toISOString().split('T')[0],
         'first_air_date.lte': thirtyDaysLater.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
-        'with_original_language': config.languageFilter || 'en',
         'watch_region': 'US'
     };
-
-    if (config.selectedGenres && config.selectedGenres.length > 0) {
-        params['with_genres'] = config.selectedGenres.join(',');
-    }
+    applyCommonDiscoverFilters(params, 'tv', config);
 
     const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
 
@@ -565,6 +646,8 @@ interface RefreshSettings {
     anniversaryMaxItems?: number;
     preferredImage?: 'poster' | 'backdrop' | 'random';
     selectedGenres?: number[];
+    movieGenres?: number[];
+    tvGenres?: number[];
     languageFilter?: string;
     onlyPopular?: boolean;
     dedupeWindow?: number;
@@ -644,6 +727,8 @@ const defaultRefreshSettings: RefreshSettings = {
     anniversaryMaxItems: 5,
     preferredImage: 'poster',
     selectedGenres: [],
+    movieGenres: [],
+    tvGenres: [],
     languageFilter: 'en',
     onlyPopular: true,
     dedupeWindow: 30,
@@ -653,6 +738,79 @@ const defaultRefreshSettings: RefreshSettings = {
     monthlyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
     anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false }
 };
+
+const UNIFIED_GENRE_MAP: Record<number, { movieId: number | null; tvId: number | null }> = {
+    28: { movieId: 28, tvId: 10759 },
+    12: { movieId: 12, tvId: 10759 },
+    16: { movieId: 16, tvId: 16 },
+    35: { movieId: 35, tvId: 35 },
+    80: { movieId: 80, tvId: 80 },
+    99: { movieId: 99, tvId: 99 },
+    18: { movieId: 18, tvId: 18 },
+    10751: { movieId: 10751, tvId: 10751 },
+    14: { movieId: 14, tvId: 10765 },
+    36: { movieId: 36, tvId: null },
+    27: { movieId: 27, tvId: null },
+    10762: { movieId: null, tvId: 10762 },
+    10402: { movieId: 10402, tvId: null },
+    9648: { movieId: 9648, tvId: 9648 },
+    10763: { movieId: null, tvId: 10763 },
+    10764: { movieId: null, tvId: 10764 },
+    10749: { movieId: 10749, tvId: null },
+    878: { movieId: 878, tvId: 10765 },
+    10766: { movieId: null, tvId: 10766 },
+    10767: { movieId: null, tvId: 10767 },
+    53: { movieId: 53, tvId: null },
+    10770: { movieId: 10770, tvId: null },
+    10752: { movieId: 10752, tvId: 10768 },
+    37: { movieId: 37, tvId: 37 }
+};
+
+function uniqueNumbers(values: Array<number | null | undefined>): number[] {
+    return [...new Set(values.filter((value): value is number => typeof value === 'number' && !Number.isNaN(value)))];
+}
+
+function getLanguageFilter(config: RefreshSettings): string | undefined {
+    const value = config.languageFilter?.trim().toLowerCase();
+    if (!value || value === 'all') {
+        return undefined;
+    }
+
+    return value;
+}
+
+function getGenreIdsForMedia(config: RefreshSettings, mediaType: MediaType): number[] {
+    const explicitGenres = mediaType === 'movie'
+        ? (config.movieGenres || [])
+        : (config.tvGenres || []);
+
+    const mappedUnifiedGenres = (config.selectedGenres || []).map(genreId => {
+        const mapping = UNIFIED_GENRE_MAP[genreId];
+        if (!mapping) {
+            return genreId;
+        }
+
+        return mediaType === 'movie' ? mapping.movieId : mapping.tvId;
+    });
+
+    return uniqueNumbers([...explicitGenres, ...mappedUnifiedGenres]);
+}
+
+function applyCommonDiscoverFilters(
+    params: Record<string, string>,
+    mediaType: MediaType,
+    config: RefreshSettings
+) {
+    const language = getLanguageFilter(config);
+    if (language) {
+        params['with_original_language'] = language;
+    }
+
+    const genres = getGenreIdsForMedia(config, mediaType);
+    if (genres.length > 0) {
+        params['with_genres'] = genres.join(',');
+    }
+}
 
 function getPlatformsForSource(sourceLabel: string, config: RefreshSettings): string[] {
     const platformConfig = sourceLabel === 'tmdb_today'
@@ -682,10 +840,11 @@ function getPlatformsForSource(sourceLabel: string, config: RefreshSettings): st
  */
 // Helper types for details
 interface TMDbDetails {
-    production_countries: Array<{ iso_3166_1: string; name: string }>;
-    original_language: string;
-    vote_count: number;
-    popularity: number;
+    production_countries?: Array<{ iso_3166_1: string; name: string }>;
+    origin_country?: string[];
+    original_language?: string;
+    vote_count?: number;
+    popularity?: number;
 }
 
 /**
@@ -720,14 +879,15 @@ import aiService, { generateTMDbCaption, CaptionContext } from './ai.service';
 
 async function validateCandidate(
     candidate: TMDbMovie,
-    type: 'movie' | 'tv',
+    type: MediaType,
     source: string,
     config: RefreshSettings
 ): Promise<{ valid: boolean; reason?: string }> {
     const title = candidate.title || candidate.name || 'Unknown';
 
     // 1. HARD FILTER: Language (Deterministic)
-    if (candidate.original_language !== 'en') { // Strict EN only
+    const requiredLanguage = getLanguageFilter(config);
+    if (requiredLanguage && candidate.original_language !== requiredLanguage) {
         return { valid: false, reason: `REJECT_LANGUAGE (Original: ${candidate.original_language})` };
     }
 
@@ -751,9 +911,21 @@ async function validateCandidate(
         return { valid: false, reason: `REJECT_FETCH_ERROR` };
     }
 
-    const isUS = details.production_countries.some(c => c.iso_3166_1 === 'US');
+    const countryCodes = new Set<string>();
+    (details.production_countries || []).forEach(country => {
+        if (country.iso_3166_1) {
+            countryCodes.add(country.iso_3166_1);
+        }
+    });
+    (details.origin_country || []).forEach(code => {
+        if (code) {
+            countryCodes.add(code);
+        }
+    });
+
+    const isUS = countryCodes.has('US');
     if (!isUS) {
-        return { valid: false, reason: `REJECT_COUNTRY (Countries: ${details.production_countries.map(c => c.iso_3166_1).join(', ')})` };
+        return { valid: false, reason: `REJECT_COUNTRY (Countries: ${Array.from(countryCodes).join(', ') || 'unknown'})` };
     }
 
     // 4. AI VETO (Flash 3)
@@ -769,8 +941,8 @@ async function validateCandidate(
             title,
             candidate.overview,
             [], // Genres hard to get from list id mapping, skipping for now as country/lang is key
-            details.original_language,
-            details.production_countries.map(c => c.name),
+            details.original_language || candidate.original_language,
+            (details.production_countries || []).map(c => c.name),
             'flash-3'
         );
 
@@ -867,7 +1039,7 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
     if (config.enableMonthly) await processBatch(() => fetchUpcomingMonthly(config), 'tmdb_monthly', 'movie');
 
     // 4. Anniversary
-    if (config.enableAnniversaries) await processBatch(fetchAnniversaryMovies, 'tmdb_anniversary', 'movie');
+    if (config.enableAnniversaries) await processBatch(() => fetchAnniversaryMovies(config), 'tmdb_anniversary', 'movie');
 
     // 5. TV Today
     if (config.enableToday) await processBatch(() => fetchTVAiringToday(config), 'tmdb_today', 'tv');
@@ -877,6 +1049,9 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
 
     // 7. TV Monthly
     if (config.enableMonthly) await processBatch(() => fetchTVAiringMonthly(config), 'tmdb_monthly', 'tv');
+
+    // 8. TV Anniversary
+    if (config.enableAnniversaries) await processBatch(() => fetchAnniversaryTV(config), 'tmdb_anniversary', 'tv');
 
     console.log(`[TMDb] Refresh complete. Added: ${added}, Rejected: ${rejected}, Errors: ${errors.length}`);
     return { added, errors };

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
+import { getApiUsageActivitySummary } from '../services/api-usage.service';
 
 const router = Router();
 
@@ -49,7 +50,7 @@ router.get('/stats', authenticate, async (_req, res) => {
       activeUploads,
       completedUploadsToday,
       activePipelines,
-      apiUsageRows,
+      apiUsageSummary,
       activeChannels,
       channelActivity,
       videoTrendItems,
@@ -99,11 +100,7 @@ router.get('/stats', authenticate, async (_req, res) => {
         orderBy: { updatedAt: 'desc' },
         take: 5,
       }),
-      prisma.apiUsage.groupBy({
-        by: ['service'],
-        _sum: { tokens: true },
-        where: { createdAt: { gte: today } },
-      }),
+      getApiUsageActivitySummary(),
       prisma.channel.count({
         where: { status: 'active' },
       }),
@@ -174,20 +171,8 @@ router.get('/stats', authenticate, async (_req, res) => {
       ? Math.round((commentsWithReply / comments.length) * 100)
       : 0;
 
-    const apiUsage = apiUsageRows.reduce<Record<string, number>>((acc, entry) => {
-      acc[entry.service] = entry._sum.tokens || 0;
-      return acc;
-    }, {});
-
-    const usage = {
-      openai: apiUsage.openai || 0,
-      serper: apiUsage.serper || 0,
-      tmdb: apiUsage.tmdb || 0,
-      shotstack: apiUsage.shotstack || 0,
-      googleSearch: apiUsage.googleSearch || 0,
-      googleVideo: apiUsage.googleVideo || 0,
-    };
-    const usageTotal = Object.values(usage).reduce((sum, value) => sum + value, 0);
+    const usage = apiUsageSummary.cards;
+    const usageTotal = usage.total;
 
     const videoDetectionsToday = videoTrendItems.filter((item) => item.publishedAt >= today).length;
     const trendMap = new Map<string, number>();
@@ -381,6 +366,19 @@ router.get('/system-stats', authenticate, async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: 'Failed to fetch system stats' } });
+  }
+});
+
+router.get('/api-usage', authenticate, async (_req, res) => {
+  try {
+    const summary = await getApiUsageActivitySummary();
+    res.json({
+      success: true,
+      data: summary,
+    });
+  } catch (error) {
+    console.error('Dashboard API Usage Error:', error);
+    res.status(500).json({ success: false, error: { message: 'Failed to fetch API usage activity' } });
   }
 });
 

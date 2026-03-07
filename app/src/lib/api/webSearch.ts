@@ -30,13 +30,11 @@ async function searchGoogle(
   maxResults: number = 5
 ): Promise<WebSearchResult[]> {
   try {
-    // Call backend proxy (backend handles API key from database)
-    const response = await apiClient.get<any>('/api/google-search', {
-      headers: {
-        'X-Query': query,
-        'X-Max-Results': String(Math.min(maxResults, 10)),
-      },
+    const params = new URLSearchParams({
+      q: query,
+      num: String(Math.min(maxResults, 10)),
     });
+    const response = await apiClient.get<any>(`/api/google-search?${params.toString()}`);
 
     if (!response.success || !response.data) {
       throw new Error(response.error?.message || 'Google Search API request failed');
