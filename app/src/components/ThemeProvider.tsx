@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import {
+  applyThemeToDocument,
   dispatchThemeChange,
   getStoredThemePreference,
   persistThemePreference,
@@ -17,43 +18,6 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_COLORS: Record<Theme, string> = {
-  dark: '#000000',
-  light: '#ffffff',
-};
-
-function applyThemeToDocument(theme: Theme) {
-  const isDark = theme === 'dark';
-  const themeColor = THEME_COLORS[theme];
-
-  document.documentElement.dataset.theme = theme;
-
-  if (isDark) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
-
-  document.documentElement.style.colorScheme = theme;
-  document.body.style.backgroundColor = themeColor;
-
-  let themeColorMeta = document.querySelector('meta[name="theme-color"]');
-  if (!themeColorMeta) {
-    themeColorMeta = document.createElement('meta');
-    themeColorMeta.setAttribute('name', 'theme-color');
-    document.head.appendChild(themeColorMeta);
-  }
-  themeColorMeta.setAttribute('content', themeColor);
-
-  let colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
-  if (!colorSchemeMeta) {
-    colorSchemeMeta = document.createElement('meta');
-    colorSchemeMeta.setAttribute('name', 'color-scheme');
-    document.head.appendChild(colorSchemeMeta);
-  }
-  colorSchemeMeta.setAttribute('content', theme);
-}
-
 // Get initial theme synchronously to prevent flash
 function getInitialTheme(): Theme {
   if (typeof window === 'undefined') return 'dark';
@@ -69,7 +33,7 @@ function getInitialTheme(): Theme {
 // Apply theme to document immediately (before React renders)
 if (typeof window !== 'undefined') {
   const initialTheme = getInitialTheme();
-  applyThemeToDocument(initialTheme);
+  applyThemeToDocument(initialTheme, document);
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

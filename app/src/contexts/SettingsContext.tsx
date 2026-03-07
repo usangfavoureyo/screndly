@@ -420,6 +420,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [backendAvailable, setBackendAvailable] = useState(false);
 
+  const syncThemeSetting = (value?: boolean) => {
+    if (typeof value !== 'boolean') {
+      return;
+    }
+
+    const theme = value ? 'dark' : 'light';
+    persistThemePreference(theme, window.localStorage);
+    dispatchThemeChange(theme);
+  };
+
   // Load settings from backend + localStorage on mount
   useEffect(() => {
     async function loadSettings() {
@@ -441,18 +451,25 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             // Merge backend settings (API keys) with local settings (preferences)
             const merged = mergeSettings(response.data, localSettings);
             setSettings(merged);
+            syncThemeSetting(merged.darkMode);
           } else {
             // Backend failed, use local only
             console.warn('[Settings] Failed to fetch settings, using defaults');
-            setSettings({ ...getDefaultSettings(), ...localSettings });
+            const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+            setSettings(fallbackSettings);
+            syncThemeSetting(fallbackSettings.darkMode);
           }
         } catch (err) {
           console.error('[Settings] Unexpected error fetching settings', err);
-          setSettings({ ...getDefaultSettings(), ...localSettings });
+          const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+          setSettings(fallbackSettings);
+          syncThemeSetting(fallbackSettings.darkMode);
         }
       } else {
         // Backend offline, use local only (this is normal for frontend-only PWA)
-        setSettings({ ...getDefaultSettings(), ...localSettings });
+        const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+        setSettings(fallbackSettings);
+        syncThemeSetting(fallbackSettings.darkMode);
       }
 
       setIsLoading(false);
@@ -490,8 +507,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     analyticsIngester.trackSettingChange(key, value, previousValue, 'SettingsContext');
 
     if (key === 'darkMode' && typeof value === 'boolean') {
-      persistThemePreference(value ? 'dark' : 'light', window.localStorage);
-      dispatchThemeChange(value ? 'dark' : 'light');
+      syncThemeSetting(value);
     }
 
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -515,8 +531,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
 
     if (typeof updates.darkMode === 'boolean') {
-      persistThemePreference(updates.darkMode ? 'dark' : 'light', window.localStorage);
-      dispatchThemeChange(updates.darkMode ? 'dark' : 'light');
+      syncThemeSetting(updates.darkMode);
     }
 
     setSettings(prev => ({ ...prev, ...updates }));

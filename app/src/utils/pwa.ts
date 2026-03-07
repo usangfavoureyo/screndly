@@ -6,6 +6,42 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
+const BUILD_ID_STORAGE_KEY = 'screndly_build_id';
+const SERVICE_WORKER_URL = `/sw.js?build=${encodeURIComponent(__APP_BUILD_ID__)}`;
+
+async function syncInstalledBuildId(): Promise<void> {
+  const previousBuildId = localStorage.getItem(BUILD_ID_STORAGE_KEY);
+  if (previousBuildId === __APP_BUILD_ID__) {
+    return;
+  }
+
+  localStorage.setItem(BUILD_ID_STORAGE_KEY, __APP_BUILD_ID__);
+
+  if ('caches' in window) {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+  }
+
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(
+      registrations.map(async (registration) => {
+        const scriptURL =
+          registration.active?.scriptURL ||
+          registration.waiting?.scriptURL ||
+          registration.installing?.scriptURL ||
+          '';
+
+        if (scriptURL && !scriptURL.includes('/sw.js')) {
+          await registration.unregister();
+          return;
+        }
+
+        await registration.update().catch(() => undefined);
+      })
+    );
+  }
+}
 
 /**
  * Register the service worker
@@ -23,7 +59,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         return null;
       }
 
-      const registration = await navigator.serviceWorker.register('/sw.js', {
+      await syncInstalledBuildId();
+
+      const registration = await navigator.serviceWorker.register(SERVICE_WORKER_URL, {
         scope: '/',
       });
 

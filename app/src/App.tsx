@@ -186,8 +186,8 @@ export default function App() {
   // }, []);
 
   return (
-    <AuthProvider>
-      <ThemeProvider>
+    <ThemeProvider>
+      <AuthProvider>
         {/* DEACTIVATED: Uncomment this block to reactivate app loading screen */}
         {/* {isLoading ? (
           <LoadingScreen />
@@ -214,7 +214,7 @@ export default function App() {
           </NotificationsProvider>
         </SettingsProvider>
         {/* )} */}
-      </ThemeProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

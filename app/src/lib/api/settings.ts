@@ -151,15 +151,13 @@ const BACKEND_PERSISTED_KEYS = [...new Set([...SENSITIVE_KEYS, ...TMDB_BACKEND_K
 /**
  * Non-sensitive settings that can stay in localStorage
  */
-const LOCAL_KEYS = [
+const LOCAL_PREFERENCE_KEYS = [
   'darkMode',
   'hapticsEnabled',
-  'timezone',
   'emailNotifications',
   'pushNotifications',
   'desktopNotifications',
-];
-void LOCAL_KEYS.length;
+] as const;
 
 export interface SettingsApiResponse {
   success: boolean;
@@ -380,12 +378,19 @@ export function mergeSettings(
   backendSettings: Partial<Settings>,
   localSettings: Partial<Settings>
 ): Settings {
-  // Backend settings (API keys) override local
-  // Local settings (preferences) fill in gaps
-  return {
+  const merged = {
     ...localSettings,
     ...backendSettings,
-  } as Settings;
+  } as Partial<Settings>;
+
+  // Device-local preferences must win over any stale backend copies.
+  for (const key of LOCAL_PREFERENCE_KEYS) {
+    if (key in localSettings) {
+      merged[key] = localSettings[key];
+    }
+  }
+
+  return merged as Settings;
 }
 
 /**

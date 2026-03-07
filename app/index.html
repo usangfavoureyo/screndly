@@ -33,20 +33,23 @@
   <script>
     (function () {
       try {
-        var theme = localStorage.getItem('theme');
-        if (theme !== 'dark' && theme !== 'light') {
-          var settings = localStorage.getItem('screndlySettings');
-          if (settings) {
-            try {
-              var parsedSettings = JSON.parse(settings);
-              if (typeof parsedSettings.darkMode === 'boolean') {
-                theme = parsedSettings.darkMode ? 'dark' : 'light';
-              }
-            } catch (settingsError) {
-              theme = null;
+        var theme = null;
+        var settings = localStorage.getItem('screndlySettings');
+        if (settings) {
+          try {
+            var parsedSettings = JSON.parse(settings);
+            if (typeof parsedSettings.darkMode === 'boolean') {
+              theme = parsedSettings.darkMode ? 'dark' : 'light';
             }
+          } catch (settingsError) {
+            theme = null;
           }
         }
+
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = localStorage.getItem('theme');
+        }
+
         if (theme !== 'dark' && theme !== 'light') {
           theme = 'dark';
         }
@@ -64,6 +67,7 @@
           if (themeColorMeta) themeColorMeta.setAttribute('content', '#000000');
           if (colorSchemeMeta) colorSchemeMeta.setAttribute('content', 'dark');
         } else {
+          document.documentElement.classList.remove('dark');
           document.documentElement.style.colorScheme = 'light';
           document.body.style.backgroundColor = '#ffffff';
           if (themeColorMeta) themeColorMeta.setAttribute('content', '#ffffff');

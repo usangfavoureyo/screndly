@@ -41,6 +41,7 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
 
   // Menu bottom sheet state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const touchSwipeEnabled = false;
 
   // Swipe state for mobile/tablet delete
   const [swipeX, setSwipeX] = useState(0);
@@ -91,6 +92,10 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
   }, [feed, openDelete]);
 
   useEffect(() => {
+    if (!touchSwipeEnabled) {
+      return;
+    }
+
     const card = cardRef.current;
     if (!card) return;
 
@@ -171,7 +176,7 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
       card.removeEventListener('touchmove', onTouchMove);
       card.removeEventListener('touchend', onTouchEnd);
     };
-  }, [handleDelete]);
+  }, [handleDelete, touchSwipeEnabled]);
 
   // Format functions (pure, no state)
   const formatDate = (dateString: string) => {
