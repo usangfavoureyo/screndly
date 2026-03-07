@@ -19,6 +19,7 @@ import { useUndo } from './UndoContext';
 import type { VideoStudioActivity } from '../utils/activityStore';
 import { Skeleton } from './ui/skeleton';
 import { apiClient } from '../lib/api/client';
+import { generateVideoStudioCaption, type VideoContentType } from '../utils/videoStudioCaptionGenerator';
 
 interface VideoStudioActivityPageProps {
   onNavigate: (page: string) => void;
@@ -157,56 +158,36 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [captionEditMode, setCaptionEditMode] = useState(false);
 
-  const getSelectedPlatformLabel = () => {
-    if (selectedPlatforms.youtube) return 'YouTube';
-    if (selectedPlatforms.instagram) return 'Instagram';
-    if (selectedPlatforms.facebook) return 'Facebook';
-    if (selectedPlatforms.threads) return 'Threads';
-    if (selectedPlatforms.tiktok) return 'TikTok';
-    if (selectedPlatforms.pinterest) return 'Pinterest';
-    return 'X';
-  };
-  const getCaptionPrompt = (activity: typeof activities[0]) => {
-    const settingsWithPrompts = settings as typeof settings & {
-      captionReviewPrompt?: string;
-      captionReleasesPrompt?: string;
-      captionScenesPrompt?: string;
-    };
-
-    if (activity.type === 'review') return settingsWithPrompts.captionReviewPrompt;
-    if (activity.type === 'scenes') return settingsWithPrompts.captionScenesPrompt;
-    return settingsWithPrompts.captionReleasesPrompt;
-  };
-
-  // Use the shared AI route so caption generation here is not a local mock.
   const generateCaption = async (activity: typeof activities[0]) => {
     setIsGeneratingCaption(true);
     setCaptionEditMode(false);
     haptics.light();
     try {
-      const response = await apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', {
-        fileName: activity.title,
-        fileDescription: [
+      const selectedPlatformKeys = Object.entries(selectedPlatforms)
+        .filter(([, isSelected]) => isSelected)
+        .map(([platform]) => platform);
+
+      const contentType: VideoContentType =
+        activity.type === 'review' || activity.type === 'scenes' ? activity.type : 'releases';
+
+      const result = await generateVideoStudioCaption({
+        contentType,
+        movieTitle: activity.title,
+        duration: activity.duration ? Number.parseFloat(activity.duration) : undefined,
+        description: [
           `Video Studio ${activity.type} activity`,
           activity.aspectRatio ? `Aspect ratio: ${activity.aspectRatio}` : '',
           activity.duration ? `Duration: ${activity.duration}` : '',
-        ].filter(Boolean).join('. '),
-        detectedObjects: [activity.type, activity.aspectRatio, activity.duration].filter(Boolean),
-        platform: getSelectedPlatformLabel(),
-        tone: settings.captionTone || 'engaging',
-        model: settings.captionOpenaiModel || 'gpt-4o',
-        customSystemPrompt: getCaptionPrompt(activity),
-        customTemperature: settings.captionTemperature || 0.7,
+        ]
+          .filter(Boolean)
+          .join('. '),
+        detectedObjects: [activity.type, activity.aspectRatio, activity.duration].filter(
+          (value): value is string => Boolean(value)
+        ),
+        platforms: selectedPlatformKeys,
       });
-      if (!response.success || !response.data?.content) {
-        throw new Error(response.error?.message || 'Failed to generate caption');
-      }
-      let caption = response.data.content.trim();
-      const maxLength = settings.captionMaxLength || 280;
-      if (caption.length > maxLength) {
-        caption = `${caption.substring(0, maxLength - 3).trimEnd()}...`;
-      }
-      setGeneratedCaption(caption);
+
+      setGeneratedCaption(result.caption);
       toast.success('Caption generated');
     } catch (error) {
       console.error('Error generating caption:', error);

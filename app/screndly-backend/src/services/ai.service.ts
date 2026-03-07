@@ -4,6 +4,8 @@
  */
 
 import prisma from '../lib/prisma';
+import { readSecretSettingValue } from '../lib/settings';
+import { trackApiUsage } from './api-usage.service';
 
 // ============================================
 // TYPES
@@ -45,6 +47,10 @@ export interface ValidationResult {
 // API KEY RETRIEVAL
 // ============================================
 
+function readStringSettingValue(value: unknown): string | null {
+    return readSecretSettingValue(value);
+}
+
 async function getOpenAIKey(): Promise<string | null> {
     // Try environment variable first
     if (process.env.OPENAI_API_KEY) {
@@ -56,7 +62,7 @@ async function getOpenAIKey(): Promise<string | null> {
         const setting = await prisma.setting.findUnique({
             where: { key: 'openaiKey' }
         });
-        return setting?.value as string || null;
+        return readStringSettingValue(setting?.value);
     } catch {
         return null;
     }
@@ -73,10 +79,41 @@ async function getFlash3Key(): Promise<string | null> {
         const setting = await prisma.setting.findUnique({
             where: { key: 'flash3Key' }
         });
-        return setting?.value as string || null;
+        return readStringSettingValue(setting?.value);
     } catch {
         return null;
     }
+}
+
+function normalizeGeneratedText(content: string, preferredJsonKeys: string[] = []): string {
+    const trimmed = content
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .trim();
+
+    if (trimmed.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+
+            for (const key of preferredJsonKeys) {
+                const value = parsed[key];
+                if (typeof value === 'string' && value.trim()) {
+                    return value.trim();
+                }
+            }
+
+            for (const value of Object.values(parsed)) {
+                if (typeof value === 'string' && value.trim()) {
+                    return value.trim();
+                }
+            }
+        } catch {
+            // Treat invalid JSON responses as plain text.
+        }
+    }
+
+    return trimmed.replace(/^"|"$/g, '');
 }
 
 // ============================================
@@ -94,6 +131,8 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
             error: 'OpenAI API key not configured'
         };
     }
+
+    let tracked = false;
 
     try {
         const body: any = {
@@ -121,6 +160,12 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
 
         if (!response.ok) {
             const errorData = await response.json() as { error?: { message?: string } };
+            await trackApiUsage({
+                service: 'openai',
+                endpoint: '/v1/chat/completions',
+                success: false,
+            });
+            tracked = true;
             throw new Error(errorData.error?.message || 'OpenAI API error');
         }
 
@@ -128,6 +173,14 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
             choices?: Array<{ message?: { content?: string } }>;
             usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
         };
+
+        await trackApiUsage({
+            service: 'openai',
+            endpoint: '/v1/chat/completions',
+            tokens: data.usage?.total_tokens || 0,
+            success: true,
+        });
+        tracked = true;
 
         return {
             success: true,
@@ -140,6 +193,13 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
             }
         };
     } catch (error) {
+        if (!tracked) {
+            await trackApiUsage({
+                service: 'openai',
+                endpoint: '/v1/chat/completions',
+                success: false,
+            });
+        }
         console.error('[AI] OpenAI error:', error);
         return {
             success: false,
@@ -383,6 +443,8 @@ export interface CaptionContext {
     mediaType: 'movie' | 'tv';
     temporalTag: 'releasing_today' | 'releasing_this_week' | 'releasing_this_month' | 'anniversary' | 'already_released';
     daysUntil: number;
+    releaseDate?: string;
+    anniversaryYears?: number;
     cast: string[];
     genres: string[];
     platform: 'X' | 'Threads' | 'Facebook' | 'Instagram';
@@ -415,6 +477,8 @@ Title: ${context.title}
 Type: ${context.mediaType}
 Tag: ${context.temporalTag}
 Days Until: ${context.daysUntil}
+Release Date: ${context.releaseDate || 'N/A'}
+Anniversary Years: ${typeof context.anniversaryYears === 'number' ? context.anniversaryYears : 'N/A'}
 Cast: ${context.cast.join(', ')}
 Genres: ${context.genres.join(', ')}
 Platform: ${context.platform}
@@ -435,7 +499,7 @@ Write ONLY the caption text. No preamble.`;
         return `${context.temporalTag === 'releasing_today' ? '🚨 OUT NOW:' : '🎬'} ${context.title} ${context.daysUntil > 0 ? `(In ${context.daysUntil} days)` : ''}`;
     }
 
-    return response.content.trim().replace(/^"|"$/g, ''); // Remove quotes if AI added them
+    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
 }
 
 // ============================================
@@ -486,7 +550,7 @@ Write ONLY the caption.`;
     if (!response.success) {
         return `📰 ${context.articleTitle}`;
     }
-    return response.content.trim().replace(/^"|"$/g, '');
+    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
 }
 
 
@@ -537,7 +601,7 @@ Write ONLY the caption.`;
     if (!response.success) {
         return `📺 New Video from ${context.channelName}: ${context.videoTitle}`;
     }
-    return response.content.trim().replace(/^"|"$/g, '');
+    return normalizeGeneratedText(response.content, ['universal', 'x', 'caption', 'text', 'content', 'threads', 'facebook', 'instagram', 'tiktok', 'youtube']);
 }
 
 // ============================================
@@ -605,7 +669,8 @@ export async function generateStudioCaption(
     context: StudioContext,
     model: AIModel = 'flash-3',
     customSystemPrompt?: string,
-    customTemperature?: number
+    customTemperature?: number,
+    customMaxTokens?: number
 ): Promise<string> {
     const defaultSystemPrompt = `You are a creative director.
 Goal: Write a compelling caption for a media upload.
@@ -629,7 +694,7 @@ Write ONLY the caption text.`;
         model,
         prompt,
         systemPrompt,
-        maxTokens: 200,
+        maxTokens: typeof customMaxTokens === 'number' && customMaxTokens > 0 ? customMaxTokens : 200,
         temperature: customTemperature !== undefined ? customTemperature : 0.8,
         jsonMode: false
     });

@@ -153,8 +153,14 @@ export function TMDbModals() {
         try {
             const feedType = getFeedTypeFromSource(editCaptionModal.feed.source);
             const result = await generateTMDbCaption(
-                editCaptionModal.feed.title,
-                editCaptionModal.feed.releaseDate,
+                {
+                    title: editCaptionModal.feed.title,
+                    mediaType: editCaptionModal.feed.mediaType,
+                    releaseDate: editCaptionModal.feed.releaseDate,
+                    cast: editCaptionModal.feed.cast,
+                    year: editCaptionModal.feed.year,
+                    platforms: editCaptionModal.feed.platforms,
+                },
                 feedType
             );
             setEditedCaption(result.caption);
@@ -394,7 +400,7 @@ export function TMDbModals() {
                                     disabled={isRegenerating}
                                     className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
                                 >
-                                    <RefreshCw className={`w-4 h-4 ${isRegenerating ? 'animate-spin' : ''}`} />
+                                    <RefreshCw className={`w-4 h-4 text-black dark:text-white ${isRegenerating ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>
                             <Textarea

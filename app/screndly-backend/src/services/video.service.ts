@@ -2,6 +2,8 @@
 import prisma from '../lib/prisma';
 import fs from 'fs';
 import { Shotstack, ShotstackOptions } from 'shotstack-sdk';
+import { getSecretSetting } from '../lib/settings';
+import { env } from '../lib/env';
 
 // Initialize SDK (Assuming basic setup, adjust based on actual SDK export if needed)
 // Note: 'shotstack-sdk' export structure might vary. Using generic placeholder logic.
@@ -17,8 +19,11 @@ interface VideoGenerationOptions {
 export class VideoService {
 
     private getKey = async () => {
-        const setting = await prisma.setting.findUnique({ where: { key: 'shotstackKey' } });
-        return setting?.value as string;
+        if (env.SHOTSTACK_API_KEY) {
+            return env.SHOTSTACK_API_KEY;
+        }
+
+        return getSecretSetting('shotstackKey');
     }
 
     /**

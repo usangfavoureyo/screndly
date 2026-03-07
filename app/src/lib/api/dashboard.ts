@@ -123,6 +123,21 @@ export interface ApiUsageStats {
   total: number;
 }
 
+export type ApiUsageService = keyof Omit<ApiUsageStats, 'total'>;
+
+export interface ApiUsageSummaryRow {
+  service: ApiUsageService | 'total';
+  label: string;
+  daily: number;
+  weekly: number;
+  monthly: number;
+}
+
+export interface ApiUsageActivity {
+  cards: ApiUsageStats;
+  summary: ApiUsageSummaryRow[];
+}
+
 export interface RecentActivityItem {
   id: string;
   title: string;
@@ -152,6 +167,10 @@ export class DashboardApi {
 
   async getSystemStats(): Promise<ApiResponse<SystemStats>> {
     return apiClient.get<SystemStats>('/api/dashboard/system-stats');
+  }
+
+  async getApiUsage(): Promise<ApiResponse<ApiUsageActivity>> {
+    return apiClient.get<ApiUsageActivity>('/api/dashboard/api-usage');
   }
 }
 

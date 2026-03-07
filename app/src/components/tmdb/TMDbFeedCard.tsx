@@ -357,7 +357,7 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
                 <span className="truncate">{feed.cast.join(', ')}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
-                <span>{formatDate(feed.scheduledTime)}</span>
+                <span>Release: {formatDate(feed.releaseDate)}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
                 <span>TMDb ID: {feed.tmdbId}</span>
@@ -400,7 +400,8 @@ function areEqual(prevProps: TMDbFeedCardProps, nextProps: TMDbFeedCardProps) {
     prev.caption === next.caption &&
     prev.imageUrl === next.imageUrl &&
     prev.imageType === next.imageType &&
-    prev.scheduledTime === next.scheduledTime
+    prev.scheduledTime === next.scheduledTime &&
+    prev.releaseDate === next.releaseDate
   );
 }
 

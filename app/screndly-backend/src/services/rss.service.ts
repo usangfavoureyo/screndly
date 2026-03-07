@@ -118,6 +118,8 @@ interface RSSRuntimeSettings {
   rssCaptionModel: string;
   rssCaptionPrompt?: string;
   rssCaptionTemperature?: number;
+  rssCaptionTone?: string;
+  rssCaptionMaxLength?: number;
   rssPostingIntervalMinutes: number;
   dailyQuotaX: number;
   dailyQuotaThreads: number;
@@ -137,6 +139,8 @@ const RSS_SETTINGS_KEYS = [
   'rssCaptionModel',
   'rssCaptionPrompt',
   'rssCaptionTemperature',
+  'rssCaptionTone',
+  'rssCaptionMaxLength',
   'rssPostingInterval',
   'dailyQuotaX',
   'dailyQuotaThreads',
@@ -261,6 +265,22 @@ function extractImageUrl(item: Record<string, any>): string | undefined {
   return imageMatch?.[1];
 }
 
+function buildRSSCaptionSystemPrompt(
+  basePrompt: string | undefined,
+  options: { tone?: string; maxLength?: number }
+): string | undefined {
+  const constraints = [
+    options.tone ? `- Preferred tone: ${options.tone}.` : null,
+    options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
+  ].filter(Boolean).join('\n');
+
+  if (!basePrompt && !constraints) {
+    return undefined;
+  }
+
+  return [basePrompt, constraints].filter(Boolean).join('\n\nAdditional Constraints:\n');
+}
+
 async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
   const settings = await prisma.setting.findMany({
     where: { key: { in: [...RSS_SETTINGS_KEYS] } },
@@ -274,6 +294,8 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
     rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || 'gpt-4o',
     rssCaptionPrompt: asString(settingsMap.get('rssCaptionPrompt')),
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
+    rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
+    rssCaptionMaxLength: Math.max(50, asNumber(settingsMap.get('rssCaptionMaxLength'), 280) || 280),
     rssPostingIntervalMinutes: Math.max(1, asNumber(settingsMap.get('rssPostingInterval'), 10) || 10),
     dailyQuotaX: Math.max(1, asNumber(settingsMap.get('dailyQuotaX'), 50) || 50),
     dailyQuotaThreads: Math.max(1, asNumber(settingsMap.get('dailyQuotaThreads'), 100) || 100),
@@ -683,6 +705,10 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
       }
 
       try {
+        const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
+          tone: runtimeSettings.rssCaptionTone,
+          maxLength: runtimeSettings.rssCaptionMaxLength,
+        });
         const caption = await aiService.generateRSSCaption(
           {
             articleTitle: item.title,
@@ -691,7 +717,7 @@ async function refreshFeed(id: string): Promise<RefreshResult> {
             platform: 'X',
           },
           toAIModel(runtimeSettings.rssCaptionModel),
-          runtimeSettings.rssCaptionPrompt,
+          systemPrompt,
           runtimeSettings.rssCaptionTemperature
         );
 

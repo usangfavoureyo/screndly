@@ -353,6 +353,8 @@ export function getSettingsForBackend(): Record<string, any> {
         preferredImage: settings.preferredImage,
         rehostImages: settings.rehostImages,
         selectedGenres: settings.selectedGenres,
+        movieGenres: settings.movieGenres,
+        tvGenres: settings.tvGenres,
         languageFilter: settings.languageFilter,
         onlyPopular: settings.onlyPopular,
         dedupeWindow: parseInt(settings.dedupeWindow) || 30,

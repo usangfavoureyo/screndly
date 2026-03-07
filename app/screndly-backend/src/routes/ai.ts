@@ -93,6 +93,8 @@ router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
             mediaType,
             temporalTag,
             daysUntil,
+            releaseDate,
+            anniversaryYears,
             cast,
             genres,
             platform,
@@ -111,6 +113,8 @@ router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
                 mediaType,
                 temporalTag,
                 daysUntil,
+                releaseDate,
+                anniversaryYears,
                 cast: Array.isArray(cast) ? cast : [],
                 genres: Array.isArray(genres) ? genres : [],
                 platform
@@ -132,7 +136,17 @@ router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
  */
 router.post('/generate/studio-caption', async (req: Request, res: Response) => {
     try {
-        const { fileName, fileDescription, detectedObjects, platform, tone, model, customSystemPrompt, customTemperature } = req.body;
+        const {
+            fileName,
+            fileDescription,
+            detectedObjects,
+            platform,
+            tone,
+            model,
+            customSystemPrompt,
+            customTemperature,
+            customMaxTokens
+        } = req.body;
 
         if (!fileName) {
             return res.status(400).json({ success: false, error: { message: 'FileName required' } });
@@ -144,7 +158,7 @@ router.post('/generate/studio-caption', async (req: Request, res: Response) => {
             detectedObjects,
             platform,
             tone
-        }, model, customSystemPrompt, customTemperature);
+        }, model, customSystemPrompt, customTemperature, customMaxTokens);
 
         res.json({ success: true, data: { content: caption } });
     } catch (e) {

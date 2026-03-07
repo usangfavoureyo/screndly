@@ -28,7 +28,7 @@ app.use(cors({
         env.FRONTEND_URL
     ].filter(Boolean),
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Screndly-Version', 'x-screndly-version'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Screndly-Version', 'x-screndly-version', 'X-Query', 'X-Max-Results'],
     credentials: true,
     preflightContinue: false,
     optionsSuccessStatus: 204
@@ -49,6 +49,7 @@ import platformsRoutes from './routes/platforms';
 import aiRoutes from './routes/ai';
 import authRoutes from './routes/auth';
 import dashboardRoutes from './routes/dashboard';
+import externalApiRoutes from './routes/external-apis';
 
 // // import thumbnailRoutes from './routes/thumbnail'; // Placeholder for future
 import videoStudioRoutes from './routes/video-studio';
@@ -114,6 +115,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/platforms', platformsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api', externalApiRoutes);
 app.use('/api/video-studio', videoStudioRoutes);
 app.use('/api/design-studio', designStudioRoutes);
 

@@ -79,11 +79,11 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
       const result = await refreshFromTMDb();
 
       if (result.added > 0) {
-        toast.success(`Fetched ${result.added} new movies from TMDb!`);
+        toast.success(`Fetched ${result.added} new TMDb titles!`);
       } else if (result.errors.length > 0) {
         toast.error(`Refresh failed: ${result.errors[0]}`);
       } else {
-        toast.info('No new movies found');
+        toast.info('No new TMDb titles found');
       }
 
     } catch (error) {

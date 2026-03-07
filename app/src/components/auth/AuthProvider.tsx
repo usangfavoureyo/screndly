@@ -13,6 +13,7 @@ import { LoginPage } from '../LoginPage';
 // Lazy load public pages (using named exports)
 const PrivacyPage = lazy(() => import('../PrivacyPage').then(m => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => import('../TermsPage').then(m => ({ default: m.TermsPage })));
+const DataDeletionPage = lazy(() => import('../DataDeletionPage').then(m => ({ default: m.DataDeletionPage })));
 const CookiePage = lazy(() => import('../CookiePage').then(m => ({ default: m.CookiePage })));
 const DisclaimerPage = lazy(() => import('../DisclaimerPage').then(m => ({ default: m.DisclaimerPage })));
 const AboutPage = lazy(() => import('../AboutPage').then(m => ({ default: m.AboutPage })));
@@ -22,6 +23,10 @@ const ContactPage = lazy(() => import('../ContactPage').then(m => ({ default: m.
 const PUBLIC_ROUTES: Record<string, React.ComponentType<any>> = {
     '/privacy': PrivacyPage,
     '/terms': TermsPage,
+    '/data-deletion': DataDeletionPage,
+    '/legal/privacy': PrivacyPage,
+    '/legal/terms': TermsPage,
+    '/legal/data-deletion': DataDeletionPage,
     '/cookies': CookiePage,
     '/disclaimer': DisclaimerPage,
     '/about': AboutPage,
