@@ -31,6 +31,22 @@ export interface PublishOptions {
     pinterestLink?: string;
 }
 
+function normalizePlatformName(platform: string): string {
+    const normalized = platform.trim().toLowerCase();
+    const platformMap: Record<string, string> = {
+        x: 'X',
+        twitter: 'X',
+        facebook: 'Facebook',
+        instagram: 'Instagram',
+        threads: 'Threads',
+        youtube: 'YouTube',
+        tiktok: 'TikTok',
+        pinterest: 'Pinterest'
+    };
+
+    return platformMap[normalized] || platform;
+}
+
 export class PublisherService {
     /**
      * Publish content to multiple platforms w/ Retry Logic
@@ -42,8 +58,9 @@ export class PublisherService {
         options: PublishOptions = {}
     ): Promise<PublishResult[]> {
         const results: PublishResult[] = [];
+        const normalizedPlatforms = platforms.map(normalizePlatformName);
 
-        console.log(`[Publisher] Publishing to ${platforms.join(', ')}...`);
+        console.log(`[Publisher] Publishing to ${normalizedPlatforms.join(', ')}...`);
 
         // Fetch Retry Settings
         let maxRetries = 0;
@@ -56,7 +73,7 @@ export class PublisherService {
             // Default to 0 retries
         }
 
-        for (const platform of platforms) {
+        for (const platform of normalizedPlatforms) {
             // Get platform connection
             let connection = await prisma.platformConnection.findUnique({
                 where: { platform }

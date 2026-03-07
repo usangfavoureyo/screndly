@@ -7,9 +7,6 @@ import {
   RefreshCw,
   Clapperboard,
   MoreVertical,
-  Send,
-  Edit3,
-  Image as ImageIcon
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
@@ -24,12 +21,6 @@ import { Textarea } from './ui/textarea';
 import { DatePicker } from './ui/date-picker';
 import { TimePicker } from './ui/time-picker';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import {
   BottomSheet,
   BottomSheetHeader,
   BottomSheetTitle,
@@ -37,9 +28,9 @@ import {
   BottomSheetBody,
   BottomSheetFooter
 } from './ui/bottom-sheet';
-import { Separator } from './ui/separator';
 import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
 import { apiClient } from '../lib/api/client';
+import { publishTMDbPost } from '../lib/tmdb/tmdbPublish';
 
 interface TMDbActivityItem {
   id: string;
@@ -50,6 +41,7 @@ interface TMDbActivityItem {
   timestamp: string;
   platforms?: string[];
   error?: string;
+  errorMessage?: string;
   imageUrl?: string;
   scheduledDate?: string;
   scheduledTime?: string;
@@ -66,7 +58,7 @@ interface TMDbActivityPageProps {
 }
 
 export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageProps) {
-  const { posts, refreshFromTMDb, reschedulePost, updatePostStatus, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
+  const { posts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
@@ -227,18 +219,46 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     haptics.medium();
 
     const post = posts.find(p => p.id === id);
-    const platforms = post?.platforms?.join(', ') || 'Social Media';
+    if (!post) return;
 
     try {
-      await updatePostStatus(id, 'published', new Date().toISOString());
-      await createTmdbLog(title, platforms);
+      const publishResult = await publishTMDbPost(post);
+
+      if (publishResult.postedPlatforms.length === 0) {
+        await updatePost(id, {
+          status: 'failed',
+          platforms: publishResult.platformNames,
+          publishedTime: undefined,
+          errorMessage: publishResult.errorMessage || 'Failed to publish TMDb post',
+        });
+        throw new Error(publishResult.errorMessage || 'Failed to publish TMDb post');
+      }
+
+      const publishedTime = new Date().toISOString();
+      await updatePost(id, {
+        status: 'published',
+        platforms: publishResult.platformNames,
+        publishedTime,
+        errorMessage: undefined,
+      });
+      await createTmdbLog(title, publishResult.postedPlatforms.join(', ') || 'Social Media');
 
       toast.success('Posted Successfully', {
-        description: `"${title}" has been published`,
+        description: publishResult.failedResults.length > 0
+          ? `"${title}" published on ${publishResult.postedPlatforms.join(', ')}. Some platforms failed.`
+          : `"${title}" has been published`,
       });
     } catch (error) {
       console.error('Failed to publish TMDb item:', error);
-      toast.error('Failed to publish item');
+      const message = error instanceof Error ? error.message : 'Failed to publish item';
+      await updatePost(id, {
+        status: 'failed',
+        publishedTime: undefined,
+        errorMessage: message,
+      }).catch(() => {
+        // Keep the original publish error as the primary failure signal.
+      });
+      toast.error(message);
     }
   };
 
@@ -624,10 +644,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                     )}
 
                     {/* Error Message */}
-                    {item.error && (
+                    {(item.errorMessage || item.error) && (
                       <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-[#991B1B]/20 border border-red-200 dark:border-[#991B1B] rounded-lg mb-3">
                         <XCircle className="w-4 h-4 text-[#EF4444] flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-[#EF4444] flex-1">{item.error}</p>
+                        <p className="text-sm text-[#EF4444] flex-1">{item.errorMessage || item.error}</p>
                       </div>
                     )}
                   </div>

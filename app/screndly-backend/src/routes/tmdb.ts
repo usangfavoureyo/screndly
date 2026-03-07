@@ -173,14 +173,25 @@ router.put('/posts/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const data = req.body;
+        const updateData: Record<string, any> = {
+            ...data
+        };
+
+        if (Object.prototype.hasOwnProperty.call(data, 'scheduledTime')) {
+            updateData.scheduledTime = data.scheduledTime ? new Date(data.scheduledTime) : null;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(data, 'publishedTime')) {
+            updateData.publishedTime = data.publishedTime ? new Date(data.publishedTime) : null;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(data, 'errorMessage')) {
+            updateData.errorMessage = data.errorMessage ?? null;
+        }
 
         const post = await prisma.tMDbPost.update({
             where: { id },
-            data: {
-                ...data,
-                scheduledTime: data.scheduledTime ? new Date(data.scheduledTime) : undefined,
-                publishedTime: data.publishedTime ? new Date(data.publishedTime) : undefined
-            }
+            data: updateData
         });
 
         res.json({ success: true, data: post });

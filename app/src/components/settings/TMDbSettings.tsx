@@ -556,7 +556,12 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
     } else if (key === 'timezone') {
       toast.success(`Timezone changed to ${value}`);
     } else if (key === 'preferredImage') {
-      toast.success(`Image preference changed to ${value === 'poster' ? 'Poster (Vertical)' : 'Backdrop (Horizontal)'}`);
+      const imagePreferenceLabel = value === 'poster'
+        ? 'Poster (Vertical)'
+        : value === 'backdrop'
+          ? 'Backdrop (Horizontal)'
+          : 'Random';
+      toast.success(`Image preference changed to ${imagePreferenceLabel}`);
     } else if (key === 'todayPlatforms' || key === 'weeklyPlatforms' || key === 'monthlyPlatforms' || key === 'anniversaryPlatforms') {
       const platformType = key.replace('Platforms', '');
       const enabledPlatforms = Object.entries(value).filter(([_, enabled]) => enabled).map(([platform]) => platformLabels[platform]);

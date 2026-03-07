@@ -9,6 +9,7 @@ import { getApiUrl } from './config';
 
 /**
  * Sensitive settings that should ONLY be stored on backend
+ * and should never be returned to the client unmasked.
  */
 const SENSITIVE_KEYS = [
   'youtubeKey',
@@ -79,11 +80,73 @@ const SENSITIVE_KEYS = [
   // Platform Configuration (Auto-post toggles)
   'platformSettings',
 
-  // TMDb Configuration (Required for Cron Jobs)
-  'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
-  'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-  'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
 ];
+
+/**
+ * TMDb settings that are not secret, but still need backend persistence
+ * so refresh jobs, scheduling, and publishing use the user's actual config.
+ */
+const TMDB_BACKEND_KEYS = [
+  'openaiModel',
+  'enableToday',
+  'enableWeekly',
+  'enableMonthly',
+  'enableAnniversaries',
+  'anniversaryYears',
+  'anniversaryStartYear',
+  'maxPerAnniversary',
+  'todayMaxItems',
+  'weeklyMaxItems',
+  'monthlyMaxItems',
+  'anniversaryMaxItems',
+  'captionMaxLength',
+  'includeCast',
+  'includeDate',
+  'preferredImage',
+  'rehostImages',
+  'dedupeWindow',
+  'tmdbQueuedRetentionHours',
+  'discoveryCacheTTL',
+  'creditsCacheTTL',
+  'captionCacheTTL',
+  'timezone',
+  'movieGenres',
+  'tvGenres',
+  'selectedGenres',
+  'onlyPopular',
+  'languageFilter',
+  'todayAutoPost',
+  'weeklyAutoPost',
+  'monthlyAutoPost',
+  'anniversaryAutoPost',
+  'todayPlatforms',
+  'weeklyPlatforms',
+  'monthlyPlatforms',
+  'anniversaryPlatforms',
+  'tmdbCaptionModel',
+  'todayPrompt',
+  'weeklyPrompt',
+  'monthlyPrompt',
+  'anniversaryPrompt',
+  'todayPinterestTitlePrompt',
+  'todayPinterestDescriptionPrompt',
+  'todayPinterestBoard',
+  'todayPinterestLinkStrategy',
+  'weeklyPinterestTitlePrompt',
+  'weeklyPinterestDescriptionPrompt',
+  'weeklyPinterestBoard',
+  'weeklyPinterestLinkStrategy',
+  'monthlyPinterestTitlePrompt',
+  'monthlyPinterestDescriptionPrompt',
+  'monthlyPinterestBoard',
+  'monthlyPinterestLinkStrategy',
+  'anniversaryPinterestTitlePrompt',
+  'anniversaryPinterestDescriptionPrompt',
+  'anniversaryPinterestBoard',
+  'anniversaryPinterestLinkStrategy',
+] as const;
+
+const BACKEND_PERSISTED_KEYS = [...new Set([...SENSITIVE_KEYS, ...TMDB_BACKEND_KEYS])];
 
 /**
  * Non-sensitive settings that can stay in localStorage
@@ -158,19 +221,19 @@ export async function fetchSettings(): Promise<SettingsApiResponse> {
  */
 export async function saveSettings(settings: Partial<Settings>): Promise<SettingsApiResponse> {
   try {
-    // Separate sensitive and non-sensitive settings
-    const sensitiveSettings = extractSensitiveSettings(settings);
+    // Separate backend-persisted settings from purely local preferences.
+    const backendPersistedSettings = extractBackendPersistedSettings(settings);
     const nonSensitiveSettings = extractNonSensitiveSettings(settings);
 
-    // Save sensitive settings to backend using PUT (backend expects PUT)
-    if (Object.keys(sensitiveSettings).length > 0) {
+    // Save backend-persisted settings using PUT (backend expects PUT)
+    if (Object.keys(backendPersistedSettings).length > 0) {
       const response = await fetch(`${getApiUrl()}/api/settings`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeaders(),
         },
-        body: JSON.stringify(sensitiveSettings),
+        body: JSON.stringify(backendPersistedSettings),
       });
 
       if (!response.ok) {
@@ -264,16 +327,16 @@ export async function checkBackendHealth(): Promise<boolean> {
 // ============================================================================
 
 /**
- * Extract sensitive settings that should go to backend
+ * Extract backend-persisted settings that should go to backend
  */
-function extractSensitiveSettings(settings: Partial<Settings>): Partial<Settings> {
-  const sensitive: Partial<Settings> = {};
-  for (const key of SENSITIVE_KEYS) {
+function extractBackendPersistedSettings(settings: Partial<Settings>): Partial<Settings> {
+  const persisted: Partial<Settings> = {};
+  for (const key of BACKEND_PERSISTED_KEYS) {
     if (key in settings) {
-      (sensitive as any)[key] = (settings as any)[key];
+      (persisted as any)[key] = (settings as any)[key];
     }
   }
-  return sensitive;
+  return persisted;
 }
 
 /**
@@ -282,7 +345,7 @@ function extractSensitiveSettings(settings: Partial<Settings>): Partial<Settings
 function extractNonSensitiveSettings(settings: Partial<Settings>): Partial<Settings> {
   const nonSensitive: Partial<Settings> = {};
   for (const key in settings) {
-    if (!SENSITIVE_KEYS.includes(key)) {
+    if (!BACKEND_PERSISTED_KEYS.includes(key)) {
       (nonSensitive as any)[key] = (settings as any)[key];
     }
   }

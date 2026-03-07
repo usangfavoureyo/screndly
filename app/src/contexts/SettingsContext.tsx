@@ -9,6 +9,10 @@ import {
 } from '../lib/api/settings';
 import { toast } from "sonner";
 import { analyticsIngester } from '../lib/optimization/analyticsIngester';
+import {
+  dispatchThemeChange,
+  persistThemePreference,
+} from '../lib/theme/themeStorage';
 
 export interface Settings {
   // API Keys
@@ -485,6 +489,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const previousValue = settings[key as keyof Settings];
     analyticsIngester.trackSettingChange(key, value, previousValue, 'SettingsContext');
 
+    if (key === 'darkMode' && typeof value === 'boolean') {
+      persistThemePreference(value ? 'dark' : 'light', window.localStorage);
+      dispatchThemeChange(value ? 'dark' : 'light');
+    }
+
     setSettings(prev => ({ ...prev, [key]: value }));
 
     // If it's a sensitive setting, try to save immediately to backend
@@ -504,6 +513,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       const previousValue = settings[key as keyof Settings];
       analyticsIngester.trackSettingChange(key, value, previousValue, 'SettingsContext');
     });
+
+    if (typeof updates.darkMode === 'boolean') {
+      persistThemePreference(updates.darkMode ? 'dark' : 'light', window.localStorage);
+      dispatchThemeChange(updates.darkMode ? 'dark' : 'light');
+    }
 
     setSettings(prev => ({ ...prev, ...updates }));
 
