@@ -22,6 +22,7 @@ interface Platform {
   autoHashtag: boolean;
   commentAutomation: boolean;
   status: 'valid' | 'expiring' | 'invalid' | 'disconnected';
+  statusMessage?: string;
   lastPost?: string;
 }
 
@@ -55,7 +56,7 @@ export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect, onTe
           icon: XCircle,
           color: 'text-[#EF4444]',
           bgColor: 'bg-[#FEE2E2]',
-          label: 'Invalid',
+          label: 'Reconnect Required',
         };
       default:
         return {
@@ -177,6 +178,12 @@ export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect, onTe
       <div>
         {platform.connected ? (
           <div className="space-y-3">
+            {platform.status !== 'valid' && platform.statusMessage && (
+              <div className="text-sm rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
+                {platform.statusMessage}
+              </div>
+            )}
+
             {platform.lastPost && (
               <div className="text-[#6B7280] dark:text-[#9CA3AF] text-sm pb-2 border-b border-gray-200 dark:border-[#374151] transition-colors duration-200">
                 Last post: {platform.lastPost}

@@ -1,9 +1,0 @@
-.vercel
-node_modules
-screndly-backend
-build
-dist
-*.log
-.env
-.env.local
-.env.*.local
