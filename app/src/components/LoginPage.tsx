@@ -205,13 +205,13 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
                   haptics.light();
                   setRememberMe((current) => !current);
                 }}
-                className={`flex h-6 w-6 items-center justify-center rounded-[6px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
+                className={`flex h-5 w-5 items-center justify-center rounded-[5px] border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40 disabled:cursor-not-allowed disabled:opacity-50 ${
                   rememberMe
                     ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
                     : 'border-gray-300 bg-white text-transparent dark:border-[#333333] dark:bg-[#000000]'
                 }`}
               >
-                <Check className={`h-4 w-4 stroke-[3] ${rememberMe ? 'opacity-100' : 'opacity-0'}`} />
+                <Check className={`h-3.5 w-3.5 stroke-[3] ${rememberMe ? 'opacity-100' : 'opacity-0'}`} />
               </button>
               <Label
                 id="remember-label"

@@ -1,7 +1,6 @@
 import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import brandIcon from '../assets/brand-icon.png';
@@ -38,27 +37,13 @@ export function Navigation({
   onToggleDesktopSidebar,
 }: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isDesktopSidebarHovered, setIsDesktopSidebarHovered] = useState(false);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
 
   const handleNavClick = (page: string) => {
     onNavigate(page);
     setIsMobileMenuOpen(false);
-  };
-
-  const renderTooltipButton = (label: string, child: ReactNode, enabled: boolean) => {
-    if (!enabled) {
-      return <>{child}</>;
-    }
-
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{child}</TooltipTrigger>
-        <TooltipContent side="right" sideOffset={12}>
-          {label}
-        </TooltipContent>
-      </Tooltip>
-    );
   };
 
   const NavContent = ({ isCollapsed, isDesktop }: { isCollapsed: boolean; isDesktop: boolean }) => (
@@ -68,40 +53,38 @@ export function Navigation({
         isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
       )}>
         <div className={cn('flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
-          <button
-            onClick={() => handleNavClick('dashboard')}
-            className={cn(
-              'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
-              isCollapsed && isDesktop ? 'justify-center' : 'gap-3',
-            )}
-            aria-label="Go to dashboard"
-          >
-            <img src={brandIcon} alt="Screndly" className="h-10 w-10 rounded-md object-contain transition-transform duration-300" />
-          </button>
+          <div className={cn('relative flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'gap-3')}>
+            <button
+              onClick={() => handleNavClick('dashboard')}
+              className={cn(
+                'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
+                isCollapsed && isDesktop ? 'justify-center' : 'gap-3',
+                isDesktop && isDesktopSidebarHovered && 'opacity-0 pointer-events-none',
+              )}
+              aria-label="Go to dashboard"
+            >
+              <img src={brandIcon} alt="Screndly" className="h-10 w-10 rounded-md object-contain transition-transform duration-300" />
+            </button>
 
-          {isDesktop && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={onToggleDesktopSidebar}
-                  className={cn(
-                    'hidden lg:inline-flex h-10 w-10 rounded-xl border border-gray-200/80 text-gray-600 shadow-sm transition-all duration-200 hover:border-[#ec1e24]/30 hover:bg-gray-100 hover:text-[#ec1e24] dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
-                    isCollapsed && 'absolute top-5 right-3',
-                  )}
-                  aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                  aria-pressed={isCollapsed}
-                >
-                  {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="right" sideOffset={12}>
-                {isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              </TooltipContent>
-            </Tooltip>
-          )}
+            {isDesktop && (
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={onToggleDesktopSidebar}
+                className={cn(
+                  'absolute inset-0 hidden h-10 w-10 items-center justify-center p-0 text-gray-600 opacity-0 transition-all duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:flex',
+                  isDesktopSidebarHovered && 'opacity-100',
+                )}
+                aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                aria-pressed={isCollapsed}
+              >
+                {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+              </Button>
+            )}
+          </div>
+
+          {isDesktop && !isCollapsed && <div className="h-10 w-10 shrink-0" aria-hidden="true" />}
         </div>
       </div>
 
@@ -128,13 +111,6 @@ export function Navigation({
               aria-current={isActive ? 'page' : undefined}
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
-              <span
-                aria-hidden="true"
-                className={cn(
-                  'absolute inset-y-2 left-0 rounded-r-full bg-white/90 transition-all duration-200',
-                  isActive ? 'w-1.5 opacity-100' : 'w-0 opacity-0',
-                )}
-              />
               <Icon className={cn('h-5 w-5 shrink-0 transition-transform duration-200', !isActive && 'group-hover:scale-110')} />
               {(!isCollapsed || !isDesktop) && (
                 <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
@@ -142,37 +118,29 @@ export function Navigation({
             </button>
           );
 
-          return (
-            <div key={item.id}>
-              {renderTooltipButton(item.label, button, isCollapsed && isDesktop)}
-            </div>
-          );
+          return <div key={item.id}>{button}</div>;
         })}
       </nav>
 
       <div className={cn('border-t border-gray-200 dark:border-[#333333]', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')}>
-        {renderTooltipButton(
-          'Logout',
-          <Button
-            type="button"
-            onClick={onLogout}
-            onPointerDown={(e) => {
-              if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-                onLogout();
-              }
-            }}
-            variant="ghost"
-            className={cn(
-              'cursor-pointer rounded-xl text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
-              isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'w-full justify-start gap-3 px-4 py-3',
-            )}
-            aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
-          >
-            <LogOut className="h-5 w-5 shrink-0 transition-transform duration-200" />
-            {(!isCollapsed || !isDesktop) && <span className="truncate">Logout</span>}
-          </Button>,
-          isCollapsed && isDesktop,
-        )}
+        <Button
+          type="button"
+          onClick={onLogout}
+          onPointerDown={(e) => {
+            if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
+              onLogout();
+            }
+          }}
+          variant="ghost"
+          className={cn(
+            'cursor-pointer rounded-xl text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
+            isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'w-full justify-start gap-3 px-4 py-3',
+          )}
+          aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
+        >
+          <LogOut className="h-5 w-5 shrink-0 transition-transform duration-200" />
+          {(!isCollapsed || !isDesktop) && <span className="truncate">Logout</span>}
+        </Button>
       </div>
     </>
   );
@@ -241,14 +209,14 @@ export function Navigation({
       )}
 
       {/* Sidebar - Desktop Only (lg and above) */}
-      <TooltipProvider delayDuration={0}>
-        <aside
-          className="pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
-          style={{ isolation: 'isolate', width: desktopSidebarWidth }}
-        >
-          <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
-        </aside>
-      </TooltipProvider>
+      <aside
+        className="pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
+        style={{ isolation: 'isolate', width: desktopSidebarWidth }}
+        onMouseEnter={() => setIsDesktopSidebarHovered(true)}
+        onMouseLeave={() => setIsDesktopSidebarHovered(false)}
+      >
+        <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
+      </aside>
 
       {/* Spacer for fixed header */}
       <div className="h-16" />
