@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma';
+import path from 'path';
 import { xService } from './platforms/x';
 import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
@@ -6,6 +7,7 @@ import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
 import { ensureFreshPlatformConnection } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
+import { uploadLocalFileToBackblaze } from './backblaze';
 
 export interface PublishContent {
     text: string;
@@ -51,6 +53,22 @@ function normalizePlatformName(platform: string): string {
 }
 
 export class PublisherService {
+    private getMimeType(filePath: string): string {
+        const extension = path.extname(filePath).toLowerCase();
+        switch (extension) {
+            case '.mp4':
+                return 'video/mp4';
+            case '.mov':
+                return 'video/quicktime';
+            case '.m4v':
+                return 'video/x-m4v';
+            case '.webm':
+                return 'video/webm';
+            default:
+                return 'application/octet-stream';
+        }
+    }
+
     private getResolvedImageUrls(content: PublishContent): string[] {
         const candidates = [
             ...(Array.isArray(content.imageUrls) ? content.imageUrls : []),
@@ -71,6 +89,10 @@ export class PublisherService {
         return resolved;
     }
 
+    private getRemoteCoverImageUrl(content: PublishContent): string | undefined {
+        return this.getResolvedImageUrls(content).find((value) => /^https?:\/\//i.test(value));
+    }
+
     private getPlatformImageLimit(platform: string): number {
         switch (platform) {
             case 'X':
@@ -78,6 +100,47 @@ export class PublisherService {
             default:
                 return 1;
         }
+    }
+
+    private isVideo(filePath: string): boolean {
+        return /\.(mp4|mov|m4v|webm)$/i.test(filePath);
+    }
+
+    private isDirectVideoUrl(value?: string): value is string {
+        return typeof value === 'string' && /^https?:\/\/.+\.(mp4|mov|m4v|webm)(\?.*)?$/i.test(value.trim());
+    }
+
+    private async resolveHostedVideoUrl(
+        mediaFilePath: string | null | undefined,
+        directVideoUrl: string | undefined,
+        cache: Map<string, string>
+    ): Promise<string> {
+        if (this.isDirectVideoUrl(directVideoUrl)) {
+            return directVideoUrl.trim();
+        }
+
+        if (!mediaFilePath || !this.isVideo(mediaFilePath)) {
+            throw new Error('A local video file or direct video URL is required');
+        }
+
+        const cacheKey = mediaFilePath;
+        const cached = cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const uploaded = await uploadLocalFileToBackblaze(
+            mediaFilePath,
+            path.basename(mediaFilePath),
+            {
+                bucketTypes: ['videos', 'general'],
+                prefix: 'youtube-poller/videos',
+                contentType: this.getMimeType(mediaFilePath),
+            }
+        );
+
+        cache.set(cacheKey, uploaded.url);
+        return uploaded.url;
     }
 
     /**
@@ -91,6 +154,7 @@ export class PublisherService {
     ): Promise<PublishResult[]> {
         const results: PublishResult[] = [];
         const normalizedPlatforms = platforms.map(normalizePlatformName);
+        const hostedVideoUrlCache = new Map<string, string>();
 
         console.log(`[Publisher] Publishing to ${normalizedPlatforms.join(', ')}...`);
 
@@ -145,17 +209,23 @@ export class PublisherService {
                         .getResolvedImageUrls(platformContent)
                         .slice(0, this.getPlatformImageLimit(platform));
                     const primaryImageUrl = resolvedImageUrls[0];
+                    const remoteCoverImageUrl = this.getRemoteCoverImageUrl(platformContent);
+                    const localVideoFile = mediaFilePath && this.isVideo(mediaFilePath) ? mediaFilePath : null;
+                    const directVideoUrl = platformContent.videoUrl;
 
                     switch (platform) {
                         case 'X':
                             if (connection.accessToken) {
-                                const xResult = await xService.postTweet(
-                                    platformContent.text,
-                                    resolvedImageUrls.length > 0
-                                        ? resolvedImageUrls
-                                        : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : undefined),
-                                    connection
-                                );
+                                const xVideoSource = localVideoFile || (this.isDirectVideoUrl(directVideoUrl) ? directVideoUrl : null);
+                                const xResult = xVideoSource
+                                    ? await xService.postVideoTweet(platformContent.text, xVideoSource, connection)
+                                    : await xService.postTweet(
+                                        platformContent.text,
+                                        resolvedImageUrls.length > 0
+                                            ? resolvedImageUrls
+                                            : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : undefined),
+                                        connection
+                                    );
                                 result = {
                                     platform,
                                     ...xResult,
@@ -167,13 +237,20 @@ export class PublisherService {
 
                         case 'Facebook':
                             if (connection.accessToken && connection.userId) {
-                                const fbResult = await metaService.postToFacebook(
-                                    connection.userId,
-                                    platformContent.text,
-                                    primaryImageUrl || null,
-                                    connection.accessToken,
-                                    platformContent.link
-                                );
+                                const fbResult = localVideoFile
+                                    ? await metaService.postVideoToFacebook(
+                                        connection.userId,
+                                        platformContent.text,
+                                        localVideoFile,
+                                        connection.accessToken
+                                    )
+                                    : await metaService.postToFacebook(
+                                        connection.userId,
+                                        platformContent.text,
+                                        primaryImageUrl || null,
+                                        connection.accessToken,
+                                        platformContent.link
+                                    );
                                 result = {
                                     platform,
                                     ...fbResult,
@@ -184,13 +261,22 @@ export class PublisherService {
                             break;
 
                         case 'Instagram':
-                            if (connection.accessToken && connection.userId && primaryImageUrl) {
-                                const igResult = await metaService.postToInstagram(
-                                    connection.userId,
-                                    platformContent.text,
-                                    primaryImageUrl,
-                                    connection.accessToken
-                                );
+                            if (connection.accessToken && connection.userId) {
+                                const igResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
+                                    ? await metaService.postVideoToInstagramReel(
+                                        connection.userId,
+                                        platformContent.text,
+                                        await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                        connection.accessToken
+                                    )
+                                    : primaryImageUrl
+                                        ? await metaService.postToInstagram(
+                                            connection.userId,
+                                            platformContent.text,
+                                            primaryImageUrl,
+                                            connection.accessToken
+                                        )
+                                        : { success: false as const, error: 'Instagram requires an image or video' };
                                 result = {
                                     platform,
                                     ...igResult,
@@ -202,12 +288,19 @@ export class PublisherService {
 
                         case 'Threads':
                             if (connection.accessToken && connection.userId) {
-                                const threadsResult = await metaService.postToThreads(
-                                    connection.userId,
-                                    platformContent.text,
-                                    primaryImageUrl || null,
-                                    connection.accessToken
-                                );
+                                const threadsResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
+                                    ? await metaService.postVideoToThreads(
+                                        connection.userId,
+                                        platformContent.text,
+                                        await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                        connection.accessToken
+                                    )
+                                    : await metaService.postToThreads(
+                                        connection.userId,
+                                        platformContent.text,
+                                        primaryImageUrl || null,
+                                        connection.accessToken
+                                    );
                                 result = {
                                     platform,
                                     ...threadsResult,
@@ -274,15 +367,27 @@ export class PublisherService {
                                 // Use options boardId OR settings default
                                 const boardId = options.pinterestBoardId || (connection.metadata as any)?.boardId || (connection.metadata as any)?.defaultBoardId;
 
-                                if (boardId && primaryImageUrl) {
-                                    const pinResult = await pinterestService.createPin(
-                                        boardId,
-                                        platformContent.title || platformContent.text.slice(0, 50),
-                                        platformContent.text,
-                                        primaryImageUrl,
-                                        connection.accessToken,
-                                        { link: options.pinterestLink || platformContent.link }
-                                    );
+                                if (boardId && (primaryImageUrl || localVideoFile)) {
+                                    const pinResult = localVideoFile
+                                        ? await pinterestService.createVideoPin(
+                                            boardId,
+                                            platformContent.title || platformContent.text.slice(0, 50),
+                                            platformContent.text,
+                                            localVideoFile,
+                                            connection.accessToken,
+                                            {
+                                                link: options.pinterestLink || platformContent.link,
+                                                coverImageUrl: remoteCoverImageUrl,
+                                            }
+                                        )
+                                        : await pinterestService.createPin(
+                                            boardId,
+                                            platformContent.title || platformContent.text.slice(0, 50),
+                                            platformContent.text,
+                                            primaryImageUrl!,
+                                            connection.accessToken,
+                                            { link: options.pinterestLink || platformContent.link }
+                                        );
                                     result = {
                                         platform,
                                         ...pinResult,
@@ -290,7 +395,7 @@ export class PublisherService {
                                         postedAt: new Date().toISOString()
                                     };
                                 } else {
-                                    result.error = 'Pinterest requires Board ID and Image';
+                                    result.error = 'Pinterest requires a board plus an image or video';
                                 }
                             }
                             break;

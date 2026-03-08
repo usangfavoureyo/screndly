@@ -630,15 +630,9 @@ Respond ONLY "YES" or "NO".`,
             return { publishedPlatforms: [] as string[], failedPlatforms: [] as string[] };
         }
 
-        const fallbackImageUrl = thumbnailUrl;
         const generatedSocialImageUrl =
             thumbnailAssets.social?.publicUrl
-            || thumbnailAssets.social?.sourceUrl
-            || fallbackImageUrl;
-        const generatedXImageSource =
-            thumbnailAssets.x?.localPath
-            || thumbnailAssets.x?.publicUrl
-            || thumbnailAssets.x?.sourceUrl;
+            || thumbnailAssets.social?.sourceUrl;
         const defaultText = this.buildPlatformPostText('X', captions, video, settings);
         const publishContent: PublishContent = {
             text: defaultText,
@@ -650,28 +644,15 @@ Respond ONLY "YES" or "NO".`,
             platformOverrides: {
                 X: {
                     text: this.buildPlatformPostText('X', captions, video, settings),
-                    imagePath: this.isAutoThumbnailEnabled('X', settings) && generatedXImageSource && !generatedXImageSource.startsWith('http')
-                        ? generatedXImageSource
-                        : undefined,
-                    imageUrl: this.isAutoThumbnailEnabled('X', settings)
-                        ? (
-                            generatedXImageSource && generatedXImageSource.startsWith('http')
-                                ? generatedXImageSource
-                                : fallbackImageUrl
-                        )
-                        : undefined,
                 },
                 Facebook: {
                     text: this.buildPlatformPostText('Facebook', captions, video, settings),
-                    imageUrl: this.isAutoThumbnailEnabled('Facebook', settings) ? generatedSocialImageUrl : undefined,
                 },
                 Instagram: {
                     text: this.buildPlatformPostText('Instagram', captions, video, settings),
-                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
                 },
                 Threads: {
                     text: this.buildPlatformPostText('Threads', captions, video, settings),
-                    imageUrl: this.isAutoThumbnailEnabled('Threads', settings) ? generatedSocialImageUrl : undefined,
                 },
                 TikTok: {
                     text: this.buildPlatformPostText('TikTok', captions, video, settings),
