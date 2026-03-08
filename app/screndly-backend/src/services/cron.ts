@@ -99,8 +99,8 @@ export async function initCronJobs() {
         }
     }, cronOptions);
 
-    // TMDb Weekly Refresh - Every Monday at 08:00
-    cron.schedule('0 8 * * 1', async () => {
+    // TMDb Weekly Refresh - Daily at 08:00
+    cron.schedule('0 8 * * *', async () => {
         await logCron('info', 'Starting TMDb Weekly refresh...');
         try {
             const configured = await isTMDbConfigured();
@@ -136,8 +136,8 @@ export async function initCronJobs() {
         }
     }, cronOptions);
 
-    // TMDb Monthly Refresh - Every Monday at 09:00
-    cron.schedule('0 9 * * 1', async () => {
+    // TMDb Monthly Refresh - Daily at 09:00
+    cron.schedule('0 9 * * *', async () => {
         await logCron('info', 'Starting TMDb Monthly refresh...');
         try {
             const configured = await isTMDbConfigured();
@@ -262,6 +262,9 @@ export async function initCronJobs() {
                 where: {
                     status: 'scheduled',
                     scheduledTime: { lte: now }
+                },
+                orderBy: {
+                    scheduledTime: 'asc',
                 },
                 take: 5
             });

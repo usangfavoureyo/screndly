@@ -10,6 +10,7 @@ import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TMDbModals } from "./tmdb/TMDbModals";
+import { PullToRefresh } from "./PullToRefresh";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
 import { haptics } from "../utils/haptics";
 import { useNotifications } from "../contexts/NotificationsContext";
@@ -92,6 +93,9 @@ export function AppContent() {
   const [isCaptionEditorOpen, setIsCaptionEditorOpen] = useState(false);
   const [isShortcutsHelpOpen, setIsShortcutsHelpOpen] = useState(false);
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false);
+  const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth >= 1024 : false,
+  );
 
   // List of all valid pages
   const validPages = [
@@ -419,6 +423,19 @@ export function AppContent() {
     );
   }, [isDesktopSidebarCollapsed]);
 
+  useEffect(() => {
+    const handleResize = () => {
+      setIsDesktopViewport(window.innerWidth >= 1024);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
+  }, []);
+
   const desktopSidebarWidth = isDesktopSidebarCollapsed
     ? DESKTOP_SIDEBAR_COLLAPSED_WIDTH
     : DESKTOP_SIDEBAR_EXPANDED_WIDTH;
@@ -449,66 +466,70 @@ export function AppContent() {
         className="relative z-10 mb-16 bg-white transition-[margin-left] duration-200 ease-in-out dark:bg-black lg:mb-0 lg:ml-[var(--desktop-sidebar-width)]"
         role="main"
       >
-        <div className="p-4 sm:p-6 lg:p-8 transition-opacity duration-200">
-          {displayPage === "dashboard" && (
-            <DashboardOverview onNavigate={handleNavigate} />
-          )}
-          {displayPage === "channels" && <Suspense fallback={<PageLoader />}><ChannelsPage /></Suspense>}
-          {displayPage === "platforms" && <Suspense fallback={<PageLoader />}><PlatformsPage /></Suspense>}
-          {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={addNotification} onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "activity" && (
-            <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} /></Suspense>
-          )}
-          {displayPage === "design-system" && (
-            <Suspense fallback={<PageLoader />}><DesignSystemPage onNavigate={handleNavigate} /></Suspense>
-          )}
-          {displayPage === "feeds" && (
-            <Suspense fallback={<PageLoader />}><FeedsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "rss" && (
-            <Suspense fallback={<PageLoader />}><RSSPage onNavigate={handleNavigate} /></Suspense>
-          )}
-          {displayPage === "rss-activity" && (
-            <Suspense fallback={<PageLoader />}><RSSActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "tmdb" && (
-            <Suspense fallback={<PageLoader />}><TMDbFeedsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "tmdb-activity" && (
-            <Suspense fallback={<PageLoader />}><TMDbActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "video-details" && (
-            <Suspense fallback={<PageLoader />}><VideoDetailsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "video-activity" && (
-            <Suspense fallback={<PageLoader />}><VideoActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "video-studio" && (
-            <Suspense fallback={<PageLoader />}><VideoStudioPage onNavigate={handleNavigate} previousPage={previousPage} onCaptionEditorChange={setIsCaptionEditorOpen} /></Suspense>
-          )}
-          {displayPage === "video-studio-activity" && (
-            <Suspense fallback={<PageLoader />}><VideoStudioActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "design-studio" && (
-            <Suspense fallback={<PageLoader />}><DesignStudioPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "design-studio-activity" && (
-            <Suspense fallback={<PageLoader />}><DesignStudioActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-          )}
-          {displayPage === "privacy" && <Suspense fallback={<PageLoader />}><PrivacyPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "terms" && <Suspense fallback={<PageLoader />}><TermsPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "disclaimer" && <Suspense fallback={<PageLoader />}><DisclaimerPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "cookie" && <Suspense fallback={<PageLoader />}><CookiePage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "contact" && <Suspense fallback={<PageLoader />}><ContactPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "about" && <Suspense fallback={<PageLoader />}><AboutPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "data-deletion" && <Suspense fallback={<PageLoader />}><DataDeletionPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "app-info" && <Suspense fallback={<PageLoader />}><AppInfoPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
-          {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
-          {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => handleNavigate(previousPage || "dashboard")} /></Suspense>}
-          {displayPage === "platforms/callback" && <Suspense fallback={<PageLoader />}><OAuthCallbackPage onNavigate={handleNavigate} /></Suspense>}
-          {displayPage === "not-found" && <NotFoundPage onNavigate={handleNavigate} />}
-        </div>
+        <PullToRefresh
+          disabled={isDesktopViewport || isSettingsOpen || isNotificationsOpen || isCaptionEditorOpen}
+        >
+          <div className="p-4 sm:p-6 lg:p-8 transition-opacity duration-200">
+            {displayPage === "dashboard" && (
+              <DashboardOverview onNavigate={handleNavigate} />
+            )}
+            {displayPage === "channels" && <Suspense fallback={<PageLoader />}><ChannelsPage /></Suspense>}
+            {displayPage === "platforms" && <Suspense fallback={<PageLoader />}><PlatformsPage /></Suspense>}
+            {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={addNotification} onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "activity" && (
+              <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} /></Suspense>
+            )}
+            {displayPage === "design-system" && (
+              <Suspense fallback={<PageLoader />}><DesignSystemPage onNavigate={handleNavigate} /></Suspense>
+            )}
+            {displayPage === "feeds" && (
+              <Suspense fallback={<PageLoader />}><FeedsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "rss" && (
+              <Suspense fallback={<PageLoader />}><RSSPage onNavigate={handleNavigate} /></Suspense>
+            )}
+            {displayPage === "rss-activity" && (
+              <Suspense fallback={<PageLoader />}><RSSActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "tmdb" && (
+              <Suspense fallback={<PageLoader />}><TMDbFeedsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "tmdb-activity" && (
+              <Suspense fallback={<PageLoader />}><TMDbActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "video-details" && (
+              <Suspense fallback={<PageLoader />}><VideoDetailsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "video-activity" && (
+              <Suspense fallback={<PageLoader />}><VideoActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "video-studio" && (
+              <Suspense fallback={<PageLoader />}><VideoStudioPage onNavigate={handleNavigate} previousPage={previousPage} onCaptionEditorChange={setIsCaptionEditorOpen} /></Suspense>
+            )}
+            {displayPage === "video-studio-activity" && (
+              <Suspense fallback={<PageLoader />}><VideoStudioActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "design-studio" && (
+              <Suspense fallback={<PageLoader />}><DesignStudioPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "design-studio-activity" && (
+              <Suspense fallback={<PageLoader />}><DesignStudioActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "privacy" && <Suspense fallback={<PageLoader />}><PrivacyPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "terms" && <Suspense fallback={<PageLoader />}><TermsPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "disclaimer" && <Suspense fallback={<PageLoader />}><DisclaimerPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "cookie" && <Suspense fallback={<PageLoader />}><CookiePage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "contact" && <Suspense fallback={<PageLoader />}><ContactPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "about" && <Suspense fallback={<PageLoader />}><AboutPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "data-deletion" && <Suspense fallback={<PageLoader />}><DataDeletionPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "app-info" && <Suspense fallback={<PageLoader />}><AppInfoPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
+            {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
+            {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => handleNavigate(previousPage || "dashboard")} /></Suspense>}
+            {displayPage === "platforms/callback" && <Suspense fallback={<PageLoader />}><OAuthCallbackPage onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "not-found" && <NotFoundPage onNavigate={handleNavigate} />}
+          </div>
+        </PullToRefresh>
       </main>
       <MobileBottomNav
         currentPage={currentPage}
