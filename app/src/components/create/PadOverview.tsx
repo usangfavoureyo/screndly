@@ -3,40 +3,48 @@ import { PAD_TEMPLATES } from '../../config/create';
 import { usePadStore } from '../../store/usePadStore';
 import type { PadSession } from '../../types/pad';
 import { haptics } from '../../utils/haptics';
+import { useSettings } from '../../contexts/SettingsContext';
 
 interface PadOverviewProps {
   onNavigate: (page: string, fromPage?: string) => void;
 }
 
-function createSession(templateId: string, title: string): PadSession {
+function createSession(templateId: string, title: string, systemPrompt: string): PadSession {
   const timestamp = new Date().toISOString();
   return {
     id: `pad-${Date.now()}`,
     templateId,
     title,
-    brief: '',
-    context: '',
+    systemPrompt,
+    pinned: false,
+    messages: [],
     latestOutput: '',
     outputs: [],
-    drafts: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
 }
 
 export function PadOverview({ onNavigate }: PadOverviewProps) {
-  const { sessions, saveSession, setActiveSessionId } = usePadStore();
+  const { sessions, createSession: createPadSession, setActiveSessionId } = usePadStore();
+  const { settings } = useSettings();
 
   const stats = {
     sessions: sessions.length,
     templates: PAD_TEMPLATES.length,
-    drafts: sessions.filter((session) => session.drafts.length > 0).length,
+    drafts: sessions.filter((session) => session.messages.length > 0).length,
     outputs: sessions.reduce((sum, session) => sum + session.outputs.length, 0),
   };
 
   const handleOpenTemplate = (templateId: string, title: string) => {
-    const session = createSession(templateId, title);
-    saveSession(session);
+    const session = createSession(
+      templateId,
+      title,
+      settings.padChatSystemPrompt
+        ? `${settings.padChatSystemPrompt}\n\nTemplate focus: ${title}.`
+        : `You are Screndly PAD. Stay focused on the ${title} workflow and respond like a creative writing copilot.`,
+    );
+    createPadSession(session);
     setActiveSessionId(session.id);
     onNavigate('pad-workspace', 'create');
   };
@@ -125,7 +133,7 @@ export function PadOverview({ onNavigate }: PadOverviewProps) {
                   <div className="min-w-0">
                     <h4 className="text-gray-900 dark:text-white mb-1 truncate">{session.title}</h4>
                     <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] line-clamp-2">
-                      {session.latestOutput || session.brief || 'No content saved yet.'}
+                      {session.messages.at(-1)?.content || session.latestOutput || 'No content saved yet.'}
                     </p>
                   </div>
                   <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap">

@@ -244,7 +244,7 @@ export function AppContent() {
     const staticPages = ['privacy', 'terms', 'disclaimer', 'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'design-system'];
 
     // Handle special settings sub-pages
-    const settingsPages = ['settings-comment-reply', 'settings-video', 'settings-rss', 'settings-tmdb', 'settings-videostudio', 'settings-error', 'settings-cleanup', 'settings-haptic', 'settings-appearance', 'settings-notifications', 'settings-thumbnail', 'settings-autopost'];
+    const settingsPages = ['settings-comment-reply', 'settings-video', 'settings-rss', 'settings-tmdb', 'settings-videostudio', 'settings-pad', 'settings-compose', 'settings-error', 'settings-cleanup', 'settings-haptic', 'settings-appearance', 'settings-notifications', 'settings-thumbnail', 'settings-autopost'];
 
     // Child pages that should return to parent on back
     // Dashboard View All pages → return to dashboard

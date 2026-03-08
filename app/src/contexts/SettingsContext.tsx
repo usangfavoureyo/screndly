@@ -198,6 +198,14 @@ export interface Settings {
   videoStudioWebSearchProvider?: 'serper' | 'google';
   videoStudioWebSearchMaxResults?: number;
 
+  // PAD
+  padChatModel?: string;
+  padChatSystemPrompt?: string;
+
+  // Compose
+  composeActivityRetention?: number;
+  composeDefaultScheduleTime?: string;
+
   // Activity Retention
   videoStudioActivityRetention?: number;
   designStudioActivityRetention?: number;
@@ -434,6 +442,14 @@ Guidelines:
     // TMDb
     tmdbCaptionModel: DEFAULT_MODELS.tmdb,
     tmdbCaptionTemperature: 0.7,
+
+    // PAD
+    padChatModel: DEFAULT_MODELS.video,
+    padChatSystemPrompt: 'You are Screndly PAD. Stay aligned to the chat context, write like a sharp entertainment and social publishing copilot, and keep replies useful and editable.',
+
+    // Compose
+    composeActivityRetention: 30,
+    composeDefaultScheduleTime: '09:00',
 
     // Cleanup
     cleanupEnabled: true,

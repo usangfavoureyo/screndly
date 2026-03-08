@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard } from 'lucide-react';
+import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard, PenSquare } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
@@ -18,6 +18,8 @@ import { AppearanceSettings } from './settings/AppearanceSettings';
 import { NotificationsSettings } from './settings/NotificationsSettings';
 import { VideoStudioSettings } from './settings/VideoStudioSettings';
 import { DesignStudioSettings } from './settings/DesignStudioSettings';
+import { PadSettings } from './settings/PadSettings';
+import { ComposeSettings } from './settings/ComposeSettings';
 import { PWASettings } from './settings/PWASettings';
 import { TimezoneSettings } from './settings/TimezoneSettings';
 import { ThumbnailSettings } from './settings/ThumbnailSettings';
@@ -249,6 +251,18 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
       ]
     },
     {
+      id: 'pad',
+      label: 'PAD',
+      icon: MessageSquare,
+      keywords: ['pad', 'chat', 'ai chat', 'model', 'prompt', 'system prompt', 'assistant', 'conversation', 'thread']
+    },
+    {
+      id: 'compose',
+      label: 'Compose',
+      icon: PenSquare,
+      keywords: ['compose', 'content', 'schedule', 'draft', 'retention', 'default schedule']
+    },
+    {
       id: 'timezone',
       label: 'Timezone',
       icon: Globe,
@@ -469,6 +483,22 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
           }}
         />
         <DesignStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />
+      </>
+    );
+  }
+  if (activeSettingsPage === 'pad') {
+    return (
+      <>
+        <div className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64" onClick={handleCloseSubpage} />
+        <PadSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
+      </>
+    );
+  }
+  if (activeSettingsPage === 'compose') {
+    return (
+      <>
+        <div className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64" onClick={handleCloseSubpage} />
+        <ComposeSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
       </>
     );
   }

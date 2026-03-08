@@ -1,5 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from 'react';
-import { Film, Image as ImageIcon, Sparkles, Trash2, Upload, X } from 'lucide-react';
+import { Film, Image as ImageIcon, Trash2, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { Button } from '../ui/button';
@@ -25,7 +25,6 @@ import { XIcon } from '../icons/XIcon';
 import { YouTubeIcon } from '../icons/YouTubeIcon';
 import { PinterestIcon } from '../icons/PinterestIcon';
 import { COMPOSE_PLATFORM_OPTIONS } from '../../config/create';
-import { generateComposeCaption } from '../../lib/create/generation';
 import {
   buildComposeItemTitleFromAssets,
   buildComposeMediaAsset,
@@ -36,6 +35,7 @@ import {
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../types/compose';
 import { getConnectedPlatforms } from '../../utils/platformConnections';
+import { haptics } from '../../utils/haptics';
 
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -136,7 +136,6 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const [scheduleTime, setScheduleTime] = useState(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt).toISOString().slice(11, 16) : '09:00',
   );
-  const [isGenerating, setIsGenerating] = useState(false);
 
   const connectedPlatforms = useMemo(
     () => new Set(getConnectedPlatforms().map((platform) => platform.toLowerCase())),
@@ -190,13 +189,13 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     }));
   };
 
-  const validate = (mode: 'draft' | 'scheduled') => {
+  const validate = (mode: 'draft' | 'scheduled' | 'published') => {
     if (!formState.platforms.length) {
       toast.error('Select at least one connected platform');
       return false;
     }
-    if (mode === 'scheduled' && mediaSummary.totalAssets === 0) {
-      toast.error('Upload at least one image or video before scheduling');
+    if ((mode === 'scheduled' || mode === 'published') && mediaSummary.totalAssets === 0) {
+      toast.error(`Upload at least one image or video before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
       return false;
     }
     if (selectedPlatformIssues.length > 0) {
@@ -274,25 +273,11 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     onNavigate('create', previousPage || 'create');
   };
 
-  const handleGenerateCaption = async () => {
-    if (!formState.platforms.length) {
-      toast.error('Select at least one platform before generating');
-      return;
-    }
-
-    setIsGenerating(true);
-    try {
-      const generated = await generateComposeCaption({
-        platforms: formState.platforms,
-        prompt: `Assets: ${formState.mediaAssets.map((asset) => asset.fileName).join(', ') || 'Untitled assets'}\nMedia set: ${mediaSummary.kind}\nCaption intent: entertainment and social publishing.`,
-      });
-      setFormState((current) => ({ ...current, sharedCaption: generated }));
-      toast.success('Caption generated');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to generate caption');
-    } finally {
-      setIsGenerating(false);
-    }
+  const handlePublish = () => {
+    if (!validate('published')) return;
+    persistItem('published');
+    toast.success(existingItem ? 'Compose item published' : 'Compose item created and published');
+    onNavigate('create', previousPage || 'create');
   };
 
   return (
@@ -457,20 +442,20 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4">
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Shared Caption</h3>
-                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Used by Instagram, Facebook, Threads, X, and TikTok in this flow.</p>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Write the caption manually for Instagram, Facebook, Threads, X, and TikTok in this flow.</p>
               </div>
-              <Button variant="outline" size="sm" onClick={handleGenerateCaption} disabled={isGenerating}>
-                <Sparkles className="h-4 w-4 text-[#ec1e24]" />
-                {isGenerating ? 'Generating' : 'Generate'}
-              </Button>
             </div>
             <Textarea
               value={formState.sharedCaption}
-              onChange={(event) => setFormState((current) => ({ ...current, sharedCaption: event.target.value }))}
-              placeholder="Write or generate a shared caption"
+              onChange={(event) => {
+                setFormState((current) => ({ ...current, sharedCaption: event.target.value }));
+                haptics.selection();
+              }}
+              onFocus={() => haptics.light()}
+              placeholder="Write the shared caption"
               className="min-h-[180px] border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
             />
           </div>
@@ -543,6 +528,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
               <Button className="w-full" onClick={handleSaveDraft}>Save</Button>
+              <Button className="w-full" onClick={handlePublish}>Publish</Button>
               <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)}>Schedule</Button>
             </div>
 
