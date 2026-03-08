@@ -9,6 +9,7 @@ import { useTMDbPosts } from '../contexts/TMDbPostsContext';
 import { useUndo } from './UndoContext';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 
 interface TMDbFeedsPageProps {
   onNavigate: (page: string) => void;
@@ -16,11 +17,13 @@ interface TMDbFeedsPageProps {
 }
 
 export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
-  const { posts, refreshFromTMDb, updatePost, deletePost, restorePost } = useTMDbPosts();
+  const { posts, fetchPosts, refreshFromTMDb, updatePost, deletePost, restorePost } = useTMDbPosts();
   const { showUndo } = useUndo();
   const [filterType, setFilterType] = useState<'all' | 'today' | 'weekly' | 'monthly' | 'anniversary'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+
+  useTMDbAutoSync(fetchPosts);
 
   // Filter posts to show only queued ones (scheduled, published, failed show in Activity)
   const feeds = posts.filter(post => post.status === 'queued');

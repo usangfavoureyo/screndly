@@ -7,6 +7,7 @@ import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { useUndo } from './UndoContext';
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -65,6 +66,7 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
 }
 
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
+  const { showUndo } = useUndo();
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
@@ -99,17 +101,46 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const handleDelete = async (id: string) => {
     haptics.medium();
-    try {
-      const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to delete activity');
-      }
-      setActivities((prev) => prev.filter((activity) => activity.id !== id));
-      toast.success('Activity deleted');
-    } catch (error) {
-      console.error('Failed to delete design studio activity:', error);
-      toast.error('Failed to delete activity');
-    }
+    const deletedActivity = activities.find((activity) => activity.id === id);
+    const deletedIndex = activities.findIndex((activity) => activity.id === id);
+    if (!deletedActivity || deletedIndex === -1) return;
+
+    setActivities((prev) => prev.filter((activity) => activity.id !== id));
+
+    showUndo({
+      id,
+      itemName: activityTitle(deletedActivity.type),
+      onUndo: () => {
+        setActivities((prev) => {
+          if (prev.some((activity) => activity.id === deletedActivity.id)) {
+            return prev;
+          }
+          const next = [...prev];
+          next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
+          return next;
+        });
+      },
+      onConfirm: async () => {
+        try {
+          const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete activity');
+          }
+          toast.success('Activity deleted');
+        } catch (error) {
+          console.error('Failed to delete design studio activity:', error);
+          setActivities((prev) => {
+            if (prev.some((activity) => activity.id === deletedActivity.id)) {
+              return prev;
+            }
+            const next = [...prev];
+            next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
+            return next;
+          });
+          toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+        }
+      },
+    });
   };
 
   const handleDeleteSelected = async () => {
