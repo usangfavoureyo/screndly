@@ -32,6 +32,8 @@ import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
 import { apiClient } from '../lib/api/client';
 import { publishTMDbPost } from '../lib/tmdb/tmdbPublish';
 import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFromSource } from '../utils/tmdbCaptionGenerator';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 
 interface TMDbActivityItem {
   id: string;
@@ -69,6 +71,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [isEditCaptionOpen, setIsEditCaptionOpen] = useState(false);
   const [isChangeImageOpen, setIsChangeImageOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [selectedTime, setSelectedTime] = useState('');
@@ -111,6 +114,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       if (filter === 'scheduled') return item.status === 'scheduled';
       return true;
     });
+  const selection = useBulkSelection(filteredItems.map((item) => item.id));
 
   const generateTmdbCaption = async (post: TMDbActivityItem) => {
     const result = await generateTMDbCaptionWithSettings({
@@ -256,6 +260,24 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
         });
       }
     });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    haptics.medium();
+    setIsDeletingSelected(true);
+
+    try {
+      await Promise.all(selection.selectedIds.map((id) => deletePost(id)));
+      toast.success(`${selection.selectedCount} TMDb activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
+      selection.clearSelection();
+    } catch (error) {
+      console.error('Failed to bulk delete TMDb activity:', error);
+      toast.error('Failed to delete selected TMDb activity');
+    } finally {
+      setIsDeletingSelected(false);
+    }
   };
 
   const handleChangeScheduleDate = (id: string, title: string) => {
@@ -534,6 +556,15 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
       {/* Activity List */}
       <div className="space-y-3">
+        {selection.selectionMode && (
+          <ActivitySelectionToolbar
+            selectedCount={selection.selectedCount}
+            isDeleting={isDeletingSelected}
+            onClear={selection.clearSelection}
+            onDelete={handleDeleteSelected}
+            itemLabel="activity items"
+          />
+        )}
         {filteredItems.length > 0 ? (
           filteredItems.map((item) => {
             const statusConfig = getStatusConfig(item.status);
@@ -545,6 +576,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 id={item.id}
                 onDelete={(id) => handleDelete(id, item.title)}
                 isScheduled={item.status === 'scheduled'}
+                selectionMode={selection.selectionMode}
+                selected={selection.isSelected(item.id)}
+                onEnterSelectionMode={selection.enterSelectionMode}
+                onToggleSelection={selection.toggleSelection}
                 className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200"
               >
                 <div className="flex gap-4">
@@ -583,7 +618,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                             {statusConfig.label}
                           </span>
                         </div>
-                        {item.status === 'failed' && (
+                        {!selection.selectionMode && item.status === 'failed' && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -634,90 +669,92 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                         </span>
                       </span>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-8 w-8 p-0 border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#111111]"
-                      onClick={() => {
-                        haptics.light();
-                        setOpenMenuItemId(item.id);
-                      }}
-                    >
-                      <MoreVertical className="w-4 h-4 text-gray-600 dark:text-[#9CA3AF]" />
-                    </Button>
-
-                    {/* Options BottomSheet */}
-                    <BottomSheet open={openMenuItemId === item.id} onOpenChange={(open) => !open && setOpenMenuItemId(null)}>
-                      <BottomSheetHeader>
-                        <BottomSheetTitle>Options</BottomSheetTitle>
-                      </BottomSheetHeader>
-                      <BottomSheetBody>
-                        <div className="flex flex-col gap-2">
-                          <button
-                            onClick={() => {
-                              setOpenMenuItemId(null);
-                              haptics.medium();
-                              handlePostImmediately(item.id, item.title);
-                            }}
-                            className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
-                          >
-                            Publish
-                          </button>
-                          <button
-                            onClick={() => {
-                              setOpenMenuItemId(null);
-                              haptics.light();
-                              handleEditCaption(item.id, item.title);
-                            }}
-                            className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
-                          >
-                            Edit Caption
-                          </button>
-                          <button
-                            onClick={() => {
-                              setOpenMenuItemId(null);
-                              haptics.light();
-                              handleChangeImage(item.id, item.title);
-                            }}
-                            className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
-                          >
-                            Change Image
-                          </button>
-                          <button
-                            onClick={() => {
-                              setOpenMenuItemId(null);
-                              haptics.light();
-                              handleChangeScheduleDate(item.id, item.title);
-                            }}
-                            className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
-                          >
-                            Change Date
-                          </button>
-                          <button
-                            onClick={() => {
-                              setOpenMenuItemId(null);
-                              haptics.light();
-                              handleChangeScheduleTime(item.id, item.title);
-                            }}
-                            className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
-                          >
-                            Change Time
-                          </button>
-                        </div>
-                        {/* Action Divider - Full Width */}
-                        <div className="my-4 -mx-6 border-t border-gray-200 dark:border-[#333333]" />
-                        {/* Cancel Button */}
-                        <button
+                    {!selection.selectionMode && (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 w-8 p-0 border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#111111]"
                           onClick={() => {
                             haptics.light();
-                            setOpenMenuItemId(null);
+                            setOpenMenuItemId(item.id);
                           }}
-                          className="w-full mb-2 py-2 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                         >
-                          Cancel
-                        </button>
-                      </BottomSheetBody>
-                    </BottomSheet>
+                          <MoreVertical className="w-4 h-4 text-gray-600 dark:text-[#9CA3AF]" />
+                        </Button>
+
+                        {/* Options BottomSheet */}
+                        <BottomSheet open={openMenuItemId === item.id} onOpenChange={(open) => !open && setOpenMenuItemId(null)}>
+                          <BottomSheetHeader>
+                            <BottomSheetTitle>Options</BottomSheetTitle>
+                          </BottomSheetHeader>
+                          <BottomSheetBody>
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.medium();
+                                  handlePostImmediately(item.id, item.title);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Publish
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.light();
+                                  handleEditCaption(item.id, item.title);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Edit Caption
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.light();
+                                  handleChangeImage(item.id, item.title);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Change Image
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.light();
+                                  handleChangeScheduleDate(item.id, item.title);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Change Date
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.light();
+                                  handleChangeScheduleTime(item.id, item.title);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Change Time
+                              </button>
+                            </div>
+                            <div className="my-4 -mx-6 border-t border-gray-200 dark:border-[#333333]" />
+                            <button
+                              onClick={() => {
+                                haptics.light();
+                                setOpenMenuItemId(null);
+                              }}
+                              className="w-full mb-2 py-2 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                            >
+                              Cancel
+                            </button>
+                          </BottomSheetBody>
+                        </BottomSheet>
+                      </>
+                    )}
                   </div>
                 )}
               </SwipeableActivityCard>
