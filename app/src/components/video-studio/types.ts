@@ -17,6 +17,10 @@ export interface AudioFile {
     name: string;
     size: number;
     url: string;
+    uploadedUrl?: string;
+    originalFile?: File;
+    contentType?: string;
+    durationSeconds?: number;
 }
 
 export interface DetectedTitle {

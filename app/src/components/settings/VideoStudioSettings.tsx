@@ -9,7 +9,7 @@ import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface VideoStudioSettingsProps {
@@ -20,7 +20,7 @@ interface VideoStudioSettingsProps {
 // Default prompt system settings
 const defaultSettings = {
   // Video Generation Model Selection
-  openaiModel: 'gpt-4o',
+  openaiModel: DEFAULT_MODELS.videoStudio,
 
   // Video Generation Operational Settings
   temperature: 0,
@@ -37,7 +37,7 @@ const defaultSettings = {
   previewBeforeRender: true,
 
   // Caption Generation Settings
-  captionOpenaiModel: 'gpt-4o',
+  captionOpenaiModel: DEFAULT_MODELS.videoStudio,
   captionTemperature: 0.7,
   captionMaxTokens: 500,
 
@@ -318,7 +318,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
               </SelectContent>
             </Select>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
-              GPT-4o provides best accuracy for JSON→Shotstack translation. Use GPT-4o-mini for high-volume batch processing.
+              GPT-4.1 is the recommended prompt model here. Use GPT-5 Mini when you want stronger general generation at lower cost.
             </p>
           </div>
         </div>

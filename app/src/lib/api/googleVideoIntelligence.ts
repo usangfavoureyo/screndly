@@ -6,6 +6,7 @@
 import { getCachedAnalysis, cacheAnalysis } from '../cache/videoIntelligenceCache';
 import { analyzeAllShots, isMusicOnlyTrailer, hasVoiceoverNarration } from '../audio/clientAudioAnalysis';
 import { classifyShot, classifyMusicOnlyShot, classifyVoiceoverShot, ClassifiedShot } from '../analysis/sceneClassification';
+import { apiClient } from './client';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -71,8 +72,6 @@ export async function analyzeTrailer(videoFile: File): Promise<TrailerAnalysis> 
   console.log('🎬 Starting hybrid trailer analysis...');
   
   // Step 1: Shot detection + text detection (Google Video Intelligence)
-  // In production, this would call the real API
-  // For now, we simulate with realistic mock data
   console.log('  📹 Detecting shots and text overlays...');
   const rawShots = await detectShotsAndText(videoFile);
   
@@ -191,53 +190,38 @@ export function getBRollMoment(
 // ============================================================================
 
 /**
- * Simulate Google Video Intelligence shot detection + text detection
- * In production, this would call the real API with:
- * - SHOT_CHANGE_DETECTION feature
- * - TEXT_DETECTION feature
+ * Run Google Video Intelligence shot detection + text detection through the backend.
  */
 async function detectShotsAndText(videoFile: File): Promise<Array<{ startTime: number; endTime: number }>> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  const response = await apiClient.uploadFile<{
+    shots: Array<{ startTime: number; endTime: number }>;
+    filteredShots?: Array<{ startTime: number; endTime: number }>;
+  }>('/api/video-studio/analyze-trailer', videoFile);
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Google Video Intelligence analysis failed');
+  }
+
+  const shots = response.data.shots || [];
+  const filteredShots = response.data.filteredShots && response.data.filteredShots.length > 0
+    ? response.data.filteredShots
+    : shots;
   
-  // Generate realistic shot boundaries
-  const duration = 150; // Assume 2.5 minute trailer
-  const shots: Array<{ startTime: number; endTime: number; hasText?: boolean; textConfidence?: number }> = [];
-  
-  let currentTime = 0;
-  
-  while (currentTime < duration) {
-    // Shot durations typically 1-6 seconds in trailers
-    const shotDuration = 1.5 + Math.random() * 4.5;
-    const endTime = Math.min(currentTime + shotDuration, duration);
-    
-    // Simulate text detection
-    // ~15% of shots have text (title cards, cast names, etc.)
-    const hasText = Math.random() < 0.15;
-    const textConfidence = hasText ? 0.7 + Math.random() * 0.3 : 0;
-    
-    shots.push({
-      startTime: currentTime,
-      endTime,
-      hasText,
-      textConfidence
-    });
-    
-    currentTime = endTime;
+  if (filteredShots.length === 0) {
+    throw new Error('Google Video Intelligence returned no usable shots');
   }
   
-  // Filter out shots with text (confidence > 0.6)
-  const filteredShots = shots.filter(shot => !shot.hasText || shot.textConfidence! < 0.6);
-  
-  // Merge very short shots (<0.4s) with neighbors
   const mergedShots = mergeShortShots(filteredShots, 0.4);
-  
-  // Drop last 10 seconds (copyright cards, ratings)
-  const finalShots = mergedShots.filter(shot => shot.startTime < duration - 10);
+  const totalDuration = mergedShots[mergedShots.length - 1]?.endTime
+    ?? filteredShots[filteredShots.length - 1]?.endTime
+    ?? 0;
+  const finalShots = totalDuration > 10
+    ? mergedShots.filter(shot => shot.startTime < totalDuration - 10)
+    : mergedShots;
   
   console.log(`  📊 Detected ${shots.length} shots → ${filteredShots.length} after text filter → ${finalShots.length} after merging`);
   
-  return finalShots;
+  return finalShots.length > 0 ? finalShots : mergedShots;
 }
 
 /**

@@ -24,6 +24,13 @@ export interface PlatformsEnabled {
   pinterest: boolean;
 }
 
+export interface PlatformImageCounts {
+  x?: number;
+  threads?: number;
+  facebook?: number;
+  pinterest?: number;
+}
+
 export interface RSSFeed {
   id: string;
   name: string;
@@ -32,12 +39,14 @@ export interface RSSFeed {
   enabled: boolean;
   interval: number;
   imageCount: '1' | '2' | '3' | 'random';
+  platformImageCounts?: PlatformImageCounts;
   dedupeDays: number;
   filters: FeedFilters;
   serperPriority: boolean;
   rehostImages: boolean;
   autoPost: boolean;
   platformsEnabled: PlatformsEnabled;
+  trickle?: 'newest_first' | 'oldest_first';
   status: 'active' | 'paused' | 'error';
   lastProcessedAt?: string;
   nextRunAt?: string;
@@ -61,6 +70,19 @@ export interface RSSFeedPreview {
   favicon?: string;
   itemCount: number;
   sampleItems: RSSPreviewSampleItem[];
+}
+
+export interface RSSPipelinePreview {
+  title: string;
+  link: string;
+  pubDate: string;
+  snippet: string;
+  images: Array<{
+    url: string;
+    reason: string;
+  }>;
+  caption: string;
+  captionCharCount: number;
 }
 
 export interface RSSActivityItem {
@@ -117,6 +139,7 @@ interface RSSFeedsContextType {
   ) => Promise<RSSRefreshResult | null>;
   refreshAllFeeds: () => Promise<void>;
   previewFeed: (url: string) => Promise<RSSFeedPreview | null>;
+  previewFeedPipeline: (feedId: string) => Promise<RSSPipelinePreview | null>;
   getActivity: (limit?: number) => Promise<RSSActivityResponse | null>;
   deleteActivity: (activityId: string) => Promise<void>;
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
@@ -185,6 +208,21 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('Error adding RSS feed:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to add feed');
+      return null;
+    }
+  };
+
+  const previewFeedPipeline = async (feedId: string): Promise<RSSPipelinePreview | null> => {
+    try {
+      const response = await apiClient.get<RSSPipelinePreview>(`/api/rss/feeds/${feedId}/preview`);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to preview feed pipeline');
+      }
+
+      return response.data;
+    } catch (err) {
+      console.error('Error previewing RSS feed pipeline:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to preview feed pipeline');
       return null;
     }
   };
@@ -356,6 +394,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         refreshFeed,
         refreshAllFeeds,
         previewFeed,
+        previewFeedPipeline,
         getActivity,
         deleteActivity,
         toggleFeedEnabled,

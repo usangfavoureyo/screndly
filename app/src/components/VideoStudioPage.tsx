@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Play, Pause, Download, RefreshCw, ChevronDown, ChevronUp, Film, AlertCircle, CheckCircle, Clock, Volume2, VolumeX, Copy, Activity, X, MoreVertical, Edit2, Maximize, Monitor, Smartphone, Square, Cloud, FileSpreadsheet } from 'lucide-react';
+import { Play, Pause, RefreshCw, ChevronDown, ChevronUp, CheckCircle, Volume2, VolumeX, X, MoreVertical, Edit2, Monitor, Smartphone, Square } from 'lucide-react';
 import { toast } from "sonner";
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
 import { Button } from './ui/button';
-import { Progress } from './ui/progress';
-
-import { Checkbox } from './ui/checkbox';
 import { Switch } from './ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { haptics } from '../utils/haptics';
@@ -20,22 +17,18 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 
 import { VisuallyHidden } from './ui/visually-hidden';
-import { AutoAssignTitlesDialog } from './AutoAssignTitlesDialog';
-
 import { TrailerScenesDialog } from './TrailerScenesDialog';
-import { LetterboxControl } from './LetterboxControl';
 import { AnalysisSettingsPanel } from './AnalysisSettingsPanel';
 import { SceneCorrectionInterface } from './SceneCorrectionInterface';
 import { TrainingProgressDashboard } from './TrainingProgressDashboard';
-import { LowerThirdEditor, LowerThirdConfig } from './LowerThirdEditor';
+import { LowerThirdConfig } from './LowerThirdEditor';
 import { BackblazeVideoBrowser } from './BackblazeVideoBrowser';
-import { SubtitleTimestampAssist } from './SubtitleTimestampAssist';
-import { SceneImportDialog } from './SceneImportDialog';
 import { addVideoStudioActivity, addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { analyzeTrailer, TrailerAnalysis, VideoMoment } from '../lib/api/googleVideoIntelligence';
-import { generateShotstackJSON, renderVideo } from '../lib/api/shotstack';
+import { generateShotstackJSON, getRenderStatus, renderVideo } from '../lib/api/shotstack';
 import { analyzeMultipleTrailers, MonthlyTrailerAnalysis, generateMonthlyCompilationJSON, getCompilationStats } from '../lib/api/monthlyCompilation';
 import { performWebSearch, formatSearchResultsForPrompt, buildSceneSearchQuery } from '../lib/api/webSearch';
+import { uploadVideoStudioAsset } from '../lib/api/backblaze';
 import { generateVideoStudioCaption, type VideoContent, VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { publishContent } from '../lib/api/platforms';
 import { VideoStudioHeader } from './video-studio/VideoStudioHeader';
@@ -44,7 +37,7 @@ import { MonthlyModule } from './video-studio/MonthlyModule';
 import { ScenesModule } from './video-studio/ScenesModule';
 import { AudioDynamicsPanel } from './video-studio/AudioDynamicsPanel';
 import { CaptionEditorPanel } from './video-studio/CaptionEditorPanel';
-import { VideoTitleData, AudioFile, AspectRatio, MusicGenre, DuckingMode, Scene, PromptStatus } from './video-studio/types';
+import { VideoTitleData, AudioFile, AspectRatio, MusicGenre, DuckingMode } from './video-studio/types';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 
 interface VideoStudioPageProps {
@@ -53,17 +46,13 @@ interface VideoStudioPageProps {
   onCaptionEditorChange?: (isOpen: boolean) => void;
 }
 
-type AspectRatio = '16:9' | '9:16' | '1:1';
-type MusicGenre = 'Hip-Hop' | 'Trap' | 'Rap' | 'Pop' | 'Electronic' | 'R&B' | 'House';
-type DuckingMode = 'Partial' | 'Full Mute' | 'Adaptive';
-type VideoFitMode = 'contain' | 'cover'; // 'contain' = show letterbox, 'cover' = fill/crop
-
 export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChange }: VideoStudioPageProps) {
   const { settings } = useSettings();
   const isMountedRef = useRef(true);
   const reviewMusicInputRef = useRef<HTMLInputElement>(null);
   const monthlyMusicInputRef = useRef<HTMLInputElement>(null);
   const scenesVideoInputRef = useRef<HTMLInputElement>(null);
+  const uploadedAssetCacheRef = useRef(new Map<string, string>());
   const [activeModule, setActiveModule] = useState<'review' | 'monthly' | 'scenes'>('review');
   const [isPromptPanelOpen, setIsPromptPanelOpen] = useState(false);
   const [isPromptGenerated, setIsPromptGenerated] = useState(false);
@@ -88,8 +77,8 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [reviewYoutubeUrls, setReviewYoutubeUrls] = useState<string[]>(['']);
   const [reviewVideoFiles, setReviewVideoFiles] = useState<File[]>([]);
   const [reviewVideoTitles, setReviewVideoTitles] = useState<Record<number, VideoTitleData>>({});
-  const [reviewVoiceover, setReviewVoiceover] = useState<{ name: string; size: number; url: string } | null>(null);
-  const [reviewMusic, setReviewMusic] = useState<{ name: string; size: number; url: string } | null>(null);
+  const [reviewVoiceover, setReviewVoiceover] = useState<AudioFile | null>(null);
+  const [reviewMusic, setReviewMusic] = useState<AudioFile | null>(null);
   const [reviewMusicGenre, setReviewMusicGenre] = useState<MusicGenre>('Hip-Hop');
   const [reviewAspectRatio, setReviewAspectRatio] = useState<AspectRatio>('16:9');
   const [reviewRemoveLetterbox, setReviewRemoveLetterbox] = useState(true); // Auto-fill for 9:16 and 1:1
@@ -103,14 +92,15 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [reviewVideoTime, setReviewVideoTime] = useState(0);
   const [reviewVideoDuration, setReviewVideoDuration] = useState(135); // 2:15 in seconds
   const [reviewIsFullscreen, setReviewIsFullscreen] = useState(false);
+  const [reviewRenderOutputUrl, setReviewRenderOutputUrl] = useState('');
 
   // Monthly Module State
   const [monthlyFilter, setMonthlyFilter] = useState<'Movies' | 'TV Shows'>('Movies');
   const [monthlyYoutubeUrls, setMonthlyYoutubeUrls] = useState<string[]>(['']);
   const [monthlyVideoFiles, setMonthlyVideoFiles] = useState<File[]>([]);
   const [monthlyVideoTitles, setMonthlyVideoTitles] = useState<Record<number, VideoTitleData>>({});
-  const [monthlyVoiceover, setMonthlyVoiceover] = useState<{ name: string; size: number; url: string } | null>(null);
-  const [monthlyMusic, setMonthlyMusic] = useState<{ name: string; size: number; url: string } | null>(null);
+  const [monthlyVoiceover, setMonthlyVoiceover] = useState<AudioFile | null>(null);
+  const [monthlyMusic, setMonthlyMusic] = useState<AudioFile | null>(null);
   const [monthlyMusicGenre, setMonthlyMusicGenre] = useState<MusicGenre>('Hip-Hop');
   const [monthlyAspectRatio, setMonthlyAspectRatio] = useState<AspectRatio>('16:9');
   const [monthlyRemoveLetterbox, setMonthlyRemoveLetterbox] = useState(true); // Auto-fill for 9:16 and 1:1
@@ -124,6 +114,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [monthlyVideoTime, setMonthlyVideoTime] = useState(0);
   const [monthlyVideoDuration, setMonthlyVideoDuration] = useState(285); // 4:45 in seconds
   const [monthlyIsFullscreen, setMonthlyIsFullscreen] = useState(false);
+  const [monthlyRenderOutputUrl, setMonthlyRenderOutputUrl] = useState('');
   const [monthlyLowerThirdConfig, setMonthlyLowerThirdConfig] = useState<LowerThirdConfig>({
     position: 'bottom-left',
     aspectRatio: '16:9',
@@ -340,6 +331,85 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
       return parseInt(timestamp, 10);
     };
     return toSeconds(endTime) - toSeconds(startTime);
+  };
+
+  const getUploadedAssetCacheKey = (file: File, folder: 'trailers' | 'voiceovers' | 'music') =>
+    `${folder}:${file.name}:${file.size}:${file.lastModified}`;
+
+  const ensureVideoStudioAssetUploaded = async (
+    file: File,
+    folder: 'trailers' | 'voiceovers' | 'music'
+  ): Promise<string> => {
+    const cacheKey = getUploadedAssetCacheKey(file, folder);
+    const cachedUrl = uploadedAssetCacheRef.current.get(cacheKey);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+
+    const uploadResult = await uploadVideoStudioAsset(file, folder);
+    if (!uploadResult.success || !uploadResult.data?.url) {
+      throw new Error(uploadResult.error || `Failed to upload ${file.name}`);
+    }
+
+    uploadedAssetCacheRef.current.set(cacheKey, uploadResult.data.url);
+    return uploadResult.data.url;
+  };
+
+  const getAudioDurationFromUrl = async (url: string): Promise<number> => (
+    new Promise((resolve, reject) => {
+      const audio = document.createElement('audio');
+      audio.preload = 'metadata';
+      audio.src = url;
+
+      const cleanup = () => {
+        audio.onloadedmetadata = null;
+        audio.onerror = null;
+      };
+
+      audio.onloadedmetadata = () => {
+        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+        cleanup();
+        resolve(duration);
+      };
+
+      audio.onerror = () => {
+        cleanup();
+        reject(new Error('Failed to read audio duration'));
+      };
+    })
+  );
+
+  const fetchFileFromUrl = async (url: string, fileName: string): Promise<File> => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to download rendered video (${response.status})`);
+    }
+
+    const blob = await response.blob();
+    return new File([blob], fileName, { type: blob.type || 'video/mp4' });
+  };
+
+  const waitForShotstackRender = async (
+    renderId: string,
+    setProgress: React.Dispatch<React.SetStateAction<number>>
+  ): Promise<string | undefined> => {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      const status = await getRenderStatus(renderId);
+      setProgress(status.progress);
+
+      if (status.status === 'failed') {
+        throw new Error('Shotstack render failed');
+      }
+
+      if ((status.status === 'done' || status.status === 'completed') && status.url) {
+        setProgress(100);
+        return status.url;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+
+    throw new Error('Shotstack render timed out');
   };
 
   // Load saved templates from localStorage on mount
@@ -636,11 +706,12 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         }
 
         try {
-          // Create blob URL instead of storing File object
           blobUrl = URL.createObjectURL(file);
-
-          // Analyze the file (in production, this would use the blob URL)
-          const detectedTitles = await analyzeVoiceoverForTitles(file, 'review');
+          const [detectedTitles, uploadedUrl, durationSeconds] = await Promise.all([
+            analyzeVoiceoverForTitles(file, 'review'),
+            ensureVideoStudioAssetUploaded(file, 'voiceovers'),
+            getAudioDurationFromUrl(blobUrl),
+          ]);
 
           // Check if component is still mounted before updating state
           if (!isMountedRef.current) {
@@ -648,11 +719,14 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
             return;
           }
 
-          // Store only metadata and blob URL, not the File object
           setReviewVoiceover({
             name: file.name,
             size: file.size,
-            url: blobUrl
+            url: blobUrl,
+            uploadedUrl,
+            originalFile: file,
+            contentType: file.type,
+            durationSeconds,
           });
           setReviewDetectedTitles(detectedTitles);
 
@@ -661,7 +735,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
             setReviewShowAutoAssign(true);
           }
 
-          toast.success(`Detected ${detectedTitles.length} titles from voiceover`);
+          toast.success(`Voice-over uploaded and ${detectedTitles.length} titles detected`);
           haptics.success();
         } catch (error) {
           console.error('Error analyzing voiceover:', error);
@@ -683,11 +757,12 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         }
 
         try {
-          // Create blob URL instead of storing File object
           blobUrl = URL.createObjectURL(file);
-
-          // Analyze the file (in production, this would use the blob URL)
-          const detectedTitles = await analyzeVoiceoverForTitles(file, 'monthly');
+          const [detectedTitles, uploadedUrl, durationSeconds] = await Promise.all([
+            analyzeVoiceoverForTitles(file, 'monthly'),
+            ensureVideoStudioAssetUploaded(file, 'voiceovers'),
+            getAudioDurationFromUrl(blobUrl),
+          ]);
 
           // Check if component is still mounted before updating state
           if (!isMountedRef.current) {
@@ -695,11 +770,14 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
             return;
           }
 
-          // Store only metadata and blob URL, not the File object
           setMonthlyVoiceover({
             name: file.name,
             size: file.size,
-            url: blobUrl
+            url: blobUrl,
+            uploadedUrl,
+            originalFile: file,
+            contentType: file.type,
+            durationSeconds,
           });
           setMonthlyDetectedTitles(detectedTitles);
 
@@ -708,7 +786,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
             setMonthlyShowAutoAssign(true);
           }
 
-          toast.success(`Detected ${detectedTitles.length} titles from voiceover`);
+          toast.success(`Voice-over uploaded and ${detectedTitles.length} titles detected`);
           haptics.success();
         } catch (error) {
           console.error('Error analyzing voiceover:', error);
@@ -824,14 +902,16 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
           URL.revokeObjectURL(reviewMusic.url);
         }
 
-        // Create blob URL instead of storing File object
         const blobUrl = URL.createObjectURL(file);
+        const uploadedUrl = await ensureVideoStudioAssetUploaded(file, 'music');
 
-        // Store only metadata and blob URL, not the File object
         setReviewMusic({
           name: file.name,
           size: file.size,
-          url: blobUrl
+          url: blobUrl,
+          uploadedUrl,
+          originalFile: file,
+          contentType: file.type,
         });
 
         // Reset the file input to prevent holding reference
@@ -846,14 +926,16 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
           URL.revokeObjectURL(monthlyMusic.url);
         }
 
-        // Create blob URL instead of storing File object
         const blobUrl = URL.createObjectURL(file);
+        const uploadedUrl = await ensureVideoStudioAssetUploaded(file, 'music');
 
-        // Store only metadata and blob URL, not the File object
         setMonthlyMusic({
           name: file.name,
           size: file.size,
-          url: blobUrl
+          url: blobUrl,
+          uploadedUrl,
+          originalFile: file,
+          contentType: file.type,
         });
 
         // Reset the file input to prevent holding reference
@@ -895,22 +977,32 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   };
 
   // Handle video download
-  const handleDownloadVideo = (module: 'review' | 'monthly') => {
+  const handleDownloadVideo = async (module: 'review' | 'monthly') => {
     haptics.light();
-    // Create a mock video file for demonstration
+    const outputUrl = module === 'review' ? reviewRenderOutputUrl : monthlyRenderOutputUrl;
+    if (!outputUrl) {
+      toast.error('No rendered video is available to download yet.');
+      return;
+    }
+
     const filename = module === 'review' ? 'video-preview.mp4' : 'video-compilation.mp4';
 
-    // In a real implementation, this would download the actual video
-    const mockData = 'Mock video data';
-    const blob = new Blob([mockData], { type: 'video/mp4' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    try {
+      const downloadedFile = await fetchFileFromUrl(outputUrl, filename);
+      const url = URL.createObjectURL(downloadedFile);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error('Failed to download the rendered video.', {
+        description: error instanceof Error ? error.message : 'Unknown download error',
+      });
+      haptics.error();
+    }
   };
 
   // Handle progress bar click
@@ -1178,23 +1270,48 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const handleGenerateReviewVideo = async () => {
     haptics.medium();
     setReviewIsGenerating(true);
-    setReviewProgress(0);
+    setReviewProgress(5);
+    setReviewRenderOutputUrl('');
 
     try {
-      // Generate Shotstack JSON configuration
+      if (reviewVideoFiles.length === 0) {
+        throw new Error('Upload at least one trailer video before generating.');
+      }
+
+      const analysis = reviewTrailerAnalysis || await analyzeTrailer(reviewVideoFiles[0]);
+      if (!reviewTrailerAnalysis) {
+        setReviewTrailerAnalysis(analysis);
+      }
+
+      const [trailerVideoUrl, voiceoverUrl, backgroundMusicUrl] = await Promise.all([
+        ensureVideoStudioAssetUploaded(reviewVideoFiles[0], 'trailers'),
+        reviewVoiceover?.uploadedUrl
+          ? Promise.resolve(reviewVoiceover.uploadedUrl)
+          : reviewVoiceover?.originalFile
+            ? ensureVideoStudioAssetUploaded(reviewVoiceover.originalFile, 'voiceovers')
+            : Promise.resolve(undefined),
+        reviewMusic?.uploadedUrl
+          ? Promise.resolve(reviewMusic.uploadedUrl)
+          : reviewMusic?.originalFile
+            ? ensureVideoStudioAssetUploaded(reviewMusic.originalFile, 'music')
+            : Promise.resolve(undefined),
+      ]);
+
       const reviewData = {
         movieTitle: reviewVideoTitles[0]?.title || 'Movie Review',
-        trailerVideoUrl: 'https://example.com/trailer.mp4', // In production, upload to CDN first
-        voiceoverUrl: 'https://example.com/voiceover.mp3',
-        voiceoverDuration: 60, // In production, get actual duration
-        voiceoverTranscript: 'Sample transcript...',
-        backgroundMusicUrl: 'https://example.com/music.mp3',
-        rating: '8',
-        commentKeyword: 'PLAYDIRTY',
+        trailerVideoUrl,
+        voiceoverUrl,
+        voiceoverDuration: reviewVoiceover?.durationSeconds,
+        backgroundMusicUrl,
         aspectRatio: reviewAspectRatio,
         removeLetterbox: reviewRemoveLetterbox,
         enableAutoframing: reviewEnableAutoframing,
-        trailerAnalysis: reviewTrailerAnalysis
+        selectedScenes: [customOpeningHook, customMidVideoHook, customEndingHook]
+          .filter((scene): scene is VideoMoment => !!scene)
+          .map(scene => ({
+            startTime: scene.startTime,
+            duration: scene.duration,
+          })),
       };
 
       const audioSettings = {
@@ -1207,63 +1324,88 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         backgroundMusicVolume: 85
       };
 
-      if (reviewTrailerAnalysis) {
-        // Generate Shotstack configuration with AI-selected scenes
-        const shotstackConfig = generateShotstackJSON(
-          reviewData,
-          reviewTrailerAnalysis,
-          audioSettings
-        );
+      const shotstackConfig = generateShotstackJSON(
+        reviewData,
+        analysis,
+        audioSettings
+      );
 
-        // Render video
-        const renderResult = await renderVideo(shotstackConfig);
-        setReviewRenderId(renderResult.id);
-      }
+      const renderResult = await renderVideo(shotstackConfig);
+      setReviewRenderId(renderResult.id);
+      setReviewProgress(20);
+
+      const outputUrl = await waitForShotstackRender(renderResult.id, setReviewProgress);
+      setReviewRenderOutputUrl(outputUrl || '');
+      setReviewIsGenerating(false);
+
+      addVideoStudioActivity({
+        type: 'review',
+        title: reviewVideoTitles[0]?.title || 'Movie Review',
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        aspectRatio: reviewAspectRatio,
+        duration: reviewVoiceover?.durationSeconds
+          ? formatTime(Math.round(reviewVoiceover.durationSeconds))
+          : '1:00',
+        downloads: 0,
+        published: false,
+        platforms: []
+      });
+
+      toast.success('Review video render completed.');
+      haptics.success();
     } catch (error) {
       console.error('Error generating video:', error);
-    }
-
-    // Simulate progress
-    const interval = setInterval(() => {
-      setReviewProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setReviewIsGenerating(false);
-
-          // Add to Video Studio Activity when complete
-          addVideoStudioActivity({
-            type: 'review',
-            title: reviewVideoTitles[0]?.title || 'Movie Review',
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            aspectRatio: reviewAspectRatio,
-            duration: '1:00',
-            downloads: 0,
-            published: false,
-            platforms: []
-          });
-
-          return 100;
-        }
-        return prev + 10;
+      setReviewProgress(0);
+      setReviewIsGenerating(false);
+      toast.error('Failed to generate the review video.', {
+        description: error instanceof Error ? error.message : 'Unknown render error',
       });
-    }, 500);
+      haptics.error();
+    }
   };
 
   const handleGenerateMonthlyVideo = async () => {
     haptics.medium();
     setMonthlyIsGenerating(true);
-    setMonthlyProgress(0);
+    setMonthlyProgress(5);
+    setMonthlyRenderOutputUrl('');
 
     try {
-      // For monthly releases, we compile multiple trailers
-      const monthlyData = {
-        movieTitles: Object.values(monthlyVideoTitles).map(t => t.title),
-        trailerVideoUrls: monthlyVideoFiles.map((_, i) => `https://example.com/trailer${i}.mp4`),
-        voiceoverUrl: 'https://example.com/voiceover.mp3',
-        voiceoverDuration: 240, // ~4 minutes for monthly compilation
-        backgroundMusicUrl: 'https://example.com/music.mp3',
-      };
+      if (monthlyVideoFiles.length === 0) {
+        throw new Error('Upload at least one trailer video before generating.');
+      }
+
+      if (!monthlyVoiceover?.durationSeconds) {
+        throw new Error('Upload a monthly voice-over before generating the compilation.');
+      }
+
+      const movieTitles = monthlyVideoFiles.map((_, index) => monthlyVideoTitles[index]?.title || `Movie ${index + 1}`);
+      const analyses = monthlyTrailerAnalyses.length > 0
+        ? monthlyTrailerAnalyses
+        : await analyzeMultipleTrailers(monthlyVideoFiles, movieTitles);
+
+      if (monthlyTrailerAnalyses.length === 0) {
+        setMonthlyTrailerAnalyses(analyses);
+      }
+
+      const [trailerVideoUrls, voiceoverUrl, backgroundMusicUrl] = await Promise.all([
+        Promise.all(monthlyVideoFiles.map(file => ensureVideoStudioAssetUploaded(file, 'trailers'))),
+        monthlyVoiceover.uploadedUrl
+          ? Promise.resolve(monthlyVoiceover.uploadedUrl)
+          : monthlyVoiceover.originalFile
+            ? ensureVideoStudioAssetUploaded(monthlyVoiceover.originalFile, 'voiceovers')
+            : Promise.resolve(undefined),
+        monthlyMusic?.uploadedUrl
+          ? Promise.resolve(monthlyMusic.uploadedUrl)
+          : monthlyMusic?.originalFile
+            ? ensureVideoStudioAssetUploaded(monthlyMusic.originalFile, 'music')
+            : Promise.resolve(undefined),
+      ]);
+
+      if (!voiceoverUrl) {
+        throw new Error('Monthly voice-over upload is required for compilation rendering.');
+      }
 
       const audioSettings = {
         enableTrailerAudioHooks,
@@ -1275,68 +1417,61 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         backgroundMusicVolume: 85
       };
 
-      // For monthly, we'll create a compilation using clips from all trailers
-      // Each trailer gets a segment in the final video
-      if (monthlyTrailerAnalyses.length > 0) {
-        const compilationConfig = {
-          trailers: monthlyVideoFiles.map((file, i) => ({
-            title: monthlyVideoTitles[i]?.title || `Movie ${i + 1}`,
-            videoUrl: `https://example.com/trailer${i}.mp4`,
-            file
-          })),
-          voiceoverUrl: 'https://example.com/voiceover.mp3',
-          voiceoverDuration: 240,
-          backgroundMusicUrl: 'https://example.com/music.mp3',
-          aspectRatio: monthlyAspectRatio,
-          removeLetterbox: monthlyRemoveLetterbox,
-          enableAutoframing: monthlyEnableAutoframing
-        };
+      const compilationConfig = {
+        trailers: monthlyVideoFiles.map((file, i) => ({
+          title: movieTitles[i],
+          videoUrl: trailerVideoUrls[i],
+          file
+        })),
+        voiceoverUrl,
+        voiceoverDuration: monthlyVoiceover.durationSeconds,
+        backgroundMusicUrl,
+        aspectRatio: monthlyAspectRatio,
+        removeLetterbox: monthlyRemoveLetterbox,
+        enableAutoframing: monthlyEnableAutoframing
+      };
 
-        const shotstackConfig = generateMonthlyCompilationJSON(
-          compilationConfig,
-          monthlyTrailerAnalyses,
-          {
-            backgroundMusicVolume: 85,
-            trailerVolume: trailerAudioVolume,
-            crossfadeDuration
-          }
-        );
+      const shotstackConfig = generateMonthlyCompilationJSON(
+        compilationConfig,
+        analyses,
+        {
+          backgroundMusicVolume: 85,
+          trailerVolume: trailerAudioVolume,
+          crossfadeDuration
+        }
+      );
 
-        const renderResult = await renderVideo(shotstackConfig);
-        setMonthlyRenderId(renderResult.id);
-      } else {
-        console.warn('No trailer analyses available. Please analyze trailers first.');
-      }
+      const renderResult = await renderVideo(shotstackConfig);
+      setMonthlyRenderId(renderResult.id);
+      setMonthlyProgress(20);
+
+      const outputUrl = await waitForShotstackRender(renderResult.id, setMonthlyProgress);
+      setMonthlyRenderOutputUrl(outputUrl || '');
+      setMonthlyIsGenerating(false);
+
+      addVideoStudioActivity({
+        type: 'monthly',
+        title: `Monthly Releases - ${movieTitles.join(', ')}`,
+        status: 'completed',
+        timestamp: new Date().toISOString(),
+        aspectRatio: monthlyAspectRatio,
+        duration: formatTime(Math.round(monthlyVoiceover.durationSeconds)),
+        downloads: 0,
+        published: false,
+        platforms: []
+      });
+
+      toast.success('Monthly compilation render completed.');
+      haptics.success();
     } catch (error) {
       console.error('Error generating monthly video:', error);
-    }
-
-    // Simulate progress
-    const interval = setInterval(() => {
-      setMonthlyProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setMonthlyIsGenerating(false);
-
-          // Add to Video Studio Activity when complete
-          const movieTitles = Object.values(monthlyVideoTitles).map(t => t.title).join(', ');
-          addVideoStudioActivity({
-            type: 'monthly',
-            title: `Monthly Releases - ${movieTitles}`,
-            status: 'completed',
-            timestamp: new Date().toISOString(),
-            aspectRatio: monthlyAspectRatio,
-            duration: '4:00',
-            downloads: 0,
-            published: false,
-            platforms: []
-          });
-
-          return 100;
-        }
-        return prev + 10;
+      setMonthlyProgress(0);
+      setMonthlyIsGenerating(false);
+      toast.error('Failed to generate the monthly compilation.', {
+        description: error instanceof Error ? error.message : 'Unknown render error',
       });
-    }, 500);
+      haptics.error();
+    }
   };
 
   const handlePublishVideo = async () => {
@@ -1354,19 +1489,33 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
 
     // Identify media file to upload
     let mediaFile: File | undefined;
-    if (activeModule === 'review' && reviewVideoFiles.length > 0) {
-      mediaFile = reviewVideoFiles[0];
-    } else if (activeModule === 'monthly' && monthlyVideoFiles.length > 0) {
-      mediaFile = monthlyVideoFiles[0];
-    } else if (activeModule === 'scenes') {
-      if (scenesOutputBlob) {
-        mediaFile = new File([scenesOutputBlob], `${videoTitle.replace(/\s+/g, '_')}_scene.mp4`, { type: 'video/mp4' });
-      } else if (scenesVideoFile) {
-        mediaFile = scenesVideoFile;
+    try {
+      if (activeModule === 'review') {
+        if (reviewRenderOutputUrl) {
+          mediaFile = await fetchFileFromUrl(reviewRenderOutputUrl, `${videoTitle.replace(/\s+/g, '_')}_review.mp4`);
+        } else if (reviewVideoFiles.length > 0) {
+          mediaFile = reviewVideoFiles[0];
+        }
+      } else if (activeModule === 'monthly') {
+        if (monthlyRenderOutputUrl) {
+          mediaFile = await fetchFileFromUrl(monthlyRenderOutputUrl, `${videoTitle.replace(/\s+/g, '_')}_monthly.mp4`);
+        } else if (monthlyVideoFiles.length > 0) {
+          mediaFile = monthlyVideoFiles[0];
+        }
+      } else if (activeModule === 'scenes') {
+        if (scenesOutputBlob) {
+          mediaFile = new File([scenesOutputBlob], `${videoTitle.replace(/\s+/g, '_')}_scene.mp4`, { type: 'video/mp4' });
+        } else if (scenesVideoFile) {
+          mediaFile = scenesVideoFile;
+        }
       }
+    } catch (error) {
+      toast.error('Failed to prepare the rendered video for publishing.', {
+        description: error instanceof Error ? error.message : 'Unknown file preparation error',
+      });
+      haptics.error();
+      return;
     }
-
-    // Attempt to use rendered output if available (advanced usage, currently using input source)
 
     // Show loading toast with ID for updates
     const toastId = toast.loading('Publishing video...', {

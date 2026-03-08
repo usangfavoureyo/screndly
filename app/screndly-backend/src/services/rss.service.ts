@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import Parser from 'rss-parser';
 import { getSecretSetting } from '../lib/settings';
-import aiService, { type AIModel } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
 import { trackApiUsage } from './api-usage.service';
 import { publisherService } from './publisher.service';
 
@@ -35,6 +35,13 @@ export interface PlatformsEnabled {
   pinterest: boolean;
 }
 
+export interface PlatformImageCounts {
+  x?: number;
+  threads?: number;
+  facebook?: number;
+  pinterest?: number;
+}
+
 export interface RSSFeedInput {
   name: string;
   url: string;
@@ -42,12 +49,14 @@ export interface RSSFeedInput {
   enabled?: boolean;
   interval?: number;
   imageCount?: string;
+  platformImageCounts?: PlatformImageCounts;
   dedupeDays?: number;
   filters?: RSSFeedFilters;
   serperPriority?: boolean;
   rehostImages?: boolean;
   autoPost?: boolean;
   platformsEnabled?: PlatformsEnabled;
+  trickle?: 'newest_first' | 'oldest_first';
   status?: string;
   onlyFetchNewItems?: boolean;
   startFromNowAt?: string | null;
@@ -59,6 +68,7 @@ interface RSSItem {
   description: string;
   pubDate: Date;
   imageUrl?: string;
+  imageUrls: string[];
   author?: string;
   guid?: string;
 }
@@ -76,6 +86,13 @@ interface SerperImagesResponse {
     imageUrl?: string;
   }>;
 }
+
+const RSS_PLATFORM_IMAGE_LIMITS: Record<string, number> = {
+  X: 4,
+  Threads: 1,
+  Facebook: 1,
+  Pinterest: 1,
+};
 
 export interface RefreshResult {
   feedId: string;
@@ -113,6 +130,19 @@ export interface RSSActivitySummary {
   published: number;
   pending: number;
   failed: number;
+}
+
+export interface RSSPipelinePreview {
+  title: string;
+  link: string;
+  pubDate: string;
+  snippet: string;
+  images: Array<{
+    url: string;
+    reason: string;
+  }>;
+  caption: string;
+  captionCharCount: number;
 }
 
 interface RSSActivityMetadata {
@@ -221,6 +251,58 @@ function ensurePlatformsEnabled(platforms?: PlatformsEnabled): PlatformsEnabled 
   return platforms ?? { x: true, threads: true, facebook: false, pinterest: false };
 }
 
+function ensurePlatformImageCounts(
+  counts?: PlatformImageCounts | Prisma.JsonValue | null
+): PlatformImageCounts | undefined {
+  if (!counts || typeof counts !== 'object' || Array.isArray(counts)) {
+    return undefined;
+  }
+
+  const normalized: PlatformImageCounts = {};
+  for (const platform of ['x', 'threads', 'facebook', 'pinterest'] as const) {
+    const rawValue = (counts as Record<string, unknown>)[platform];
+    if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+      normalized[platform] = Math.max(1, Math.min(3, Math.trunc(rawValue)));
+    } else if (typeof rawValue === 'string') {
+      const parsed = Number.parseInt(rawValue, 10);
+      if (Number.isFinite(parsed)) {
+        normalized[platform] = Math.max(1, Math.min(3, parsed));
+      }
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function normalizeTrickle(
+  value?: string | null
+): 'newest_first' | 'oldest_first' {
+  return value === 'oldest_first' ? 'oldest_first' : 'newest_first';
+}
+
+function selectImageCount(value?: string | null): number {
+  if (value === '1' || value === '2' || value === '3') {
+    return Number.parseInt(value, 10);
+  }
+
+  return Math.random() < 0.5 ? 1 : 2;
+}
+
+function dedupeUrls(urls: Array<string | undefined | null>): string[] {
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+
+  for (const url of urls) {
+    if (typeof url !== 'string') continue;
+    const trimmed = url.trim();
+    if (!trimmed || !/^https?:\/\//i.test(trimmed) || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    resolved.push(trimmed);
+  }
+
+  return resolved;
+}
+
 function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolean> | null | undefined): string[] {
   const platformMap = platforms ?? {};
   return Object.entries(platformMap)
@@ -239,6 +321,42 @@ function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolea
           return key;
       }
     });
+}
+
+function getRequestedPlatformImageCount(
+  platform: string,
+  defaultImageCount: string | null | undefined,
+  platformImageCounts?: PlatformImageCounts
+): number {
+  const normalizedPlatform = platform.toLowerCase() as keyof PlatformImageCounts;
+  const configuredCount = platformImageCounts?.[normalizedPlatform];
+  const requestedCount = configuredCount ?? selectImageCount(defaultImageCount);
+  const platformLimit = RSS_PLATFORM_IMAGE_LIMITS[platform] ?? 1;
+  return Math.max(1, Math.min(platformLimit, requestedCount));
+}
+
+function getRSSPublishImagePlan(
+  feed: {
+    imageCount?: string | null;
+    platformImageCounts?: PlatformImageCounts | Prisma.JsonValue | null;
+  },
+  platforms: string[]
+): {
+  maxImageCount: number;
+  platformImageCounts: Record<string, number>;
+} {
+  const configuredPlatformCounts = ensurePlatformImageCounts(feed.platformImageCounts);
+  const platformImageCounts = Object.fromEntries(
+    platforms.map((platform) => [
+      platform,
+      getRequestedPlatformImageCount(platform, feed.imageCount, configuredPlatformCounts),
+    ])
+  );
+
+  return {
+    maxImageCount: Math.max(...Object.values(platformImageCounts), 1),
+    platformImageCounts,
+  };
 }
 
 function resolveForwardOnlySettings(
@@ -370,58 +488,46 @@ function evaluateFeedRules(item: RSSItem, filters: RSSFeedFilters): { allowed: b
   return { allowed: true };
 }
 
-function toAIModel(value: string): AIModel {
-  switch (value) {
-    case 'gpt-4o':
-    case 'gpt-4o-mini':
-    case 'gpt-4-turbo':
-    case 'gpt-3.5-turbo':
-    case 'flash-3':
-      return value;
-    default:
-      return 'gpt-4o';
-  }
-}
-
-function extractImageUrl(item: Record<string, any>): string | undefined {
+function extractImageUrls(item: Record<string, any>): string[] {
+  const urls: Array<string | undefined> = [];
   const enclosure = item.enclosure;
   if (enclosure?.url && (!enclosure.type || String(enclosure.type).startsWith('image/'))) {
-    return enclosure.url;
+    urls.push(enclosure.url);
   }
 
   const mediaContent = item.mediaContent;
   if (Array.isArray(mediaContent)) {
     for (const entry of mediaContent) {
-      if (entry?.$?.url) return entry.$.url;
-      if (entry?.url) return entry.url;
+      urls.push(entry?.$?.url, entry?.url);
     }
-  } else if (mediaContent?.$?.url) {
-    return mediaContent.$.url;
-  } else if (mediaContent?.url) {
-    return mediaContent.url;
+  } else {
+    urls.push(mediaContent?.$?.url, mediaContent?.url);
   }
 
   const mediaThumbnail = item.mediaThumbnail;
   if (Array.isArray(mediaThumbnail)) {
     for (const entry of mediaThumbnail) {
-      if (entry?.$?.url) return entry.$.url;
-      if (entry?.url) return entry.url;
+      urls.push(entry?.$?.url, entry?.url);
     }
-  } else if (mediaThumbnail?.$?.url) {
-    return mediaThumbnail.$.url;
-  } else if (mediaThumbnail?.url) {
-    return mediaThumbnail.url;
+  } else {
+    urls.push(mediaThumbnail?.$?.url, mediaThumbnail?.url);
   }
 
   const htmlContent = item['content:encoded'] || item.contentEncoded || item.content || item.contentSnippet || item.summary;
-  const imageMatch = typeof htmlContent === 'string' ? htmlContent.match(/<img[^>]*src=["']([^"']+)["']/i) : null;
-  return imageMatch?.[1];
+  if (typeof htmlContent === 'string') {
+    const matches = htmlContent.matchAll(/<img[^>]*src=["']([^"']+)["']/gi);
+    for (const match of matches) {
+      urls.push(match[1]);
+    }
+  }
+
+  return dedupeUrls(urls);
 }
 
-async function searchSerperImage(query: string): Promise<string | undefined> {
+async function searchSerperImages(query: string, limit: number): Promise<string[]> {
   const apiKey = await getSecretSetting('serperKey');
   if (!apiKey) {
-    return undefined;
+    return [];
   }
 
   let tracked = false;
@@ -453,12 +559,15 @@ async function searchSerperImage(query: string): Promise<string | undefined> {
 
     if (!response.ok) {
       console.error('[RSS] Serper image request failed:', data);
-      return undefined;
+      return [];
     }
 
     return Array.isArray(data?.images)
-      ? data!.images.find((image) => typeof image?.imageUrl === 'string' && image.imageUrl.startsWith('http'))?.imageUrl
-      : undefined;
+      ? dedupeUrls(
+          data.images
+            .map((image) => (typeof image?.imageUrl === 'string' ? image.imageUrl : undefined))
+        ).slice(0, limit)
+      : [];
   } catch (error) {
     if (!tracked) {
       await trackApiUsage({
@@ -469,15 +578,25 @@ async function searchSerperImage(query: string): Promise<string | undefined> {
     }
 
     console.error('[RSS] Serper image lookup failed:', error);
-    return undefined;
+    return [];
   }
 }
 
-async function resolveRSSItemImage(feed: { serperPriority: boolean }, item: RSSItem): Promise<string | undefined> {
-  if (!feed.serperPriority) {
-    return item.imageUrl;
+async function resolveRSSItemImages(
+  feed: { serperPriority: boolean },
+  item: RSSItem,
+  limit: number
+): Promise<string[]> {
+  const fallbackImages = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
+  if (limit <= 1 && fallbackImages.length > 0 && !feed.serperPriority) {
+    return fallbackImages.slice(0, 1);
   }
 
+  if (!feed.serperPriority) {
+    return fallbackImages.slice(0, Math.max(limit, 1));
+  }
+
+  const resolvedImages: string[] = [];
   const queries = [
     item.title,
     item.author ? `${item.title} ${item.author}` : null,
@@ -485,13 +604,27 @@ async function resolveRSSItemImage(feed: { serperPriority: boolean }, item: RSSI
   ].filter((query): query is string => Boolean(query && query.trim()));
 
   for (const query of queries) {
-    const serperImageUrl = await searchSerperImage(query);
-    if (serperImageUrl) {
-      return serperImageUrl;
+    const serperImages = await searchSerperImages(query, Math.max(limit - resolvedImages.length, 1));
+    for (const serperImageUrl of serperImages) {
+      if (!resolvedImages.includes(serperImageUrl)) {
+        resolvedImages.push(serperImageUrl);
+      }
+      if (resolvedImages.length >= limit) {
+        return resolvedImages.slice(0, limit);
+      }
     }
   }
 
-  return item.imageUrl;
+  for (const fallbackImage of fallbackImages) {
+    if (!resolvedImages.includes(fallbackImage)) {
+      resolvedImages.push(fallbackImage);
+    }
+    if (resolvedImages.length >= limit) {
+      break;
+    }
+  }
+
+  return resolvedImages.slice(0, Math.max(limit, 1));
 }
 
 function buildRSSCaptionSystemPrompt(
@@ -520,7 +653,7 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
   return {
     globalRSSPosting: asBoolean(settingsMap.get('globalRSSPosting'), true),
     rssDeduplication: asBoolean(settingsMap.get('rssDeduplication'), true),
-    rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || 'gpt-4o',
+  rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
     rssCaptionPrompt: asString(settingsMap.get('rssCaptionPrompt')),
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
     rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
@@ -702,6 +835,38 @@ async function getPublishingBlockReason(platforms: string[], settings: RSSRuntim
   return null;
 }
 
+function buildRSSPublishPayload(
+  item: RSSItem,
+  caption: string,
+  imageUrls: string[],
+  feed: {
+    imageCount?: string | null;
+    platformImageCounts?: PlatformImageCounts | Prisma.JsonValue | null;
+  },
+  platforms: string[]
+) {
+  const { platformImageCounts } = getRSSPublishImagePlan(feed, platforms);
+  const platformOverrides = Object.fromEntries(
+    platforms.map((platform) => {
+      const limit = platformImageCounts[platform] ?? 1;
+      const platformImages = imageUrls.slice(0, limit);
+      return [platform, {
+        imageUrls: platformImages,
+        imageUrl: platformImages[0],
+      }];
+    })
+  );
+
+  return {
+    text: caption,
+    title: item.title,
+    link: item.link,
+    imageUrls,
+    imageUrl: imageUrls[0],
+    platformOverrides,
+  };
+}
+
 async function persistFeedSnapshot(
   feedId: string,
   item: RSSItem | undefined,
@@ -751,13 +916,15 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
       .map((item: any) => {
         const description = stripHtml(item.contentSnippet || item.content || item['content:encoded'] || item.summary || item.contentEncoded || '');
         const pubDate = item.isoDate || item.pubDate ? new Date(item.isoDate || item.pubDate) : new Date();
+        const imageUrls = extractImageUrls(item);
 
         return {
           title: String(item.title || '').trim(),
           link: String(item.link || '').trim(),
           description: description.slice(0, 1000),
           pubDate: Number.isNaN(pubDate.getTime()) ? new Date() : pubDate,
-          imageUrl: extractImageUrl(item),
+          imageUrl: imageUrls[0],
+          imageUrls,
           author: String(item.creator || item.author || item.dcCreator || '').trim() || undefined,
           guid: String(item.guid || '').trim() || undefined,
         } satisfies RSSItem;
@@ -813,12 +980,14 @@ async function createFeed(data: RSSFeedInput) {
       enabled: data.enabled ?? true,
       interval: data.interval ?? 10,
       imageCount: data.imageCount ?? '2',
+      platformImageCounts: ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue,
       dedupeDays: data.dedupeDays ?? 30,
       filters: resolvedFilters as unknown as Prisma.InputJsonValue,
       serperPriority: data.serperPriority ?? true,
       rehostImages: data.rehostImages ?? false,
       autoPost: data.autoPost ?? true,
       platformsEnabled: ensurePlatformsEnabled(data.platformsEnabled) as unknown as Prisma.InputJsonValue,
+      trickle: normalizeTrickle(data.trickle),
       status: data.status ?? 'active',
       source: feedTitle || data.name,
     },
@@ -846,6 +1015,9 @@ async function updateFeed(
   if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.interval !== undefined) updateData.interval = data.interval;
   if (data.imageCount !== undefined) updateData.imageCount = data.imageCount;
+  if (data.platformImageCounts !== undefined) {
+    updateData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
+  }
   if (data.dedupeDays !== undefined) updateData.dedupeDays = data.dedupeDays;
   if (
     data.filters !== undefined ||
@@ -862,6 +1034,7 @@ async function updateFeed(
   if (data.rehostImages !== undefined) updateData.rehostImages = data.rehostImages;
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
   if (data.platformsEnabled !== undefined) updateData.platformsEnabled = data.platformsEnabled;
+  if (data.trickle !== undefined) updateData.trickle = normalizeTrickle(data.trickle);
   if (data.status !== undefined) updateData.status = data.status;
   if (data.lastProcessedAt !== undefined) updateData.lastProcessedAt = data.lastProcessedAt;
   if (data.nextRunAt !== undefined) updateData.nextRunAt = data.nextRunAt;
@@ -912,17 +1085,22 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     })();
 
     const newItems = parsed.items
-      .filter((item) => item.pubDate > effectiveCutoffDate)
-      .sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
+      .filter((item) => item.pubDate > effectiveCutoffDate);
+    const orderedNewItems = [...newItems].sort((a, b) =>
+      normalizeTrickle(feed.trickle) === 'oldest_first'
+        ? a.pubDate.getTime() - b.pubDate.getTime()
+        : b.pubDate.getTime() - a.pubDate.getTime()
+    );
     const latestItem = [...parsed.items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime()).at(-1);
     const itemsToProcess =
       options.manualRun && feedFilters.onlyFetchNewItems
         ? latestItem ? [latestItem] : []
-        : newItems;
+        : orderedNewItems;
     const selectionMode =
       options.manualRun && feedFilters.onlyFetchNewItems ? 'latest_item' : 'backlog';
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
+    const imagePlan = getRSSPublishImagePlan(feed, platforms);
     let publishedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
@@ -987,7 +1165,8 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       }
 
       try {
-        const publishImageUrl = await resolveRSSItemImage(feed, item);
+        const publishImageUrls = await resolveRSSItemImages(feed, item, imagePlan.maxImageCount);
+        const publishImageUrl = publishImageUrls[0];
         const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
           tone: runtimeSettings.rssCaptionTone,
           maxLength: runtimeSettings.rssCaptionMaxLength,
@@ -999,17 +1178,15 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
             summary: item.description,
             platform: 'X',
           },
-          toAIModel(runtimeSettings.rssCaptionModel),
+            normalizeAIModel(runtimeSettings.rssCaptionModel),
           systemPrompt,
           runtimeSettings.rssCaptionTemperature
         );
 
-        const publishResults = await publisherService.publish(platforms, {
-          text: caption,
-          title: item.title,
-          link: item.link,
-          imageUrl: publishImageUrl,
-        });
+        const publishResults = await publisherService.publish(
+          platforms,
+          buildRSSPublishPayload(item, caption, publishImageUrls, feed, platforms)
+        );
 
         const successfulPlatforms = publishResults
           .filter((result) => result.status === 'posted')
@@ -1160,6 +1337,61 @@ async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
   };
 }
 
+async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> {
+  const feed = await prisma.rSSFeed.findUnique({ where: { id: feedId } });
+  if (!feed) {
+    throw new Error('Feed not found');
+  }
+
+  const xml = await fetchRSSFeed(feed.url);
+  const parsed = await parseRSSFeed(xml);
+  const feedFilters = ensureFeedFilters(feed.filters as unknown as RSSFeedFilters);
+  const previewItem = [...parsed.items]
+    .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+    .find((item) => evaluateFeedRules(item, feedFilters).allowed);
+
+  if (!previewItem) {
+    throw new Error('No feed items match the current rules');
+  }
+
+  const runtimeSettings = await getRuntimeSettings();
+  const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
+  const imagePlan = getRSSPublishImagePlan(feed, platforms);
+  const imageUrls = await resolveRSSItemImages(feed, previewItem, imagePlan.maxImageCount);
+  const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
+    tone: runtimeSettings.rssCaptionTone,
+    maxLength: runtimeSettings.rssCaptionMaxLength,
+  });
+  const caption = await aiService.generateRSSCaption(
+    {
+      articleTitle: previewItem.title,
+      feedName: feed.name,
+      summary: previewItem.description,
+      platform: 'X',
+    },
+    normalizeAIModel(runtimeSettings.rssCaptionModel),
+    systemPrompt,
+    runtimeSettings.rssCaptionTemperature
+  );
+
+  return {
+    title: previewItem.title,
+    link: previewItem.link,
+    pubDate: previewItem.pubDate.toISOString(),
+    snippet: previewItem.description,
+    images: imageUrls.map((url, index) => ({
+      url,
+      reason: feed.serperPriority
+        ? index < previewItem.imageUrls.length && previewItem.imageUrls.includes(url)
+          ? 'Feed fallback image'
+          : 'Serper priority image'
+        : 'Feed image',
+    })),
+    caption,
+    captionCharCount: caption.length,
+  };
+}
+
 async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivityItem[]; summary: RSSActivitySummary }> {
   const logs = await prisma.log.findMany({
     where: { service: 'rss' },
@@ -1194,6 +1426,7 @@ export {
   deleteFeed,
   refreshFeed,
   refreshAllFeeds,
+  previewFeedPipeline,
   getRSSActivity,
   deleteRSSActivity,
 };
@@ -1208,6 +1441,7 @@ export default {
   deleteFeed,
   refreshFeed,
   refreshAllFeeds,
+  previewFeedPipeline,
   getRSSActivity,
   deleteRSSActivity,
 };

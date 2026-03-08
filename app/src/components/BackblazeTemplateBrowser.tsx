@@ -1,37 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Cloud, FileImage, Search, Loader2, CheckCircle, FolderOpen } from 'lucide-react';
 import { toast } from "sonner";
 import { haptics } from '../utils/haptics';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { listDesignTemplates, isBackblazeConfigured } from '../utils/backblaze';
+import { BackblazeBrowserFile, listDesignTemplates } from '../lib/api/backblaze';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
-
-interface BackblazeFile {
-  fileName: string;
-  fileId: string;
-  url: string;
-  size: number;
-  lastModified: Date;
-}
 
 interface BackblazeTemplateBrowserProps {
   open: boolean;
-  onSelectTemplate: (file: BackblazeFile) => void;
+  onSelectTemplate: (file: BackblazeBrowserFile) => void;
   onClose: () => void;
 }
 
 export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: BackblazeTemplateBrowserProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [files, setFiles] = useState<BackblazeFile[]>([]);
-  const [filteredFiles, setFilteredFiles] = useState<BackblazeFile[]>([]);
+  const [files, setFiles] = useState<BackblazeBrowserFile[]>([]);
+  const [filteredFiles, setFilteredFiles] = useState<BackblazeBrowserFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFile, setSelectedFile] = useState<BackblazeFile | null>(null);
+  const [selectedFile, setSelectedFile] = useState<BackblazeBrowserFile | null>(null);
 
   useEffect(() => {
     if (open) {
-      loadFiles();
-      // Reset state when opening
+      void loadFiles();
       setSearchQuery('');
       setSelectedFile(null);
     }
@@ -49,18 +40,11 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
   }, [searchQuery, files]);
 
   const loadFiles = async () => {
-    if (!isBackblazeConfigured('design')) {
-      toast.error('Backblaze Design bucket not configured', {
-        description: 'Add credentials in Settings → API Keys → Design Bucket'
-      });
-      return;
-    }
-
     setIsLoading(true);
     haptics.light();
 
     try {
-      const result = await listDesignTemplates('templates/');
+      const result = await listDesignTemplates();
 
       if (result.success && result.files) {
         setFiles(result.files);
@@ -68,12 +52,12 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
 
         if (result.files.length === 0) {
           toast.info('No templates found', {
-            description: 'Upload PSD templates to your Backblaze Design bucket first'
+            description: 'Upload PSD templates to your Backblaze Design bucket first',
           });
         } else {
           haptics.success();
           toast.success(`Found ${result.files.length} template${result.files.length > 1 ? 's' : ''}`, {
-            description: 'Select one to load into Design Studio'
+            description: 'Select one to load into Design Studio',
           });
         }
       } else {
@@ -82,46 +66,51 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
     } catch (error) {
       haptics.error();
       toast.error('Failed to load Backblaze templates', {
-        description: error instanceof Error ? error.message : 'Check your credentials'
+        description: error instanceof Error ? error.message : 'Check your credentials',
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSelectFile = (file: BackblazeFile) => {
+  const handleSelectFile = (file: BackblazeBrowserFile) => {
     setSelectedFile(file);
     haptics.light();
   };
 
   const handleConfirmSelection = () => {
-    if (selectedFile) {
-      haptics.success();
-      onSelectTemplate(selectedFile);
-      toast.success('Template Loaded from Backblaze', {
-        description: selectedFile.fileName
-      });
-      onClose();
+    if (!selectedFile) {
+      return;
     }
+
+    haptics.success();
+    onSelectTemplate(selectedFile);
+    toast.success('Template loaded from Backblaze', {
+      description: selectedFile.fileName,
+    });
+    onClose();
   };
 
   const formatFileSize = (bytes: number): string => {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     if (bytes === 0) return '0 B';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+    const index = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, index)).toFixed(1)} ${sizes[index]}`;
   };
 
-  const formatDate = (date: Date): string => {
-    return new Date(date).toLocaleDateString('en-US', {
+  const formatDate = (timestamp: number): string => {
+    return new Date(timestamp).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
   const formatFileName = (fileName: string): string => {
-    return fileName.replace('.psd', '').replace('templates/', '');
+    return fileName
+      .replace(/^design-studio\/templates\//, '')
+      .replace(/^templates\//, '')
+      .replace(/\.psd$/i, '');
   };
 
   return (
@@ -139,7 +128,6 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
       </BottomSheetHeader>
 
       <BottomSheetBody className="flex flex-col gap-4 flex-1 overflow-hidden">
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <Input
@@ -155,7 +143,6 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
           />
         </div>
 
-        {/* File List */}
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -205,9 +192,9 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
                         {formatFileName(file.fileName)}
                       </p>
                       <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
-                        <span>{formatFileSize(file.size)}</span>
+                        <span>{formatFileSize(file.contentLength)}</span>
                         <span>•</span>
-                        <span>{formatDate(file.lastModified)}</span>
+                        <span>{formatDate(file.uploadTimestamp)}</span>
                       </div>
                     </div>
                   </div>

@@ -23,16 +23,40 @@ export class XService {
         this.bearerToken = process.env.X_BEARER_TOKEN || '';
     }
 
-    async postTweet(text: string, imageUrl?: string, connection?: PlatformConnection): Promise<XPostResult> {
+    private normalizeImageSources(imageSources?: string | string[]): string[] {
+        if (!imageSources) {
+            return [];
+        }
+
+        const sources = Array.isArray(imageSources) ? imageSources : [imageSources];
+        const seen = new Set<string>();
+        const normalized: string[] = [];
+
+        for (const source of sources) {
+            const trimmed = source.trim();
+            if (!trimmed || seen.has(trimmed)) {
+                continue;
+            }
+            seen.add(trimmed);
+            normalized.push(trimmed);
+        }
+
+        return normalized.slice(0, 4);
+    }
+
+    async postTweet(text: string, imageSources?: string | string[], connection?: PlatformConnection): Promise<XPostResult> {
         const authToken = connection?.accessToken || this.bearerToken;
         if (!authToken) {
             return { success: false, error: 'X access token not configured' };
         }
 
         try {
-            let mediaId: string | null = null;
-            if (imageUrl) {
-                mediaId = await this.uploadMedia(imageUrl, connection);
+            const mediaIds: string[] = [];
+            for (const imageSource of this.normalizeImageSources(imageSources)) {
+                const mediaId = await this.uploadMedia(imageSource, connection);
+                if (mediaId) {
+                    mediaIds.push(mediaId);
+                }
             }
 
             const response = await fetch('https://api.x.com/2/tweets', {
@@ -43,7 +67,7 @@ export class XService {
                 },
                 body: JSON.stringify({
                     text: text.slice(0, 280), // Twitter character limit
-                    ...(mediaId ? { media: { media_ids: [mediaId] } } : {}),
+                    ...(mediaIds.length > 0 ? { media: { media_ids: mediaIds } } : {}),
                 }),
             });
 

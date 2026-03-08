@@ -6,7 +6,7 @@ import { Slider } from '../ui/slider';
 import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface RssSettingsProps {
@@ -260,7 +260,7 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
           <div>
             <Label htmlFor="rss-caption-model" className="text-[#6B7280] dark:text-[#9CA3AF]">Caption AI Model</Label>
             <Select
-              value={settings.rssCaptionModel || 'gpt-4o'}
+              value={settings.rssCaptionModel || DEFAULT_MODELS.rss}
               onValueChange={(value) => {
                 haptics.light();
                 updateSetting('rssCaptionModel', value);
@@ -279,7 +279,7 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
               </SelectContent>
             </Select>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              GPT-4o balances creativity and cost for engaging social media captions
+              GPT-5 Mini is the recommended balance for high-quality captions at production scale
             </p>
           </div>
 

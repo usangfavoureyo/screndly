@@ -11,6 +11,7 @@ import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TMDbModals } from "./tmdb/TMDbModals";
 import { PullToRefresh } from "./PullToRefresh";
+import { CreateFab } from "./CreateFab";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
 import { haptics } from "../utils/haptics";
 import { useNotifications } from "../contexts/NotificationsContext";
@@ -34,6 +35,10 @@ const RSSPage = lazy(() => import("./RSSPage").then(m => ({ default: m.RSSPage }
 const RSSActivityPage = lazy(() => import("./RSSActivityPage").then(m => ({ default: m.RSSActivityPage })));
 const TMDbFeedsPage = lazy(() => import("./TMDbFeedsPage").then(m => ({ default: m.TMDbFeedsPage })));
 const TMDbActivityPage = lazy(() => import("./TMDbActivityPage").then(m => ({ default: m.TMDbActivityPage })));
+const CreatePage = lazy(() => import("./CreatePage").then(m => ({ default: m.CreatePage })));
+const ComposeEditorPage = lazy(() => import("./create/ComposeEditorPage").then(m => ({ default: m.ComposeEditorPage })));
+const ComposeActivityPage = lazy(() => import("./create/ComposeActivityPage").then(m => ({ default: m.ComposeActivityPage })));
+const PadWorkspacePage = lazy(() => import("./create/PadWorkspacePage").then(m => ({ default: m.PadWorkspacePage })));
 const VideoDetailsPage = lazy(() => import("./VideoDetailsPage").then(m => ({ default: m.VideoDetailsPage })));
 const VideoActivityPage = lazy(() => import("./VideoActivityPage").then(m => ({ default: m.VideoActivityPage })));
 const VideoStudioPage = lazy(() => import("./VideoStudioPage").then(m => ({ default: m.VideoStudioPage })));
@@ -86,6 +91,7 @@ export function AppContent() {
   // Initialize currentPage from URL (preserves state on refresh)
   const [currentPage, setCurrentPageState] = useState(() => getPageFromURL());
   const [previousPage, setPreviousPage] = useState<string | null>(null);
+  const [createSourcePage, setCreateSourcePage] = useState("dashboard");
   const [pageBeforeSettings, setPageBeforeSettings] = useState("dashboard");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialPage, setSettingsInitialPage] = useState<string | null>(null);
@@ -101,6 +107,7 @@ export function AppContent() {
   const validPages = [
     'dashboard', 'channels', 'platforms', 'logs', 'activity', 'design-system',
     'feeds', 'rss', 'rss-activity', 'tmdb', 'tmdb-activity', 'video-details', 'video-activity',
+    'create', 'compose-editor', 'compose-activity', 'pad-workspace',
     'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
     'privacy', 'terms', 'disclaimer',
     'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'api-usage',
@@ -147,6 +154,7 @@ export function AppContent() {
       'channels': 'channels',
       'platforms': 'platforms',
       'feeds': 'feeds',
+      'create': 'create',
       'design-studio': 'design-studio',
       'video-studio': 'video-studio',
       // Child pages map to their parent
@@ -154,6 +162,9 @@ export function AppContent() {
       'tmdb': 'feeds',
       'rss-activity': 'feeds',
       'tmdb-activity': 'feeds',
+      'compose-editor': 'create',
+      'compose-activity': 'create',
+      'pad-workspace': 'create',
       'design-studio-activity': 'design-studio',
       'video-studio-activity': 'video-studio',
     };
@@ -250,6 +261,10 @@ export function AppContent() {
       // Feeds Activity pages
       'rss-activity': 'feeds',
       'tmdb-activity': 'feeds',
+      // Create child pages
+      'compose-editor': 'create',
+      'compose-activity': 'create',
+      'pad-workspace': 'create',
       // Studio Activity pages
       'design-studio-activity': 'design-studio',
       'video-studio-activity': 'video-studio',
@@ -286,9 +301,18 @@ export function AppContent() {
         setPreviousPage(currentPage);
       }
 
+      const resolvedParentPage =
+        page === 'create' && !['create', 'compose-editor', 'compose-activity', 'pad-workspace'].includes(currentPage)
+          ? currentPage
+          : childPageMap[page];
+
+      if (page === 'create' && !['create', 'compose-editor', 'compose-activity', 'pad-workspace'].includes(currentPage)) {
+        setCreateSourcePage(fromPage || currentPage);
+      }
+
       // If this is a child page, register it with BackNavigationContext
-      if (childPageMap[page]) {
-        const parentPage = childPageMap[page];
+      if (resolvedParentPage) {
+        const parentPage = resolvedParentPage;
         pushChildPage(page, parentPage);
       }
 
@@ -497,6 +521,18 @@ export function AppContent() {
             {displayPage === "tmdb-activity" && (
               <Suspense fallback={<PageLoader />}><TMDbActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
             )}
+            {displayPage === "create" && (
+              <Suspense fallback={<PageLoader />}><CreatePage onNavigate={handleNavigate} previousPage={createSourcePage} /></Suspense>
+            )}
+            {displayPage === "compose-editor" && (
+              <Suspense fallback={<PageLoader />}><ComposeEditorPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "compose-activity" && (
+              <Suspense fallback={<PageLoader />}><ComposeActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
+            {displayPage === "pad-workspace" && (
+              <Suspense fallback={<PageLoader />}><PadWorkspacePage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
+            )}
             {displayPage === "video-details" && (
               <Suspense fallback={<PageLoader />}><VideoDetailsPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
             )}
@@ -533,6 +569,12 @@ export function AppContent() {
       </main>
       <MobileBottomNav
         currentPage={currentPage}
+        onNavigate={handleNavigate}
+      />
+      <CreateFab
+        currentPage={currentPage}
+        isSettingsOpen={isSettingsOpen}
+        isNotificationsOpen={isNotificationsOpen}
         onNavigate={handleNavigate}
       />
       {isSettingsOpen && (
@@ -572,4 +614,3 @@ export function AppContent() {
     </div>
   );
 }
-

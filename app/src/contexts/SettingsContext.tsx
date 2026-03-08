@@ -9,6 +9,7 @@ import {
 } from '../lib/api/settings';
 import { toast } from "sonner";
 import { analyticsIngester } from '../lib/optimization/analyticsIngester';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 import {
   dispatchThemeChange,
   persistThemePreference,
@@ -268,7 +269,7 @@ function getDefaultSettings(): Settings {
     regionFilter: 'US,UK',
     advancedFilters: 'trailer, official, teaser',
     excludeShorts: true,
-    videoOpenaiModel: 'gpt-4o',
+    videoOpenaiModel: DEFAULT_MODELS.video,
     videoUniversalCaptionPrompt: '',
     videoYoutubeTitlePrompt: '',
     videoYoutubeDescriptionPrompt: '',
@@ -298,7 +299,7 @@ function getDefaultSettings(): Settings {
     commentBlacklistKeywords: '',
     commentReplyFrequency: 'instant',
     commentThrottle: 'low',
-    commentReplyModel: 'gpt-4o',
+    commentReplyModel: DEFAULT_MODELS.comment,
     commentReplyTemperature: 0.7,
     commentReplyTone: 'Engaging',
     commentReplyMaxLength: 280,
@@ -405,7 +406,7 @@ Guidelines:
     quietHoursEnabled: true,
     quietHoursStart: 0,
     quietHoursEnd: 7,
-    rssCaptionModel: 'gpt-4o',
+    rssCaptionModel: DEFAULT_MODELS.rss,
     rssCaptionTemperature: 0.7,
     rssCaptionTone: 'Engaging',
     rssCaptionMaxLength: 280,
@@ -431,7 +432,7 @@ Guidelines:
     rssPinterestDefaultLink: '',
 
     // TMDb
-    tmdbCaptionModel: 'gpt-4o',
+    tmdbCaptionModel: DEFAULT_MODELS.tmdb,
     tmdbCaptionTemperature: 0.7,
 
     // Cleanup

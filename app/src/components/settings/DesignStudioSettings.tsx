@@ -9,7 +9,7 @@ import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface DesignStudioSettingsProps {
@@ -20,7 +20,7 @@ interface DesignStudioSettingsProps {
 // Default prompt system settings
 const defaultSettings = {
   // Caption Generation Settings
-  captionOpenaiModel: 'gpt-4o',
+  captionOpenaiModel: DEFAULT_MODELS.designStudio,
   captionTemperature: 0.7,
   captionMaxTokens: 500,
 

@@ -11,7 +11,49 @@ import { trackApiUsage } from './api-usage.service';
 // TYPES
 // ============================================
 
-export type AIModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo' | 'flash-3';
+export const SUPPORTED_OPENAI_MODELS = [
+    'gpt-5.2',
+    'gpt-5.1',
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4.1',
+    'gpt-4.1-mini',
+    'gpt-4.1-nano',
+    'gpt-4o',
+    'gpt-4o-mini',
+] as const;
+
+export const LEGACY_OPENAI_MODELS = [
+    'gpt-4-turbo',
+    'gpt-3.5-turbo',
+] as const;
+
+export type SupportedOpenAIModel = typeof SUPPORTED_OPENAI_MODELS[number];
+export type LegacyOpenAIModel = typeof LEGACY_OPENAI_MODELS[number];
+export type AIModel = SupportedOpenAIModel | LegacyOpenAIModel | 'flash-3';
+export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
+
+export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
+    switch (value) {
+        case 'gpt-5.2':
+        case 'gpt-5.1':
+        case 'gpt-5':
+        case 'gpt-5-mini':
+        case 'gpt-5-nano':
+        case 'gpt-4.1':
+        case 'gpt-4.1-mini':
+        case 'gpt-4.1-nano':
+        case 'gpt-4o':
+        case 'gpt-4o-mini':
+        case 'gpt-4-turbo':
+        case 'gpt-3.5-turbo':
+        case 'flash-3':
+            return value;
+        default:
+            return fallback;
+    }
+}
 
 export interface AIRequest {
     model: AIModel;
@@ -219,8 +261,8 @@ async function callFlash3(request: AIRequest): Promise<AIResponse> {
 
     if (!apiKey) {
         // Fallback to OpenAI if Flash 3 key not configured
-        console.log('[AI] Flash 3 key not configured, falling back to gpt-4o-mini');
-        return callOpenAI({ ...request, model: 'gpt-4o-mini' });
+        console.log(`[AI] Flash 3 key not configured, falling back to ${DEFAULT_OPENAI_MODEL}`);
+        return callOpenAI({ ...request, model: DEFAULT_OPENAI_MODEL });
     }
 
     try {
@@ -271,8 +313,8 @@ async function callFlash3(request: AIRequest): Promise<AIResponse> {
     } catch (error) {
         console.error('[AI] Flash 3 error:', error);
         // Fallback to OpenAI on error
-        console.log('[AI] Flash 3 failed, falling back to gpt-4o-mini');
-        return callOpenAI({ ...request, model: 'gpt-4o-mini' });
+        console.log(`[AI] Flash 3 failed, falling back to ${DEFAULT_OPENAI_MODEL}`);
+        return callOpenAI({ ...request, model: DEFAULT_OPENAI_MODEL });
     }
 }
 
@@ -281,10 +323,15 @@ async function callFlash3(request: AIRequest): Promise<AIResponse> {
 // ============================================
 
 export async function generateCompletion(request: AIRequest): Promise<AIResponse> {
-    if (request.model === 'flash-3') {
-        return callFlash3(request);
+    const normalizedRequest: AIRequest = {
+        ...request,
+        model: normalizeAIModel(request.model),
+    };
+
+    if (normalizedRequest.model === 'flash-3') {
+        return callFlash3(normalizedRequest);
     }
-    return callOpenAI(request);
+    return callOpenAI(normalizedRequest);
 }
 
 // ============================================
@@ -297,7 +344,7 @@ export async function validateTMDbContent(
     genres: string[],
     originalLanguage: string,
     productionCountries: string[],
-    model: AIModel = 'flash-3'
+    model: AIModel = DEFAULT_OPENAI_MODEL
 ): Promise<ValidationResult> {
     const systemPrompt = `You are a content validator. Analyze the provided movie/TV show information and determine if it meets all criteria. Respond ONLY in valid JSON format.`;
 
@@ -376,7 +423,7 @@ export async function validateYouTubeTrailer(
     title: string,
     channelName: string,
     description: string,
-    model: AIModel = 'flash-3'
+    model: AIModel = DEFAULT_OPENAI_MODEL
 ): Promise<{ isValid: boolean; isTrailer: boolean; isUSProduction: boolean; reasoning: string }> {
     const systemPrompt = `You are a YouTube trailer validator. Analyze the video information and determine if it's a valid US movie/TV trailer. Respond ONLY in valid JSON format.`;
 
@@ -453,7 +500,7 @@ export interface CaptionContext {
 
 export async function generateTMDbCaption(
     context: CaptionContext,
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
@@ -516,7 +563,7 @@ export interface RSSContext {
 
 export async function generateRSSCaption(
     context: RSSContext,
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
@@ -567,7 +614,7 @@ export interface YouTubeContext {
 
 export async function generateYouTubeCaption(
     context: YouTubeContext,
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
@@ -617,7 +664,7 @@ export interface CommentContext {
 
 export async function generateCommentReply(
     context: CommentContext,
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
@@ -667,7 +714,7 @@ export interface StudioContext {
 
 export async function generateStudioCaption(
     context: StudioContext,
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number,
     customMaxTokens?: number
@@ -713,7 +760,7 @@ export async function detectYouTubePlaylists(
     videoTitle: string,
     description: string,
     availablePlaylists: string[],
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     customPrompt?: string
 ): Promise<string[]> {
     const defaultPrompt = `Analyze the video metadata and select matching playlists from the available list.
@@ -753,7 +800,7 @@ export async function detectYouTubePlaylists(
 
 export async function generatePinterestMetadata(
     context: { title: string; description: string; cast?: string[] },
-    model: AIModel = 'flash-3',
+    model: AIModel = DEFAULT_OPENAI_MODEL,
     titlePrompt?: string,
     descPrompt?: string
 ): Promise<{ title: string; description: string }> {

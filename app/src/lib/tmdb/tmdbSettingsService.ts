@@ -3,6 +3,7 @@
  * Single source of truth for all TMDb configuration
  * All components must read settings through this service
  */
+import { DEFAULT_MODELS } from '../ai/models';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 export type ImagePreference = 'poster' | 'backdrop' | 'random';
@@ -99,7 +100,7 @@ export interface TMDbSettings {
 
 // Default settings (must match TMDbSettings.tsx defaults)
 const defaultSettings: TMDbSettings = {
-    tmdbCaptionModel: 'gpt-4o',
+    tmdbCaptionModel: DEFAULT_MODELS.tmdb,
     captionMaxLength: '100',
     includeCast: true,
     includeDate: true,
@@ -272,7 +273,7 @@ export function getCaptionPrompt(feedType: FeedType): string {
  * Get the AI model for caption generation
  */
 export function getCaptionModel(): string {
-    return getTMDbSettings().tmdbCaptionModel || 'gpt-4o';
+    return getTMDbSettings().tmdbCaptionModel || DEFAULT_MODELS.tmdb;
 }
 
 /**

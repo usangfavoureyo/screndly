@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import prisma from '../lib/prisma';
 import sharp from 'sharp';
-import aiService, { type AIModel } from './ai.service';
+import aiService, { type AIModel, DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
 import { uploadBufferToBackblaze } from './backblaze';
 import { getTmdbApiKey } from './tmdb.service';
 
@@ -269,19 +269,6 @@ function parseJsonValue<T>(value: unknown): T | null {
     }
 
     return null;
-}
-
-function toAIModel(value?: string): AIModel {
-    switch (value) {
-        case 'gpt-4o':
-        case 'gpt-4o-mini':
-        case 'gpt-4-turbo':
-        case 'gpt-3.5-turbo':
-        case 'flash-3':
-            return value;
-        default:
-            return 'gpt-4o';
-    }
 }
 
 function parsePlatformSettings(value: unknown): Record<string, PlatformSettingsValue> {
@@ -678,7 +665,7 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
         advancedFilters: asString(map.get('advancedFilters')),
         regionFilter: asString(map.get('regionFilter')),
         excludeShorts: asBoolean(map.get('excludeShorts'), true),
-        videoOpenaiModel: toAIModel(asString(map.get('videoOpenaiModel'))),
+    videoOpenaiModel: normalizeAIModel(asString(map.get('videoOpenaiModel'))),
         videoUniversalCaptionPrompt: asString(map.get('videoUniversalCaptionPrompt')),
         videoYoutubeTitlePrompt: asString(map.get('videoYoutubeTitlePrompt')),
         videoYoutubeDescriptionPrompt: asString(map.get('videoYoutubeDescriptionPrompt')),
@@ -798,7 +785,7 @@ export async function generateYouTubePublishMetadata(
         metadata.tmdbMatch
     );
 
-    const model = settings.videoOpenaiModel || 'gpt-4o';
+    const model = settings.videoOpenaiModel || DEFAULT_OPENAI_MODEL;
 
     const [titleResponse, descriptionResponse] = await Promise.all([
         aiService.generateCompletion({

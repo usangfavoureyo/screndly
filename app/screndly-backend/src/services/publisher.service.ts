@@ -13,6 +13,7 @@ export interface PublishContent {
     description?: string;
     link?: string;
     imageUrl?: string;
+    imageUrls?: string[];
     imagePath?: string;
     videoUrl?: string; // For platforms that support URL (TikTok)
     platformOverrides?: Partial<Record<string, Partial<Omit<PublishContent, 'platformOverrides'>>>>;
@@ -50,6 +51,35 @@ function normalizePlatformName(platform: string): string {
 }
 
 export class PublisherService {
+    private getResolvedImageUrls(content: PublishContent): string[] {
+        const candidates = [
+            ...(Array.isArray(content.imageUrls) ? content.imageUrls : []),
+            content.imageUrl,
+            content.imagePath,
+        ];
+
+        const seen = new Set<string>();
+        const resolved: string[] = [];
+        for (const candidate of candidates) {
+            if (typeof candidate !== 'string') continue;
+            const trimmed = candidate.trim();
+            if (!trimmed || seen.has(trimmed)) continue;
+            seen.add(trimmed);
+            resolved.push(trimmed);
+        }
+
+        return resolved;
+    }
+
+    private getPlatformImageLimit(platform: string): number {
+        switch (platform) {
+            case 'X':
+                return 4;
+            default:
+                return 1;
+        }
+    }
+
     /**
      * Publish content to multiple platforms w/ Retry Logic
      */
@@ -111,14 +141,19 @@ export class PublisherService {
                 }
 
                 try {
+                    const resolvedImageUrls = this
+                        .getResolvedImageUrls(platformContent)
+                        .slice(0, this.getPlatformImageLimit(platform));
+                    const primaryImageUrl = resolvedImageUrls[0];
+
                     switch (platform) {
                         case 'X':
                             if (connection.accessToken) {
                                 const xResult = await xService.postTweet(
                                     platformContent.text,
-                                    platformContent.imagePath
-                                        || platformContent.imageUrl
-                                        || (mediaFilePath && this.isImage(mediaFilePath) ? mediaFilePath : undefined),
+                                    resolvedImageUrls.length > 0
+                                        ? resolvedImageUrls
+                                        : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : undefined),
                                     connection
                                 );
                                 result = {
@@ -135,7 +170,7 @@ export class PublisherService {
                                 const fbResult = await metaService.postToFacebook(
                                     connection.userId,
                                     platformContent.text,
-                                    platformContent.imageUrl || null,
+                                    primaryImageUrl || null,
                                     connection.accessToken,
                                     platformContent.link
                                 );
@@ -149,11 +184,11 @@ export class PublisherService {
                             break;
 
                         case 'Instagram':
-                            if (connection.accessToken && connection.userId && platformContent.imageUrl) {
+                            if (connection.accessToken && connection.userId && primaryImageUrl) {
                                 const igResult = await metaService.postToInstagram(
                                     connection.userId,
                                     platformContent.text,
-                                    platformContent.imageUrl,
+                                    primaryImageUrl,
                                     connection.accessToken
                                 );
                                 result = {
@@ -170,7 +205,7 @@ export class PublisherService {
                                 const threadsResult = await metaService.postToThreads(
                                     connection.userId,
                                     platformContent.text,
-                                    platformContent.imageUrl || null,
+                                    primaryImageUrl || null,
                                     connection.accessToken
                                 );
                                 result = {
@@ -239,12 +274,12 @@ export class PublisherService {
                                 // Use options boardId OR settings default
                                 const boardId = options.pinterestBoardId || (connection.metadata as any)?.boardId || (connection.metadata as any)?.defaultBoardId;
 
-                                if (boardId && platformContent.imageUrl) {
+                                if (boardId && primaryImageUrl) {
                                     const pinResult = await pinterestService.createPin(
                                         boardId,
                                         platformContent.title || platformContent.text.slice(0, 50),
                                         platformContent.text,
-                                        platformContent.imageUrl,
+                                        primaryImageUrl,
                                         connection.accessToken,
                                         { link: options.pinterestLink || platformContent.link }
                                     );

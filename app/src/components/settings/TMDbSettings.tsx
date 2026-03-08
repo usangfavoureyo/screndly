@@ -12,7 +12,7 @@ import { PinterestIcon } from '../icons/PinterestIcon';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { Plus } from 'lucide-react';
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
 
 interface TMDbSettingsProps {
@@ -91,7 +91,7 @@ const UNIFIED_GENRES = [
 
 // Default settings
 const defaultSettings = {
-  openaiModel: 'gpt-3.5-turbo',
+  openaiModel: DEFAULT_MODELS.tmdb,
   enableToday: true,
   enableWeekly: true,
   enableMonthly: true,
@@ -132,7 +132,7 @@ const defaultSettings = {
   monthlyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
   anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false },
   // Caption generation settings - Universal Model
-  tmdbCaptionModel: 'gpt-4o',
+  tmdbCaptionModel: DEFAULT_MODELS.tmdb,
   // Individual prompts for each feed type
   todayPrompt: `You are a concise caption generator for short social posts. Output must be under 100 characters and use at most 50 tokens. Insert the title as a hashtag somewhere in the sentence. Occasionally include top 1–2 cast names and/or the release date. Tone: punchy, newsy, minimal. No extra hashtags. No CTAs. No quotes. No markdown. End with a period.
 
