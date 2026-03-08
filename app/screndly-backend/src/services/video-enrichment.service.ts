@@ -28,6 +28,10 @@ type TMDbFallbackMode =
 
 interface PlatformSettingsValue {
     autoPost?: boolean;
+    autoThumbnail?: boolean;
+    autoCaption?: boolean;
+    autoHashtag?: boolean;
+    commentAutomation?: boolean;
 }
 
 interface TMDbSearchResult {

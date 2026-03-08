@@ -1,6 +1,22 @@
-import { CalendarDays, FileText, AlertTriangle, CheckCircle2, PencilLine } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, CalendarDays, CheckCircle2, FileText, PencilLine } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { DatePicker } from '../ui/date-picker';
+import { TimePicker } from '../ui/time-picker';
+import {
+  BottomSheet,
+  BottomSheetBody,
+  BottomSheetDescription,
+  BottomSheetFooter,
+  BottomSheetHeader,
+  BottomSheetTitle,
+} from '../ui/bottom-sheet';
+import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
+import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { haptics } from '../../utils/haptics';
+import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem } from '../../types/compose';
 
@@ -30,8 +46,28 @@ function getStatusTone(status: ComposeItem['status']): string {
   }
 }
 
+function getLeadingIcon(status: ComposeItem['status']) {
+  if (status === 'failed') return AlertTriangle;
+  if (status === 'published') return CheckCircle2;
+  if (status === 'scheduled') return CalendarDays;
+  return FileText;
+}
+
+function toIsoSchedule(date?: Date, time?: string) {
+  if (!date || !time) return undefined;
+  const [hours, minutes] = time.split(':').map(Number);
+  const scheduled = new Date(date);
+  scheduled.setHours(hours || 0, minutes || 0, 0, 0);
+  return scheduled.toISOString();
+}
+
 export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
-  const { items, setActiveItemId } = useComposeStore();
+  const { items, setActiveItemId, deleteItem, updateStatus } = useComposeStore();
+  const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const selection = useBulkSelection(items.map((item) => item.id));
 
   const stats = {
     drafts: items.filter((item) => item.status === 'draft').length,
@@ -39,6 +75,11 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     published: items.filter((item) => item.status === 'published').length,
     pending: items.filter((item) => item.status === 'failed').length,
   };
+
+  const scheduleItem = useMemo(
+    () => items.find((item) => item.id === scheduleItemId),
+    [items, scheduleItemId],
+  );
 
   const handleCreate = () => {
     setActiveItemId(null);
@@ -48,6 +89,43 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
   const handleEdit = (itemId: string) => {
     setActiveItemId(itemId);
     onNavigate('compose-editor', 'create');
+  };
+
+  const handlePublish = (itemId: string) => {
+    haptics.medium();
+    updateStatus(itemId, 'published');
+    toast.success('Compose item marked as published');
+  };
+
+  const handleOpenSchedule = (item: ComposeItem) => {
+    haptics.light();
+    setScheduleItemId(item.id);
+    setScheduleDate(item.scheduledAt ? new Date(item.scheduledAt) : new Date());
+    setScheduleTime(item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(11, 16) : '09:00');
+  };
+
+  const handleConfirmSchedule = () => {
+    if (!scheduleItemId) return;
+    const scheduledAt = toIsoSchedule(scheduleDate, scheduleTime);
+    if (!scheduledAt) {
+      toast.error('Select a schedule date and time');
+      return;
+    }
+
+    haptics.medium();
+    updateStatus(scheduleItemId, 'scheduled', scheduledAt);
+    setScheduleItemId(null);
+    toast.success('Compose item scheduled');
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    setIsDeletingSelected(true);
+    selection.selectedIds.forEach((id) => deleteItem(id));
+    selection.clearSelection();
+    setIsDeletingSelected(false);
+    toast.success('Selected compose items deleted');
   };
 
   return (
@@ -81,21 +159,21 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           </div>
           <div className="flex items-center gap-2">
             <Button
-              variant="outline"
-              onClick={() => {
-                haptics.light();
-                onNavigate('compose-activity', 'create');
-              }}
-            >
-              View Compose Activity
-            </Button>
-            <Button
               onClick={() => {
                 haptics.medium();
                 handleCreate();
               }}
             >
               Add Content
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                haptics.light();
+                onNavigate('compose-activity', 'create');
+              }}
+            >
+              View Activity
             </Button>
           </div>
         </div>
@@ -116,73 +194,132 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           </div>
         ) : (
           <div className="space-y-3">
-            {items.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200"
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-xl bg-[#ec1e24]/10 p-2 text-[#ec1e24]">
-                        {item.status === 'failed' ? (
-                          <AlertTriangle className="h-5 w-5" />
-                        ) : item.status === 'published' ? (
-                          <CheckCircle2 className="h-5 w-5" />
-                        ) : item.status === 'scheduled' ? (
-                          <CalendarDays className="h-5 w-5" />
-                        ) : (
-                          <FileText className="h-5 w-5" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
-                        <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
-                          {formatItemMeta(item)}
-                        </p>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {item.platforms.map((platform) => (
-                            <span
-                              key={platform}
-                              className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF] uppercase"
-                            >
-                              {platform}
-                            </span>
-                          ))}
+            {selection.selectionMode && (
+              <ActivitySelectionToolbar
+                selectedCount={selection.selectedCount}
+                isDeleting={isDeletingSelected}
+                onClear={selection.clearSelection}
+                onDelete={handleDeleteSelected}
+                itemLabel="content items"
+              />
+            )}
+
+            {items.map((item) => {
+              const LeadingIcon = getLeadingIcon(item.status);
+
+              return (
+                <SwipeableActivityCard
+                  key={item.id}
+                  id={item.id}
+                  onDelete={(id) => {
+                    if (!id) return;
+                    deleteItem(id);
+                  }}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.isSelected(item.id)}
+                  onEnterSelectionMode={selection.enterSelectionMode}
+                  onToggleSelection={selection.toggleSelection}
+                  className="w-full text-left p-5 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
+                >
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="mt-0.5 rounded-xl bg-[#ec1e24]/10 p-2 text-[#ec1e24]">
+                          <LeadingIcon className="h-5 w-5" />
                         </div>
-                        {item.error ? (
-                          <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
-                        ) : null}
+                        <div className="min-w-0">
+                          <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
+                          <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
+                            {formatItemMeta(item)}
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            {item.platforms.map((platform) => (
+                              <span
+                                key={platform}
+                                className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF] uppercase"
+                              >
+                                {platform}
+                              </span>
+                            ))}
+                          </div>
+                          {item.error ? (
+                            <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
+                          ) : null}
+                        </div>
                       </div>
+                      <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
+                        {item.status === 'scheduled'
+                          ? 'Scheduled'
+                          : item.status === 'published'
+                            ? 'Published'
+                            : item.status === 'failed'
+                              ? 'Failed'
+                              : 'Draft'}
+                      </span>
                     </div>
+
+                    {!selection.selectionMode ? (
+                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                        <Button size="sm" onClick={() => handlePublish(item.id)}>
+                          Publish
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => handleOpenSchedule(item)}>
+                          Schedule
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            haptics.light();
+                            handleEdit(item.id);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
-                  <div className="flex items-center justify-between gap-3 lg:flex-col lg:items-end">
-                    <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
-                      {item.status === 'scheduled'
-                        ? 'Scheduled'
-                        : item.status === 'published'
-                          ? 'Published'
-                          : item.status === 'failed'
-                            ? 'Failed'
-                            : 'Draft'}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        haptics.light();
-                        handleEdit(item.id);
-                      }}
-                    >
-                      Edit
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
+                </SwipeableActivityCard>
+              );
+            })}
           </div>
         )}
       </div>
+
+      <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Schedule Compose Item</BottomSheetTitle>
+          <BottomSheetDescription>
+            {scheduleItem ? `Choose when "${scheduleItem.title}" should move into the scheduled queue.` : 'Choose a schedule.'}
+          </BottomSheetDescription>
+        </BottomSheetHeader>
+        <BottomSheetBody>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-gray-600 dark:text-[#9CA3AF]">Date</Label>
+              <div className="mt-2">
+                <DatePicker date={scheduleDate} onDateChange={setScheduleDate} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-gray-600 dark:text-[#9CA3AF]">Time</Label>
+              <div className="mt-2">
+                <TimePicker value={scheduleTime} onChange={setScheduleTime} />
+              </div>
+            </div>
+          </div>
+        </BottomSheetBody>
+        <BottomSheetFooter>
+          <div className="flex gap-3 w-full">
+            <Button variant="outline" className="flex-1" onClick={() => setScheduleItemId(null)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={handleConfirmSchedule}>
+              Schedule
+            </Button>
+          </div>
+        </BottomSheetFooter>
+      </BottomSheet>
     </div>
   );
 }

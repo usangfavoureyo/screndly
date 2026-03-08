@@ -46,6 +46,30 @@ export interface PollSummary {
     results: ChannelPollResult[];
 }
 
+interface PlatformAutomationSettings {
+    autoPost?: boolean;
+    autoThumbnail?: boolean;
+    autoCaption?: boolean;
+    autoHashtag?: boolean;
+}
+
+interface GeneratedCaptions {
+    generated?: string;
+    fallback: string;
+}
+
+const PLATFORM_SETTING_KEYS: Record<string, string> = {
+    X: 'x',
+    Facebook: 'facebook',
+    Instagram: 'instagram',
+    Threads: 'threads',
+    TikTok: 'tiktok',
+    YouTube: 'youtube',
+    Pinterest: 'pinterest',
+};
+
+const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
+
 export class YouTubePollerService {
     private isPolling = false;
 
@@ -440,21 +464,24 @@ Respond ONLY "YES" or "NO".`,
                 };
             }
 
-            const captions = await this.generateCaptions(video, details, settings, enrichedMetadata);
+            const captions = await this.generateCaptions(video, details, settings, enrichedMetadata, targetPlatforms);
             const playlists = await this.detectPlaylists(video, details, settings);
-            const youtubeMetadata = await generateYouTubePublishMetadata(
-                video.title || '',
-                details.description || video.contentSnippet || '',
-                enrichedMetadata,
-                settings
-            );
-            const youtubeThumbnail = targetPlatforms.includes('YouTube')
+            const youtubeMetadata =
+                targetPlatforms.includes('YouTube') && this.isAutoCaptionEnabled('YouTube', settings)
+                    ? await generateYouTubePublishMetadata(
+                        video.title || '',
+                        details.description || video.contentSnippet || '',
+                        enrichedMetadata,
+                        settings
+                    )
+                    : this.buildDefaultYouTubeMetadata(video, details, enrichedMetadata);
+            const youtubeThumbnail = targetPlatforms.includes('YouTube') && this.isAutoThumbnailEnabled('YouTube', settings)
                 ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
-            const xThumbnail = targetPlatforms.includes('X')
+            const xThumbnail = targetPlatforms.includes('X') && this.isAutoThumbnailEnabled('X', settings)
                 ? await generateLandscapeThumbnail('x', video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
-            const socialPoster = targetPlatforms.some((platform) => ['Facebook', 'Instagram', 'Threads', 'Pinterest'].includes(platform))
+            const socialPoster = targetPlatforms.some((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings))
                 ? await generateSocialPosterThumbnail(video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
 
@@ -585,7 +612,7 @@ Respond ONLY "YES" or "NO".`,
         video: any,
         videoId: string,
         downloadPath: string,
-        captions: { universal: string },
+        captions: GeneratedCaptions,
         settings: LoadedVideoSettings,
         channel: any,
         targetPlatforms: string[],
@@ -603,47 +630,71 @@ Respond ONLY "YES" or "NO".`,
             return { publishedPlatforms: [] as string[], failedPlatforms: [] as string[] };
         }
 
-        const universalCaption = captions.universal || video.title || '';
-        const socialImageUrl =
+        const fallbackImageUrl = thumbnailUrl;
+        const generatedSocialImageUrl =
             thumbnailAssets.social?.publicUrl
             || thumbnailAssets.social?.sourceUrl
-            || thumbnailUrl;
-        const xImageSource =
+            || fallbackImageUrl;
+        const generatedXImageSource =
             thumbnailAssets.x?.localPath
             || thumbnailAssets.x?.publicUrl
-            || thumbnailAssets.x?.sourceUrl
-            || socialImageUrl;
+            || thumbnailAssets.x?.sourceUrl;
+        const defaultText = this.buildPlatformPostText('X', captions, video, settings);
         const publishContent: PublishContent = {
-            text: `${universalCaption}\n\n${video.link}`,
+            text: defaultText,
             title: video.title,
             description: youtubeMetadata.description,
             link: video.link,
-            imageUrl: socialImageUrl,
+            imageUrl: undefined,
             videoUrl: video.link,
             platformOverrides: {
                 X: {
-                    text: `${universalCaption}\n\n${video.link}`,
-                    imagePath: xImageSource && !xImageSource.startsWith('http') ? xImageSource : undefined,
-                    imageUrl: xImageSource && xImageSource.startsWith('http') ? xImageSource : undefined,
+                    text: this.buildPlatformPostText('X', captions, video, settings),
+                    imagePath: this.isAutoThumbnailEnabled('X', settings) && generatedXImageSource && !generatedXImageSource.startsWith('http')
+                        ? generatedXImageSource
+                        : undefined,
+                    imageUrl: this.isAutoThumbnailEnabled('X', settings)
+                        ? (
+                            generatedXImageSource && generatedXImageSource.startsWith('http')
+                                ? generatedXImageSource
+                                : fallbackImageUrl
+                        )
+                        : undefined,
                 },
                 Facebook: {
-                    imageUrl: socialImageUrl,
+                    text: this.buildPlatformPostText('Facebook', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Facebook', settings) ? generatedSocialImageUrl : undefined,
                 },
                 Instagram: {
-                    imageUrl: socialImageUrl,
+                    text: this.buildPlatformPostText('Instagram', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
                 },
                 Threads: {
-                    imageUrl: socialImageUrl,
+                    text: this.buildPlatformPostText('Threads', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Threads', settings) ? generatedSocialImageUrl : undefined,
+                },
+                TikTok: {
+                    text: this.buildPlatformPostText('TikTok', captions, video, settings),
+                    title: this.buildPlatformTitle('TikTok', captions, video, settings),
                 },
                 YouTube: {
-                    title: youtubeMetadata.title || video.title,
-                    description: youtubeMetadata.description || universalCaption,
-                    imagePath: thumbnailAssets.youtube?.localPath,
-                    imageUrl: thumbnailAssets.youtube?.publicUrl || thumbnailAssets.youtube?.sourceUrl || thumbnailUrl,
+                    title: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.title || video.title)
+                        : (video.title || youtubeMetadata.title),
+                    description: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.description || captions.generated || captions.fallback)
+                        : youtubeMetadata.description,
+                    imagePath: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? thumbnailAssets.youtube?.localPath
+                        : undefined,
+                    imageUrl: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? (thumbnailAssets.youtube?.publicUrl || thumbnailAssets.youtube?.sourceUrl)
+                        : undefined,
                 },
                 Pinterest: {
-                    imageUrl: socialImageUrl,
-                    title: video.title,
+                    text: this.buildPlatformPostText('Pinterest', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Pinterest', settings) ? generatedSocialImageUrl : undefined,
+                    title: this.buildPlatformTitle('Pinterest', captions, video, settings),
                 },
             }
         };
@@ -679,6 +730,88 @@ Respond ONLY "YES" or "NO".`,
         return Object.entries(platformMap)
             .filter(([key]) => settings.platformSettings[key]?.autoPost === true)
             .map(([, platform]) => platform);
+    }
+
+    private getPlatformAutomationSettings(platform: string, settings: LoadedVideoSettings): PlatformAutomationSettings {
+        const key = PLATFORM_SETTING_KEYS[platform] || platform.trim().toLowerCase();
+        const value = settings.platformSettings?.[key];
+
+        if (!value || typeof value !== 'object') {
+            return {};
+        }
+
+        return value as PlatformAutomationSettings;
+    }
+
+    private isAutoThumbnailEnabled(platform: string, settings: LoadedVideoSettings): boolean {
+        return this.getPlatformAutomationSettings(platform, settings).autoThumbnail !== false;
+    }
+
+    private isAutoCaptionEnabled(platform: string, settings: LoadedVideoSettings): boolean {
+        return this.getPlatformAutomationSettings(platform, settings).autoCaption !== false;
+    }
+
+    private shouldStripHashtags(platform: string, settings: LoadedVideoSettings): boolean {
+        return this.getPlatformAutomationSettings(platform, settings).autoHashtag === false;
+    }
+
+    private stripHashtags(text: string): string {
+        return text.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+    }
+
+    private buildFallbackCaption(video: any, metadata: { cleanedTitle: string; tmdbMatch?: { title: string } }): string {
+        const title = metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title || 'New video';
+        const channelName = video.author || 'YouTube Channel';
+        return `${title} - From ${channelName}`;
+    }
+
+    private buildPlatformCaptionBase(
+        platform: string,
+        captions: GeneratedCaptions,
+        settings: LoadedVideoSettings
+    ): string {
+        const baseCaption =
+            this.isAutoCaptionEnabled(platform, settings) && captions.generated
+                ? captions.generated
+                : captions.fallback;
+
+        return this.shouldStripHashtags(platform, settings)
+            ? this.stripHashtags(baseCaption)
+            : baseCaption;
+    }
+
+    private buildPlatformPostText(
+        platform: string,
+        captions: GeneratedCaptions,
+        video: any,
+        settings: LoadedVideoSettings
+    ): string {
+        const normalizedCaption = this.buildPlatformCaptionBase(platform, captions, settings);
+
+        return [normalizedCaption, video.link].filter(Boolean).join('\n\n');
+    }
+
+    private buildPlatformTitle(
+        platform: string,
+        captions: GeneratedCaptions,
+        video: any,
+        settings: LoadedVideoSettings
+    ): string {
+        const text = this.buildPlatformCaptionBase(platform, captions, settings);
+        return text.slice(0, 100) || video.title || 'Screndly Upload';
+    }
+
+    private buildDefaultYouTubeMetadata(
+        video: any,
+        details: any,
+        metadata: { cleanedTitle: string; tmdbMatch?: { title: string; overview: string } }
+    ): { title: string; description: string } {
+        return {
+            title: video.title || metadata.tmdbMatch?.title || metadata.cleanedTitle || 'Untitled Upload',
+            description:
+                (details.description || video.contentSnippet || metadata.tmdbMatch?.overview || video.title || 'Trailer upload')
+                    .trim(),
+        };
     }
 
     private async getRecentPublishBlock(postIntervalMinutes: number): Promise<string | null> {
@@ -817,7 +950,20 @@ Respond ONLY "YES" or "NO".`,
         });
     }
 
-    private async generateCaptions(video: any, details: any, settings: LoadedVideoSettings, metadata: { cleanedTitle: string; tmdbMatch?: { title: string; overview: string } }) {
+    private async generateCaptions(
+        video: any,
+        details: any,
+        settings: LoadedVideoSettings,
+        metadata: { cleanedTitle: string; tmdbMatch?: { title: string; overview: string } },
+        targetPlatforms: string[]
+    ): Promise<GeneratedCaptions> {
+        const fallback = this.buildFallbackCaption(video, metadata);
+        const needsGeneratedCaption = targetPlatforms.some((platform) => this.isAutoCaptionEnabled(platform, settings));
+
+        if (!needsGeneratedCaption) {
+            return { fallback };
+        }
+
         const context = {
             videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
             channelName: video.author || 'YouTube Channel',
@@ -830,10 +976,10 @@ Respond ONLY "YES" or "NO".`,
 
         try {
             const caption = await aiService.generateYouTubeCaption(context, model, customPrompt);
-            return { universal: caption };
+            return { generated: caption, fallback };
         } catch (error) {
             console.error('[YouTubePoller] AI caption generation failed', error);
-            return { universal: video.title || '' };
+            return { fallback };
         }
     }
 }

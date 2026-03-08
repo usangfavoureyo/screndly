@@ -17,9 +17,9 @@ interface RssSettingsProps {
 
 export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProps) {
   return (
-    <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
+    <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 flex min-h-0 flex-col overflow-hidden">
       {/* Header */}
-      <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center gap-3">
+      <div className="relative z-10 shrink-0 border-b border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 flex items-center gap-3">
         <button
           className="text-gray-900 dark:text-white p-1"
           onClick={() => {
@@ -34,7 +34,7 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
         <h2 className="text-gray-900 dark:text-white text-xl">RSS Feeds</h2>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6 space-y-6">
         {/* Analytics-Driven Self-Optimization */}
         <AnalyticsSelfOptimization
           storageKey="rss_settings"
