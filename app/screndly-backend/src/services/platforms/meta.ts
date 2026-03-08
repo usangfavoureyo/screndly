@@ -1,9 +1,102 @@
 import axios from 'axios';
+import fs from 'fs/promises';
+import path from 'path';
 
 const FACEBOOK_API_VERSION = 'v19.0';
 const BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
+const GRAPH_VIDEO_BASE_URL = `https://graph-video.facebook.com/${FACEBOOK_API_VERSION}`;
 const THREADS_API_VERSION = 'v1.0';
 const THREADS_BASE_URL = `https://graph.threads.net/${THREADS_API_VERSION}`;
+
+type MetaPostResult =
+    | { success: true; data: { id: string; platform: string } }
+    | { success: false; error: string };
+
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function extractMetaError(error: any): string {
+    return (
+        error?.response?.data?.error?.message
+        || error?.response?.data?.message
+        || error?.response?.data?.error_message
+        || error?.message
+        || 'Meta API request failed'
+    );
+}
+
+function getMimeType(filePath: string): string {
+    switch (path.extname(filePath).toLowerCase()) {
+        case '.mp4':
+            return 'video/mp4';
+        case '.mov':
+            return 'video/quicktime';
+        case '.m4v':
+            return 'video/x-m4v';
+        case '.webm':
+            return 'video/webm';
+        default:
+            return 'application/octet-stream';
+    }
+}
+
+async function waitForInstagramMediaReady(containerId: string, accessToken: string): Promise<void> {
+    const maxAttempts = 30;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const statusResponse = await axios.get(`${BASE_URL}/${containerId}`, {
+            params: {
+                fields: 'status_code,status',
+                access_token: accessToken,
+            },
+        });
+
+        const status = String(
+            statusResponse.data?.status_code
+            || statusResponse.data?.status
+            || ''
+        ).toUpperCase();
+
+        if (!status || status === 'FINISHED' || status === 'PUBLISHED' || status === 'READY') {
+            return;
+        }
+
+        if (status === 'ERROR' || status === 'EXPIRED' || status === 'FAILED') {
+            throw new Error(`Instagram media processing failed with status ${status}`);
+        }
+
+        await sleep(5_000);
+    }
+
+    throw new Error('Instagram media processing timed out');
+}
+
+async function waitForThreadsMediaReady(containerId: string, accessToken: string): Promise<void> {
+    const maxAttempts = 30;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const statusResponse = await axios.get(`${THREADS_BASE_URL}/${containerId}`, {
+            params: {
+                fields: 'status,error_message',
+                access_token: accessToken,
+            },
+        });
+
+        const status = String(statusResponse.data?.status || '').toUpperCase();
+        if (!status || status === 'FINISHED' || status === 'PUBLISHED' || status === 'READY') {
+            return;
+        }
+
+        if (status === 'ERROR' || status === 'EXPIRED' || status === 'FAILED') {
+            throw new Error(statusResponse.data?.error_message || `Threads media processing failed with status ${status}`);
+        }
+
+        await sleep(5_000);
+    }
+
+    throw new Error('Threads media processing timed out');
+}
 
 export const metaService = {
     /**
@@ -46,7 +139,54 @@ export const metaService = {
             console.error('[Meta] Facebook Post Error:', error?.response?.data || error);
             return {
                 success: false,
-                error: error?.response?.data?.error?.message || error.message
+                error: extractMetaError(error)
+            };
+        }
+    },
+
+    async postVideoToFacebook(
+        pageId: string,
+        message: string,
+        videoPath: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const fileBuffer = await fs.readFile(videoPath);
+            const formData = new FormData();
+            formData.append('description', message);
+            formData.append('access_token', accessToken);
+            formData.append(
+                'source',
+                new Blob([fileBuffer], { type: getMimeType(videoPath) }),
+                path.basename(videoPath)
+            );
+
+            const response = await fetch(`${GRAPH_VIDEO_BASE_URL}/${pageId}/videos`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data: any = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(
+                    data?.error?.message
+                    || data?.message
+                    || `Facebook video upload failed (${response.status})`
+                );
+            }
+
+            return {
+                success: true,
+                data: {
+                    id: data.id,
+                    platform: 'Facebook',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Facebook Video Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
             };
         }
     },
@@ -187,7 +327,70 @@ export const metaService = {
             console.error('[Meta] Instagram Post Error:', error?.response?.data || error);
             return {
                 success: false,
-                error: error?.response?.data?.error?.message || error.message
+                error: extractMetaError(error)
+            };
+        }
+    },
+
+    async postVideoToInstagramReel(
+        igUserId: string,
+        caption: string,
+        videoUrl: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const containerParams = new URLSearchParams({
+                media_type: 'REELS',
+                video_url: videoUrl,
+                caption,
+                share_to_feed: 'true',
+                access_token: accessToken,
+            });
+
+            const containerRes = await axios.post(
+                `${BASE_URL}/${igUserId}/media`,
+                containerParams.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                }
+            );
+
+            if (!containerRes.data.id) {
+                throw new Error('Failed to create Instagram reel media container');
+            }
+
+            const creationId = containerRes.data.id;
+            await waitForInstagramMediaReady(creationId, accessToken);
+
+            const publishParams = new URLSearchParams({
+                creation_id: creationId,
+                access_token: accessToken,
+            });
+
+            const publishRes = await axios.post(
+                `${BASE_URL}/${igUserId}/media_publish`,
+                publishParams.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: publishRes.data.id,
+                    platform: 'Instagram',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Instagram Reel Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
             };
         }
     },
@@ -244,7 +447,69 @@ export const metaService = {
             console.error('[Meta] Threads Post Error:', error?.response?.data || error);
             return {
                 success: false,
-                error: error?.response?.data?.error?.message || error.message
+                error: extractMetaError(error)
+            };
+        }
+    },
+
+    async postVideoToThreads(
+        userId: string,
+        text: string,
+        videoUrl: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const payload = new URLSearchParams({
+                media_type: 'VIDEO',
+                video_url: videoUrl,
+                text,
+                access_token: accessToken,
+            });
+
+            const containerRes = await axios.post(
+                `${THREADS_BASE_URL}/${userId}/threads`,
+                payload.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                }
+            );
+
+            if (!containerRes.data.id) {
+                throw new Error('Failed to create Threads video container');
+            }
+
+            const creationId = containerRes.data.id;
+            await waitForThreadsMediaReady(creationId, accessToken);
+
+            const publishPayload = new URLSearchParams({
+                creation_id: creationId,
+                access_token: accessToken,
+            });
+
+            const publishRes = await axios.post(
+                `${THREADS_BASE_URL}/${userId}/threads_publish`,
+                publishPayload.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: publishRes.data.id,
+                    platform: 'Threads',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Threads Video Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
             };
         }
     }

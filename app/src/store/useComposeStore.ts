@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ComposeItem, ComposeStatus } from '../types/compose';
+import { normalizeComposeItem, sanitizeComposeItem } from '../lib/create/composeMedia';
 
 interface ComposeStoreState {
   items: ComposeItem[];
@@ -12,20 +13,6 @@ interface ComposeStoreState {
   updateStatus: (itemId: string, status: ComposeStatus, scheduledAt?: string) => void;
 }
 
-function sanitizeItem(item: ComposeItem): ComposeItem {
-  if (!item.media?.previewUrl || !item.media.previewUrl.startsWith('blob:')) {
-    return item;
-  }
-
-  return {
-    ...item,
-    media: {
-      ...item.media,
-      previewUrl: undefined,
-    },
-  };
-}
-
 export const useComposeStore = create<ComposeStoreState>()(
   persist(
     (set, get) => ({
@@ -34,14 +21,15 @@ export const useComposeStore = create<ComposeStoreState>()(
       setActiveItemId: (itemId) => set({ activeItemId: itemId }),
       saveItem: (item) =>
         set((state) => {
-          const existingIndex = state.items.findIndex((entry) => entry.id === item.id);
+          const normalizedItem = normalizeComposeItem(item);
+          const existingIndex = state.items.findIndex((entry) => entry.id === normalizedItem.id);
           if (existingIndex === -1) {
-            return { items: [item, ...state.items], activeItemId: item.id };
+            return { items: [normalizedItem, ...state.items], activeItemId: normalizedItem.id };
           }
 
           const nextItems = [...state.items];
-          nextItems[existingIndex] = item;
-          return { items: nextItems, activeItemId: item.id };
+          nextItems[existingIndex] = normalizedItem;
+          return { items: nextItems, activeItemId: normalizedItem.id };
         }),
       deleteItem: (itemId) =>
         set((state) => ({
@@ -66,9 +54,18 @@ export const useComposeStore = create<ComposeStoreState>()(
     {
       name: 'screndly-compose-store',
       partialize: (state) => ({
-        items: state.items.map(sanitizeItem),
+        items: state.items.map(sanitizeComposeItem),
         activeItemId: state.activeItemId,
       }),
+      merge: (persistedState, currentState) => {
+        const typedPersistedState = persistedState as Partial<ComposeStoreState> | undefined;
+
+        return {
+          ...currentState,
+          ...typedPersistedState,
+          items: (typedPersistedState?.items ?? currentState.items).map(normalizeComposeItem),
+        };
+      },
     },
   ),
 );

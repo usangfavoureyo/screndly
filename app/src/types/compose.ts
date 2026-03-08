@@ -11,12 +11,38 @@ export type ComposePlatformKey =
 
 export type ComposeMediaKind = 'image' | 'video';
 
-export interface ComposeMedia {
+export interface ComposeMediaAsset {
+  id: string;
   kind: ComposeMediaKind;
   fileName: string;
   mimeType: string;
   size: number;
+  order: number;
   previewUrl?: string;
+}
+
+export type ComposeMedia = ComposeMediaAsset;
+
+export type ComposeMediaSetKind =
+  | 'empty'
+  | 'single-image'
+  | 'single-video'
+  | 'multi-image'
+  | 'multi-video'
+  | 'mixed-media';
+
+export interface ComposeMediaSummary {
+  totalAssets: number;
+  imageCount: number;
+  videoCount: number;
+  kind: ComposeMediaSetKind;
+}
+
+export interface ComposePlatformCompatibility {
+  platform: ComposePlatformKey;
+  supported: boolean;
+  label: string;
+  reason?: string;
 }
 
 export interface ComposeSchedule {
@@ -40,6 +66,7 @@ export interface ComposeItem {
   id: string;
   title: string;
   status: ComposeStatus;
+  mediaAssets: ComposeMediaAsset[];
   media?: ComposeMedia;
   platforms: ComposePlatformKey[];
   sharedCaption: string;

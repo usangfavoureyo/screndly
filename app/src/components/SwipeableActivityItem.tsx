@@ -113,7 +113,7 @@ export function SwipeableActivityItem({ activity, onDelete }: SwipeableActivityI
       {/* Main content container */}
       <div
         onClick={() => haptics.light()}
-        className="w-full flex items-center justify-between p-3 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#1A1A1A] cursor-pointer bg-white dark:bg-[#000000] relative"
+        className="w-full p-3 transition-all duration-200 hover:bg-gray-50 dark:hover:bg-[#1A1A1A] cursor-pointer bg-white dark:bg-[#000000] relative lg:pr-12"
         style={{
           transform: `translateX(${swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
@@ -132,21 +132,29 @@ export function SwipeableActivityItem({ activity, onDelete }: SwipeableActivityI
           <Trash2 className="w-4 h-4" />
         </button>
 
-        <div className="flex-1 text-left">
-          <p className="text-gray-900 dark:text-white">{activity.title}</p>
-          <p className="text-[#6B7280] dark:text-[#9CA3AF]">{activity.platform}</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <span
-            className={`px-3 py-1 rounded-full ${
-              activity.status === 'success'
-                ? 'bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]'
-                : 'bg-[#FEE2E2] dark:bg-[#991B1B] text-[#991B1B] dark:text-[#FEE2E2]'
-            }`}
-          >
-            {activity.status}
-          </span>
-          <span className="text-[#6B7280] dark:text-[#9CA3AF] min-w-[80px] text-right">{activity.time}</span>
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0 flex-1 text-left">
+            <p className="text-gray-900 dark:text-white break-words [overflow-wrap:anywhere]">
+              {activity.title}
+            </p>
+            <p className="text-[#6B7280] dark:text-[#9CA3AF] break-words [overflow-wrap:anywhere]">
+              {activity.platform}
+            </p>
+          </div>
+          <div className="flex items-center justify-between gap-3 lg:flex-shrink-0 lg:justify-end lg:pl-6">
+            <span
+              className={`shrink-0 px-3 py-1 rounded-full text-sm ${
+                activity.status === 'success'
+                  ? 'bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]'
+                  : 'bg-[#FEE2E2] dark:bg-[#991B1B] text-[#991B1B] dark:text-[#FEE2E2]'
+              }`}
+            >
+              {activity.status}
+            </span>
+            <span className="shrink-0 text-[#6B7280] dark:text-[#9CA3AF] min-w-[80px] text-right">
+              {activity.time}
+            </span>
+          </div>
         </div>
       </div>
     </div>
