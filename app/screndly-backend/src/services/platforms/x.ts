@@ -52,10 +52,6 @@ export class XService {
         return response.json().catch(() => ({}));
     }
 
-    private async getTextResponse(response: Response): Promise<string> {
-        return response.text().catch(() => '');
-    }
-
     async postTweet(text: string, imageSources?: string | string[], connection?: PlatformConnection): Promise<XPostResult> {
         const authToken = connection?.accessToken || this.bearerToken;
         if (!authToken) {
