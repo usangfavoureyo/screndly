@@ -7,6 +7,8 @@ import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useTMDbPosts } from '../contexts/TMDbPostsContext';
 import { useUndo } from './UndoContext';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 
 interface TMDbFeedsPageProps {
   onNavigate: (page: string) => void;
@@ -18,6 +20,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   const { showUndo } = useUndo();
   const [filterType, setFilterType] = useState<'all' | 'today' | 'weekly' | 'monthly' | 'anniversary'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
   // Filter posts to show only queued ones (scheduled, published, failed show in Activity)
   const feeds = posts.filter(post => post.status === 'queued');
@@ -26,6 +29,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
     if (filterType === 'all') return true;
     return feed.source === `tmdb_${filterType}`;
   });
+  const selection = useBulkSelection(filteredFeeds.map((feed) => feed.id));
 
   const handleFilterChange = useCallback((filter: 'all' | 'today' | 'weekly' | 'monthly' | 'anniversary') => {
     haptics.light();
@@ -94,6 +98,24 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    haptics.medium();
+    setIsDeletingSelected(true);
+
+    try {
+      await Promise.all(selection.selectedIds.map((id) => deletePost(id)));
+      toast.success(`${selection.selectedCount} TMDb feed card${selection.selectedCount === 1 ? '' : 's'} deleted`);
+      selection.clearSelection();
+    } catch (error) {
+      console.error('[TMDbFeedsPage] Bulk delete failed:', error);
+      toast.error('Failed to delete selected TMDb feeds');
+    } finally {
+      setIsDeletingSelected(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Stats Panel */}
@@ -152,6 +174,15 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
 
       {/* Content */}
       <div className="space-y-4">
+        {selection.selectionMode && (
+          <ActivitySelectionToolbar
+            selectedCount={selection.selectedCount}
+            isDeleting={isDeletingSelected}
+            onClear={selection.clearSelection}
+            onDelete={handleDeleteSelected}
+            itemLabel="feed cards"
+          />
+        )}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-gray-900 dark:text-white">
             Scheduled Posts ({filteredFeeds.length})
@@ -187,6 +218,10 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
               feed={feed}
               onUpdate={handleUpdateFeed}
               onDelete={handleDeleteFeed}
+              selectionMode={selection.selectionMode}
+              selected={selection.isSelected(feed.id)}
+              onEnterSelectionMode={selection.enterSelectionMode}
+              onToggleSelection={selection.toggleSelection}
             />
           ))
         ) : (
