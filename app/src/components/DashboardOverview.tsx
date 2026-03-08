@@ -93,6 +93,11 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
   };
 
   const usageTotal = useMemo(() => stats?.usage?.total ?? 0, [stats]);
+  const videoTrends = useMemo(() => stats?.video.trends ?? [], [stats]);
+  const hasVideoTrendData = useMemo(
+    () => videoTrends.some((point) => (point.videos ?? 0) > 0),
+    [videoTrends]
+  );
 
   return (
     <div className="space-y-6">
@@ -248,30 +253,36 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             <div>
               <h4 className="text-gray-900 dark:text-white mb-4">Video Processing Trends</h4>
-              <ResponsiveContainer width="100%" height={250}>
-                <LineChart data={stats?.video.trends ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                  <XAxis dataKey="date" stroke="#9CA3AF" tick={{ fill: '#9CA3AF' }} interval={0} />
-                  <YAxis stroke="#9CA3AF" tick={{ fill: '#9CA3AF' }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
-                      border: isDarkMode ? '1px solid #333333' : '1px solid #E5E7EB',
-                      borderRadius: '0.5rem',
-                      color: isDarkMode ? '#FFFFFF' : '#000000',
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="videos"
-                    stroke="#ec1e24"
-                    strokeWidth={2}
-                    dot={{ fill: '#ec1e24', r: 4 }}
-                    name="Detected Videos"
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {isLoading ? (
+                <Skeleton className="h-[250px] w-full rounded-xl" />
+              ) : hasVideoTrendData ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <LineChart data={videoTrends}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                    <XAxis dataKey="date" stroke="#9CA3AF" tick={{ fill: '#9CA3AF' }} interval={0} />
+                    <YAxis stroke="#9CA3AF" tick={{ fill: '#9CA3AF' }} allowDecimals={false} domain={[0, 'dataMax + 1']} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: isDarkMode ? '#000000' : '#FFFFFF',
+                        border: isDarkMode ? '1px solid #333333' : '1px solid #E5E7EB',
+                        borderRadius: '0.5rem',
+                        color: isDarkMode ? '#FFFFFF' : '#000000',
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="videos"
+                      stroke="#ec1e24"
+                      strokeWidth={2}
+                      dot={{ fill: '#ec1e24', r: 4 }}
+                      name="Detected Videos"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <EmptyCardMessage message="No video detections in the last 7 days yet." />
+              )}
             </div>
 
             <div>
