@@ -10,6 +10,14 @@ import { trackApiUsage } from './api-usage.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
+const TMDB_SCHEDULE_BUFFER_HOURS = 1;
+const TMDB_SCHEDULE_SPACING_HOURS = 4;
+type SaveTMDbPostAction = 'created' | 'skipped';
+
+interface SaveTMDbPostResult {
+    action: SaveTMDbPostAction;
+    effectiveScheduledTime?: Date;
+}
 
 interface TMDbMovie {
     id: number;
@@ -31,6 +39,45 @@ type MediaType = 'movie' | 'tv';
 
 interface TMDbCredits {
     cast: Array<{ name: string; character: string; order: number }>;
+}
+
+function reserveTMDbScheduleTime(reservedTimes: number[], scheduledTime: Date) {
+    const timestamp = scheduledTime.getTime();
+    if (!reservedTimes.includes(timestamp)) {
+        reservedTimes.push(timestamp);
+        reservedTimes.sort((a, b) => a - b);
+    }
+}
+
+function findNextAvailableTMDbScheduleTime(reservedTimes: number[], startTime: Date): Date {
+    const spacingMs = TMDB_SCHEDULE_SPACING_HOURS * 60 * 60 * 1000;
+    let candidateMs = startTime.getTime();
+
+    while (true) {
+        const conflictingTime = reservedTimes.find((reservedTime) => Math.abs(reservedTime - candidateMs) < spacingMs);
+        if (!conflictingTime) {
+            return new Date(candidateMs);
+        }
+
+        candidateMs = conflictingTime + spacingMs;
+    }
+}
+
+async function getReservedTMDbScheduleTimes(now: Date): Promise<number[]> {
+    const scheduledPosts = await prisma.tMDbPost.findMany({
+        where: {
+            status: 'scheduled',
+            scheduledTime: { gte: now },
+        },
+        select: {
+            scheduledTime: true,
+        },
+        orderBy: {
+            scheduledTime: 'asc',
+        },
+    });
+
+    return scheduledPosts.map((post) => post.scheduledTime.getTime());
 }
 
 /**
@@ -318,20 +365,10 @@ export async function saveTMDbPost(
     preferredImage: 'poster' | 'backdrop' | 'random' = 'poster',
     platforms: string[] = [],
     config?: RefreshSettings & { autoPost?: boolean }
-): Promise<void> {
+): Promise<SaveTMDbPostResult> {
     const title = movie.title || movie.name || 'Unknown';
     const releaseDate = movie.release_date || movie.first_air_date || new Date().toISOString();
     const year = new Date(releaseDate).getFullYear();
-
-    // Check for duplicates
-    const existing = await prisma.tMDbPost.findFirst({
-        where: { tmdbId: movie.id, source, mediaType }
-    });
-
-    if (existing) {
-        console.log(`Skipping duplicate: ${title}`);
-        return;
-    }
 
     // Get cast
     const cast = mediaType === 'movie'
@@ -438,6 +475,17 @@ export async function saveTMDbPost(
             break;
     }
 
+    // Check for duplicates within the same reminder stage only.
+    // This allows the same title to appear once in monthly, later in weekly, and finally in today.
+    const existing = await prisma.tMDbPost.findFirst({
+        where: { tmdbId: movie.id, source, mediaType }
+    });
+
+    if (existing) {
+        console.log(`Skipping duplicate: ${title}`);
+        return { action: 'skipped' };
+    }
+
     // Save to database
     // IMPORTANT: Fetch creates QUEUED feeds, not SCHEDULED
     // Scheduling only happens when user explicitly schedules
@@ -462,6 +510,7 @@ export async function saveTMDbPost(
 
     const statusMsg = config?.autoPost ? 'SCHEDULED' : 'QUEUED';
     console.log(`Saved TMDb post: ${title} [${statusMsg}] for ${scheduledTime}`);
+    return { action: 'created', effectiveScheduledTime: scheduledTime };
 }
 
 /**
@@ -493,16 +542,18 @@ export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TM
 }
 
 /**
- * Fetch movies releasing in NEXT 7 days - uses settings for filtering
+ * Fetch movies releasing in 1-7 days - uses settings for filtering
  */
 export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
     const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
     const config = { ...defaultRefreshSettings, ...settings };
 
     const params: Record<string, string> = {
-        'primary_release_date.gte': today.toISOString().split('T')[0],
+        'primary_release_date.gte': tomorrow.toISOString().split('T')[0],
         'primary_release_date.lte': nextWeek.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
         'region': 'US'
@@ -520,16 +571,18 @@ export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<T
 }
 
 /**
- * Fetch movies releasing rest of month - uses settings for filtering
+ * Fetch movies releasing in 8-30 days - uses settings for filtering
  */
 export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
     const today = new Date();
+    const nextEightDays = new Date(today);
+    nextEightDays.setDate(today.getDate() + 8);
     const thirtyDaysLater = new Date(today);
     thirtyDaysLater.setDate(today.getDate() + 30);
     const config = { ...defaultRefreshSettings, ...settings };
 
     const params: Record<string, string> = {
-        'primary_release_date.gte': today.toISOString().split('T')[0],
+        'primary_release_date.gte': nextEightDays.toISOString().split('T')[0],
         'primary_release_date.lte': thirtyDaysLater.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
         'region': 'US'
@@ -575,16 +628,18 @@ export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TM
 }
 
 /**
- * Fetch TV shows airing in NEXT 7 days - uses settings for filtering
+ * Fetch TV shows airing in 1-7 days - uses settings for filtering
  */
 export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
     const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(today.getDate() + 1);
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
     const config = { ...defaultRefreshSettings, ...settings };
 
     const params: Record<string, string> = {
-        'first_air_date.gte': today.toISOString().split('T')[0],
+        'first_air_date.gte': tomorrow.toISOString().split('T')[0],
         'first_air_date.lte': nextWeek.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
         'watch_region': 'US'
@@ -602,16 +657,18 @@ export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<T
 }
 
 /**
- * Fetch TV shows airing rest of month - uses settings for filtering
+ * Fetch TV shows airing in 8-30 days - uses settings for filtering
  */
 export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
     const today = new Date();
+    const nextEightDays = new Date(today);
+    nextEightDays.setDate(today.getDate() + 8);
     const thirtyDaysLater = new Date(today);
     thirtyDaysLater.setDate(today.getDate() + 30);
     const config = { ...defaultRefreshSettings, ...settings };
 
     const params: Record<string, string> = {
-        'first_air_date.gte': today.toISOString().split('T')[0],
+        'first_air_date.gte': nextEightDays.toISOString().split('T')[0],
         'first_air_date.lte': thirtyDaysLater.toISOString().split('T')[0],
         'sort_by': 'popularity.desc',
         'watch_region': 'US'
@@ -977,7 +1034,8 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
 
     const now = new Date();
     let scheduleTime = new Date(now);
-    scheduleTime.setHours(scheduleTime.getHours() + 1);
+    scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_BUFFER_HOURS);
+    const reservedScheduleTimes = await getReservedTMDbScheduleTimes(now);
 
     // Generic Processor Function
     const processBatch = async (
@@ -1010,17 +1068,23 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
                 else if (sourceLabel === 'tmdb_monthly') shouldAutoPost = !!config.monthlyAutoPost;
                 else if (sourceLabel === 'tmdb_anniversary') shouldAutoPost = !!config.anniversaryAutoPost;
 
-                await saveTMDbPost(
+                const nextScheduledTime = findNextAvailableTMDbScheduleTime(reservedScheduleTimes, scheduleTime);
+                const result = await saveTMDbPost(
                     candidate,
                     type,
                     sourceLabel,
-                    scheduleTime,
+                    nextScheduledTime,
                     config.preferredImage,
                     getPlatformsForSource(sourceLabel, config),
                     { ...config, autoPost: shouldAutoPost }
                 );
-                scheduleTime.setHours(scheduleTime.getHours() + 4);
-                added++;
+
+                if (result.action !== 'skipped') {
+                    reserveTMDbScheduleTime(reservedScheduleTimes, result.effectiveScheduledTime || nextScheduledTime);
+                    scheduleTime = new Date((result.effectiveScheduledTime || nextScheduledTime).getTime());
+                    scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_SPACING_HOURS);
+                    added++;
+                }
             }
         } catch (error) {
             const msg = `Failed processing ${sourceLabel}: ${error}`;

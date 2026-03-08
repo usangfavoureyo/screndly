@@ -39,6 +39,35 @@ const BUCKET_SETTING_KEYS: Record<BackblazeBucketType, { keyId: string; applicat
   },
 };
 
+const BUCKET_ENV_KEYS: Record<BackblazeBucketType, { keyId: string[]; applicationKey: string[]; bucketName: string[] }> = {
+  general: {
+    keyId: ['BACKBLAZE_GENERAL_KEY_ID', 'BACKBLAZE_KEY_ID'],
+    applicationKey: ['BACKBLAZE_GENERAL_APPLICATION_KEY', 'BACKBLAZE_APPLICATION_KEY'],
+    bucketName: ['BACKBLAZE_GENERAL_BUCKET_NAME', 'BACKBLAZE_BUCKET_NAME'],
+  },
+  videos: {
+    keyId: ['BACKBLAZE_VIDEOS_KEY_ID'],
+    applicationKey: ['BACKBLAZE_VIDEOS_APPLICATION_KEY'],
+    bucketName: ['BACKBLAZE_VIDEOS_BUCKET_NAME'],
+  },
+  design: {
+    keyId: ['BACKBLAZE_DESIGN_KEY_ID'],
+    applicationKey: ['BACKBLAZE_DESIGN_APPLICATION_KEY'],
+    bucketName: ['BACKBLAZE_DESIGN_BUCKET_NAME'],
+  },
+};
+
+function readEnvValue(keys: string[]): string | null {
+  for (const key of keys) {
+    const value = process.env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function sanitizePathSegment(value: string): string {
   return value
     .trim()
@@ -65,12 +94,18 @@ function buildFileName(originalName: string, prefix?: string): string {
 
 async function getBucketConfig(bucketType: BackblazeBucketType): Promise<BackblazeBucketConfig | null> {
   const bucketSettings = BUCKET_SETTING_KEYS[bucketType];
-  const [keyId, applicationKey, bucketName, endpoint] = await Promise.all([
+  const bucketEnvKeys = BUCKET_ENV_KEYS[bucketType];
+  const [settingKeyId, settingApplicationKey, settingBucketName, settingEndpoint] = await Promise.all([
     getSecretSetting(bucketSettings.keyId),
     getSecretSetting(bucketSettings.applicationKey),
     getStringSetting(bucketSettings.bucketName),
     getStringSetting('backblazeEndpoint'),
   ]);
+
+  const keyId = settingKeyId || readEnvValue(bucketEnvKeys.keyId);
+  const applicationKey = settingApplicationKey || readEnvValue(bucketEnvKeys.applicationKey);
+  const bucketName = settingBucketName || readEnvValue(bucketEnvKeys.bucketName);
+  const endpoint = settingEndpoint || process.env.BACKBLAZE_ENDPOINT?.trim() || DEFAULT_ENDPOINT;
 
   if (!keyId || !applicationKey || !bucketName) {
     return null;

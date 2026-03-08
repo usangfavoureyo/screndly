@@ -25,7 +25,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
 
   useTMDbAutoSync(fetchPosts);
 
-  // Filter posts to show only queued ones (scheduled, published, failed show in Activity)
+  // Show only queued items here. Scheduled, published, and failed items live in Activity.
   const feeds = posts.filter(post => post.status === 'queued');
 
   const filteredFeeds = feeds.filter(feed => {
@@ -188,7 +188,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         )}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-gray-900 dark:text-white">
-            Scheduled Posts ({filteredFeeds.length})
+            Queued Posts ({filteredFeeds.length})
           </h3>
           <div className="flex items-center gap-2">
             {/* Manual Refresh Button - Icon Only, same height as View Activity */}
@@ -230,11 +230,11 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         ) : (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
             <Clapperboard className="w-12 h-12 text-gray-400 dark:text-[#9CA3AF] mx-auto mb-4" />
-            <h3 className="text-gray-900 dark:text-white mb-2">No {filterType !== 'all' ? filterType : ''} feeds scheduled</h3>
+            <h3 className="text-gray-900 dark:text-white mb-2">No {filterType !== 'all' ? filterType : ''} queued posts</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filterType !== 'all'
-                ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} feeds will appear here automatically when generated.`
-                : 'Feeds will appear here automatically based on your TMDb settings.'
+                ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} posts will appear here automatically when fetched and left waiting for publish or scheduling.`
+                : 'Queued TMDb posts will appear here automatically based on your TMDb settings.'
               }
             </p>
           </div>
