@@ -28,6 +28,8 @@ const envSchema = z.object({
     TIKTOK_CLIENT_SECRET: z.string().optional(),
     PINTEREST_APP_ID: z.string().optional(),
     PINTEREST_APP_SECRET: z.string().optional(),
+    PINTEREST_CLIENT_ID: z.string().optional(),
+    PINTEREST_CLIENT_SECRET: z.string().optional(),
 
     // External APIs
     TMDB_API_KEY: z.string().optional(),

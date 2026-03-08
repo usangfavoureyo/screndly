@@ -36,7 +36,6 @@ export function SwipeableActivityCard({
   const currentY = useRef(0);
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
-  const suppressNextClickRef = useRef(false);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   const LONG_PRESS_MS = 450;
@@ -65,7 +64,6 @@ export function SwipeableActivityCard({
     pressOriginRef.current = { x: clientX, y: clientY };
     longPressTimeoutRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
-      suppressNextClickRef.current = true;
       haptics.medium();
       onEnterSelectionMode(id);
     }, LONG_PRESS_MS);
@@ -137,17 +135,9 @@ export function SwipeableActivityCard({
     clearLongPress();
 
     if (selectionMode) {
-      const deltaX = Math.abs(currentX.current - startX.current);
-      const deltaY = Math.abs(currentY.current - startY.current);
-
       setIsSwiping(false);
       setSwipeDirection('none');
       setSwipeX(0);
-
-      if (!longPressTriggeredRef.current && deltaX < MOVE_CANCEL_THRESHOLD && deltaY < MOVE_CANCEL_THRESHOLD) {
-        suppressNextClickRef.current = true;
-        onToggleSelection?.(id);
-      }
 
       longPressTriggeredRef.current = false;
       currentX.current = startX.current;
@@ -208,34 +198,10 @@ export function SwipeableActivityCard({
     clearLongPress();
   };
 
-  const handleClick = (e: React.MouseEvent) => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
-
-    if (!selectionMode || !onToggleSelection) {
-      return;
-    }
-
-    if (isInteractiveTarget(e.target)) {
-      return;
-    }
-
+  const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onToggleSelection(id);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!selectionMode || !onToggleSelection) {
-      return;
-    }
-
-    if (e.key !== 'Enter' && e.key !== ' ') {
-      return;
-    }
-
-    e.preventDefault();
+    e.stopPropagation();
+    haptics.light();
     onToggleSelection(id);
   };
 
@@ -259,16 +225,11 @@ export function SwipeableActivityCard({
 
       {/* Card Content */}
       <div
-        role={selectionMode ? 'button' : undefined}
-        tabIndex={selectionMode ? 0 : undefined}
-        aria-pressed={selectionMode ? selected : undefined}
-        className={`${className} relative select-none ${selectionMode ? 'cursor-pointer' : ''} ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
+        className={`${className} relative select-none ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
         style={{
           transform: `translateX(${selectionMode ? 0 : swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -279,11 +240,18 @@ export function SwipeableActivityCard({
         onTouchCancel={handleTouchCancel}
       >
         {selectionMode && (
-          <div className="pointer-events-none absolute right-3 top-3 z-10">
+          <button
+            type="button"
+            aria-label={selected ? 'Unselect card' : 'Select card'}
+            aria-pressed={selected}
+            data-prevent-card-selection="true"
+            className="absolute right-3 top-3 z-10"
+            onClick={handleSelectionToggle}
+          >
             <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${selected ? 'border-[#ec1e24] bg-[#ec1e24] text-white' : 'border-gray-300 bg-white/95 text-transparent dark:border-[#333333] dark:bg-[#050505]/95'}`}>
               <Check className="h-3.5 w-3.5" />
             </div>
-          </div>
+          </button>
         )}
         {children}
       </div>

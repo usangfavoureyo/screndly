@@ -59,7 +59,11 @@ function extractTikTokErrorMessage(error: any): string {
     const data = error?.response?.data;
     const code = typeof data?.error?.code === 'string' ? data.error.code : undefined;
     const message = data?.error?.message || data?.message || error.message || 'TikTok request failed';
-    return code && message && !String(message).includes(code) ? `${code}: ${message}` : message;
+    const combined = code && message && !String(message).includes(code) ? `${code}: ${message}` : message;
+    if (/unaudited_client_can_only_post_to_private_accounts/i.test(combined)) {
+        return 'TikTok rejected this post because the app is unaudited. TikTok currently allows this app to post only to private or self-only accounts until the integration is audited. See https://developers.tiktok.com/doc/content-sharing-guidelines/.';
+    }
+    return combined;
 }
 
 function unwrapTikTokData<T>(payload: any, fallbackMessage: string): T {
@@ -209,10 +213,14 @@ function pickPrivacyLevel(options?: string[]): TikTokPrivacyLevel {
         || 'SELF_ONLY';
 }
 
-function buildPostInfo(title: string, creatorInfo: TikTokCreatorInfo | null) {
+function buildPostInfo(
+    title: string,
+    creatorInfo: TikTokCreatorInfo | null,
+    privacyLevelOverride?: TikTokPrivacyLevel
+) {
     return {
         title,
-        privacy_level: pickPrivacyLevel(creatorInfo?.privacy_level_options),
+        privacy_level: privacyLevelOverride || pickPrivacyLevel(creatorInfo?.privacy_level_options),
         disable_duet: !!creatorInfo?.duet_disabled,
         disable_comment: !!creatorInfo?.comment_disabled,
         disable_stitch: !!creatorInfo?.stitch_disabled,
@@ -226,7 +234,8 @@ async function initializeFileUpload(
     mimeType: string | undefined,
     title: string,
     accessToken: string,
-    creatorInfo: TikTokCreatorInfo | null
+    creatorInfo: TikTokCreatorInfo | null,
+    privacyLevelOverride?: TikTokPrivacyLevel
 ): Promise<TikTokUploadInit> {
     const uploadPlan = await getUploadPlan(filePath);
     const effectiveMimeType = resolveMimeType(filePath, mimeType, fileName);
@@ -234,7 +243,7 @@ async function initializeFileUpload(
     const response = await axios.post(
         `${TIKTOK_API_BASE}/post/publish/video/init/`,
         {
-            post_info: buildPostInfo(title, creatorInfo),
+            post_info: buildPostInfo(title, creatorInfo, privacyLevelOverride),
             source_info: {
                 source: 'FILE_UPLOAD',
                 video_size: uploadPlan.fileSize,
@@ -334,14 +343,32 @@ export const tiktokService = {
                 throw new Error('TikTok requires a video file or a downloadable video URL.');
             }
 
-            const uploadInit = await initializeFileUpload(
-                filePath,
-                normalizedSource.fileName,
-                mimeType,
-                title,
-                accessToken,
-                creatorInfo
-            );
+            let uploadInit: TikTokUploadInit;
+            try {
+                uploadInit = await initializeFileUpload(
+                    filePath,
+                    normalizedSource.fileName,
+                    mimeType,
+                    title,
+                    accessToken,
+                    creatorInfo
+                );
+            } catch (error) {
+                const message = extractTikTokErrorMessage(error);
+                if (!/unaudited.*private|self-only/i.test(message)) {
+                    throw error;
+                }
+
+                uploadInit = await initializeFileUpload(
+                    filePath,
+                    normalizedSource.fileName,
+                    mimeType,
+                    title,
+                    accessToken,
+                    creatorInfo,
+                    'SELF_ONLY'
+                );
+            }
 
             await uploadVideoChunks(uploadInit.upload_url, filePath, normalizedSource.fileName, mimeType);
 

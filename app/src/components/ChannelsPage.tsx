@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useBottomSheet } from '../hooks/useBottomSheet';
 import { apiClient } from '../lib/api/client';
+import { useUndo } from './UndoContext';
 
 interface Channel {
   id: string;
@@ -30,6 +31,7 @@ type ChannelsUIState = 'CHANNELS' | 'ADD_CHANNEL' | 'EDIT_CHANNEL';
 export function ChannelsPage() {
   const addSheet = useBottomSheet();
   const editSheet = useBottomSheet();
+  const { showUndo } = useUndo();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -121,19 +123,46 @@ export function ChannelsPage() {
 
   const deleteChannel = async (id: string) => {
     haptics.medium();
-    const previousChannels = [...channels];
+    const channelIndex = channels.findIndex((channel) => channel.id === id);
+    const channel = channelIndex >= 0 ? channels[channelIndex] : null;
+    if (!channel) return;
 
-    setChannels((current) => current.filter((channel) => channel.id !== id));
+    setChannels((current) => current.filter((item) => item.id !== id));
 
-    const response = await apiClient.delete(`/api/channels/${id}`);
+    showUndo({
+      id: `channel-${id}`,
+      itemName: channel.name,
+      onUndo: () => {
+        setChannels((current) => {
+          if (current.some((item) => item.id === id)) {
+            return current;
+          }
 
-    if (response.success) {
-      toast.success('Channel removed');
-      return;
-    }
+          const next = [...current];
+          next.splice(Math.max(0, Math.min(channelIndex, next.length)), 0, channel);
+          return next;
+        });
+      },
+      onConfirm: async () => {
+        const response = await apiClient.delete(`/api/channels/${id}`);
 
-    setChannels(previousChannels);
-    toast.error(response.error?.message || 'Failed to remove channel');
+        if (response.success) {
+          toast.success('Channel removed');
+          return;
+        }
+
+        setChannels((current) => {
+          if (current.some((item) => item.id === id)) {
+            return current;
+          }
+
+          const next = [...current];
+          next.splice(Math.max(0, Math.min(channelIndex, next.length)), 0, channel);
+          return next;
+        });
+        toast.error(response.error?.message || 'Failed to remove channel');
+      }
+    });
   };
 
   const addChannel = async () => {

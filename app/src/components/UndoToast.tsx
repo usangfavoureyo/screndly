@@ -10,8 +10,8 @@ export function UndoToast() {
 
   const handleUndo = () => {
     haptics.medium();
-    currentItem.onUndo();
-    hideUndo();
+    void currentItem.onUndo();
+    hideUndo(true);
   };
 
   const toastContent = (

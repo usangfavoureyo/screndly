@@ -7,6 +7,7 @@ import { NotificationPanel } from "./NotificationPanel";
 import { InstallPrompt } from "./InstallPrompt";
 import { NotFoundPage } from "./NotFoundPage";
 import { UndoToast } from "./UndoToast";
+import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TMDbModals } from "./tmdb/TMDbModals";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
@@ -14,6 +15,7 @@ import { haptics } from "../utils/haptics";
 import { useNotifications } from "../contexts/NotificationsContext";
 import { useBackNavigation } from "../contexts/BackNavigationContext";
 import { setupInstallPrompt, registerServiceWorker } from "../utils/pwa";
+import { toast } from "sonner";
 import { logout } from "../lib/auth";
 
 const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
@@ -67,7 +69,18 @@ function getPageFromURL(): string {
 }
 
 export function AppContent() {
-  const { notifications, unreadCount, markAsRead, markAllAsRead, clearAll, addNotification, deleteNotification } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    markAsRead,
+    markAllAsRead,
+    clearAll,
+    addNotification,
+    deleteNotification,
+    removeNotificationLocal,
+    restoreNotification,
+  } = useNotifications();
+  const { showUndo } = useUndo();
 
   // Initialize currentPage from URL (preserves state on refresh)
   const [currentPage, setCurrentPageState] = useState(() => getPageFromURL());
@@ -323,6 +336,32 @@ export function AppContent() {
     handleNavigate(page);
   };
 
+  const handleDeleteNotification = useCallback((notificationId: string) => {
+    const notificationIndex = notifications.findIndex((item) => item.id === notificationId);
+    const notification = notificationIndex >= 0 ? notifications[notificationIndex] : null;
+    if (!notification) return;
+
+    haptics.medium();
+    removeNotificationLocal(notificationId);
+
+    showUndo({
+      id: `notification-${notificationId}`,
+      itemName: notification.title,
+      onUndo: () => {
+        restoreNotification(notification, notificationIndex);
+      },
+      onConfirm: async () => {
+        try {
+          await deleteNotification(notificationId);
+          toast.success('Notification deleted');
+        } catch (error) {
+          restoreNotification(notification, notificationIndex);
+          toast.error(error instanceof Error ? error.message : 'Failed to delete notification');
+        }
+      }
+    });
+  }, [deleteNotification, notifications, removeNotificationLocal, restoreNotification, showUndo]);
+
   // Handle notification actions (approve, schedule, view, dismiss)
   const handleNotificationAction = (notificationId: string, actionType: string) => {
     haptics.medium();
@@ -331,7 +370,7 @@ export function AppContent() {
     switch (actionType) {
       case 'approve':
         // Remove the notification after action
-        deleteNotification(notificationId);
+        handleDeleteNotification(notificationId);
         break;
       case 'schedule':
         // Navigate to appropriate page
@@ -340,7 +379,7 @@ export function AppContent() {
         // Navigate to details page
         break;
       case 'dismiss':
-        deleteNotification(notificationId);
+        handleDeleteNotification(notificationId);
         break;
     }
   };
@@ -486,17 +525,17 @@ export function AppContent() {
           initialPage={settingsInitialPage}
         />
       )}
-      <NotificationPanel
-        isOpen={isNotificationsOpen}
-        onClose={() => setIsNotificationsOpen(false)}
+        <NotificationPanel
+          isOpen={isNotificationsOpen}
+          onClose={() => setIsNotificationsOpen(false)}
         notifications={notifications}
         onMarkAsRead={markAsRead}
         onMarkAllAsRead={markAllAsRead}
         onClearAll={clearAll}
-        onDeleteNotification={deleteNotification}
-        onNotificationAction={handleNotificationAction}
-        onOpenPage={handleOpenNotificationPage}
-      />
+          onDeleteNotification={handleDeleteNotification}
+          onNotificationAction={handleNotificationAction}
+          onOpenPage={handleOpenNotificationPage}
+        />
 
       {/* Undo Toast */}
       <UndoToast />

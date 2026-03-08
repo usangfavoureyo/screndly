@@ -23,6 +23,17 @@ interface PlatformTestPublishModalProps {
   onPublished: () => void;
 }
 
+function formatPublishError(platform: PlatformType, message: string): string {
+  if (
+    platform === 'TikTok'
+    && /unaudited_client_can_only_post_to_private_accounts/i.test(message)
+  ) {
+    return 'TikTok rejected this post because the app is unaudited. TikTok currently allows this app to post only to private or self-only accounts until the integration is audited. See https://developers.tiktok.com/doc/content-sharing-guidelines/.';
+  }
+
+  return message;
+}
+
 interface PublishConfig {
   title: string;
   description: string;
@@ -104,6 +115,7 @@ export function PlatformTestPublishModal({
   onPublished,
 }: PlatformTestPublishModalProps) {
   const config = PLATFORM_CONFIG[platform];
+  const displayError = lastError ? formatPublishError(platform, lastError) : null;
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -290,7 +302,7 @@ export function PlatformTestPublishModal({
               onChange={(event) => setMediaFile(event.target.files?.[0] || null)}
             />
             {mediaFile && (
-              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{mediaFile.name}</p>
+              <p className="break-all text-xs text-[#6B7280] dark:text-[#9CA3AF]">{mediaFile.name}</p>
             )}
             {platform === 'TikTok' && (
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
@@ -311,9 +323,11 @@ export function PlatformTestPublishModal({
           </div>
         )}
 
-        {lastError && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-            {lastError}
+        {displayError && (
+          <div className="overflow-hidden rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
+            <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+              {displayError}
+            </p>
           </div>
         )}
 

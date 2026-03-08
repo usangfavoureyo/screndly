@@ -3,6 +3,7 @@ import axios from 'axios';
 import prisma from '../../lib/prisma';
 import { env } from '../../lib/env';
 import { getTikTokClientKey, getTikTokClientSecret } from '../../lib/tiktokOAuth';
+import { getPinterestAppId, getPinterestAppSecret } from '../../lib/pinterestOAuth';
 import { buildXTokenRequest, getXOAuthClientId } from '../../lib/xOAuth';
 import { metaService } from './meta';
 
@@ -160,11 +161,14 @@ async function refreshTikTokConnection(connection: PlatformConnection): Promise<
 }
 
 async function refreshPinterestConnection(connection: PlatformConnection): Promise<PlatformConnection> {
-    if (!connection.refreshToken || !env.PINTEREST_APP_ID || !env.PINTEREST_APP_SECRET) {
+    const pinterestAppId = getPinterestAppId();
+    const pinterestAppSecret = getPinterestAppSecret();
+
+    if (!connection.refreshToken || !pinterestAppId || !pinterestAppSecret) {
         return connection;
     }
 
-    const basicAuth = Buffer.from(`${env.PINTEREST_APP_ID}:${env.PINTEREST_APP_SECRET}`).toString('base64');
+    const basicAuth = Buffer.from(`${pinterestAppId}:${pinterestAppSecret}`).toString('base64');
     const params = new URLSearchParams({
         refresh_token: connection.refreshToken,
         grant_type: 'refresh_token',

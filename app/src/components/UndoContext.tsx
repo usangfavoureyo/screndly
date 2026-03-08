@@ -3,13 +3,13 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 interface UndoItem {
   id: string;
   itemName: string;
-  onUndo: () => void;
-  onConfirm?: () => void;
+  onUndo: () => void | Promise<void>;
+  onConfirm?: () => void | Promise<void>;
 }
 
 interface UndoContextType {
   showUndo: (item: UndoItem) => void;
-  hideUndo: () => void;
+  hideUndo: (skipConfirm?: boolean) => void;
   currentItem: UndoItem | null;
 }
 
@@ -19,15 +19,15 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
   const [currentItem, setCurrentItem] = useState<UndoItem | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const hideUndo = useCallback(() => {
+  const hideUndo = useCallback((skipConfirm = false) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
 
     // Execute the confirm callback if it exists
-    if (currentItem?.onConfirm) {
-      currentItem.onConfirm();
+    if (!skipConfirm && currentItem?.onConfirm) {
+      void currentItem.onConfirm();
     }
 
     setCurrentItem(null);
