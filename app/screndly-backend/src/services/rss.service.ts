@@ -614,6 +614,111 @@ function extractImageUrls(item: Record<string, any>): string[] {
   return dedupeUrls(urls);
 }
 
+function normalizeRSSDedupeValue(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/https?:\/\//g, '')
+    .replace(/www\./g, '')
+    .replace(/[?#].*$/, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getRSSItemDedupeKey(item: RSSItem): string {
+  if (item.guid && item.guid.trim()) {
+    return `guid:${normalizeRSSDedupeValue(item.guid)}`;
+  }
+
+  if (item.link && item.link.trim()) {
+    return `link:${normalizeRSSDedupeValue(item.link)}`;
+  }
+
+  return `title:${normalizeRSSDedupeValue(item.title)}`;
+}
+
+function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
+  return {
+    title: item.title,
+    link: item.link,
+    description: item.description,
+    pubDate: item.pubDate.toISOString(),
+    imageUrl: item.imageUrl ?? null,
+    imageUrls: item.imageUrls,
+    author: item.author ?? null,
+    guid: item.guid ?? null,
+  } satisfies Prisma.InputJsonValue;
+}
+
+function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
+  if (!itemData || typeof itemData !== 'object' || Array.isArray(itemData)) {
+    return null;
+  }
+
+  const value = itemData as Record<string, unknown>;
+  const pubDateValue = typeof value.pubDate === 'string' ? new Date(value.pubDate) : null;
+  const pubDate = pubDateValue && !Number.isNaN(pubDateValue.getTime()) ? pubDateValue : new Date();
+
+  return {
+    title: typeof value.title === 'string' ? value.title : '',
+    link: typeof value.link === 'string' ? value.link : '',
+    description: typeof value.description === 'string' ? value.description : '',
+    pubDate,
+    imageUrl: typeof value.imageUrl === 'string' ? value.imageUrl : undefined,
+    imageUrls: Array.isArray(value.imageUrls)
+      ? value.imageUrls.filter((entry): entry is string => typeof entry === 'string')
+      : [],
+    author: typeof value.author === 'string' ? value.author : undefined,
+    guid: typeof value.guid === 'string' ? value.guid : undefined,
+  };
+}
+
+async function upsertRSSFeedItem(
+  feedId: string,
+  item: RSSItem,
+  status: 'pending' | 'published' | 'failed' | 'filtered',
+  options?: {
+    publishedAt?: Date | null;
+    errorMessage?: string | null;
+    firstSeenAt?: Date;
+  }
+): Promise<void> {
+  const dedupeKey = getRSSItemDedupeKey(item);
+  const now = new Date();
+
+  await prisma.rSSFeedItem.upsert({
+    where: {
+      feedId_dedupeKey: {
+        feedId,
+        dedupeKey,
+      },
+    },
+    create: {
+      feedId,
+      dedupeKey,
+      title: item.title,
+      link: item.link,
+      guid: item.guid,
+      status,
+      itemData: serializeRSSItem(item),
+      firstSeenAt: options?.firstSeenAt ?? now,
+      lastAttemptedAt: status === 'pending' ? null : now,
+      publishedAt: options?.publishedAt ?? null,
+      errorMessage: options?.errorMessage ?? null,
+    },
+    update: {
+      title: item.title,
+      link: item.link,
+      guid: item.guid,
+      status,
+      itemData: serializeRSSItem(item),
+      lastAttemptedAt: status === 'pending' ? undefined : now,
+      publishedAt: options?.publishedAt ?? undefined,
+      errorMessage: options?.errorMessage ?? undefined,
+    },
+  });
+}
+
 async function resolveRSSItemImages(
   feed: { serperPriority: boolean },
   item: RSSItem,
@@ -753,6 +858,14 @@ function isSameRSSActivityItem(activity: RSSActivityItem, feedId: string, item: 
   const sameLink = Boolean(activity.link && activity.link === item.link);
   const sameTitle = activity.title === item.title;
   return sameLink || sameTitle;
+}
+
+function getRSSActivityDedupeKey(activity: RSSActivityItem): string {
+  if (activity.link) {
+    return `link:${normalizeRSSDedupeValue(activity.link)}`;
+  }
+
+  return `title:${normalizeRSSDedupeValue(activity.title)}`;
 }
 
 function hasRecentRSSActivity(
@@ -917,6 +1030,90 @@ async function persistFeedSnapshot(
       caption,
     },
   });
+}
+
+async function attemptRSSPublish(
+  feed: {
+    id: string;
+    name: string;
+    serperPriority: boolean;
+    imageCount?: string | null;
+    platformImageCounts?: PlatformImageCounts | Prisma.JsonValue | null;
+  },
+  item: RSSItem,
+  platforms: string[],
+  imagePlan: { maxImageCount: number },
+  runtimeSettings: RSSRuntimeSettings
+): Promise<
+  | {
+      status: 'published';
+      caption: string;
+      imageUrl?: string;
+      successfulPlatforms: string[];
+    }
+  | {
+      status: 'failed';
+      imageUrl?: string;
+      errorMessage: string;
+    }
+> {
+  try {
+    const publishImages = await resolveRSSItemImages(
+      feed,
+      item,
+      imagePlan.maxImageCount,
+      runtimeSettings.rssCaptionModel
+    );
+    const publishImageUrls = publishImages.map((image) => image.url);
+    const publishImageUrl = publishImageUrls[0];
+    const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
+      tone: runtimeSettings.rssCaptionTone,
+      maxLength: runtimeSettings.rssCaptionMaxLength,
+    });
+    const caption = await aiService.generateRSSCaption(
+      {
+        articleTitle: item.title,
+        feedName: feed.name,
+        summary: item.description,
+        platform: 'X',
+      },
+      normalizeAIModel(runtimeSettings.rssCaptionModel),
+      systemPrompt,
+      runtimeSettings.rssCaptionTemperature
+    );
+
+    const publishResults = await publisherService.publish(
+      platforms,
+      buildRSSPublishPayload(item, caption, publishImageUrls, feed, platforms)
+    );
+
+    const successfulPlatforms = publishResults
+      .filter((result) => result.status === 'posted')
+      .map((result) => result.platform);
+
+    if (successfulPlatforms.length === 0) {
+      return {
+        status: 'failed',
+        imageUrl: publishImageUrl,
+        errorMessage: publishResults
+          .map((result) => `${result.platform}: ${result.error || result.status}`)
+          .join('; ') || 'Publishing failed.',
+      };
+    }
+
+    return {
+      status: 'published',
+      caption,
+      imageUrl: publishImageUrl,
+      successfulPlatforms,
+    };
+  } catch (error) {
+    return {
+      status: 'failed',
+      imageUrl: item.imageUrl,
+      errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
+    };
+  }
 }
 
 async function fetchRSSFeed(url: string): Promise<string> {
@@ -1177,29 +1374,141 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
+    const pendingQueueRecords = await prisma.rSSFeedItem.findMany({
+      where: {
+        feedId: feed.id,
+        status: 'pending',
+      },
+      orderBy: { firstSeenAt: 'asc' },
+    });
+    const pendingQueue = pendingQueueRecords
+      .map((record) => ({
+        record,
+        item: deserializeRSSItem(record.itemData),
+      }))
+      .filter((entry): entry is typeof entry & { item: RSSItem } => Boolean(entry.item));
+    const incomingDedupeKeys = Array.from(new Set(itemsToProcess.map((item) => getRSSItemDedupeKey(item))));
+    const knownFeedItems = incomingDedupeKeys.length > 0
+      ? await prisma.rSSFeedItem.findMany({
+          where: {
+            feedId: feed.id,
+            dedupeKey: { in: incomingDedupeKeys },
+          },
+          select: {
+            dedupeKey: true,
+            status: true,
+          },
+        })
+      : [];
+    const seenKeys = new Set<string>([
+      ...pendingQueueRecords.map((record) => record.dedupeKey),
+      ...knownFeedItems.map((record) => record.dedupeKey),
+      ...recentActivities
+        .filter((activity) => activity.feedId === feed.id)
+        .map((activity) => getRSSActivityDedupeKey(activity)),
+    ]);
     let publishedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;
     let latestHandledItem: RSSItem | undefined;
     let latestCaption: string | null = null;
     let latestPublishedImageUrl: string | undefined;
-    let retryFromDate: Date | null = null;
 
-    for (const item of itemsToProcess) {
+    for (const pendingEntry of pendingQueue) {
+      const item = pendingEntry.item;
       latestHandledItem = item;
 
-      const ruleEvaluation = evaluateFeedRules(item, feedFilters);
-      if (!ruleEvaluation.allowed) {
+      if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
+        pendingCount += 1;
         continue;
       }
 
-      if (runtimeSettings.rssDeduplication && hasRecentRSSActivity(recentActivities, feed.id, item, ['published'])) {
+      const blockReason = await getPublishingBlockReason(platforms, runtimeSettings);
+      if (blockReason) {
+        pendingCount += 1;
+        continue;
+      }
+
+      const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+
+      if (publishAttempt.status === 'published') {
+        publishedCount += 1;
+        latestCaption = publishAttempt.caption;
+        latestPublishedImageUrl = publishAttempt.imageUrl;
+        await prisma.rSSFeedItem.update({
+          where: { id: pendingEntry.record.id },
+          data: {
+            status: 'published',
+            lastAttemptedAt: new Date(),
+            publishedAt: item.pubDate,
+            errorMessage: null,
+            itemData: serializeRSSItem(item),
+          },
+        });
+        const publishedMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          imageUrl: publishAttempt.imageUrl,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'published',
+          platforms: publishAttempt.successfulPlatforms,
+        };
+        await logRSSActivity(publishedMetadata);
+        rememberRSSActivity(recentActivities, publishedMetadata);
+        continue;
+      }
+
+      failedCount += 1;
+      await prisma.rSSFeedItem.update({
+        where: { id: pendingEntry.record.id },
+        data: {
+          status: 'failed',
+          lastAttemptedAt: new Date(),
+          errorMessage: publishAttempt.errorMessage,
+          itemData: serializeRSSItem(item),
+        },
+      });
+      const failedMetadata: RSSActivityMetadata = {
+        category: RSS_ACTIVITY_CATEGORY,
+        feedId: feed.id,
+        feedName: feed.name,
+        itemTitle: item.title,
+        itemLink: item.link,
+        description: item.description,
+        imageUrl: publishAttempt.imageUrl,
+        publishedAt: item.pubDate.toISOString(),
+        status: 'failed',
+        platforms,
+        errorMessage: publishAttempt.errorMessage,
+      };
+      await logRSSActivity(failedMetadata);
+      rememberRSSActivity(recentActivities, failedMetadata);
+    }
+
+    for (const item of itemsToProcess) {
+      latestHandledItem = item;
+      const dedupeKey = getRSSItemDedupeKey(item);
+
+      if (seenKeys.has(dedupeKey)) {
+        continue;
+      }
+
+      const ruleEvaluation = evaluateFeedRules(item, feedFilters);
+      if (!ruleEvaluation.allowed) {
+        await upsertRSSFeedItem(feed.id, item, 'filtered', {
+          errorMessage: ruleEvaluation.reason ?? null,
+          firstSeenAt: item.pubDate,
+        });
+        seenKeys.add(dedupeKey);
         continue;
       }
 
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
-        retryFromDate = !retryFromDate || item.pubDate.getTime() < retryFromDate.getTime() ? item.pubDate : retryFromDate;
         const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1217,6 +1526,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
               ? 'Auto-post is disabled for this feed.'
               : 'No publishing platforms are enabled for this feed.',
         };
+        await upsertRSSFeedItem(feed.id, item, 'pending', {
+          errorMessage: pendingMetadata.errorMessage ?? null,
+          firstSeenAt: item.pubDate,
+        });
+        seenKeys.add(dedupeKey);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
           rememberRSSActivity(recentActivities, pendingMetadata);
@@ -1227,7 +1541,6 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       const blockReason = await getPublishingBlockReason(platforms, runtimeSettings);
       if (blockReason) {
         pendingCount += 1;
-        retryFromDate = !retryFromDate || item.pubDate.getTime() < retryFromDate.getTime() ? item.pubDate : retryFromDate;
         const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1241,6 +1554,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           platforms,
           errorMessage: blockReason,
         };
+        await upsertRSSFeedItem(feed.id, item, 'pending', {
+          errorMessage: blockReason,
+          firstSeenAt: item.pubDate,
+        });
+        seenKeys.add(dedupeKey);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
           rememberRSSActivity(recentActivities, pendingMetadata);
@@ -1248,65 +1566,18 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         continue;
       }
 
-      try {
-        const publishImages = await resolveRSSItemImages(
-          feed as any,
-          item,
-          imagePlan.maxImageCount,
-          runtimeSettings.rssCaptionModel
-        );
-        const publishImageUrls = publishImages.map((image) => image.url);
-        const publishImageUrl = publishImageUrls[0];
-        const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
-          tone: runtimeSettings.rssCaptionTone,
-          maxLength: runtimeSettings.rssCaptionMaxLength,
-        });
-        const caption = await aiService.generateRSSCaption(
-          {
-            articleTitle: item.title,
-            feedName: feed.name,
-            summary: item.description,
-            platform: 'X',
-          },
-            normalizeAIModel(runtimeSettings.rssCaptionModel),
-          systemPrompt,
-          runtimeSettings.rssCaptionTemperature
-        );
+      const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+      seenKeys.add(dedupeKey);
 
-        const publishResults = await publisherService.publish(
-          platforms,
-          buildRSSPublishPayload(item, caption, publishImageUrls, feed, platforms)
-        );
-
-        const successfulPlatforms = publishResults
-          .filter((result) => result.status === 'posted')
-          .map((result) => result.platform);
-
-        if (successfulPlatforms.length === 0) {
-          failedCount += 1;
-          const failedMetadata: RSSActivityMetadata = {
-            category: RSS_ACTIVITY_CATEGORY,
-            feedId: feed.id,
-            feedName: feed.name,
-            itemTitle: item.title,
-            itemLink: item.link,
-            description: item.description,
-            imageUrl: publishImageUrl,
-            publishedAt: item.pubDate.toISOString(),
-            status: 'failed',
-            platforms,
-            errorMessage: publishResults
-              .map((result) => `${result.platform}: ${result.error || result.status}`)
-              .join('; ') || 'Publishing failed.',
-          };
-          await logRSSActivity(failedMetadata);
-          rememberRSSActivity(recentActivities, failedMetadata);
-          continue;
-        }
-
+      if (publishAttempt.status === 'published') {
         publishedCount += 1;
-        latestCaption = caption;
-        latestPublishedImageUrl = publishImageUrl;
+        latestCaption = publishAttempt.caption;
+        latestPublishedImageUrl = publishAttempt.imageUrl;
+        await upsertRSSFeedItem(feed.id, item, 'published', {
+          publishedAt: item.pubDate,
+          errorMessage: null,
+          firstSeenAt: item.pubDate,
+        });
         const publishedMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1314,31 +1585,36 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           itemTitle: item.title,
           itemLink: item.link,
           description: item.description,
-          imageUrl: publishImageUrl,
+          imageUrl: publishAttempt.imageUrl,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
-          platforms: successfulPlatforms,
+          platforms: publishAttempt.successfulPlatforms,
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
-      } catch (error) {
-        failedCount += 1;
-        const failedMetadata: RSSActivityMetadata = {
-          category: RSS_ACTIVITY_CATEGORY,
-          feedId: feed.id,
-          feedName: feed.name,
-          itemTitle: item.title,
-          itemLink: item.link,
-          description: item.description,
-          imageUrl: item.imageUrl,
-          publishedAt: item.pubDate.toISOString(),
-          status: 'failed',
-          platforms,
-          errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
-        };
-        await logRSSActivity(failedMetadata);
-        rememberRSSActivity(recentActivities, failedMetadata);
+        continue;
       }
+
+      failedCount += 1;
+      await upsertRSSFeedItem(feed.id, item, 'failed', {
+        errorMessage: publishAttempt.errorMessage,
+        firstSeenAt: item.pubDate,
+      });
+      const failedMetadata: RSSActivityMetadata = {
+        category: RSS_ACTIVITY_CATEGORY,
+        feedId: feed.id,
+        feedName: feed.name,
+        itemTitle: item.title,
+        itemLink: item.link,
+        description: item.description,
+        imageUrl: publishAttempt.imageUrl,
+        publishedAt: item.pubDate.toISOString(),
+        status: 'failed',
+        platforms,
+        errorMessage: publishAttempt.errorMessage,
+      };
+      await logRSSActivity(failedMetadata);
+      rememberRSSActivity(recentActivities, failedMetadata);
     }
 
     await prisma.rSSFeed.update({
@@ -1346,7 +1622,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       data: {
         status: 'active',
         source: feed.name,
-        lastProcessedAt: retryFromDate ? new Date(retryFromDate.getTime() - 1000) : new Date(),
+        lastProcessedAt: new Date(),
         nextRunAt,
         errorMessage: null,
         updatedAt: new Date(),

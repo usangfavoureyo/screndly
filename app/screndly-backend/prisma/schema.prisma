@@ -100,10 +100,34 @@ model RSSFeed {
   
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  items           RSSFeedItem[]
 
   @@index([status])
   @@index([enabled])
   @@index([name])
+}
+
+model RSSFeedItem {
+  id              String   @id @default(uuid())
+  feedId          String
+  dedupeKey       String
+  title           String
+  link            String
+  guid            String?
+  status          String   @default("pending") // "pending", "published", "failed", "filtered"
+  itemData        Json
+  firstSeenAt     DateTime @default(now())
+  lastAttemptedAt DateTime?
+  publishedAt     DateTime?
+  errorMessage    String?  @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  feed RSSFeed @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@unique([feedId, dedupeKey])
+  @@index([feedId, status])
+  @@index([firstSeenAt])
 }
 
 // ============================================
