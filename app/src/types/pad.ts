@@ -6,13 +6,23 @@ export interface PadTemplate {
   emptyState: string;
 }
 
-export interface PadOutput {
+export interface PadAttachment {
   id: string;
-  content: string;
-  createdAt: string;
+  name: string;
+  type: string;
+  size: number;
+  previewUrl?: string;
 }
 
-export interface PadDraftEntry {
+export interface PadMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+  attachments?: PadAttachment[];
+}
+
+export interface PadOutput {
   id: string;
   content: string;
   createdAt: string;
@@ -22,11 +32,11 @@ export interface PadSession {
   id: string;
   templateId: string;
   title: string;
-  brief: string;
-  context: string;
+  systemPrompt: string;
+  pinned: boolean;
+  messages: PadMessage[];
   latestOutput: string;
   outputs: PadOutput[];
-  drafts: PadDraftEntry[];
   createdAt: string;
   updatedAt: string;
 }

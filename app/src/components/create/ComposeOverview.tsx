@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, FileText, PencilLine } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Film, Image as ImageIcon, FileText, PencilLine } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -51,6 +51,10 @@ function getLeadingIcon(status: ComposeItem['status']) {
   if (status === 'published') return CheckCircle2;
   if (status === 'scheduled') return CalendarDays;
   return FileText;
+}
+
+function getPrimaryAsset(item: ComposeItem) {
+  return item.mediaAssets?.[0] ?? item.media;
 }
 
 function toIsoSchedule(date?: Date, time?: string) {
@@ -206,6 +210,8 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
             {items.map((item) => {
               const LeadingIcon = getLeadingIcon(item.status);
+              const primaryAsset = getPrimaryAsset(item);
+              const extraAssetCount = Math.max((item.mediaAssets?.length ?? (item.media ? 1 : 0)) - 1, 0);
 
               return (
                 <SwipeableActivityCard
@@ -224,8 +230,33 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                   <div className="flex flex-col gap-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
-                        <div className="mt-0.5 rounded-xl bg-[#ec1e24]/10 p-2 text-[#ec1e24]">
-                          <LeadingIcon className="h-5 w-5" />
+                        <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
+                          {primaryAsset?.previewUrl ? (
+                            primaryAsset.kind === 'video' ? (
+                              <video
+                                src={primaryAsset.previewUrl}
+                                className="h-full w-full object-cover"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                            ) : (
+                              <img
+                                src={primaryAsset.previewUrl}
+                                alt={primaryAsset.fileName}
+                                className="h-full w-full object-cover"
+                              />
+                            )
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-[#ec1e24]">
+                              {primaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : primaryAsset ? <ImageIcon className="h-5 w-5" /> : <LeadingIcon className="h-5 w-5" />}
+                            </div>
+                          )}
+                          {extraAssetCount > 0 ? (
+                            <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
+                              +{extraAssetCount}
+                            </span>
+                          ) : null}
                         </div>
                         <div className="min-w-0">
                           <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
