@@ -1,4 +1,5 @@
 import { Button } from './ui/button';
+import { haptics } from '../utils/haptics';
 
 interface ActivitySelectionToolbarProps {
   selectedCount: number;
@@ -16,6 +17,15 @@ export function ActivitySelectionToolbar({
   itemLabel = 'items',
 }: ActivitySelectionToolbarProps) {
   const itemWord = selectedCount === 1 ? itemLabel.replace(/s$/, '') : itemLabel;
+  const handleClear = () => {
+    haptics.light();
+    onClear();
+  };
+
+  const handleDelete = () => {
+    haptics.medium();
+    onDelete();
+  };
 
   return (
     <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-[#ec1e24]/30 bg-[#ec1e24]/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -27,7 +37,7 @@ export function ActivitySelectionToolbar({
         <Button
           type="button"
           variant="outline"
-          onClick={onClear}
+          onClick={handleClear}
           disabled={isDeleting}
           className="border-gray-300 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
         >
@@ -35,7 +45,7 @@ export function ActivitySelectionToolbar({
         </Button>
         <Button
           type="button"
-          onClick={onDelete}
+          onClick={handleDelete}
           disabled={isDeleting || selectedCount === 0}
           className="bg-[#ec1e24] text-white hover:bg-[#d01a20]"
         >

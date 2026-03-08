@@ -34,6 +34,7 @@ import { publishTMDbPost } from '../lib/tmdb/tmdbPublish';
 import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFromSource } from '../utils/tmdbCaptionGenerator';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 
 interface TMDbActivityItem {
   id: string;
@@ -61,7 +62,7 @@ interface TMDbActivityPageProps {
 }
 
 export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageProps) {
-  const { posts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
+  const { posts, fetchPosts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
@@ -77,6 +78,8 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [selectedTime, setSelectedTime] = useState('');
   const [editedCaption, setEditedCaption] = useState('');
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
+
+  useTMDbAutoSync(fetchPosts);
 
   const retentionHours = settings.tmdbActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds

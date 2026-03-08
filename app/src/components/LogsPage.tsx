@@ -64,27 +64,32 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
 
   const handleDelete = async (logId: string) => {
     haptics.medium();
-    setDeletedIds((prev) => [...prev, logId]);
     const deletedLog = mappedLogs.find((log) => log.id === logId);
+    if (!deletedLog) return;
 
-    try {
-      const response = await apiClient.delete(`/api/logs/${logId}`);
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to delete log');
-      }
-      showUndo({
-        id: logId,
-        itemName: deletedLog?.videoTitle || 'Log entry',
-        onUndo: () => {
-          setDeletedIds((prev) => prev.filter((id) => id !== logId));
+    setDeletedIds((prev) => [...prev, logId]);
+
+    showUndo({
+      id: logId,
+      itemName: deletedLog.videoTitle || 'Log entry',
+      onUndo: () => {
+        setDeletedIds((prev) => prev.filter((id) => id !== logId));
+      },
+      onConfirm: async () => {
+        try {
+          const response = await apiClient.delete(`/api/logs/${logId}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete log');
+          }
+          toast.success('Log deleted');
           void refresh();
+        } catch (error) {
+          console.error('Failed to delete log', error);
+          setDeletedIds((prev) => prev.filter((id) => id !== logId));
+          toast.error(error instanceof Error ? error.message : 'Failed to delete log');
         }
-      });
-    } catch (error) {
-      console.error('Failed to delete log', error);
-      setDeletedIds((prev) => prev.filter((id) => id !== logId));
-      toast.error('Failed to delete log');
-    }
+      }
+    });
   };
 
   // Transform ActivityLog from hook to LogEntry for display

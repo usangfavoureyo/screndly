@@ -124,9 +124,9 @@ export function PullToRefresh({ children, onRefresh, disabled = false }: PullToR
                     opacity: currentY > 0 ? 1 : 0
                 }}
             >
-                <div className="bg-white dark:bg-black rounded-full p-2 shadow-lg border border-gray-100 dark:border-[#333333] mt-4">
+                <div className="mt-4 rounded-full border border-white/10 bg-black/90 p-2 shadow-lg backdrop-blur-sm">
                     <Loader2
-                        className={`w-5 h-5 text-[#ec1e24] ${isRefreshing ? 'animate-spin' : ''}`}
+                        className={`h-5 w-5 text-white ${isRefreshing ? 'animate-spin' : ''}`}
                         style={{
                             transform: isRefreshing ? 'none' : `rotate(${currentY * 3}deg)`
                         }}

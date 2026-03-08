@@ -10,6 +10,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { apiClient } from '../lib/api/client';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { useUndo } from './UndoContext';
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
@@ -25,6 +26,7 @@ function formatActivityTimestamp(value: string): string {
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
   const { getActivity, refreshFeed } = useRSSFeeds();
   const { settings } = useSettings();
+  const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
@@ -110,18 +112,46 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const handleDelete = async (id?: string) => {
     if (!id) return;
     haptics.medium();
-    try {
-      const response = await apiClient.delete(`/api/rss/activity/${id}`);
-      if (!response.success) {
-        throw new Error(response.error?.message || 'Failed to delete activity');
-      }
-      setItems((prev) => prev.filter((item) => item.id !== id));
-      toast.success('Activity entry deleted');
-    } catch (error) {
-      console.error('Failed to delete RSS activity:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
-      await loadActivity();
-    }
+    const deletedItem = items.find((item) => item.id === id);
+    const deletedIndex = items.findIndex((item) => item.id === id);
+    if (!deletedItem || deletedIndex === -1) return;
+
+    setItems((prev) => prev.filter((item) => item.id !== id));
+
+    showUndo({
+      id,
+      itemName: deletedItem.title,
+      onUndo: () => {
+        setItems((prev) => {
+          if (prev.some((item) => item.id === deletedItem.id)) {
+            return prev;
+          }
+          const next = [...prev];
+          next.splice(Math.min(deletedIndex, next.length), 0, deletedItem);
+          return next;
+        });
+      },
+      onConfirm: async () => {
+        try {
+          const response = await apiClient.delete(`/api/rss/activity/${id}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete activity');
+          }
+          toast.success('Activity entry deleted');
+        } catch (error) {
+          console.error('Failed to delete RSS activity:', error);
+          setItems((prev) => {
+            if (prev.some((item) => item.id === deletedItem.id)) {
+              return prev;
+            }
+            const next = [...prev];
+            next.splice(Math.min(deletedIndex, next.length), 0, deletedItem);
+            return next;
+          });
+          toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+        }
+      },
+    });
   };
 
   const handleDeleteSelected = async () => {

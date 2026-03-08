@@ -1,5 +1,9 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { getSettingsForBackend } from '../lib/tmdb';
+
+interface FetchPostsOptions {
+  silent?: boolean;
+}
 
 export interface TMDbPost {
   id: string;
@@ -29,7 +33,7 @@ interface TMDbPostsContextType {
   isLoading: boolean;
   error: string | null;
   lastSyncTime: Date | null;
-  fetchPosts: () => Promise<void>;
+  fetchPosts: (options?: FetchPostsOptions) => Promise<void>;
   refreshFromTMDb: () => Promise<{ added: number; errors: string[] }>;
   schedulePost: (post: TMDbPost) => Promise<void>;
   addPost: (post: TMDbPost) => Promise<void>;
@@ -62,11 +66,22 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const isFetchingRef = useRef(false);
 
   // Fetch posts from backend API
-  const fetchPosts = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const fetchPosts = useCallback(async (options: FetchPostsOptions = {}) => {
+    const { silent = false } = options;
+
+    if (isFetchingRef.current) {
+      return;
+    }
+
+    isFetchingRef.current = true;
+
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
 
     try {
       const { apiClient } = await import('../lib/api/client');
@@ -99,6 +114,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
         setPosts(transformedPosts);
         setLastSyncTime(new Date());
+        setError(null);
 
         // Also cache to localStorage for offline access
         localStorage.setItem('screndlyTMDbPosts', JSON.stringify(transformedPosts));
@@ -107,19 +123,27 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.error('Failed to fetch TMDb posts from backend:', err);
-      setError(err.message || 'Failed to fetch posts');
+
+      if (!silent) {
+        setError(err.message || 'Failed to fetch posts');
+      }
 
       // Fall back to localStorage if backend fails
-      const saved = localStorage.getItem('screndlyTMDbPosts');
-      if (saved) {
-        try {
-          setPosts(JSON.parse(saved));
-        } catch {
-          setPosts([]);
+      if (!silent) {
+        const saved = localStorage.getItem('screndlyTMDbPosts');
+        if (saved) {
+          try {
+            setPosts(JSON.parse(saved));
+          } catch {
+            setPosts([]);
+          }
         }
       }
     } finally {
-      setIsLoading(false);
+      isFetchingRef.current = false;
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, []);
 

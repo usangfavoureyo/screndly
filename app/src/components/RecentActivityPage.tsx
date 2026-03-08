@@ -75,25 +75,26 @@ export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
     if (!deletedActivity) return;
 
     setDeletedIds((prev) => [...prev, id]);
-    void (async () => {
-      try {
-        const response = await apiClient.delete(`/api/logs/${id}`);
-        if (!response.success) {
-          throw new Error(response.error?.message || 'Failed to delete activity');
-        }
-      } catch (error) {
-        console.error('Failed to delete recent activity:', error);
-        setDeletedIds((prev) => prev.filter((entryId) => entryId !== id));
-        toast.error('Failed to delete activity');
-      }
-    })();
 
     showUndo({
       id,
       itemName: deletedActivity.title,
       onUndo: () => {
         setDeletedIds((prev) => prev.filter((entryId) => entryId !== id));
-      }
+      },
+      onConfirm: async () => {
+        try {
+          const response = await apiClient.delete(`/api/logs/${id}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete activity');
+          }
+          toast.success('Activity deleted');
+        } catch (error) {
+          console.error('Failed to delete recent activity:', error);
+          setDeletedIds((prev) => prev.filter((entryId) => entryId !== id));
+          toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+        }
+      },
     });
   };
 

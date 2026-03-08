@@ -346,11 +346,13 @@ html {
   font-size: var(--font-size);
   scroll-behavior: auto;
   scroll-padding: 1rem;
+  overscroll-behavior-y: contain;
 }
 
 body {
   scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /* Let scroll gestures bubble to the real scroll container on mobile. */
