@@ -336,7 +336,11 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 switch (platform) {
                     case 'X':
                         if (connection?.accessToken) {
-                            const xResult = await xService.postTweet(text, imageUrl, connection);
+                            const xResult = await xService.postTweet(
+                                text,
+                                imageUrl || (localFilePath && req.file?.mimetype?.startsWith('image/') ? localFilePath : undefined),
+                                connection
+                            );
                             result = { platform, ...xResult, status: xResult.success ? 'posted' : 'failed' };
                         }
                         break;

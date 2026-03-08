@@ -7,6 +7,15 @@ import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
 import { notificationService } from './notification.service';
 import { resolveYouTubeChannel } from './youtube-channel-resolver';
+import {
+    enrichYouTubeVideoMetadata,
+    generateLandscapeThumbnail,
+    generateSocialPosterThumbnail,
+    generateYouTubePublishMetadata,
+    getYouTubeRuntimeSettings,
+    type LoadedVideoSettings,
+    type PlatformThumbnailAsset,
+} from './video-enrichment.service';
 
 const parser = new Parser();
 
@@ -69,7 +78,7 @@ export class YouTubePollerService {
         console.log('[YouTubePoller] Starting poll...');
 
         try {
-            const settings = await this.getSettings();
+            const settings = await getYouTubeRuntimeSettings();
             const where: Record<string, any> = { status: 'active' };
             if (options.channelDbId) {
                 where.id = options.channelDbId;
@@ -144,7 +153,7 @@ export class YouTubePollerService {
         }
     }
 
-    private async processChannel(channel: any, settings: any): Promise<ChannelPollResult> {
+    private async processChannel(channel: any, settings: LoadedVideoSettings): Promise<ChannelPollResult> {
         let activeChannel = channel;
 
         try {
@@ -310,9 +319,35 @@ export class YouTubePollerService {
                 }
             }
 
+            const thumbnailUrl = this.getThumbnailUrl(details);
+            const enrichedMetadata = await enrichYouTubeVideoMetadata(
+                videoId,
+                video.title || '',
+                details.description || video.contentSnippet || '',
+                settings
+            );
+
+            if (settings.regionFilter && !enrichedMetadata.regionAllowed) {
+                await prisma.channel.update({
+                    where: { id: activeChannel.id },
+                    data: { lastCheck: new Date() }
+                });
+
+                return {
+                    channelId: activeChannel.channelId,
+                    channelName: activeChannel.name,
+                    checked: true,
+                    skipped: true,
+                    newVideoDetected: false,
+                    published: false,
+                    failed: false,
+                    message: enrichedMetadata.regionReason || 'Skipped by region filter'
+                };
+            }
+
             if (settings.videoFilterPrompt) {
                 const aiResult = await aiService.generateCompletion({
-                    model: 'flash-3',
+                    model: settings.videoOpenaiModel,
                     prompt: `Validate this video against rules:
 Title: ${video.title}
 Channel: ${activeChannel.name}
@@ -347,6 +382,44 @@ Respond ONLY "YES" or "NO".`,
                 }
             }
 
+            const targetPlatforms = this.getTargetPlatforms(settings);
+            if (targetPlatforms.length === 0) {
+                await prisma.channel.update({
+                    where: { id: activeChannel.id },
+                    data: { lastCheck: new Date() }
+                });
+
+                return {
+                    channelId: activeChannel.channelId,
+                    channelName: activeChannel.name,
+                    checked: true,
+                    skipped: true,
+                    newVideoDetected: true,
+                    published: false,
+                    failed: false,
+                    message: 'No connected auto-post platforms were enabled'
+                };
+            }
+
+            const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
+            if (recentPublishBlock) {
+                await prisma.channel.update({
+                    where: { id: activeChannel.id },
+                    data: { lastCheck: new Date() }
+                });
+
+                return {
+                    channelId: activeChannel.channelId,
+                    channelName: activeChannel.name,
+                    checked: true,
+                    skipped: true,
+                    newVideoDetected: true,
+                    published: false,
+                    failed: false,
+                    message: recentPublishBlock
+                };
+            }
+
             console.log(`[YouTubePoller] Downloading ${videoId}...`);
             const downloadPath = await this.downloadVideoWithInfo(videoInfo);
             if (!downloadPath) {
@@ -367,9 +440,23 @@ Respond ONLY "YES" or "NO".`,
                 };
             }
 
-            const captions = await this.generateCaptions(video, details, settings);
+            const captions = await this.generateCaptions(video, details, settings, enrichedMetadata);
             const playlists = await this.detectPlaylists(video, details, settings);
-            const thumbnailUrl = this.getThumbnailUrl(details);
+            const youtubeMetadata = await generateYouTubePublishMetadata(
+                video.title || '',
+                details.description || video.contentSnippet || '',
+                enrichedMetadata,
+                settings
+            );
+            const youtubeThumbnail = targetPlatforms.includes('YouTube')
+                ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailUrl, settings)
+                : null;
+            const xThumbnail = targetPlatforms.includes('X')
+                ? await generateLandscapeThumbnail('x', video.title || '', enrichedMetadata, thumbnailUrl, settings)
+                : null;
+            const socialPoster = targetPlatforms.some((platform) => ['Facebook', 'Instagram', 'Threads', 'Pinterest'].includes(platform))
+                ? await generateSocialPosterThumbnail(video.title || '', enrichedMetadata, thumbnailUrl, settings)
+                : null;
 
             const publishResult = await this.publishVideo(
                 video,
@@ -378,17 +465,29 @@ Respond ONLY "YES" or "NO".`,
                 captions,
                 settings,
                 activeChannel,
+                targetPlatforms,
                 {
                     youtubePlaylistIds: playlists,
                     pinterestBoardId: settings.videoPinterestBoard,
                     pinterestLink: this.resolvePinterestLink(video.link, settings)
                 },
                 thumbnailUrl,
+                {
+                    youtube: youtubeThumbnail,
+                    x: xThumbnail,
+                    social: socialPoster
+                },
+                youtubeMetadata,
                 pubDate
             );
 
             if (fs.existsSync(downloadPath)) {
                 fs.unlinkSync(downloadPath);
+            }
+            for (const asset of [youtubeThumbnail, xThumbnail, socialPoster]) {
+                if (asset?.localPath && fs.existsSync(asset.localPath)) {
+                    fs.unlinkSync(asset.localPath);
+                }
             }
 
             await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
@@ -439,7 +538,7 @@ Respond ONLY "YES" or "NO".`,
                 newVideoDetected: true,
                 published: false,
                 failed: false,
-                message: 'No connected auto-post platforms were enabled'
+                message: 'No platforms accepted the publish request'
             };
         } catch (error: any) {
             console.error(`[YouTubePoller] Error processing channel ${activeChannel.name}:`, error);
@@ -487,46 +586,66 @@ Respond ONLY "YES" or "NO".`,
         videoId: string,
         downloadPath: string,
         captions: { universal: string },
-        settings: any,
+        settings: LoadedVideoSettings,
         channel: any,
+        targetPlatforms: string[],
         options: any,
         thumbnailUrl: string | undefined,
+        thumbnailAssets: {
+            youtube: PlatformThumbnailAsset | null;
+            x: PlatformThumbnailAsset | null;
+            social: PlatformThumbnailAsset | null;
+        },
+        youtubeMetadata: { title: string; description: string },
         publishedAt: Date
     ) {
-        const availablePlatforms = ['X', 'Facebook', 'Instagram', 'Threads', 'TikTok', 'YouTube', 'Pinterest'];
-        let targetPlatforms: string[] = [];
-
-        if (settings.platformSettings) {
-            const config = typeof settings.platformSettings === 'string'
-                ? JSON.parse(settings.platformSettings)
-                : settings.platformSettings;
-            const platformMap: Record<string, string> = {
-                x: 'X',
-                facebook: 'Facebook',
-                instagram: 'Instagram',
-                threads: 'Threads',
-                tiktok: 'TikTok',
-                youtube: 'YouTube',
-                pinterest: 'Pinterest'
-            };
-
-            targetPlatforms = availablePlatforms.filter((platform) => {
-                const key = Object.keys(platformMap).find((candidate) => platformMap[candidate] === platform);
-                return key && config[key]?.autoPost === true;
-            });
-        }
-
         if (targetPlatforms.length === 0) {
             return { publishedPlatforms: [] as string[], failedPlatforms: [] as string[] };
         }
 
         const universalCaption = captions.universal || video.title || '';
+        const socialImageUrl =
+            thumbnailAssets.social?.publicUrl
+            || thumbnailAssets.social?.sourceUrl
+            || thumbnailUrl;
+        const xImageSource =
+            thumbnailAssets.x?.localPath
+            || thumbnailAssets.x?.publicUrl
+            || thumbnailAssets.x?.sourceUrl
+            || socialImageUrl;
         const publishContent: PublishContent = {
             text: `${universalCaption}\n\n${video.link}`,
             title: video.title,
+            description: youtubeMetadata.description,
             link: video.link,
-            imageUrl: thumbnailUrl,
-            videoUrl: video.link
+            imageUrl: socialImageUrl,
+            videoUrl: video.link,
+            platformOverrides: {
+                X: {
+                    text: `${universalCaption}\n\n${video.link}`,
+                    imagePath: xImageSource && !xImageSource.startsWith('http') ? xImageSource : undefined,
+                    imageUrl: xImageSource && xImageSource.startsWith('http') ? xImageSource : undefined,
+                },
+                Facebook: {
+                    imageUrl: socialImageUrl,
+                },
+                Instagram: {
+                    imageUrl: socialImageUrl,
+                },
+                Threads: {
+                    imageUrl: socialImageUrl,
+                },
+                YouTube: {
+                    title: youtubeMetadata.title || video.title,
+                    description: youtubeMetadata.description || universalCaption,
+                    imagePath: thumbnailAssets.youtube?.localPath,
+                    imageUrl: thumbnailAssets.youtube?.publicUrl || thumbnailAssets.youtube?.sourceUrl || thumbnailUrl,
+                },
+                Pinterest: {
+                    imageUrl: socialImageUrl,
+                    title: video.title,
+                },
+            }
         };
 
         const results = await publisherService.publish(targetPlatforms as any, publishContent, downloadPath, options);
@@ -544,6 +663,45 @@ Respond ONLY "YES" or "NO".`,
         });
 
         return { publishedPlatforms, failedPlatforms };
+    }
+
+    private getTargetPlatforms(settings: LoadedVideoSettings): string[] {
+        const platformMap: Record<string, string> = {
+            x: 'X',
+            facebook: 'Facebook',
+            instagram: 'Instagram',
+            threads: 'Threads',
+            tiktok: 'TikTok',
+            youtube: 'YouTube',
+            pinterest: 'Pinterest'
+        };
+
+        return Object.entries(platformMap)
+            .filter(([key]) => settings.platformSettings[key]?.autoPost === true)
+            .map(([, platform]) => platform);
+    }
+
+    private async getRecentPublishBlock(postIntervalMinutes: number): Promise<string | null> {
+        if (!postIntervalMinutes || postIntervalMinutes <= 0) {
+            return null;
+        }
+
+        const recentPublish = await prisma.notification.findFirst({
+            where: {
+                source: 'youtube',
+                title: 'New Trailer Published',
+                createdAt: {
+                    gte: new Date(Date.now() - postIntervalMinutes * 60 * 1000)
+                }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        if (!recentPublish) {
+            return null;
+        }
+
+        return `Waiting for the ${postIntervalMinutes}-minute post interval before the next trailer publish`;
     }
 
     private async detectPlaylists(video: any, details: any, settings: any): Promise<string[]> {
@@ -659,37 +817,15 @@ Respond ONLY "YES" or "NO".`,
         });
     }
 
-    private async getSettings() {
-        const keys = [
-            'fetchInterval', 'advancedFilters', 'excludeShorts',
-            'videoOpenaiModel', 'videoUniversalCaptionPrompt',
-            'platformSettings', 'regionFilter', 'videoFilterPrompt',
-            'videoYoutubePlaylists', 'videoYoutubePlaylistPrompt',
-            'videoPinterestTitlePrompt', 'videoPinterestDescriptionPrompt',
-            'videoPinterestDefaultLink', 'videoPinterestLinkStrategy', 'videoPinterestBoard'
-        ];
-
-        const settings = await prisma.setting.findMany({
-            where: { key: { in: keys } }
-        });
-
-        const result: any = {};
-        settings.forEach((setting) => {
-            result[setting.key] = setting.value;
-        });
-
-        return result;
-    }
-
-    private async generateCaptions(video: any, details: any, settings: any) {
+    private async generateCaptions(video: any, details: any, settings: LoadedVideoSettings, metadata: { cleanedTitle: string; tmdbMatch?: { title: string; overview: string } }) {
         const context = {
-            videoTitle: video.title,
+            videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
             channelName: video.author || 'YouTube Channel',
-            description: details.description || video.contentSnippet || '',
+            description: metadata.tmdbMatch?.overview || details.description || video.contentSnippet || '',
             platform: 'X' as const
         };
 
-        const model = settings.videoOpenaiModel || 'flash-3';
+        const model = settings.videoOpenaiModel || 'gpt-4o';
         const customPrompt = settings.videoUniversalCaptionPrompt;
 
         try {

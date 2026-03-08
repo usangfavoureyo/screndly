@@ -287,6 +287,89 @@ function parseFilterTimestamp(value?: string | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function getFilterScopeText(item: RSSItem, scope: RSSFeedFilters['scope']): string[] {
+  const title = item.title || '';
+  const body = item.description || '';
+
+  switch (scope) {
+    case 'title':
+      return [title];
+    case 'body':
+      return [body];
+    case 'title_and_body':
+      return [title, body];
+    case 'title_or_body':
+    default:
+      return [`${title}\n${body}`, title, body];
+  }
+}
+
+function normalizeRuleText(value: string, caseSensitive: boolean): string {
+  return caseSensitive ? value : value.toLowerCase();
+}
+
+function matchesRule(
+  haystack: string,
+  needle: string,
+  matchType: 'contains' | 'exact',
+  caseSensitive: boolean
+): boolean {
+  const normalizedHaystack = normalizeRuleText(haystack, caseSensitive);
+  const normalizedNeedle = normalizeRuleText(needle, caseSensitive);
+
+  if (!normalizedNeedle.trim()) {
+    return true;
+  }
+
+  if (matchType === 'exact') {
+    return normalizedHaystack.trim() === normalizedNeedle.trim();
+  }
+
+  return normalizedHaystack.includes(normalizedNeedle);
+}
+
+function evaluateFeedRules(item: RSSItem, filters: RSSFeedFilters): { allowed: boolean; reason?: string } {
+  const activeRequired = filters.required.filter((rule) => rule.active && rule.text.trim());
+  const activeBlocked = filters.blocked.filter((rule) => rule.active && rule.text.trim());
+  const scopeTexts = getFilterScopeText(item, filters.scope);
+
+  for (const rule of activeBlocked) {
+    const blocked = scopeTexts.some((scopeText) =>
+      matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
+    );
+
+    if (blocked) {
+      return {
+        allowed: false,
+        reason: `Blocked keyword matched: "${rule.text}"`,
+      };
+    }
+  }
+
+  for (const rule of activeRequired) {
+    let matched = false;
+
+    if (filters.scope === 'title_and_body') {
+      matched = scopeTexts.every((scopeText) =>
+        matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
+      );
+    } else {
+      matched = scopeTexts.some((scopeText) =>
+        matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
+      );
+    }
+
+    if (!matched) {
+      return {
+        allowed: false,
+        reason: `Required keyword missing: "${rule.text}"`,
+      };
+    }
+  }
+
+  return { allowed: true };
+}
+
 function toAIModel(value: string): AIModel {
   switch (value) {
     case 'gpt-4o':
@@ -850,6 +933,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
     for (const item of itemsToProcess) {
       latestHandledItem = item;
+
+      const ruleEvaluation = evaluateFeedRules(item, feedFilters);
+      if (!ruleEvaluation.allowed) {
+        continue;
+      }
 
       if (runtimeSettings.rssDeduplication && await wasRecentlyPublished(feed.id, item, feed.dedupeDays)) {
         continue;

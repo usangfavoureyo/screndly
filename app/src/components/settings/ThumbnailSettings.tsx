@@ -7,18 +7,24 @@ import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
-import { Setting } from '../../types/settings';
 
 interface ThumbnailSettingsProps {
-  settings: Setting[];
+  settings: Record<string, any> | Array<{ key: string; value: unknown }>;
   updateSetting: (key: string, value: any) => Promise<void>;
   onBack: () => void;
 }
 
 // Helper to safely find a setting
-const findSetting = (settings: Setting[], key: string) => {
-  if (!Array.isArray(settings)) return undefined;
-  return settings.find(s => s.key === key);
+const findSetting = (settings: ThumbnailSettingsProps['settings'], key: string) => {
+  if (Array.isArray(settings)) {
+    return settings.find(s => s.key === key)?.value;
+  }
+
+  if (settings && typeof settings === 'object') {
+    return settings[key];
+  }
+
+  return undefined;
 };
 
 type LogoPosition =
@@ -85,12 +91,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
 
   // Load from DB settings on mount
   useEffect(() => {
-    // YouTube
-    // YouTube
     const ytSetting = findSetting(settings, 'thumbnailConfig_youtube');
-    if (ytSetting?.value) {
+    if (ytSetting) {
       try {
-        const parsed = JSON.parse(String(ytSetting.value));
+        const parsed = typeof ytSetting === 'string' ? JSON.parse(ytSetting) : ytSetting;
         if (parsed && typeof parsed === 'object') {
           setYoutubeConfig(prev => ({ ...prev, ...parsed }));
         }
@@ -99,12 +103,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       }
     }
 
-    // X
-    // X
     const xSetting = findSetting(settings, 'thumbnailConfig_x');
-    if (xSetting?.value) {
+    if (xSetting) {
       try {
-        const parsed = JSON.parse(String(xSetting.value));
+        const parsed = typeof xSetting === 'string' ? JSON.parse(xSetting) : xSetting;
         if (parsed && typeof parsed === 'object') {
           setXConfig(prev => ({ ...prev, ...parsed }));
         }

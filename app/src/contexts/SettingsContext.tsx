@@ -38,8 +38,30 @@ export interface Settings {
 
   // Video
   fetchInterval: string;
+  postInterval?: string;
   regionFilter: string;
   advancedFilters: string;
+  excludeShorts?: boolean;
+  videoOpenaiModel?: string;
+  videoUniversalCaptionPrompt?: string;
+  videoYoutubeTitlePrompt?: string;
+  videoYoutubeDescriptionPrompt?: string;
+  videoYoutubePlaylistPrompt?: string;
+  videoYoutubePlaylists?: string;
+  videoFilterPrompt?: string;
+  videoFilterCache?: boolean;
+  videoFilterTmdbValidation?: boolean;
+  videoTitleCleaningRegex?: string;
+  videoTmdbFallback?: string;
+  videoYoutubeXThumbnailPrompt?: string;
+  videoSocialThumbnailPrompt?: string;
+  videoPinterestTitlePrompt?: string;
+  videoPinterestDescriptionPrompt?: string;
+  videoPinterestBoard?: string;
+  videoPinterestLinkStrategy?: string;
+  videoPinterestDefaultLink?: string;
+  thumbnailConfig_youtube?: string;
+  thumbnailConfig_x?: string;
 
   // Comment Reply
   commentRepliesActive: boolean;
@@ -242,8 +264,30 @@ function getDefaultSettings(): Settings {
 
     // Video
     fetchInterval: '10',
+    postInterval: '10',
     regionFilter: 'US,UK',
     advancedFilters: 'trailer, official, teaser',
+    excludeShorts: true,
+    videoOpenaiModel: 'gpt-4o',
+    videoUniversalCaptionPrompt: '',
+    videoYoutubeTitlePrompt: '',
+    videoYoutubeDescriptionPrompt: '',
+    videoYoutubePlaylistPrompt: '',
+    videoYoutubePlaylists: '',
+    videoFilterPrompt: '',
+    videoFilterCache: true,
+    videoFilterTmdbValidation: true,
+    videoTitleCleaningRegex: '(?:\\s*[–-]\\s*(?:Official|Teaser|Trailer|HD|4K|2024|2025|2026).*$)',
+    videoTmdbFallback: 'use-youtube-thumbnail',
+    videoYoutubeXThumbnailPrompt: '',
+    videoSocialThumbnailPrompt: '',
+    videoPinterestTitlePrompt: '',
+    videoPinterestDescriptionPrompt: '',
+    videoPinterestBoard: '',
+    videoPinterestLinkStrategy: 'youtube',
+    videoPinterestDefaultLink: '',
+    thumbnailConfig_youtube: '',
+    thumbnailConfig_x: '',
 
     // Comment Reply
     commentRepliesActive: true,
