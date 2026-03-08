@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -16,6 +16,17 @@ interface DesignStudioSettingsProps {
   onSave?: () => void;
   onBack: () => void;
 }
+
+const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
+  'captionPosterPrompt',
+  'captionCarouselPrompt',
+  'captionStoryPrompt',
+  'captionAnnouncementPrompt',
+  'captionGeneralPrompt',
+  'designStudioPinterestTitlePrompt',
+  'designStudioPinterestDescriptionPrompt',
+  'designStudioPinterestBoardPrompt',
+]);
 
 // Default prompt system settings
 const defaultSettings = {
@@ -227,17 +238,30 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
   const { settings: globalSettings, updateSetting: updateGlobalSetting } = useSettings();
   const [settings, setSettings] = useState(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
+  const initialSharedSettingsRef = useRef<Record<string, any> | null>(null);
 
-  // Load settings from localStorage on mount
+  if (initialSharedSettingsRef.current === null) {
+    initialSharedSettingsRef.current = Object.fromEntries(
+      Object.entries(globalSettings as Record<string, any>).filter(([key]) =>
+        DESIGN_STUDIO_SHARED_PROMPT_KEYS.has(key)
+      )
+    );
+  }
+
+  // Load settings from localStorage + shared persisted prompt settings on mount
   useEffect(() => {
+    const sharedSettings = initialSharedSettingsRef.current || {};
     const savedSettings = localStorage.getItem('screndly_design_studio_settings');
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...defaultSettings, ...parsed });
+        setSettings({ ...defaultSettings, ...sharedSettings, ...parsed });
       } catch (error) {
         console.error('Error loading Design Studio settings:', error);
+        setSettings({ ...defaultSettings, ...sharedSettings });
       }
+    } else {
+      setSettings({ ...defaultSettings, ...sharedSettings });
     }
     setIsLoaded(true);
   }, []);
@@ -250,7 +274,15 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
   }, [settings, isLoaded]);
 
   const updateSetting = (key: string, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setSettings(prev => {
+      const next = { ...prev, [key]: value };
+      localStorage.setItem('screndly_design_studio_settings', JSON.stringify(next));
+      return next;
+    });
+
+    if (DESIGN_STUDIO_SHARED_PROMPT_KEYS.has(key)) {
+      updateGlobalSetting(key, value);
+    }
 
     // Show toast notifications for important settings
     if (key === 'captionOpenaiModel') {

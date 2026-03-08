@@ -1019,17 +1019,14 @@ async function persistFeedSnapshot(
 ): Promise<void> {
   if (!item) return;
 
-  await prisma.rSSFeed.update({
-    where: { id: feedId },
-    data: {
-      title: item.title,
-      description: item.description,
-      imageUrl: imageUrlOverride || item.imageUrl,
-      publishedDate: item.pubDate,
-      platforms,
-      caption,
-    },
-  });
+  await updateFeed(feedId, {
+    title: item.title,
+    description: item.description,
+    imageUrl: imageUrlOverride || item.imageUrl,
+    publishedDate: item.pubDate,
+    platforms,
+    caption,
+  } as any);
 }
 
 async function attemptRSSPublish(
@@ -1244,7 +1241,17 @@ async function createFeed(data: RSSFeedInput) {
 
 async function updateFeed(
   id: string,
-  data: Partial<RSSFeedInput> & { lastProcessedAt?: Date; nextRunAt?: Date; errorMessage?: string }
+  data: Partial<RSSFeedInput> & {
+    lastProcessedAt?: Date;
+    nextRunAt?: Date;
+    errorMessage?: string | null;
+    title?: string;
+    description?: string;
+    imageUrl?: string;
+    publishedDate?: Date;
+    platforms?: string[];
+    caption?: string | null;
+  }
 ) {
   const support = await getRSSFeedColumnSupport();
   const existingFeed = await prisma.rSSFeed.findUnique({
@@ -1288,6 +1295,12 @@ async function updateFeed(
   if (data.lastProcessedAt !== undefined) updateData.lastProcessedAt = data.lastProcessedAt;
   if (data.nextRunAt !== undefined) updateData.nextRunAt = data.nextRunAt;
   if (data.errorMessage !== undefined) updateData.errorMessage = data.errorMessage;
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.imageUrl !== undefined) updateData.imageUrl = data.imageUrl;
+  if (data.publishedDate !== undefined) updateData.publishedDate = data.publishedDate;
+  if (data.platforms !== undefined) updateData.platforms = data.platforms;
+  if (data.caption !== undefined) updateData.caption = data.caption;
 
   const select = await getRSSFeedSelect();
   const updatedFeed = await prisma.rSSFeed.update({
@@ -1617,16 +1630,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       rememberRSSActivity(recentActivities, failedMetadata);
     }
 
-    await prisma.rSSFeed.update({
-      where: { id },
-      data: {
-        status: 'active',
-        source: feed.name,
-        lastProcessedAt: new Date(),
-        nextRunAt,
-        errorMessage: null,
-        updatedAt: new Date(),
-      },
+    await updateFeed(id, {
+      status: 'active',
+      lastProcessedAt: new Date(),
+      nextRunAt,
+      errorMessage: null,
     });
 
     await persistFeedSnapshot(feed.id, latestHandledItem || parsed.items[0], latestCaption, platforms, latestPublishedImageUrl);
@@ -1644,14 +1652,10 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    await prisma.rSSFeed.update({
-      where: { id },
-      data: {
-        status: 'error',
-        errorMessage,
-        nextRunAt,
-        updatedAt: new Date(),
-      },
+    await updateFeed(id, {
+      status: 'error',
+      errorMessage,
+      nextRunAt,
     });
 
     return {

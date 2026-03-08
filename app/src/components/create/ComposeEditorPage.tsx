@@ -1,5 +1,5 @@
 import { useMemo, useState, type ChangeEvent } from 'react';
-import { Film, Image as ImageIcon, Trash2, Upload, X } from 'lucide-react';
+import { Film, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { Button } from '../ui/button';
@@ -108,6 +108,15 @@ function formatBytes(size: number) {
   return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+}
+
 function buildItemTitle(formState: FormState) {
   return (
     formState.youtubeTitle ||
@@ -188,12 +197,27 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
             uploadError: undefined,
           }));
         } catch (error) {
+          const message = error instanceof Error ? error.message : 'Upload failed';
+
+          if (message.toLowerCase().includes('not configured')) {
+            const localPreviewUrl = file.type.startsWith('image/') ? await readFileAsDataUrl(file) : asset.previewUrl;
+            updateAsset(asset.id, (currentAsset) => ({
+              ...currentAsset,
+              previewUrl: localPreviewUrl || currentAsset.previewUrl,
+              storageUrl: undefined,
+              storageFileId: undefined,
+              uploadStatus: 'idle',
+              uploadError: undefined,
+            }));
+            return;
+          }
+
           updateAsset(asset.id, (currentAsset) => ({
             ...currentAsset,
             uploadStatus: 'failed',
-            uploadError: error instanceof Error ? error.message : 'Upload failed',
+            uploadError: message,
           }));
-          toast.error(error instanceof Error ? error.message : `Failed to upload ${file.name}`);
+          toast.error(message);
         }
       }),
     );
@@ -335,7 +359,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
         />
         <div className="flex-1">
-          <h1 className="mb-2 text-4xl sm:text-5xl text-gray-900 dark:text-white">
+          <h1 className="text-gray-900 dark:text-white mb-2">
             {existingItem ? 'Edit Post' : 'Add Compose Content'}
           </h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
@@ -355,12 +379,6 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                {formState.mediaAssets.length > 0 ? (
-                  <Button variant="outline" size="sm" onClick={() => setFormState((current) => ({ ...current, mediaAssets: [] }))}>
-                    <Trash2 className="h-4 w-4" />
-                    Clear
-                  </Button>
-                ) : null}
                 <Label htmlFor="compose-media" className="cursor-pointer">
                   <span className="sr-only">Upload media</span>
                   <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
@@ -404,6 +422,8 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                                 ? 'text-[#EF4444]'
                                 : asset.uploadStatus === 'uploaded'
                                   ? 'text-[#10B981]'
+                                  : asset.uploadStatus === 'idle'
+                                    ? 'text-[#6B7280] dark:text-[#9CA3AF]'
                                   : 'text-[#6B7280] dark:text-[#9CA3AF]'
                             }`}
                           >
@@ -411,6 +431,8 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                               ? asset.uploadError || 'Backblaze upload failed'
                               : asset.uploadStatus === 'uploaded'
                                 ? 'Stored in Backblaze'
+                                : asset.uploadStatus === 'idle'
+                                  ? 'Stored locally'
                                 : 'Uploading to Backblaze...'}
                           </p>
                         </div>
