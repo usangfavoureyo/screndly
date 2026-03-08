@@ -199,6 +199,13 @@ const RSS_SETTINGS_KEYS = [
   'timezone',
 ] as const;
 
+type RSSFeedColumnSupport = {
+  platformImageCounts: boolean;
+  trickle: boolean;
+};
+
+let rssFeedColumnSupportPromise: Promise<RSSFeedColumnSupport> | null = null;
+
 const parser = new Parser<any, any>({
   customFields: {
     item: [
@@ -209,6 +216,96 @@ const parser = new Parser<any, any>({
     ],
   },
 });
+
+async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
+  if (!rssFeedColumnSupportPromise) {
+    rssFeedColumnSupportPromise = (async () => {
+      try {
+        const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
+          SELECT column_name
+          FROM information_schema.columns
+          WHERE table_schema = current_schema()
+            AND table_name = 'RSSFeed'
+            AND column_name IN ('platformImageCounts', 'trickle')
+        `;
+
+        const columnNames = new Set(columns.map((column) => column.column_name));
+        return {
+          platformImageCounts: columnNames.has('platformImageCounts'),
+          trickle: columnNames.has('trickle'),
+        };
+      } catch (error) {
+        console.warn('[RSS] Failed to inspect RSSFeed columns. Assuming latest schema.', error);
+        return {
+          platformImageCounts: true,
+          trickle: true,
+        };
+      }
+    })();
+  }
+
+  return rssFeedColumnSupportPromise;
+}
+
+async function getRSSFeedSelect(): Promise<Prisma.RSSFeedSelect> {
+  const support = await getRSSFeedColumnSupport();
+
+  return {
+    id: true,
+    name: true,
+    url: true,
+    favicon: true,
+    enabled: true,
+    interval: true,
+    imageCount: true,
+    dedupeDays: true,
+    filters: true,
+    serperPriority: true,
+    rehostImages: true,
+    autoPost: true,
+    platformsEnabled: true,
+    status: true,
+    lastProcessedAt: true,
+    nextRunAt: true,
+    source: true,
+    title: true,
+    description: true,
+    imageUrl: true,
+    publishedDate: true,
+    scheduledTime: true,
+    platforms: true,
+    caption: true,
+    errorMessage: true,
+    createdAt: true,
+    updatedAt: true,
+    ...(support.platformImageCounts ? { platformImageCounts: true } : {}),
+    ...(support.trickle ? { trickle: true } : {}),
+  };
+}
+
+function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T): (T & {
+  platformImageCounts?: Prisma.JsonValue | null;
+  trickle: 'newest_first' | 'oldest_first';
+}) | null {
+  if (!feed) {
+    return null;
+  }
+
+  return {
+    ...feed,
+    platformImageCounts: 'platformImageCounts' in feed ? feed.platformImageCounts : null,
+    trickle: normalizeTrickle(typeof feed.trickle === 'string' ? feed.trickle : undefined),
+  };
+}
+
+function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]): Array<T & {
+  platformImageCounts?: Prisma.JsonValue | null;
+  trickle: 'newest_first' | 'oldest_first';
+}> {
+  return feeds
+    .map((feed) => applyRSSFeedCompatibility(feed))
+    .filter((feed): feed is T & { platformImageCounts?: Prisma.JsonValue | null; trickle: 'newest_first' | 'oldest_first' } => Boolean(feed));
+}
 
 function asString(value: Prisma.JsonValue | undefined): string | undefined {
   if (typeof value === 'string') return value;
@@ -934,15 +1031,23 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
 }
 
 async function getAllFeeds() {
-  return prisma.rSSFeed.findMany({
+  const select = await getRSSFeedSelect();
+  const feeds = await prisma.rSSFeed.findMany({
     orderBy: { createdAt: 'desc' },
+    select,
   });
+
+  return applyRSSFeedCompatibilityList(feeds as Array<Record<string, any>>);
 }
 
 async function getFeedById(id: string) {
-  return prisma.rSSFeed.findUnique({
+  const select = await getRSSFeedSelect();
+  const feed = await prisma.rSSFeed.findUnique({
     where: { id },
+    select,
   });
+
+  return applyRSSFeedCompatibility(feed as Record<string, any> | null);
 }
 
 async function createFeed(data: RSSFeedInput) {
@@ -971,33 +1076,47 @@ async function createFeed(data: RSSFeedInput) {
     explicitOnlyFetchNewItems: data.onlyFetchNewItems,
     explicitStartFromNowAt: data.startFromNowAt,
   });
+  const support = await getRSSFeedColumnSupport();
+  const select = await getRSSFeedSelect();
 
-  return prisma.rSSFeed.create({
-    data: {
-      name: feedTitle || data.name,
-      url: data.url,
-      favicon,
-      enabled: data.enabled ?? true,
-      interval: data.interval ?? 10,
-      imageCount: data.imageCount ?? '2',
-      platformImageCounts: ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue,
-      dedupeDays: data.dedupeDays ?? 30,
-      filters: resolvedFilters as unknown as Prisma.InputJsonValue,
-      serperPriority: data.serperPriority ?? true,
-      rehostImages: data.rehostImages ?? false,
-      autoPost: data.autoPost ?? true,
-      platformsEnabled: ensurePlatformsEnabled(data.platformsEnabled) as unknown as Prisma.InputJsonValue,
-      trickle: normalizeTrickle(data.trickle),
-      status: data.status ?? 'active',
-      source: feedTitle || data.name,
-    },
+  const createData: Prisma.RSSFeedCreateInput = {
+    name: feedTitle || data.name,
+    url: data.url,
+    favicon,
+    enabled: data.enabled ?? true,
+    interval: data.interval ?? 10,
+    imageCount: data.imageCount ?? '2',
+    dedupeDays: data.dedupeDays ?? 30,
+    filters: resolvedFilters as unknown as Prisma.InputJsonValue,
+    serperPriority: data.serperPriority ?? true,
+    rehostImages: data.rehostImages ?? false,
+    autoPost: data.autoPost ?? true,
+    platformsEnabled: ensurePlatformsEnabled(data.platformsEnabled) as unknown as Prisma.InputJsonValue,
+    status: data.status ?? 'active',
+    source: feedTitle || data.name,
+  };
+
+  if (support.platformImageCounts) {
+    createData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
+  }
+
+  if (support.trickle) {
+    createData.trickle = normalizeTrickle(data.trickle);
+  }
+
+  const createdFeed = await prisma.rSSFeed.create({
+    data: createData,
+    select,
   });
+
+  return applyRSSFeedCompatibility(createdFeed as Record<string, any>);
 }
 
 async function updateFeed(
   id: string,
   data: Partial<RSSFeedInput> & { lastProcessedAt?: Date; nextRunAt?: Date; errorMessage?: string }
 ) {
+  const support = await getRSSFeedColumnSupport();
   const existingFeed = await prisma.rSSFeed.findUnique({
     where: { id },
     select: { filters: true },
@@ -1015,7 +1134,7 @@ async function updateFeed(
   if (data.enabled !== undefined) updateData.enabled = data.enabled;
   if (data.interval !== undefined) updateData.interval = data.interval;
   if (data.imageCount !== undefined) updateData.imageCount = data.imageCount;
-  if (data.platformImageCounts !== undefined) {
+  if (support.platformImageCounts && data.platformImageCounts !== undefined) {
     updateData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
   }
   if (data.dedupeDays !== undefined) updateData.dedupeDays = data.dedupeDays;
@@ -1034,16 +1153,20 @@ async function updateFeed(
   if (data.rehostImages !== undefined) updateData.rehostImages = data.rehostImages;
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
   if (data.platformsEnabled !== undefined) updateData.platformsEnabled = data.platformsEnabled;
-  if (data.trickle !== undefined) updateData.trickle = normalizeTrickle(data.trickle);
+  if (support.trickle && data.trickle !== undefined) updateData.trickle = normalizeTrickle(data.trickle);
   if (data.status !== undefined) updateData.status = data.status;
   if (data.lastProcessedAt !== undefined) updateData.lastProcessedAt = data.lastProcessedAt;
   if (data.nextRunAt !== undefined) updateData.nextRunAt = data.nextRunAt;
   if (data.errorMessage !== undefined) updateData.errorMessage = data.errorMessage;
 
-  return prisma.rSSFeed.update({
+  const select = await getRSSFeedSelect();
+  const updatedFeed = await prisma.rSSFeed.update({
     where: { id },
     data: updateData,
+    select,
   });
+
+  return applyRSSFeedCompatibility(updatedFeed as Record<string, any>);
 }
 
 async function deleteFeed(id: string) {
@@ -1053,7 +1176,10 @@ async function deleteFeed(id: string) {
 }
 
 async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promise<RefreshResult> {
-  const feed = await prisma.rSSFeed.findUnique({ where: { id } });
+  const select = await getRSSFeedSelect();
+  const feed = applyRSSFeedCompatibility(
+    await prisma.rSSFeed.findUnique({ where: { id }, select }) as Record<string, any> | null
+  );
 
   if (!feed) {
     return {
@@ -1165,7 +1291,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       }
 
       try {
-        const publishImageUrls = await resolveRSSItemImages(feed, item, imagePlan.maxImageCount);
+        const publishImageUrls = await resolveRSSItemImages(feed as any, item, imagePlan.maxImageCount);
         const publishImageUrl = publishImageUrls[0];
         const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
           tone: runtimeSettings.rssCaptionTone,
@@ -1311,7 +1437,10 @@ async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
     ];
   }
 
-  const feeds = await prisma.rSSFeed.findMany({ where });
+  const select = await getRSSFeedSelect();
+  const feeds = applyRSSFeedCompatibilityList(
+    await prisma.rSSFeed.findMany({ where, select }) as Array<Record<string, any>>
+  );
 
   if (checkSchedule && feeds.length === 0) {
     return {
@@ -1338,7 +1467,10 @@ async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
 }
 
 async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> {
-  const feed = await prisma.rSSFeed.findUnique({ where: { id: feedId } });
+  const select = await getRSSFeedSelect();
+  const feed = applyRSSFeedCompatibility(
+    await prisma.rSSFeed.findUnique({ where: { id: feedId }, select }) as Record<string, any> | null
+  );
   if (!feed) {
     throw new Error('Feed not found');
   }
@@ -1357,7 +1489,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   const runtimeSettings = await getRuntimeSettings();
   const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
   const imagePlan = getRSSPublishImagePlan(feed, platforms);
-  const imageUrls = await resolveRSSItemImages(feed, previewItem, imagePlan.maxImageCount);
+  const imageUrls = await resolveRSSItemImages(feed as any, previewItem, imagePlan.maxImageCount);
   const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
     tone: runtimeSettings.rssCaptionTone,
     maxLength: runtimeSettings.rssCaptionMaxLength,

@@ -41,6 +41,8 @@ router.get('/stats', authenticate, async (_req, res) => {
     const today = startOfToday();
     const sevenDaysAgo = daysAgo(6);
     const thirtyDaysAgo = daysAgo(30);
+    const now = new Date();
+    const tmdbReadyStatuses = ['queued', 'scheduled'];
 
     const [
       systemErrors,
@@ -56,7 +58,9 @@ router.get('/stats', authenticate, async (_req, res) => {
       videoTrendItems,
       rssFeeds,
       rssLogs,
-      tmdbPosts,
+      tmdbReadyCount,
+      tmdbUpcomingPostsRaw,
+      latestScheduledPost,
       designStudioActivities,
       videoStudioActivities,
       recentLogs,
@@ -81,6 +85,14 @@ router.get('/stats', authenticate, async (_req, res) => {
         },
         orderBy: { repliedAt: 'desc' },
         take: 100,
+        select: {
+          id: true,
+          content: true,
+          reply: true,
+          platform: true,
+          repliedAt: true,
+          updatedAt: true,
+        },
       }),
       prisma.uploadJob.count({
         where: {
@@ -99,6 +111,13 @@ router.get('/stats', authenticate, async (_req, res) => {
         },
         orderBy: { updatedAt: 'desc' },
         take: 5,
+        select: {
+          id: true,
+          fileName: true,
+          stage: true,
+          progress: true,
+          status: true,
+        },
       }),
       getApiUsageActivitySummary(),
       prisma.channel.count({
@@ -107,7 +126,10 @@ router.get('/stats', authenticate, async (_req, res) => {
       prisma.feedItem.findMany({
         take: 5,
         orderBy: { publishedAt: 'desc' },
-        include: {
+        select: {
+          id: true,
+          title: true,
+          publishedAt: true,
           channel: {
             select: {
               name: true,
@@ -120,10 +142,21 @@ router.get('/stats', authenticate, async (_req, res) => {
           publishedAt: { gte: sevenDaysAgo },
         },
         orderBy: { publishedAt: 'asc' },
+        select: {
+          publishedAt: true,
+        },
       }),
       prisma.rSSFeed.findMany({
         orderBy: { updatedAt: 'desc' },
         take: 4,
+        select: {
+          id: true,
+          name: true,
+          enabled: true,
+          status: true,
+          lastProcessedAt: true,
+          nextRunAt: true,
+        },
       }),
       prisma.log.findMany({
         where: {
@@ -132,25 +165,79 @@ router.get('/stats', authenticate, async (_req, res) => {
         },
         orderBy: { timestamp: 'desc' },
         take: 250,
+        select: {
+          metadata: true,
+          timestamp: true,
+        },
+      }),
+      prisma.tMDbPost.count({
+        where: {
+          status: { in: tmdbReadyStatuses },
+        },
       }),
       prisma.tMDbPost.findMany({
+        where: {
+          status: { in: tmdbReadyStatuses },
+          scheduledTime: { gte: now },
+        },
         orderBy: { scheduledTime: 'asc' },
+        take: 3,
+        select: {
+          id: true,
+          title: true,
+          source: true,
+          scheduledTime: true,
+        },
+      }),
+      prisma.tMDbPost.findFirst({
+        where: {
+          status: { in: tmdbReadyStatuses },
+        },
+        orderBy: { scheduledTime: 'desc' },
+        select: {
+          scheduledTime: true,
+        },
       }),
       prisma.designStudioActivity.findMany({
         orderBy: { createdAt: 'desc' },
         take: 10,
+        select: {
+          id: true,
+          type: true,
+          details: true,
+          createdAt: true,
+        },
       }),
       prisma.videoStudioActivity.findMany({
         orderBy: { createdAt: 'desc' },
         take: 10,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          status: true,
+          published: true,
+          createdAt: true,
+        },
       }),
       prisma.log.findMany({
         orderBy: { timestamp: 'desc' },
         take: 5,
+        select: {
+          id: true,
+          message: true,
+          service: true,
+          level: true,
+          timestamp: true,
+          metadata: true,
+        },
       }),
       prisma.tMDbPost.findMany({
         where: {
           createdAt: { gte: thirtyDaysAgo },
+        },
+        select: {
+          cacheHit: true,
         },
       }),
     ]);
@@ -199,11 +286,7 @@ router.get('/stats', authenticate, async (_req, res) => {
       nextRunAt: feed.nextRunAt?.toISOString() || null,
     }));
 
-    const now = new Date();
-    const tmdbUpcomingPosts = tmdbPosts
-      .filter((post) => ['queued', 'scheduled'].includes(post.status) && post.scheduledTime >= now)
-      .slice(0, 3)
-      .map((post) => ({
+    const tmdbUpcomingPosts = tmdbUpcomingPostsRaw.map((post) => ({
         id: post.id,
         title: post.title,
         source: post.source,
@@ -211,10 +294,6 @@ router.get('/stats', authenticate, async (_req, res) => {
         dateLabel: formatShortDate(post.scheduledTime),
         timeLabel: formatTime(post.scheduledTime),
       }));
-    const tmdbReadyCount = tmdbPosts.filter((post) => ['queued', 'scheduled'].includes(post.status)).length;
-    const latestScheduledPost = tmdbPosts
-      .filter((post) => ['queued', 'scheduled'].includes(post.status))
-      .sort((a, b) => b.scheduledTime.getTime() - a.scheduledTime.getTime())[0];
     const coverageDays = latestScheduledPost
       ? Math.max(1, Math.ceil((latestScheduledPost.scheduledTime.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)))
       : 0;
