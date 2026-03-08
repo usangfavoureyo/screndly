@@ -133,6 +133,7 @@ model FeedItem {
   videoId     String   @unique // YouTube Video ID
   channelId   String
   title       String
+  status      String   @default("accepted") // "accepted", "ignored", or legacy rows migrated from older builds
   publishedAt DateTime
   createdAt   DateTime @default(now())
 
@@ -140,6 +141,7 @@ model FeedItem {
 
   @@index([channelId])
   @@index([publishedAt])
+  @@index([status])
 }
 
 // ============================================

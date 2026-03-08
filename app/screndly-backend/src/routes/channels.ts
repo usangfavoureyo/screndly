@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { resolveYouTubeChannel } from '../services/youtube-channel-resolver';
 import { youtubePollerService } from '../services/youtube-poller.service';
 
@@ -34,7 +35,11 @@ router.get('/', async (_req, res) => {
 // GET /api/channels/activity
 router.get('/activity', async (_req, res) => {
     try {
+        const feedItemWhere = (await hasFeedItemStatusColumn())
+            ? { status: 'accepted' as const }
+            : {};
         const items = await prisma.feedItem.findMany({
+            where: feedItemWhere,
             take: 25,
             orderBy: { publishedAt: 'desc' },
             include: {
@@ -185,8 +190,14 @@ router.get('/:id/videos', async (req, res) => {
             return res.status(404).json({ success: false, error: { message: 'Channel not found' } });
         }
 
+        const feedItemWhere = (await hasFeedItemStatusColumn())
+            ? { status: 'accepted' as const }
+            : {};
         const videos = await prisma.feedItem.findMany({
-            where: { channelId: channel.channelId },
+            where: {
+                channelId: channel.channelId,
+                ...feedItemWhere,
+            },
             take: 20,
             orderBy: { publishedAt: 'desc' }
         });

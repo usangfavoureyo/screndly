@@ -4,8 +4,8 @@ import type { PadTemplate } from '../types/pad';
 export const CREATE_TAB_STORAGE_KEY = 'screndlyCreateActiveTab';
 
 export const CREATE_TABS = [
-  { id: 'pad', label: 'PAD' },
-  { id: 'compose', label: 'Compose' },
+  { id: 'pad', label: 'Compose' },
+  { id: 'compose', label: 'Post' },
 ] as const;
 
 export type CreateTabId = (typeof CREATE_TABS)[number]['id'];

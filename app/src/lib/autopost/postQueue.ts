@@ -434,7 +434,8 @@ export class PostQueue {
         const parsed = JSON.parse(settings);
         
         // Read posting interval from RSS settings (in minutes as string)
-        const rssPostingInterval = parseInt(parsed.rssPostingInterval || '10', 10);
+        const parsedInterval = Number.parseInt(String(parsed.rssPostingInterval ?? '10'), 10);
+        const rssPostingInterval = Number.isNaN(parsedInterval) ? 10 : Math.max(0, parsedInterval);
         
         // Update rate config with UI setting
         this.rateConfig.minGapBetweenPosts = rssPostingInterval;

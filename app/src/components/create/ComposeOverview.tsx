@@ -17,6 +17,7 @@ import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
+import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem } from '../../types/compose';
 
@@ -154,15 +155,16 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
       </div>
 
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3">
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Compose Queue</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
               Build drafts, prepare schedules, and review posting status.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2">
             <Button
+              className="flex-1"
               onClick={() => {
                 haptics.medium();
                 handleCreate();
@@ -172,6 +174,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
             </Button>
             <Button
               variant="outline"
+              className="flex-1"
               onClick={() => {
                 haptics.light();
                 onNavigate('compose-activity', 'create');
@@ -231,10 +234,10 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
                         <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
-                          {primaryAsset?.previewUrl ? (
+                          {getComposeAssetPreviewUrl(primaryAsset) ? (
                             primaryAsset.kind === 'video' ? (
                               <video
-                                src={primaryAsset.previewUrl}
+                                src={getComposeAssetPreviewUrl(primaryAsset)}
                                 className="h-full w-full object-cover"
                                 muted
                                 playsInline
@@ -242,7 +245,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                               />
                             ) : (
                               <img
-                                src={primaryAsset.previewUrl}
+                                src={getComposeAssetPreviewUrl(primaryAsset)}
                                 alt={primaryAsset.fileName}
                                 className="h-full w-full object-cover"
                               />

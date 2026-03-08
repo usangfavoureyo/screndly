@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ImagePlus, Menu, MoreVertical, Pin, PinOff, Plus, Search, Send, Trash2 } from 'lucide-react';
+import { ImagePlus, MoreVertical, Pin, PinOff, Plus, Search, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { Button } from '../ui/button';
@@ -14,7 +14,6 @@ import {
   BottomSheetHeader,
   BottomSheetTitle,
 } from '../ui/bottom-sheet';
-import { PAD_TEMPLATES } from '../../config/create';
 import { useSettings } from '../../contexts/SettingsContext';
 import { generatePadReply } from '../../lib/create/generation';
 import { usePadStore } from '../../store/usePadStore';
@@ -24,13 +23,14 @@ import { haptics } from '../../utils/haptics';
 interface PadWorkspacePageProps {
   onNavigate: (page: string, fromPage?: string) => void;
   previousPage?: string | null;
+  embedded?: boolean;
 }
 
-function createChatSession(templateId: string, systemPrompt: string): PadSession {
+function createChatSession(systemPrompt: string): PadSession {
   const timestamp = new Date().toISOString();
   return {
     id: `pad-${Date.now()}`,
-    templateId,
+    templateId: 'chat',
     title: 'New Chat',
     systemPrompt,
     pinned: false,
@@ -56,7 +56,7 @@ function formatMessageTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function PadWorkspacePage({ onNavigate, previousPage }: PadWorkspacePageProps) {
+export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }: PadWorkspacePageProps) {
   const {
     sessions,
     activeSessionId,
@@ -81,10 +81,6 @@ export function PadWorkspacePage({ onNavigate, previousPage }: PadWorkspacePageP
   const longPressTimer = useRef<number | null>(null);
 
   const session = getSessionById(activeSessionId);
-  const template = useMemo(
-    () => PAD_TEMPLATES.find((entry) => entry.id === session?.templateId) ?? PAD_TEMPLATES[0],
-    [session?.templateId],
-  );
 
   const filteredSessions = useMemo(() => {
     const ordered = [...sessions].sort((a, b) => {
@@ -109,10 +105,18 @@ export function PadWorkspacePage({ onNavigate, previousPage }: PadWorkspacePageP
     }
   }, [filteredSessions, session, sessions, setActiveSessionId]);
 
+  useEffect(() => {
+    if (!session && sessions.length === 0) {
+      const nextSession = createChatSession(
+        settings.padChatSystemPrompt || 'You are Screndly PAD. Respond like a focused writing copilot and follow the chat context for future replies.',
+      );
+      createSession(nextSession);
+    }
+  }, [createSession, session, sessions.length, settings.padChatSystemPrompt]);
+
   const handleNewChat = () => {
     const nextSession = createChatSession(
-      template.id,
-      settings.padChatSystemPrompt || `You are Screndly PAD. Stay focused on the ${template.name} workflow and respond like a creative writing copilot.`,
+      settings.padChatSystemPrompt || 'You are Screndly PAD. Respond like a focused writing copilot and follow the chat context for future replies.',
     );
     createSession(nextSession);
     setDraft('');
@@ -283,19 +287,15 @@ export function PadWorkspacePage({ onNavigate, previousPage }: PadWorkspacePageP
 
   return (
     <div className="space-y-6" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      <div className="mb-4 flex items-start gap-4">
-        <BackIconButton onClick={() => onNavigate(previousPage || 'create')} className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white" />
-        <div className="flex-1">
-          <div className="mb-2 flex items-center gap-2">
-            <button type="button" onClick={() => setIsMobileDrawerOpen(true)} className="rounded-lg border border-gray-200 p-2 text-gray-900 dark:border-[#333333] dark:text-white lg:hidden">
-              <Menu className="h-4 w-4" />
-            </button>
-            <div className="inline-flex rounded-lg bg-[#ec1e24]/10 px-3 py-1 text-sm text-[#ec1e24]">{template.name}</div>
+      {!embedded ? (
+        <div className="mb-4 flex items-start gap-4">
+          <BackIconButton onClick={() => onNavigate(previousPage || 'create')} className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white" />
+          <div className="flex-1">
+            <h1 className="mb-2 text-gray-900 dark:text-white">PAD Chat</h1>
+            <p className="text-[#6B7280] dark:text-[#9CA3AF]">Use the left panel to manage chats and keep each thread focused with its own context.</p>
           </div>
-          <h1 className="mb-2 text-gray-900 dark:text-white">PAD Chat</h1>
-          <p className="text-[#6B7280] dark:text-[#9CA3AF]">{template.description}</p>
         </div>
-      </div>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <div className="hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-[#333333] dark:bg-[#000000] lg:block">

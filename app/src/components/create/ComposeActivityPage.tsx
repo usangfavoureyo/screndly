@@ -6,6 +6,7 @@ import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
+import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import type { ComposeItem, ComposeStatus } from '../../types/compose';
 
 interface ComposeActivityPageProps {
@@ -164,10 +165,10 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex min-w-0 items-start gap-3">
                         <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
-                          {primaryAsset?.previewUrl ? (
+                          {getComposeAssetPreviewUrl(primaryAsset) ? (
                             primaryAsset.kind === 'video' ? (
                               <video
-                                src={primaryAsset.previewUrl}
+                                src={getComposeAssetPreviewUrl(primaryAsset)}
                                 className="h-full w-full object-cover"
                                 muted
                                 playsInline
@@ -175,7 +176,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                               />
                             ) : (
                               <img
-                                src={primaryAsset.previewUrl}
+                                src={getComposeAssetPreviewUrl(primaryAsset)}
                                 alt={primaryAsset.fileName}
                                 className="h-full w-full object-cover"
                               />

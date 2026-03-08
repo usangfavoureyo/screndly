@@ -6,6 +6,7 @@ import path from 'path';
 import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
 import { notificationService } from './notification.service';
+import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { resolveYouTubeChannel } from './youtube-channel-resolver';
 import {
     enrichYouTubeVideoMetadata,
@@ -57,6 +58,8 @@ interface GeneratedCaptions {
     generated?: string;
     fallback: string;
 }
+
+type FeedItemStatus = 'accepted' | 'ignored';
 
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
@@ -249,10 +252,10 @@ export class YouTubePollerService {
             const pubDate = new Date(video.pubDate || Date.now());
             const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
             if (hoursSince > 24) {
-                await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
+                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
                 await prisma.channel.update({
                     where: { id: activeChannel.id },
-                    data: { lastCheck: new Date(), videoCount: { increment: 1 } }
+                    data: { lastCheck: new Date() }
                 });
 
                 return {
@@ -276,10 +279,10 @@ export class YouTubePollerService {
                 const isTrailer = keywords.some((keyword: string) => titleLower.includes(keyword));
 
                 if (!isTrailer) {
-                    await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
+                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
                     await prisma.channel.update({
                         where: { id: activeChannel.id },
-                        data: { lastCheck: new Date(), videoCount: { increment: 1 } }
+                        data: { lastCheck: new Date() }
                     });
 
                     return {
@@ -324,10 +327,10 @@ export class YouTubePollerService {
                     titleLower.includes('#shorts');
 
                 if (isShort) {
-                    await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
+                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
                     await prisma.channel.update({
                         where: { id: activeChannel.id },
-                        data: { lastCheck: new Date(), videoCount: { increment: 1 } }
+                        data: { lastCheck: new Date() }
                     });
 
                     return {
@@ -352,6 +355,7 @@ export class YouTubePollerService {
             );
 
             if (settings.regionFilter && !enrichedMetadata.regionAllowed) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
                 await prisma.channel.update({
                     where: { id: activeChannel.id },
                     data: { lastCheck: new Date() }
@@ -387,10 +391,10 @@ Respond ONLY "YES" or "NO".`,
                 });
 
                 if (aiResult.success && aiResult.content.trim().toUpperCase().includes('NO')) {
-                    await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
+                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
                     await prisma.channel.update({
                         where: { id: activeChannel.id },
-                        data: { lastCheck: new Date(), videoCount: { increment: 1 } }
+                        data: { lastCheck: new Date() }
                     });
 
                     return {
@@ -408,9 +412,10 @@ Respond ONLY "YES" or "NO".`,
 
             const targetPlatforms = this.getTargetPlatforms(settings);
             if (targetPlatforms.length === 0) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
                 await prisma.channel.update({
                     where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
+                    data: { lastCheck: new Date(), videoCount: { increment: 1 } }
                 });
 
                 return {
@@ -427,9 +432,10 @@ Respond ONLY "YES" or "NO".`,
 
             const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
             if (recentPublishBlock) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
                 await prisma.channel.update({
                     where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
+                    data: { lastCheck: new Date(), videoCount: { increment: 1 } }
                 });
 
                 return {
@@ -517,7 +523,7 @@ Respond ONLY "YES" or "NO".`,
                 }
             }
 
-            await this.markAsProcessed(videoId, activeChannel.channelId, video.title || '', pubDate);
+            await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
             await prisma.channel.update({
                 where: { id: activeChannel.id },
                 data: { lastCheck: new Date(), videoCount: { increment: 1 } }
@@ -915,19 +921,39 @@ Respond ONLY "YES" or "NO".`,
         return '';
     }
 
-    private async markAsProcessed(videoId: string, channelId: string, title: string, publishedAt: Date) {
+    private async recordFeedItem(
+        videoId: string,
+        channelId: string,
+        title: string,
+        publishedAt: Date,
+        status: FeedItemStatus
+    ) {
+        const supportsStatus = await hasFeedItemStatusColumn();
+        const baseData = {
+            title,
+            publishedAt,
+        };
+
         await prisma.feedItem.upsert({
             where: { videoId },
-            update: {
-                title,
-                publishedAt
-            },
-            create: {
-                videoId,
-                channelId,
-                title,
-                publishedAt
-            }
+            update: supportsStatus
+                ? {
+                    ...baseData,
+                    status,
+                }
+                : baseData,
+            create: supportsStatus
+                ? {
+                    videoId,
+                    channelId,
+                    ...baseData,
+                    status,
+                }
+                : {
+                    videoId,
+                    channelId,
+                    ...baseData,
+                }
         });
     }
 

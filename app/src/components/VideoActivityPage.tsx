@@ -110,16 +110,18 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">Recent YouTube channel detections and monitoring activity.</p>
         </div>
         <Button
+          size="sm"
           variant="outline"
           onClick={() => {
             haptics.light();
             loadData();
           }}
           disabled={isRefreshing}
-          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          aria-label="Refresh video activity"
+          title="Refresh"
         >
-          <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-          Refresh
+          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
