@@ -1,21 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Cloud, Search, Loader2, CheckCircle, FolderOpen, Film } from 'lucide-react';
 import { toast } from "sonner";
 import { haptics } from '../utils/haptics';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
-import { useSettings } from '../contexts/SettingsContext';
-import { listBackblazeFiles } from '../utils/backblaze';
+import { BackblazeBrowserFile, listVideoStudioFiles } from '../lib/api/backblaze';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
-
-interface BackblazeFile {
-  fileName: string;
-  fileId: string;
-  contentType: string;
-  contentLength: number;
-  uploadTimestamp: number;
-  url: string;
-}
 
 interface BackblazeVideoBrowserProps {
   open: boolean;
@@ -24,17 +14,15 @@ interface BackblazeVideoBrowserProps {
 }
 
 export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: BackblazeVideoBrowserProps) {
-  const { settings } = useSettings();
   const [isLoading, setIsLoading] = useState(false);
-  const [files, setFiles] = useState<BackblazeFile[]>([]);
-  const [filteredFiles, setFilteredFiles] = useState<BackblazeFile[]>([]);
+  const [files, setFiles] = useState<BackblazeBrowserFile[]>([]);
+  const [filteredFiles, setFilteredFiles] = useState<BackblazeBrowserFile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFile, setSelectedFile] = useState<BackblazeFile | null>(null);
+  const [selectedFile, setSelectedFile] = useState<BackblazeBrowserFile | null>(null);
 
   useEffect(() => {
     if (open) {
-      loadFiles();
-      // Reset state when opening
+      void loadFiles();
       setSearchQuery('');
       setSelectedFile(null);
     }
@@ -52,41 +40,24 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
   }, [searchQuery, files]);
 
   const loadFiles = async () => {
-    if (!settings.backblazeVideosKeyId || !settings.backblazeVideosApplicationKey || !settings.backblazeVideosBucketName) {
-      toast.error('Backblaze Videos Bucket not configured', {
-        description: 'Add credentials in Settings → API Keys → Videos Bucket'
-      });
-      return;
-    }
-
     setIsLoading(true);
     haptics.light();
 
     try {
-      const result = await listBackblazeFiles(
-        settings.backblazeVideosKeyId,
-        settings.backblazeVideosApplicationKey,
-        settings.backblazeVideosBucketName
-      );
+      const result = await listVideoStudioFiles('videos');
 
       if (result.success && result.files) {
-        // Filter for video files only
-        const videoFiles = result.files.filter(file =>
-          file.contentType?.startsWith('video/') ||
-          file.fileName.match(/\.(mp4|mov|avi|mkv|webm|m4v)$/i)
-        );
+        setFiles(result.files);
+        setFilteredFiles(result.files);
 
-        setFiles(videoFiles);
-        setFilteredFiles(videoFiles);
-
-        if (videoFiles.length === 0) {
+        if (result.files.length === 0) {
           toast.info('No videos found', {
-            description: 'Upload videos to your Backblaze B2 bucket first'
+            description: 'Upload videos to your Backblaze bucket first',
           });
         } else {
           haptics.success();
-          toast.success(`Found ${videoFiles.length} video${videoFiles.length > 1 ? 's' : ''}`, {
-            description: 'Select one to use in your project'
+          toast.success(`Found ${result.files.length} video${result.files.length > 1 ? 's' : ''}`, {
+            description: 'Select one to use in your project',
           });
         }
       } else {
@@ -95,41 +66,43 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
     } catch (error) {
       haptics.error();
       toast.error('Failed to load Backblaze files', {
-        description: error instanceof Error ? error.message : 'Check your credentials'
+        description: error instanceof Error ? error.message : 'Check your credentials',
       });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleSelectFile = (file: BackblazeFile) => {
+  const handleSelectFile = (file: BackblazeBrowserFile) => {
     setSelectedFile(file);
     haptics.light();
   };
 
   const handleConfirmSelection = () => {
-    if (selectedFile) {
-      haptics.success();
-      onSelectVideo(selectedFile.url, selectedFile.fileName, selectedFile.contentLength);
-      toast.success('Video Loaded from Backblaze', {
-        description: selectedFile.fileName
-      });
-      onClose();
+    if (!selectedFile) {
+      return;
     }
+
+    haptics.success();
+    onSelectVideo(selectedFile.url, selectedFile.fileName, selectedFile.contentLength);
+    toast.success('Video loaded from Backblaze', {
+      description: selectedFile.fileName,
+    });
+    onClose();
   };
 
   const formatFileSize = (bytes: number): string => {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     if (bytes === 0) return '0 B';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
+    const index = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, index)).toFixed(1)} ${sizes[index]}`;
   };
 
   const formatDate = (timestamp: number): string => {
     return new Date(timestamp).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     });
   };
 
@@ -148,7 +121,6 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
       </BottomSheetHeader>
 
       <BottomSheetBody className="flex flex-col gap-4 flex-1 overflow-hidden">
-        {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
           <Input
@@ -160,7 +132,6 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
           />
         </div>
 
-        {/* File List */}
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {isLoading ? (
             <div className="flex flex-col items-center justify-center py-12">
@@ -174,7 +145,7 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
                 {searchQuery ? 'No videos match your search' : 'No videos found'}
               </p>
               <p className="text-sm text-gray-400 dark:text-gray-500">
-                {!searchQuery && 'Upload videos to your Backblaze B2 bucket to see them here'}
+                {!searchQuery && 'Upload videos to your Backblaze bucket to see them here'}
               </p>
             </div>
           ) : (

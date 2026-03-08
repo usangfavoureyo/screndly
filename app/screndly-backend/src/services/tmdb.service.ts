@@ -399,7 +399,7 @@ export async function saveTMDbPost(
     // Try AI Generation first
     try {
         // Fetch model from settings (passed in config if available, or default)
-        const model = (config as any)?.tmdbCaptionModel || 'flash-3'; // Default to Flash 3 for speed/cost
+        const model = (config as any)?.tmdbCaptionModel || 'gpt-5-mini';
         const systemPrompt = buildTMDbCaptionSystemPrompt(customPrompt, {
             maxLength: config?.captionMaxLength,
             includeCast: config?.includeCast,

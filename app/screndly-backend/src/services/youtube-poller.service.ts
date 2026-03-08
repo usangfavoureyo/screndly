@@ -825,7 +825,7 @@ Respond ONLY "YES" or "NO".`,
             platform: 'X' as const
         };
 
-        const model = settings.videoOpenaiModel || 'gpt-4o';
+        const model = settings.videoOpenaiModel || 'gpt-5-mini';
         const customPrompt = settings.videoUniversalCaptionPrompt;
 
         try {

@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Textarea } from '../ui/textarea';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface CommentReplySettingsProps {
@@ -139,7 +139,7 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
         <div>
           <Label htmlFor="comment-reply-model" className="text-[#9CA3AF]">Comment Reply AI Model</Label>
           <Select
-            value={settings.commentReplyModel || 'gpt-4o-mini'}
+            value={settings.commentReplyModel || DEFAULT_MODELS.comment}
             onValueChange={(value) => {
               haptics.light();
               updateSetting('commentReplyModel', value);

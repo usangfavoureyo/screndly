@@ -9,20 +9,11 @@ import { FeedPreview } from './rss/FeedPreview';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
 import { useSettings } from '../contexts/SettingsContext';
-import { enrichArticleWithImages } from '../lib/rss/image-enrichment';
-import { generateRSSCaption } from '../utils/rssCaptionGenerator';
 import { useRSSFeeds, RSSActivityItem, PlatformsEnabled } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
 
 interface RSSPageProps {
   onNavigate?: (page: string) => void;
-}
-
-function getImageCountValue(value: Feed['imageCount']): number {
-  if (value === '1' || value === '2' || value === '3') {
-    return Number.parseInt(value, 10);
-  }
-  return 2;
 }
 
 export function RSSPage({ onNavigate }: RSSPageProps) {
@@ -39,7 +30,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     togglePlatform,
     refreshFeed,
     refreshAllFeeds,
-    previewFeed,
+    previewFeedPipeline,
     getActivity,
   } = useRSSFeeds();
 
@@ -59,12 +50,14 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     enabled: feed.enabled,
     interval: feed.interval,
     imageCount: feed.imageCount as '1' | '2' | '3' | 'random',
+    platformImageCounts: feed.platformImageCounts,
     dedupeDays: feed.dedupeDays,
     filters: feed.filters,
     serperPriority: feed.serperPriority,
     rehostImages: feed.rehostImages,
     autoPost: feed.autoPost,
     platformsEnabled: feed.platformsEnabled,
+    trickle: feed.trickle,
     status: feed.status,
     lastProcessedAt: feed.lastProcessedAt || undefined,
     nextRunAt: feed.nextRunAt || undefined,
@@ -158,56 +151,14 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     const loadingToast = toast.loading('Generating feed preview...');
 
     try {
-      const preview = await previewFeed(feed.url);
-      if (!preview || preview.sampleItems.length === 0) {
+      const preview = await previewFeedPipeline(feed.id);
+      if (!preview) {
         throw new Error('No items found in feed preview');
       }
 
-      const latestItem = preview.sampleItems[0];
-      const fallbackImages = latestItem.imageUrl
-        ? [{ url: latestItem.imageUrl, reason: 'Feed image' }]
-        : [];
-
-      let selectedImages = fallbackImages;
-
-      if (feed.serperPriority) {
-        const enrichmentResult = await enrichArticleWithImages(
-          {
-            title: latestItem.title,
-            description: latestItem.description || '',
-            link: latestItem.link,
-            pubDate: latestItem.pubDate,
-          },
-          settings,
-          getImageCountValue(feed.imageCount)
-        );
-
-        if (enrichmentResult.success && enrichmentResult.images.length > 0) {
-          selectedImages = enrichmentResult.images.map((image) => ({ url: image.url, reason: image.reason }));
-        }
-      }
-
-      const captionResult = await generateRSSCaption(
-        {
-          title: latestItem.title,
-          description: latestItem.description || '',
-          link: latestItem.link,
-          feedName: feed.name,
-        },
-        settings
-      );
-
       toast.dismiss(loadingToast);
       setPreviewFeedId(feed.id);
-      setPreviewData({
-        title: latestItem.title,
-        link: latestItem.link,
-        pubDate: latestItem.pubDate,
-        snippet: latestItem.description || preview.description || 'No description available.',
-        images: selectedImages,
-        caption: captionResult.caption,
-        captionCharCount: captionResult.charCount,
-      });
+      setPreviewData(preview);
       setIsPreviewOpen(true);
     } catch (error) {
       toast.dismiss(loadingToast);

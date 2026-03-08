@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 
 // Types
 export interface Notification {
@@ -173,7 +174,7 @@ const defaultSettings: Settings = {
 };
 
 const defaultVideoStudioSettings: VideoStudioSettings = {
-  openaiModel: 'gpt-4o',
+  openaiModel: DEFAULT_MODELS.videoStudio,
   temperature: 0,
   topP: 0.95,
   maxTokens: 4096,

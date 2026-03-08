@@ -3,7 +3,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import aiService, { AIModel } from '../services/ai.service';
+import aiService, { AIModel, LEGACY_OPENAI_MODELS, SUPPORTED_OPENAI_MODELS } from '../services/ai.service';
 
 const router = Router();
 
@@ -304,8 +304,8 @@ router.get('/status', async (_req: Request, res: Response) => {
                 openai: !!openaiKey,
                 flash3: !!flash3Key,
                 availableModels: [
-                    ...(openaiKey ? ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'] : []),
-                    ...(flash3Key || openaiKey ? ['flash-3'] : []) // Flash 3 can fallback to OpenAI
+                    ...(openaiKey ? [...SUPPORTED_OPENAI_MODELS, ...LEGACY_OPENAI_MODELS] : []),
+                    ...(flash3Key || openaiKey ? ['flash-3'] : [])
                 ]
             }
         });

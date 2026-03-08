@@ -1,7 +1,6 @@
-import axios from 'axios';
 import fs from 'fs/promises';
 import path from 'path';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { getSecretSetting, getStringSetting } from '../lib/settings';
 
 export type BackblazeBucketType = 'general' | 'videos' | 'design';
@@ -13,13 +12,89 @@ interface BackblazeBucketConfig {
   endpoint: string;
 }
 
+interface BackblazeBucketRuntime extends BackblazeBucketConfig {
+  accountId: string;
+  apiUrl: string;
+  downloadUrl: string;
+  authorizationToken: string;
+  bucketId: string;
+  expiresAt: number;
+}
+
 interface UploadOptions {
   bucketTypes?: BackblazeBucketType[];
   prefix?: string;
   contentType?: string;
 }
 
+interface ListOptions {
+  prefix?: string;
+  maxFileCount?: number;
+}
+
+export interface BackblazeFileRecord {
+  fileId: string;
+  fileName: string;
+  contentType: string;
+  contentLength: number;
+  uploadTimestamp: number;
+  lastModified: Date;
+  url: string;
+}
+
+interface AuthorizeAccountResponse {
+  accountId: string;
+  apiInfo?: {
+    storageApi?: {
+      apiUrl?: string;
+      downloadUrl?: string;
+      authorizationToken?: string;
+    };
+  };
+  apiUrl?: string;
+  authorizationToken?: string;
+  downloadUrl?: string;
+}
+
+interface ListBucketsResponse {
+  buckets: Array<{
+    bucketId: string;
+    bucketName: string;
+  }>;
+}
+
+interface GetUploadUrlResponse {
+  authorizationToken: string;
+  uploadUrl: string;
+}
+
+interface ListFileNamesResponse {
+  files: Array<{
+    action?: string;
+    contentLength?: number;
+    contentType?: string;
+    fileId: string;
+    fileName: string;
+    size?: number;
+    uploadTimestamp?: number;
+  }>;
+  nextFileName?: string | null;
+}
+
+class BackblazeApiError extends Error {
+  status: number;
+  details: unknown;
+
+  constructor(message: string, status: number, details: unknown) {
+    super(message);
+    this.name = 'BackblazeApiError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const DEFAULT_ENDPOINT = 's3.us-west-004.backblazeb2.com';
+const AUTH_CACHE_TTL_MS = 23 * 60 * 60 * 1000;
 
 const BUCKET_SETTING_KEYS: Record<BackblazeBucketType, { keyId: string; applicationKey: string; bucketName: string }> = {
   general: {
@@ -57,6 +132,8 @@ const BUCKET_ENV_KEYS: Record<BackblazeBucketType, { keyId: string[]; applicatio
   },
 };
 
+const authCache = new Map<string, BackblazeBucketRuntime>();
+
 function readEnvValue(keys: string[]): string | null {
   for (const key of keys) {
     const value = process.env[key]?.trim();
@@ -92,6 +169,88 @@ function buildFileName(originalName: string, prefix?: string): string {
   return safePrefix ? `${safePrefix}/${fileName}` : fileName;
 }
 
+function encodeFileName(fileName: string): string {
+  return fileName
+    .split('/')
+    .filter(Boolean)
+    .map(segment => encodeURIComponent(segment))
+    .join('/');
+}
+
+function buildPublicUrl(downloadUrl: string, bucketName: string, fileName: string): string {
+  return `${downloadUrl}/file/${encodeURIComponent(bucketName)}/${encodeFileName(fileName)}`;
+}
+
+function buildCacheKey(bucketType: BackblazeBucketType, config: BackblazeBucketConfig): string {
+  return `${bucketType}:${config.keyId}:${config.bucketName}:${config.endpoint}`;
+}
+
+async function parseErrorResponse(response: Response): Promise<{ message: string; details: unknown }> {
+  const text = await response.text();
+
+  if (!text) {
+    return {
+      message: response.statusText || 'Backblaze request failed',
+      details: null,
+    };
+  }
+
+  try {
+    const data = JSON.parse(text);
+    return {
+      message: data.message || data.code || response.statusText || 'Backblaze request failed',
+      details: data,
+    };
+  } catch {
+    return {
+      message: text,
+      details: text,
+    };
+  }
+}
+
+async function backblazeJsonRequest<T>(
+  url: string,
+  options: {
+    method?: 'GET' | 'POST';
+    headers?: Record<string, string>;
+    body?: unknown;
+  } = {}
+): Promise<T> {
+  const response = await fetch(url, {
+    method: options.method || 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+
+  if (!response.ok) {
+    const parsedError = await parseErrorResponse(response);
+    throw new BackblazeApiError(parsedError.message, response.status, parsedError.details);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function backblazeUploadRequest(
+  url: string,
+  buffer: Buffer,
+  headers: Record<string, string>
+): Promise<void> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: buffer,
+  });
+
+  if (!response.ok) {
+    const parsedError = await parseErrorResponse(response);
+    throw new BackblazeApiError(parsedError.message, response.status, parsedError.details);
+  }
+}
+
 async function getBucketConfig(bucketType: BackblazeBucketType): Promise<BackblazeBucketConfig | null> {
   const bucketSettings = BUCKET_SETTING_KEYS[bucketType];
   const bucketEnvKeys = BUCKET_ENV_KEYS[bucketType];
@@ -119,33 +278,163 @@ async function getBucketConfig(bucketType: BackblazeBucketType): Promise<Backbla
   };
 }
 
+async function resolveBucketRuntime(bucketType: BackblazeBucketType): Promise<BackblazeBucketRuntime> {
+  const config = await getBucketConfig(bucketType);
+  if (!config) {
+    throw new Error(`Backblaze ${bucketType} bucket is not configured`);
+  }
+
+  const cacheKey = buildCacheKey(bucketType, config);
+  const cached = authCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now() + 60_000) {
+    return cached;
+  }
+
+  const basicAuth = Buffer.from(`${config.keyId}:${config.applicationKey}`).toString('base64');
+  const auth = await backblazeJsonRequest<AuthorizeAccountResponse>(
+    'https://api.backblazeb2.com/b2api/v2/b2_authorize_account',
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Basic ${basicAuth}`,
+      },
+    }
+  );
+
+  const storageApi = auth.apiInfo?.storageApi;
+  const apiUrl = storageApi?.apiUrl || auth.apiUrl;
+  const downloadUrl = storageApi?.downloadUrl || auth.downloadUrl;
+  const authorizationToken = storageApi?.authorizationToken || auth.authorizationToken;
+
+  if (!auth.accountId || !apiUrl || !downloadUrl || !authorizationToken) {
+    throw new Error('Backblaze authorization response was incomplete');
+  }
+
+  const buckets = await backblazeJsonRequest<ListBucketsResponse>(
+    `${apiUrl}/b2api/v2/b2_list_buckets`,
+    {
+      headers: {
+        Authorization: authorizationToken,
+      },
+      body: {
+        accountId: auth.accountId,
+        bucketName: config.bucketName,
+      },
+    }
+  );
+
+  const bucket = buckets.buckets.find(item => item.bucketName === config.bucketName);
+  if (!bucket) {
+    throw new Error(`Backblaze bucket "${config.bucketName}" was not found for ${bucketType}`);
+  }
+
+  const runtime: BackblazeBucketRuntime = {
+    ...config,
+    accountId: auth.accountId,
+    apiUrl,
+    downloadUrl,
+    authorizationToken,
+    bucketId: bucket.bucketId,
+    expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+  };
+
+  authCache.set(cacheKey, runtime);
+  return runtime;
+}
+
+function normalizeFileRecord(runtime: BackblazeBucketRuntime, file: ListFileNamesResponse['files'][number]): BackblazeFileRecord {
+  const uploadTimestamp = typeof file.uploadTimestamp === 'number' ? file.uploadTimestamp : Date.now();
+  const contentLength = typeof file.contentLength === 'number'
+    ? file.contentLength
+    : typeof file.size === 'number'
+      ? file.size
+      : 0;
+
+  return {
+    fileId: file.fileId,
+    fileName: file.fileName,
+    contentType: file.contentType || 'application/octet-stream',
+    contentLength,
+    uploadTimestamp,
+    lastModified: new Date(uploadTimestamp),
+    url: buildPublicUrl(runtime.downloadUrl, runtime.bucketName, file.fileName),
+  };
+}
+
+export async function listBackblazeFiles(
+  bucketType: BackblazeBucketType,
+  options: ListOptions = {}
+): Promise<BackblazeFileRecord[]> {
+  const runtime = await resolveBucketRuntime(bucketType);
+  const maxFileCount = Math.max(1, Math.min(options.maxFileCount || 1000, 1000));
+  let startFileName: string | undefined;
+  const results: BackblazeFileRecord[] = [];
+
+  while (results.length < maxFileCount) {
+    const response = await backblazeJsonRequest<ListFileNamesResponse>(
+      `${runtime.apiUrl}/b2api/v2/b2_list_file_names`,
+      {
+        headers: {
+          Authorization: runtime.authorizationToken,
+        },
+        body: {
+          bucketId: runtime.bucketId,
+          prefix: options.prefix || undefined,
+          maxFileCount: Math.min(1000, maxFileCount - results.length),
+          startFileName,
+        },
+      }
+    );
+
+    const visibleFiles = response.files
+      .filter(file => file.action !== 'hide')
+      .map(file => normalizeFileRecord(runtime, file));
+
+    results.push(...visibleFiles);
+
+    if (!response.nextFileName || response.files.length === 0) {
+      break;
+    }
+
+    startFileName = response.nextFileName;
+  }
+
+  return results;
+}
+
 async function uploadBufferWithBucket(
   buffer: Buffer,
   originalName: string,
   bucketType: BackblazeBucketType,
   options: UploadOptions
 ): Promise<{ url: string; fileName: string }> {
-  const config = await getBucketConfig(bucketType);
-  if (!config) {
-    throw new Error(`Backblaze ${bucketType} bucket is not configured`);
-  }
-
+  const runtime = await resolveBucketRuntime(bucketType);
   const fileName = buildFileName(originalName, options.prefix);
-  const uploadUrl = `https://${config.endpoint}/${config.bucketName}/${fileName}`;
-  const auth = Buffer.from(`${config.keyId}:${config.applicationKey}`).toString('base64');
+  const sha1 = createHash('sha1').update(buffer).digest('hex');
 
-  await axios.put(uploadUrl, buffer, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': options.contentType || 'application/octet-stream',
-      'Content-Length': buffer.length,
-    },
-    maxBodyLength: Infinity,
-    maxContentLength: Infinity,
+  const upload = await backblazeJsonRequest<GetUploadUrlResponse>(
+    `${runtime.apiUrl}/b2api/v2/b2_get_upload_url`,
+    {
+      headers: {
+        Authorization: runtime.authorizationToken,
+      },
+      body: {
+        bucketId: runtime.bucketId,
+      },
+    }
+  );
+
+  await backblazeUploadRequest(upload.uploadUrl, buffer, {
+    Authorization: upload.authorizationToken,
+    'Content-Type': options.contentType || 'b2/x-auto',
+    'Content-Length': String(buffer.length),
+    'X-Bz-Content-Sha1': sha1,
+    'X-Bz-File-Name': encodeFileName(fileName),
+    'X-Bz-Info-src_last_modified_millis': String(Date.now()),
   });
 
   return {
-    url: `https://${config.bucketName}.${config.endpoint}/${fileName}`,
+    url: buildPublicUrl(runtime.downloadUrl, runtime.bucketName, fileName),
     fileName,
   };
 }

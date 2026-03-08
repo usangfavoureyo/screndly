@@ -75,10 +75,12 @@ model RSSFeed {
   // Image Settings
   serperPriority  Boolean  @default(true)
   rehostImages    Boolean  @default(false)
+  platformImageCounts Json?
   
   // Posting Settings
   autoPost        Boolean  @default(true)
   platformsEnabled Json    @default("{\"x\":true,\"threads\":true,\"facebook\":false,\"pinterest\":false}")
+  trickle         String   @default("newest_first")
   
   // Status & Timing
   status          String   @default("active") // "active", "paused", "error"

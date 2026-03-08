@@ -13,6 +13,7 @@ import {
   refreshAllFeeds,
   fetchRSSFeed,
   parseRSSFeed,
+  previewFeedPipeline,
   getRSSActivity,
   deleteRSSActivity,
   RSSFeedInput,
@@ -33,12 +34,14 @@ router.get('/feeds', async (_req: Request, res: Response) => {
       enabled: feed.enabled,
       interval: feed.interval,
       imageCount: feed.imageCount,
+      platformImageCounts: feed.platformImageCounts,
       dedupeDays: feed.dedupeDays,
       filters: feed.filters,
       serperPriority: feed.serperPriority,
       rehostImages: feed.rehostImages,
       autoPost: feed.autoPost,
       platformsEnabled: feed.platformsEnabled,
+      trickle: feed.trickle,
       status: feed.status,
       lastProcessedAt: feed.lastProcessedAt?.toISOString() || null,
       nextRunAt: feed.nextRunAt?.toISOString() || null,
@@ -71,12 +74,14 @@ router.get('/feeds/:id', async (req: Request, res: Response) => {
         enabled: feed.enabled,
         interval: feed.interval,
         imageCount: feed.imageCount,
+        platformImageCounts: feed.platformImageCounts,
         dedupeDays: feed.dedupeDays,
         filters: feed.filters,
         serperPriority: feed.serperPriority,
         rehostImages: feed.rehostImages,
         autoPost: feed.autoPost,
         platformsEnabled: feed.platformsEnabled,
+        trickle: feed.trickle,
         status: feed.status,
         lastProcessedAt: feed.lastProcessedAt?.toISOString() || null,
         nextRunAt: feed.nextRunAt?.toISOString() || null,
@@ -147,6 +152,19 @@ router.post('/feeds/:id/refresh', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[RSS] Error refreshing feed:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to refresh feed' } });
+  }
+});
+
+router.get('/feeds/:id/preview', async (req: Request, res: Response) => {
+  try {
+    const preview = await previewFeedPipeline(req.params.id);
+    res.json({ success: true, data: preview });
+  } catch (error) {
+    console.error('[RSS] Error generating feed pipeline preview:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to generate feed preview' },
+    });
   }
 });
 

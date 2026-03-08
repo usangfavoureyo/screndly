@@ -4,7 +4,7 @@ import multer from 'multer';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
-import { uploadLocalFileToBackblaze } from '../services/backblaze';
+import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -142,6 +142,27 @@ router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (re
     if (req.file?.path) {
       await fs.unlink(req.file.path).catch(() => undefined);
     }
+  }
+});
+
+router.get('/backblaze/templates', authenticate, async (_req, res) => {
+  try {
+    const [namespacedTemplates, legacyTemplates] = await Promise.all([
+      listBackblazeFiles('design', { prefix: 'design-studio/templates/', maxFileCount: 1000 }),
+      listBackblazeFiles('design', { prefix: 'templates/', maxFileCount: 1000 }).catch(() => []),
+    ]);
+
+    const merged = [...namespacedTemplates, ...legacyTemplates]
+      .filter(file => file.fileName.toLowerCase().endsWith('.psd'))
+      .filter((file, index, files) => files.findIndex(other => other.fileId === file.fileId) === index);
+
+    res.json({ success: true, data: merged });
+  } catch (error) {
+    console.error('Error listing design-studio Backblaze templates:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to list Backblaze templates' },
+    });
   }
 });
 

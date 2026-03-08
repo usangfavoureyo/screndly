@@ -17,7 +17,7 @@ export interface Feed {
   enabled: boolean;
   interval: number;
   imageCount: '1' | '2' | '3' | 'random';
-  platformImageCounts?: { x?: number; threads?: number; facebook?: number };
+  platformImageCounts?: { x?: number; threads?: number; facebook?: number; pinterest?: number };
   dedupeDays: number;
   filters: {
     scope: 'title' | 'body' | 'title_or_body' | 'title_and_body';
@@ -42,6 +42,7 @@ export interface Feed {
   nextRunAt?: string;
   platformsEnabled?: { x: boolean; threads: boolean; facebook: boolean; pinterest: boolean };
   autoPost: boolean;
+  trickle?: 'newest_first' | 'oldest_first';
   status: 'active' | 'paused' | 'error';
   favicon?: string;
 }

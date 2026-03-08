@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from '../lib/api/client';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 
 export type VideoContentType = 'review' | 'releases' | 'scenes';
 
@@ -183,7 +184,7 @@ export function getVideoStudioCaptionSettings(contentType: VideoContentType): Ca
   };
 
   return {
-    model: settings.captionOpenaiModel || 'gpt-4o',
+    model: settings.captionOpenaiModel || DEFAULT_MODELS.videoStudio,
     prompt: settings[promptKeys[contentType]] || DEFAULT_PROMPTS[contentType],
     temperature: parseNumber(settings.captionTemperature, 0.7),
     maxTokens: parseNumber(settings.captionMaxTokens, 500),

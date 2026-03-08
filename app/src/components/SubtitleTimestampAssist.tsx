@@ -20,8 +20,7 @@ import {
 } from '../utils/subtitleParser';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
-import { useSettings } from '../contexts/SettingsContext';
-import { listBackblazeFiles } from '../utils/backblaze';
+import { listVideoStudioFiles } from '../lib/api/backblaze';
 
 interface SubtitleTimestampAssistProps {
   videoFileName?: string;
@@ -31,7 +30,6 @@ interface SubtitleTimestampAssistProps {
 }
 
 export function SubtitleTimestampAssist({ videoFileName, onSelectTimestamp, onSubtitlesLoaded, mode }: SubtitleTimestampAssistProps) {
-  const { settings } = useSettings();
   const [subtitles, setSubtitles] = useState<SubtitleEntry[]>([]);
   const [filteredSubtitles, setFilteredSubtitles] = useState<SubtitleEntry[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,7 +83,7 @@ export function SubtitleTimestampAssist({ videoFileName, onSelectTimestamp, onSu
   };
 
   const loadBackblazeSubtitles = async () => {
-    if (!settings.backblazeVideosKeyId || !settings.backblazeVideosApplicationKey || !settings.backblazeVideosBucketName) {
+    if (window.location.protocol === 'backblaze-disabled:') {
       toast.error('Backblaze Videos Bucket not configured', {
         description: 'Add credentials in Settings → API Keys → Videos Bucket'
       });
@@ -96,11 +94,7 @@ export function SubtitleTimestampAssist({ videoFileName, onSelectTimestamp, onSu
     haptics.light();
 
     try {
-      const result = await listBackblazeFiles(
-        settings.backblazeVideosKeyId,
-        settings.backblazeVideosApplicationKey,
-        settings.backblazeVideosBucketName
-      );
+      const result = await listVideoStudioFiles('subtitles');
 
       if (result.success && result.files) {
         // Filter for subtitle files (.srt, .vtt, .sub)

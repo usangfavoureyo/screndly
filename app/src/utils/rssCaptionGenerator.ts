@@ -3,6 +3,7 @@
  */
 
 import { apiClient } from '../lib/api/client';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 import { captionOptimizer } from '../lib/optimization';
 
 interface RSSArticle {
@@ -32,7 +33,7 @@ function buildSystemPrompt(options: CaptionGenerationOptions): string {
 
 export function getRSSCaptionSettings(settings: any): CaptionGenerationOptions {
   return {
-    model: settings.rssCaptionModel || 'gpt-4o',
+    model: settings.rssCaptionModel || DEFAULT_MODELS.rss,
     temperature: settings.rssCaptionTemperature || 0.7,
     tone: settings.rssCaptionTone || 'Engaging',
     maxLength: settings.rssCaptionMaxLength || 280,

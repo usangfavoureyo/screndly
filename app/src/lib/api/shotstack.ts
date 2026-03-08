@@ -1,133 +1,173 @@
-// ============================================================================
-// SHOTSTACK API SERVICE
-// ============================================================================
-// Handles all Shotstack video generation API interactions
-
 import { apiClient } from './client';
-import { 
-  ShotstackJobRequest, 
-  ShotstackJobResponse, 
+import {
+  ShotstackJobRequest,
+  ShotstackJobResponse,
   ShotstackJobStatus,
-  ApiResponse 
+  ApiResponse,
 } from './types';
+import {
+  ShotstackClip,
+  ShotstackConfig,
+  ShotstackOutput,
+  validateShotstackConfig,
+  sanitizeShotstackConfig,
+} from '../validation/shotstackSchema';
+
+interface RenderApiData {
+  response?: {
+    id?: string;
+    status?: string;
+    url?: string;
+  };
+  id?: string;
+  status?: string;
+  url?: string;
+}
+
+interface ReviewRenderData {
+  movieTitle: string;
+  trailerVideoUrl: string;
+  voiceoverUrl?: string;
+  voiceoverDuration?: number;
+  backgroundMusicUrl?: string;
+  aspectRatio: ShotstackOutput['aspectRatio'];
+  removeLetterbox?: boolean;
+  enableAutoframing?: boolean;
+  selectedScenes?: Array<{
+    startTime: number;
+    duration?: number;
+  }>;
+}
+
+export type { ShotstackClip, ShotstackConfig } from '../validation/shotstackSchema';
+
+function normalizeRenderResponse(data: RenderApiData | undefined): { id: string; status: string; url?: string } {
+  const response = data?.response ?? data;
+  const id = response?.id;
+  const status = response?.status || 'queued';
+
+  if (!id) {
+    throw new Error('Shotstack did not return a render id');
+  }
+
+  return {
+    id,
+    status,
+    url: response?.url,
+  };
+}
+
+function statusToProgress(status: string): number {
+  switch (status) {
+    case 'done':
+    case 'completed':
+      return 100;
+    case 'rendering':
+    case 'processing':
+      return 70;
+    case 'queued':
+    case 'submitted':
+      return 25;
+    case 'fetching':
+      return 50;
+    case 'failed':
+      return 100;
+    default:
+      return 15;
+  }
+}
 
 export class ShotstackApi {
-  /**
-   * Create a new video generation job
-   */
   async createJob(request: ShotstackJobRequest): Promise<ApiResponse<ShotstackJobResponse>> {
-    // Mock implementation - replace with real Shotstack API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        resolve({
-          success: true,
-          data: {
-            jobId,
-            status: 'queued',
-            createdAt: new Date().toISOString(),
-            estimatedCompletion: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes
-          },
-        });
-      }, 500);
-    });
-  }
+    const response = await apiClient.post<RenderApiData>('/api/shotstack/render', request);
 
-  /**
-   * Get job status
-   */
-  async getJobStatus(jobId: string): Promise<ApiResponse<ShotstackJobStatus>> {
-    // Mock implementation - simulates job progression
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const random = Math.random();
-        let status: ShotstackJobStatus['status'] = 'processing';
-        let progress = Math.floor(random * 100);
-        
-        if (progress > 95) {
-          status = 'completed';
-          progress = 100;
-        }
-        
-        resolve({
-          success: true,
-          data: {
-            jobId,
-            status,
-            progress,
-            currentStep: status === 'processing' ? 'Generating video scenes...' : undefined,
-            outputUrl: status === 'completed' ? `https://shotstack.io/videos/${jobId}.mp4` : undefined,
-            previewUrl: progress > 50 ? `https://shotstack.io/previews/${jobId}.mp4` : undefined,
-          },
-        });
-      }, 500);
-    });
-  }
+    if (!response.success) {
+      return {
+        success: false,
+        error: response.error,
+      };
+    }
 
-  /**
-   * Create preview job (15s sample)
-   */
-  async createPreviewJob(request: ShotstackJobRequest): Promise<ApiResponse<ShotstackJobResponse>> {
-    // Create a shortened version for preview
-    const previewRequest = {
-      ...request,
-      duration: Math.min(15, request.duration),
-      segments: request.segments.slice(0, 2), // First 2 segments only
+    const render = normalizeRenderResponse(response.data);
+    return {
+      success: true,
+      data: {
+        jobId: render.id,
+        status: render.status as ShotstackJobResponse['status'],
+        createdAt: new Date().toISOString(),
+      },
     };
-    
-    return this.createJob(previewRequest);
   }
 
-  /**
-   * Cancel a job
-   */
-  async cancelJob(jobId: string): Promise<ApiResponse<void>> {
-    return apiClient.post<void>(`/shotstack/jobs/${jobId}/cancel`);
+  async getJobStatus(jobId: string): Promise<ApiResponse<ShotstackJobStatus>> {
+    const response = await apiClient.get<RenderApiData>(`/api/shotstack/render/${jobId}`);
+
+    if (!response.success) {
+      return {
+        success: false,
+        error: response.error,
+      };
+    }
+
+    const render = normalizeRenderResponse(response.data);
+    return {
+      success: true,
+      data: {
+        jobId: render.id,
+        status: render.status as ShotstackJobStatus['status'],
+        progress: statusToProgress(render.status),
+        outputUrl: render.url,
+      },
+    };
   }
 
-  /**
-   * Poll job status until completion
-   */
+  async createPreviewJob(request: ShotstackJobRequest): Promise<ApiResponse<ShotstackJobResponse>> {
+    return this.createJob(request);
+  }
+
+  async cancelJob(_jobId: string): Promise<ApiResponse<void>> {
+    return {
+      success: false,
+      error: {
+        code: 'NOT_IMPLEMENTED',
+        message: 'Shotstack cancel is not implemented',
+        statusCode: 501,
+      },
+    };
+  }
+
   async pollJobStatus(
     jobId: string,
     onProgress?: (status: ShotstackJobStatus) => void,
     intervalMs: number = 5000,
-    maxAttempts: number = 60 // 5 minutes with 5s interval
+    maxAttempts: number = 60
   ): Promise<ApiResponse<ShotstackJobStatus>> {
     let attempts = 0;
 
     const poll = async (): Promise<ApiResponse<ShotstackJobStatus>> => {
       const response = await this.getJobStatus(jobId);
-      
-      if (!response.success) {
+      if (!response.success || !response.data) {
         return response;
       }
 
-      const status = response.data!;
-      
-      if (onProgress) {
-        onProgress(status);
-      }
+      onProgress?.(response.data);
 
-      // Job completed or failed
-      if (status.status === 'completed' || status.status === 'failed') {
+      if (['completed', 'done', 'failed'].includes(response.data.status)) {
         return response;
       }
 
-      // Max attempts reached
-      attempts++;
+      attempts += 1;
       if (attempts >= maxAttempts) {
         return {
           success: false,
           error: {
             code: 'TIMEOUT',
-            message: 'Job polling timeout exceeded',
+            message: 'Shotstack render timed out',
             statusCode: 408,
           },
         };
       }
 
-      // Wait and poll again
       await new Promise(resolve => setTimeout(resolve, intervalMs));
       return poll();
     };
@@ -135,17 +175,10 @@ export class ShotstackApi {
     return poll();
   }
 
-  /**
-   * Validate job request
-   */
-  validateJobRequest(request: ShotstackJobRequest): {
-    valid: boolean;
-    errors: string[];
-  } {
+  validateJobRequest(request: ShotstackJobRequest): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
-    // Validate required fields
-    if (!request.prompt || request.prompt.trim().length === 0) {
+    if (!request.prompt?.trim()) {
       errors.push('Prompt is required');
     }
 
@@ -157,24 +190,9 @@ export class ShotstackApi {
       errors.push('Duration must be greater than 0');
     }
 
-    if (!request.segments || request.segments.length === 0) {
+    if (!request.segments?.length) {
       errors.push('At least one segment is required');
     }
-
-    // Validate segments
-    request.segments?.forEach((segment, index) => {
-      if (segment.startTime >= segment.endTime) {
-        errors.push(`Segment ${index + 1}: Start time must be before end time`);
-      }
-      
-      if (segment.startTime < 0 || segment.endTime > request.duration) {
-        errors.push(`Segment ${index + 1}: Times must be within video duration`);
-      }
-      
-      if (!segment.text || segment.text.trim().length === 0) {
-        errors.push(`Segment ${index + 1}: Text is required`);
-      }
-    });
 
     return {
       valid: errors.length === 0,
@@ -182,9 +200,6 @@ export class ShotstackApi {
     };
   }
 
-  /**
-   * Estimate job cost based on duration and settings
-   */
   estimateCost(request: ShotstackJobRequest): {
     estimatedCost: number;
     currency: string;
@@ -194,16 +209,15 @@ export class ShotstackApi {
       qualityCost: number;
     };
   } {
-    const baseCost = 0.50; // Base cost per job
-    const costPerSecond = 0.05; // Cost per second of video
-    const qualityMultiplier = request.aspectRatio === '16:9' ? 1.0 : 1.2; // Higher for vertical/square
-
+    const baseCost = 0.5;
+    const costPerSecond = 0.05;
+    const qualityMultiplier = request.aspectRatio === '16:9' ? 1 : 1.2;
     const durationCost = request.duration * costPerSecond;
     const qualityCost = durationCost * (qualityMultiplier - 1);
-    const totalCost = baseCost + durationCost + qualityCost;
+    const estimatedCost = Math.round((baseCost + durationCost + qualityCost) * 100) / 100;
 
     return {
-      estimatedCost: Math.round(totalCost * 100) / 100,
+      estimatedCost,
       currency: 'USD',
       breakdown: {
         baseCost,
@@ -216,77 +230,130 @@ export class ShotstackApi {
 
 export const shotstackApi = new ShotstackApi();
 
-// ============================================================================
-// SHOTSTACK UTILITY FUNCTIONS
-// ============================================================================
+export function generateShotstackJSON(
+  reviewData: ReviewRenderData,
+  trailerAnalysis: any,
+  audioSettings: {
+    trailerVolume?: number;
+    backgroundMusicVolume?: number;
+    crossfadeDuration?: number;
+  }
+): ShotstackConfig {
+  const fallbackScenes = [
+    trailerAnalysis?.suggestedHooks?.opening,
+    trailerAnalysis?.suggestedHooks?.midVideo,
+    trailerAnalysis?.suggestedHooks?.ending,
+  ].filter(Boolean);
 
-/**
- * Generate Shotstack JSON configuration from trailer analysis
- */
-export function generateShotstackJSON(reviewData: any, trailerAnalysis: any, audioSettings: any): any {
-  // Mock implementation - generates a Shotstack Edit configuration
-  return {
+  const selectedScenes = (reviewData.selectedScenes && reviewData.selectedScenes.length > 0
+    ? reviewData.selectedScenes
+    : fallbackScenes
+  ).slice(0, 3);
+
+  const clipLength = selectedScenes.length > 0 && reviewData.voiceoverDuration
+    ? Math.max(2.5, reviewData.voiceoverDuration / selectedScenes.length)
+    : 4;
+
+  const fitMode: ShotstackClip['fit'] = reviewData.removeLetterbox && reviewData.aspectRatio !== '16:9'
+    ? 'cover'
+    : 'contain';
+
+  const videoClips: ShotstackClip[] = selectedScenes.map((scene, index) => ({
+    asset: {
+      type: 'video',
+      src: reviewData.trailerVideoUrl,
+      trim: scene.startTime,
+      volume: (audioSettings.trailerVolume ?? 100) / 100,
+    },
+    start: index * clipLength,
+    length: Math.max(2, Math.min(scene.duration ?? clipLength, clipLength)),
+    fit: fitMode,
+    transition: {
+      in: index === 0 ? undefined : 'fadeIn',
+      out: 'fadeOut',
+      duration: audioSettings.crossfadeDuration ?? 0.5,
+    },
+  }));
+
+  const tracks = [{ clips: videoClips }];
+
+  if (reviewData.voiceoverUrl && reviewData.voiceoverDuration) {
+    tracks.push({
+      clips: [{
+        asset: {
+          type: 'audio',
+          src: reviewData.voiceoverUrl,
+          volume: 1,
+        },
+        start: 0,
+        length: reviewData.voiceoverDuration,
+        transition: {
+          in: 'fadeIn',
+          out: 'fadeOut',
+          duration: 1,
+        },
+      }],
+    });
+  }
+
+  const config: ShotstackConfig = {
     timeline: {
-      soundtrack: audioSettings.backgroundMusicUrl ? {
-        src: audioSettings.backgroundMusicUrl,
+      tracks,
+      soundtrack: reviewData.backgroundMusicUrl ? {
+        src: reviewData.backgroundMusicUrl,
         effect: 'fadeInFadeOut',
-        volume: audioSettings.backgroundMusicVolume / 100
+        volume: (audioSettings.backgroundMusicVolume ?? 85) / 100,
       } : undefined,
-      tracks: [
-        {
-          clips: trailerAnalysis.selectedScenes?.map((scene: any, index: number) => ({
-            asset: {
-              type: 'video',
-              src: scene.videoUrl || reviewData.trailerUrl,
-              trim: scene.startTime,
-              volume: audioSettings.originalAudioVolume / 100
-            },
-            start: index * 3, // Simple sequential placement
-            length: scene.duration || 3,
-            transition: {
-              in: 'fade',
-              out: 'fade'
-            }
-          })) || []
-        }
-      ]
+      background: '#000000',
+      cache: true,
     },
     output: {
       format: 'mp4',
-      resolution: 'hd'
-    }
+      resolution: 'hd',
+      aspectRatio: reviewData.aspectRatio,
+      fps: 30,
+      quality: 'high',
+    },
   };
+
+  const validation = validateShotstackConfig(config);
+  return validation.valid ? config : sanitizeShotstackConfig(config);
 }
 
-/**
- * Generate audio choreography settings
- */
 export function generateAudioChoreography(settings: any): any {
-  // Mock implementation
   return {
     ducking: {
-      enabled: settings.duckingEnabled || true,
-      reduction: settings.duckingReduction || 50
+      enabled: settings.duckingEnabled ?? true,
+      reduction: settings.duckingReduction ?? 50,
     },
     transitions: {
-      fadeIn: 1.0,
-      fadeOut: 1.0
-    }
+      fadeIn: 1,
+      fadeOut: 1,
+    },
   };
 }
 
-/**
- * Render video using Shotstack API
- */
-export async function renderVideo(config: any): Promise<{ id: string; status: string }> {
-  // Mock implementation - simulates API call to Shotstack
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const renderId = `render_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      resolve({
-        id: renderId,
-        status: 'queued'
-      });
-    }, 500);
-  });
+export async function renderVideo(config: ShotstackConfig): Promise<{ id: string; status: string; url?: string }> {
+  const sanitizedConfig = sanitizeShotstackConfig(config);
+  const response = await apiClient.post<RenderApiData>('/api/shotstack/render', sanitizedConfig);
+
+  if (!response.success) {
+    throw new Error(response.error?.message || 'Failed to start Shotstack render');
+  }
+
+  return normalizeRenderResponse(response.data);
+}
+
+export async function getRenderStatus(renderId: string): Promise<{ id: string; status: string; progress: number; url?: string }> {
+  const response = await apiClient.get<RenderApiData>(`/api/shotstack/render/${renderId}`);
+
+  if (!response.success) {
+    throw new Error(response.error?.message || 'Failed to fetch Shotstack render status');
+  }
+
+  const render = normalizeRenderResponse(response.data);
+  return {
+    ...render,
+    progress: statusToProgress(render.status),
+  };
 }

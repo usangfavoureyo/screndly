@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
-import { AI_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface VideoSettingsProps {
@@ -251,7 +251,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
           <div>
             <Label htmlFor="video-openai-model" className="text-[#9CA3AF]">Caption AI Model</Label>
             <Select
-              value={settings.videoOpenaiModel || 'gpt-4o-mini'}
+              value={settings.videoOpenaiModel || DEFAULT_MODELS.video}
               onValueChange={(value) => {
                 haptics.light();
                 updateSetting('videoOpenaiModel', value);
