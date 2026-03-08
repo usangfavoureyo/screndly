@@ -1,5 +1,4 @@
 import prisma from '../lib/prisma';
-import fs from 'fs';
 import { xService } from './platforms/x';
 import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
@@ -11,9 +10,12 @@ import { notificationService } from './notification.service';
 export interface PublishContent {
     text: string;
     title?: string;
+    description?: string;
     link?: string;
     imageUrl?: string;
+    imagePath?: string;
     videoUrl?: string; // For platforms that support URL (TikTok)
+    platformOverrides?: Partial<Record<string, Partial<Omit<PublishContent, 'platformOverrides'>>>>;
 }
 
 export interface PublishResult {
@@ -74,6 +76,11 @@ export class PublisherService {
         }
 
         for (const platform of normalizedPlatforms) {
+            const platformContent = {
+                ...content,
+                ...(content.platformOverrides?.[platform] || {})
+            };
+
             // Get platform connection
             let connection = await prisma.platformConnection.findUnique({
                 where: { platform }
@@ -108,8 +115,10 @@ export class PublisherService {
                         case 'X':
                             if (connection.accessToken) {
                                 const xResult = await xService.postTweet(
-                                    content.text,
-                                    content.imageUrl || (mediaFilePath && this.isImage(mediaFilePath) ? mediaFilePath : undefined),
+                                    platformContent.text,
+                                    platformContent.imagePath
+                                        || platformContent.imageUrl
+                                        || (mediaFilePath && this.isImage(mediaFilePath) ? mediaFilePath : undefined),
                                     connection
                                 );
                                 result = {
@@ -125,10 +134,10 @@ export class PublisherService {
                             if (connection.accessToken && connection.userId) {
                                 const fbResult = await metaService.postToFacebook(
                                     connection.userId,
-                                    content.text,
-                                    content.imageUrl || null,
+                                    platformContent.text,
+                                    platformContent.imageUrl || null,
                                     connection.accessToken,
-                                    content.link
+                                    platformContent.link
                                 );
                                 result = {
                                     platform,
@@ -140,11 +149,11 @@ export class PublisherService {
                             break;
 
                         case 'Instagram':
-                            if (connection.accessToken && connection.userId && content.imageUrl) {
+                            if (connection.accessToken && connection.userId && platformContent.imageUrl) {
                                 const igResult = await metaService.postToInstagram(
                                     connection.userId,
-                                    content.text,
-                                    content.imageUrl,
+                                    platformContent.text,
+                                    platformContent.imageUrl,
                                     connection.accessToken
                                 );
                                 result = {
@@ -160,8 +169,8 @@ export class PublisherService {
                             if (connection.accessToken && connection.userId) {
                                 const threadsResult = await metaService.postToThreads(
                                     connection.userId,
-                                    content.text,
-                                    content.imageUrl || null,
+                                    platformContent.text,
+                                    platformContent.imageUrl || null,
                                     connection.accessToken
                                 );
                                 result = {
@@ -175,14 +184,14 @@ export class PublisherService {
 
                         case 'TikTok':
                             if (connection.accessToken) {
-                                if (content.videoUrl || (mediaFilePath && !this.isImage(mediaFilePath))) {
-                                    if (content.videoUrl || mediaFilePath) {
+                                if (platformContent.videoUrl || (mediaFilePath && !this.isImage(mediaFilePath))) {
+                                    if (platformContent.videoUrl || mediaFilePath) {
                                         const ttResult = await tiktokService.postVideo(
                                             {
                                                 filePath: mediaFilePath && !this.isImage(mediaFilePath) ? mediaFilePath : undefined,
-                                                videoUrl: content.videoUrl || undefined,
+                                                videoUrl: platformContent.videoUrl || undefined,
                                             },
-                                            content.title || content.text,
+                                            platformContent.title || platformContent.text,
                                             connection.accessToken
                                         );
                                         result = {
@@ -204,10 +213,12 @@ export class PublisherService {
                                     connection.accessToken,
                                     mediaFilePath,
                                     {
-                                        title: content.title || content.text.slice(0, 100),
-                                        description: content.text,
+                                        title: platformContent.title || platformContent.text.slice(0, 100),
+                                        description: platformContent.description || platformContent.text,
                                         privacyStatus: 'public',
-                                        thumbnailPath: undefined,
+                                        thumbnailPath: platformContent.imagePath && this.isImage(platformContent.imagePath)
+                                            ? platformContent.imagePath
+                                            : undefined,
                                         playlistIds: options.youtubePlaylistIds // Pass playlists
                                     } as any,
                                     connection.refreshToken || undefined
@@ -228,14 +239,14 @@ export class PublisherService {
                                 // Use options boardId OR settings default
                                 const boardId = options.pinterestBoardId || (connection.metadata as any)?.boardId || (connection.metadata as any)?.defaultBoardId;
 
-                                if (boardId && content.imageUrl) {
+                                if (boardId && platformContent.imageUrl) {
                                     const pinResult = await pinterestService.createPin(
                                         boardId,
-                                        content.title || content.text.slice(0, 50),
-                                        content.text,
-                                        content.imageUrl,
+                                        platformContent.title || platformContent.text.slice(0, 50),
+                                        platformContent.text,
+                                        platformContent.imageUrl,
                                         connection.accessToken,
-                                        { link: options.pinterestLink || content.link }
+                                        { link: options.pinterestLink || platformContent.link }
                                     );
                                     result = {
                                         platform,

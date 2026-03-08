@@ -82,6 +82,20 @@ const SENSITIVE_KEYS = [
 
 ];
 
+const VIDEO_BACKEND_KEYS = [
+  'videoFilterCache',
+  'videoFilterTmdbValidation',
+  'videoTitleCleaningRegex',
+  'videoTmdbFallback',
+  'videoYoutubeXThumbnailPrompt',
+  'videoSocialThumbnailPrompt',
+] as const;
+
+const THUMBNAIL_BACKEND_KEYS = [
+  'thumbnailConfig_youtube',
+  'thumbnailConfig_x',
+] as const;
+
 /**
  * TMDb settings that are not secret, but still need backend persistence
  * so refresh jobs, scheduling, and publishing use the user's actual config.
@@ -146,7 +160,14 @@ const TMDB_BACKEND_KEYS = [
   'anniversaryPinterestLinkStrategy',
 ] as const;
 
-const BACKEND_PERSISTED_KEYS = [...new Set([...SENSITIVE_KEYS, ...TMDB_BACKEND_KEYS])];
+const BACKEND_PERSISTED_KEYS = [
+  ...new Set([
+    ...SENSITIVE_KEYS,
+    ...VIDEO_BACKEND_KEYS,
+    ...THUMBNAIL_BACKEND_KEYS,
+    ...TMDB_BACKEND_KEYS,
+  ]),
+];
 
 /**
  * Non-sensitive settings that can stay in localStorage
