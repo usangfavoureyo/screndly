@@ -4,6 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { captionOptimizer } from '../lib/optimization';
+import { getDaysUntilCalendarDate } from './calendarDate';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 
@@ -59,8 +60,7 @@ function getDaysUntilRelease(releaseDate: string, feedType: FeedType): number {
     return 0;
   }
 
-  const diffMs = new Date(releaseDate).getTime() - Date.now();
-  return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  return getDaysUntilCalendarDate(releaseDate);
 }
 
 function buildSystemPrompt(options: CaptionGenerationOptions): string {

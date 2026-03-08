@@ -3,6 +3,7 @@ import { Check, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
+import { formatCalendarDate, formatDateTime } from '../../utils/calendarDate';
 import {
   BottomSheet,
   BottomSheetHeader,
@@ -294,18 +295,12 @@ function TMDbFeedCardComponent({
 
   // Format functions (pure, no state)
   const formatReleaseDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+    return formatCalendarDate(dateString);
   };
 
   const formatFetchedDateTime = (dateString?: string) => {
     if (!dateString) return 'Unavailable';
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
+    return formatDateTime(dateString, 'en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
