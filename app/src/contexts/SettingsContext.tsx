@@ -186,12 +186,33 @@ export interface Settings {
   tmdbWeeklyPrompt?: string;
   tmdbMonthlyPrompt?: string;
   tmdbAnniversaryPrompt?: string;
+  todayPrompt?: string;
+  weeklyPrompt?: string;
+  monthlyPrompt?: string;
+  anniversaryPrompt?: string;
+
+  // Design Studio
+  captionPosterPrompt?: string;
+  captionCarouselPrompt?: string;
+  captionStoryPrompt?: string;
+  captionAnnouncementPrompt?: string;
+  captionGeneralPrompt?: string;
+  designStudioPinterestTitlePrompt?: string;
+  designStudioPinterestDescriptionPrompt?: string;
+  designStudioPinterestBoardPrompt?: string;
 
   // Video Studio
+  systemPrompt?: string;
   captionOpenaiModel?: string;
   captionTemperature?: number;
   captionGoogleSearchApiKey?: string;
   captionGoogleSearchCx?: string;
+  captionReviewPrompt?: string;
+  captionReleasesPrompt?: string;
+  captionScenesPrompt?: string;
+  videoStudioPinterestTitlePrompt?: string;
+  videoStudioPinterestDescriptionPrompt?: string;
+  videoStudioPinterestBoardPrompt?: string;
 
   // Video Studio - Web Search for AI Assist
   videoStudioWebSearchEnabled?: boolean;
@@ -244,6 +265,28 @@ interface SettingsContextType {
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
+
+const SECRET_STORAGE_KEYS = new Set([
+  'youtubeKey',
+  'openaiKey',
+  'serperKey',
+  'tmdbKey',
+  'googleVideoIntelligenceKey',
+  'shotstackKey',
+  's3Key',
+  'backblazeKeyId',
+  'backblazeApplicationKey',
+  'backblazeVideosKeyId',
+  'backblazeVideosApplicationKey',
+  'backblazeDesignKeyId',
+  'backblazeDesignApplicationKey',
+  'redisUrl',
+  'databaseUrl',
+  'videoGoogleSearchApiKey',
+  'commentGoogleSearchApiKey',
+  'captionGoogleSearchApiKey',
+  'photopeaApiKey',
+]);
 
 function getDefaultSettings(): Settings {
   const hapticsEnabled = localStorage.getItem('hapticsEnabled');
@@ -442,6 +485,29 @@ Guidelines:
     // TMDb
     tmdbCaptionModel: DEFAULT_MODELS.tmdb,
     tmdbCaptionTemperature: 0.7,
+    todayPrompt: '',
+    weeklyPrompt: '',
+    monthlyPrompt: '',
+    anniversaryPrompt: '',
+
+    // Design Studio
+    captionPosterPrompt: '',
+    captionCarouselPrompt: '',
+    captionStoryPrompt: '',
+    captionAnnouncementPrompt: '',
+    captionGeneralPrompt: '',
+    designStudioPinterestTitlePrompt: '',
+    designStudioPinterestDescriptionPrompt: '',
+    designStudioPinterestBoardPrompt: '',
+
+    // Video Studio
+    systemPrompt: '',
+    captionReviewPrompt: '',
+    captionReleasesPrompt: '',
+    captionScenesPrompt: '',
+    videoStudioPinterestTitlePrompt: '',
+    videoStudioPinterestDescriptionPrompt: '',
+    videoStudioPinterestBoardPrompt: '',
 
     // PAD
     padChatModel: DEFAULT_MODELS.video,
@@ -656,7 +722,7 @@ function getLocalSettings(): Partial<Settings> {
 function extractNonSensitiveSettings(settings: Partial<Settings>): Partial<Settings> {
   const nonSensitive: Partial<Settings> = {};
   for (const key in settings) {
-    if (!isSensitiveSetting(key)) {
+    if (!SECRET_STORAGE_KEYS.has(key)) {
       nonSensitive[key as keyof Settings] = settings[key as keyof Settings];
     }
   }

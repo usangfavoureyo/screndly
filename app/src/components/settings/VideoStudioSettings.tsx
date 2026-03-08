@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
@@ -16,6 +16,16 @@ interface VideoStudioSettingsProps {
   onSave?: () => void;
   onBack: () => void;
 }
+
+const VIDEO_STUDIO_SHARED_PROMPT_KEYS = new Set([
+  'systemPrompt',
+  'captionReviewPrompt',
+  'captionReleasesPrompt',
+  'captionScenesPrompt',
+  'videoStudioPinterestTitlePrompt',
+  'videoStudioPinterestDescriptionPrompt',
+  'videoStudioPinterestBoardPrompt',
+]);
 
 // Default prompt system settings
 const defaultSettings = {
@@ -189,7 +199,7 @@ Tone: Clear, category-focused, SEO-friendly`,
 
 function getGlobalVideoStudioSettings(globalSettings: Record<string, any>) {
   return Object.keys(defaultSettings).reduce<Record<string, any>>((accumulator, key) => {
-    if (globalSettings[key] !== undefined) {
+    if (VIDEO_STUDIO_SHARED_PROMPT_KEYS.has(key) && globalSettings[key] !== undefined) {
       accumulator[key] = globalSettings[key];
     }
     return accumulator;
@@ -200,11 +210,16 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   const { settings: globalSettings, updateSetting: updateGlobalSetting } = useSettings();
   const [settings, setSettings] = useState(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
+  const initialSharedSettingsRef = useRef<Record<string, any> | null>(null);
+
+  if (initialSharedSettingsRef.current === null) {
+    initialSharedSettingsRef.current = getGlobalVideoStudioSettings(globalSettings as Record<string, any>);
+  }
 
   // Load settings from localStorage on mount
   useEffect(() => {
     const savedSettings = localStorage.getItem('screndly_video_studio_settings');
-    const sharedSettings = getGlobalVideoStudioSettings(globalSettings as Record<string, any>);
+    const sharedSettings = initialSharedSettingsRef.current || {};
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
@@ -217,7 +232,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
       setSettings({ ...defaultSettings, ...sharedSettings });
     }
     setIsLoaded(true);
-  }, [globalSettings]);
+  }, []);
 
   // Save settings to localStorage whenever they change
   useEffect(() => {
@@ -227,8 +242,15 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   }, [settings, isLoaded]);
 
   const updateSetting = (key: string, value: any) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
-    updateGlobalSetting(key, value);
+    setSettings(prev => {
+      const next = { ...prev, [key]: value };
+      localStorage.setItem('screndly_video_studio_settings', JSON.stringify(next));
+      return next;
+    });
+
+    if (VIDEO_STUDIO_SHARED_PROMPT_KEYS.has(key)) {
+      updateGlobalSetting(key, value);
+    }
 
     // Show toast notifications for important settings
     if (key === 'openaiModel') {

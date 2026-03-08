@@ -293,7 +293,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                     </div>
 
                     {!selection.selectionMode ? (
-                      <div className="flex flex-wrap items-center gap-2 justify-end">
+                      <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
                         <Button size="sm" onClick={() => handlePublish(item.id)}>
                           Publish
                         </Button>

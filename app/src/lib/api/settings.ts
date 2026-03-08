@@ -91,6 +91,27 @@ const VIDEO_BACKEND_KEYS = [
   'videoSocialThumbnailPrompt',
 ] as const;
 
+const DESIGN_STUDIO_BACKEND_KEYS = [
+  'captionPosterPrompt',
+  'captionCarouselPrompt',
+  'captionStoryPrompt',
+  'captionAnnouncementPrompt',
+  'captionGeneralPrompt',
+  'designStudioPinterestTitlePrompt',
+  'designStudioPinterestDescriptionPrompt',
+  'designStudioPinterestBoardPrompt',
+] as const;
+
+const VIDEO_STUDIO_BACKEND_KEYS = [
+  'systemPrompt',
+  'captionReviewPrompt',
+  'captionReleasesPrompt',
+  'captionScenesPrompt',
+  'videoStudioPinterestTitlePrompt',
+  'videoStudioPinterestDescriptionPrompt',
+  'videoStudioPinterestBoardPrompt',
+] as const;
+
 const THUMBNAIL_BACKEND_KEYS = [
   'thumbnailConfig_youtube',
   'thumbnailConfig_x',
@@ -164,6 +185,8 @@ const BACKEND_PERSISTED_KEYS = [
   ...new Set([
     ...SENSITIVE_KEYS,
     ...VIDEO_BACKEND_KEYS,
+    ...DESIGN_STUDIO_BACKEND_KEYS,
+    ...VIDEO_STUDIO_BACKEND_KEYS,
     ...THUMBNAIL_BACKEND_KEYS,
     ...TMDB_BACKEND_KEYS,
   ]),
