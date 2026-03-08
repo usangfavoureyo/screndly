@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { authenticate } from '../middleware/auth';
 import { getApiUsageActivitySummary } from '../services/api-usage.service';
 
@@ -43,6 +44,9 @@ router.get('/stats', authenticate, async (_req, res) => {
     const thirtyDaysAgo = daysAgo(30);
     const now = new Date();
     const tmdbReadyStatuses = ['queued', 'scheduled'];
+    const feedItemWhere = (await hasFeedItemStatusColumn())
+      ? { status: 'accepted' as const }
+      : {};
 
     const [
       systemErrors,
@@ -124,6 +128,7 @@ router.get('/stats', authenticate, async (_req, res) => {
         where: { status: 'active' },
       }),
       prisma.feedItem.findMany({
+        where: feedItemWhere,
         take: 5,
         orderBy: { publishedAt: 'desc' },
         select: {
@@ -139,6 +144,7 @@ router.get('/stats', authenticate, async (_req, res) => {
       }),
       prisma.feedItem.findMany({
         where: {
+          ...feedItemWhere,
           publishedAt: { gte: sevenDaysAgo },
         },
         orderBy: { publishedAt: 'asc' },

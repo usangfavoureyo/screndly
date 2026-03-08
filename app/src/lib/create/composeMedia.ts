@@ -81,6 +81,8 @@ function legacyMediaToAsset(media: ComposeMedia): ComposeMediaAsset {
     ...media,
     id: `legacy-${media.fileName}-${media.size}`,
     order: 0,
+    storageUrl: media.storageUrl ?? media.previewUrl,
+    uploadStatus: media.uploadStatus ?? (media.storageUrl || media.previewUrl ? 'uploaded' : 'idle'),
   };
 }
 
@@ -91,6 +93,11 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
           ...asset,
           id: asset.id || `asset-${index}-${asset.fileName}`,
           order: typeof asset.order === 'number' ? asset.order : index,
+          previewUrl: asset.previewUrl || asset.storageUrl,
+          storageUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+          uploadStatus:
+            asset.uploadStatus ??
+            (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
         }))
       : item.media
         ? [legacyMediaToAsset(item.media)]
@@ -110,7 +117,11 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
     ...normalized,
     mediaAssets: normalized.mediaAssets.map((asset) => ({
       ...asset,
-      previewUrl: asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl,
+      previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+      storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+      uploadStatus:
+        asset.uploadStatus ??
+        (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
     })),
   };
 }
@@ -126,7 +137,13 @@ export function buildComposeMediaAsset(file: File, order: number): ComposeMediaA
     size: file.size,
     order,
     previewUrl: URL.createObjectURL(file),
+    uploadStatus: 'uploading',
   };
+}
+
+export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
+  if (!asset) return undefined;
+  return asset.previewUrl || asset.storageUrl;
 }
 
 export function summarizeComposeMedia(assets: ComposeMediaAsset[]): ComposeMediaSummary {

@@ -261,6 +261,11 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="0">Off</SelectItem>
+                    <SelectItem value="1">1 min</SelectItem>
+                    <SelectItem value="2">2 min</SelectItem>
+                    <SelectItem value="3">3 min</SelectItem>
+                    <SelectItem value="4">4 min</SelectItem>
                     <SelectItem value="5">5 min</SelectItem>
                     <SelectItem value="10">10 min</SelectItem>
                     <SelectItem value="15">15 min</SelectItem>

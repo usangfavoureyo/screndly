@@ -29,9 +29,11 @@ import {
   buildComposeItemTitleFromAssets,
   buildComposeMediaAsset,
   getComposeCompatibilityMap,
+  getComposeAssetPreviewUrl,
   normalizeComposeItem,
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
+import { uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../types/compose';
 import { getConnectedPlatforms } from '../../utils/platformConnections';
@@ -129,6 +131,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const { activeItemId, getItemById, saveItem } = useComposeStore();
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
@@ -145,21 +148,57 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const compatibilityMap = useMemo(() => getComposeCompatibilityMap(formState.mediaAssets), [formState.mediaAssets]);
   const hasSharedCaptionPlatform = formState.platforms.some((platform) => SHARED_CAPTION_PLATFORMS.includes(platform));
   const selectedPlatformIssues = formState.platforms.map((platform) => compatibilityMap[platform]).filter((entry) => !entry.supported);
+  const hasUploadingAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'uploading');
+  const hasFailedAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'failed');
 
-  const handleMediaSelected = (event: ChangeEvent<HTMLInputElement>) => {
+  const updateAsset = (assetId: string, updater: (asset: ComposeMediaAsset) => ComposeMediaAsset) => {
+    setFormState((current) => ({
+      ...current,
+      mediaAssets: current.mediaAssets.map((asset) => (asset.id === assetId ? updater(asset) : asset)),
+    }));
+  };
+
+  const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).filter(
       (file) => file.type.startsWith('image/') || file.type.startsWith('video/'),
     );
     if (!files.length) return;
 
+    event.target.value = '';
+    const pendingAssets = files.map((file, index) => buildComposeMediaAsset(file, formState.mediaAssets.length + index));
+
     setFormState((current) => ({
       ...current,
-      mediaAssets: [
-        ...current.mediaAssets,
-        ...files.map((file, index) => buildComposeMediaAsset(file, current.mediaAssets.length + index)),
-      ],
+      mediaAssets: [...current.mediaAssets, ...pendingAssets],
     }));
-    event.target.value = '';
+    setIsUploadingMedia(true);
+
+    await Promise.all(
+      pendingAssets.map(async (asset, index) => {
+        const file = files[index];
+
+        try {
+          const uploaded = await uploadComposeAsset(file);
+          updateAsset(asset.id, (currentAsset) => ({
+            ...currentAsset,
+            previewUrl: uploaded.url,
+            storageUrl: uploaded.url,
+            storageFileId: uploaded.fileId,
+            uploadStatus: 'uploaded',
+            uploadError: undefined,
+          }));
+        } catch (error) {
+          updateAsset(asset.id, (currentAsset) => ({
+            ...currentAsset,
+            uploadStatus: 'failed',
+            uploadError: error instanceof Error ? error.message : 'Upload failed',
+          }));
+          toast.error(error instanceof Error ? error.message : `Failed to upload ${file.name}`);
+        }
+      }),
+    );
+
+    setIsUploadingMedia(false);
   };
 
   const removeAsset = (assetId: string) => {
@@ -196,6 +235,14 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     }
     if ((mode === 'scheduled' || mode === 'published') && mediaSummary.totalAssets === 0) {
       toast.error(`Upload at least one image or video before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
+      return false;
+    }
+    if (hasUploadingAssets) {
+      toast.error('Wait for media uploads to finish before saving');
+      return false;
+    }
+    if (hasFailedAssets) {
+      toast.error('Remove or re-upload media that failed to upload to Backblaze');
       return false;
     }
     if (selectedPlatformIssues.length > 0) {
@@ -288,8 +335,8 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
         />
         <div className="flex-1">
-          <h1 className="mb-2 text-gray-900 dark:text-white">
-            {existingItem ? 'Edit Compose Item' : 'Add Compose Content'}
+          <h1 className="mb-2 text-4xl sm:text-5xl text-gray-900 dark:text-white">
+            {existingItem ? 'Edit Post' : 'Add Compose Content'}
           </h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
             Build one content item with one or more media assets, platform-aware delivery, and a saved or scheduled state.
@@ -318,7 +365,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                   <span className="sr-only">Upload media</span>
                   <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
                     <Upload className="h-4 w-4 text-[#ec1e24]" />
-                    Upload
+                    {isUploadingMedia ? 'Uploading...' : 'Upload'}
                   </div>
                 </Label>
                 <input id="compose-media" type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaSelected} />
@@ -351,6 +398,21 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                             {asset.mimeType} | {formatBytes(asset.size)}
                           </p>
+                          <p
+                            className={`mt-1 text-[11px] ${
+                              asset.uploadStatus === 'failed'
+                                ? 'text-[#EF4444]'
+                                : asset.uploadStatus === 'uploaded'
+                                  ? 'text-[#10B981]'
+                                  : 'text-[#6B7280] dark:text-[#9CA3AF]'
+                            }`}
+                          >
+                            {asset.uploadStatus === 'failed'
+                              ? asset.uploadError || 'Backblaze upload failed'
+                              : asset.uploadStatus === 'uploaded'
+                                ? 'Stored in Backblaze'
+                                : 'Uploading to Backblaze...'}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -362,11 +424,11 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                         </button>
                       </div>
                       <div className="bg-black">
-                        {asset.previewUrl ? (
+                        {getComposeAssetPreviewUrl(asset) ? (
                           asset.kind === 'video' ? (
-                            <video src={asset.previewUrl} className="h-48 w-full object-contain" controls />
+                            <video src={getComposeAssetPreviewUrl(asset)} className="h-48 w-full object-contain" controls />
                           ) : (
-                            <img src={asset.previewUrl} alt={asset.fileName} className="h-48 w-full object-cover" />
+                            <img src={getComposeAssetPreviewUrl(asset)} alt={asset.fileName} className="h-48 w-full object-cover" />
                           )
                         ) : (
                           <div className="flex h-48 items-center justify-center">
@@ -527,9 +589,9 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
-              <Button className="w-full" onClick={handleSaveDraft}>Save</Button>
-              <Button className="w-full" onClick={handlePublish}>Publish</Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)}>Schedule</Button>
+              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia}>Save</Button>
+              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia}>Publish</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia}>Schedule</Button>
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">

@@ -19,6 +19,10 @@ export interface ComposeMediaAsset {
   size: number;
   order: number;
   previewUrl?: string;
+  storageUrl?: string;
+  storageFileId?: string;
+  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  uploadError?: string;
 }
 
 export type ComposeMedia = ComposeMediaAsset;

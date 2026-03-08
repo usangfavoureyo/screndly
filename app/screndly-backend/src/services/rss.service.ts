@@ -5,10 +5,9 @@
 import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import Parser from 'rss-parser';
-import { getSecretSetting } from '../lib/settings';
 import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
-import { trackApiUsage } from './api-usage.service';
 import { publisherService } from './publisher.service';
+import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 
 export interface RSSFeedFilters {
   scope: 'title' | 'body' | 'title_or_body' | 'title_and_body';
@@ -79,12 +78,6 @@ interface RSSFeedData {
   link: string;
   items: RSSItem[];
   lastBuildDate?: Date;
-}
-
-interface SerperImagesResponse {
-  images?: Array<{
-    imageUrl?: string;
-  }>;
 }
 
 const RSS_PLATFORM_IMAGE_LIMITS: Record<string, number> = {
@@ -621,107 +614,25 @@ function extractImageUrls(item: Record<string, any>): string[] {
   return dedupeUrls(urls);
 }
 
-async function searchSerperImages(query: string, limit: number): Promise<string[]> {
-  const apiKey = await getSecretSetting('serperKey');
-  if (!apiKey) {
-    return [];
-  }
-
-  let tracked = false;
-
-  try {
-    const response = await fetch('https://google.serper.dev/images', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-KEY': apiKey,
-      },
-      body: JSON.stringify({
-        q: query,
-        num: 8,
-        gl: 'us',
-        hl: 'en',
-        type: 'images',
-        engine: 'google',
-      }),
-    });
-
-    const data = await response.json().catch(() => null) as SerperImagesResponse | null;
-    await trackApiUsage({
-      service: 'serper',
-      endpoint: '/images',
-      success: response.ok,
-    });
-    tracked = true;
-
-    if (!response.ok) {
-      console.error('[RSS] Serper image request failed:', data);
-      return [];
-    }
-
-    return Array.isArray(data?.images)
-      ? dedupeUrls(
-          data.images
-            .map((image) => (typeof image?.imageUrl === 'string' ? image.imageUrl : undefined))
-        ).slice(0, limit)
-      : [];
-  } catch (error) {
-    if (!tracked) {
-      await trackApiUsage({
-        service: 'serper',
-        endpoint: '/images',
-        success: false,
-      });
-    }
-
-    console.error('[RSS] Serper image lookup failed:', error);
-    return [];
-  }
-}
-
 async function resolveRSSItemImages(
   feed: { serperPriority: boolean },
   item: RSSItem,
-  limit: number
-): Promise<string[]> {
-  const fallbackImages = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
-  if (limit <= 1 && fallbackImages.length > 0 && !feed.serperPriority) {
-    return fallbackImages.slice(0, 1);
-  }
-
-  if (!feed.serperPriority) {
-    return fallbackImages.slice(0, Math.max(limit, 1));
-  }
-
-  const resolvedImages: string[] = [];
-  const queries = [
-    item.title,
-    item.author ? `${item.title} ${item.author}` : null,
-    item.description ? `${item.title} ${item.description.slice(0, 120)}` : null,
-  ].filter((query): query is string => Boolean(query && query.trim()));
-
-  for (const query of queries) {
-    const serperImages = await searchSerperImages(query, Math.max(limit - resolvedImages.length, 1));
-    for (const serperImageUrl of serperImages) {
-      if (!resolvedImages.includes(serperImageUrl)) {
-        resolvedImages.push(serperImageUrl);
-      }
-      if (resolvedImages.length >= limit) {
-        return resolvedImages.slice(0, limit);
-      }
+  limit: number,
+  model?: string
+): Promise<RSSResolvedImage[]> {
+  return resolveRelevantRSSImages(
+    {
+      title: item.title,
+      description: item.description,
+      author: item.author,
+      fallbackImages: dedupeUrls([...(item.imageUrls || []), item.imageUrl]),
+    },
+    {
+      serperPriority: feed.serperPriority,
+      limit,
+      model,
     }
-  }
-
-  for (const fallbackImage of fallbackImages) {
-    if (!resolvedImages.includes(fallbackImage)) {
-      resolvedImages.push(fallbackImage);
-    }
-    if (resolvedImages.length >= limit) {
-      break;
-    }
-  }
-
-  return resolvedImages.slice(0, Math.max(limit, 1));
+  );
 }
 
 function buildRSSCaptionSystemPrompt(
@@ -750,12 +661,18 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
   return {
     globalRSSPosting: asBoolean(settingsMap.get('globalRSSPosting'), true),
     rssDeduplication: asBoolean(settingsMap.get('rssDeduplication'), true),
-  rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
+    rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
     rssCaptionPrompt: asString(settingsMap.get('rssCaptionPrompt')),
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
     rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
     rssCaptionMaxLength: Math.max(50, asNumber(settingsMap.get('rssCaptionMaxLength'), 280) || 280),
-    rssPostingIntervalMinutes: Math.max(1, asNumber(settingsMap.get('rssPostingInterval'), 10) || 10),
+    rssPostingIntervalMinutes: (() => {
+      const configuredValue = asNumber(settingsMap.get('rssPostingInterval'), 10);
+      if (configuredValue === undefined || configuredValue === null || Number.isNaN(configuredValue)) {
+        return 10;
+      }
+      return Math.max(0, configuredValue);
+    })(),
     dailyQuotaX: Math.max(1, asNumber(settingsMap.get('dailyQuotaX'), 50) || 50),
     dailyQuotaThreads: Math.max(1, asNumber(settingsMap.get('dailyQuotaThreads'), 100) || 100),
     dailyQuotaFacebook: Math.max(1, asNumber(settingsMap.get('dailyQuotaFacebook'), 25) || 25),
@@ -828,27 +745,41 @@ function buildActivitySummary(items: RSSActivityItem[]): RSSActivitySummary {
   };
 }
 
-async function wasRecentlyPublished(feedId: string, item: RSSItem, dedupeDays: number): Promise<boolean> {
-  const cutoff = new Date(Date.now() - Math.max(dedupeDays, 1) * 24 * 60 * 60 * 1000);
-  const logs = await prisma.log.findMany({
-    where: {
-      service: 'rss',
-      timestamp: { gte: cutoff },
-    },
-    orderBy: { timestamp: 'desc' },
-    take: 500,
-  });
+function isSameRSSActivityItem(activity: RSSActivityItem, feedId: string, item: RSSItem): boolean {
+  if (activity.feedId !== feedId) {
+    return false;
+  }
 
-  return logs.some((log) => {
-    const metadata = log.metadata as Prisma.JsonObject | null;
-    if (!metadata || metadata.category !== RSS_ACTIVITY_CATEGORY || metadata.status !== 'published') {
-      return false;
-    }
+  const sameLink = Boolean(activity.link && activity.link === item.link);
+  const sameTitle = activity.title === item.title;
+  return sameLink || sameTitle;
+}
 
-    const sameFeed = metadata.feedId === feedId;
-    const sameLink = typeof metadata.itemLink === 'string' && metadata.itemLink === item.link;
-    const sameTitle = typeof metadata.itemTitle === 'string' && metadata.itemTitle === item.title;
-    return sameFeed && (sameLink || sameTitle);
+function hasRecentRSSActivity(
+  items: RSSActivityItem[],
+  feedId: string,
+  item: RSSItem,
+  statuses: Array<RSSActivityItem['status']>
+): boolean {
+  return items.some((activity) =>
+    statuses.includes(activity.status) && isSameRSSActivityItem(activity, feedId, item)
+  );
+}
+
+function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMetadata): void {
+  items.unshift({
+    id: `memory:${metadata.feedId}:${metadata.itemLink || metadata.itemTitle}:${metadata.status}:${Date.now()}`,
+    feedId: metadata.feedId,
+    feedName: metadata.feedName,
+    title: metadata.itemTitle,
+    link: metadata.itemLink,
+    description: metadata.description,
+    imageUrl: metadata.imageUrl,
+    status: metadata.status,
+    timestamp: new Date().toISOString(),
+    publishedAt: metadata.publishedAt,
+    platforms: metadata.platforms,
+    error: metadata.errorMessage,
   });
 }
 
@@ -882,21 +813,23 @@ async function getPublishingBlockReason(platforms: string[], settings: RSSRuntim
     return 'Publishing is paused by quiet hours.';
   }
 
-  const recentPublishedLogs = await prisma.log.findMany({
-    where: {
-      service: 'rss',
-      timestamp: { gte: new Date(Date.now() - settings.rssPostingIntervalMinutes * 60 * 1000) },
-    },
-    orderBy: { timestamp: 'desc' },
-    take: 200,
-  });
+  if (settings.rssPostingIntervalMinutes > 0) {
+    const recentPublishedLogs = await prisma.log.findMany({
+      where: {
+        service: 'rss',
+        timestamp: { gte: new Date(Date.now() - settings.rssPostingIntervalMinutes * 60 * 1000) },
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 200,
+    });
 
-  const recentPublished = recentPublishedLogs
-    .map((log) => parseRSSActivityLog(log))
-    .find((item) => item?.status === 'published');
+    const recentPublished = recentPublishedLogs
+      .map((log) => parseRSSActivityLog(log))
+      .find((item) => item?.status === 'published');
 
-  if (recentPublished) {
-    return `Waiting for the ${settings.rssPostingIntervalMinutes}-minute minimum gap before the next post.`;
+    if (recentPublished) {
+      return `Waiting for the ${settings.rssPostingIntervalMinutes}-minute minimum gap before the next post.`;
+    }
   }
 
   const quotaMap: Record<string, number> = {
@@ -1222,6 +1155,23 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       options.manualRun && feedFilters.onlyFetchNewItems
         ? latestItem ? [latestItem] : []
         : orderedNewItems;
+    const activityLookbackDays = Math.max(feed.dedupeDays, 1);
+    const recentActivityLogs = await prisma.log.findMany({
+      where: {
+        service: 'rss',
+        timestamp: { gte: new Date(Date.now() - activityLookbackDays * 24 * 60 * 60 * 1000) },
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 1000,
+      select: {
+        id: true,
+        timestamp: true,
+        metadata: true,
+      },
+    });
+    const recentActivities = recentActivityLogs
+      .map((log) => parseRSSActivityLog(log))
+      .filter((activity): activity is RSSActivityItem => Boolean(activity));
     const selectionMode =
       options.manualRun && feedFilters.onlyFetchNewItems ? 'latest_item' : 'backlog';
 
@@ -1243,14 +1193,14 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         continue;
       }
 
-      if (runtimeSettings.rssDeduplication && await wasRecentlyPublished(feed.id, item, feed.dedupeDays)) {
+      if (runtimeSettings.rssDeduplication && hasRecentRSSActivity(recentActivities, feed.id, item, ['published'])) {
         continue;
       }
 
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
         retryFromDate = !retryFromDate || item.pubDate.getTime() < retryFromDate.getTime() ? item.pubDate : retryFromDate;
-        await logRSSActivity({
+        const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
           feedName: feed.name,
@@ -1266,7 +1216,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
             : !feed.autoPost
               ? 'Auto-post is disabled for this feed.'
               : 'No publishing platforms are enabled for this feed.',
-        });
+        };
+        if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
+          await logRSSActivity(pendingMetadata);
+          rememberRSSActivity(recentActivities, pendingMetadata);
+        }
         continue;
       }
 
@@ -1274,7 +1228,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       if (blockReason) {
         pendingCount += 1;
         retryFromDate = !retryFromDate || item.pubDate.getTime() < retryFromDate.getTime() ? item.pubDate : retryFromDate;
-        await logRSSActivity({
+        const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
           feedName: feed.name,
@@ -1286,12 +1240,22 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           status: 'pending',
           platforms,
           errorMessage: blockReason,
-        });
+        };
+        if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
+          await logRSSActivity(pendingMetadata);
+          rememberRSSActivity(recentActivities, pendingMetadata);
+        }
         continue;
       }
 
       try {
-        const publishImageUrls = await resolveRSSItemImages(feed as any, item, imagePlan.maxImageCount);
+        const publishImages = await resolveRSSItemImages(
+          feed as any,
+          item,
+          imagePlan.maxImageCount,
+          runtimeSettings.rssCaptionModel
+        );
+        const publishImageUrls = publishImages.map((image) => image.url);
         const publishImageUrl = publishImageUrls[0];
         const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
           tone: runtimeSettings.rssCaptionTone,
@@ -1320,7 +1284,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
         if (successfulPlatforms.length === 0) {
           failedCount += 1;
-          await logRSSActivity({
+          const failedMetadata: RSSActivityMetadata = {
             category: RSS_ACTIVITY_CATEGORY,
             feedId: feed.id,
             feedName: feed.name,
@@ -1334,14 +1298,16 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
             errorMessage: publishResults
               .map((result) => `${result.platform}: ${result.error || result.status}`)
               .join('; ') || 'Publishing failed.',
-          });
+          };
+          await logRSSActivity(failedMetadata);
+          rememberRSSActivity(recentActivities, failedMetadata);
           continue;
         }
 
         publishedCount += 1;
         latestCaption = caption;
         latestPublishedImageUrl = publishImageUrl;
-        await logRSSActivity({
+        const publishedMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
           feedName: feed.name,
@@ -1352,10 +1318,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: successfulPlatforms,
-        });
+        };
+        await logRSSActivity(publishedMetadata);
+        rememberRSSActivity(recentActivities, publishedMetadata);
       } catch (error) {
         failedCount += 1;
-        await logRSSActivity({
+        const failedMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
           feedName: feed.name,
@@ -1367,7 +1335,9 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           status: 'failed',
           platforms,
           errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
-        });
+        };
+        await logRSSActivity(failedMetadata);
+        rememberRSSActivity(recentActivities, failedMetadata);
       }
     }
 
@@ -1489,7 +1459,13 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   const runtimeSettings = await getRuntimeSettings();
   const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
   const imagePlan = getRSSPublishImagePlan(feed, platforms);
-  const imageUrls = await resolveRSSItemImages(feed as any, previewItem, imagePlan.maxImageCount);
+  const resolvedImages = await resolveRSSItemImages(
+    feed as any,
+    previewItem,
+    imagePlan.maxImageCount,
+    runtimeSettings.rssCaptionModel
+  );
+  const imageUrls = resolvedImages.map((image) => image.url);
   const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
     tone: runtimeSettings.rssCaptionTone,
     maxLength: runtimeSettings.rssCaptionMaxLength,
@@ -1511,13 +1487,9 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
     link: previewItem.link,
     pubDate: previewItem.pubDate.toISOString(),
     snippet: previewItem.description,
-    images: imageUrls.map((url, index) => ({
-      url,
-      reason: feed.serperPriority
-        ? index < previewItem.imageUrls.length && previewItem.imageUrls.includes(url)
-          ? 'Feed fallback image'
-          : 'Serper priority image'
-        : 'Feed image',
+    images: resolvedImages.map((image) => ({
+      url: image.url,
+      reason: image.reason,
     })),
     caption,
     captionCharCount: caption.length,
