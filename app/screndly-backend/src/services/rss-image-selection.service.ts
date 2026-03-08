@@ -34,8 +34,18 @@ type ContextType =
   | 'casting'
   | 'interview'
   | 'boxoffice'
+  | 'poster_announcement'
   | 'industry'
   | 'general';
+
+type ImageIntent =
+  | 'poster'
+  | 'backdrop'
+  | 'still'
+  | 'character_still'
+  | 'person_portrait'
+  | 'logo'
+  | 'brand_backdrop';
 
 interface SerperImageResult {
   title?: string;
@@ -56,10 +66,13 @@ interface SerperImagesResponse {
 }
 
 interface RSSSubjectAnalysis {
+  editorialPrimary: string;
   primarySubject: {
     name: string;
     type: SubjectType;
   };
+  visualSubject: string;
+  imageIntent: ImageIntent;
   secondarySubjects: string[];
   relevantStudios: string[];
   contextType: ContextType;
@@ -180,6 +193,7 @@ const POSTER_KEYWORDS = [
   'key art',
   'official art',
   'promo art',
+  'character poster',
 ];
 const STILL_KEYWORDS = [
   'still',
@@ -197,6 +211,14 @@ const PORTRAIT_KEYWORDS = [
   'cast photo',
   'press photo',
   'official photo',
+];
+const BACKDROP_KEYWORDS = [
+  'backdrop',
+  'banner',
+  'landscape',
+  'wide shot',
+  'production still',
+  'press still',
 ];
 const OFFICIAL_MARKERS = [
   'official',
@@ -241,27 +263,29 @@ const SUBJECT_EXTRACTION_PROMPT = `You analyze entertainment-news articles for i
 
 Return strict JSON with this shape:
 {
+  "editorialPrimary": "the main editorial subject",
   "primarySubject": {
     "name": "exact subject name",
     "type": "movie|tv_show|franchise|actor|character|director|producer|studio|streaming_service|general"
   },
+  "visualSubject": "the best visual subject for the image",
+  "imageIntent": "poster|backdrop|still|character_still|person_portrait|logo|brand_backdrop",
   "secondarySubjects": ["name"],
   "relevantStudios": ["studio or streaming service"],
-  "contextType": "release|trailer|casting|interview|boxoffice|industry|general",
-  "allowLogoOnly": true,
-  "queries": [
-    "best first image query",
-    "fallback query",
-    "fallback query",
-    "fallback query"
-  ]
+  "contextType": "release|trailer|casting|interview|boxoffice|poster_announcement|industry|general",
+  "allowLogoOnly": true
 }
 
 Rules:
 - If the article is about a movie, TV show, or franchise, that title is the primary subject, not the person.
 - If the article is mainly about a studio or streaming service, use that company as the primary subject.
 - If the article is mainly about a person and no title is clearly primary, use the person.
-- Queries must favor official poster, still, portrait, logo, or press images.
+- Visual subject can differ from editorial subject. Example: "Michael Bay producing new Transformers movie" => editorialPrimary "Michael Bay", visualSubject "Transformers".
+- Poster is conditional, never default. Use poster only when the story is explicitly about a poster, key art, first look poster, character poster, or official image asset.
+- For movie/show/franchise stories, default imageIntent to backdrop or still.
+- For title-linked actor stories, prefer still.
+- For actor/director/producer stories without a clear title, prefer person_portrait.
+- For studio/platform stories without a dominant title, prefer logo or brand_backdrop.
 - Do not suggest fan art, wallpapers, memes, mockups, or stock-photo style results.
 - Logo-only images are allowed only for the exact movie/show logo or a clearly relevant official studio/platform logo.`;
 
@@ -344,6 +368,7 @@ function extractRelevantStudios(articleText: string): string[] {
 function classifyContextType(articleText: string): ContextType {
   const normalized = normalizeText(articleText);
 
+  if (/\bposter|character poster|new poster|key art|official image|official poster|first look poster\b/.test(normalized)) return 'poster_announcement';
   if (/\btrailer|teaser|clip|first look\b/.test(normalized)) return 'trailer';
   if (/\bcasting|joins|cast as|starring\b/.test(normalized)) return 'casting';
   if (/\binterview|talks about|speaks on|explains\b/.test(normalized)) return 'interview';
@@ -351,6 +376,61 @@ function classifyContextType(articleText: string): ContextType {
   if (/\bstudio|network|streaming|service|platform|merger|ceo\b/.test(normalized)) return 'industry';
   if (/\brelease|premiere|coming to|set for|arrives\b/.test(normalized)) return 'release';
   return 'general';
+}
+
+function resolveImageIntent(
+  primaryType: SubjectType,
+  contextType: ContextType,
+  primaryName: string,
+  secondarySubjects: string[],
+  relevantStudios: string[]
+): { visualSubject: string; imageIntent: ImageIntent; allowLogoOnly: boolean } {
+  if (contextType === 'poster_announcement') {
+    return {
+      visualSubject: primaryName,
+      imageIntent: 'poster',
+      allowLogoOnly: false,
+    };
+  }
+
+  if (primaryType === 'studio' || primaryType === 'streaming_service') {
+    return {
+      visualSubject: primaryName,
+      imageIntent: 'logo',
+      allowLogoOnly: true,
+    };
+  }
+
+  if (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer') {
+    const linkedTitle = secondarySubjects.find((subject) => !relevantStudios.includes(subject));
+    if (linkedTitle) {
+      return {
+        visualSubject: linkedTitle,
+        imageIntent: 'still',
+        allowLogoOnly: false,
+      };
+    }
+
+    return {
+      visualSubject: primaryName,
+      imageIntent: 'person_portrait',
+      allowLogoOnly: false,
+    };
+  }
+
+  if (primaryType === 'character') {
+    return {
+      visualSubject: primaryName,
+      imageIntent: 'character_still',
+      allowLogoOnly: false,
+    };
+  }
+
+  return {
+    visualSubject: primaryName,
+    imageIntent: contextType === 'trailer' ? 'still' : 'backdrop',
+    allowLogoOnly: false,
+  };
 }
 
 function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnalysis {
@@ -378,17 +458,21 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   );
 
   const contextType = classifyContextType(articleText);
-  const queries = buildFallbackQueries(primaryName, primaryType, secondarySubjects, contextType);
+  const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, studios);
+  const queries = buildFallbackQueries(visual.visualSubject, primaryType, secondarySubjects, contextType, visual.imageIntent);
 
   return {
+    editorialPrimary: primaryName,
     primarySubject: {
       name: primaryName,
       type: primaryType,
     },
+    visualSubject: visual.visualSubject,
+    imageIntent: visual.imageIntent,
     secondarySubjects,
     relevantStudios: studios,
     contextType,
-    allowLogoOnly: primaryType === 'studio' || primaryType === 'streaming_service' || true,
+    allowLogoOnly: visual.allowLogoOnly,
     queries,
   };
 }
@@ -397,49 +481,77 @@ function buildFallbackQueries(
   primaryName: string,
   primaryType: SubjectType,
   secondarySubjects: string[],
-  contextType: ContextType
+  contextType: ContextType,
+  imageIntent: ImageIntent
 ): string[] {
   const secondary = secondarySubjects[0];
 
-  switch (primaryType) {
-    case 'studio':
-    case 'streaming_service':
+  switch (imageIntent) {
+    case 'logo':
       return uniqueStrings([
         `${primaryName} official logo`,
+        `${primaryName} logo dark background`,
+        `${primaryName} brand backdrop`,
+        primaryName,
+      ]);
+    case 'brand_backdrop':
+      return uniqueStrings([
+        `${primaryName} brand backdrop`,
         `${primaryName} official press image`,
-        `${primaryName} studio logo`,
-        primaryName,
-      ]);
-    case 'actor':
-    case 'character':
-    case 'director':
-    case 'producer':
-      return uniqueStrings([
-        secondary ? `${primaryName} ${secondary}` : null,
-        `${primaryName} official photo`,
-        `${primaryName} portrait`,
-        primaryName,
-      ]);
-    case 'tv_show':
-    case 'movie':
-    case 'franchise':
-    default: {
-      const contextQuery =
-        contextType === 'trailer'
-          ? `${primaryName} official still`
-          : `${primaryName} official poster`;
-      return uniqueStrings([
-        contextQuery,
-        `${primaryName} official still`,
         `${primaryName} official logo`,
         primaryName,
       ]);
-    }
+    case 'person_portrait':
+      return uniqueStrings([
+        `${primaryName} portrait`,
+        `${primaryName} press photo`,
+        `${primaryName} headshot`,
+        primaryName,
+      ]);
+    case 'character_still':
+      return uniqueStrings([
+        `${primaryName} character still`,
+        `${primaryName} official still`,
+        `${primaryName} scene still`,
+        primaryName,
+      ]);
+    case 'still':
+      return uniqueStrings([
+        secondary ? `${primaryName} ${secondary} still` : `${primaryName} still`,
+        `${primaryName} scene still`,
+        `${primaryName} production still`,
+        `${primaryName} backdrop`,
+      ]);
+    case 'backdrop':
+      return uniqueStrings([
+        `${primaryName} backdrop`,
+        `${primaryName} scene still`,
+        `${primaryName} production still`,
+        `${primaryName} official still`,
+        contextType === 'poster_announcement' ? `${primaryName} official poster` : null,
+      ]);
+    case 'poster':
+      return uniqueStrings([
+        `${primaryName} official poster`,
+        `${primaryName} new poster`,
+        `${primaryName} key art`,
+        `${primaryName} character poster`,
+      ]);
+    default:
+      return uniqueStrings([
+        `${primaryName} still`,
+        `${primaryName} backdrop`,
+        `${primaryName} production still`,
+        primaryName,
+      ]);
   }
 }
 
 function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const fallback = guessPrimarySubject(article);
+  const editorialPrimary = typeof value?.editorialPrimary === 'string'
+    ? value.editorialPrimary.trim()
+    : fallback.editorialPrimary;
   const primaryName = typeof value?.primarySubject?.name === 'string'
     ? value.primarySubject.name.trim()
     : fallback.primarySubject.name;
@@ -459,22 +571,34 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
   const contextType = typeof value?.contextType === 'string'
     ? value.contextType as ContextType
     : fallback.contextType;
+  const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, relevantStudios);
+  const visualSubject = typeof value?.visualSubject === 'string'
+    ? value.visualSubject.trim()
+    : visual.visualSubject;
+  const imageIntent = typeof value?.imageIntent === 'string'
+    ? value.imageIntent as ImageIntent
+    : visual.imageIntent;
   const queries = uniqueStrings(
-    Array.isArray(value?.queries) ? value.queries : buildFallbackQueries(primaryName, primaryType, secondarySubjects, contextType)
+    Array.isArray(value?.queries)
+      ? value.queries
+      : buildFallbackQueries(visualSubject, primaryType, secondarySubjects, contextType, imageIntent)
   );
 
   return {
+    editorialPrimary,
     primarySubject: {
       name: primaryName,
       type: primaryType,
     },
+    visualSubject,
+    imageIntent,
     secondarySubjects,
     relevantStudios,
     contextType,
-    allowLogoOnly: value?.allowLogoOnly !== false,
+    allowLogoOnly: value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo'),
     queries: queries.length > 0
       ? queries
-      : buildFallbackQueries(primaryName, primaryType, secondarySubjects, contextType),
+      : buildFallbackQueries(visualSubject, primaryType, secondarySubjects, contextType, imageIntent),
   };
 }
 
@@ -587,6 +711,27 @@ function isLogoResult(text: string): boolean {
   return containsKeyword(text, LOGO_KEYWORDS);
 }
 
+function isPosterResult(text: string): boolean {
+  return containsKeyword(text, POSTER_KEYWORDS);
+}
+
+function getAspectRatio(image: SerperImageResult): number | null {
+  const width = image.imageWidth || 0;
+  const height = image.imageHeight || 0;
+  if (!width || !height) return null;
+  return width / height;
+}
+
+function isTallPosterAspect(image: SerperImageResult): boolean {
+  const ratio = getAspectRatio(image);
+  return ratio !== null && ratio > 0.55 && ratio < 0.85;
+}
+
+function isLandscapeAspect(image: SerperImageResult): boolean {
+  const ratio = getAspectRatio(image);
+  return ratio !== null && ratio >= 1.3;
+}
+
 function getDomainScore(domain: string): number {
   const normalizedDomain = normalizeText(domain);
 
@@ -602,35 +747,38 @@ function getDomainScore(domain: string): number {
 }
 
 function getImageTypeScore(text: string, analysis: RSSSubjectAnalysis): { score: number; reason: string } {
-  const primaryType = analysis.primarySubject.type;
-
-  if (primaryType === 'studio' || primaryType === 'streaming_service') {
-    if (isLogoResult(text)) return { score: 35, reason: 'Relevant official studio/platform logo' };
-    if (containsKeyword(text, POSTER_KEYWORDS)) return { score: 10, reason: 'Studio-related promotional art' };
+  switch (analysis.imageIntent) {
+    case 'logo':
+      if (isLogoResult(text)) return { score: 38, reason: 'Relevant official logo' };
+      if (containsKeyword(text, BACKDROP_KEYWORDS)) return { score: 18, reason: 'Relevant brand backdrop' };
+      return { score: 4, reason: 'Weak logo match' };
+    case 'brand_backdrop':
+      if (containsKeyword(text, BACKDROP_KEYWORDS)) return { score: 34, reason: 'Relevant brand backdrop' };
+      if (isLogoResult(text)) return { score: 22, reason: 'Relevant official logo' };
+      return { score: 8, reason: 'Weak brand image match' };
+    case 'person_portrait':
+      if (containsKeyword(text, PORTRAIT_KEYWORDS)) return { score: 34, reason: 'Relevant official person image' };
+      if (containsKeyword(text, STILL_KEYWORDS)) return { score: 12, reason: 'Relevant person-in-title still' };
+      return { score: 4, reason: 'Weak portrait match' };
+    case 'character_still':
+      if (containsKeyword(text, STILL_KEYWORDS)) return { score: 34, reason: 'Relevant character still' };
+      if (containsKeyword(text, PORTRAIT_KEYWORDS)) return { score: 16, reason: 'Relevant character image' };
+      return { score: 6, reason: 'Weak character image match' };
+    case 'still':
+      if (containsKeyword(text, STILL_KEYWORDS)) return { score: 34, reason: 'Relevant still or scene image' };
+      if (containsKeyword(text, BACKDROP_KEYWORDS)) return { score: 24, reason: 'Relevant backdrop image' };
+      return { score: 8, reason: 'Relevant image match' };
+    case 'backdrop':
+      if (containsKeyword(text, BACKDROP_KEYWORDS)) return { score: 34, reason: 'Relevant backdrop image' };
+      if (containsKeyword(text, STILL_KEYWORDS)) return { score: 24, reason: 'Relevant still image' };
+      return { score: 8, reason: 'Relevant image match' };
+    case 'poster':
+      if (isPosterResult(text)) return { score: 36, reason: 'Official poster or key art' };
+      if (isLogoResult(text)) return { score: 12, reason: 'Relevant title logo' };
+      return { score: 6, reason: 'Weak poster match' };
+    default:
+      return { score: 8, reason: 'Relevant image match' };
   }
-
-  if (containsKeyword(text, POSTER_KEYWORDS)) {
-    return { score: 30, reason: 'Official poster or key art' };
-  }
-
-  if (containsKeyword(text, STILL_KEYWORDS)) {
-    return { score: 25, reason: 'Relevant still or scene image' };
-  }
-
-  if (containsKeyword(text, PORTRAIT_KEYWORDS)) {
-    return {
-      score: primaryType === 'actor' || primaryType === 'character' || primaryType === 'director' || primaryType === 'producer'
-        ? 28
-        : 12,
-      reason: 'Relevant official person image',
-    };
-  }
-
-  if (isLogoResult(text)) {
-    return { score: 14, reason: 'Relevant official logo' };
-  }
-
-  return { score: 8, reason: 'Relevant image match' };
 }
 
 function scoreImage(
@@ -644,6 +792,7 @@ function scoreImage(
 
   const text = getSerperImageText(image);
   const relevantEntities = uniqueStrings([
+    analysis.visualSubject,
     analysis.primarySubject.name,
     ...analysis.secondarySubjects,
     ...analysis.relevantStudios,
@@ -651,8 +800,9 @@ function scoreImage(
 
   const mentionsRelevantEntity = hasRelevantEntityMatch(text, relevantEntities);
   const relevantStudioMatch = analysis.relevantStudios.some((studio) => entityMatches(text, studio));
-  const primaryMatch = entityMatches(text, analysis.primarySubject.name);
+  const primaryMatch = entityMatches(text, analysis.visualSubject);
   const isLogo = isLogoResult(text);
+  const isPoster = isPosterResult(text);
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
 
   if (!mentionsRelevantEntity && !relevantStudioMatch) {
@@ -690,11 +840,27 @@ function scoreImage(
   const imageType = getImageTypeScore(text, analysis);
   score += imageType.score;
 
+  if (analysis.imageIntent !== 'poster' && isPoster) {
+    score -= 30;
+  }
+
+  if ((analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'still' || analysis.imageIntent === 'character_still') && isTallPosterAspect(image)) {
+    score -= 25;
+  }
+
+  if ((analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'still') && isLandscapeAspect(image)) {
+    score += 20;
+  }
+
+  if (analysis.imageIntent === 'person_portrait' && isLandscapeAspect(image)) {
+    score -= 12;
+  }
+
   if (analysis.contextType === 'trailer' && containsKeyword(text, ['trailer', 'teaser'])) {
     score += 8;
   }
 
-  if ((analysis.contextType === 'release' || analysis.contextType === 'boxoffice') && containsKeyword(text, POSTER_KEYWORDS)) {
+  if ((analysis.contextType === 'release' || analysis.contextType === 'boxoffice' || analysis.contextType === 'poster_announcement') && containsKeyword(text, POSTER_KEYWORDS) && analysis.imageIntent === 'poster') {
     score += 10;
   }
 
