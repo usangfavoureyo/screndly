@@ -7,6 +7,9 @@ import { toast } from 'sonner';
 import { useRSSFeeds, RSSActivityItem } from '../contexts/RSSFeedsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { useSettings } from '../contexts/SettingsContext';
+import { apiClient } from '../lib/api/client';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
@@ -20,11 +23,12 @@ function formatActivityTimestamp(value: string): string {
 }
 
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
-  const { getActivity, deleteActivity, refreshFeed } = useRSSFeeds();
+  const { getActivity, refreshFeed } = useRSSFeeds();
   const { settings } = useSettings();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
   const loadActivity = async () => {
     setIsRefreshing(true);
@@ -56,6 +60,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     if (filter === 'pending') return item.status === 'pending';
     return true;
   });
+  const selection = useBulkSelection(filteredItems.map((item) => item.id));
 
   const summary = {
     total: retainedItems.length,
@@ -105,8 +110,46 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const handleDelete = async (id?: string) => {
     if (!id) return;
     haptics.medium();
-    await deleteActivity(id);
-    await loadActivity();
+    try {
+      const response = await apiClient.delete(`/api/rss/activity/${id}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete activity');
+      }
+      setItems((prev) => prev.filter((item) => item.id !== id));
+      toast.success('Activity entry deleted');
+    } catch (error) {
+      console.error('Failed to delete RSS activity:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+      await loadActivity();
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    haptics.medium();
+    setIsDeletingSelected(true);
+    const selectedIdSet = new Set(selection.selectedIds);
+
+    try {
+      await Promise.all(
+        selection.selectedIds.map(async (id) => {
+          const response = await apiClient.delete(`/api/rss/activity/${id}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete selected activity');
+          }
+        })
+      );
+      setItems((prev) => prev.filter((item) => !selectedIdSet.has(item.id)));
+      toast.success(`${selection.selectedCount} RSS activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
+      selection.clearSelection();
+    } catch (error) {
+      console.error('Failed to bulk delete RSS activity:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete selected activity');
+      await loadActivity();
+    } finally {
+      setIsDeletingSelected(false);
+    }
   };
 
   const handleRefresh = async () => {
@@ -169,6 +212,15 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
       </div>
 
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
+        {selection.selectionMode && (
+          <ActivitySelectionToolbar
+            selectedCount={selection.selectedCount}
+            isDeleting={isDeletingSelected}
+            onClear={selection.clearSelection}
+            onDelete={handleDeleteSelected}
+            itemLabel="activity items"
+          />
+        )}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           {[
             { value: 'all', label: 'All' },
@@ -207,6 +259,10 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                   key={item.id}
                   id={item.id}
                   onDelete={handleDelete}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.isSelected(item.id)}
+                  onEnterSelectionMode={selection.enterSelectionMode}
+                  onToggleSelection={selection.toggleSelection}
                   className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
                   deleteLabel="Delete"
                 >
@@ -239,7 +295,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                         <StatusIcon className="w-4 h-4" />
                         {statusConfig.label}
                       </span>
-                      {item.status === 'failed' && item.feedId && (
+                      {!selection.selectionMode && item.status === 'failed' && item.feedId && (
                         <Button
                           variant="outline"
                           size="sm"

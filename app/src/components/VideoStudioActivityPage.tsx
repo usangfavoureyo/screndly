@@ -20,6 +20,8 @@ import type { VideoStudioActivity } from '../utils/activityStore';
 import { Skeleton } from './ui/skeleton';
 import { apiClient } from '../lib/api/client';
 import { generateVideoStudioCaption, type VideoContentType } from '../utils/videoStudioCaptionGenerator';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 
 interface VideoStudioActivityPageProps {
   onNavigate: (page: string) => void;
@@ -58,6 +60,7 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   // Load activities from API
   const [activities, setActivities] = useState<VideoStudioActivity[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(true);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
   const fetchActivities = async () => {
     setIsLoadingActivities(true);
@@ -142,6 +145,15 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   const processingCount = activities.filter(a => a.status === 'processing').length;
   const failedCount = activities.filter(a => a.status === 'failed').length;
   const totalDownloads = activities.reduce((sum, a) => sum + a.downloads, 0);
+  const displayedActivities = activities
+    .filter(shouldKeepItem)
+    .filter((activity) => {
+      if (activeTab === 'review') return activity.type === 'review';
+      if (activeTab === 'releases') return activity.type === 'monthly';
+      if (activeTab === 'scenes') return activity.type === 'scenes';
+      return true;
+    });
+  const selection = useBulkSelection(displayedActivities.map((activity) => activity.id));
 
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
   const [selectedPlatforms, setSelectedPlatforms] = useState({
@@ -245,6 +257,29 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
         })();
       }
     });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    haptics.medium();
+    setIsDeletingSelected(true);
+    const selectedIdSet = new Set(selection.selectedIds);
+    const deletedActivities = activities.filter((activity) => selectedIdSet.has(activity.id));
+
+    setActivities((previous) => previous.filter((activity) => !selectedIdSet.has(activity.id)));
+
+    try {
+      await Promise.all(selection.selectedIds.map((id) => deleteActivityRecord(id)));
+      toast.success(`${selection.selectedCount} video activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
+      selection.clearSelection();
+    } catch (error) {
+      console.error('Failed to bulk delete video studio activity:', error);
+      setActivities((previous) => [...previous, ...deletedActivities].sort((a, b) => b.timestampMs - a.timestampMs));
+      toast.error(error instanceof Error ? error.message : 'Failed to delete selected activity');
+    } finally {
+      setIsDeletingSelected(false);
+    }
   };
 
   return (
@@ -360,19 +395,24 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
             </div>
           ) : (
             <>
-              {activities
-                .filter(shouldKeepItem) // Apply retention filter first
-                .filter(activity => {
-                  if (activeTab === 'review') return activity.type === 'review';
-                  if (activeTab === 'releases') return activity.type === 'monthly';
-                  if (activeTab === 'scenes') return activity.type === 'scenes';
-                  return true;
-                })
-                .map((activity) => (
+              {selection.selectionMode && (
+                <ActivitySelectionToolbar
+                  selectedCount={selection.selectedCount}
+                  isDeleting={isDeletingSelected}
+                  onClear={selection.clearSelection}
+                  onDelete={handleDeleteSelected}
+                  itemLabel="activity items"
+                />
+              )}
+              {displayedActivities.map((activity) => (
                   <SwipeableActivityCard
                     key={activity.id}
                     id={activity.id}
                     onDelete={() => handleDelete(activity.id, activity.title)}
+                    selectionMode={selection.selectionMode}
+                    selected={selection.isSelected(activity.id)}
+                    onEnterSelectionMode={selection.enterSelectionMode}
+                    onToggleSelection={selection.toggleSelection}
                     className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -476,7 +516,7 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
 
                       {/* Action Buttons */}
                       <div className="flex flex-col gap-2 flex-shrink-0">
-                        {activity.status === 'completed' && (
+                        {!selection.selectionMode && activity.status === 'completed' && (
                           <>
                             <Button
                               onClick={(e) => {

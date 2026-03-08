@@ -5,6 +5,8 @@ import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { toast } from 'sonner';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -65,6 +67,8 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const selection = useBulkSelection(activities.map((activity) => activity.id));
 
   const loadActivities = async () => {
     setIsLoading(true);
@@ -105,6 +109,34 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     } catch (error) {
       console.error('Failed to delete design studio activity:', error);
       toast.error('Failed to delete activity');
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    haptics.medium();
+    setIsDeletingSelected(true);
+    const selectedIdSet = new Set(selection.selectedIds);
+
+    try {
+      await Promise.all(
+        selection.selectedIds.map(async (id) => {
+          const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
+          if (!response.success) {
+            throw new Error(response.error?.message || 'Failed to delete selected activity');
+          }
+        })
+      );
+      setActivities((prev) => prev.filter((activity) => !selectedIdSet.has(activity.id)));
+      toast.success(`${selection.selectedCount} design activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
+      selection.clearSelection();
+    } catch (error) {
+      console.error('Failed to bulk delete design studio activity:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete selected activity');
+      await loadActivities();
+    } finally {
+      setIsDeletingSelected(false);
     }
   };
 
@@ -159,25 +191,40 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             <p className="text-sm text-gray-500 dark:text-[#6B7280]">Rendered and published design events will appear here.</p>
           </div>
         ) : (
-          activities.map((activity) => (
-            <SwipeableActivityCard
-              key={activity.id}
-              id={activity.id}
-              onDelete={handleDelete}
-              className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="mt-1">{getIcon(activity.type)}</div>
-                  <div className="min-w-0">
-                    <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
-                    <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+          <>
+            {selection.selectionMode && (
+              <ActivitySelectionToolbar
+                selectedCount={selection.selectedCount}
+                isDeleting={isDeletingSelected}
+                onClear={selection.clearSelection}
+                onDelete={handleDeleteSelected}
+                itemLabel="activity items"
+              />
+            )}
+            {activities.map((activity) => (
+              <SwipeableActivityCard
+                key={activity.id}
+                id={activity.id}
+                onDelete={handleDelete}
+                selectionMode={selection.selectionMode}
+                selected={selection.isSelected(activity.id)}
+                onEnterSelectionMode={selection.enterSelectionMode}
+                onToggleSelection={selection.toggleSelection}
+                className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-1">{getIcon(activity.type)}</div>
+                    <div className="min-w-0">
+                      <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
+                      <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+                    </div>
                   </div>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
-              </div>
-            </SwipeableActivityCard>
-          ))
+              </SwipeableActivityCard>
+            ))}
+          </>
         )}
       </div>
     </div>
