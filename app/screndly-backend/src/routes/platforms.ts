@@ -5,6 +5,7 @@ import prisma from '../lib/prisma';
 import { env } from '../lib/env';
 import { assertXOAuthConfigured, buildXTokenRequest, getXOAuthClientId } from '../lib/xOAuth';
 import { getTikTokClientKey, getTikTokClientSecret } from '../lib/tiktokOAuth';
+import { getPinterestAppId, getPinterestAppSecret } from '../lib/pinterestOAuth';
 import multer from 'multer';
 import { xService } from '../services/platforms/x';
 import { metaService } from '../services/platforms/meta';
@@ -304,6 +305,11 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         // Content might be JSON stringified if multipart/form-data
         const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
         const { text, link, title } = parsedContent;
+        const youtubePlaylists = Array.isArray(parsedContent?.youtubePlaylistIds)
+            ? parsedContent.youtubePlaylistIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
+            : typeof parsedContent?.youtubePlaylistIds === 'string'
+                ? parsedContent.youtubePlaylistIds.split(',').map((value: string) => value.trim()).filter(Boolean)
+                : [];
 
         let imageUrl = parsedContent.imageUrl;
         let videoUrl = parsedContent.videoUrl;
@@ -415,7 +421,8 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 {
                                     title: title || text.slice(0, 100),
                                     description: text,
-                                    privacyStatus: 'private' // Default to private for safety
+                                    privacyStatus: 'public',
+                                    playlistIds: youtubePlaylists,
                                 },
                                 connection.refreshToken || undefined
                             );
@@ -681,13 +688,15 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
             }
 
             case 'Pinterest': {
+                const pinterestAppId = getPinterestAppId();
+                const pinterestAppSecret = getPinterestAppSecret();
                 assertConfigured('Pinterest', {
-                    PINTEREST_APP_ID: env.PINTEREST_APP_ID,
-                    PINTEREST_APP_SECRET: env.PINTEREST_APP_SECRET
+                    PINTEREST_APP_ID: pinterestAppId,
+                    PINTEREST_APP_SECRET: pinterestAppSecret
                 });
 
                 const scopes = ['boards:read', 'boards:write', 'pins:read', 'pins:write', 'user_accounts:read'];
-                oauthUrl = `https://www.pinterest.com/oauth/?consumer_id=${encodeURIComponent(env.PINTEREST_APP_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&refreshable=true&scope=${encodeURIComponent(scopes.join(','))}&state=${encodeURIComponent(stateFor())}`;
+                oauthUrl = `https://www.pinterest.com/oauth/?consumer_id=${encodeURIComponent(pinterestAppId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&refreshable=true&scope=${encodeURIComponent(scopes.join(','))}&state=${encodeURIComponent(stateFor())}`;
                 break;
             }
 
@@ -1113,12 +1122,14 @@ router.post('/callback', async (req, res) => {
                 }
             });
         } else if (normalizedPlatform === 'Pinterest') {
+            const pinterestAppId = getPinterestAppId();
+            const pinterestAppSecret = getPinterestAppSecret();
             assertConfigured('Pinterest', {
-                PINTEREST_APP_ID: env.PINTEREST_APP_ID,
-                PINTEREST_APP_SECRET: env.PINTEREST_APP_SECRET
+                PINTEREST_APP_ID: pinterestAppId,
+                PINTEREST_APP_SECRET: pinterestAppSecret
             });
 
-            const basicAuth = Buffer.from(`${env.PINTEREST_APP_ID}:${env.PINTEREST_APP_SECRET}`).toString('base64');
+            const basicAuth = Buffer.from(`${pinterestAppId}:${pinterestAppSecret}`).toString('base64');
             const params = new URLSearchParams({
                 code,
                 redirect_uri: effectiveRedirectUri,

@@ -109,9 +109,11 @@ interface RSSFeedsContextType {
   addFeed: (feed: Partial<RSSFeed> & { url: string }) => Promise<RSSFeed | null>;
   updateFeed: (feedId: string, updates: Partial<RSSFeed>) => Promise<void>;
   deleteFeed: (feedId: string) => Promise<void>;
+  removeFeedLocal: (feedId: string) => void;
+  restoreFeed: (feed: RSSFeed, index?: number) => void;
   refreshFeed: (
-    feedId: string,
-    options?: { showToast?: boolean; manualRun?: boolean }
+      feedId: string,
+      options?: { showToast?: boolean; manualRun?: boolean }
   ) => Promise<RSSRefreshResult | null>;
   refreshAllFeeds: () => Promise<void>;
   previewFeed: (url: string) => Promise<RSSFeedPreview | null>;
@@ -209,11 +211,28 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
       }
 
       setFeeds((prev) => prev.filter((feed) => feed.id !== feedId));
-      toast.success('Feed deleted');
     } catch (err) {
       console.error('Error deleting RSS feed:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to delete feed');
+      const error = err instanceof Error ? err : new Error('Failed to delete feed');
+      throw error;
     }
+  };
+
+  const removeFeedLocal = (feedId: string) => {
+    setFeeds((prev) => prev.filter((feed) => feed.id !== feedId));
+  };
+
+  const restoreFeed = (feed: RSSFeed, index = 0) => {
+    setFeeds((prev) => {
+      if (prev.some((item) => item.id === feed.id)) {
+        return prev;
+      }
+
+      const next = [...prev];
+      const targetIndex = Math.max(0, Math.min(index, next.length));
+      next.splice(targetIndex, 0, feed);
+      return next;
+    });
   };
 
   const toggleFeedEnabled = async (feedId: string, enabled: boolean) => {
@@ -332,6 +351,8 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         addFeed,
         updateFeed,
         deleteFeed,
+        removeFeedLocal,
+        restoreFeed,
         refreshFeed,
         refreshAllFeeds,
         previewFeed,

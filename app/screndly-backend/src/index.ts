@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import prisma from './lib/prisma';
 import { env } from './lib/env';
 import { getTikTokClientKey, getTikTokClientSecret, hasTikTokCredentialWhitespace } from './lib/tiktokOAuth';
+import { getPinterestAppId, getPinterestAppSecret } from './lib/pinterestOAuth';
 import { getXOAuthClientId, getXOAuthClientSecret } from './lib/xOAuth';
 
 const app = express();
@@ -64,6 +65,8 @@ app.get('/api/diag/oauth-config', (req, res) => {
     const xClientSecret = getXOAuthClientSecret();
     const tiktokClientKey = getTikTokClientKey();
     const tiktokClientSecret = getTikTokClientSecret();
+    const pinterestAppId = getPinterestAppId();
+    const pinterestAppSecret = getPinterestAppSecret();
 
     res.json({
         success: true,
@@ -95,8 +98,9 @@ app.get('/api/diag/oauth-config', (req, res) => {
                     hasCredentialWhitespace: hasTikTokCredentialWhitespace(),
                 },
                 pinterest: {
-                    hasAppId: !!process.env.PINTEREST_APP_ID,
-                    hasAppSecret: !!process.env.PINTEREST_APP_SECRET,
+                    hasAppId: !!pinterestAppId,
+                    hasAppSecret: !!pinterestAppSecret,
+                    usingClientKeyNames: !process.env.PINTEREST_APP_ID && !!process.env.PINTEREST_CLIENT_ID,
                 }
             }
         }

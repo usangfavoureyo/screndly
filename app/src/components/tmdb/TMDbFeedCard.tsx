@@ -68,7 +68,6 @@ function TMDbFeedCardComponent({
   const isSwipingRef = useRef(false);
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
-  const suppressNextClickRef = useRef(false);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   // Card reference for native listeners
@@ -99,7 +98,6 @@ function TMDbFeedCardComponent({
     pressOriginRef.current = { x: clientX, y: clientY };
     longPressTimeoutRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
-      suppressNextClickRef.current = true;
       haptics.medium();
       onEnterSelectionMode(feed.id);
     }, LONG_PRESS_MS);
@@ -221,20 +219,12 @@ function TMDbFeedCardComponent({
       clearLongPress();
 
       if (selectionMode) {
-        const deltaX = Math.abs(currentX.current - startX.current);
-        const deltaY = Math.abs(currentY.current - startY.current);
-
         swipeDirectionRef.current = 'none';
         swipeXRef.current = 0;
         isSwipingRef.current = false;
         setSwipeX(0);
         setIsSwiping(false);
         setSwipeDirection('none');
-
-        if (!longPressTriggeredRef.current && deltaX < MOVE_CANCEL_THRESHOLD && deltaY < MOVE_CANCEL_THRESHOLD) {
-          suppressNextClickRef.current = true;
-          onToggleSelection?.(feed.id);
-        }
 
         longPressTriggeredRef.current = false;
         currentX.current = startX.current;
@@ -339,30 +329,10 @@ function TMDbFeedCardComponent({
     }
   };
 
-  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (suppressNextClickRef.current) {
-      suppressNextClickRef.current = false;
-      return;
-    }
-
-    if (!selectionMode || !onToggleSelection || isInteractiveTarget(e.target)) {
-      return;
-    }
-
+  const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onToggleSelection(feed.id);
-  };
-
-  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!selectionMode || !onToggleSelection) {
-      return;
-    }
-
-    if (e.key !== 'Enter' && e.key !== ' ') {
-      return;
-    }
-
-    e.preventDefault();
+    e.stopPropagation();
+    haptics.light();
     onToggleSelection(feed.id);
   };
 
@@ -402,27 +372,29 @@ function TMDbFeedCardComponent({
 
       <div
         ref={cardRef}
-        role={selectionMode ? 'button' : undefined}
-        tabIndex={selectionMode ? 0 : undefined}
-        aria-pressed={selectionMode ? selected : undefined}
-        className={`bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y select-none ${selectionMode ? 'cursor-pointer' : ''} ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
+        className={`bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y select-none ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
         style={{
           transform: `translateX(${selectionMode ? 0 : swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
-        onClick={handleCardClick}
-        onKeyDown={handleCardKeyDown}
         onMouseDown={handleCardMouseDown}
         onMouseMove={handleCardMouseMove}
         onMouseUp={handleCardMouseUp}
         onMouseLeave={handleCardMouseLeave}
       >
         {selectionMode && (
-          <div className="pointer-events-none absolute right-3 top-3 z-10">
+          <button
+            type="button"
+            aria-label={selected ? 'Unselect feed card' : 'Select feed card'}
+            aria-pressed={selected}
+            data-prevent-card-selection="true"
+            className="absolute right-3 top-3 z-10"
+            onClick={handleSelectionToggle}
+          >
             <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${selected ? 'border-[#ec1e24] bg-[#ec1e24] text-white' : 'border-gray-300 bg-white/95 text-transparent dark:border-[#333333] dark:bg-[#050505]/95'}`}>
               <Check className="h-3.5 w-3.5" />
             </div>
-          </div>
+          </button>
         )}
         <div className="flex flex-col sm:flex-row">
           {/* Image Section */}

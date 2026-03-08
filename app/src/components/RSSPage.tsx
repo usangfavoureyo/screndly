@@ -12,6 +12,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { enrichArticleWithImages } from '../lib/rss/image-enrichment';
 import { generateRSSCaption } from '../utils/rssCaptionGenerator';
 import { useRSSFeeds, RSSActivityItem, PlatformsEnabled } from '../contexts/RSSFeedsContext';
+import { useUndo } from './UndoContext';
 
 interface RSSPageProps {
   onNavigate?: (page: string) => void;
@@ -32,6 +33,8 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     addFeed,
     updateFeed,
     deleteFeed: deleteFeedFromContext,
+    removeFeedLocal,
+    restoreFeed,
     toggleFeedEnabled,
     togglePlatform,
     refreshFeed,
@@ -47,6 +50,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   const [previewFeedId, setPreviewFeedId] = useState<string | null>(null);
   const [activityItems, setActivityItems] = useState<RSSActivityItem[]>([]);
   const [isActivityLoading, setIsActivityLoading] = useState(true);
+  const { showUndo } = useUndo();
 
   const transformedFeeds: Feed[] = feeds.map((feed) => ({
     id: feed.id,
@@ -107,8 +111,29 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
 
   const handleDeleteFeed = async (id: string) => {
     haptics.medium();
-    await deleteFeedFromContext(id);
-    await loadActivity();
+    const feedIndex = feeds.findIndex((feed) => feed.id === id);
+    const feed = feedIndex >= 0 ? feeds[feedIndex] : null;
+    if (!feed) return;
+
+    removeFeedLocal(id);
+
+    showUndo({
+      id: `rss-feed-${id}`,
+      itemName: feed.name,
+      onUndo: () => {
+        restoreFeed(feed, feedIndex);
+      },
+      onConfirm: async () => {
+        try {
+          await deleteFeedFromContext(id);
+          await loadActivity();
+          toast.success('Feed deleted');
+        } catch (error) {
+          restoreFeed(feed, feedIndex);
+          toast.error(error instanceof Error ? error.message : 'Failed to delete feed');
+        }
+      }
+    });
   };
 
   const handleSaveFeed = async (feed: Feed) => {

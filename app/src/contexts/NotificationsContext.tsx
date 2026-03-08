@@ -39,6 +39,8 @@ interface NotificationsContextType {
   markAllAsRead: () => void;
   clearAll: () => void;
   deleteNotification: (id: string) => void;
+  removeNotificationLocal: (id: string) => void;
+  restoreNotification: (notification: Notification, index?: number) => void;
   refreshNotifications: () => Promise<void>;
 }
 
@@ -172,10 +174,31 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     setNotifications(prev => prev.filter(notif => notif.id !== id));
 
     try {
-      await apiClient.delete(`/api/notifications/${id}`);
+      const response = await apiClient.delete(`/api/notifications/${id}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete notification');
+      }
     } catch (error) {
       console.error('Failed to delete notification:', error);
+      throw error;
     }
+  };
+
+  const removeNotificationLocal = (id: string) => {
+    setNotifications(prev => prev.filter(notif => notif.id !== id));
+  };
+
+  const restoreNotification = (notification: Notification, index = 0) => {
+    setNotifications(prev => {
+      if (prev.some((item) => item.id === notification.id)) {
+        return prev;
+      }
+
+      const next = [...prev];
+      const targetIndex = Math.max(0, Math.min(index, next.length));
+      next.splice(targetIndex, 0, notification);
+      return next;
+    });
   };
 
   const clearAll = async () => {
@@ -205,6 +228,8 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         markAllAsRead,
         clearAll,
         deleteNotification,
+        removeNotificationLocal,
+        restoreNotification,
         refreshNotifications: fetchNotifications
       }}
     >
