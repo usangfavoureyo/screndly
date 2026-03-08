@@ -16,6 +16,7 @@ import { BackIconButton } from './BackIconButton';
 import { SwipeableNotificationCard } from './SwipeableNotificationCard';
 import { apiClient } from '../lib/api/client';
 import type { Notification, NotificationSource } from '../contexts/NotificationsContext';
+import { formatCalendarDate, formatDateTime } from '../utils/calendarDate';
 
 export interface NotificationAction {
   id: string;
@@ -88,13 +89,6 @@ function getTargetLabel(target?: NotificationActionTarget | null) {
   if (target.page === 'channels') return 'Open Channels';
   if (target.page === 'logs') return 'Open Logs';
   return 'Open Page';
-}
-
-function formatDateTime(value?: string) {
-  if (!value) return 'Unknown';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
 }
 
 function getItemMeta(item: NotificationRelatedItem) {
@@ -501,7 +495,7 @@ export function NotificationPanel({
                       <div className="space-y-1 mt-2">
                         {item.releaseDate && (
                           <p className="text-xs text-[#9CA3AF]">
-                            Release: {formatDateTime(item.releaseDate)}
+                            Release: {formatCalendarDate(item.releaseDate)}
                           </p>
                         )}
                         {item.scheduledTime && (
