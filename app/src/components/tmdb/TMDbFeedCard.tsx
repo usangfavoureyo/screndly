@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect, memo } from 'react';
-import { MoreVertical, Trash2 } from 'lucide-react';
+import { Check, MoreVertical, Trash2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
@@ -14,6 +14,10 @@ interface TMDbFeedCardProps {
   feed: TMDbFeed;
   onUpdate?: (feedId: string, updates: Partial<TMDbFeed>) => void;
   onDelete?: (feedId: string) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onEnterSelectionMode?: (feedId: string) => void;
+  onToggleSelection?: (feedId: string) => void;
 }
 
 /**
@@ -30,7 +34,13 @@ interface TMDbFeedCardProps {
  * - Changing image type
  * - Other cards update
  */
-function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'onDelete'>) {
+function TMDbFeedCardComponent({
+  feed,
+  selectionMode = false,
+  selected = false,
+  onEnterSelectionMode,
+  onToggleSelection,
+}: TMDbFeedCardProps) {
   // Modal controls from Zustand store - NO local useState for modals!
   const openEditCaption = useTMDbModalStore(s => s.openEditCaption);
   const openChangeImage = useTMDbModalStore(s => s.openChangeImage);
@@ -56,40 +66,91 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
   const swipeXRef = useRef(0);
   const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
   const isSwipingRef = useRef(false);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggeredRef = useRef(false);
+  const suppressNextClickRef = useRef(false);
+  const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
   // Card reference for native listeners
   const cardRef = useRef<HTMLDivElement>(null);
+  const LONG_PRESS_MS = 450;
+  const MOVE_CANCEL_THRESHOLD = 10;
+
+  const isInteractiveTarget = (target: EventTarget | null) =>
+    target instanceof Element &&
+    Boolean(target.closest('button, a, input, textarea, select, [role="button"], [data-prevent-card-selection="true"]'));
+
+  const clearLongPress = useCallback(() => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    pressOriginRef.current = null;
+  }, []);
+
+  const startLongPress = useCallback((clientX: number, clientY: number, target: EventTarget | null) => {
+    clearLongPress();
+    longPressTriggeredRef.current = false;
+
+    if (selectionMode || !onEnterSelectionMode || isInteractiveTarget(target)) {
+      return;
+    }
+
+    pressOriginRef.current = { x: clientX, y: clientY };
+    longPressTimeoutRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      suppressNextClickRef.current = true;
+      haptics.medium();
+      onEnterSelectionMode(feed.id);
+    }, LONG_PRESS_MS);
+  }, [clearLongPress, feed.id, onEnterSelectionMode, selectionMode]);
+
+  const cancelLongPressOnMovement = useCallback((clientX: number, clientY: number) => {
+    if (!pressOriginRef.current) return;
+
+    const deltaX = Math.abs(clientX - pressOriginRef.current.x);
+    const deltaY = Math.abs(clientY - pressOriginRef.current.y);
+    if (deltaX > MOVE_CANCEL_THRESHOLD || deltaY > MOVE_CANCEL_THRESHOLD) {
+      clearLongPress();
+    }
+  }, [clearLongPress]);
 
   // Stable handlers that don't change identity
   const handleImageClick = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openImagePreview(feed);
-  }, [feed, openImagePreview]);
+  }, [feed, openImagePreview, selectionMode]);
 
   const handleEditCaption = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openEditCaption(feed);
-  }, [feed, openEditCaption]);
+  }, [feed, openEditCaption, selectionMode]);
 
   const handleChangeImage = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openChangeImage(feed);
-  }, [feed, openChangeImage]);
+  }, [feed, openChangeImage, selectionMode]);
 
   const handleSchedule = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openReschedule(feed);
-  }, [feed, openReschedule]);
+  }, [feed, openReschedule, selectionMode]);
 
   const handlePostNow = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openPlatformSelect(feed, true);
-  }, [feed, openPlatformSelect]);
+  }, [feed, openPlatformSelect, selectionMode]);
 
   const handleDelete = useCallback(() => {
+    if (selectionMode) return;
     haptics.light();
     openDelete(feed);
-  }, [feed, openDelete]);
+  }, [feed, openDelete, selectionMode]);
 
   useEffect(() => {
     if (!touchSwipeEnabled) {
@@ -102,10 +163,19 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
     const onTouchStart = (e: TouchEvent) => {
       startX.current = e.touches[0].clientX;
       startY.current = e.touches[0].clientY;
+      currentX.current = e.touches[0].clientX;
+      currentY.current = e.touches[0].clientY;
       swipeDirectionRef.current = 'none';
+      startLongPress(e.touches[0].clientX, e.touches[0].clientY, e.target);
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      cancelLongPressOnMovement(e.touches[0].clientX, e.touches[0].clientY);
+
+      if (selectionMode || longPressTriggeredRef.current) {
+        return;
+      }
+
       // If we've already committed to a vertical scroll, ignore
       if (swipeDirectionRef.current === 'vertical') return;
 
@@ -148,6 +218,43 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
     };
 
     const onTouchEnd = () => {
+      clearLongPress();
+
+      if (selectionMode) {
+        const deltaX = Math.abs(currentX.current - startX.current);
+        const deltaY = Math.abs(currentY.current - startY.current);
+
+        swipeDirectionRef.current = 'none';
+        swipeXRef.current = 0;
+        isSwipingRef.current = false;
+        setSwipeX(0);
+        setIsSwiping(false);
+        setSwipeDirection('none');
+
+        if (!longPressTriggeredRef.current && deltaX < MOVE_CANCEL_THRESHOLD && deltaY < MOVE_CANCEL_THRESHOLD) {
+          suppressNextClickRef.current = true;
+          onToggleSelection?.(feed.id);
+        }
+
+        longPressTriggeredRef.current = false;
+        currentX.current = startX.current;
+        currentY.current = startY.current;
+        return;
+      }
+
+      if (longPressTriggeredRef.current) {
+        swipeDirectionRef.current = 'none';
+        swipeXRef.current = 0;
+        isSwipingRef.current = false;
+        setSwipeX(0);
+        setIsSwiping(false);
+        setSwipeDirection('none');
+        longPressTriggeredRef.current = false;
+        currentX.current = startX.current;
+        currentY.current = startY.current;
+        return;
+      }
+
       if (swipeDirectionRef.current === 'horizontal') {
         const threshold = 90;
         if (swipeXRef.current < -threshold) {
@@ -164,22 +271,49 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
       setSwipeX(0);
       setIsSwiping(false);
       setSwipeDirection('none');
+      currentX.current = startX.current;
+      currentY.current = startY.current;
+    };
+
+    const onTouchCancel = () => {
+      clearLongPress();
+      swipeDirectionRef.current = 'none';
+      swipeXRef.current = 0;
+      isSwipingRef.current = false;
+      setSwipeX(0);
+      setIsSwiping(false);
+      setSwipeDirection('none');
+      longPressTriggeredRef.current = false;
+      currentX.current = startX.current;
+      currentY.current = startY.current;
     };
 
     // Attach native passive listeners
     card.addEventListener('touchstart', onTouchStart, { passive: true });
     card.addEventListener('touchmove', onTouchMove, { passive: true });
     card.addEventListener('touchend', onTouchEnd, { passive: true });
+    card.addEventListener('touchcancel', onTouchCancel, { passive: true });
 
     return () => {
       card.removeEventListener('touchstart', onTouchStart);
       card.removeEventListener('touchmove', onTouchMove);
       card.removeEventListener('touchend', onTouchEnd);
+      card.removeEventListener('touchcancel', onTouchCancel);
     };
-  }, [handleDelete, touchSwipeEnabled]);
+  }, [cancelLongPressOnMovement, clearLongPress, handleDelete, onToggleSelection, selectionMode, startLongPress, touchSwipeEnabled, feed.id]);
 
   // Format functions (pure, no state)
-  const formatDate = (dateString: string) => {
+  const formatReleaseDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  const formatFetchedDateTime = (dateString?: string) => {
+    if (!dateString) return 'Unavailable';
     const date = new Date(dateString);
     return date.toLocaleString('en-US', {
       month: 'short',
@@ -205,10 +339,53 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
     }
   };
 
+  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+
+    if (!selectionMode || !onToggleSelection || isInteractiveTarget(e.target)) {
+      return;
+    }
+
+    e.preventDefault();
+    onToggleSelection(feed.id);
+  };
+
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!selectionMode || !onToggleSelection) {
+      return;
+    }
+
+    if (e.key !== 'Enter' && e.key !== ' ') {
+      return;
+    }
+
+    e.preventDefault();
+    onToggleSelection(feed.id);
+  };
+
+  const handleCardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    startLongPress(e.clientX, e.clientY, e.target);
+  };
+
+  const handleCardMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    cancelLongPressOnMovement(e.clientX, e.clientY);
+  };
+
+  const handleCardMouseUp = () => {
+    clearLongPress();
+  };
+
+  const handleCardMouseLeave = () => {
+    clearLongPress();
+  };
+
   return (
     <div className="relative overflow-hidden rounded-2xl">
       {/* Background delete button revealed on swipe */}
-      <div className="absolute inset-0 flex justify-end items-center bg-[#ec1e24] rounded-2xl">
+      <div className={`absolute inset-0 flex justify-end items-center rounded-2xl bg-[#ec1e24] ${selectionMode ? 'hidden' : ''}`}>
         <div
           className="flex items-center justify-center px-6 text-white transition-opacity h-full"
           style={{
@@ -225,12 +402,28 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
 
       <div
         ref={cardRef}
-        className="bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y"
+        role={selectionMode ? 'button' : undefined}
+        tabIndex={selectionMode ? 0 : undefined}
+        aria-pressed={selectionMode ? selected : undefined}
+        className={`bg-white dark:bg-black rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] overflow-hidden group touch-pan-y select-none ${selectionMode ? 'cursor-pointer' : ''} ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
         style={{
-          transform: `translateX(${swipeX}px)`,
+          transform: `translateX(${selectionMode ? 0 : swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
         }}
+        onClick={handleCardClick}
+        onKeyDown={handleCardKeyDown}
+        onMouseDown={handleCardMouseDown}
+        onMouseMove={handleCardMouseMove}
+        onMouseUp={handleCardMouseUp}
+        onMouseLeave={handleCardMouseLeave}
       >
+        {selectionMode && (
+          <div className="pointer-events-none absolute right-3 top-3 z-10">
+            <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${selected ? 'border-[#ec1e24] bg-[#ec1e24] text-white' : 'border-gray-300 bg-white/95 text-transparent dark:border-[#333333] dark:bg-[#050505]/95'}`}>
+              <Check className="h-3.5 w-3.5" />
+            </div>
+          </div>
+        )}
         <div className="flex flex-col sm:flex-row">
           {/* Image Section */}
           <div
@@ -271,29 +464,32 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
               </div>
 
               {/* Desktop hover delete button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete();
-                }}
-                className="hidden lg:flex h-9 w-9 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 dark:text-gray-400 hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
-                aria-label="Delete"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!selectionMode && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete();
+                    }}
+                    className="hidden lg:flex h-9 w-9 items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity text-gray-600 dark:text-gray-400 hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
 
-              {/* 3-dot Menu Button */}
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 bg-transparent border border-gray-200 dark:border-[#333333]"
-                onClick={() => {
-                  haptics.selection();
-                  setIsMenuOpen(true);
-                }}
-              >
-                <MoreVertical className="w-4 h-4 text-gray-900 dark:text-white" />
-              </Button>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 bg-transparent border border-gray-200 dark:border-[#333333]"
+                    onClick={() => {
+                      haptics.selection();
+                      setIsMenuOpen(true);
+                    }}
+                  >
+                    <MoreVertical className="w-4 h-4 text-gray-900 dark:text-white" />
+                  </Button>
+                </>
+              )}
 
               {/* Menu BottomSheet */}
               <BottomSheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
@@ -357,7 +553,10 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
                 <span className="truncate">{feed.cast.join(', ')}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
-                <span>Release: {formatDate(feed.releaseDate)}</span>
+                <span>Release: {formatReleaseDate(feed.releaseDate)}</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
+                <span>Fetched: {formatFetchedDateTime(feed.createdAt || feed.updatedAt)}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
                 <span>TMDb ID: {feed.tmdbId}</span>
@@ -368,21 +567,23 @@ function TMDbFeedCardComponent({ feed }: Omit<TMDbFeedCardProps, 'onUpdate' | 'o
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-4 border-t border-gray-200 dark:border-[#333333]">
-              <Button
-                onClick={handlePostNow}
-                variant="outline"
-                className="flex-1 bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
-              >
-                Publish
-              </Button>
-              <Button
-                onClick={handleSchedule}
-                className="flex-1"
-              >
-                Schedule
-              </Button>
-            </div>
+            {!selectionMode && (
+              <div className="flex items-center gap-2 pt-4 border-t border-gray-200 dark:border-[#333333]">
+                <Button
+                  onClick={handlePostNow}
+                  variant="outline"
+                  className="flex-1 bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
+                >
+                  Publish
+                </Button>
+                <Button
+                  onClick={handleSchedule}
+                  className="flex-1"
+                >
+                  Schedule
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -396,12 +597,16 @@ function areEqual(prevProps: TMDbFeedCardProps, nextProps: TMDbFeedCardProps) {
   const next = nextProps.feed;
 
   return (
+    prevProps.selected === nextProps.selected &&
+    prevProps.selectionMode === nextProps.selectionMode &&
     prev.id === next.id &&
     prev.caption === next.caption &&
     prev.imageUrl === next.imageUrl &&
     prev.imageType === next.imageType &&
     prev.scheduledTime === next.scheduledTime &&
-    prev.releaseDate === next.releaseDate
+    prev.releaseDate === next.releaseDate &&
+    prev.createdAt === next.createdAt &&
+    prev.updatedAt === next.updatedAt
   );
 }
 

@@ -84,6 +84,8 @@ export function SwipeableActivityCard({
   const handleTouchStart = (e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX;
     startY.current = e.touches[0].clientY;
+    currentX.current = e.touches[0].clientX;
+    currentY.current = e.touches[0].clientY;
     setSwipeDirection('none');
     startLongPress(e.touches[0].clientX, e.touches[0].clientY, e.target);
   };
@@ -134,11 +136,32 @@ export function SwipeableActivityCard({
   const handleTouchEnd = () => {
     clearLongPress();
 
-    if (selectionMode || longPressTriggeredRef.current) {
+    if (selectionMode) {
+      const deltaX = Math.abs(currentX.current - startX.current);
+      const deltaY = Math.abs(currentY.current - startY.current);
+
+      setIsSwiping(false);
+      setSwipeDirection('none');
+      setSwipeX(0);
+
+      if (!longPressTriggeredRef.current && deltaX < MOVE_CANCEL_THRESHOLD && deltaY < MOVE_CANCEL_THRESHOLD) {
+        suppressNextClickRef.current = true;
+        onToggleSelection?.(id);
+      }
+
+      longPressTriggeredRef.current = false;
+      currentX.current = startX.current;
+      currentY.current = startY.current;
+      return;
+    }
+
+    if (longPressTriggeredRef.current) {
       setIsSwiping(false);
       setSwipeDirection('none');
       setSwipeX(0);
       longPressTriggeredRef.current = false;
+      currentX.current = startX.current;
+      currentY.current = startY.current;
       return;
     }
 
@@ -157,6 +180,8 @@ export function SwipeableActivityCard({
     setIsSwiping(false);
     setSwipeDirection('none');
     setSwipeX(0);
+    currentX.current = startX.current;
+    currentY.current = startY.current;
   };
 
   const handleTouchCancel = () => {

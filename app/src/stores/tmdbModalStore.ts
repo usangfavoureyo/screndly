@@ -27,6 +27,8 @@ export interface TMDbFeed {
     status?: 'queued' | 'scheduled' | 'published' | 'failed';
     publishedTime?: string;
     errorMessage?: string;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 interface ModalState {

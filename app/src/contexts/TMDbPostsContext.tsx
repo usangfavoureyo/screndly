@@ -20,6 +20,8 @@ export interface TMDbPost {
   platforms?: string[];
   publishedTime?: string;
   errorMessage?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface TMDbPostsContextType {
@@ -91,6 +93,8 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           platforms: post.platforms || [],
           publishedTime: post.publishedTime,
           errorMessage: post.errorMessage,
+          createdAt: post.createdAt,
+          updatedAt: post.updatedAt,
         }));
 
         setPosts(transformedPosts);

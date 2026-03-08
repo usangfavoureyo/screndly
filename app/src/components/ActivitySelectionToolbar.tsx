@@ -1,4 +1,3 @@
-import { Trash2, X } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface ActivitySelectionToolbarProps {
@@ -30,18 +29,16 @@ export function ActivitySelectionToolbar({
           variant="outline"
           onClick={onClear}
           disabled={isDeleting}
-          className="gap-2 border-gray-300 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+          className="border-gray-300 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
         >
-          <X className="h-4 w-4" />
           Cancel
         </Button>
         <Button
           type="button"
           onClick={onDelete}
           disabled={isDeleting || selectedCount === 0}
-          className="gap-2 bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+          className="bg-[#ec1e24] text-white hover:bg-[#d01a20]"
         >
-          <Trash2 className="h-4 w-4" />
           {isDeleting ? 'Deleting...' : 'Delete Selected'}
         </Button>
       </div>
