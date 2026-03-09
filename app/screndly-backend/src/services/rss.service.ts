@@ -1365,6 +1365,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         ? new Date(feed.lastProcessedAt.getTime() - RSS_ITEM_RECHECK_BUFFER_MS)
         : null;
 
+      if (feedFilters.onlyFetchNewItems) {
+        if (startFromNowDate) return startFromNowDate;
+        if (bufferedLastProcessedAt) return bufferedLastProcessedAt;
+        return new Date(Date.now() - DEFAULT_ITEM_LOOKBACK_MS);
+      }
+
       if (bufferedLastProcessedAt && startFromNowDate) {
         return bufferedLastProcessedAt > startFromNowDate ? bufferedLastProcessedAt : startFromNowDate;
       }
@@ -1380,11 +1386,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         ? a.pubDate.getTime() - b.pubDate.getTime()
         : b.pubDate.getTime() - a.pubDate.getTime()
     );
-    const latestItem = [...parsed.items].sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime()).at(-1);
-    const itemsToProcess =
-      options.manualRun && feedFilters.onlyFetchNewItems
-        ? latestItem ? [latestItem] : []
-        : orderedNewItems;
+    const manualLatestSelection = options.manualRun && feedFilters.onlyFetchNewItems;
     const activityLookbackDays = Math.max(feed.dedupeDays, 1);
     const recentActivityLogs = await prisma.log.findMany({
       where: {
@@ -1402,8 +1404,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     const recentActivities = recentActivityLogs
       .map((log) => parseRSSActivityLog(log))
       .filter((activity): activity is RSSActivityItem => Boolean(activity));
-    const selectionMode =
-      options.manualRun && feedFilters.onlyFetchNewItems ? 'latest_item' : 'backlog';
+    const selectionMode = manualLatestSelection ? 'latest_item' : 'backlog';
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
@@ -1423,7 +1424,11 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         item: deserializeRSSItem(record.itemData),
       }))
       .filter((entry): entry is typeof entry & { item: RSSItem } => Boolean(entry.item));
-    const incomingDedupeKeys = Array.from(new Set(itemsToProcess.map((item) => getRSSItemDedupeKey(item))));
+    const feedRecentActivities = recentActivities
+      .filter((activity) => activity.feedId === feed.id);
+    const incomingDedupeKeys = Array.from(new Set(
+      (manualLatestSelection ? parsed.items : orderedNewItems).map((item) => getRSSItemDedupeKey(item))
+    ));
     const knownFeedItems = support.feedItemsTable && incomingDedupeKeys.length > 0
       ? await prisma.rSSFeedItem.findMany({
           where: {
@@ -1436,13 +1441,32 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           },
         })
       : [];
-    const seenKeys = new Set<string>([
+    const processedKeys = new Set<string>([
       ...pendingQueueRecords.map((record) => record.dedupeKey),
       ...knownFeedItems.map((record) => record.dedupeKey),
-      ...recentActivities
-        .filter((activity) => activity.feedId === feed.id)
+      ...feedRecentActivities.map((activity) => getRSSActivityDedupeKey(activity)),
+    ]);
+    const manualRunBlockedKeys = new Set<string>([
+      ...pendingQueueRecords.map((record) => record.dedupeKey),
+      ...knownFeedItems
+        .filter((record) => record.status === 'pending' || record.status === 'published')
+        .map((record) => record.dedupeKey),
+      ...feedRecentActivities
+        .filter((activity) => activity.status === 'pending' || activity.status === 'published')
         .map((activity) => getRSSActivityDedupeKey(activity)),
     ]);
+    const latestEligibleItem = manualLatestSelection
+      ? [...parsed.items]
+          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+          .find((item) => {
+            const dedupeKey = getRSSItemDedupeKey(item);
+            return !manualRunBlockedKeys.has(dedupeKey) && evaluateFeedRules(item, feedFilters).allowed;
+          })
+      : undefined;
+    const itemsToProcess = manualLatestSelection
+      ? latestEligibleItem ? [latestEligibleItem] : []
+      : orderedNewItems;
+    const seenKeys = manualLatestSelection ? manualRunBlockedKeys : processedKeys;
     let publishedCount = 0;
     let pendingCount = 0;
     let failedCount = 0;

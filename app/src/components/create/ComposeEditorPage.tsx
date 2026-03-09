@@ -28,6 +28,7 @@ import { COMPOSE_PLATFORM_OPTIONS } from '../../config/create';
 import {
   buildComposeItemTitleFromAssets,
   buildComposeMediaAsset,
+  getComposeAssetPublishUrl,
   getComposeCompatibilityMap,
   getComposeAssetPreviewUrl,
   normalizeComposeItem,
@@ -269,6 +270,10 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     }
     if (hasFailedAssets) {
       toast.error('Remove or re-upload media that failed to upload to Backblaze');
+      return false;
+    }
+    if ((mode === 'scheduled' || mode === 'published') && formState.mediaAssets.some((asset) => !getComposeAssetPublishUrl(asset))) {
+      toast.error(`Upload all media to Backblaze before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
       return false;
     }
     if (selectedPlatformIssues.length > 0) {

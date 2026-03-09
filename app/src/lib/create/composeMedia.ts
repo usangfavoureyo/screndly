@@ -164,6 +164,13 @@ export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
   return asset.previewUrl || asset.storageUrl;
 }
 
+export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {
+  if (!asset) return undefined;
+
+  const candidates = [asset.storageUrl, asset.previewUrl];
+  return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
+}
+
 export function summarizeComposeMedia(assets: ComposeMediaAsset[]): ComposeMediaSummary {
   const imageCount = assets.filter((asset) => asset.kind === 'image').length;
   const videoCount = assets.filter((asset) => asset.kind === 'video').length;

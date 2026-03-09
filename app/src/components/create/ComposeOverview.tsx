@@ -306,6 +306,41 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                           {item.error ? (
                             <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
                           ) : null}
+                          {!selection.selectionMode ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <Button
+                                size="sm"
+                                disabled={publishingIds.includes(item.id)}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handlePublish(item.id);
+                                }}
+                              >
+                                {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  handleOpenSchedule(item);
+                                }}
+                              >
+                                Schedule
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  haptics.light();
+                                  handleEdit(item.id);
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
@@ -319,30 +354,6 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                       </span>
                     </div>
 
-                    {!selection.selectionMode ? (
-                      <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
-                        <Button
-                          size="sm"
-                          disabled={publishingIds.includes(item.id)}
-                          onClick={() => handlePublish(item.id)}
-                        >
-                          {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                        </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleOpenSchedule(item)}>
-                          Schedule
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            haptics.light();
-                            handleEdit(item.id);
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      </div>
-                    ) : null}
                   </div>
                 </SwipeableActivityCard>
               );
