@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -66,11 +67,14 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
 }
 
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
+  const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const selection = useBulkSelection(activities.map((activity) => activity.id));
+  const retentionHours = settings.designStudioActivityRetention || 24;
+  const retentionMs = retentionHours * 60 * 60 * 1000;
+  const logLevel = settings.designStudioLogLevel || 'standard';
 
   const loadActivities = async () => {
     setIsLoading(true);
@@ -93,11 +97,28 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     loadActivities();
   }, []);
 
+  const visibleActivities = useMemo(() => {
+    const cutoff = Date.now() - retentionMs;
+
+    return activities
+      .filter((activity) => {
+        const timestamp = new Date(activity.createdAt).getTime();
+        return Number.isNaN(timestamp) || timestamp >= cutoff;
+      })
+      .filter((activity) => {
+        if (logLevel === 'minimal') return activity.type === 'design_published';
+        if (logLevel === 'standard') return activity.type === 'design_rendered' || activity.type === 'design_published';
+        return true;
+      });
+  }, [activities, logLevel, retentionMs]);
+
+  const selection = useBulkSelection(visibleActivities.map((activity) => activity.id));
+
   const summary = useMemo(() => ({
-    total: activities.length,
-    rendered: activities.filter((activity) => activity.type === 'design_rendered').length,
-    published: activities.filter((activity) => activity.type === 'design_published').length,
-  }), [activities]);
+    total: visibleActivities.length,
+    rendered: visibleActivities.filter((activity) => activity.type === 'design_rendered').length,
+    published: visibleActivities.filter((activity) => activity.type === 'design_published').length,
+  }), [visibleActivities]);
 
   const handleDelete = async (id: string) => {
     haptics.medium();
@@ -216,7 +237,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           [1, 2, 3].map((item) => (
             <div key={item} className="h-24 rounded-xl bg-gray-100 dark:bg-[#111111] animate-pulse" />
           ))
-        ) : activities.length === 0 ? (
+        ) : visibleActivities.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
             <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No design activity yet</p>
             <p className="text-sm text-gray-500 dark:text-[#6B7280]">Rendered and published design events will appear here.</p>
@@ -232,7 +253,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 itemLabel="activity items"
               />
             )}
-            {activities.map((activity) => (
+            {visibleActivities.map((activity) => (
               <SwipeableActivityCard
                 key={activity.id}
                 id={activity.id}

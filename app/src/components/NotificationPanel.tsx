@@ -13,10 +13,13 @@ import {
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { BackIconButton } from './BackIconButton';
+import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { SwipeableNotificationCard } from './SwipeableNotificationCard';
+import { useBulkSelection } from '../hooks/useBulkSelection';
 import { apiClient } from '../lib/api/client';
 import type { Notification, NotificationSource } from '../contexts/NotificationsContext';
 import { formatCalendarDate, formatDateTime } from '../utils/calendarDate';
+import { toast } from 'sonner';
 
 export interface NotificationAction {
   id: string;
@@ -57,6 +60,7 @@ interface NotificationPanelProps {
   onMarkAllAsRead: () => void;
   onClearAll: () => void;
   onDeleteNotification?: (id: string) => void;
+  onDeleteNotifications?: (ids: string[]) => Promise<void>;
   onNotificationAction?: (notificationId: string, actionType: string) => void;
   onOpenPage?: (page: string, tab?: 'rss' | 'tmdb') => void;
 }
@@ -113,6 +117,7 @@ export function NotificationPanel({
   onMarkAllAsRead,
   onClearAll,
   onDeleteNotification,
+  onDeleteNotifications,
   onNotificationAction,
   onOpenPage,
 }: NotificationPanelProps) {
@@ -123,6 +128,7 @@ export function NotificationPanel({
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [detail, setDetail] = useState<NotificationDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
@@ -131,8 +137,9 @@ export function NotificationPanel({
       setSelectedNotification(null);
       setDetail(null);
       setIsDetailLoading(false);
+      selection.clearSelection();
     }
-  }, [isOpen]);
+  }, [isOpen, selection.clearSelection]);
 
   const filteredNotifications = useMemo(
     () =>
@@ -143,6 +150,7 @@ export function NotificationPanel({
       }),
     [filterSource, filterType, notifications]
   );
+  const selection = useBulkSelection(filteredNotifications.map((notification) => notification.id));
 
   const unreadCount = filteredNotifications.filter((n) => !n.read).length;
   const sources = Array.from(new Set(notifications.map((n) => n.source).filter(Boolean)));
@@ -155,6 +163,30 @@ export function NotificationPanel({
 
     if (onNotificationAction) {
       onNotificationAction(notificationId, actionType);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selection.selectedCount === 0) return;
+
+    setIsDeletingSelected(true);
+
+    try {
+      if (onDeleteNotifications) {
+        await onDeleteNotifications(selection.selectedIds);
+      } else if (onDeleteNotification) {
+        selection.selectedIds.forEach((id) => onDeleteNotification(id));
+      }
+
+      toast.success(
+        `${selection.selectedCount} notification${selection.selectedCount === 1 ? '' : 's'} deleted`
+      );
+      selection.clearSelection();
+    } catch (error) {
+      console.error('Failed to bulk delete notifications:', error);
+      toast.error('Failed to delete selected notifications');
+    } finally {
+      setIsDeletingSelected(false);
     }
   };
 
@@ -228,7 +260,7 @@ export function NotificationPanel({
           </button>
         </div>
 
-        {notifications.length > 0 && (
+        {notifications.length > 0 && !selection.selectionMode && (
           <div className="flex items-center justify-between gap-2">
             <button
               onClick={() => {
@@ -296,7 +328,7 @@ export function NotificationPanel({
           </div>
         )}
 
-        {showFilters && notifications.length > 0 && (
+        {showFilters && notifications.length > 0 && !selection.selectionMode && (
           <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-[#333333]">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-[#6B7280]">Source:</span>
@@ -367,7 +399,16 @@ export function NotificationPanel({
         )}
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className={`space-y-3 p-4 ${selection.selectionMode ? 'pb-36 lg:pb-4' : ''}`}>
+        {selection.selectionMode && (
+          <ActivitySelectionToolbar
+            selectedCount={selection.selectedCount}
+            isDeleting={isDeletingSelected}
+            onClear={selection.clearSelection}
+            onDelete={handleDeleteSelected}
+            itemLabel="notifications"
+          />
+        )}
         {filteredNotifications.length === 0 ? (
           <div className="text-center py-12">
             <div className="w-16 h-16 bg-gray-200 dark:bg-[#1A1A1A] rounded-full flex items-center justify-center mx-auto mb-4">
@@ -383,6 +424,14 @@ export function NotificationPanel({
               notification={notification}
               onMarkAsRead={onMarkAsRead}
               onDelete={onDeleteNotification || (() => {})}
+              selectionMode={selection.selectionMode}
+              selected={selection.isSelected(notification.id)}
+              onEnterSelectionMode={(id) => {
+                setShowMenu(false);
+                setShowFilters(false);
+                selection.enterSelectionMode(id);
+              }}
+              onToggleSelection={selection.toggleSelection}
               onActionClick={handleActionClick}
               onOpen={handleOpenNotification}
             />

@@ -47,6 +47,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
 
   const retentionHours = settings.rssActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
+  const logLevel = settings.rssLogLevel || 'standard';
 
   const retainedItems = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
@@ -56,7 +57,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     });
   }, [items, retentionMs]);
 
-  const filteredItems = retainedItems.filter((item) => {
+  const logLevelItems = retainedItems.filter((item) => {
+    if (logLevel === 'minimal') return item.status === 'failed';
+    if (logLevel === 'standard') return item.status === 'published' || item.status === 'failed';
+    return true;
+  });
+
+  const filteredItems = logLevelItems.filter((item) => {
     if (filter === 'failures') return item.status === 'failed';
     if (filter === 'published') return item.status === 'published';
     if (filter === 'pending') return item.status === 'pending';
@@ -65,10 +72,10 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const selection = useBulkSelection(filteredItems.map((item) => item.id));
 
   const summary = {
-    total: retainedItems.length,
-    published: retainedItems.filter((item) => item.status === 'published').length,
-    pending: retainedItems.filter((item) => item.status === 'pending').length,
-    failed: retainedItems.filter((item) => item.status === 'failed').length,
+    total: logLevelItems.length,
+    published: logLevelItems.filter((item) => item.status === 'published').length,
+    pending: logLevelItems.filter((item) => item.status === 'pending').length,
+    failed: logLevelItems.filter((item) => item.status === 'failed').length,
   };
 
   const getStatusConfig = (status: RSSActivityItem['status']) => {

@@ -38,7 +38,7 @@ interface NotificationsContextType {
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   clearAll: () => void;
-  deleteNotification: (id: string) => void;
+  deleteNotification: (id: string) => Promise<void>;
   removeNotificationLocal: (id: string) => void;
   restoreNotification: (notification: Notification, index?: number) => void;
   refreshNotifications: () => Promise<void>;

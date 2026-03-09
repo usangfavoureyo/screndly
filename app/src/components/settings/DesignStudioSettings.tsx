@@ -751,15 +751,15 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
           <div>
             <h3 className="text-gray-900 dark:text-white">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Automatically remove completed and failed design activity items after a specified time period
+              Hide older design activity items after a specified time period
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="design-studio-activity-retention" className="text-[#6B7280] dark:text-[#9CA3AF]">Activity Retention (hours)</Label>
-            <Input
-              id="design-studio-activity-retention"
-              type="number"
+        <div>
+          <Label htmlFor="design-studio-activity-retention" className="text-[#6B7280] dark:text-[#9CA3AF]">Activity Retention (hours)</Label>
+          <Input
+            id="design-studio-activity-retention"
+            type="number"
               value={globalSettings.designStudioActivityRetention || 24}
               onFocus={() => haptics.light()}
               onChange={(e) => {
@@ -769,7 +769,30 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Completed and failed design items will be automatically removed after this time period (Default: 24 hours)
+              Older design activity items will be hidden in the Design Studio activity page after this time period (Default: 24 hours)
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="design-studio-log-level" className="text-[#6B7280] dark:text-[#9CA3AF]">Log Level</Label>
+            <Select
+              value={globalSettings.designStudioLogLevel || 'standard'}
+              onValueChange={(value) => {
+                haptics.light();
+                updateGlobalSetting('designStudioLogLevel', value);
+              }}
+            >
+              <SelectTrigger id="design-studio-log-level" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minimal">Minimal (Published designs only)</SelectItem>
+                <SelectItem value="standard">Standard (Rendered + Published)</SelectItem>
+                <SelectItem value="full">Full (All activity)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Controls how much design activity is shown in the Design Studio activity page.
             </p>
           </div>
         </div>

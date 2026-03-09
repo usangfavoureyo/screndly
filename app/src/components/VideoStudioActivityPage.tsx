@@ -35,6 +35,7 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
   // Get retention period from settings (default 24 hours)
   const retentionHours = settings.videoStudioActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
+  const logLevel = settings.videoStudioLogLevel || 'standard';
 
   // Helper function to check if an item should be kept based on retention
   const shouldKeepItem = (item: VideoStudioActivity): boolean => {
@@ -140,13 +141,20 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
     return () => window.removeEventListener('focus', handleFocus);
   }, [retentionMs]);
 
-  // Calculate stats
-  const completedCount = activities.filter(a => a.status === 'completed').length;
-  const processingCount = activities.filter(a => a.status === 'processing').length;
-  const failedCount = activities.filter(a => a.status === 'failed').length;
-  const totalDownloads = activities.reduce((sum, a) => sum + a.downloads, 0);
-  const displayedActivities = activities
+  const visibleActivities = activities
     .filter(shouldKeepItem)
+    .filter((activity) => {
+      if (logLevel === 'minimal') return activity.status === 'failed';
+      if (logLevel === 'standard') return activity.status === 'completed' || activity.status === 'failed';
+      return true;
+    });
+
+  // Calculate stats
+  const completedCount = visibleActivities.filter(a => a.status === 'completed').length;
+  const processingCount = visibleActivities.filter(a => a.status === 'processing').length;
+  const failedCount = visibleActivities.filter(a => a.status === 'failed').length;
+  const totalDownloads = visibleActivities.reduce((sum, a) => sum + a.downloads, 0);
+  const displayedActivities = visibleActivities
     .filter((activity) => {
       if (activeTab === 'review') return activity.type === 'review';
       if (activeTab === 'releases') return activity.type === 'monthly';

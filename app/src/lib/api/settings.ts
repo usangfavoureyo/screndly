@@ -80,6 +80,12 @@ const SENSITIVE_KEYS = [
   'rssPinterestDefaultLink',
   'rssActivityRetention',
   'rssLogLevel',
+  'designStudioActivityRetention',
+  'designStudioLogLevel',
+  'videoStudioActivityRetention',
+  'videoStudioLogLevel',
+  'tmdbActivityRetention',
+  'tmdbLogLevel',
   // Platform Configuration (Auto-post toggles)
   'platformSettings',
 
@@ -144,6 +150,8 @@ const TMDB_BACKEND_KEYS = [
   'rehostImages',
   'dedupeWindow',
   'tmdbQueuedRetentionHours',
+  'tmdbActivityRetention',
+  'tmdbLogLevel',
   'discoveryCacheTTL',
   'creditsCacheTTL',
   'captionCacheTTL',

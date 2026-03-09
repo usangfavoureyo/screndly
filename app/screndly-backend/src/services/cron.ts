@@ -374,14 +374,29 @@ export async function initCronJobs() {
         await logCron('info', 'Running cleanup tasks...');
         try {
             // Granular Retention Settings
-            const keys = ['retentionDays', 'commentRetention'];
+            const keys = [
+                'retentionDays',
+                'commentRetention',
+                'rssActivityRetention',
+                'designStudioActivityRetention',
+                'videoStudioActivityRetention',
+                'tmdbActivityRetention',
+            ];
             const settings = await prisma.setting.findMany({ where: { key: { in: keys } } });
 
             const logRetentionDays = parseInt(settings.find(s => s.key === 'retentionDays')?.value as string) || 30;
             const commentRetentionHours = parseInt(settings.find(s => s.key === 'commentRetention')?.value as string) || 168; // 7 days default
+            const rssActivityRetentionHours = parseInt(settings.find(s => s.key === 'rssActivityRetention')?.value as string) || 24;
+            const designStudioActivityRetentionHours = parseInt(settings.find(s => s.key === 'designStudioActivityRetention')?.value as string) || 24;
+            const videoStudioActivityRetentionHours = parseInt(settings.find(s => s.key === 'videoStudioActivityRetention')?.value as string) || 24;
+            const tmdbActivityRetentionHours = parseInt(settings.find(s => s.key === 'tmdbActivityRetention')?.value as string) || 24;
 
             const logCutoff = new Date(Date.now() - logRetentionDays * 24 * 60 * 60 * 1000);
             const commentCutoff = new Date(Date.now() - commentRetentionHours * 60 * 60 * 1000);
+            const rssActivityCutoff = new Date(Date.now() - rssActivityRetentionHours * 60 * 60 * 1000);
+            const designStudioCutoff = new Date(Date.now() - designStudioActivityRetentionHours * 60 * 60 * 1000);
+            const videoStudioCutoff = new Date(Date.now() - videoStudioActivityRetentionHours * 60 * 60 * 1000);
+            const tmdbActivityCutoff = new Date(Date.now() - tmdbActivityRetentionHours * 60 * 60 * 1000);
 
             // Clean old logs
             const logsDeleted = await prisma.log.deleteMany({
@@ -401,7 +416,50 @@ export async function initCronJobs() {
                 }
             });
 
-            await logCron('info', `Cleanup completed. Deleted ${logsDeleted.count} logs, ${notifsDeleted.count} notifications, and ${commentsDeleted.count} old comments.`);
+            const designStudioDeleted = await prisma.designStudioActivity.deleteMany({
+                where: { createdAt: { lt: designStudioCutoff } }
+            });
+
+            const videoStudioDeleted = await prisma.videoStudioActivity.deleteMany({
+                where: {
+                    status: { in: ['completed', 'failed'] },
+                    updatedAt: { lt: videoStudioCutoff }
+                }
+            });
+
+            const tmdbPublishedDeleted = await prisma.tMDbPost.deleteMany({
+                where: {
+                    status: 'published',
+                    publishedTime: { lt: tmdbActivityCutoff }
+                }
+            });
+
+            const tmdbFailedDeleted = await prisma.tMDbPost.deleteMany({
+                where: {
+                    status: 'failed',
+                    updatedAt: { lt: tmdbActivityCutoff }
+                }
+            });
+
+            let rssActivityDeleted = 0;
+            try {
+                rssActivityDeleted = Number(
+                    await prisma.$executeRaw`
+                        DELETE FROM "Log"
+                        WHERE service = 'rss'
+                          AND "createdAt" < ${rssActivityCutoff}
+                          AND metadata IS NOT NULL
+                          AND metadata->>'category' = 'rss_activity'
+                    `
+                );
+            } catch (rssCleanupError) {
+                console.error('[CRON] Failed to clean RSS activity logs:', rssCleanupError);
+            }
+
+            await logCron(
+                'info',
+                `Cleanup completed. Deleted ${logsDeleted.count} logs, ${notifsDeleted.count} notifications, ${commentsDeleted.count} old comments, ${rssActivityDeleted} RSS activity rows, ${designStudioDeleted.count} design activity rows, ${videoStudioDeleted.count} video activity rows, and ${tmdbPublishedDeleted.count + tmdbFailedDeleted.count} TMDb activity rows.`
+            );
         } catch (error) {
             await logCron('error', `Cleanup failed: ${error}`);
         }

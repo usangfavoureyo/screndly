@@ -10,6 +10,7 @@ import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { TMDbModals } from "./tmdb/TMDbModals";
+import { ComposeScheduler } from "./create/ComposeScheduler";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
@@ -23,6 +24,7 @@ import { logout } from "../lib/auth";
 const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
 const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
 const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = "5rem";
+const APP_STATE_STORAGE_KEY = "screndly_app_state";
 
 // Lazy load heavy components for better performance
 const ChannelsPage = lazy(() => import("./ChannelsPage").then(m => ({ default: m.ChannelsPage })));
@@ -74,6 +76,88 @@ function getPageFromURL(): string {
   return pathname || 'dashboard';
 }
 
+const VALID_PAGES = [
+  'dashboard', 'channels', 'platforms', 'logs', 'activity', 'design-system',
+  'feeds', 'rss', 'rss-activity', 'tmdb', 'tmdb-activity', 'video-details', 'video-activity',
+  'create', 'compose-editor', 'compose-activity', 'pad-workspace',
+  'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
+  'privacy', 'terms', 'disclaimer',
+  'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'api-usage',
+  'callback',
+  'platforms/callback',
+  'comment-automation', 'upload-manager', 'not-found'
+] as const;
+
+type ValidPage = typeof VALID_PAGES[number];
+
+interface PersistedAppState {
+  currentPage: ValidPage;
+  previousPage: string | null;
+  createSourcePage: string;
+  pageBeforeSettings: string;
+  updatedAt: number;
+}
+
+function isValidPage(page: string): page is ValidPage {
+  return (VALID_PAGES as readonly string[]).includes(page);
+}
+
+function getPersistedAppState(): PersistedAppState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawState = window.localStorage.getItem(APP_STATE_STORAGE_KEY);
+    if (!rawState) {
+      return null;
+    }
+
+    const parsedState = JSON.parse(rawState) as Partial<PersistedAppState>;
+    if (!parsedState.currentPage || !isValidPage(parsedState.currentPage)) {
+      return null;
+    }
+
+    return {
+      currentPage: parsedState.currentPage,
+      previousPage: typeof parsedState.previousPage === "string" ? parsedState.previousPage : null,
+      createSourcePage: typeof parsedState.createSourcePage === "string" ? parsedState.createSourcePage : "dashboard",
+      pageBeforeSettings: typeof parsedState.pageBeforeSettings === "string" ? parsedState.pageBeforeSettings : "dashboard",
+      updatedAt: typeof parsedState.updatedAt === "number" ? parsedState.updatedAt : Date.now(),
+    };
+  } catch (error) {
+    console.warn("[AppContent] Failed to restore persisted app state:", error);
+    return null;
+  }
+}
+
+function getInitialNavigationState(): PersistedAppState {
+  const pageFromUrl = getPageFromURL();
+  const persistedState = getPersistedAppState();
+
+  if (pageFromUrl !== "dashboard" && isValidPage(pageFromUrl)) {
+    return {
+      currentPage: pageFromUrl,
+      previousPage: persistedState?.previousPage ?? null,
+      createSourcePage: persistedState?.createSourcePage ?? "dashboard",
+      pageBeforeSettings: persistedState?.pageBeforeSettings ?? "dashboard",
+      updatedAt: Date.now(),
+    };
+  }
+
+  if (persistedState) {
+    return persistedState;
+  }
+
+  return {
+    currentPage: "dashboard",
+    previousPage: null,
+    createSourcePage: "dashboard",
+    pageBeforeSettings: "dashboard",
+    updatedAt: Date.now(),
+  };
+}
+
 export function AppContent() {
   const {
     notifications,
@@ -88,11 +172,13 @@ export function AppContent() {
   } = useNotifications();
   const { showUndo } = useUndo();
 
-  // Initialize currentPage from URL (preserves state on refresh)
-  const [currentPage, setCurrentPageState] = useState(() => getPageFromURL());
-  const [previousPage, setPreviousPage] = useState<string | null>(null);
-  const [createSourcePage, setCreateSourcePage] = useState("dashboard");
-  const [pageBeforeSettings, setPageBeforeSettings] = useState("dashboard");
+  const [initialNavigationState] = useState<PersistedAppState>(() => getInitialNavigationState());
+
+  // Initialize currentPage from URL (preserves state on refresh) and local storage (restores cold starts)
+  const [currentPage, setCurrentPageState] = useState<string>(() => initialNavigationState.currentPage);
+  const [previousPage, setPreviousPage] = useState<string | null>(() => initialNavigationState.previousPage);
+  const [createSourcePage, setCreateSourcePage] = useState(() => initialNavigationState.createSourcePage);
+  const [pageBeforeSettings, setPageBeforeSettings] = useState(() => initialNavigationState.pageBeforeSettings);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialPage, setSettingsInitialPage] = useState<string | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -103,18 +189,6 @@ export function AppContent() {
     typeof window !== "undefined" ? window.innerWidth >= 1024 : false,
   );
 
-  // List of all valid pages
-  const validPages = [
-    'dashboard', 'channels', 'platforms', 'logs', 'activity', 'design-system',
-    'feeds', 'rss', 'rss-activity', 'tmdb', 'tmdb-activity', 'video-details', 'video-activity',
-    'create', 'compose-editor', 'compose-activity', 'pad-workspace',
-    'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
-    'privacy', 'terms', 'disclaimer',
-    'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'api-usage',
-    'callback',
-    'platforms/callback',
-    'comment-automation', 'upload-manager', 'not-found'
-  ];
   // Wrapper to update URL when page changes
   const setCurrentPage = (page: string) => {
     setCurrentPageState(page);
@@ -126,7 +200,7 @@ export function AppContent() {
   };
 
   // Check if current page is valid, if not show 404
-  const displayPage = validPages.includes(currentPage) ? currentPage : 'not-found';
+  const displayPage = isValidPage(currentPage) ? currentPage : 'not-found';
 
   // NOTE: URL-based routing implemented. Refresh preserves current page.
 
@@ -211,12 +285,34 @@ export function AppContent() {
   }, [isNotificationsOpen, registerModalWithCloseHandler, unregisterModal]);
   // Push initial history state on mount (for URL support, not back navigation)
   useEffect(() => {
+    const basePath = `/${currentPage === 'dashboard' ? '' : currentPage}`;
+    const preservedSuffix = `${window.location.search || ''}${window.location.hash || ''}`;
+
+    if (window.location.pathname !== basePath) {
+      window.history.replaceState({ page: currentPage }, '', `${basePath}${preservedSuffix}`);
+      return;
+    }
+
     if (!window.history.state?.page) {
-      const basePath = `/${currentPage === 'dashboard' ? '' : currentPage}`;
-      const preservedSuffix = `${window.location.search || ''}${window.location.hash || ''}`;
       window.history.replaceState({ page: currentPage }, '', `${basePath}${preservedSuffix}`);
     }
-  }, []);
+  }, [currentPage]);
+
+  useEffect(() => {
+    try {
+      const nextAppState: PersistedAppState = {
+        currentPage: isValidPage(currentPage) ? currentPage : "dashboard",
+        previousPage,
+        createSourcePage,
+        pageBeforeSettings,
+        updatedAt: Date.now(),
+      };
+
+      window.localStorage.setItem(APP_STATE_STORAGE_KEY, JSON.stringify(nextAppState));
+    } catch (error) {
+      console.warn("[AppContent] Failed to persist app state:", error);
+    }
+  }, [currentPage, previousPage, createSourcePage, pageBeforeSettings]);
 
   // Create a stable navigation callback for BackNavigationContext
   const navigationCallback = useCallback((page: string) => {
@@ -389,6 +485,11 @@ export function AppContent() {
       }
     });
   }, [deleteNotification, notifications, removeNotificationLocal, restoreNotification, showUndo]);
+
+  const handleDeleteNotifications = useCallback(async (notificationIds: string[]) => {
+    if (notificationIds.length === 0) return;
+    await Promise.all(notificationIds.map((notificationId) => deleteNotification(notificationId)));
+  }, [deleteNotification]);
 
   // Handle notification actions (approve, schedule, view, dismiss)
   const handleNotificationAction = (notificationId: string, actionType: string) => {
@@ -596,6 +697,7 @@ export function AppContent() {
         onMarkAllAsRead={markAllAsRead}
         onClearAll={clearAll}
           onDeleteNotification={handleDeleteNotification}
+          onDeleteNotifications={handleDeleteNotifications}
           onNotificationAction={handleNotificationAction}
           onOpenPage={handleOpenNotificationPage}
         />
@@ -611,6 +713,7 @@ export function AppContent() {
 
       {/* TMDb Portal Modals - rendered at app level for render isolation */}
       <TMDbModals />
+      <ComposeScheduler />
     </div>
   );
 }

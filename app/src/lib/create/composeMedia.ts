@@ -77,28 +77,46 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
 };
 
 function legacyMediaToAsset(media: ComposeMedia): ComposeMediaAsset {
+  const previewUrl = media.previewUrl || media.storageUrl;
+  const normalizedStatus =
+    media.uploadStatus === 'uploading'
+      ? media.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+        ? 'uploaded'
+        : 'idle'
+      : media.uploadStatus ?? (media.storageUrl || previewUrl ? 'uploaded' : 'idle');
+
   return {
     ...media,
     id: `legacy-${media.fileName}-${media.size}`,
     order: 0,
-    storageUrl: media.storageUrl ?? media.previewUrl,
-    uploadStatus: media.uploadStatus ?? (media.storageUrl || media.previewUrl ? 'uploaded' : 'idle'),
+    previewUrl,
+    storageUrl: media.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    uploadStatus: normalizedStatus,
   };
 }
 
 export function normalizeComposeItem(item: ComposeItem): ComposeItem {
   const mediaAssets =
     item.mediaAssets && item.mediaAssets.length > 0
-      ? item.mediaAssets.map((asset, index) => ({
-          ...asset,
-          id: asset.id || `asset-${index}-${asset.fileName}`,
-          order: typeof asset.order === 'number' ? asset.order : index,
-          previewUrl: asset.previewUrl || asset.storageUrl,
-          storageUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
-          uploadStatus:
-            asset.uploadStatus ??
-            (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
-        }))
+      ? item.mediaAssets.map((asset, index) => {
+          const previewUrl = asset.previewUrl || asset.storageUrl;
+          const normalizedStatus =
+            asset.uploadStatus === 'uploading'
+              ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+                ? 'uploaded'
+                : 'idle'
+              : asset.uploadStatus ??
+                (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+
+          return {
+            ...asset,
+            id: asset.id || `asset-${index}-${asset.fileName}`,
+            order: typeof asset.order === 'number' ? asset.order : index,
+            previewUrl,
+            storageUrl: asset.storageUrl || (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+            uploadStatus: normalizedStatus,
+          };
+        })
       : item.media
         ? [legacyMediaToAsset(item.media)]
         : [];
