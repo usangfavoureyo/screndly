@@ -1,5 +1,5 @@
 import { publishContent, type PlatformSelection } from '../api/platforms';
-import { getComposeAssetPreviewUrl } from './composeMedia';
+import { getComposeAssetPublishUrl } from './composeMedia';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
 
 export interface ComposePublishOutcome {
@@ -55,13 +55,11 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
   }
 
   const primaryAsset = item.mediaAssets[0];
-  const mediaUrl = getComposeAssetPreviewUrl(primaryAsset);
+  const mediaUrl = getComposeAssetPublishUrl(primaryAsset);
   if (!mediaUrl) {
-    throw new Error('Add a media item before publishing.');
-  }
-
-  if (primaryAsset.kind === 'video' && mediaUrl.startsWith('blob:')) {
-    throw new Error('Upload the video to Backblaze before publishing this post.');
+    throw new Error(
+      `Upload the ${primaryAsset.kind === 'video' ? 'video' : 'image'} to Backblaze before publishing this post.`,
+    );
   }
 
   const content = {

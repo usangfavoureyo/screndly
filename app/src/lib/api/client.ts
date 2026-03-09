@@ -161,8 +161,10 @@ export class ApiClient {
    * Handle error responses from API
    */
   private async handleErrorResponse(response: Response): Promise<ApiError> {
+    const rawText = await response.text();
+
     try {
-      const errorData = await response.json();
+      const errorData = rawText ? JSON.parse(rawText) : null;
       const nestedError = errorData?.error;
       return {
         code: errorData.code || nestedError?.code || 'API_ERROR',
@@ -171,9 +173,16 @@ export class ApiClient {
         statusCode: response.status,
       };
     } catch {
+      const strippedText = rawText
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
       return {
         code: 'PARSE_ERROR',
-        message: response.statusText || 'Failed to parse error response',
+        message: strippedText || response.statusText || 'Failed to parse error response',
         statusCode: response.status,
       };
     }

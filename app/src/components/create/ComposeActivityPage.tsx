@@ -295,6 +295,45 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                             ))}
                           </div>
                           {item.error ? <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p> : null}
+                          {!selection.selectionMode ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {item.status === 'draft' ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    disabled={publishingIds.includes(item.id)}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handlePublish(item.id);
+                                    }}
+                                  >
+                                    {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      handleOpenSchedule(item);
+                                    }}
+                                  >
+                                    Schedule
+                                  </Button>
+                                </>
+                              ) : null}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setActiveItemId(item.id);
+                                  onNavigate('compose-editor', 'create');
+                                }}
+                              >
+                                Edit
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                       <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
@@ -308,45 +347,6 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                       </span>
                     </div>
 
-                    {!selection.selectionMode ? (
-                      <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
-                        {item.status === 'draft' ? (
-                          <>
-                            <Button
-                              size="sm"
-                              disabled={publishingIds.includes(item.id)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handlePublish(item.id);
-                              }}
-                            >
-                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleOpenSchedule(item);
-                              }}
-                            >
-                              Schedule
-                            </Button>
-                          </>
-                        ) : null}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setActiveItemId(item.id);
-                            onNavigate('compose-editor', 'create');
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      </div>
-                    ) : null}
                   </div>
                 </SwipeableActivityCard>
               );
