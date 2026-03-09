@@ -4,6 +4,7 @@ import { RefreshCw, Video } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface ChannelItem {
   id: string;
@@ -33,6 +34,7 @@ function timeAgo(value: string): string {
 }
 
 export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPageProps) {
+  const { settings } = useSettings();
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [items, setItems] = useState<ChannelActivityItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -71,25 +73,37 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
     loadData();
   }, []);
 
+  const retentionHours = Number(settings.videoActivityRetention || 24);
+  const retentionMs = retentionHours * 60 * 60 * 1000;
+
+  const visibleItems = useMemo(() => {
+    const cutoff = Date.now() - retentionMs;
+
+    return items.filter((item) => {
+      const publishedAt = new Date(item.publishedAt).getTime();
+      return Number.isNaN(publishedAt) || publishedAt >= cutoff;
+    });
+  }, [items, retentionMs]);
+
   const activeChannels = channels.filter((channel) => channel.status === 'active').length;
   const inactiveChannels = channels.filter((channel) => channel.status !== 'active').length;
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
-  const detectedToday = items.filter((item) => {
+  const detectedToday = visibleItems.filter((item) => {
     const publishedAt = new Date(item.publishedAt);
     return !Number.isNaN(publishedAt.getTime()) && publishedAt >= todayStart;
   }).length;
 
   const groupedChannels = useMemo(() => {
     const counts = new Map<string, number>();
-    items.forEach((item) => {
+    visibleItems.forEach((item) => {
       const name = item.channel?.name || 'Unknown channel';
       counts.set(name, (counts.get(name) || 0) + 1);
     });
     return Array.from(counts.entries())
       .sort((a, b) => b[1] - a[1])
       .slice(0, 4);
-  }, [items]);
+  }, [visibleItems]);
 
   return (
     <div className="space-y-6">
@@ -128,7 +142,7 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard label="Active Channels" value={activeChannels} />
         <StatCard label="Detected Today" value={detectedToday} />
-        <StatCard label="Recent Detections" value={items.length} />
+        <StatCard label="Recent Detections" value={visibleItems.length} />
         <StatCard label="Inactive Channels" value={inactiveChannels} />
       </div>
 
@@ -141,19 +155,19 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
                 <div key={item} className="h-24 rounded-xl bg-gray-100 dark:bg-[#111111] animate-pulse" />
               ))}
             </div>
-          ) : items.length === 0 ? (
+          ) : visibleItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-[#ec1e24]/10 flex items-center justify-center mb-4">
                 <Video className="w-8 h-8 text-[#ec1e24]" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No detections yet</h3>
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No recent detections</h3>
               <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] max-w-sm">
-                Channel detections will appear here after the poller finds new videos.
+                Channel detections will appear here after the poller finds new videos within your retention window.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <div key={item.id} className="p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000]">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">

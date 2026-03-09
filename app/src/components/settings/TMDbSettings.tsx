@@ -1700,6 +1700,13 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
           </p>
         </div>
 
+        <div className="space-y-1 pt-2">
+          <h3 className="text-gray-900 dark:text-white">Retention & Activity</h3>
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+            Control how long queued TMDb feed items and resolved TMDb activity remain visible.
+          </p>
+        </div>
+
         <div>
           <Label htmlFor="queued-retention" className="text-[#9CA3AF]">Feed Retention (hours)</Label>
           <Input
@@ -1716,7 +1723,7 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
             className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
           />
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-            Unposted queued TMDb feed items in the TMDb Feeds page will be automatically removed after this many hours.
+            Unposted queued TMDb feed items in the TMDb Feeds page are hidden by this setting and removed by backend cleanup after this many hours.
           </p>
         </div>
 
@@ -1736,7 +1743,7 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
             className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
           />
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-            Published and failed TMDb activity items will be hidden after this many hours. Queued and scheduled items stay visible until they are resolved.
+            Published and failed TMDb activity items are hidden in the activity page immediately and removed during backend cleanup after this many hours. Queued and scheduled items stay visible until they are resolved.
           </p>
         </div>
 
