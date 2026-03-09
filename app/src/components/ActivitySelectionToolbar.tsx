@@ -8,6 +8,7 @@ interface ActivitySelectionToolbarProps {
   onClear: () => void;
   onDelete: () => void;
   itemLabel?: string;
+  mobilePortalClassName?: string;
 }
 
 export function ActivitySelectionToolbar({
@@ -16,6 +17,7 @@ export function ActivitySelectionToolbar({
   onClear,
   onDelete,
   itemLabel = 'items',
+  mobilePortalClassName = '',
 }: ActivitySelectionToolbarProps) {
   const itemWord = selectedCount === 1 ? itemLabel.replace(/s$/, '') : itemLabel;
   const handleClear = () => {
@@ -62,7 +64,7 @@ export function ActivitySelectionToolbar({
         {toolbarContent}
       </div>
       {typeof document !== 'undefined' && createPortal(
-        <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] z-40 lg:hidden">
+        <div className={`pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom,0px)+5.5rem)] z-40 lg:hidden ${mobilePortalClassName}`}>
           <div className="pointer-events-auto rounded-2xl border border-[#ec1e24]/30 bg-[#120304]/95 p-4 shadow-[0_16px_48px_rgba(0,0,0,0.45)] backdrop-blur-sm">
             {toolbarContent}
           </div>

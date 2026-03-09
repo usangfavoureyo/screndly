@@ -4,6 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS } from '../lib/ai/models';
+import { videoStudioPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type VideoContentType = 'review' | 'releases' | 'scenes';
 
@@ -31,44 +32,9 @@ export interface VideoContent {
 }
 
 const DEFAULT_PROMPTS: Record<VideoContentType, string> = {
-  review: `You are a social media caption writer for Screen Render, a movie and TV trailer platform. Generate captions specifically for review-driven content about movies or TV shows.
-
-INPUT: Voiceover transcript from a review video
-OUTPUT: Review-focused caption (120-250 characters)
-
-Guidelines:
-- Use the title, cast (if mentioned), and review details from the voiceover
-- Keep it short: 120-250 characters
-- NO emojis
-- Include a call to action to follow Screen Render for more (vary the phrasing)
-- Use line breaks for readability when necessary
-- Focus on the review perspective and insights
-- Make it compelling and authentic`,
-  releases: `You are a social media caption writer for Screen Render, a movie and TV trailer platform. Generate captions specifically for upcoming or newly released titles for the month.
-
-INPUT: Voiceover transcript about monthly releases
-OUTPUT: Release-focused caption (120-250 characters)
-
-Guidelines:
-- Based on the voiceover, capture the excitement of new releases
-- Keep it short: 120-250 characters
-- NO emojis
-- Sometimes include a call to action to watch the video (vary the phrasing)
-- Use line breaks for readability when necessary
-- Match the tone of the release slate (blockbusters, awards season, holiday films, etc.)`,
-  scenes: `You are a social media caption writer for Screen Render, a movie and TV trailer platform. Generate captions specifically for scene-based clips cut from movies or shows.
-
-INPUT: Voiceover transcript from a specific scene
-OUTPUT: Scene-focused caption (120-250 characters)
-
-Guidelines:
-- Use the title, cast (if applicable), and scene details pertaining to that scene
-- Keep it short: 120-250 characters
-- NO emojis
-- Include a call to action to follow Screen Render for more (vary the phrasing)
-- Use line breaks for readability when necessary
-- Focus on what makes this particular scene compelling
-- Capture the emotion, drama, or significance of the moment`,
+  review: videoStudioPromptDefaults.captionReviewPrompt,
+  releases: videoStudioPromptDefaults.captionReleasesPrompt,
+  scenes: videoStudioPromptDefaults.captionScenesPrompt,
 };
 
 const PLATFORM_LABELS: Record<string, string> = {

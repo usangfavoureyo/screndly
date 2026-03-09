@@ -14,9 +14,11 @@ import {
   dispatchThemeChange,
   persistThemePreference,
 } from '../lib/theme/themeStorage';
+import { settingsPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 const LOCAL_SETTINGS_KEY = 'screndlySettings';
 const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
+const CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_prompts_v1';
 
 export interface Settings {
   // API Keys
@@ -476,20 +478,7 @@ Guidelines:
     videoStudioLogLevel: 'standard',
     tmdbActivityRetention: 24,
     tmdbLogLevel: 'standard',
-    rssCaptionPrompt: `You are a social media caption writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized captions for RSS article content.
-
-INPUT: RSS article title, description, and content
-OUTPUT: Engaging social media caption with emojis, hashtags, and hook
-
-Guidelines:
-- Hook in first line (7-10 words max)
-- Include 3 relevant emoji and hashtags
-- Add 2-3 strategically placed emojis
-- Keep total under {maxLength} characters for platform compatibility
-- Match the tone of the article content
-- No generic "Check this out" openers
-- Focus on the key news or reveal from the article
-- Make it shareable and clickable`,
+    rssCaptionPrompt: '',
     rssPinterestTitlePrompt: '',
     rssPinterestDescriptionPrompt: '',
     rssPinterestBoardPrompt: '',
@@ -553,6 +542,7 @@ Guidelines:
 
     // Timezone
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    ...settingsPromptDefaults,
   };
 }
 
@@ -582,6 +572,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
       // Load from localStorage first (fast)
       const localSettings = getLocalSettings();
+      const shouldInjectCultureCravePrompts = !window.localStorage.getItem(CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
 
       if (isBackendHealthy) {
         try {
@@ -590,29 +581,40 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
           if (response.success && response.data) {
             // Merge backend settings (API keys) with local settings (preferences)
-            const merged = mergeSettings(response.data, localSettings);
+            const merged = shouldInjectCultureCravePrompts
+              ? { ...mergeSettings(response.data, localSettings), ...settingsPromptDefaults }
+              : mergeSettings(response.data, localSettings);
             setSettings(merged);
             syncThemeSetting(merged.darkMode);
           } else {
             // Backend failed, use local only
             console.warn('[Settings] Failed to fetch settings, using defaults');
-            const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+            const fallbackSettings = shouldInjectCultureCravePrompts
+              ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+              : { ...getDefaultSettings(), ...localSettings };
             setSettings(fallbackSettings);
             syncThemeSetting(fallbackSettings.darkMode);
           }
         } catch (err) {
           console.error('[Settings] Unexpected error fetching settings', err);
-          const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+          const fallbackSettings = shouldInjectCultureCravePrompts
+            ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+            : { ...getDefaultSettings(), ...localSettings };
           setSettings(fallbackSettings);
           syncThemeSetting(fallbackSettings.darkMode);
         }
       } else {
         // Backend offline, use local only (this is normal for frontend-only PWA)
-        const fallbackSettings = { ...getDefaultSettings(), ...localSettings };
+        const fallbackSettings = shouldInjectCultureCravePrompts
+          ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+          : { ...getDefaultSettings(), ...localSettings };
         setSettings(fallbackSettings);
         syncThemeSetting(fallbackSettings.darkMode);
       }
 
+      if (shouldInjectCultureCravePrompts) {
+        window.localStorage.setItem(CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
+      }
       setIsLoading(false);
     }
 

@@ -51,6 +51,7 @@ import aiRoutes from './routes/ai';
 import authRoutes from './routes/auth';
 import dashboardRoutes from './routes/dashboard';
 import externalApiRoutes from './routes/external-apis';
+import createRoutes from './routes/create';
 
 // // import thumbnailRoutes from './routes/thumbnail'; // Placeholder for future
 import videoStudioRoutes from './routes/video-studio';
@@ -120,6 +121,7 @@ app.use('/api/platforms', platformsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api', externalApiRoutes);
+app.use('/api/create', createRoutes);
 app.use('/api/video-studio', videoStudioRoutes);
 app.use('/api/design-studio', designStudioRoutes);
 

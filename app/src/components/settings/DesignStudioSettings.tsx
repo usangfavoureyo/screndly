@@ -11,11 +11,14 @@ import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
+import { designStudioPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
 interface DesignStudioSettingsProps {
   onSave?: () => void;
   onBack: () => void;
 }
+
+const DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_design_studio_prompts_v1';
 
 const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'captionPosterPrompt',
@@ -232,6 +235,7 @@ Tone: Clear, category-focused, SEO-friendly`,
   renderQuality: 'high', // low, medium, high, maximum
   exportFormat: 'jpeg', // jpeg, png
   jpegQuality: 90,
+  ...designStudioPromptDefaults,
 };
 
 export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsProps) {
@@ -252,16 +256,23 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
   useEffect(() => {
     const sharedSettings = initialSharedSettingsRef.current || {};
     const savedSettings = localStorage.getItem('screndly_design_studio_settings');
+    const shouldInjectCultureCravePrompts = !localStorage.getItem(DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...defaultSettings, ...sharedSettings, ...parsed });
+        const nextSettings = shouldInjectCultureCravePrompts
+          ? { ...defaultSettings, ...sharedSettings, ...parsed, ...designStudioPromptDefaults }
+          : { ...defaultSettings, ...sharedSettings, ...parsed };
+        setSettings(nextSettings);
       } catch (error) {
         console.error('Error loading Design Studio settings:', error);
         setSettings({ ...defaultSettings, ...sharedSettings });
       }
     } else {
       setSettings({ ...defaultSettings, ...sharedSettings });
+    }
+    if (shouldInjectCultureCravePrompts) {
+      localStorage.setItem(DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
     }
     setIsLoaded(true);
   }, []);

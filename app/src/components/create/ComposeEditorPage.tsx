@@ -133,9 +133,9 @@ function getPlatformCardTone(isSelected: boolean, supported: boolean, connected:
   if (!connected) {
     return 'border-gray-200 bg-white text-gray-700 opacity-45 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]';
   }
-  if (isSelected && supported) return 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white';
-  if (isSelected && !supported) return 'border-[#ec1e24] bg-[#ec1e24]/5 text-gray-900 dark:text-white';
-  return 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF] hover:border-[#ec1e24]/60 hover:bg-gray-50 dark:hover:bg-[#111111]';
+  if (isSelected && supported) return 'border-[#ec1e24] bg-[#ec1e24]/10 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]';
+  if (isSelected && !supported) return 'border-[#ec1e24] bg-[#ec1e24]/5 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]';
+  return 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]';
 }
 
 export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPageProps) {
@@ -512,10 +512,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
-            <p className="mb-4 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Each connected platform reflects whether the current media set is ready, single-only, or unsupported.
-            </p>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="mt-4 grid grid-cols-3 gap-3">
               {COMPOSE_PLATFORM_OPTIONS.map((platform) => {
                 const Icon = PLATFORM_ICONS[platform.id];
                 const iconSizeClass = PLATFORM_ICON_SIZES[platform.id];
@@ -529,39 +526,25 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                     type="button"
                     onClick={() => togglePlatform(platform.id, connected)}
                     disabled={!connected}
-                    className={`rounded-2xl border p-4 text-left transition-all ${getPlatformCardTone(
+                    aria-label={platform.label}
+                    title={platform.label}
+                    className={`aspect-square rounded-2xl border transition-all ${getPlatformCardTone(
                       isSelected,
                       compatibility.supported,
                       connected,
                     )}`}
                   >
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gray-100 text-gray-900 dark:bg-[#111111] dark:text-white">
+                    <div className="flex h-full w-full items-center justify-center">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
+                        isSelected ? 'bg-[#ec1e24]/10 text-[#ec1e24]' : 'bg-gray-100 text-current dark:bg-[#111111]'
+                      }`}>
                         <Icon className={iconSizeClass} />
                       </div>
-                      <span className={`rounded-full px-2.5 py-1 text-[11px] ${compatibility.supported ? 'bg-gray-200 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#9CA3AF]' : 'bg-[#FEE2E2] text-[#EF4444] dark:bg-[#991B1B]'}`}>
-                        {compatibility.label}
-                      </span>
                     </div>
-                    <div className="mb-1 text-sm text-gray-900 dark:text-white">{platform.label}</div>
-                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                      {!connected ? 'Connect this platform first' : compatibility.reason || platform.helper}
-                    </p>
                   </button>
                 );
               })}
             </div>
-
-            {selectedPlatformIssues.length > 0 ? (
-              <div className="mt-4 rounded-2xl border border-[#FCA5A5] bg-[#FEF2F2] p-4 dark:border-[#991B1B] dark:bg-[#1A0808]">
-                <p className="mb-2 text-sm text-[#B91C1C] dark:text-[#FCA5A5]">Some selected platforms do not support this media set.</p>
-                {selectedPlatformIssues.map((issue) => (
-                  <p key={issue.platform} className="text-xs text-[#B91C1C] dark:text-[#FCA5A5]">
-                    {issue.platform.toUpperCase()}: {issue.reason}
-                  </p>
-                ))}
-              </div>
-            ) : null}
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
@@ -668,18 +651,20 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
               <p className="mb-1 text-sm text-gray-900 dark:text-white">Selected Platforms</p>
-              <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
                 {formState.platforms.length ? (
                   formState.platforms.map((platform) => {
-                    const compatibility = compatibilityMap[platform];
+                    const Icon = PLATFORM_ICONS[platform];
+                    const iconSizeClass = PLATFORM_ICON_SIZES[platform];
 
                     return (
-                      <div key={platform} className="flex items-center justify-between gap-3 text-sm">
-                        <span className="uppercase text-[#6B7280] dark:text-[#9CA3AF]">{platform}</span>
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] ${compatibility.supported ? 'bg-gray-200 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#9CA3AF]' : 'bg-[#FEE2E2] text-[#EF4444] dark:bg-[#991B1B]'}`}>
-                          {compatibility.label}
-                        </span>
-                      </div>
+                      <span
+                        key={platform}
+                        title={COMPOSE_PLATFORM_OPTIONS.find((option) => option.id === platform)?.label ?? platform}
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#ec1e24]/30 bg-[#ec1e24]/8 text-[#ec1e24]"
+                      >
+                        <Icon className={iconSizeClass} />
+                      </span>
                     );
                   })
                 ) : (

@@ -296,43 +296,58 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                           </div>
                           {item.error ? <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p> : null}
                           {!selection.selectionMode ? (
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
-                              {item.status === 'draft' ? (
-                                <>
-                                  <Button
-                                    size="sm"
-                                    disabled={publishingIds.includes(item.id)}
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handlePublish(item.id);
-                                    }}
-                                  >
-                                    {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      handleOpenSchedule(item);
-                                    }}
-                                  >
-                                    Schedule
-                                  </Button>
-                                </>
-                              ) : null}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setActiveItemId(item.id);
-                                  onNavigate('compose-editor', 'create');
-                                }}
-                              >
-                                Edit
-                              </Button>
-                            </div>
+                            item.status === 'draft' ? (
+                              <div className="mt-3 grid w-full max-w-[21rem] grid-cols-3 gap-2">
+                                <Button
+                                  size="sm"
+                                  className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                  disabled={publishingIds.includes(item.id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handlePublish(item.id);
+                                  }}
+                                >
+                                  {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenSchedule(item);
+                                  }}
+                                >
+                                  Schedule
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setActiveItemId(item.id);
+                                    onNavigate('compose-editor', 'create');
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="mt-3 flex items-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setActiveItemId(item.id);
+                                    onNavigate('compose-editor', 'create');
+                                  }}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                            )
                           ) : null}
                         </div>
                       </div>

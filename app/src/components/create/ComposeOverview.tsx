@@ -307,9 +307,10 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                             <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
                           ) : null}
                           {!selection.selectionMode ? (
-                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <div className="mt-3 grid w-full max-w-[21rem] grid-cols-3 gap-2">
                               <Button
                                 size="sm"
+                                className="min-w-0 px-2 text-[13px] sm:text-sm"
                                 disabled={publishingIds.includes(item.id)}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -321,6 +322,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="min-w-0 px-2 text-[13px] sm:text-sm"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleOpenSchedule(item);
@@ -331,6 +333,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                className="min-w-0 px-2 text-[13px] sm:text-sm"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   haptics.light();

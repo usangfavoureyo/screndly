@@ -232,6 +232,7 @@ export class ApiClient {
       }
 
       const xhr = new XMLHttpRequest();
+      xhr.timeout = this.timeout;
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {
@@ -262,11 +263,23 @@ export class ApiClient {
             });
           }
         } else {
+          let errorMessage = xhr.statusText || 'Upload failed';
+
+          try {
+            const errorData = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+            errorMessage =
+              errorData?.message ||
+              errorData?.error?.message ||
+              errorMessage;
+          } catch {
+            errorMessage = xhr.responseText?.trim() || errorMessage;
+          }
+
           resolve({
             success: false,
             error: {
               code: 'UPLOAD_ERROR',
-              message: xhr.statusText || 'Upload failed',
+              message: errorMessage,
               statusCode: xhr.status,
             },
           });
@@ -279,6 +292,17 @@ export class ApiClient {
           error: {
             code: 'NETWORK_ERROR',
             message: 'Upload failed',
+            statusCode: 0,
+          },
+        });
+      });
+
+      xhr.addEventListener('timeout', () => {
+        resolve({
+          success: false,
+          error: {
+            code: 'TIMEOUT_ERROR',
+            message: 'Upload timed out',
             statusCode: 0,
           },
         });

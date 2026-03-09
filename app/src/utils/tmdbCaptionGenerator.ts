@@ -6,6 +6,7 @@ import { apiClient } from '../lib/api/client';
 import { captionOptimizer } from '../lib/optimization';
 import { DEFAULT_MODELS } from '../lib/ai/models';
 import { getDaysUntilCalendarDate } from './calendarDate';
+import { tmdbPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 
@@ -29,10 +30,10 @@ interface CaptionGenerationOptions {
 }
 
 const DEFAULT_PROMPTS: Record<FeedType, string> = {
-  today: 'Write a punchy social caption for a title releasing today.',
-  weekly: 'Write a punchy social caption for a title releasing this week.',
-  monthly: 'Write a punchy social caption for a title releasing this month.',
-  anniversary: 'Write a punchy nostalgic social caption for a title celebrating an anniversary.',
+  today: tmdbPromptDefaults.todayPrompt,
+  weekly: tmdbPromptDefaults.weeklyPrompt,
+  monthly: tmdbPromptDefaults.monthlyPrompt,
+  anniversary: tmdbPromptDefaults.anniversaryPrompt,
 };
 
 function resolveCaptionPlatform(platforms?: string[]): 'X' | 'Threads' | 'Facebook' | 'Instagram' {
