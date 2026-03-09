@@ -253,7 +253,7 @@ export function TimePicker({
       scrollToCenter(minutesRef.current, selectedMinutes);
       scrollToCenter(periodRef.current, selectedPeriod === 'AM' ? 0 : 1);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isOpen]);
 
   const formatDisplayTime = () => {

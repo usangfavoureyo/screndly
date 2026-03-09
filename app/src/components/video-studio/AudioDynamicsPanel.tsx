@@ -1,7 +1,7 @@
 import React from 'react';
-import { Film, ChevronUp, ChevronDown, Play, Pause, Activity, CheckCircle, AlertCircle, Volume2, VolumeX } from 'lucide-react';
+import { Film, ChevronUp, ChevronDown, Play, Pause, Activity, CheckCircle } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
-import { DuckingMode, duckingModes, PromptStatus, AudioFile } from './types';
+import { DuckingMode, duckingModes, PromptStatus } from './types';
 import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';

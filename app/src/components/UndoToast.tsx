@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { createPortal } from 'react-dom';
 import { useUndo } from './UndoContext';
 import { haptics } from '../utils/haptics';

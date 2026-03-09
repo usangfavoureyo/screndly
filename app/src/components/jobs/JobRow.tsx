@@ -98,7 +98,7 @@ export function JobRow({ job, onViewDetails, onShowError }: JobRowProps) {
 
   const handleDuplicate = () => {
     haptics.medium();
-    duplicateJob(job.id);
+    void duplicateJob(job.id);
   };
 
   const handleViewDetails = () => {

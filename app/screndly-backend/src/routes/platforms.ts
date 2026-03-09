@@ -44,6 +44,14 @@ interface OAuthStatePayload {
     codeVerifier?: string;
 }
 
+interface PinterestBoardPayload {
+    id: string;
+    name: string;
+    description?: string;
+    privacy?: string;
+    pin_count?: number;
+}
+
 const META_GRAPH_BASE = 'https://graph.facebook.com/v19.0';
 
 function normalizePlatform(value?: string | null): SupportedPlatform | null {
@@ -98,6 +106,20 @@ function getRequestedRedirectUri(value: unknown): string | undefined {
     } catch {
         return undefined;
     }
+}
+
+function normalizePinterestBoard(board: any): PinterestBoardPayload | null {
+    if (!board?.id || !board?.name) {
+        return null;
+    }
+
+    return {
+        id: String(board.id),
+        name: String(board.name),
+        description: typeof board.description === 'string' ? board.description : undefined,
+        privacy: typeof board.privacy === 'string' ? board.privacy : undefined,
+        pin_count: typeof board.pin_count === 'number' ? board.pin_count : undefined,
+    };
 }
 
 function extractProviderMessage(error: any): string {
@@ -574,6 +596,73 @@ router.get('/status', authenticate, async (req, res) => {
         res.json({ success: true, data: status });
     } catch (error) {
         res.status(500).json({ success: false, error: { message: 'Failed to fetch status' } });
+    }
+});
+
+// GET /api/platforms/pinterest/boards (Protected)
+router.get('/pinterest/boards', authenticate, async (_req, res) => {
+    try {
+        const connection = await prisma.platformConnection.findUnique({
+            where: { platform: 'Pinterest' },
+        });
+        const freshConnection = await ensureFreshPlatformConnection(connection);
+
+        if (!freshConnection?.accessToken) {
+            return res.status(404).json({ success: false, error: { message: 'Pinterest is not connected' } });
+        }
+
+        const boardsResponse = await pinterestService.getBoards(freshConnection.accessToken);
+        const boards = Array.isArray(boardsResponse?.items)
+            ? boardsResponse.items.map(normalizePinterestBoard).filter(Boolean)
+            : [];
+
+        return res.json({ success: true, data: boards });
+    } catch (error: any) {
+        console.error('Pinterest boards fetch error:', error?.response?.data || error);
+        return res.status(500).json({
+            success: false,
+            error: { message: extractProviderMessage(error) || 'Failed to fetch Pinterest boards' },
+        });
+    }
+});
+
+// POST /api/platforms/pinterest/boards (Protected)
+router.post('/pinterest/boards', authenticate, async (req, res) => {
+    try {
+        const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+        const description = typeof req.body?.description === 'string' ? req.body.description.trim() : '';
+
+        if (!name) {
+            return res.status(400).json({ success: false, error: { message: 'Board name is required' } });
+        }
+
+        const connection = await prisma.platformConnection.findUnique({
+            where: { platform: 'Pinterest' },
+        });
+        const freshConnection = await ensureFreshPlatformConnection(connection);
+
+        if (!freshConnection?.accessToken) {
+            return res.status(404).json({ success: false, error: { message: 'Pinterest is not connected' } });
+        }
+
+        const createdBoard = normalizePinterestBoard(
+            await pinterestService.createBoard(name, description, freshConnection.accessToken)
+        );
+
+        if (!createdBoard) {
+            return res.status(502).json({
+                success: false,
+                error: { message: 'Pinterest did not return a valid board' },
+            });
+        }
+
+        return res.status(201).json({ success: true, data: createdBoard });
+    } catch (error: any) {
+        console.error('Pinterest board creation error:', error?.response?.data || error);
+        return res.status(500).json({
+            success: false,
+            error: { message: extractProviderMessage(error) || 'Failed to create Pinterest board' },
+        });
     }
 });
 

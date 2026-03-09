@@ -1,10 +1,14 @@
 // Haptic feedback utility for mobile devices
 
+const LOCAL_SETTINGS_KEYS = ['screndlySettings', 'screndly_settings'] as const;
+
 // Get haptics enabled state from localStorage
 const getHapticsEnabled = (): boolean => {
   try {
     // First check the main settings object (source of truth)
-    const settingsStr = localStorage.getItem('screndly_settings');
+    const settingsStr = LOCAL_SETTINGS_KEYS
+      .map((key) => localStorage.getItem(key))
+      .find((value): value is string => !!value);
     if (settingsStr) {
       const settings = JSON.parse(settingsStr);
       if (typeof settings.hapticsEnabled === 'boolean') {
@@ -34,11 +38,16 @@ export const setHapticsEnabled = (enabled: boolean): void => {
     localStorage.setItem('hapticsEnabled', String(enabled));
 
     // Update main settings object (source of truth)
-    const settingsStr = localStorage.getItem('screndly_settings');
+    const settingsStr = LOCAL_SETTINGS_KEYS
+      .map((key) => localStorage.getItem(key))
+      .find((value): value is string => !!value);
     if (settingsStr) {
       const settings = JSON.parse(settingsStr);
       settings.hapticsEnabled = enabled;
-      localStorage.setItem('screndly_settings', JSON.stringify(settings));
+      const serialized = JSON.stringify(settings);
+      for (const key of LOCAL_SETTINGS_KEYS) {
+        localStorage.setItem(key, serialized);
+      }
     }
   } catch (e) {
     console.error('Failed to save haptics setting:', e);

@@ -66,7 +66,7 @@ interface JobsState {
   restoreJob: (job: UploadJob) => void;
   updateJob: (id: string, updates: Partial<UploadJob>) => void;
   deleteJob: (id: string) => void;
-  duplicateJob: (id: string) => string;
+  duplicateJob: (id: string) => Promise<string>;
   retryJob: (id: string) => void;
 
   // Job selection
@@ -203,7 +203,7 @@ export const useJobsStore = create<JobsState>()(
         }
       },
 
-      duplicateJob: (id) => {
+      duplicateJob: async (id) => {
         const job = get().getJob(id);
         if (!job) return '';
 
@@ -220,8 +220,7 @@ export const useJobsStore = create<JobsState>()(
           },
         };
 
-        // Wait handled asynchronously in UI if needed
-        get().addJob(duplicatedJob);
+        const duplicatedId = await get().addJob(duplicatedJob);
 
         get().addSystemLog({
           severity: 'info',
@@ -229,7 +228,7 @@ export const useJobsStore = create<JobsState>()(
           details: `Original ID: ${id}`,
         });
 
-        return "duplicated"; // returning stub id instantly
+        return duplicatedId;
       },
 
       retryJob: (id) => {

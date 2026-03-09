@@ -17,7 +17,7 @@ function DuplicateAndSwapModal({ isOpen, onClose, sourceJobId }: DuplicateAndSwa
   const { getJob, duplicateJob, updateJob } = useJobsStore();
   const [newFileName, setNewFileName] = useState('');
 
-  const handleDuplicateAndSwap = () => {
+  const handleDuplicateAndSwap = async () => {
     haptics.medium();
     
     if (!newFileName.trim()) {
@@ -26,7 +26,10 @@ function DuplicateAndSwapModal({ isOpen, onClose, sourceJobId }: DuplicateAndSwa
     }
 
     // Duplicate the job
-    const newJobId = duplicateJob(sourceJobId);
+    const newJobId = await duplicateJob(sourceJobId);
+    if (!newJobId) {
+      return;
+    }
     
     // Update with new file name
     updateJob(newJobId, {
@@ -63,7 +66,9 @@ function DuplicateAndSwapModal({ isOpen, onClose, sourceJobId }: DuplicateAndSwa
       <BottomSheetFooter>
         <div className="flex items-center gap-3 w-full">
           <Button
-            onClick={handleDuplicateAndSwap}
+            onClick={() => {
+              void handleDuplicateAndSwap();
+            }}
             className="flex-1 bg-[#ec1e24] hover:bg-[#d01a1f] text-white"
           >
             <Copy className="w-4 h-4 mr-2" />

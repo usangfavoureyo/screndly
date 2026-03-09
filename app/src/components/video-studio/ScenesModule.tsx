@@ -1,8 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Button } from '../ui/button';
 import { Progress } from '../ui/progress';
 import { Separator } from '../ui/separator';
-import { Upload, AlertCircle, FileSpreadsheet, Cloud, Download, ChevronUp } from 'lucide-react';
+import { Upload, AlertCircle, FileSpreadsheet, Cloud, Download } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
 import { AspectRatio, Scene } from './types';
 import { LetterboxControl } from '../LetterboxControl';

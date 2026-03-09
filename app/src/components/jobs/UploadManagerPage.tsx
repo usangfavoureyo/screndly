@@ -106,7 +106,7 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
 
   const handleDuplicateError = () => {
     if (errorModalJob) {
-      duplicateJob(errorModalJob.id);
+      void duplicateJob(errorModalJob.id);
     }
   };
 
