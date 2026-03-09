@@ -154,41 +154,30 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-        <div className="flex flex-col gap-3">
-          <div>
-            <h3 className="text-gray-900 dark:text-white mb-1">Compose Queue</h3>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Build drafts, prepare schedules, and review posting status.
-            </p>
-          </div>
-          <div className="flex w-full items-center gap-2">
-            <Button
-              className="flex-1"
-              onClick={() => {
-                haptics.medium();
-                handleCreate();
-              }}
-            >
-              Add Content
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              onClick={() => {
-                haptics.light();
-                onNavigate('compose-activity', 'create');
-              }}
-            >
-              View Activity
-            </Button>
-          </div>
-        </div>
-      </div>
+      <Button
+        className="w-full"
+        onClick={() => {
+          haptics.medium();
+          handleCreate();
+        }}
+      >
+        Add Content
+      </Button>
 
       <div>
         <div className="flex items-center justify-between mb-3 gap-3">
-          <h3 className="text-gray-900 dark:text-white">Content Items ({items.length})</h3>
+          <h3 className="text-gray-900 dark:text-white">Post Items ({items.length})</h3>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 px-4"
+            onClick={() => {
+              haptics.light();
+              onNavigate('compose-activity', 'create');
+            }}
+          >
+            View Activity
+          </Button>
         </div>
 
         {items.length === 0 ? (
