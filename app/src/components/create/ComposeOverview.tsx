@@ -18,6 +18,7 @@ import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
+import { publishComposeItem } from '../../lib/create/composePublish';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem } from '../../types/compose';
 
@@ -67,11 +68,12 @@ function toIsoSchedule(date?: Date, time?: string) {
 }
 
 export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
-  const { items, setActiveItemId, deleteItem, updateStatus } = useComposeStore();
+  const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [publishingIds, setPublishingIds] = useState<string[]>([]);
   const selection = useBulkSelection(items.map((item) => item.id));
 
   const stats = {
@@ -96,10 +98,46 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     onNavigate('compose-editor', 'create');
   };
 
-  const handlePublish = (itemId: string) => {
+  const handlePublish = async (itemId: string) => {
+    const item = items.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    setPublishingIds((current) => [...current, itemId]);
     haptics.medium();
-    updateStatus(itemId, 'published');
-    toast.success('Compose item marked as published');
+    try {
+      const result = await publishComposeItem(item);
+      const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
+      const nextError =
+        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+
+      saveItem({
+        ...item,
+        status: nextStatus,
+        updatedAt: new Date().toISOString(),
+        error: nextError,
+      });
+
+      if (result.postedPlatforms.length > 0) {
+        toast.success(
+          result.failedResults.length > 0
+            ? `Published to ${result.postedPlatforms.join(', ')}.`
+            : `Published to ${result.postedPlatforms.join(', ')}.`,
+        );
+        return;
+      }
+
+      toast.error(nextError || 'Failed to publish post');
+    } catch (error) {
+      saveItem({
+        ...item,
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Failed to publish post',
+      });
+      toast.error(error instanceof Error ? error.message : 'Failed to publish post');
+    } finally {
+      setPublishingIds((current) => current.filter((id) => id !== itemId));
+    }
   };
 
   const handleOpenSchedule = (item: ComposeItem) => {
@@ -161,7 +199,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           handleCreate();
         }}
       >
-        Add Content
+        Add Post
       </Button>
 
       <div>
@@ -183,9 +221,9 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
         {items.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
             <PencilLine className="w-12 h-12 text-gray-400 dark:text-[#9CA3AF] mx-auto mb-4" />
-            <h3 className="text-gray-900 dark:text-white mb-2">No compose drafts yet</h3>
+            <h3 className="text-gray-900 dark:text-white mb-2">No post drafts yet</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              Start a draft to prepare media, captions, and schedules in one place.
+              Add a post to prepare media, captions, and schedules in one place.
             </p>
           </div>
         ) : (
@@ -283,8 +321,12 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
                     {!selection.selectionMode ? (
                       <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
-                        <Button size="sm" onClick={() => handlePublish(item.id)}>
-                          Publish
+                        <Button
+                          size="sm"
+                          disabled={publishingIds.includes(item.id)}
+                          onClick={() => handlePublish(item.id)}
+                        >
+                          {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
                         </Button>
                         <Button variant="outline" size="sm" onClick={() => handleOpenSchedule(item)}>
                           Schedule

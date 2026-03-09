@@ -111,6 +111,8 @@ const defaultSettings = {
   rehostImages: true,
   dedupeWindow: '30',
   tmdbQueuedRetentionHours: '168',
+  tmdbActivityRetention: 24,
+  tmdbLogLevel: 'standard',
   discoveryCacheTTL: '12',
   creditsCacheTTL: '30',
   captionCacheTTL: '30',
@@ -1699,31 +1701,68 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
         </div>
 
         <div>
-          <Label htmlFor="queued-retention" className="text-[#9CA3AF]">Queued Feed Retention</Label>
-          <Select
+          <Label htmlFor="queued-retention" className="text-[#9CA3AF]">Feed Retention (hours)</Label>
+          <Input
+            id="queued-retention"
+            type="number"
+            min="1"
+            max="720"
             value={tmdbSettings.tmdbQueuedRetentionHours}
+            onFocus={() => haptics.light()}
+            onChange={(e) => {
+              haptics.light();
+              updateSetting('tmdbQueuedRetentionHours', e.target.value);
+            }}
+            className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+          />
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+            Unposted queued TMDb feed items in the TMDb Feeds page will be automatically removed after this many hours.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="tmdb-activity-retention" className="text-[#9CA3AF]">Activity Retention (hours)</Label>
+          <Input
+            id="tmdb-activity-retention"
+            type="number"
+            min="1"
+            max="720"
+            value={tmdbSettings.tmdbActivityRetention}
+            onFocus={() => haptics.light()}
+            onChange={(e) => {
+              haptics.light();
+              updateSetting('tmdbActivityRetention', parseInt(e.target.value, 10) || 24);
+            }}
+            className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+          />
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+            Published and failed TMDb activity items will be hidden after this many hours. Queued and scheduled items stay visible until they are resolved.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="tmdb-log-level" className="text-[#9CA3AF]">Log Level</Label>
+          <Select
+            value={tmdbSettings.tmdbLogLevel}
             onValueChange={(value) => {
               haptics.light();
-              updateSetting('tmdbQueuedRetentionHours', value);
+              updateSetting('tmdbLogLevel', value);
             }}
           >
             <SelectTrigger
-              id="queued-retention"
+              id="tmdb-log-level"
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             >
-              <SelectValue placeholder="Select retention window" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="24">24 hours</SelectItem>
-              <SelectItem value="48">48 hours</SelectItem>
-              <SelectItem value="72">72 hours</SelectItem>
-              <SelectItem value="168">7 days</SelectItem>
-              <SelectItem value="336">14 days</SelectItem>
-              <SelectItem value="720">30 days</SelectItem>
+              <SelectItem value="minimal">Minimal (Failures only)</SelectItem>
+              <SelectItem value="standard">Standard (Published + Failures)</SelectItem>
+              <SelectItem value="full">Full (Queued + Scheduled + Published + Failures)</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-            Queued TMDb items that are still unposted will be deleted automatically after this window.
+            Controls how much TMDb activity is shown in the activity page.
           </p>
         </div>
 

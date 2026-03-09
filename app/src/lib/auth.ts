@@ -178,6 +178,22 @@ export async function verifyAuth(): Promise<boolean> {
   }
 }
 
+export function hasStoredAuthSession(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const token = getToken();
+  if (!token) {
+    return false;
+  }
+
+  const keepSignedIn = localStorage.getItem(KEEP_SIGNED_IN_KEY) === 'true';
+  const sessionActive = sessionStorage.getItem(SESSION_ACTIVE_KEY) === 'true';
+
+  return keepSignedIn || sessionActive;
+}
+
 export function logout(): void {
   sharedClearAuth();
   window.location.reload();

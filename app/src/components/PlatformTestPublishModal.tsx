@@ -115,7 +115,6 @@ export function PlatformTestPublishModal({
   onPublished,
 }: PlatformTestPublishModalProps) {
   const config = PLATFORM_CONFIG[platform];
-  const displayError = lastError ? formatPublishError(platform, lastError) : null;
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
   const [imageUrl, setImageUrl] = useState('');
@@ -125,6 +124,7 @@ export function PlatformTestPublishModal({
   const [isPublishing, setIsPublishing] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
+  const displayError = lastError ? formatPublishError(platform, lastError) : null;
 
   useEffect(() => {
     if (!isOpen) {

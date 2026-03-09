@@ -1,12 +1,26 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Film, Image as ImageIcon, FileText } from 'lucide-react';
+import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
+import { Button } from '../ui/button';
+import { Label } from '../ui/label';
+import { DatePicker } from '../ui/date-picker';
+import { TimePicker } from '../ui/time-picker';
+import {
+  BottomSheet,
+  BottomSheetBody,
+  BottomSheetDescription,
+  BottomSheetFooter,
+  BottomSheetHeader,
+  BottomSheetTitle,
+} from '../ui/bottom-sheet';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
+import { publishComposeItem } from '../../lib/create/composePublish';
 import type { ComposeItem, ComposeStatus } from '../../types/compose';
 
 interface ComposeActivityPageProps {
@@ -42,10 +56,22 @@ function getPrimaryAsset(item: ComposeItem) {
   return item.mediaAssets?.[0] ?? item.media;
 }
 
+function toIsoSchedule(date?: Date, time?: string) {
+  if (!date || !time) return undefined;
+  const [hours, minutes] = time.split(':').map(Number);
+  const scheduled = new Date(date);
+  scheduled.setHours(hours || 0, minutes || 0, 0, 0);
+  return scheduled.toISOString();
+}
+
 export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivityPageProps) {
-  const { items, deleteItem, setActiveItemId } = useComposeStore();
+  const { items, deleteItem, saveItem, setActiveItemId, updateStatus } = useComposeStore();
   const [filter, setFilter] = useState<'all' | ComposeStatus>('all');
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [publishingIds, setPublishingIds] = useState<string[]>([]);
 
   const filteredItems = useMemo(
     () => items.filter((item) => (filter === 'all' ? true : item.status === filter)),
@@ -61,6 +87,11 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
     failed: items.filter((item) => item.status === 'failed').length,
   };
 
+  const scheduleItem = useMemo(
+    () => items.find((item) => item.id === scheduleItemId),
+    [items, scheduleItemId],
+  );
+
   const handleDeleteSelected = async () => {
     if (selection.selectedCount === 0) return;
 
@@ -70,14 +101,73 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
     setIsDeletingSelected(false);
   };
 
+  const handlePublish = async (itemId: string) => {
+    const item = items.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    setPublishingIds((current) => [...current, itemId]);
+    haptics.medium();
+    try {
+      const result = await publishComposeItem(item);
+      const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
+      const nextError =
+        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+
+      saveItem({
+        ...item,
+        status: nextStatus,
+        updatedAt: new Date().toISOString(),
+        error: nextError,
+      });
+
+      if (result.postedPlatforms.length > 0) {
+        toast.success(`Published to ${result.postedPlatforms.join(', ')}.`);
+        return;
+      }
+
+      toast.error(nextError || 'Failed to publish post');
+    } catch (error) {
+      saveItem({
+        ...item,
+        status: 'failed',
+        updatedAt: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Failed to publish post',
+      });
+      toast.error(error instanceof Error ? error.message : 'Failed to publish post');
+    } finally {
+      setPublishingIds((current) => current.filter((id) => id !== itemId));
+    }
+  };
+
+  const handleOpenSchedule = (item: ComposeItem) => {
+    haptics.light();
+    setScheduleItemId(item.id);
+    setScheduleDate(item.scheduledAt ? new Date(item.scheduledAt) : new Date());
+    setScheduleTime(item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(11, 16) : '09:00');
+  };
+
+  const handleConfirmSchedule = () => {
+    if (!scheduleItemId) return;
+    const scheduledAt = toIsoSchedule(scheduleDate, scheduleTime);
+    if (!scheduledAt) {
+      toast.error('Select a schedule date and time');
+      return;
+    }
+
+    haptics.medium();
+    updateStatus(scheduleItemId, 'scheduled', scheduledAt);
+    setScheduleItemId(null);
+    toast.success('Post scheduled');
+  };
+
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-start gap-4 mb-4">
           <BackIconButton onClick={() => onNavigate(previousPage || 'create')} className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1" />
           <div className="flex-1">
-            <h1 className="text-gray-900 dark:text-white mb-2">Compose Activity</h1>
-            <p className="text-[#6B7280] dark:text-[#9CA3AF]">Review drafts, scheduled items, published content, and failures from the Compose workflow.</p>
+            <h1 className="text-gray-900 dark:text-white mb-2">Post Activity</h1>
+            <p className="text-[#6B7280] dark:text-[#9CA3AF]">Review drafts, scheduled items, published posts, and failures from the Post workflow.</p>
           </div>
         </div>
       </div>
@@ -137,8 +227,8 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
 
         {filteredItems.length === 0 ? (
           <div className="rounded-2xl border border-gray-200 p-12 text-center dark:border-[#333333]">
-            <p className="text-gray-900 dark:text-white mb-2">No compose activity</p>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Items will appear here once drafts or scheduled content are created.</p>
+            <p className="text-gray-900 dark:text-white mb-2">No post activity</p>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Items will appear here once drafts or scheduled posts are created.</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -219,10 +309,34 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                     </div>
 
                     {!selection.selectionMode ? (
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          className="rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:text-white dark:hover:bg-[#111111]"
+                      <div className="flex flex-wrap items-center gap-2 pl-[4.25rem]">
+                        {item.status === 'draft' ? (
+                          <>
+                            <Button
+                              size="sm"
+                              disabled={publishingIds.includes(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handlePublish(item.id);
+                              }}
+                            >
+                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenSchedule(item);
+                              }}
+                            >
+                              Schedule
+                            </Button>
+                          </>
+                        ) : null}
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={(event) => {
                             event.stopPropagation();
                             setActiveItemId(item.id);
@@ -230,7 +344,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                           }}
                         >
                           Edit
-                        </button>
+                        </Button>
                       </div>
                     ) : null}
                   </div>
@@ -240,6 +354,41 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
           </div>
         )}
       </div>
+
+      <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Schedule Post</BottomSheetTitle>
+          <BottomSheetDescription>
+            {scheduleItem ? `Choose when "${scheduleItem.title}" should move into the scheduled queue.` : 'Choose a schedule.'}
+          </BottomSheetDescription>
+        </BottomSheetHeader>
+        <BottomSheetBody>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-gray-600 dark:text-[#9CA3AF]">Date</Label>
+              <div className="mt-2">
+                <DatePicker date={scheduleDate} onDateChange={setScheduleDate} />
+              </div>
+            </div>
+            <div>
+              <Label className="text-gray-600 dark:text-[#9CA3AF]">Time</Label>
+              <div className="mt-2">
+                <TimePicker value={scheduleTime} onChange={setScheduleTime} />
+              </div>
+            </div>
+          </div>
+        </BottomSheetBody>
+        <BottomSheetFooter>
+          <div className="flex gap-3 w-full">
+            <Button variant="outline" className="flex-1" onClick={() => setScheduleItemId(null)}>
+              Cancel
+            </Button>
+            <Button className="flex-1" onClick={handleConfirmSchedule}>
+              Schedule
+            </Button>
+          </div>
+        </BottomSheetFooter>
+      </BottomSheet>
     </div>
   );
 }

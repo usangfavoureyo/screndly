@@ -6,7 +6,6 @@ import { apiClient } from '../../lib/api/client';
 import { fetchSettings } from '../../lib/api/settings';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
-import { Alert, AlertDescription } from '../ui/alert';
 import { TMDbScheduler } from '../tmdb/TMDbScheduler';
 import { TMDbSettings } from './TMDbSettings';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
@@ -19,7 +18,7 @@ interface TmdbFeedsSettingsProps {
 export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Checking TMDb backend status...');
+  const [statusMessage, setStatusMessage] = useState('Checking whether the backend can reach TMDb...');
 
   useEffect(() => {
     const loadStatus = async () => {
@@ -27,7 +26,12 @@ export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
         const response = await apiClient.get<{ configured: boolean; message?: string }>('/api/tmdb/status');
         if (response.success && response.data) {
           setIsConfigured(response.data.configured);
-          setStatusMessage(response.data.message || (response.data.configured ? 'TMDb is configured' : 'TMDb is not configured'));
+          setStatusMessage(
+            response.data.message ||
+            (response.data.configured
+              ? 'TMDb API key is configured on the backend.'
+              : 'TMDb API key is not configured on the backend.')
+          );
           return;
         }
 
@@ -95,17 +99,15 @@ export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
 
         <div className="border-t border-gray-200 dark:border-[#333333]" />
 
-        <Alert className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000]">
-          <AlertDescription className="text-sm text-gray-900 dark:text-white">
-            TMDb feed generation and scheduling are backend-managed. This screen now reflects the real backend status and
-            lets you request an immediate refresh without relying on the old browser-only scheduler.
-          </AlertDescription>
-        </Alert>
-
         <Card className="p-6 border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] space-y-4">
           <div>
-            <h3 className="text-gray-900 dark:text-white mb-1">Backend Feed Status</h3>
-            <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">{statusMessage}</p>
+            <h3 className="text-gray-900 dark:text-white mb-1">TMDb Backend</h3>
+            <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+              {statusMessage}
+            </p>
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-2">
+              This only checks backend TMDb access and lets you trigger a manual refresh. The actual feed generation schedule is shown below.
+            </p>
           </div>
 
           <div className="flex items-center justify-between gap-3">

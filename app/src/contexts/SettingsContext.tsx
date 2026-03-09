@@ -203,6 +203,7 @@ export interface Settings {
   designStudioPinterestTitlePrompt?: string;
   designStudioPinterestDescriptionPrompt?: string;
   designStudioPinterestBoardPrompt?: string;
+  designStudioLogLevel?: string;
 
   // Video Studio
   systemPrompt?: string;
@@ -216,6 +217,7 @@ export interface Settings {
   videoStudioPinterestTitlePrompt?: string;
   videoStudioPinterestDescriptionPrompt?: string;
   videoStudioPinterestBoardPrompt?: string;
+  videoStudioLogLevel?: string;
 
   // Video Studio - Web Search for AI Assist
   videoStudioWebSearchEnabled?: boolean;
@@ -234,6 +236,7 @@ export interface Settings {
   videoStudioActivityRetention?: number;
   designStudioActivityRetention?: number;
   tmdbActivityRetention?: number;
+  tmdbLogLevel?: string;
 
   // Cleanup
   cleanupEnabled: boolean;
@@ -465,6 +468,12 @@ Guidelines:
     rssCaptionTone: 'Engaging',
     rssCaptionMaxLength: 280,
     rssActivityRetention: 24,
+    designStudioActivityRetention: 24,
+    designStudioLogLevel: 'standard',
+    videoStudioActivityRetention: 24,
+    videoStudioLogLevel: 'standard',
+    tmdbActivityRetention: 24,
+    tmdbLogLevel: 'standard',
     rssCaptionPrompt: `You are a social media caption writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized captions for RSS article content.
 
 INPUT: RSS article title, description, and content

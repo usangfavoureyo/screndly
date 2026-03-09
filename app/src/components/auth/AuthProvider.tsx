@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, ReactNode, lazy, Suspense } from 'react';
-import { verifyAuth } from '../../lib/auth';
+import { hasStoredAuthSession, verifyAuth } from '../../lib/auth';
 import { LoginPage } from '../LoginPage';
 
 // Lazy load public pages (using named exports)
@@ -38,16 +38,32 @@ interface AuthProviderProps {
 }
 
 export default function AuthProvider({ children }: AuthProviderProps) {
-    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
+        if (typeof window === 'undefined') {
+            return null;
+        }
+
+        return hasStoredAuthSession() ? true : null;
+    });
 
     useEffect(() => {
-        checkAuth();
-    }, []);
+        let isMounted = true;
 
-    const checkAuth = async () => {
-        const isValid = await verifyAuth();
-        setIsAuthenticated(isValid);
-    };
+        const checkAuth = async () => {
+            const isValid = await verifyAuth();
+            if (!isMounted) {
+                return;
+            }
+
+            setIsAuthenticated(isValid);
+        };
+
+        checkAuth();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     // Check if current path is a public route
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';

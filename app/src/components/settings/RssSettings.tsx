@@ -574,7 +574,7 @@ Tone: Engaging, informative, news-focused, optimized for entertainment fans on P
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Automatically remove RSS activity items after a specified time period
+              Hide older RSS activity items after a specified time period
             </p>
           </div>
 
@@ -592,7 +592,7 @@ Tone: Engaging, informative, news-focused, optimized for entertainment fans on P
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              RSS activity items will be automatically removed after this time period (Default: 24 hours)
+              RSS activity items older than this will be hidden in the RSS activity page (Default: 24 hours)
             </p>
           </div>
         </div>

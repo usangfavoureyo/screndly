@@ -787,15 +787,15 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
           <div>
             <h3 className="text-gray-900 dark:text-white">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Automatically remove completed and failed video generation activity items after a specified time period
+              Hide older video generation activity items after a specified time period
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="video-studio-activity-retention" className="text-[#6B7280] dark:text-[#9CA3AF]">Activity Retention (hours)</Label>
-            <Input
-              id="video-studio-activity-retention"
-              type="number"
+        <div>
+          <Label htmlFor="video-studio-activity-retention" className="text-[#6B7280] dark:text-[#9CA3AF]">Activity Retention (hours)</Label>
+          <Input
+            id="video-studio-activity-retention"
+            type="number"
               value={globalSettings.videoStudioActivityRetention || 24}
               onFocus={() => haptics.light()}
               onChange={(e) => {
@@ -805,7 +805,30 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Completed and failed video generation items will be automatically removed after this time period (Default: 24 hours)
+              Older video generation items will be hidden in the Video Studio activity page after this time period (Default: 24 hours)
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="video-studio-log-level" className="text-[#6B7280] dark:text-[#9CA3AF]">Log Level</Label>
+            <Select
+              value={globalSettings.videoStudioLogLevel || 'standard'}
+              onValueChange={(value) => {
+                haptics.light();
+                updateGlobalSetting('videoStudioLogLevel', value);
+              }}
+            >
+              <SelectTrigger id="video-studio-log-level" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="minimal">Minimal (Failures only)</SelectItem>
+                <SelectItem value="standard">Standard (Completed + Failures)</SelectItem>
+                <SelectItem value="full">Full (All entries + Processing)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Controls how much video generation activity is shown in the Video Studio activity page.
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   CheckCircle,
   XCircle,
@@ -81,8 +81,18 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
   useTMDbAutoSync(fetchPosts);
 
-  const retentionHours = settings.tmdbActivityRetention || 24;
+  const tmdbPreferenceOverrides = useMemo(() => {
+    try {
+      const raw = window.localStorage.getItem('screndly_tmdb_settings');
+      return raw ? JSON.parse(raw) as Record<string, any> : {};
+    } catch {
+      return {};
+    }
+  }, []);
+
+  const retentionHours = Number(tmdbPreferenceOverrides.tmdbActivityRetention ?? settings.tmdbActivityRetention ?? 24);
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
+  const logLevel = String(tmdbPreferenceOverrides.tmdbLogLevel ?? settings.tmdbLogLevel ?? 'standard');
 
   // Helper function to check if an item should be filtered based on retention
   const shouldKeepItem = (item: TMDbActivityItem): boolean => {
@@ -107,9 +117,18 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     return true;
   };
 
-  // Filter posts by retention period first, then by status filter
-  const filteredItems = posts
+  const logLevelItems = posts
     .filter(item => shouldKeepItem(item))
+    .filter((item) => {
+      if (logLevel === 'minimal') return item.status === 'failed';
+      if (logLevel === 'standard') return item.status === 'published' || item.status === 'failed';
+      return true;
+    });
+
+  const visibleItems = logLevelItems;
+
+  // Filter posts by retention period first, then by log level, then by status filter
+  const filteredItems = visibleItems
     .filter((item) => {
       if (filter === 'failures') return item.status === 'failed';
       if (filter === 'published') return item.status === 'published';
@@ -459,7 +478,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
         {/* Total Posts - Full Width */}
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Posts</p>
-          <p className="text-gray-900 dark:text-white text-2xl">{posts.length}</p>
+          <p className="text-gray-900 dark:text-white text-2xl">{visibleItems.length}</p>
         </div>
 
         {/* 2x2 Grid */}
@@ -467,25 +486,25 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Published</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {posts.filter(item => item.status === 'published').length}
+              {visibleItems.filter(item => item.status === 'published').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Scheduled</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {posts.filter(item => item.status === 'scheduled').length}
+              {visibleItems.filter(item => item.status === 'scheduled').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Pending</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {posts.filter(item => item.status === 'queued').length}
+              {visibleItems.filter(item => item.status === 'queued').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failures</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {posts.filter(item => item.status === 'failed').length}
+              {visibleItems.filter(item => item.status === 'failed').length}
             </p>
           </div>
         </div>

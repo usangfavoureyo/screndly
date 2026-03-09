@@ -33,6 +33,7 @@ import {
   normalizeComposeItem,
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
+import { publishComposeItem } from '../../lib/create/composePublish';
 import { uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../types/compose';
@@ -141,6 +142,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
@@ -298,9 +300,9 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     return true;
   };
 
-  const persistItem = (status: ComposeItem['status'], scheduledAt?: string) => {
+  const buildItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string): ComposeItem => {
     const now = new Date().toISOString();
-    saveItem({
+    return {
       id: existingItem?.id || `compose-${Date.now()}`,
       title: buildItemTitle(formState),
       status,
@@ -326,13 +328,18 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
       createdAt: existingItem?.createdAt || now,
       updatedAt: now,
       scheduledAt,
-    });
+      error,
+    };
+  };
+
+  const persistItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string) => {
+    saveItem(buildItem(status, scheduledAt, error));
   };
 
   const handleSaveDraft = () => {
     if (!validate('draft')) return;
     persistItem('draft');
-    toast.success(existingItem ? 'Compose draft updated' : 'Compose draft saved');
+    toast.success(existingItem ? 'Post draft updated' : 'Post draft saved');
     onNavigate('create', previousPage || 'create');
   };
 
@@ -340,15 +347,42 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     if (!validate('scheduled')) return;
     persistItem('scheduled', toIsoSchedule(scheduleDate, scheduleTime));
     setIsScheduleOpen(false);
-    toast.success('Compose item scheduled');
+    toast.success('Post scheduled');
     onNavigate('create', previousPage || 'create');
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     if (!validate('published')) return;
-    persistItem('published');
-    toast.success(existingItem ? 'Compose item published' : 'Compose item created and published');
-    onNavigate('create', previousPage || 'create');
+    setIsPublishing(true);
+
+    const draftItem = buildItem('draft');
+
+    try {
+      const result = await publishComposeItem(draftItem);
+      const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
+      const nextError =
+        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+
+      persistItem(nextStatus, undefined, nextError);
+
+      if (result.postedPlatforms.length > 0) {
+        toast.success(
+          result.failedResults.length > 0
+            ? `Published to ${result.postedPlatforms.join(', ')}.`
+            : `Published to ${result.postedPlatforms.join(', ')}.`,
+        );
+      } else {
+        toast.error(nextError || 'Failed to publish post');
+      }
+
+      onNavigate('create', previousPage || 'create');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to publish post';
+      persistItem('failed', undefined, message);
+      toast.error(message);
+    } finally {
+      setIsPublishing(false);
+    }
   };
 
   return (
@@ -360,10 +394,10 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
         />
         <div className="flex-1">
           <h1 className="text-gray-900 dark:text-white mb-2">
-            {existingItem ? 'Edit Post' : 'Add Compose Content'}
+            {existingItem ? 'Edit Post' : 'Add Post'}
           </h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
-            Build one content item with one or more media assets, platform-aware delivery, and a saved or scheduled state.
+            Build one post with one or more media assets, platform-aware delivery, and a saved or scheduled state.
           </p>
         </div>
       </div>
@@ -371,11 +405,11 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
         <div className="space-y-6">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 space-y-3">
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Media Upload</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Upload one or more images and videos. The platform cards below will tell you what can publish as a single post or carousel.
+                  Upload images or videos. Platform cards below show what works as a single post or carousel.
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -612,7 +646,9 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
               <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia}>Save</Button>
-              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia}>Publish</Button>
+              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || isPublishing}>
+                {isPublishing ? 'Publishing...' : 'Publish'}
+              </Button>
               <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia}>Schedule</Button>
             </div>
 
@@ -652,8 +688,8 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
 
       <BottomSheet open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
         <BottomSheetHeader>
-          <BottomSheetTitle>Schedule Compose Item</BottomSheetTitle>
-          <BottomSheetDescription>Choose when this item should move into the scheduled queue.</BottomSheetDescription>
+          <BottomSheetTitle>Schedule Post</BottomSheetTitle>
+          <BottomSheetDescription>Choose when this post should move into the scheduled queue.</BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetBody>
           <div className="space-y-4">
