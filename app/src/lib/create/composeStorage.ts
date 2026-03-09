@@ -1,33 +1,26 @@
-import { generateFileName, isBackblazeConfigured, uploadToBackblaze } from '../../utils/backblaze';
+import { apiClient } from '../api/client';
+
+interface UploadComposeAssetResponse {
+  url: string;
+  fileName: string;
+  fileId?: string;
+  originalName: string;
+  contentType: string;
+  size: number;
+}
 
 export async function uploadComposeAsset(file: File): Promise<{ url: string; fileId: string }> {
-  const preferredBucket = file.type.startsWith('video/') && isBackblazeConfigured('videos') ? 'videos' : 'general';
-
-  if (!isBackblazeConfigured(preferredBucket)) {
-    throw new Error(
-      preferredBucket === 'videos'
-        ? 'Backblaze videos bucket is not configured.'
-        : 'Backblaze general storage is not configured.',
-    );
+  if (!apiClient.isBackendAvailable()) {
+    throw new Error('Backend is not available for compose uploads.');
   }
 
-  const result = await uploadToBackblaze({
-    file,
-    fileName: generateFileName(file.name, `compose-${file.type.startsWith('video/') ? 'video' : 'image'}`),
-    bucketType: preferredBucket,
-    metadata: {
-      'original-name': file.name,
-      'upload-date': new Date().toISOString(),
-      app: 'screndly-compose',
-    },
-  });
-
-  if (!result.success || !result.url || !result.fileId) {
-    throw new Error(result.error || 'Failed to upload compose asset to Backblaze.');
+  const response = await apiClient.uploadFile<UploadComposeAssetResponse>('/api/create/upload-asset', file);
+  if (!response.success || !response.data?.url) {
+    throw new Error(response.error?.message || 'Failed to upload compose asset to Backblaze.');
   }
 
   return {
-    url: result.url,
-    fileId: result.fileId,
+    url: response.data.url,
+    fileId: response.data.fileId || response.data.fileName,
   };
 }

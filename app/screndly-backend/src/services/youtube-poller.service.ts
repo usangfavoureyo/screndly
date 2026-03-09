@@ -1,6 +1,6 @@
 import prisma from '../lib/prisma';
 import Parser from 'rss-parser';
-import ytdl from 'ytdl-core';
+import ytdl from '@distube/ytdl-core';
 import fs from 'fs';
 import path from 'path';
 import { publisherService, PublishContent } from './publisher.service';
@@ -61,6 +61,15 @@ interface GeneratedCaptions {
 
 type FeedItemStatus = 'accepted' | 'ignored';
 
+interface FeedVideoProcessingResult {
+    kind: 'continue' | 'return';
+    reason?: string;
+    result?: ChannelPollResult;
+    incrementVideoCount?: boolean;
+    sawFreshVideo?: boolean;
+    stopScanning?: boolean;
+}
+
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
     Facebook: 'facebook',
@@ -72,6 +81,11 @@ const PLATFORM_SETTING_KEYS: Record<string, string> = {
 };
 
 const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
+const MAX_RECENT_FEED_ITEMS = 15;
+const FEED_FRESHNESS_HOURS = 24;
+const YOUTUBE_INFO_OPTIONS = {
+    playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
+};
 
 export class YouTubePollerService {
     private isPolling = false;
@@ -140,7 +154,7 @@ export class YouTubePollerService {
                     }
                 }
 
-                results.push(await this.processChannel(channel, settings));
+                results.push(await this.processChannel(channel, settings, options));
             }
 
             return {
@@ -180,20 +194,20 @@ export class YouTubePollerService {
         }
     }
 
-    private async processChannel(channel: any, settings: LoadedVideoSettings): Promise<ChannelPollResult> {
+    private async processChannel(
+        channel: any,
+        settings: LoadedVideoSettings,
+        options: PollOptions = {}
+    ): Promise<ChannelPollResult> {
         let activeChannel = channel;
 
         try {
             activeChannel = await this.ensureCanonicalChannel(channel);
+            const supportsFeedItemStatus = await hasFeedItemStatusColumn();
 
             const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${activeChannel.channelId}`);
             if (!feed.items || feed.items.length === 0) {
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
-                return {
+                return this.completeChannelCheck(activeChannel.id, {
                     channelId: activeChannel.channelId,
                     channelName: activeChannel.name,
                     checked: true,
@@ -202,113 +216,184 @@ export class YouTubePollerService {
                     published: false,
                     failed: false,
                     message: 'No videos found in feed'
-                };
+                });
             }
 
-            const latestVideos = feed.items.sort((a, b) => {
+            const latestVideos = [...feed.items].sort((a, b) => {
                 return new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime();
-            });
-
-            const video = latestVideos[0];
-            const videoId = this.extractVideoId(video.link || '', video.id || '');
-
-            if (!videoId) {
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
-                return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: true,
-                    newVideoDetected: false,
-                    published: false,
-                    failed: false,
-                    message: 'Latest feed item did not include a usable video ID'
-                };
-            }
-
-            const existing = await prisma.feedItem.findUnique({ where: { videoId } });
-            if (existing) {
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
-                return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: true,
-                    newVideoDetected: false,
-                    published: false,
-                    failed: false,
-                    message: 'Latest video already processed'
-                };
-            }
-
-            const pubDate = new Date(video.pubDate || Date.now());
-            const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
-            if (hoursSince > 24) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
-                return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: true,
-                    newVideoDetected: false,
-                    published: false,
-                    failed: false,
-                    message: 'Skipped older video outside polling freshness window'
-                };
-            }
-
-            const titleLower = (video.title || '').toLowerCase();
-            if (settings.advancedFilters) {
-                const keywords = settings.advancedFilters
+            }).slice(0, MAX_RECENT_FEED_ITEMS);
+            const trailerKeywords = settings.advancedFilters
+                ? settings.advancedFilters
                     .split(',')
                     .map((keyword: string) => keyword.trim().toLowerCase())
-                    .filter(Boolean);
-                const isTrailer = keywords.some((keyword: string) => titleLower.includes(keyword));
+                    .filter(Boolean)
+                : [];
+            const targetPlatforms = this.getTargetPlatforms(settings);
+            const skippedReasons: string[] = [];
+            let sawFreshUnprocessedVideo = false;
 
-                if (!isTrailer) {
-                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
-                    await prisma.channel.update({
-                        where: { id: activeChannel.id },
-                        data: { lastCheck: new Date() }
-                    });
+            for (const video of latestVideos) {
+                const processed = await this.processFeedVideo(
+                    video,
+                    activeChannel,
+                    settings,
+                    options,
+                    supportsFeedItemStatus,
+                    trailerKeywords,
+                    targetPlatforms
+                );
 
-                    return {
-                        channelId: activeChannel.channelId,
-                        channelName: activeChannel.name,
-                        checked: true,
-                        skipped: true,
-                        newVideoDetected: false,
-                        published: false,
-                        failed: false,
-                        message: 'Skipped because title did not match trailer filters'
-                    };
+                if (processed.reason) {
+                    skippedReasons.push(processed.reason);
+                }
+
+                if (processed.sawFreshVideo) {
+                    sawFreshUnprocessedVideo = true;
+                }
+
+                if (processed.kind === 'return' && processed.result) {
+                    return this.completeChannelCheck(
+                        activeChannel.id,
+                        processed.result,
+                        processed.incrementVideoCount ?? false
+                    );
+                }
+
+                if (processed.stopScanning) {
+                    break;
                 }
             }
 
-            let videoInfo;
-            try {
-                videoInfo = await ytdl.getInfo(video.link || `https://www.youtube.com/watch?v=${videoId}`);
-            } catch (error) {
-                console.error(`[YouTubePoller] Failed to fetch metadata for ${videoId}:`, error);
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
+            return this.completeChannelCheck(activeChannel.id, {
+                channelId: activeChannel.channelId,
+                channelName: activeChannel.name,
+                checked: true,
+                skipped: true,
+                newVideoDetected: sawFreshUnprocessedVideo,
+                published: false,
+                failed: false,
+                message: this.buildNoEligibleVideoMessage(latestVideos.length, skippedReasons)
+            });
+        } catch (error: any) {
+            console.error(`[YouTubePoller] Error processing channel ${activeChannel.name}:`, error);
+            return this.completeChannelCheck(activeChannel.id, {
+                channelId: activeChannel.channelId,
+                channelName: activeChannel.name,
+                checked: true,
+                skipped: false,
+                newVideoDetected: false,
+                published: false,
+                failed: true,
+                message: error.message || 'Unknown channel processing error'
+            });
+        }
+    }
 
+    private async completeChannelCheck(
+        channelDbId: string,
+        result: ChannelPollResult,
+        incrementVideoCount = false
+    ): Promise<ChannelPollResult> {
+        await prisma.channel.update({
+            where: { id: channelDbId },
+            data: incrementVideoCount
+                ? { lastCheck: new Date(), videoCount: { increment: 1 } }
+                : { lastCheck: new Date() }
+        }).catch(() => undefined);
+
+        return result;
+    }
+
+    private buildNoEligibleVideoMessage(scannedCount: number, skippedReasons: string[]): string {
+        if (skippedReasons.length === 0) {
+            return `Checked ${scannedCount} recent uploads and found no new eligible trailers`;
+        }
+
+        const recentReasons = skippedReasons.slice(-3).join(' | ');
+        return `Checked ${scannedCount} recent uploads and found no new eligible trailers. Latest outcomes: ${recentReasons}`;
+    }
+
+    private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
+        if (downloadPath && fs.existsSync(downloadPath)) {
+            fs.unlinkSync(downloadPath);
+        }
+
+        for (const asset of assets) {
+            if (asset?.localPath && fs.existsSync(asset.localPath)) {
+                fs.unlinkSync(asset.localPath);
+            }
+        }
+    }
+
+    private async processFeedVideo(
+        video: any,
+        activeChannel: any,
+        settings: LoadedVideoSettings,
+        options: PollOptions,
+        supportsFeedItemStatus: boolean,
+        trailerKeywords: string[],
+        targetPlatforms: string[]
+    ): Promise<FeedVideoProcessingResult> {
+        const videoTitle = video.title || 'Untitled YouTube upload';
+        const videoId = this.extractVideoId(video.link || '', video.id || '');
+
+        if (!videoId) {
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: missing usable video ID`,
+            };
+        }
+
+        const existing = await prisma.feedItem.findUnique({ where: { videoId } });
+        const canRetryIgnoredVideo = Boolean(
+            options.force
+            && supportsFeedItemStatus
+            && existing?.status === 'ignored'
+        );
+
+        if (existing && !canRetryIgnoredVideo) {
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: already processed`,
+            };
+        }
+
+        const pubDate = new Date(video.pubDate || Date.now());
+        const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
+        if (hoursSince > FEED_FRESHNESS_HOURS) {
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: older than ${FEED_FRESHNESS_HOURS} hours`,
+                stopScanning: true,
+            };
+        }
+
+        const titleLower = (video.title || '').toLowerCase();
+        const feedText = `${video.title || ''} ${video.contentSnippet || ''}`.toLowerCase();
+        if (trailerKeywords.length > 0) {
+            const isTrailer = trailerKeywords.some((keyword) => feedText.includes(keyword));
+            if (!isTrailer) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
+                    kind: 'continue',
+                    reason: `${videoTitle}: did not match trailer filters`,
+                    sawFreshVideo: true,
+                };
+            }
+        }
+
+        let videoInfo;
+        try {
+            videoInfo = await ytdl.getInfo(
+                video.link || `https://www.youtube.com/watch?v=${videoId}`,
+                YOUTUBE_INFO_OPTIONS
+            );
+        } catch (error) {
+            console.error(`[YouTubePoller] Failed to fetch metadata for ${videoId}:`, error);
+            return {
+                kind: 'return',
+                sawFreshVideo: true,
+                result: {
                     channelId: activeChannel.channelId,
                     channelName: activeChannel.name,
                     checked: true,
@@ -316,67 +401,50 @@ export class YouTubePollerService {
                     newVideoDetected: true,
                     published: false,
                     failed: true,
-                    message: 'Failed to fetch video metadata'
-                };
-            }
-
-            const details = videoInfo.videoDetails;
-            if (settings.excludeShorts) {
-                const isShort =
-                    (details.lengthSeconds && parseInt(details.lengthSeconds, 10) < 60) ||
-                    titleLower.includes('#shorts');
-
-                if (isShort) {
-                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
-                    await prisma.channel.update({
-                        where: { id: activeChannel.id },
-                        data: { lastCheck: new Date() }
-                    });
-
-                    return {
-                        channelId: activeChannel.channelId,
-                        channelName: activeChannel.name,
-                        checked: true,
-                        skipped: true,
-                        newVideoDetected: false,
-                        published: false,
-                        failed: false,
-                        message: 'Skipped because video is a Short'
-                    };
+                    message: `Failed to fetch video metadata for ${videoTitle}; it will retry on the next polling cycle`
                 }
-            }
+            };
+        }
 
-            const thumbnailUrl = this.getThumbnailUrl(details);
-            const enrichedMetadata = await enrichYouTubeVideoMetadata(
-                videoId,
-                video.title || '',
-                details.description || video.contentSnippet || '',
-                settings
-            );
+        const details = videoInfo.videoDetails;
+        const descriptionLower = (details.description || video.contentSnippet || '').toLowerCase();
+        if (settings.excludeShorts) {
+            const isShort =
+                (details.lengthSeconds && parseInt(details.lengthSeconds, 10) < 60) ||
+                titleLower.includes('#shorts') ||
+                descriptionLower.includes('#shorts');
 
-            if (settings.regionFilter && !enrichedMetadata.regionAllowed) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
+            if (isShort) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: true,
-                    newVideoDetected: false,
-                    published: false,
-                    failed: false,
-                    message: enrichedMetadata.regionReason || 'Skipped by region filter'
+                    kind: 'continue',
+                    reason: `${videoTitle}: skipped because video is a Short`,
+                    sawFreshVideo: true,
                 };
             }
+        }
 
-            if (settings.videoFilterPrompt) {
-                const aiResult = await aiService.generateCompletion({
-                    model: settings.videoOpenaiModel,
-                    prompt: `Validate this video against rules:
+        const thumbnailUrl = this.getThumbnailUrl(details);
+        const enrichedMetadata = await enrichYouTubeVideoMetadata(
+            videoId,
+            video.title || '',
+            details.description || video.contentSnippet || '',
+            settings
+        );
+
+        if (settings.regionFilter && !enrichedMetadata.regionAllowed) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: enrichedMetadata.regionReason || `${videoTitle}: skipped by region filter`,
+                sawFreshVideo: true,
+            };
+        }
+
+        if (settings.videoFilterPrompt) {
+            const aiResult = await aiService.generateCompletion({
+                model: settings.videoOpenaiModel,
+                prompt: `Validate this video against rules:
 Title: ${video.title}
 Channel: ${activeChannel.name}
 Duration: ${details.lengthSeconds}s
@@ -387,38 +455,26 @@ Validation Rules:
 ${settings.videoFilterPrompt}
 
 Respond ONLY "YES" or "NO".`,
-                    maxTokens: 10
-                });
+                maxTokens: 10
+            });
 
-                if (aiResult.success && aiResult.content.trim().toUpperCase().includes('NO')) {
-                    await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'ignored');
-                    await prisma.channel.update({
-                        where: { id: activeChannel.id },
-                        data: { lastCheck: new Date() }
-                    });
-
-                    return {
-                        channelId: activeChannel.channelId,
-                        channelName: activeChannel.name,
-                        checked: true,
-                        skipped: true,
-                        newVideoDetected: false,
-                        published: false,
-                        failed: false,
-                        message: 'Skipped by AI validation filter'
-                    };
-                }
-            }
-
-            const targetPlatforms = this.getTargetPlatforms(settings);
-            if (targetPlatforms.length === 0) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date(), videoCount: { increment: 1 } }
-                });
-
+            if (aiResult.success && aiResult.content.trim().toUpperCase().includes('NO')) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
+                    kind: 'continue',
+                    reason: `${videoTitle}: skipped by AI validation filter`,
+                    sawFreshVideo: true,
+                };
+            }
+        }
+
+        if (targetPlatforms.length === 0) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted');
+            return {
+                kind: 'return',
+                sawFreshVideo: true,
+                incrementVideoCount: true,
+                result: {
                     channelId: activeChannel.channelId,
                     channelName: activeChannel.name,
                     checked: true,
@@ -427,18 +483,16 @@ Respond ONLY "YES" or "NO".`,
                     published: false,
                     failed: false,
                     message: 'No connected auto-post platforms were enabled'
-                };
-            }
+                }
+            };
+        }
 
-            const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
-            if (recentPublishBlock) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date(), videoCount: { increment: 1 } }
-                });
-
-                return {
+        const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
+        if (recentPublishBlock) {
+            return {
+                kind: 'return',
+                sawFreshVideo: true,
+                result: {
                     channelId: activeChannel.channelId,
                     channelName: activeChannel.name,
                     checked: true,
@@ -446,27 +500,33 @@ Respond ONLY "YES" or "NO".`,
                     newVideoDetected: true,
                     published: false,
                     failed: false,
-                    message: recentPublishBlock
-                };
-            }
+                    message: `${recentPublishBlock}. ${videoTitle} will retry on the next polling cycle`
+                }
+            };
+        }
 
-            console.log(`[YouTubePoller] Downloading ${videoId}...`);
-            const downloadPath = await this.downloadVideoWithInfo(videoInfo);
+        console.log(`[YouTubePoller] Downloading ${videoId}...`);
+        let downloadPath: string | null = null;
+        let youtubeThumbnail: PlatformThumbnailAsset | null = null;
+        let xThumbnail: PlatformThumbnailAsset | null = null;
+        let socialPoster: PlatformThumbnailAsset | null = null;
+
+        try {
+            downloadPath = await this.downloadVideoWithInfo(videoInfo);
             if (!downloadPath) {
-                await prisma.channel.update({
-                    where: { id: activeChannel.id },
-                    data: { lastCheck: new Date() }
-                });
-
                 return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: false,
-                    newVideoDetected: true,
-                    published: false,
-                    failed: true,
-                    message: 'Failed to download video for publishing'
+                    kind: 'return',
+                    sawFreshVideo: true,
+                    result: {
+                        channelId: activeChannel.channelId,
+                        channelName: activeChannel.name,
+                        checked: true,
+                        skipped: false,
+                        newVideoDetected: true,
+                        published: false,
+                        failed: true,
+                        message: `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
+                    }
                 };
             }
 
@@ -481,13 +541,13 @@ Respond ONLY "YES" or "NO".`,
                         settings
                     )
                     : this.buildDefaultYouTubeMetadata(video, details, enrichedMetadata);
-            const youtubeThumbnail = targetPlatforms.includes('YouTube') && this.isAutoThumbnailEnabled('YouTube', settings)
+            youtubeThumbnail = targetPlatforms.includes('YouTube') && this.isAutoThumbnailEnabled('YouTube', settings)
                 ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
-            const xThumbnail = targetPlatforms.includes('X') && this.isAutoThumbnailEnabled('X', settings)
+            xThumbnail = targetPlatforms.includes('X') && this.isAutoThumbnailEnabled('X', settings)
                 ? await generateLandscapeThumbnail('x', video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
-            const socialPoster = targetPlatforms.some((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings))
+            socialPoster = targetPlatforms.some((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings))
                 ? await generateSocialPosterThumbnail(video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
 
@@ -514,22 +574,8 @@ Respond ONLY "YES" or "NO".`,
                 pubDate
             );
 
-            if (fs.existsSync(downloadPath)) {
-                fs.unlinkSync(downloadPath);
-            }
-            for (const asset of [youtubeThumbnail, xThumbnail, socialPoster]) {
-                if (asset?.localPath && fs.existsSync(asset.localPath)) {
-                    fs.unlinkSync(asset.localPath);
-                }
-            }
-
-            await this.recordFeedItem(videoId, activeChannel.channelId, video.title || '', pubDate, 'accepted');
-            await prisma.channel.update({
-                where: { id: activeChannel.id },
-                data: { lastCheck: new Date(), videoCount: { increment: 1 } }
-            });
-
             if (publishResult.publishedPlatforms.length > 0) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted');
                 await notificationService.notifyUser({
                     title: 'New Trailer Published',
                     message: `${video.title} was posted to ${publishResult.publishedPlatforms.join(', ')}.`,
@@ -539,57 +585,55 @@ Respond ONLY "YES" or "NO".`,
                 });
 
                 return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: false,
-                    newVideoDetected: true,
-                    published: true,
-                    failed: false,
-                    message: `Published to ${publishResult.publishedPlatforms.join(', ')}`
+                    kind: 'return',
+                    sawFreshVideo: true,
+                    incrementVideoCount: true,
+                    result: {
+                        channelId: activeChannel.channelId,
+                        channelName: activeChannel.name,
+                        checked: true,
+                        skipped: false,
+                        newVideoDetected: true,
+                        published: true,
+                        failed: false,
+                        message: `Published to ${publishResult.publishedPlatforms.join(', ')}`
+                    }
                 };
             }
 
             if (publishResult.failedPlatforms.length > 0) {
                 return {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: false,
-                    newVideoDetected: true,
-                    published: false,
-                    failed: true,
-                    message: `Publish failed for ${publishResult.failedPlatforms.join(', ')}`
+                    kind: 'return',
+                    sawFreshVideo: true,
+                    result: {
+                        channelId: activeChannel.channelId,
+                        channelName: activeChannel.name,
+                        checked: true,
+                        skipped: false,
+                        newVideoDetected: true,
+                        published: false,
+                        failed: true,
+                        message: `Publish failed for ${publishResult.failedPlatforms.join(', ')}; ${videoTitle} will retry on the next polling cycle`
+                    }
                 };
             }
 
             return {
-                channelId: activeChannel.channelId,
-                channelName: activeChannel.name,
-                checked: true,
-                skipped: true,
-                newVideoDetected: true,
-                published: false,
-                failed: false,
-                message: 'No platforms accepted the publish request'
+                kind: 'return',
+                sawFreshVideo: true,
+                result: {
+                    channelId: activeChannel.channelId,
+                    channelName: activeChannel.name,
+                    checked: true,
+                    skipped: true,
+                    newVideoDetected: true,
+                    published: false,
+                    failed: false,
+                    message: `No platforms accepted the publish request for ${videoTitle}; it will retry on the next polling cycle`
+                }
             };
-        } catch (error: any) {
-            console.error(`[YouTubePoller] Error processing channel ${activeChannel.name}:`, error);
-            await prisma.channel.update({
-                where: { id: activeChannel.id },
-                data: { lastCheck: new Date() }
-            }).catch(() => undefined);
-
-            return {
-                channelId: activeChannel.channelId,
-                channelName: activeChannel.name,
-                checked: true,
-                skipped: false,
-                newVideoDetected: false,
-                published: false,
-                failed: true,
-                message: error.message || 'Unknown channel processing error'
-            };
+        } finally {
+            this.cleanupGeneratedFiles(downloadPath, [youtubeThumbnail, xThumbnail, socialPoster]);
         }
     }
 

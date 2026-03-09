@@ -177,15 +177,21 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
     let tracked = false;
 
     try {
+        const isGPT5Model = request.model.startsWith('gpt-5');
         const body: any = {
             model: request.model,
             messages: [
                 ...(request.systemPrompt ? [{ role: 'system', content: request.systemPrompt }] : []),
                 { role: 'user', content: request.prompt }
             ],
-            max_tokens: request.maxTokens || 1024,
-            temperature: request.temperature || 0.7,
         };
+
+        if (isGPT5Model) {
+            body.max_completion_tokens = request.maxTokens || 1024;
+        } else {
+            body.max_tokens = request.maxTokens || 1024;
+            body.temperature = request.temperature || 0.7;
+        }
 
         if (request.jsonMode) {
             body.response_format = { type: 'json_object' };

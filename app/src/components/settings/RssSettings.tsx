@@ -8,6 +8,7 @@ import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
+import { rssPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
 interface RssSettingsProps {
   settings: any;
@@ -358,20 +359,7 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
             <Label htmlFor="rss-caption-prompt" className="text-[#6B7280] dark:text-[#9CA3AF]">Caption Generation Prompt</Label>
             <textarea
               id="rss-caption-prompt"
-              value={settings.rssCaptionPrompt || `You are a social media caption writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized captions for RSS article content.
-
-INPUT: RSS article title, description, and content
-OUTPUT: Engaging social media caption with emojis and hook
-
-Guidelines:
-- Hook in first line (7-10 words max)
-- Include 3 relevant emoji
-- Add 2-3 strategically placed emojis
-- Keep total under {maxLength} characters for platform compatibility
-- Match the tone of the article content
-- No generic "Check this out" openers
-- Focus on the key news or reveal from the article
-- Make it shareable and clickable`}
+              value={settings.rssCaptionPrompt || rssPromptDefaults.rssCaptionPrompt}
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
@@ -403,32 +391,7 @@ Guidelines:
             <Label htmlFor="rss-pinterest-title-prompt" className="text-[#9CA3AF]">Pinterest Title Generation Prompt</Label>
             <textarea
               id="rss-pinterest-title-prompt"
-              value={settings.rssPinterestTitlePrompt || `You are a Pinterest SEO expert for Screen Render. Create optimized Pinterest pin titles for entertainment news articles.
-
-INPUT: RSS article title, publication, category
-OUTPUT: Pinterest-optimized title (100 characters max)
-
-Pinterest Title Requirements:
-- Front-load the most important keywords
-- Include: Main topic + Context/Publication
-- Optimize for Pinterest search discovery
-- Use natural language, not hashtags
-- Keep under 100 characters
-
-Examples:
-- "Dune 3 Officially Announced by Warner Bros | Movie News"
-- "Marvel's Deadpool 4 in Development | Superhero Updates"
-- "Netflix Announces Wednesday Season 3 | TV News"
-- "Christopher Nolan's Next Film Revealed | Entertainment News"
-
-Guidelines:
-- Extract key topic from RSS article title
-- Include publication/source if space allows
-- Use " | " separator for clarity
-- Prioritize search terms users would type
-- Make it scannable and informative
-
-Tone: Clear, searchable, news-focused, optimized for Pinterest discovery`}
+              value={settings.rssPinterestTitlePrompt || rssPromptDefaults.rssPinterestTitlePrompt}
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();

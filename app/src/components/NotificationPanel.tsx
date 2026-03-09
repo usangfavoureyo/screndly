@@ -406,6 +406,7 @@ export function NotificationPanel({
             onClear={selection.clearSelection}
             onDelete={handleDeleteSelected}
             itemLabel="notifications"
+            mobilePortalClassName="z-[60]"
           />
         )}
         {filteredNotifications.length === 0 ? (

@@ -47,6 +47,8 @@ type ImageIntent =
   | 'logo'
   | 'brand_backdrop';
 
+type TargetFormat = 'movie' | 'series' | 'general';
+
 interface SerperImageResult {
   title?: string;
   imageUrl?: string;
@@ -76,6 +78,10 @@ interface RSSSubjectAnalysis {
   secondarySubjects: string[];
   relevantStudios: string[];
   contextType: ContextType;
+  targetFormat: TargetFormat;
+  contextProject: string | null;
+  requiredContextTerms: string[];
+  referenceOnlySubjects: string[];
   allowLogoOnly: boolean;
   queries: string[];
 }
@@ -84,6 +90,12 @@ interface ScoredImage {
   image: SerperImageResult;
   score: number;
   reason: string;
+}
+
+interface FranchiseValidationRule {
+  matchAny: string[];
+  requiredTerms: string[];
+  blockedTerms?: string[];
 }
 
 const MIN_IMAGE_WIDTH = 600;
@@ -100,6 +112,13 @@ const BLOCKED_DOMAINS = [
   'fandom.com',
   '9gag.com',
   'knowyourmeme.com',
+  'etsy.com',
+  'ebay.com',
+  'walmart.com',
+  'aliexpress.com',
+  'temu.com',
+  'redbubble.com',
+  'teepublic.com',
 ];
 const STOCK_IMAGE_DOMAINS = [
   'gettyimages.com',
@@ -180,6 +199,55 @@ const BLOCKED_KEYWORDS = [
   'ai generated',
   'midjourney',
 ];
+const HARD_REJECT_KEYWORDS = [
+  'happy birthday',
+  'birthday',
+  'party',
+  'cake',
+  'cupcake',
+  'balloons',
+  'party decor',
+  'party decorations',
+  'party supplies',
+  'invitation',
+  'invites',
+  'backdrop stand',
+  'printable',
+  'wall art',
+  'canvas print',
+  'poster print',
+  'custom banner',
+  'cake topper',
+  'tablecloth',
+  'merchandise',
+  'merch',
+  'shirt',
+  't shirt',
+  'mug',
+  'toy',
+  'figure',
+  'funko',
+  'clipart',
+  'sticker',
+  'etsy',
+  'amazon',
+  'ebay',
+  'walmart',
+  'aliexpress',
+  'temu',
+];
+const COMIC_ART_KEYWORDS = [
+  'comic art',
+  'comic book',
+  'comic',
+  'variant cover',
+  'cover art',
+  'splash page',
+  'comic panel',
+  'panel art',
+  'illustration',
+  'drawn art',
+];
 const LOGO_KEYWORDS = [
   'logo',
   'wordmark',
@@ -258,6 +326,46 @@ const OFFICIAL_STUDIO_TERMS = [
   'mgm',
   'amazon mgm studios',
 ];
+const REFERENCE_ONLY_CUES = [
+  'known for',
+  'best known for',
+  'hits like',
+  'films like',
+  'movies like',
+  'titles like',
+  'such as',
+  'including',
+  'elements of',
+  'in the vein of',
+  'from films such as',
+  'from movies such as',
+];
+const FRANCHISE_VALIDATION_RULES: FranchiseValidationRule[] = [
+  {
+    matchAny: ['scream'],
+    requiredTerms: ['scream', 'ghostface'],
+    blockedTerms: ['saw', 'jigsaw', 'billy the puppet', 'chucky', 'annabelle', 'michael myers', 'freddy krueger'],
+  },
+  {
+    matchAny: ['avatar the last airbender', 'legend of aang', 'the legend of aang'],
+    requiredTerms: ['avatar the last airbender', 'legend of aang', 'aang', 'katara', 'sokka', 'zuko', 'toph', 'appa', 'momo'],
+  },
+  {
+    matchAny: ['spider man', 'spiderman'],
+    requiredTerms: ['spider man', 'spiderman', 'peter parker', 'tobey maguire', 'andrew garfield', 'tom holland'],
+  },
+  {
+    matchAny: ['captain marvel'],
+    requiredTerms: ['captain marvel', 'carol danvers', 'brie larson'],
+  },
+  {
+    matchAny: ['sentry'],
+    requiredTerms: ['sentry', 'thunderbolts', 'lewis pullman'],
+    blockedTerms: ['variant cover', 'comic panel', 'cover art'],
+  },
+];
+const MIN_CONFIDENT_SERPER_SCORE = 135;
+const MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK = 170;
 
 const SUBJECT_EXTRACTION_PROMPT = `You analyze entertainment-news articles for image selection.
 
@@ -273,6 +381,9 @@ Return strict JSON with this shape:
   "secondarySubjects": ["name"],
   "relevantStudios": ["studio or streaming service"],
   "contextType": "release|trailer|casting|interview|boxoffice|poster_announcement|industry|general",
+  "contextProject": "movie/show/project needed to disambiguate the image or null",
+  "requiredContextTerms": ["terms that must appear in a good result"],
+  "referenceOnlySubjects": ["subjects mentioned only as comparisons or prior credits"],
   "allowLogoOnly": true
 }
 
@@ -286,7 +397,11 @@ Rules:
 - For title-linked actor stories, prefer still.
 - For actor/director/producer stories without a clear title, prefer person_portrait.
 - For studio/platform stories without a dominant title, prefer logo or brand_backdrop.
+- If the story is about one specific character, movie, or actor inside a broader franchise milestone, choose the specific character/movie/actor instead of the umbrella franchise.
+- If comparison franchises or prior credits appear in phrases like "known for", "hits like", "such as", "including", or "elements of", put them in referenceOnlySubjects. They must not drive the image.
+- If the story depends on a specific movie/show context, set contextProject and add requiredContextTerms for that project, studio, actor, or year.
 - Do not suggest fan art, wallpapers, memes, mockups, or stock-photo style results.
+- Do not suggest party decor, birthday banners, invitations, printables, merchandise, comic panels, or unrelated franchise characters.
 - Logo-only images are allowed only for the exact movie/show logo or a clearly relevant official studio/platform logo.`;
 
 function normalizeText(value: string): string {
@@ -313,6 +428,20 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
   }
 
   return items;
+}
+
+function extractQuotedSubjects(value: string): string[] {
+  return uniqueStrings(
+    Array.from(value.matchAll(/["“']([^"”']{2,80})["”']/g))
+      .map((match) => match[1]?.trim() || '')
+  );
+}
+
+function splitIntoSentences(value: string): string[] {
+  return value
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
 }
 
 function dedupeUrls(values: Array<string | null | undefined>): string[] {
@@ -360,9 +489,176 @@ function hasRelevantEntityMatch(text: string, entities: string[]): boolean {
   return entities.some((entity) => entityMatches(text, entity));
 }
 
+function extractReferenceOnlySubjects(articleText: string): string[] {
+  const matches: string[] = [];
+
+  for (const sentence of splitIntoSentences(articleText)) {
+    const normalizedSentence = normalizeText(sentence);
+    if (!REFERENCE_ONLY_CUES.some((cue) => normalizedSentence.includes(normalizeText(cue)))) {
+      continue;
+    }
+
+    matches.push(...extractQuotedSubjects(sentence));
+  }
+
+  return uniqueStrings(matches);
+}
+
+function extractYearTokens(articleText: string): string[] {
+  return uniqueStrings(
+    Array.from(articleText.matchAll(/\b(19\d{2}|20\d{2})\b/g))
+      .map((match) => match[1] || '')
+  );
+}
+
+function extractLeadTitleCandidate(title: string): string | null {
+  if (!/[:]|(?:\bfranchise\b|\bmovie\b|\bfilm\b|\bseries\b|\bshow\b)/i.test(title)) {
+    return null;
+  }
+
+  const match = title.match(
+    /^(.+?)(?:\s+(?:is|are|was|were|will|can|could|coming|returns|returning|complete|completed|confirmed|delivers|ranking|ranked|reveals|breaks|changed|marks|sets)\b|[!?]$|$)/i
+  );
+  const candidate = match?.[1]?.trim();
+
+  if (!candidate) {
+    return null;
+  }
+
+  const cleaned = candidate
+    .replace(/\b(sequel movie|sequel film|sequel|movie|film|franchise|series|show|season)\b$/i, '')
+    .replace(/[:\-–]+$/g, '')
+    .trim();
+
+  return cleaned || candidate;
+}
+
 function extractRelevantStudios(articleText: string): string[] {
   const normalized = normalizeText(articleText);
   return OFFICIAL_STUDIO_TERMS.filter((term) => normalized.includes(normalizeText(term)));
+}
+
+function buildReferenceOnlyFreeSecondarySubjects(
+  secondarySubjects: string[],
+  referenceOnlySubjects: string[],
+  primaryName: string
+): string[] {
+  return secondarySubjects.filter((subject) => {
+    if (normalizeText(subject) === normalizeText(primaryName)) {
+      return false;
+    }
+
+    return !referenceOnlySubjects.some((referenceOnly) => normalizeText(referenceOnly) === normalizeText(subject));
+  });
+}
+
+function extractContextProject(
+  articleText: string,
+  primaryName: string,
+  primaryType: SubjectType,
+  secondarySubjects: string[],
+  referenceOnlySubjects: string[],
+  relevantStudios: string[]
+): string | null {
+  const filteredQuoted = extractQuotedSubjects(articleText).filter((subject) => {
+    const normalizedSubject = normalizeText(subject);
+    if (!normalizedSubject || normalizedSubject === normalizeText(primaryName)) {
+      return false;
+    }
+
+    if (referenceOnlySubjects.some((referenceOnly) => normalizeText(referenceOnly) === normalizedSubject)) {
+      return false;
+    }
+
+    if (relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (
+    (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer' || primaryType === 'character') &&
+    filteredQuoted.length > 0
+  ) {
+    return filteredQuoted[0];
+  }
+
+  const filteredSecondary = buildReferenceOnlyFreeSecondarySubjects(
+    secondarySubjects,
+    referenceOnlySubjects,
+    primaryName
+  );
+
+  if (
+    (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer' || primaryType === 'character') &&
+    filteredSecondary.length > 0
+  ) {
+    return filteredSecondary[0];
+  }
+
+  return null;
+}
+
+function buildRequiredContextTerms(
+  articleTitle: string,
+  articleText: string,
+  primaryName: string,
+  primaryType: SubjectType,
+  visualSubject: string,
+  contextProject: string | null,
+  secondarySubjects: string[],
+  referenceOnlySubjects: string[],
+  relevantStudios: string[]
+): string[] {
+  const yearTokens = extractYearTokens(articleText);
+  const filteredSecondary = buildReferenceOnlyFreeSecondarySubjects(
+    secondarySubjects,
+    referenceOnlySubjects,
+    primaryName
+  );
+  const normalizedVisual = normalizeText(visualSubject);
+  const normalizedPrimary = normalizeText(primaryName);
+  const titleStudioMatch = relevantStudios.find((studio) => entityMatches(normalizeText(articleTitle), studio)) || null;
+  const wantsAnimatedOverLiveAction =
+    /\blive action\b/i.test(articleText) &&
+    !/\blive action\b/i.test(articleTitle) &&
+    /\bmovie|film|feature film|sequel\b/i.test(articleText);
+
+  const terms = uniqueStrings([
+    contextProject,
+    wantsAnimatedOverLiveAction ? 'animated' : null,
+    /\bopening scene\b/i.test(articleText) ? 'opening scene' : null,
+    yearTokens[0] || null,
+    (primaryType === 'movie' || primaryType === 'tv_show' || primaryType === 'franchise' || primaryType === 'character' || primaryType === 'actor')
+      ? titleStudioMatch
+      : null,
+    (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer' || primaryType === 'character')
+      ? filteredSecondary[0] || null
+      : null,
+  ]);
+
+  return terms.filter((term) => {
+    const normalizedTerm = normalizeText(term);
+    return normalizedTerm !== normalizedPrimary && normalizedTerm !== normalizedVisual;
+  });
+}
+
+function getFranchiseValidationRule(analysis: RSSSubjectAnalysis): FranchiseValidationRule | null {
+  const candidates = [
+    analysis.editorialPrimary,
+    analysis.primarySubject.name,
+    analysis.visualSubject,
+    analysis.contextProject,
+  ]
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((value) => normalizeText(value));
+
+  return FRANCHISE_VALIDATION_RULES.find((rule) =>
+    candidates.some((candidate) =>
+      rule.matchAny.some((matchTerm) => candidate.includes(normalizeText(matchTerm)))
+    )
+  ) ?? null;
 }
 
 function classifyContextType(articleText: string): ContextType {
@@ -375,6 +671,18 @@ function classifyContextType(articleText: string): ContextType {
   if (/\bbox office|boxoffice|opens to|debuts at\b/.test(normalized)) return 'boxoffice';
   if (/\bstudio|network|streaming|service|platform|merger|ceo\b/.test(normalized)) return 'industry';
   if (/\brelease|premiere|coming to|set for|arrives\b/.test(normalized)) return 'release';
+  return 'general';
+}
+
+function resolveTargetFormat(articleText: string, primaryType: SubjectType): TargetFormat {
+  if (primaryType === 'tv_show' || /\bseries|season|episode|showrunner|tv show|live action series\b/i.test(articleText)) {
+    return 'series';
+  }
+
+  if (primaryType === 'movie' || /\bmovie|film|feature film|feature movie|sequel\b/i.test(articleText)) {
+    return 'movie';
+  }
+
   return 'general';
 }
 
@@ -436,15 +744,18 @@ function resolveImageIntent(
 function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
   const studios = extractRelevantStudios(articleText);
+  const referenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const normalizedTitle = article.title.trim();
+  const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
 
-  let primaryName = quotedMatches[0] || normalizedTitle;
+  let primaryName = quotedMatches[0] || leadTitleCandidate || normalizedTitle;
   let primaryType: SubjectType = 'movie';
+  const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
 
-  if (studios.length > 0 && /\b(studio|streaming|network|service|platform|disney\+|netflix|max|prime video|apple tv)\b/i.test(articleText)) {
+  if (studios.length > 0 && titleLooksLikeStudioStory && quotedMatches.length === 0) {
     primaryName = studios[0];
     primaryType = /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock)\b/i.test(primaryName)
       ? 'streaming_service'
@@ -458,8 +769,36 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   );
 
   const contextType = classifyContextType(articleText);
+  const targetFormat = resolveTargetFormat(articleText, primaryType);
   const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, studios);
-  const queries = buildFallbackQueries(visual.visualSubject, primaryType, secondarySubjects, contextType, visual.imageIntent);
+  const contextProject = extractContextProject(
+    articleText,
+    primaryName,
+    primaryType,
+    secondarySubjects,
+    referenceOnlySubjects,
+    studios
+  );
+  const requiredContextTerms = buildRequiredContextTerms(
+    article.title,
+    articleText,
+    primaryName,
+    primaryType,
+    visual.visualSubject,
+    contextProject,
+    secondarySubjects,
+    referenceOnlySubjects,
+    studios
+  );
+  const queries = buildFallbackQueries(
+    visual.visualSubject,
+    primaryType,
+    secondarySubjects,
+    contextType,
+    visual.imageIntent,
+    contextProject,
+    requiredContextTerms
+  );
 
   return {
     editorialPrimary: primaryName,
@@ -472,6 +811,10 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     secondarySubjects,
     relevantStudios: studios,
     contextType,
+    targetFormat,
+    contextProject,
+    requiredContextTerms,
+    referenceOnlySubjects,
     allowLogoOnly: visual.allowLogoOnly,
     queries,
   };
@@ -482,9 +825,15 @@ function buildFallbackQueries(
   primaryType: SubjectType,
   secondarySubjects: string[],
   contextType: ContextType,
-  imageIntent: ImageIntent
+  imageIntent: ImageIntent,
+  contextProject?: string | null,
+  requiredContextTerms: string[] = []
 ): string[] {
   const secondary = secondarySubjects[0];
+  const contextTerm = contextProject
+    || requiredContextTerms.find((term) => !/^\d{4}$/.test(term))
+    || secondary;
+  const yearTerm = requiredContextTerms.find((term) => /^\d{4}$/.test(term));
 
   switch (imageIntent) {
     case 'logo':
@@ -503,45 +852,56 @@ function buildFallbackQueries(
       ]);
     case 'person_portrait':
       return uniqueStrings([
+        contextTerm ? `${primaryName} ${contextTerm} press photo` : null,
         `${primaryName} portrait`,
         `${primaryName} press photo`,
         `${primaryName} headshot`,
+        yearTerm ? `${primaryName} ${yearTerm} photo` : null,
         primaryName,
       ]);
     case 'character_still':
       return uniqueStrings([
+        contextTerm ? `${primaryName} ${contextTerm} still` : null,
         `${primaryName} character still`,
         `${primaryName} official still`,
         `${primaryName} scene still`,
+        yearTerm ? `${primaryName} ${yearTerm} still` : null,
         primaryName,
       ]);
     case 'still':
       return uniqueStrings([
-        secondary ? `${primaryName} ${secondary} still` : `${primaryName} still`,
+        contextTerm ? `${primaryName} ${contextTerm} still` : `${primaryName} still`,
+        yearTerm ? `${primaryName} ${yearTerm} still` : null,
         `${primaryName} scene still`,
         `${primaryName} production still`,
+        contextTerm ? `${primaryName} ${contextTerm} official still` : null,
         `${primaryName} backdrop`,
       ]);
     case 'backdrop':
       return uniqueStrings([
-        `${primaryName} backdrop`,
+        contextTerm ? `${primaryName} ${contextTerm} backdrop` : `${primaryName} backdrop`,
+        yearTerm ? `${primaryName} ${yearTerm} backdrop` : null,
         `${primaryName} scene still`,
         `${primaryName} production still`,
-        `${primaryName} official still`,
+        contextTerm ? `${primaryName} ${contextTerm} official still` : `${primaryName} official still`,
         contextType === 'poster_announcement' ? `${primaryName} official poster` : null,
       ]);
     case 'poster':
       return uniqueStrings([
+        contextTerm ? `${primaryName} ${contextTerm} official poster` : null,
         `${primaryName} official poster`,
         `${primaryName} new poster`,
         `${primaryName} key art`,
+        yearTerm ? `${primaryName} ${yearTerm} poster` : null,
         `${primaryName} character poster`,
       ]);
     default:
       return uniqueStrings([
+        contextTerm ? `${primaryName} ${contextTerm} still` : null,
         `${primaryName} still`,
         `${primaryName} backdrop`,
         `${primaryName} production still`,
+        yearTerm ? `${primaryName} ${yearTerm} still` : null,
         primaryName,
       ]);
   }
@@ -560,6 +920,7 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     : fallback.primarySubject.type;
   const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
   const heuristicStudios = extractRelevantStudios(articleText);
+  const heuristicReferenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const relevantStudios = uniqueStrings([
     ...(Array.isArray(value?.relevantStudios) ? value.relevantStudios : []),
     ...heuristicStudios,
@@ -568,9 +929,20 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     ...(Array.isArray(value?.secondarySubjects) ? value.secondarySubjects : []),
     ...relevantStudios.filter((studio) => normalizeText(studio) !== normalizeText(primaryName)),
   ]).filter((subject) => normalizeText(subject) !== normalizeText(primaryName));
+  const referenceOnlySubjects = uniqueStrings([
+    ...(Array.isArray(value?.referenceOnlySubjects) ? value.referenceOnlySubjects : []),
+    ...heuristicReferenceOnlySubjects,
+  ]).filter((subject) => {
+    const normalizedSubject = normalizeText(subject);
+    return normalizedSubject !== normalizeText(primaryName)
+      && !relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject);
+  });
   const contextType = typeof value?.contextType === 'string'
     ? value.contextType as ContextType
     : fallback.contextType;
+  const targetFormat = typeof value?.targetFormat === 'string'
+    ? value.targetFormat as TargetFormat
+    : resolveTargetFormat(articleText, primaryType);
   const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, relevantStudios);
   const visualSubject = typeof value?.visualSubject === 'string'
     ? value.visualSubject.trim()
@@ -578,10 +950,42 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
   const imageIntent = typeof value?.imageIntent === 'string'
     ? value.imageIntent as ImageIntent
     : visual.imageIntent;
+  const contextProjectValue = typeof value?.contextProject === 'string' && value.contextProject.trim()
+    ? value.contextProject.trim()
+    : extractContextProject(
+        articleText,
+        primaryName,
+        primaryType,
+        secondarySubjects,
+        referenceOnlySubjects,
+        relevantStudios
+      );
+  const requiredContextTerms = uniqueStrings([
+    ...(Array.isArray(value?.requiredContextTerms) ? value.requiredContextTerms : []),
+    ...buildRequiredContextTerms(
+      article.title,
+      articleText,
+      primaryName,
+      primaryType,
+      visualSubject,
+      contextProjectValue,
+      secondarySubjects,
+      referenceOnlySubjects,
+      relevantStudios
+    ),
+  ]);
   const queries = uniqueStrings(
     Array.isArray(value?.queries)
       ? value.queries
-      : buildFallbackQueries(visualSubject, primaryType, secondarySubjects, contextType, imageIntent)
+      : buildFallbackQueries(
+          visualSubject,
+          primaryType,
+          secondarySubjects,
+          contextType,
+          imageIntent,
+          contextProjectValue,
+          requiredContextTerms
+        )
   );
 
   return {
@@ -595,10 +999,22 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     secondarySubjects,
     relevantStudios,
     contextType,
+    targetFormat,
+    contextProject: contextProjectValue,
+    requiredContextTerms,
+    referenceOnlySubjects,
     allowLogoOnly: value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo'),
     queries: queries.length > 0
       ? queries
-      : buildFallbackQueries(visualSubject, primaryType, secondarySubjects, contextType, imageIntent),
+      : buildFallbackQueries(
+          visualSubject,
+          primaryType,
+          secondarySubjects,
+          contextType,
+          imageIntent,
+          contextProjectValue,
+          requiredContextTerms
+        ),
   };
 }
 
@@ -704,6 +1120,10 @@ function isBlockedResult(image: SerperImageResult): boolean {
     return true;
   }
 
+  if (containsKeyword(text, HARD_REJECT_KEYWORDS)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -791,21 +1211,32 @@ function scoreImage(
   }
 
   const text = getSerperImageText(image);
+  const nonReferenceSecondarySubjects = buildReferenceOnlyFreeSecondarySubjects(
+    analysis.secondarySubjects,
+    analysis.referenceOnlySubjects,
+    analysis.primarySubject.name
+  );
   const relevantEntities = uniqueStrings([
     analysis.visualSubject,
     analysis.primarySubject.name,
-    ...analysis.secondarySubjects,
+    ...nonReferenceSecondarySubjects,
     ...analysis.relevantStudios,
   ]);
+  const franchiseRule = getFranchiseValidationRule(analysis);
+  const contextMatchCount = analysis.requiredContextTerms.filter((term) => entityMatches(text, term)).length;
+  const referenceOnlyMatch = analysis.referenceOnlySubjects.some((subject) => entityMatches(text, subject));
 
   const mentionsRelevantEntity = hasRelevantEntityMatch(text, relevantEntities);
   const relevantStudioMatch = analysis.relevantStudios.some((studio) => entityMatches(text, studio));
-  const primaryMatch = entityMatches(text, analysis.visualSubject);
+  const visualMatch = entityMatches(text, analysis.visualSubject);
+  const primaryMatch = entityMatches(text, analysis.primarySubject.name);
   const isLogo = isLogoResult(text);
   const isPoster = isPosterResult(text);
+  const looksLikeSeriesResult = containsKeyword(text, ['series', 'season', 'episode', 'tv show', 'streaming series', 'live action series']);
+  const looksLikeMovieResult = containsKeyword(text, ['movie', 'film', 'feature film', 'theatrical']);
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
 
-  if (!mentionsRelevantEntity && !relevantStudioMatch) {
+  if (!mentionsRelevantEntity && !relevantStudioMatch && contextMatchCount === 0) {
     return null;
   }
 
@@ -817,12 +1248,38 @@ function scoreImage(
     return null;
   }
 
+  if (
+    referenceOnlyMatch &&
+    !visualMatch &&
+    !entityMatches(text, analysis.primarySubject.name) &&
+    contextMatchCount === 0
+  ) {
+    return null;
+  }
+
+  if (franchiseRule?.blockedTerms && containsKeyword(text, franchiseRule.blockedTerms)) {
+    return null;
+  }
+
+  if (
+    franchiseRule &&
+    !hasRelevantEntityMatch(text, franchiseRule.requiredTerms) &&
+    !visualMatch &&
+    contextMatchCount === 0
+  ) {
+    return null;
+  }
+
   let score = 0;
 
   if (primaryMatch) {
     score += 50;
   } else if (mentionsRelevantEntity) {
     score += 28;
+  }
+
+  if (contextMatchCount > 0) {
+    score += Math.min(28, contextMatchCount * 14);
   }
 
   if (relevantStudioMatch) {
@@ -839,6 +1296,37 @@ function scoreImage(
 
   const imageType = getImageTypeScore(text, analysis);
   score += imageType.score;
+
+  if (looksOfficial) {
+    score += 10;
+  }
+
+  if (
+    analysis.requiredContextTerms.length > 0 &&
+    contextMatchCount === 0 &&
+    (analysis.contextProject || analysis.relevantStudios.length > 0)
+  ) {
+    score -= 55;
+  }
+
+  if (referenceOnlyMatch) {
+    score -= 45;
+  }
+
+  if (
+    containsKeyword(text, COMIC_ART_KEYWORDS) &&
+    (analysis.contextProject || analysis.relevantStudios.length > 0 || analysis.primarySubject.type === 'character')
+  ) {
+    score -= 55;
+  }
+
+  if (analysis.targetFormat === 'movie' && looksLikeSeriesResult && !looksLikeMovieResult) {
+    score -= 50;
+  }
+
+  if (analysis.targetFormat === 'series' && looksLikeMovieResult && !looksLikeSeriesResult) {
+    score -= 40;
+  }
 
   if (analysis.imageIntent !== 'poster' && isPoster) {
     score -= 30;
@@ -920,8 +1408,13 @@ export async function resolveRelevantRSSImages(
     }
   }
 
-  const selected = Array.from(scoredByUrl.values())
-    .sort((left, right) => right.score - left.score)
+  const sortedSelections = Array.from(scoredByUrl.values())
+    .sort((left, right) => right.score - left.score);
+  const scoreThreshold = fallbackImages.length > 0
+    ? MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK
+    : MIN_CONFIDENT_SERPER_SCORE;
+  const confidentSelections = sortedSelections
+    .filter((item) => item.score >= scoreThreshold)
     .slice(0, limit)
     .map((item) => ({
       url: item.image.imageUrl!,
@@ -930,14 +1423,25 @@ export async function resolveRelevantRSSImages(
       score: item.score,
     }));
 
-  if (selected.length >= limit) {
-    return selected;
+  if (confidentSelections.length >= limit) {
+    return confidentSelections;
   }
 
   const fallback = buildFeedFallbackImages(
-    fallbackImages.filter((url) => !selected.some((image) => image.url === url)),
-    limit - selected.length
+    fallbackImages.filter((url) => !confidentSelections.some((image) => image.url === url)),
+    limit - confidentSelections.length
   );
 
-  return [...selected, ...fallback].slice(0, limit);
+  if (fallback.length > 0) {
+    return [...confidentSelections, ...fallback].slice(0, limit);
+  }
+
+  return sortedSelections
+    .slice(0, limit)
+    .map((item) => ({
+      url: item.image.imageUrl!,
+      reason: item.reason,
+      source: 'serper' as const,
+      score: item.score,
+    }));
 }

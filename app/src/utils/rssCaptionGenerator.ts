@@ -5,6 +5,7 @@
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS } from '../lib/ai/models';
 import { captionOptimizer } from '../lib/optimization';
+import { rssPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 interface RSSArticle {
   title: string;
@@ -39,7 +40,7 @@ export function getRSSCaptionSettings(settings: any): CaptionGenerationOptions {
     maxLength: settings.rssCaptionMaxLength || 280,
     prompt:
       settings.rssCaptionPrompt ||
-      'Write an engaging social caption for this RSS article without using filler language.',
+      rssPromptDefaults.rssCaptionPrompt,
   };
 }
 

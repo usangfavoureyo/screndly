@@ -11,11 +11,14 @@ import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
+import { videoStudioPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
 interface VideoStudioSettingsProps {
   onSave?: () => void;
   onBack: () => void;
 }
+
+const VIDEO_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_video_studio_prompts_v1';
 
 const VIDEO_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'systemPrompt',
@@ -188,13 +191,14 @@ Suggested Boards by Video Type:
 Output Format:
 Return only the board name, nothing else. Maximum 50 characters.
 
-Examples:
-- "Movie Reviews & Film Analysis"
-- "TV Show Reviews & Series Analysis"
-- "New Movies & TV Shows"
-- "Best Movie & TV Scenes"
+  Examples:
+  - "Movie Reviews & Film Analysis"
+  - "TV Show Reviews & Series Analysis"
+  - "New Movies & TV Shows"
+  - "Best Movie & TV Scenes"
 
-Tone: Clear, category-focused, SEO-friendly`,
+  Tone: Clear, category-focused, SEO-friendly`,
+  ...videoStudioPromptDefaults,
 };
 
 function getGlobalVideoStudioSettings(globalSettings: Record<string, any>) {
@@ -220,16 +224,23 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   useEffect(() => {
     const savedSettings = localStorage.getItem('screndly_video_studio_settings');
     const sharedSettings = initialSharedSettingsRef.current || {};
+    const shouldInjectCultureCravePrompts = !localStorage.getItem(VIDEO_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...defaultSettings, ...sharedSettings, ...parsed });
+        const nextSettings = shouldInjectCultureCravePrompts
+          ? { ...defaultSettings, ...sharedSettings, ...parsed, ...videoStudioPromptDefaults }
+          : { ...defaultSettings, ...sharedSettings, ...parsed };
+        setSettings(nextSettings);
       } catch (error) {
         console.error('Error loading Video Studio settings:', error);
         setSettings({ ...defaultSettings, ...sharedSettings });
       }
     } else {
       setSettings({ ...defaultSettings, ...sharedSettings });
+    }
+    if (shouldInjectCultureCravePrompts) {
+      localStorage.setItem(VIDEO_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
     }
     setIsLoaded(true);
   }, []);

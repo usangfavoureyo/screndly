@@ -6,6 +6,7 @@ import { publisherService } from './publisher.service';
 import { refreshAllFeeds } from './rss.service';
 import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
+import { purgeExpiredNotifications } from './notification-retention.service';
 
 // Log helper
 async function logCron(level: string, message: string, service: string = 'cron') {
@@ -403,10 +404,8 @@ export async function initCronJobs() {
                 where: { createdAt: { lt: logCutoff } }
             });
 
-            // Clean old notifications
-            const notifsDeleted = await prisma.notification.deleteMany({
-                where: { createdAt: { lt: logCutoff }, read: true }
-            });
+            // Clean expired notifications
+            const notifsDeleted = await purgeExpiredNotifications();
 
             // Clean old processed comments (Activity Retention)
             const commentsDeleted = await prisma.comment.deleteMany({
@@ -458,7 +457,7 @@ export async function initCronJobs() {
 
             await logCron(
                 'info',
-                `Cleanup completed. Deleted ${logsDeleted.count} logs, ${notifsDeleted.count} notifications, ${commentsDeleted.count} old comments, ${rssActivityDeleted} RSS activity rows, ${designStudioDeleted.count} design activity rows, ${videoStudioDeleted.count} video activity rows, and ${tmdbPublishedDeleted.count + tmdbFailedDeleted.count} TMDb activity rows.`
+                `Cleanup completed. Deleted ${logsDeleted.count} logs, ${notifsDeleted} notifications, ${commentsDeleted.count} old comments, ${rssActivityDeleted} RSS activity rows, ${designStudioDeleted.count} design activity rows, ${videoStudioDeleted.count} video activity rows, and ${tmdbPublishedDeleted.count + tmdbFailedDeleted.count} TMDb activity rows.`
             );
         } catch (error) {
             await logCron('error', `Cleanup failed: ${error}`);

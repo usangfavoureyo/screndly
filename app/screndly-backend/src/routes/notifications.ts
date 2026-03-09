@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { getActiveNotificationWhere, getExpiredNotificationWhere, purgeExpiredNotifications } from '../services/notification-retention.service';
 
 const router = Router();
 
@@ -100,7 +101,9 @@ async function buildNotificationDetail(notification: any) {
 // GET /api/notifications
 router.get('/', async (req, res) => {
     try {
+        await purgeExpiredNotifications();
         const notifications = await prisma.notification.findMany({
+            where: getActiveNotificationWhere(),
             orderBy: { createdAt: 'desc' },
             take: 50
         });
@@ -118,6 +121,22 @@ router.get('/:id/detail', async (req, res) => {
         });
 
         if (!notification) {
+            return res.status(404).json({
+                success: false,
+                error: { message: 'Notification not found' }
+            });
+        }
+
+        const isExpired = await prisma.notification.findFirst({
+            where: {
+                id: notification.id,
+                ...getExpiredNotificationWhere(),
+            },
+            select: { id: true },
+        });
+
+        if (isExpired) {
+            await prisma.notification.delete({ where: { id: notification.id } }).catch(() => undefined);
             return res.status(404).json({
                 success: false,
                 error: { message: 'Notification not found' }

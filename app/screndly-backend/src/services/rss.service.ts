@@ -637,12 +637,12 @@ function normalizeRSSDedupeValue(value?: string | null): string {
 }
 
 function getRSSItemDedupeKey(item: RSSItem): string {
-  if (item.guid && item.guid.trim()) {
-    return `guid:${normalizeRSSDedupeValue(item.guid)}`;
-  }
-
   if (item.link && item.link.trim()) {
     return `link:${normalizeRSSDedupeValue(item.link)}`;
+  }
+
+  if (item.guid && item.guid.trim()) {
+    return `guid:${normalizeRSSDedupeValue(item.guid)}`;
   }
 
   return `title:${normalizeRSSDedupeValue(item.title)}`;
@@ -1424,10 +1424,33 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         item: deserializeRSSItem(record.itemData),
       }))
       .filter((entry): entry is typeof entry & { item: RSSItem } => Boolean(entry.item));
+    const staleForwardOnlyPendingQueue = feedFilters.onlyFetchNewItems && startFromNowDate
+      ? pendingQueue.filter((entry) => entry.item.pubDate <= startFromNowDate)
+      : [];
+    if (support.feedItemsTable && staleForwardOnlyPendingQueue.length > 0) {
+      const stalePendingIds = staleForwardOnlyPendingQueue.map((entry) => entry.record.id);
+      await prisma.rSSFeedItem.updateMany({
+        where: {
+          id: { in: stalePendingIds },
+        },
+        data: {
+          status: 'filtered',
+          lastAttemptedAt: new Date(),
+          errorMessage: 'Skipped because it predates the current "Only fetch new items" start time.',
+        },
+      });
+    }
+    const activePendingQueue = staleForwardOnlyPendingQueue.length > 0
+      ? pendingQueue.filter((entry) => entry.item.pubDate > (startFromNowDate ?? new Date(0)))
+      : pendingQueue;
+    const activePendingQueueRecords = activePendingQueue.map((entry) => entry.record);
     const feedRecentActivities = recentActivities
       .filter((activity) => activity.feedId === feed.id);
+    const manualSelectionCandidates = manualLatestSelection
+      ? [...newItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      : [];
     const incomingDedupeKeys = Array.from(new Set(
-      (manualLatestSelection ? parsed.items : orderedNewItems).map((item) => getRSSItemDedupeKey(item))
+      (manualLatestSelection ? manualSelectionCandidates : orderedNewItems).map((item) => getRSSItemDedupeKey(item))
     ));
     const knownFeedItems = support.feedItemsTable && incomingDedupeKeys.length > 0
       ? await prisma.rSSFeedItem.findMany({
@@ -1442,12 +1465,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         })
       : [];
     const processedKeys = new Set<string>([
-      ...pendingQueueRecords.map((record) => record.dedupeKey),
+      ...activePendingQueueRecords.map((record) => record.dedupeKey),
       ...knownFeedItems.map((record) => record.dedupeKey),
       ...feedRecentActivities.map((activity) => getRSSActivityDedupeKey(activity)),
     ]);
     const manualRunBlockedKeys = new Set<string>([
-      ...pendingQueueRecords.map((record) => record.dedupeKey),
+      ...activePendingQueueRecords.map((record) => record.dedupeKey),
       ...knownFeedItems
         .filter((record) => record.status === 'pending' || record.status === 'published')
         .map((record) => record.dedupeKey),
@@ -1456,8 +1479,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         .map((activity) => getRSSActivityDedupeKey(activity)),
     ]);
     const latestEligibleItem = manualLatestSelection
-      ? [...parsed.items]
-          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      ? manualSelectionCandidates
           .find((item) => {
             const dedupeKey = getRSSItemDedupeKey(item);
             return !manualRunBlockedKeys.has(dedupeKey) && evaluateFeedRules(item, feedFilters).allowed;
@@ -1474,7 +1496,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     let latestCaption: string | null = null;
     let latestPublishedImageUrl: string | undefined;
 
-    for (const pendingEntry of pendingQueue) {
+    for (const pendingEntry of activePendingQueue) {
       const item = pendingEntry.item;
       latestHandledItem = item;
 

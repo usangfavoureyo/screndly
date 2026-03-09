@@ -14,10 +14,13 @@ import { toast } from "sonner";
 import { Plus } from 'lucide-react';
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
+import { tmdbPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
 interface TMDbSettingsProps {
   onSave?: () => void;
 }
+
+const TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_tmdb_prompts_v1';
 
 // TMDb Genre IDs - Official from TMDb API
 const MOVIE_GENRES = [
@@ -443,9 +446,10 @@ Guidelines:
 - Include throwback/anniversary hashtags
 - Encourage remembrance/sharing
 
-Tone: Nostalgic, celebratory, commemorative, optimized for throwback content`,
+  Tone: Nostalgic, celebratory, commemorative, optimized for throwback content`,
   anniversaryPinterestBoard: 'Movie & TV Anniversaries',
   anniversaryPinterestLinkStrategy: 'tmdb',
+  ...tmdbPromptDefaults,
 };
 
 export function TMDbSettings({ onSave }: TMDbSettingsProps) {
@@ -465,6 +469,8 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
   // Load settings from Backend + LocalStorage on mount
   useEffect(() => {
     async function load() {
+      const shouldInjectCultureCravePrompts = !localStorage.getItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
+
       // 1. Load Local (Fastest)
       let merged = { ...defaultSettings };
       const local = localStorage.getItem('screndly_tmdb_settings');
@@ -487,6 +493,10 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
         console.error('Backend settings fetch error', e);
       }
 
+      if (shouldInjectCultureCravePrompts) {
+        merged = { ...merged, ...tmdbPromptDefaults };
+        localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
+      }
       setTMDbSettings(merged as typeof defaultSettings);
       setIsLoaded(true);
     }
