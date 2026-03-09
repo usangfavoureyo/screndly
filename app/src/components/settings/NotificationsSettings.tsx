@@ -5,7 +5,6 @@ import { desktopNotifications } from '../../utils/desktopNotifications';
 import { Label } from '../ui/label';
 import {
   BottomSheet,
-  BottomSheetContent,
   BottomSheetHeader,
   BottomSheetTitle,
 } from '../ui/bottom-sheet';

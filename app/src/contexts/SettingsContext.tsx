@@ -15,6 +15,9 @@ import {
   persistThemePreference,
 } from '../lib/theme/themeStorage';
 
+const LOCAL_SETTINGS_KEY = 'screndlySettings';
+const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
+
 export interface Settings {
   // API Keys
   youtubeKey: string;
@@ -612,7 +615,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     const timer = setTimeout(async () => {
       // Always save non-sensitive settings to localStorage
       const nonSensitiveSettings = extractNonSensitiveSettings(settings);
-      localStorage.setItem('screndlySettings', JSON.stringify(nonSensitiveSettings));
+      const serialized = JSON.stringify(nonSensitiveSettings);
+      localStorage.setItem(LOCAL_SETTINGS_KEY, serialized);
+      localStorage.setItem(LEGACY_LOCAL_SETTINGS_KEY, serialized);
 
       // Save sensitive settings to backend if available
       if (backendAvailable) {

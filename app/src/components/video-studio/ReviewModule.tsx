@@ -1,8 +1,8 @@
 import React from 'react';
 import { Button } from '../ui/button';
-import { Upload, X, AlertCircle, Film, Play, Pause, Volume2, VolumeX, Maximize, RefreshCw, Copy, ChevronUp, ChevronDown, CheckCircle, Clock } from 'lucide-react';
+import { Upload, X, AlertCircle, Film, Play, Pause, Volume2, VolumeX, Maximize, ChevronUp, ChevronDown, CheckCircle, Clock } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
-import { MusicGenre, AspectRatio, VideoTitleData, AudioFile, DetectedTitle, PromptStatus, musicGenres, aspectRatios, VideoFitMode } from './types';
+import { MusicGenre, AspectRatio, VideoTitleData, AudioFile, DetectedTitle, PromptStatus, musicGenres, aspectRatios } from './types';
 import { AutoAssignTitlesDialog } from '../AutoAssignTitlesDialog';
 import { LetterboxControl } from '../LetterboxControl';
 

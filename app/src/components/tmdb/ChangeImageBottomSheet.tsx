@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, Upload, Loader2, X } from 'lucide-react';
+import { Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Label } from '../ui/label';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import {

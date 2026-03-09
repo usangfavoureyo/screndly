@@ -4,6 +4,7 @@
 // Real-time communication for job status updates, notifications, and events
 
 import { WebSocketEvent, JobStatusUpdateEvent, UploadProgressEvent } from './types';
+import { getToken } from './authToken';
 
 export type WebSocketEventHandler = (event: WebSocketEvent) => void;
 
@@ -35,7 +36,7 @@ export class WebSocketClient {
           this.reconnectDelay = 1000;
           
           // Authenticate if token exists
-          const token = localStorage.getItem('auth_token');
+          const token = getToken();
           if (token) {
             this.send({ type: 'auth', payload: { token } });
           }

@@ -15,11 +15,12 @@ if (typeof window !== 'undefined') {
   }
 
   const originalSetItem = localStorage.setItem;
-  localStorage.setItem = function (key, value) {
+  localStorage.setItem = function (...args: [string, string]) {
+    const [key, value] = args;
     if (key === TOKEN_KEY && (value === 'null' || value === 'undefined' || value === '[object Object]' || !value)) {
       return;
     }
-    return originalSetItem.apply(this, arguments as any);
+    return originalSetItem.apply(this, args);
   };
 }
 

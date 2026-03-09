@@ -7,6 +7,9 @@ import type { Settings } from '../../contexts/SettingsContext';
 
 import { getApiUrl } from './config';
 
+const LOCAL_SETTINGS_KEY = 'screndlySettings';
+const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
+
 /**
  * Sensitive settings that should ONLY be stored on backend
  * and should never be returned to the client unmasked.
@@ -297,7 +300,9 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
     if (Object.keys(nonSensitiveSettings).length > 0) {
       const existing = getLocalSettings();
       const updated = { ...existing, ...nonSensitiveSettings };
-      localStorage.setItem('screndlySettings', JSON.stringify(updated));
+      const serialized = JSON.stringify(updated);
+      localStorage.setItem(LOCAL_SETTINGS_KEY, serialized);
+      localStorage.setItem(LEGACY_LOCAL_SETTINGS_KEY, serialized);
     }
 
     return { success: true };
@@ -338,13 +343,15 @@ export async function deleteSettings(): Promise<SettingsApiResponse> {
     }
 
     // Always clear localStorage
-    localStorage.removeItem('screndlySettings');
+    localStorage.removeItem(LOCAL_SETTINGS_KEY);
+    localStorage.removeItem(LEGACY_LOCAL_SETTINGS_KEY);
 
     return { success: true };
   } catch (error: any) {
     console.error('[Settings API] Failed to delete settings:', error);
     // Even if backend fails, clear localStorage
-    localStorage.removeItem('screndlySettings');
+    localStorage.removeItem(LOCAL_SETTINGS_KEY);
+    localStorage.removeItem(LEGACY_LOCAL_SETTINGS_KEY);
     return { success: true };
   }
 }
@@ -399,7 +406,9 @@ function extractNonSensitiveSettings(settings: Partial<Settings>): Partial<Setti
  */
 function getLocalSettings(): Partial<Settings> {
   try {
-    const saved = localStorage.getItem('screndlySettings');
+    const saved =
+      localStorage.getItem(LOCAL_SETTINGS_KEY) ??
+      localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
     return saved ? JSON.parse(saved) : {};
   } catch {
     return {};

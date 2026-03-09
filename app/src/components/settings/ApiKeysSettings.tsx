@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { haptics } from '../../utils/haptics';
+import { clearAuth, getToken, setToken } from '../../lib/api/authToken';
 
 interface ApiKeysSettingsProps {
   settings: any;
@@ -9,6 +11,12 @@ interface ApiKeysSettingsProps {
 }
 
 export function ApiKeysSettings({ settings, updateSetting, onBack }: ApiKeysSettingsProps) {
+  const [authToken, setAuthToken] = useState('');
+
+  useEffect(() => {
+    setAuthToken(getToken() || '');
+  }, []);
+
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
       {/* Header */}
@@ -33,34 +41,19 @@ export function ApiKeysSettings({ settings, updateSetting, onBack }: ApiKeysSett
           <Label className="text-gray-600 dark:text-[#9CA3AF]">Admin Secret (Required for Posting)</Label>
           <Input
             type="password"
-            value={localStorage.getItem('auth_token') || ''}
+            value={authToken}
             onFocus={() => haptics.light()}
             onChange={(e) => {
               haptics.light();
-              localStorage.setItem('auth_token', e.target.value);
-              // Force re-render not strictly necessary as this is direct localStorage, 
-              // but typically we'd use state. For now, this is a quick fix.
-              // Ideally, we should add this to the settings context or local state.
-              // Let's use a local state to drive the input value if we were rewriting,
-              // but reading from localStorage directly in value prop is risky if no re-render.
-              // Better to use the updateSetting mechanism if we had a field for it, 
-              // but 'auth_token' is special. 
-              // Let's rely on the user typing to update the DOM input naturally, 
-              // and the onChange to save it. 
-              // Actually, to make it reactive, we should probably add a local state in this component.
+              const nextValue = e.target.value;
+              setAuthToken(nextValue);
+
+              if (nextValue.trim()) {
+                setToken(nextValue.trim(), true);
+              } else {
+                clearAuth();
+              }
             }}
-            // To ensure the UI updates, we should probably wrap this component or use state.
-            // However, since I can't easily add state without replacing the whole file,
-            // I'll stick to a simple Input that updates localStorage.
-            // Wait, if I set value={localStorage...}, it won't update on change unless I force update.
-            // I will change my strategy: I'll use the 'settings' object to store a dummy value or 
-            // just add a simple uncontrolled input or handling it differently.
-            // A better approach for this file:
-            // Just add the UI structure. I'll need to use `defaultValue` instead of `value` 
-            // if I want it to be editable without state control, OR I will assume the user 
-            // re-opens the panel. 
-            // Let's use `defaultValue` to avoid locking the input.
-            defaultValue={localStorage.getItem('auth_token') || ''}
             placeholder="Enter your ADMIN_SECRET"
             className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 border-[#ec1e24] focus:ring-[#ec1e24]"
           />
