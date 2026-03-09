@@ -57,10 +57,18 @@ interface FeedCardProps {
   onRunNow: (feedId: string) => Promise<void>;
 }
 
-function formatTimestamp(value?: string): string {
+function formatRelativeTimestamp(value?: string): string {
   if (!value) return 'Never';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
+  return formatDistanceToNow(date, { addSuffix: true });
+}
+
+function formatNextRunTimestamp(value?: string): string {
+  if (!value) return 'Not scheduled';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  if (date.getTime() <= Date.now()) return 'Due now';
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
@@ -75,6 +83,7 @@ export function FeedCard({
 }: FeedCardProps) {
   const [isRefreshRunning, setIsRefreshRunning] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
+  const [, setTimeTick] = useState(0);
   const touchSwipeEnabled = true;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -87,6 +96,16 @@ export function FeedCard({
   const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
   const isSwipingRef = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setTimeTick((tick) => tick + 1);
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     if (!touchSwipeEnabled) {
@@ -279,11 +298,11 @@ export function FeedCard({
         <div className="space-y-1.5 mb-4 text-sm">
           <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF] gap-3">
             <span>Next run:</span>
-            <span className="text-right">{formatTimestamp(feed.nextRunAt)}</span>
+            <span className="text-right">{feed.enabled ? formatNextRunTimestamp(feed.nextRunAt) : 'Paused'}</span>
           </div>
           <div className="flex items-center justify-between text-[#6B7280] dark:text-[#9CA3AF] gap-3">
-            <span>Last item:</span>
-            <span className="text-right">{formatTimestamp(feed.lastProcessedAt)}</span>
+            <span>Last fetch:</span>
+            <span className="text-right">{formatRelativeTimestamp(feed.lastProcessedAt)}</span>
           </div>
         </div>
 

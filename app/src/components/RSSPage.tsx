@@ -32,6 +32,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     refreshAllFeeds,
     previewFeedPipeline,
     getActivity,
+    refetch,
   } = useRSSFeeds();
 
   const [selectedFeed, setSelectedFeed] = useState<Feed | null>(null);
@@ -76,6 +77,17 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   useEffect(() => {
     loadActivity();
   }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refetch();
+      void loadActivity();
+    }, 30000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [refetch]);
 
   const stats = useMemo(() => {
     const today = new Date();
