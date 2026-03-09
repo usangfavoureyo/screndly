@@ -195,6 +195,7 @@ const RSS_SETTINGS_KEYS = [
 type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
   trickle: boolean;
+  feedItemsTable: boolean;
 };
 
 let rssFeedColumnSupportPromise: Promise<RSSFeedColumnSupport> | null = null;
@@ -214,6 +215,12 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
   if (!rssFeedColumnSupportPromise) {
     rssFeedColumnSupportPromise = (async () => {
       try {
+        const tables = await prisma.$queryRaw<Array<{ table_name: string }>>`
+          SELECT table_name
+          FROM information_schema.tables
+          WHERE table_schema = current_schema()
+            AND table_name IN ('RSSFeedItem')
+        `;
         const columns = await prisma.$queryRaw<Array<{ column_name: string }>>`
           SELECT column_name
           FROM information_schema.columns
@@ -222,16 +229,19 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
             AND column_name IN ('platformImageCounts', 'trickle')
         `;
 
+        const tableNames = new Set(tables.map((table) => table.table_name));
         const columnNames = new Set(columns.map((column) => column.column_name));
         return {
           platformImageCounts: columnNames.has('platformImageCounts'),
           trickle: columnNames.has('trickle'),
+          feedItemsTable: tableNames.has('RSSFeedItem'),
         };
       } catch (error) {
         console.warn('[RSS] Failed to inspect RSSFeed columns. Assuming latest schema.', error);
         return {
           platformImageCounts: true,
           trickle: true,
+          feedItemsTable: true,
         };
       }
     })();
@@ -683,6 +693,11 @@ async function upsertRSSFeedItem(
     firstSeenAt?: Date;
   }
 ): Promise<void> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    return;
+  }
+
   const dedupeKey = getRSSItemDedupeKey(item);
   const now = new Date();
 
@@ -1387,13 +1402,16 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
-    const pendingQueueRecords = await prisma.rSSFeedItem.findMany({
-      where: {
-        feedId: feed.id,
-        status: 'pending',
-      },
-      orderBy: { firstSeenAt: 'asc' },
-    });
+    const support = await getRSSFeedColumnSupport();
+    const pendingQueueRecords = support.feedItemsTable
+      ? await prisma.rSSFeedItem.findMany({
+          where: {
+            feedId: feed.id,
+            status: 'pending',
+          },
+          orderBy: { firstSeenAt: 'asc' },
+        })
+      : [];
     const pendingQueue = pendingQueueRecords
       .map((record) => ({
         record,
@@ -1401,7 +1419,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       }))
       .filter((entry): entry is typeof entry & { item: RSSItem } => Boolean(entry.item));
     const incomingDedupeKeys = Array.from(new Set(itemsToProcess.map((item) => getRSSItemDedupeKey(item))));
-    const knownFeedItems = incomingDedupeKeys.length > 0
+    const knownFeedItems = support.feedItemsTable && incomingDedupeKeys.length > 0
       ? await prisma.rSSFeedItem.findMany({
           where: {
             feedId: feed.id,
@@ -1448,16 +1466,18 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         publishedCount += 1;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
-        await prisma.rSSFeedItem.update({
-          where: { id: pendingEntry.record.id },
-          data: {
-            status: 'published',
-            lastAttemptedAt: new Date(),
-            publishedAt: item.pubDate,
-            errorMessage: null,
-            itemData: serializeRSSItem(item),
-          },
-        });
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'published',
+              lastAttemptedAt: new Date(),
+              publishedAt: item.pubDate,
+              errorMessage: null,
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
         const publishedMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1476,15 +1496,17 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       }
 
       failedCount += 1;
-      await prisma.rSSFeedItem.update({
-        where: { id: pendingEntry.record.id },
-        data: {
-          status: 'failed',
-          lastAttemptedAt: new Date(),
-          errorMessage: publishAttempt.errorMessage,
-          itemData: serializeRSSItem(item),
-        },
-      });
+      if (support.feedItemsTable) {
+        await prisma.rSSFeedItem.update({
+          where: { id: pendingEntry.record.id },
+          data: {
+            status: 'failed',
+            lastAttemptedAt: new Date(),
+            errorMessage: publishAttempt.errorMessage,
+            itemData: serializeRSSItem(item),
+          },
+        });
+      }
       const failedMetadata: RSSActivityMetadata = {
         category: RSS_ACTIVITY_CATEGORY,
         feedId: feed.id,
