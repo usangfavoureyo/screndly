@@ -181,6 +181,7 @@ export interface Settings {
   rssPinterestLinkStrategy?: string;
   rssPinterestDefaultLink?: string;
   rssActivityRetention?: number;
+  videoActivityRetention?: number;
 
   // TMDb
   tmdbCaptionModel?: string;
@@ -468,6 +469,7 @@ Guidelines:
     rssCaptionTone: 'Engaging',
     rssCaptionMaxLength: 280,
     rssActivityRetention: 24,
+    videoActivityRetention: 24,
     designStudioActivityRetention: 24,
     designStudioLogLevel: 'standard',
     videoStudioActivityRetention: 24,

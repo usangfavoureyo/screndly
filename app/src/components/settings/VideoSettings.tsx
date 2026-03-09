@@ -1126,7 +1126,7 @@ Tone: Clean poster presentation`}
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Automatically remove published and failed video activity items after a specified time period
+              Hide older YouTube detection items in the Video Activity page after a specified time period
             </p>
           </div>
 
@@ -1139,12 +1139,12 @@ Tone: Clean poster presentation`}
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
-                updateSetting('videoActivityRetention', parseInt(e.target.value));
+                updateSetting('videoActivityRetention', parseInt(e.target.value, 10) || 24);
               }}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Published and failed video activity items will be automatically removed after this time period (Default: 24 hours)
+              Older YouTube detection items will be hidden in the Video Activity page after this time period (Default: 24 hours)
             </p>
           </div>
         </div>

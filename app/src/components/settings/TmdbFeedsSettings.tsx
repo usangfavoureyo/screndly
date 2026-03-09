@@ -100,35 +100,41 @@ export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
         <div className="border-t border-gray-200 dark:border-[#333333]" />
 
         <Card className="p-6 border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] space-y-4">
-          <div>
-            <h3 className="text-gray-900 dark:text-white mb-1">TMDb Backend</h3>
-            <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              {statusMessage}
-            </p>
-            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-2">
-              This only checks backend TMDb access and lets you trigger a manual refresh. The actual feed generation schedule is shown below.
-            </p>
-          </div>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <div>
+                <h3 className="text-gray-900 dark:text-white mb-1">Manual Refresh</h3>
+                <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                  Use this when you want to pull the latest TMDb feed immediately. Regular feed refreshes already run automatically on the schedule below.
+                </p>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                {statusMessage}
+              </p>
+            </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <span
-              className={`inline-flex items-center rounded-full px-3 py-1 text-xs ${
-                isConfigured
-                  ? 'bg-[#10B981] text-white'
-                  : 'bg-gray-200 dark:bg-[#111111] text-gray-700 dark:text-[#9CA3AF]'
-              }`}
-            >
-              {isConfigured ? 'Configured' : 'Not configured'}
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs ${
+                  isConfigured === null
+                    ? 'bg-gray-200 dark:bg-[#111111] text-gray-700 dark:text-[#9CA3AF]'
+                    : isConfigured
+                      ? 'bg-[#10B981] text-white'
+                      : 'bg-gray-200 dark:bg-[#111111] text-gray-700 dark:text-[#9CA3AF]'
+                }`}
+              >
+                {isConfigured === null ? 'Checking connection' : isConfigured ? 'Configured' : 'Not configured'}
+              </span>
 
-            <Button
-              onClick={() => void handleRefreshNow()}
-              disabled={isRefreshing || isConfigured === false}
-              className="bg-[#ec1e24] hover:bg-[#ec1e24]/90 text-white"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-              Sync TMDb Now
-            </Button>
+              <Button
+                onClick={() => void handleRefreshNow()}
+                disabled={isRefreshing || isConfigured === false}
+                className="bg-[#ec1e24] hover:bg-[#ec1e24]/90 text-white"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                Sync TMDb Now
+              </Button>
+            </div>
           </div>
         </Card>
 

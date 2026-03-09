@@ -787,7 +787,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
           <div>
             <h3 className="text-gray-900 dark:text-white">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Hide older video generation activity items after a specified time period
+              Hide older video generation activity items in the page and remove completed or failed rows during backend cleanup after a specified time period
             </p>
           </div>
 
@@ -800,12 +800,12 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
-                updateGlobalSetting('videoStudioActivityRetention', parseInt(e.target.value));
+                updateGlobalSetting('videoStudioActivityRetention', parseInt(e.target.value, 10) || 24);
               }}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Older video generation items will be hidden in the Video Studio activity page after this time period (Default: 24 hours)
+              Completed and failed video generation items are hidden in the Video Studio activity page immediately and removed during backend cleanup after this time period (Default: 24 hours)
             </p>
           </div>
 

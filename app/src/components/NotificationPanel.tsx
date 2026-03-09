@@ -129,6 +129,16 @@ export function NotificationPanel({
   const [detail, setDetail] = useState<NotificationDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter((notification) => {
+        if (filterSource && notification.source !== filterSource) return false;
+        if (filterType && notification.type !== filterType) return false;
+        return true;
+      }),
+    [filterSource, filterType, notifications]
+  );
+  const selection = useBulkSelection(filteredNotifications.map((notification) => notification.id));
 
   useEffect(() => {
     if (!isOpen) {
@@ -140,17 +150,6 @@ export function NotificationPanel({
       selection.clearSelection();
     }
   }, [isOpen, selection.clearSelection]);
-
-  const filteredNotifications = useMemo(
-    () =>
-      notifications.filter((notification) => {
-        if (filterSource && notification.source !== filterSource) return false;
-        if (filterType && notification.type !== filterType) return false;
-        return true;
-      }),
-    [filterSource, filterType, notifications]
-  );
-  const selection = useBulkSelection(filteredNotifications.map((notification) => notification.id));
 
   const unreadCount = filteredNotifications.filter((n) => !n.read).length;
   const sources = Array.from(new Set(notifications.map((n) => n.source).filter(Boolean)));

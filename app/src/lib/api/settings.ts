@@ -79,6 +79,7 @@ const SENSITIVE_KEYS = [
   'rssPinterestLinkStrategy',
   'rssPinterestDefaultLink',
   'rssActivityRetention',
+  'videoActivityRetention',
   'rssLogLevel',
   'designStudioActivityRetention',
   'designStudioLogLevel',

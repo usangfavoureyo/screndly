@@ -751,7 +751,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
           <div>
             <h3 className="text-gray-900 dark:text-white">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Hide older design activity items after a specified time period
+              Hide older design activity items in the page and remove them during backend cleanup after a specified time period
             </p>
           </div>
 
@@ -764,12 +764,12 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
-                updateGlobalSetting('designStudioActivityRetention', parseInt(e.target.value));
+                updateGlobalSetting('designStudioActivityRetention', parseInt(e.target.value, 10) || 24);
               }}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Older design activity items will be hidden in the Design Studio activity page after this time period (Default: 24 hours)
+              Older design activity items are hidden in the Design Studio activity page immediately and removed during backend cleanup after this time period (Default: 24 hours)
             </p>
           </div>
 
