@@ -219,8 +219,8 @@ export async function initCronJobs() {
         }
     }, cronOptions);
 
-    // RSS Feed Refresh - Every 5 minutes (Master Tick)
-    cron.schedule('*/5 * * * *', async () => {
+    // RSS Feed Refresh - Every minute (master tick for per-feed intervals)
+    cron.schedule('* * * * *', async () => {
         try {
             const result = await refreshAllFeeds(true);
 

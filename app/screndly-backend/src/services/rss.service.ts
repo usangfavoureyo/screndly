@@ -173,6 +173,7 @@ interface RSSRuntimeSettings {
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
 const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
@@ -1360,10 +1361,14 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     const feedFilters = ensureFeedFilters(feed.filters as unknown as RSSFeedFilters);
     const startFromNowDate = parseFilterTimestamp(feedFilters.startFromNowAt);
     const effectiveCutoffDate = (() => {
-      if (feed.lastProcessedAt && startFromNowDate) {
-        return feed.lastProcessedAt > startFromNowDate ? feed.lastProcessedAt : startFromNowDate;
+      const bufferedLastProcessedAt = feed.lastProcessedAt
+        ? new Date(feed.lastProcessedAt.getTime() - RSS_ITEM_RECHECK_BUFFER_MS)
+        : null;
+
+      if (bufferedLastProcessedAt && startFromNowDate) {
+        return bufferedLastProcessedAt > startFromNowDate ? bufferedLastProcessedAt : startFromNowDate;
       }
-      if (feed.lastProcessedAt) return feed.lastProcessedAt;
+      if (bufferedLastProcessedAt) return bufferedLastProcessedAt;
       if (startFromNowDate) return startFromNowDate;
       return new Date(Date.now() - DEFAULT_ITEM_LOOKBACK_MS);
     })();
