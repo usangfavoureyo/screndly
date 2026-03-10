@@ -40,8 +40,12 @@ interface PublishConfig {
   liveWarning: string;
   requiresTitle?: boolean;
   requiresText?: boolean;
-  requiresImageUrl?: boolean;
-  requiresVideoUrl?: boolean;
+  requiresAnyImage?: boolean;
+  requiresAnyVideo?: boolean;
+  requiresAnyMedia?: boolean;
+  supportsImageUrl?: boolean;
+  supportsImageFile?: boolean;
+  supportsVideoUrl?: boolean;
   supportsVideoFile?: boolean;
   supportsLink?: boolean;
   textLabel: string;
@@ -50,10 +54,14 @@ interface PublishConfig {
 const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
   Instagram: {
     title: 'Test Instagram Publish',
-    description: 'Create a live Instagram post using your connected business account.',
-    liveWarning: 'Instagram test publishing creates a real post and needs a public image URL.',
+    description: 'Create a live Instagram post or reel using your connected business account.',
+    liveWarning: 'Instagram test publishing creates a real post. You can use a public image URL, public video URL, or upload an image/video file.',
     requiresText: true,
-    requiresImageUrl: true,
+    requiresAnyMedia: true,
+    supportsImageUrl: true,
+    supportsImageFile: true,
+    supportsVideoUrl: true,
+    supportsVideoFile: true,
     textLabel: 'Caption',
   },
   Facebook: {
@@ -61,6 +69,10 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
     description: 'Create a live post on your connected Facebook Page.',
     liveWarning: 'Facebook test publishing creates a real page post.',
     requiresText: true,
+    supportsImageUrl: true,
+    supportsImageFile: true,
+    supportsVideoUrl: true,
+    supportsVideoFile: true,
     supportsLink: true,
     textLabel: 'Message',
   },
@@ -69,7 +81,10 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
     description: 'Create a live Threads post from the Platforms page.',
     liveWarning: 'Threads test publishing creates a real post.',
     requiresText: true,
-    requiresImageUrl: false,
+    supportsImageUrl: true,
+    supportsImageFile: true,
+    supportsVideoUrl: true,
+    supportsVideoFile: true,
     textLabel: 'Post text',
   },
   TikTok: {
@@ -77,15 +92,20 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
     description: 'Send a live TikTok video post using a video file or public video URL.',
     liveWarning: 'TikTok test publishing creates a real post. File upload is recommended because public URLs can fail if Screndly cannot fetch the video file.',
     requiresTitle: true,
-    requiresVideoUrl: true,
+    requiresAnyVideo: true,
+    supportsVideoUrl: true,
     supportsVideoFile: true,
     textLabel: 'Caption',
   },
   X: {
     title: 'Test X Publish',
-    description: 'Post a live text update to your connected X account.',
+    description: 'Post a live update to your connected X account with optional image or video media.',
     liveWarning: 'X test publishing creates a real post.',
     requiresText: true,
+    supportsImageUrl: true,
+    supportsImageFile: true,
+    supportsVideoUrl: true,
+    supportsVideoFile: true,
     textLabel: 'Post text',
   },
   YouTube: {
@@ -93,16 +113,21 @@ const PLATFORM_CONFIG: Record<PlatformType, PublishConfig> = {
     description: 'Upload a live YouTube video from a video file or public video URL.',
     liveWarning: 'YouTube test publishing uploads a real video and defaults it to private.',
     requiresTitle: true,
-    requiresVideoUrl: true,
+    requiresAnyVideo: true,
+    supportsVideoUrl: true,
     supportsVideoFile: true,
     textLabel: 'Description',
   },
   Pinterest: {
     title: 'Test Pinterest Publish',
-    description: 'Create a live pin on your connected Pinterest board.',
-    liveWarning: 'Pinterest test publishing creates a real pin and needs a public image URL.',
+    description: 'Create a live pin on your connected Pinterest board using an image or video.',
+    liveWarning: 'Pinterest test publishing creates a real pin. You can use a public image URL, public video URL, or upload an image/video file.',
     requiresTitle: true,
-    requiresImageUrl: true,
+    requiresAnyMedia: true,
+    supportsImageUrl: true,
+    supportsImageFile: true,
+    supportsVideoUrl: true,
+    supportsVideoFile: true,
     supportsLink: true,
     textLabel: 'Description',
   },
@@ -125,6 +150,18 @@ export function PlatformTestPublishModal({
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const displayError = lastError ? formatPublishError(platform, lastError) : null;
+  const supportsImageInput = Boolean(config.supportsImageUrl || config.supportsImageFile);
+  const supportsVideoInput = Boolean(config.supportsVideoUrl || config.supportsVideoFile);
+  const supportsMediaFile = Boolean(config.supportsImageFile || config.supportsVideoFile);
+  const fileAccept = [
+    config.supportsImageFile ? 'image/*' : null,
+    config.supportsVideoFile ? 'video/*' : null,
+  ].filter(Boolean).join(',');
+  const mediaFileKind = mediaFile?.type.startsWith('video/')
+    ? 'video'
+    : mediaFile?.type.startsWith('image/')
+      ? 'image'
+      : null;
 
   useEffect(() => {
     if (!isOpen) {
@@ -159,14 +196,26 @@ export function PlatformTestPublishModal({
       return `${config.textLabel} is required.`;
     }
 
-    if (config.requiresImageUrl && !imageUrl.trim()) {
-      return 'A public image URL is required.';
+    const hasImageSource = Boolean(imageUrl.trim()) || mediaFileKind === 'image';
+    const hasVideoSource = Boolean(videoUrl.trim()) || mediaFileKind === 'video';
+
+    if (config.requiresAnyImage && !hasImageSource) {
+      return config.supportsImageFile
+        ? 'An image file or public image URL is required.'
+        : 'A public image URL is required.';
     }
 
-    if (config.requiresVideoUrl && !videoUrl.trim() && !mediaFile) {
+    if (config.requiresAnyVideo && !hasVideoSource) {
       return config.supportsVideoFile
         ? 'A video file or public video URL is required.'
         : 'A public video URL is required.';
+    }
+
+    if (config.requiresAnyMedia && !hasImageSource && !hasVideoSource) {
+      if (config.supportsImageFile || config.supportsVideoFile) {
+        return 'Add an image or video URL, or upload a media file.';
+      }
+      return 'Add an image or video URL.';
     }
 
     return null;
@@ -266,7 +315,7 @@ export function PlatformTestPublishModal({
           </div>
         )}
 
-        {config.requiresImageUrl && (
+        {supportsImageInput && (
           <div className="space-y-2">
             <label className="text-sm text-gray-900 dark:text-white">Public image URL</label>
             <Input
@@ -274,10 +323,15 @@ export function PlatformTestPublishModal({
               onChange={(event) => setImageUrl(event.target.value)}
               placeholder="https://example.com/image.jpg"
             />
+            {platform === 'Instagram' && (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Screndly will normalize uploaded and remote images before sending them to Instagram.
+              </p>
+            )}
           </div>
         )}
 
-        {config.requiresVideoUrl && (
+        {supportsVideoInput && (
           <div className="space-y-2">
             <label className="text-sm text-gray-900 dark:text-white">Public video URL</label>
             <Input
@@ -293,20 +347,41 @@ export function PlatformTestPublishModal({
           </div>
         )}
 
-        {config.supportsVideoFile && (
+        {supportsMediaFile && (
           <div className="space-y-2">
-            <label className="text-sm text-gray-900 dark:text-white">Video file</label>
+            <label className="text-sm text-gray-900 dark:text-white">
+              {config.supportsImageFile && config.supportsVideoFile
+                ? 'Image or video file'
+                : config.supportsImageFile
+                  ? 'Image file'
+                  : 'Video file'}
+            </label>
             <Input
               type="file"
-              accept="video/*"
-              onChange={(event) => setMediaFile(event.target.files?.[0] || null)}
+              accept={fileAccept || undefined}
+              onChange={(event) => {
+                const nextFile = event.target.files?.[0] || null;
+                setMediaFile(nextFile);
+                if (nextFile?.type.startsWith('image/')) {
+                  setImageUrl('');
+                  setVideoUrl('');
+                } else if (nextFile?.type.startsWith('video/')) {
+                  setVideoUrl('');
+                  setImageUrl('');
+                }
+              }}
             />
             {mediaFile && (
               <p className="break-all text-xs text-[#6B7280] dark:text-[#9CA3AF]">{mediaFile.name}</p>
             )}
-            {platform === 'TikTok' && (
+            {config.supportsImageFile && config.supportsVideoFile && (
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Preferred for TikTok. It avoids TikTok URL ownership verification checks.
+                If both image and video are provided, the video path is used first.
+              </p>
+            )}
+            {(platform === 'TikTok' || platform === 'YouTube') && (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Preferred for video platforms. File upload avoids remote URL fetch and ownership issues.
               </p>
             )}
           </div>
