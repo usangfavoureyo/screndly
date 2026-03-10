@@ -12,6 +12,10 @@ type MetaPostResult =
     | { success: true; data: { id: string; platform: string } }
     | { success: false; error: string };
 
+const FORM_URL_ENCODED_HEADERS = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+};
+
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -24,6 +28,11 @@ function extractMetaError(error: any): string {
         || error?.message
         || 'Meta API request failed'
     );
+}
+
+function buildInstagramProfileUrl(username?: string | null): string | undefined {
+    if (!username) return undefined;
+    return `https://www.instagram.com/${String(username).replace(/^@/, '')}`;
 }
 
 function getMimeType(filePath: string): string {
@@ -39,6 +48,93 @@ function getMimeType(filePath: string): string {
         default:
             return 'application/octet-stream';
     }
+}
+
+function normalizeImageSources(imageSources?: string | string[] | null): string[] {
+    if (!imageSources) {
+        return [];
+    }
+
+    const sources = Array.isArray(imageSources) ? imageSources : [imageSources];
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+
+    for (const source of sources) {
+        if (typeof source !== 'string') continue;
+        const trimmed = source.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        normalized.push(trimmed);
+    }
+
+    return normalized;
+}
+
+async function createThreadsContainer(userId: string, payload: URLSearchParams): Promise<string> {
+    const containerRes = await axios.post(
+        `${THREADS_BASE_URL}/${userId}/threads`,
+        payload.toString(),
+        {
+            headers: FORM_URL_ENCODED_HEADERS,
+        }
+    );
+
+    if (!containerRes.data.id) {
+        throw new Error('Failed to create Threads media container');
+    }
+
+    return String(containerRes.data.id);
+}
+
+async function publishThreadsContainer(
+    userId: string,
+    creationId: string,
+    accessToken: string
+): Promise<string> {
+    const publishPayload = new URLSearchParams({
+        creation_id: creationId,
+        access_token: accessToken,
+    });
+
+    const publishRes = await axios.post(
+        `${THREADS_BASE_URL}/${userId}/threads_publish`,
+        publishPayload.toString(),
+        {
+            headers: FORM_URL_ENCODED_HEADERS,
+        }
+    );
+
+    if (!publishRes.data.id) {
+        throw new Error('Failed to publish Threads media container');
+    }
+
+    return String(publishRes.data.id);
+}
+
+async function uploadUnpublishedFacebookPhoto(
+    pageId: string,
+    imageUrl: string,
+    accessToken: string
+): Promise<string> {
+    const payload = new URLSearchParams({
+        url: imageUrl,
+        published: 'false',
+        access_token: accessToken,
+    });
+
+    const response = await axios.post(
+        `${BASE_URL}/${pageId}/photos`,
+        payload.toString(),
+        {
+            headers: FORM_URL_ENCODED_HEADERS,
+        }
+    );
+
+    if (!response.data?.id) {
+        throw new Error('Failed to upload Facebook photo');
+    }
+
+    return String(response.data.id);
 }
 
 async function waitForInstagramMediaReady(containerId: string, accessToken: string): Promise<void> {
@@ -105,28 +201,62 @@ export const metaService = {
     async postToFacebook(
         pageId: string,
         message: string,
-        imageUrl: string | null,
+        imageSources: string | string[] | null,
         accessToken: string,
         link?: string
     ) {
         try {
-            let endpoint = `/${pageId}/feed`;
-            const payload: any = {
-                message,
-                access_token: accessToken,
-            };
+            const imageUrls = normalizeImageSources(imageSources);
 
-            if (imageUrl) {
-                endpoint = `/${pageId}/photos`;
-                payload.url = imageUrl;
-                // Facebook photos endpoint uses 'caption' instead of 'message'
-                payload.caption = message;
-                delete payload.message;
-            } else if (link) {
-                payload.link = link;
+            if (imageUrls.length > 1) {
+                const photoIds = await Promise.all(
+                    imageUrls.map((imageUrl) => uploadUnpublishedFacebookPhoto(pageId, imageUrl, accessToken))
+                );
+
+                const feedPayload = new URLSearchParams({
+                    message,
+                    access_token: accessToken,
+                });
+
+                photoIds.forEach((photoId, index) => {
+                    feedPayload.append(`attached_media[${index}]`, JSON.stringify({ media_fbid: photoId }));
+                });
+
+                const response = await axios.post(
+                    `${BASE_URL}/${pageId}/feed`,
+                    feedPayload.toString(),
+                    {
+                        headers: FORM_URL_ENCODED_HEADERS,
+                    }
+                );
+
+                return {
+                    success: true,
+                    data: {
+                        id: response.data.id,
+                        platform: 'Facebook'
+                    }
+                };
             }
 
-            const response = await axios.post(`${BASE_URL}${endpoint}`, payload);
+            let endpoint = `/${pageId}/feed`;
+            const payload = new URLSearchParams({
+                message,
+                access_token: accessToken,
+            });
+
+            if (imageUrls[0]) {
+                endpoint = `/${pageId}/photos`;
+                payload.append('url', imageUrls[0]);
+                payload.append('caption', message);
+                payload.delete('message');
+            } else if (link) {
+                payload.append('link', link);
+            }
+
+            const response = await axios.post(`${BASE_URL}${endpoint}`, payload.toString(), {
+                headers: FORM_URL_ENCODED_HEADERS,
+            });
 
             return {
                 success: true,
@@ -252,7 +382,7 @@ export const metaService = {
         const response = await axios.get(`${BASE_URL}/me/accounts`, {
             params: {
                 access_token: userAccessToken,
-                fields: 'id,name,access_token,category,tasks'
+                fields: 'id,name,access_token,category,tasks,instagram_business_account'
             }
         });
 
@@ -271,6 +401,22 @@ export const metaService = {
         });
 
         return response.data.instagram_business_account?.id;
+    },
+
+    async getInstagramProfile(igUserId: string, accessToken: string) {
+        const response = await axios.get(`${BASE_URL}/${igUserId}`, {
+            params: {
+                fields: 'username',
+                access_token: accessToken
+            }
+        });
+
+        const username = typeof response.data?.username === 'string' ? response.data.username : undefined;
+        return {
+            id: typeof response.data?.id === 'string' ? response.data.id : igUserId,
+            username,
+            profileUrl: buildInstagramProfileUrl(username),
+        };
     },
 
     /**
@@ -401,44 +547,64 @@ export const metaService = {
     async postToThreads(
         userId: string,
         text: string,
-        imageUrl: string | null,
+        imageSources: string | string[] | null,
         accessToken: string
     ) {
         try {
-            // Step 1: Create a Threads media container
-            const payload = new URLSearchParams({
-                media_type: imageUrl ? 'IMAGE' : 'TEXT',
-                text: text,
-                access_token: accessToken
-            });
-            if (imageUrl) payload.append('image_url', imageUrl);
+            const imageUrls = normalizeImageSources(imageSources);
 
-            const containerRes = await axios.post(`${THREADS_BASE_URL}/${userId}/threads`, payload.toString(), {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
+            if (imageUrls.length > 1) {
+                const childIds: string[] = [];
+
+                for (const imageUrl of imageUrls) {
+                    const childPayload = new URLSearchParams({
+                        media_type: 'IMAGE',
+                        image_url: imageUrl,
+                        is_carousel_item: 'true',
+                        access_token: accessToken,
+                    });
+                    const childId = await createThreadsContainer(userId, childPayload);
+                    await waitForThreadsMediaReady(childId, accessToken);
+                    childIds.push(childId);
                 }
-            });
 
-            if (!containerRes.data.id) {
-                throw new Error('Failed to create Threads media container');
+                const carouselPayload = new URLSearchParams({
+                    media_type: 'CAROUSEL',
+                    children: childIds.join(','),
+                    text,
+                    access_token: accessToken,
+                });
+
+                const carouselCreationId = await createThreadsContainer(userId, carouselPayload);
+                await waitForThreadsMediaReady(carouselCreationId, accessToken);
+                const publishId = await publishThreadsContainer(userId, carouselCreationId, accessToken);
+
+                return {
+                    success: true,
+                    data: {
+                        id: publishId,
+                        platform: 'Threads'
+                    }
+                };
             }
-            const creationId = containerRes.data.id;
 
-            // Step 2: Publish the container
-            const publishPayload = new URLSearchParams({
-                creation_id: creationId,
+            const payload = new URLSearchParams({
+                media_type: imageUrls[0] ? 'IMAGE' : 'TEXT',
+                text,
                 access_token: accessToken
             });
-            const publishRes = await axios.post(`${THREADS_BASE_URL}/${userId}/threads_publish`, publishPayload.toString(), {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
+            if (imageUrls[0]) payload.append('image_url', imageUrls[0]);
+
+            const creationId = await createThreadsContainer(userId, payload);
+            if (imageUrls[0]) {
+                await waitForThreadsMediaReady(creationId, accessToken);
+            }
+            const publishId = await publishThreadsContainer(userId, creationId, accessToken);
 
             return {
                 success: true,
                 data: {
-                    id: publishRes.data.id,
+                    id: publishId,
                     platform: 'Threads'
                 }
             };
@@ -470,9 +636,7 @@ export const metaService = {
                 `${THREADS_BASE_URL}/${userId}/threads`,
                 payload.toString(),
                 {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
+                    headers: FORM_URL_ENCODED_HEADERS,
                 }
             );
 
@@ -492,9 +656,7 @@ export const metaService = {
                 `${THREADS_BASE_URL}/${userId}/threads_publish`,
                 publishPayload.toString(),
                 {
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
+                    headers: FORM_URL_ENCODED_HEADERS,
                 }
             );
 

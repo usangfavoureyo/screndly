@@ -12,7 +12,7 @@ import { metaService } from '../services/platforms/meta';
 import { youtubeService } from '../services/platforms/youtube';
 import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
-import { ensureFreshPlatformConnection } from '../services/platforms/connectionAuth';
+import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
 import { uploadLocalFileToBackblaze } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
@@ -387,14 +387,21 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         break;
 
                     case 'Instagram':
-                        if (connection?.accessToken && connection.userId && imageUrl) {
+                        if (hasUsablePlatformAccessToken(connection) && connection?.userId && imageUrl) {
+                            const instagramAccessToken = connection.accessToken as string;
                             const igResult = await metaService.postToInstagram(
                                 connection.userId,
                                 text,
                                 imageUrl,
-                                connection.accessToken
+                                instagramAccessToken
                             );
                             result = { platform, ...igResult, status: igResult.success ? 'posted' : 'failed' };
+                        } else {
+                            result = {
+                                platform,
+                                status: 'failed',
+                                error: 'Instagram connection is invalid or incomplete. Reconnect Instagram from Platforms.',
+                            };
                         }
                         break;
 
@@ -585,7 +592,7 @@ router.get('/status', authenticate, async (req, res) => {
 
             const metadata = getJsonObject(conn.metadata);
             status[platform] = {
-                connected: !!conn.accessToken,
+                connected: hasUsablePlatformAccessToken(conn),
                 username: conn.username || undefined,
                 lastPost: getJsonString(metadata, 'lastPostAt'),
                 profileUrl: buildProfileUrl(platform, conn.username, conn.userId, metadata),
@@ -887,15 +894,17 @@ router.post('/callback', async (req, res) => {
                     throw new Error('No Facebook Pages were found for this account. Instagram Business connections require a Facebook Page linked to an Instagram professional account.');
                 }
                 let igId = null;
+                let matchedPage: any = null;
 
                 for (const page of pages) {
                     igId = await metaService.getInstagramBusinessId(page.id, page.access_token);
                     if (igId) {
+                        matchedPage = page;
                         break;
                     }
                 }
 
-                if (igId) {
+                if (igId && matchedPage?.id) {
                     const profile = await fetchInstagramProfile(igId, userAccessToken);
                     await prisma.platformConnection.upsert({
                         where: { platform: 'Instagram' },
@@ -905,6 +914,9 @@ router.post('/callback', async (req, res) => {
                             username: profile.username || igId,
                             expiresAt,
                             metadata: {
+                                userToken: userAccessToken,
+                                pageId: matchedPage.id,
+                                pageName: matchedPage.name,
                                 profileUrl: profile.profileUrl
                             }
                         },
@@ -915,6 +927,9 @@ router.post('/callback', async (req, res) => {
                             username: profile.username || igId,
                             expiresAt,
                             metadata: {
+                                userToken: userAccessToken,
+                                pageId: matchedPage.id,
+                                pageName: matchedPage.name,
                                 profileUrl: profile.profileUrl
                             }
                         }

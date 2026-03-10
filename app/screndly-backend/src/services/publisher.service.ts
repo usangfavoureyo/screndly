@@ -5,7 +5,7 @@ import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
 import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
-import { ensureFreshPlatformConnection } from './platforms/connectionAuth';
+import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
 import { uploadLocalFileToBackblaze } from './backblaze';
 
@@ -97,6 +97,9 @@ export class PublisherService {
         switch (platform) {
             case 'X':
                 return 4;
+            case 'Threads':
+            case 'Facebook':
+                return 3;
             default:
                 return 1;
         }
@@ -247,7 +250,7 @@ export class PublisherService {
                                     : await metaService.postToFacebook(
                                         connection.userId,
                                         platformContent.text,
-                                        primaryImageUrl || null,
+                                        resolvedImageUrls.length > 0 ? resolvedImageUrls : (primaryImageUrl || null),
                                         connection.accessToken,
                                         platformContent.link
                                     );
@@ -261,26 +264,34 @@ export class PublisherService {
                             break;
 
                         case 'Instagram':
-                            if (connection.accessToken && connection.userId) {
+                            if (hasUsablePlatformAccessToken(connection) && connection.userId) {
+                                const instagramAccessToken = connection.accessToken as string;
                                 const igResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
                                     ? await metaService.postVideoToInstagramReel(
                                         connection.userId,
                                         platformContent.text,
                                         await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
-                                        connection.accessToken
+                                        instagramAccessToken
                                     )
-                                    : primaryImageUrl
+                                        : primaryImageUrl
                                         ? await metaService.postToInstagram(
                                             connection.userId,
                                             platformContent.text,
                                             primaryImageUrl,
-                                            connection.accessToken
+                                            instagramAccessToken
                                         )
                                         : { success: false as const, error: 'Instagram requires an image or video' };
                                 result = {
                                     platform,
                                     ...igResult,
                                     status: igResult.success ? 'posted' : 'failed',
+                                    postedAt: new Date().toISOString()
+                                };
+                            } else {
+                                result = {
+                                    platform,
+                                    status: 'failed',
+                                    error: 'Instagram connection is invalid or incomplete. Reconnect Instagram from Platforms.',
                                     postedAt: new Date().toISOString()
                                 };
                             }
@@ -298,7 +309,7 @@ export class PublisherService {
                                     : await metaService.postToThreads(
                                         connection.userId,
                                         platformContent.text,
-                                        primaryImageUrl || null,
+                                        resolvedImageUrls.length > 0 ? resolvedImageUrls : (primaryImageUrl || null),
                                         connection.accessToken
                                     );
                                 result = {
