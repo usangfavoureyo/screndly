@@ -1,0 +1,9 @@
+*
+!app/
+app/*
+!app/screndly-backend/
+!app/screndly-backend/**
+app/screndly-backend/node_modules
+app/screndly-backend/temp
+app/screndly-backend/.env
+app/screndly-backend/*-player-script.js

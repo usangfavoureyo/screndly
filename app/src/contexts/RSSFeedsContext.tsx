@@ -15,6 +15,7 @@ export interface FeedFilters {
   blocked: FilterItem[];
   onlyFetchNewItems?: boolean;
   startFromNowAt?: string | null;
+  maxItemAgeMinutes?: number | null;
 }
 
 export interface PlatformsEnabled {
