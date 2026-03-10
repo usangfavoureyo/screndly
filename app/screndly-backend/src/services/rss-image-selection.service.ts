@@ -236,6 +236,12 @@ const HARD_REJECT_KEYWORDS = [
   'aliexpress',
   'temu',
 ];
+const FEED_FALLBACK_BLOCKED_DOMAINS = [
+  'comicbook.com',
+];
+const FEED_FALLBACK_BLOCKED_URL_KEYWORDS = [
+  'exclusive',
+];
 const COMIC_ART_KEYWORDS = [
   'comic art',
   'comic book',
@@ -457,6 +463,32 @@ function dedupeUrls(values: Array<string | null | undefined>): string[] {
   }
 
   return urls;
+}
+
+function isBlockedFeedFallbackUrl(url: string): boolean {
+  const normalizedUrl = normalizeText(url);
+  if (!normalizedUrl) {
+    return true;
+  }
+
+  if (containsKeyword(normalizedUrl, FEED_FALLBACK_BLOCKED_URL_KEYWORDS)) {
+    return true;
+  }
+
+  try {
+    const domain = normalizeText(new URL(url).hostname);
+    if (FEED_FALLBACK_BLOCKED_DOMAINS.some((blocked) => domain.includes(normalizeText(blocked)))) {
+      return true;
+    }
+  } catch {
+    return true;
+  }
+
+  return false;
+}
+
+function filterAllowedFeedFallbackUrls(urls: string[]): string[] {
+  return urls.filter((url) => !isBlockedFeedFallbackUrl(url));
 }
 
 function getSerperImageText(image: SerperImageResult): string {
@@ -1379,7 +1411,9 @@ export async function resolveRelevantRSSImages(
     model?: AIModel | string;
   }
 ): Promise<RSSResolvedImage[]> {
-  const fallbackImages = dedupeUrls(article.fallbackImages || []);
+  const fallbackImages = filterAllowedFeedFallbackUrls(
+    dedupeUrls(article.fallbackImages || [])
+  );
   const limit = Math.max(options.limit, 1);
 
   if (!options.serperPriority) {

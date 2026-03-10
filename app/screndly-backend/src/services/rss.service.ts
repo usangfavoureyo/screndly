@@ -25,6 +25,7 @@ export interface RSSFeedFilters {
   }>;
   onlyFetchNewItems?: boolean;
   startFromNowAt?: string | null;
+  maxItemAgeMinutes?: number | null;
 }
 
 export interface PlatformsEnabled {
@@ -337,6 +338,18 @@ function stripHtml(value?: string): string {
   return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeMaxItemAgeMinutes(value: Prisma.JsonValue | undefined): number | null {
+  const parsed = asNumber(value);
+  if (parsed === undefined) return null;
+
+  const normalized = Math.trunc(parsed);
+  if (!Number.isFinite(normalized) || normalized < 1) {
+    return null;
+  }
+
+  return Math.min(normalized, 12 * 60);
+}
+
 function ensureFeedFilters(filters?: RSSFeedFilters): RSSFeedFilters {
   return {
     scope: filters?.scope ?? 'title_or_body',
@@ -345,6 +358,9 @@ function ensureFeedFilters(filters?: RSSFeedFilters): RSSFeedFilters {
     onlyFetchNewItems: filters?.onlyFetchNewItems ?? false,
     startFromNowAt:
       typeof filters?.startFromNowAt === 'string' ? filters.startFromNowAt : null,
+    maxItemAgeMinutes: normalizeMaxItemAgeMinutes(
+      filters?.maxItemAgeMinutes as Prisma.JsonValue | undefined
+    ),
   };
 }
 
@@ -504,6 +520,51 @@ function parseFilterTimestamp(value?: string | null): Date | null {
   if (!value) return null;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getMaxItemAgeCutoffDate(filters: RSSFeedFilters): Date | null {
+  if (!filters.maxItemAgeMinutes) {
+    return null;
+  }
+
+  return new Date(Date.now() - filters.maxItemAgeMinutes * 60 * 1000);
+}
+
+function getPendingQueueSkipReason(
+  item: RSSItem,
+  options: {
+    startFromNowDate?: Date | null;
+    maxItemAgeCutoffDate?: Date | null;
+  }
+): string | null {
+  if (options.startFromNowDate && item.pubDate <= options.startFromNowDate) {
+    return 'Skipped because it predates the current "Only fetch new items" start time.';
+  }
+
+  if (options.maxItemAgeCutoffDate && item.pubDate < options.maxItemAgeCutoffDate) {
+    return 'Skipped because it is older than the feed article age limit.';
+  }
+
+  return null;
+}
+
+async function clearPendingFeedItems(feedId: string, reason: string): Promise<void> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    return;
+  }
+
+  await prisma.rSSFeedItem.updateMany({
+    where: {
+      feedId,
+      status: 'pending',
+    },
+    data: {
+      status: 'filtered',
+      lastAttemptedAt: new Date(),
+      errorMessage: reason,
+    },
+  });
 }
 
 function getFilterScopeText(item: RSSItem, scope: RSSFeedFilters['scope']): string[] {
@@ -1259,7 +1320,7 @@ async function updateFeed(
   id: string,
   data: Partial<RSSFeedInput> & {
     lastProcessedAt?: Date;
-    nextRunAt?: Date;
+    nextRunAt?: Date | null;
     errorMessage?: string | null;
     title?: string;
     description?: string;
@@ -1272,7 +1333,12 @@ async function updateFeed(
   const support = await getRSSFeedColumnSupport();
   const existingFeed = await prisma.rSSFeed.findUnique({
     where: { id },
-    select: { filters: true },
+    select: {
+      filters: true,
+      enabled: true,
+      status: true,
+      interval: true,
+    },
   });
 
   if (!existingFeed) {
@@ -1280,6 +1346,34 @@ async function updateFeed(
   }
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  const existingFilters = ensureFeedFilters(existingFeed.filters as unknown as RSSFeedFilters);
+  const nextEnabled = data.enabled ?? existingFeed.enabled;
+  const nextStatus =
+    data.status ??
+    (data.enabled === false
+      ? 'paused'
+      : data.enabled === true && existingFeed.status === 'paused'
+        ? 'active'
+        : existingFeed.status);
+  const willBePaused = !nextEnabled || nextStatus === 'paused';
+  const isReactivating =
+    (!existingFeed.enabled || existingFeed.status === 'paused') &&
+    nextEnabled &&
+    nextStatus !== 'paused';
+  const requestedFilters = ensureFeedFilters(
+    (data.filters ?? existingFilters) as RSSFeedFilters
+  );
+  const nextOnlyFetchNewItems =
+    data.onlyFetchNewItems ??
+    requestedFilters.onlyFetchNewItems ??
+    existingFilters.onlyFetchNewItems ??
+    false;
+  const shouldResetStartFromNow = isReactivating && nextOnlyFetchNewItems;
+  const shouldResolveFilters =
+    data.filters !== undefined ||
+    data.onlyFetchNewItems !== undefined ||
+    data.startFromNowAt !== undefined ||
+    shouldResetStartFromNow;
 
   if (data.name !== undefined) updateData.name = data.name;
   if (data.url !== undefined) updateData.url = data.url;
@@ -1291,15 +1385,13 @@ async function updateFeed(
     updateData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
   }
   if (data.dedupeDays !== undefined) updateData.dedupeDays = data.dedupeDays;
-  if (
-    data.filters !== undefined ||
-    data.onlyFetchNewItems !== undefined ||
-    data.startFromNowAt !== undefined
-  ) {
-    updateData.filters = resolveForwardOnlySettings(data.filters, {
-      previousFilters: existingFeed.filters as unknown as RSSFeedFilters,
+  if (shouldResolveFilters) {
+    updateData.filters = resolveForwardOnlySettings(data.filters ?? existingFilters, {
+      previousFilters: existingFilters,
       explicitOnlyFetchNewItems: data.onlyFetchNewItems,
-      explicitStartFromNowAt: data.startFromNowAt,
+      explicitStartFromNowAt: shouldResetStartFromNow
+        ? new Date().toISOString()
+        : data.startFromNowAt,
     }) as unknown as Prisma.InputJsonValue;
   }
   if (data.serperPriority !== undefined) updateData.serperPriority = data.serperPriority;
@@ -1307,9 +1399,21 @@ async function updateFeed(
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
   if (data.platformsEnabled !== undefined) updateData.platformsEnabled = data.platformsEnabled;
   if (support.trickle && data.trickle !== undefined) updateData.trickle = normalizeTrickle(data.trickle);
-  if (data.status !== undefined) updateData.status = data.status;
+  if (data.status !== undefined) {
+    updateData.status = data.status;
+  } else if (data.enabled === false) {
+    updateData.status = 'paused';
+  } else if (data.enabled === true && existingFeed.status === 'paused') {
+    updateData.status = 'active';
+  }
   if (data.lastProcessedAt !== undefined) updateData.lastProcessedAt = data.lastProcessedAt;
   if (data.nextRunAt !== undefined) updateData.nextRunAt = data.nextRunAt;
+  if (data.nextRunAt === undefined && willBePaused) {
+    updateData.nextRunAt = null;
+  } else if (data.nextRunAt === undefined && isReactivating) {
+    const intervalMinutes = data.interval ?? existingFeed.interval ?? 10;
+    updateData.nextRunAt = new Date(Date.now() + intervalMinutes * 60 * 1000);
+  }
   if (data.errorMessage !== undefined) updateData.errorMessage = data.errorMessage;
   if (data.title !== undefined) updateData.title = data.title;
   if (data.description !== undefined) updateData.description = data.description;
@@ -1324,6 +1428,19 @@ async function updateFeed(
     data: updateData,
     select,
   });
+
+  const resolvedUpdatedFilters = ensureFeedFilters(
+    ((shouldResolveFilters ? updateData.filters : existingFeed.filters) ?? existingFeed.filters) as RSSFeedFilters
+  );
+
+  if (willBePaused) {
+    await clearPendingFeedItems(id, 'Cleared because the feed was paused.');
+  } else if (isReactivating && resolvedUpdatedFilters.onlyFetchNewItems) {
+    await clearPendingFeedItems(
+      id,
+      'Cleared because the feed restarted with "Only fetch new items from now on".'
+    );
+  }
 
   return applyRSSFeedCompatibility(updatedFeed as Record<string, any>);
 }
@@ -1352,6 +1469,18 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     };
   }
 
+  if (!feed.enabled || feed.status === 'paused') {
+    return {
+      feedId: feed.id,
+      feedName: feed.name,
+      itemsAdded: 0,
+      checkedCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      error: 'Feed is paused',
+    };
+  }
+
   const runtimeSettings = await getRuntimeSettings();
   const nextRunAt = new Date(Date.now() + feed.interval * 60 * 1000);
 
@@ -1360,6 +1489,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     const parsed = await parseRSSFeed(xml);
     const feedFilters = ensureFeedFilters(feed.filters as unknown as RSSFeedFilters);
     const startFromNowDate = parseFilterTimestamp(feedFilters.startFromNowAt);
+    const maxItemAgeCutoffDate = getMaxItemAgeCutoffDate(feedFilters);
     const effectiveCutoffDate = (() => {
       const bufferedLastProcessedAt = feed.lastProcessedAt
         ? new Date(feed.lastProcessedAt.getTime() - RSS_ITEM_RECHECK_BUFFER_MS)
@@ -1380,7 +1510,8 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     })();
 
     const newItems = parsed.items
-      .filter((item) => item.pubDate > effectiveCutoffDate);
+      .filter((item) => item.pubDate > effectiveCutoffDate)
+      .filter((item) => !maxItemAgeCutoffDate || item.pubDate >= maxItemAgeCutoffDate);
     const orderedNewItems = [...newItems].sort((a, b) =>
       normalizeTrickle(feed.trickle) === 'oldest_first'
         ? a.pubDate.getTime() - b.pubDate.getTime()
@@ -1424,24 +1555,32 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         item: deserializeRSSItem(record.itemData),
       }))
       .filter((entry): entry is typeof entry & { item: RSSItem } => Boolean(entry.item));
-    const staleForwardOnlyPendingQueue = feedFilters.onlyFetchNewItems && startFromNowDate
-      ? pendingQueue.filter((entry) => entry.item.pubDate <= startFromNowDate)
-      : [];
-    if (support.feedItemsTable && staleForwardOnlyPendingQueue.length > 0) {
-      const stalePendingIds = staleForwardOnlyPendingQueue.map((entry) => entry.record.id);
-      await prisma.rSSFeedItem.updateMany({
-        where: {
-          id: { in: stalePendingIds },
-        },
-        data: {
-          status: 'filtered',
-          lastAttemptedAt: new Date(),
-          errorMessage: 'Skipped because it predates the current "Only fetch new items" start time.',
-        },
-      });
+    const stalePendingQueue = pendingQueue
+      .map((entry) => ({
+        entry,
+        reason: getPendingQueueSkipReason(entry.item, {
+          startFromNowDate: feedFilters.onlyFetchNewItems ? startFromNowDate : null,
+          maxItemAgeCutoffDate,
+        }),
+      }))
+      .filter((entry): entry is typeof entry & { reason: string } => Boolean(entry.reason));
+
+    if (support.feedItemsTable && stalePendingQueue.length > 0) {
+      for (const staleEntry of stalePendingQueue) {
+        await prisma.rSSFeedItem.update({
+          where: { id: staleEntry.entry.record.id },
+          data: {
+            status: 'filtered',
+            lastAttemptedAt: new Date(),
+            errorMessage: staleEntry.reason,
+          },
+        });
+      }
     }
-    const activePendingQueue = staleForwardOnlyPendingQueue.length > 0
-      ? pendingQueue.filter((entry) => entry.item.pubDate > (startFromNowDate ?? new Date(0)))
+
+    const stalePendingIds = new Set(stalePendingQueue.map((entry) => entry.entry.record.id));
+    const activePendingQueue = stalePendingIds.size > 0
+      ? pendingQueue.filter((entry) => !stalePendingIds.has(entry.record.id))
       : pendingQueue;
     const activePendingQueueRecords = activePendingQueue.map((entry) => entry.record);
     const feedRecentActivities = recentActivities
@@ -1751,7 +1890,10 @@ async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
   isScheduledRun: boolean;
   results: RefreshResult[];
 }> {
-  const where: Prisma.RSSFeedWhereInput = { enabled: true };
+  const where: Prisma.RSSFeedWhereInput = {
+    enabled: true,
+    status: { not: 'paused' },
+  };
 
   if (checkSchedule) {
     where.OR = [

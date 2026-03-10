@@ -35,6 +35,7 @@ export interface Feed {
     }>;
     onlyFetchNewItems?: boolean;
     startFromNowAt?: string | null;
+    maxItemAgeMinutes?: number | null;
   };
   serperPriority: boolean;
   rehostImages: boolean;

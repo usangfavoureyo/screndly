@@ -25,7 +25,27 @@ const DEFAULT_FILTERS: Feed['filters'] = {
   blocked: [],
   onlyFetchNewItems: false,
   startFromNowAt: null,
+  maxItemAgeMinutes: null,
 };
+
+const ARTICLE_AGE_OPTIONS = [
+  { value: 'none', label: 'No age limit' },
+  { value: '10', label: '10 minutes' },
+  { value: '15', label: '15 minutes' },
+  { value: '30', label: '30 minutes' },
+  { value: '60', label: '1 hour' },
+  { value: '120', label: '2 hours' },
+  { value: '180', label: '3 hours' },
+  { value: '240', label: '4 hours' },
+  { value: '300', label: '5 hours' },
+  { value: '360', label: '6 hours' },
+  { value: '420', label: '7 hours' },
+  { value: '480', label: '8 hours' },
+  { value: '540', label: '9 hours' },
+  { value: '600', label: '10 hours' },
+  { value: '660', label: '11 hours' },
+  { value: '720', label: '12 hours' },
+] as const;
 
 function createDefaultFormData(): Partial<Feed> {
   return {
@@ -247,7 +267,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   </p>
                   {feed && formFilters.onlyFetchNewItems ? (
                     <p className="text-xs text-[#ec1e24]">
-                      Saving this change skips older backlog items and makes Run Now test only the latest item.
+                      Saving this change skips older backlog items. If you pause and reactivate the feed later, it restarts from that moment.
                     </p>
                   ) : null}
                 </div>
@@ -263,6 +283,39 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                     })
                   }
                 />
+              </div>
+
+              <div>
+                <Label className="text-gray-600 dark:text-[#9CA3AF]">Ignore articles older than</Label>
+                <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                  Older items are skipped during polling and any pending backlog older than this window expires instead of publishing later.
+                </p>
+                <Select
+                  value={formFilters.maxItemAgeMinutes ? formFilters.maxItemAgeMinutes.toString() : 'none'}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      filters: {
+                        ...formFilters,
+                        maxItemAgeMinutes: value === 'none' ? null : parseInt(value, 10),
+                      },
+                    })
+                  }
+                >
+                  <SelectTrigger
+                    className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-2"
+                    onFocus={() => haptics.light()}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ARTICLE_AGE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
