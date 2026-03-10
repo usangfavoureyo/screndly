@@ -62,6 +62,31 @@ interface GeneratedCaptions {
     fallback: string;
 }
 
+interface NormalizedVideoFormat {
+    width?: number;
+    height?: number;
+    hasVideo?: boolean;
+    hasAudio?: boolean;
+    vcodec?: string;
+    acodec?: string;
+}
+
+interface NormalizedVideoDetails {
+    videoId: string;
+    video_url: string;
+    description: string;
+    lengthSeconds: string;
+    thumbnails: Array<{ url?: string }>;
+    keywords?: string[];
+}
+
+interface NormalizedVideoInfo {
+    source: 'ytdl' | 'yt-dlp';
+    raw?: any;
+    videoDetails: NormalizedVideoDetails;
+    formats: NormalizedVideoFormat[];
+}
+
 type FeedItemStatus = 'accepted' | 'ignored' | 'failed';
 
 interface FeedVideoProcessingResult {
@@ -392,14 +417,13 @@ export class YouTubePollerService {
             }
         }
 
-        let videoInfo;
+        const videoUrl = video.link || `https://www.youtube.com/watch?v=${videoId}`;
+        let videoInfo: NormalizedVideoInfo;
         try {
-            videoInfo = await ytdl.getInfo(
-                video.link || `https://www.youtube.com/watch?v=${videoId}`,
-                YOUTUBE_INFO_OPTIONS
-            );
+            videoInfo = await this.getVideoInfo(videoUrl, videoId);
         } catch (error) {
             console.error(`[YouTubePoller] Failed to fetch metadata for ${videoId}:`, error);
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
             return {
                 kind: 'return',
                 sawFreshVideo: true,
@@ -955,6 +979,79 @@ Respond ONLY "YES" or "NO".`,
         return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
     }
 
+    private normalizeYtDlpInfo(raw: any, fallbackVideoId: string, fallbackUrl: string): NormalizedVideoInfo {
+        const videoId = String(raw?.id || fallbackVideoId || '').trim();
+        const videoUrl = String(
+            raw?.webpage_url
+            || raw?.original_url
+            || fallbackUrl
+            || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '')
+        ).trim();
+        const thumbnails = Array.isArray(raw?.thumbnails)
+            ? raw.thumbnails
+                .map((thumbnail: any) => ({
+                    url: typeof thumbnail?.url === 'string' ? thumbnail.url : undefined,
+                }))
+                .filter((thumbnail: { url?: string }) => Boolean(thumbnail.url))
+            : [];
+        const keywords = Array.isArray(raw?.tags)
+            ? raw.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+            : [];
+        const formats = Array.isArray(raw?.formats)
+            ? raw.formats.map((format: any) => ({
+                width: Number(format?.width || 0) || undefined,
+                height: Number(format?.height || 0) || undefined,
+                hasVideo: format?.vcodec !== 'none',
+                hasAudio: format?.acodec !== 'none',
+                vcodec: typeof format?.vcodec === 'string' ? format.vcodec : undefined,
+                acodec: typeof format?.acodec === 'string' ? format.acodec : undefined,
+            }))
+            : [];
+
+        return {
+            source: 'yt-dlp',
+            videoDetails: {
+                videoId,
+                video_url: videoUrl,
+                description: typeof raw?.description === 'string' ? raw.description : '',
+                lengthSeconds: String(raw?.duration || 0),
+                thumbnails,
+                keywords,
+            },
+            formats,
+        };
+    }
+
+    private async getVideoInfo(videoUrl: string, videoId: string): Promise<NormalizedVideoInfo> {
+        try {
+            const info = await ytdl.getInfo(videoUrl, YOUTUBE_INFO_OPTIONS);
+            return {
+                source: 'ytdl',
+                raw: info,
+                videoDetails: {
+                    videoId: info.videoDetails.videoId,
+                    video_url: info.videoDetails.video_url,
+                    description: info.videoDetails.description || '',
+                    lengthSeconds: info.videoDetails.lengthSeconds,
+                    thumbnails: Array.isArray(info.videoDetails.thumbnails) ? info.videoDetails.thumbnails : [],
+                    keywords: Array.isArray(info.videoDetails.keywords) ? info.videoDetails.keywords : [],
+                },
+                formats: info.formats || [],
+            };
+        } catch (error) {
+            console.warn(`[YouTubePoller] ytdl-core metadata fetch failed for ${videoId}; trying yt-dlp fallback`, error);
+        }
+
+        const raw = await ytDlp(videoUrl, {
+            dumpSingleJson: true,
+            skipDownload: true,
+            noWarnings: true,
+            quiet: true,
+        });
+
+        return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
+    }
+
     private getLandscape1080Formats(formats: any[]): any[] {
         if (!Array.isArray(formats)) {
             return [];
@@ -1048,7 +1145,7 @@ Respond ONLY "YES" or "NO".`,
         } catch {
             // If ffprobe is unavailable in the runtime, fall back to the selected
             // download format and only verify that the file is non-empty.
-            return this.meetsDownloadedResolutionFloor(filePath);
+            return this.hasDownloadContent(filePath);
         }
     }
 
@@ -1101,14 +1198,14 @@ Respond ONLY "YES" or "NO".`,
                 quiet: true,
             });
 
-            return this.hasDownloadContent(filePath);
+            return this.meetsDownloadedResolutionFloor(filePath);
         } catch (error) {
             console.error('[YouTubePoller] yt-dlp fallback download error:', error);
             return false;
         }
     }
 
-    private async downloadVideoWithInfo(info: any): Promise<string | null> {
+    private async downloadVideoWithInfo(info: NormalizedVideoInfo): Promise<string | null> {
         const videoId = info?.videoDetails?.videoId;
         const videoUrl = info?.videoDetails?.video_url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
 
@@ -1120,7 +1217,7 @@ Respond ONLY "YES" or "NO".`,
         const filePath = path.join(tempDir, `${videoId}.mp4`);
         this.removeFileIfExists(filePath);
 
-        if (await this.downloadWithYtdl(info, filePath)) {
+        if (info.source === 'ytdl' && info.raw && await this.downloadWithYtdl(info.raw, filePath)) {
             return filePath;
         }
 
