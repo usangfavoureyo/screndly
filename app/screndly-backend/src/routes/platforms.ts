@@ -13,7 +13,7 @@ import { youtubeService } from '../services/platforms/youtube';
 import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
 import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
-import { uploadLocalFileToBackblaze } from '../services/backblaze';
+import { uploadBufferToBackblaze, uploadLocalFileToBackblaze } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
 import fs from 'fs';
@@ -22,6 +22,7 @@ import path from 'path';
 import jwt from 'jsonwebtoken';
 import { pipeline } from 'stream/promises';
 import { createHash, randomBytes } from 'crypto';
+import sharp from 'sharp';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -276,6 +277,105 @@ async function cleanupFile(filePath: string | null): Promise<void> {
     }
 }
 
+function isImageMimeType(value?: string | null): boolean {
+    return typeof value === 'string' && value.startsWith('image/');
+}
+
+function isVideoMimeType(value?: string | null): boolean {
+    return typeof value === 'string' && value.startsWith('video/');
+}
+
+function getMimeTypeFromFilePath(filePath: string): string {
+    switch (path.extname(filePath).toLowerCase()) {
+        case '.jpg':
+        case '.jpeg':
+            return 'image/jpeg';
+        case '.png':
+            return 'image/png';
+        case '.webp':
+            return 'image/webp';
+        case '.gif':
+            return 'image/gif';
+        case '.mp4':
+            return 'video/mp4';
+        case '.mov':
+            return 'video/quicktime';
+        case '.m4v':
+            return 'video/x-m4v';
+        case '.webm':
+            return 'video/webm';
+        default:
+            return 'application/octet-stream';
+    }
+}
+
+function buildRemoteFileName(remoteUrl: string, fallbackBaseName: string): string {
+    try {
+        const parsedUrl = new URL(remoteUrl);
+        const candidate = path.basename(parsedUrl.pathname);
+        if (candidate && candidate !== '/') {
+            return candidate;
+        }
+    } catch {
+        // Ignore and use fallback.
+    }
+
+    return `${fallbackBaseName}-${Date.now()}`;
+}
+
+async function downloadRemoteBuffer(remoteUrl: string): Promise<{ buffer: Buffer; fileName: string }> {
+    const response = await axios.get(remoteUrl, {
+        responseType: 'arraybuffer',
+        timeout: 60_000,
+    });
+
+    return {
+        buffer: Buffer.from(response.data),
+        fileName: buildRemoteFileName(remoteUrl, 'remote-media'),
+    };
+}
+
+async function prepareHostedImageUrl(options: {
+    localFilePath?: string | null;
+    originalName?: string | null;
+    remoteUrl?: string | null;
+    prefix?: string;
+}): Promise<string | undefined> {
+    const prefix = options.prefix || 'platform-posts/images';
+    let sourceBuffer: Buffer;
+    let originalName: string;
+
+    if (options.localFilePath) {
+        sourceBuffer = await fs.promises.readFile(options.localFilePath);
+        originalName = options.originalName || path.basename(options.localFilePath);
+    } else if (options.remoteUrl) {
+        const remote = await downloadRemoteBuffer(options.remoteUrl);
+        sourceBuffer = remote.buffer;
+        originalName = remote.fileName;
+    } else {
+        return undefined;
+    }
+
+    const baseName = path.parse(originalName).name || 'image';
+    const normalizedBuffer = await sharp(sourceBuffer, { animated: false })
+        .rotate()
+        .flatten({ background: '#ffffff' })
+        .jpeg({ quality: 90, mozjpeg: true })
+        .toBuffer();
+
+    const uploadedImage = await uploadBufferToBackblaze(
+        normalizedBuffer,
+        `${baseName}.jpg`,
+        {
+            bucketTypes: ['general', 'design'],
+            prefix,
+            contentType: 'image/jpeg',
+        }
+    );
+
+    return uploadedImage.url;
+}
+
 async function updateConnectionMetadata(platform: SupportedPlatform, patch: Prisma.JsonObject): Promise<void> {
     const connection = await prisma.platformConnection.findUnique({ where: { platform } });
     if (!connection) return;
@@ -321,6 +421,8 @@ async function fetchInstagramProfile(igUserId: string, accessToken: string): Pro
 router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) => {
     let localFilePath: string | null = req.file ? req.file.path : null;
     let downloadedVideoPath: string | null = null;
+    let preparedImageUrl: string | undefined;
+    let hostedVideoUrl: string | undefined;
 
     try {
         const { platforms, content } = req.body;
@@ -335,15 +437,61 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
         let imageUrl = parsedContent.imageUrl;
         let videoUrl = parsedContent.videoUrl;
+        const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
+        const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
 
-        if (!imageUrl && req.file?.mimetype?.startsWith('image/') && localFilePath) {
-            const uploadedImage = await uploadLocalFileToBackblaze(localFilePath, req.file.originalname, {
-                bucketTypes: ['general', 'design'],
-                prefix: 'platform-posts/images',
-                contentType: req.file.mimetype,
+        const getPreparedImageUrl = async (): Promise<string | undefined> => {
+            if (preparedImageUrl !== undefined) {
+                return preparedImageUrl;
+            }
+
+            preparedImageUrl = await prepareHostedImageUrl({
+                localFilePath: hasUploadedImage ? localFilePath : null,
+                originalName: req.file?.originalname,
+                remoteUrl: !hasUploadedImage ? imageUrl : null,
             });
-            imageUrl = uploadedImage.url;
-        }
+
+            return preparedImageUrl;
+        };
+
+        const getDownloadedVideoPath = async (): Promise<string> => {
+            if (hasUploadedVideo && localFilePath) {
+                return localFilePath;
+            }
+
+            if (downloadedVideoPath) {
+                return downloadedVideoPath;
+            }
+
+            if (!videoUrl) {
+                throw new Error('A public video URL is required');
+            }
+
+            downloadedVideoPath = await downloadRemoteFile(videoUrl, 'screndly-video');
+            return downloadedVideoPath;
+        };
+
+        const getHostedVideoUrl = async (): Promise<string> => {
+            if (hostedVideoUrl) {
+                return hostedVideoUrl;
+            }
+
+            const sourcePath = await getDownloadedVideoPath();
+            const fileName = hasUploadedVideo && req.file?.originalname
+                ? req.file.originalname
+                : buildRemoteFileName(videoUrl || '', 'remote-video.mp4');
+
+            const uploadedVideo = await uploadLocalFileToBackblaze(sourcePath, fileName, {
+                bucketTypes: ['videos', 'general'],
+                prefix: 'platform-posts/videos',
+                contentType: hasUploadedVideo
+                    ? (req.file?.mimetype || getMimeTypeFromFilePath(sourcePath))
+                    : getMimeTypeFromFilePath(sourcePath),
+            });
+
+            hostedVideoUrl = uploadedVideo.url;
+            return hostedVideoUrl;
+        };
 
         const results = [];
         let platformList = typeof platforms === 'string' ? JSON.parse(platforms) : platforms;
@@ -364,37 +512,63 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 switch (platform) {
                     case 'X':
                         if (connection?.accessToken) {
-                            const xResult = await xService.postTweet(
-                                text,
-                                imageUrl || (localFilePath && req.file?.mimetype?.startsWith('image/') ? localFilePath : undefined),
-                                connection
-                            );
+                            const xResult = (hasUploadedVideo || videoUrl)
+                                ? await xService.postVideoTweet(
+                                    text,
+                                    hasUploadedVideo && localFilePath ? localFilePath : videoUrl!,
+                                    connection
+                                )
+                                : await xService.postTweet(
+                                    text,
+                                    imageUrl || (hasUploadedImage && localFilePath ? localFilePath : undefined),
+                                    connection
+                                );
                             result = { platform, ...xResult, status: xResult.success ? 'posted' : 'failed' };
                         }
                         break;
 
                     case 'Facebook':
                         if (connection?.accessToken && connection.userId) {
-                            const fbResult = await metaService.postToFacebook(
-                                connection.userId,
-                                text,
-                                imageUrl,
-                                connection.accessToken,
-                                link
-                            );
+                            const fbResult = (hasUploadedVideo || videoUrl)
+                                ? await metaService.postVideoToFacebook(
+                                    connection.userId,
+                                    text,
+                                    await getDownloadedVideoPath(),
+                                    connection.accessToken
+                                )
+                                : await metaService.postToFacebook(
+                                    connection.userId,
+                                    text,
+                                    (await getPreparedImageUrl()) ?? null,
+                                    connection.accessToken,
+                                    link
+                                );
                             result = { platform, ...fbResult, status: fbResult.success ? 'posted' : 'failed' };
                         }
                         break;
 
                     case 'Instagram':
-                        if (hasUsablePlatformAccessToken(connection) && connection?.userId && imageUrl) {
+                        if (!hasUploadedVideo && !videoUrl && !hasUploadedImage && !imageUrl) {
+                            result = {
+                                platform,
+                                status: 'failed',
+                                error: 'Instagram requires an image or video URL, or an uploaded image/video file.',
+                            };
+                        } else if (hasUsablePlatformAccessToken(connection) && connection?.userId) {
                             const instagramAccessToken = connection.accessToken as string;
-                            const igResult = await metaService.postToInstagram(
-                                connection.userId,
-                                text,
-                                imageUrl,
-                                instagramAccessToken
-                            );
+                            const igResult = (hasUploadedVideo || videoUrl)
+                                ? await metaService.postVideoToInstagramReel(
+                                    connection.userId,
+                                    text,
+                                    await getHostedVideoUrl(),
+                                    instagramAccessToken
+                                )
+                                : await metaService.postToInstagram(
+                                    connection.userId,
+                                    text,
+                                    await getPreparedImageUrl() || '',
+                                    instagramAccessToken
+                                );
                             result = { platform, ...igResult, status: igResult.success ? 'posted' : 'failed' };
                         } else {
                             result = {
@@ -407,12 +581,19 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
                     case 'Threads':
                         if (connection?.accessToken && connection.userId) {
-                            const threadsResult = await metaService.postToThreads(
-                                connection.userId,
-                                text,
-                                imageUrl,
-                                connection.accessToken
-                            );
+                            const threadsResult = (hasUploadedVideo || videoUrl)
+                                ? await metaService.postVideoToThreads(
+                                    connection.userId,
+                                    text,
+                                    await getHostedVideoUrl(),
+                                    connection.accessToken
+                                )
+                                : await metaService.postToThreads(
+                                    connection.userId,
+                                    text,
+                                    (await getPreparedImageUrl()) ?? null,
+                                    connection.accessToken
+                                );
                             result = { platform, ...threadsResult, status: threadsResult.success ? 'posted' : 'failed' };
                         }
                         break;
@@ -462,7 +643,9 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         break;
 
                     case 'Pinterest':
-                        if (connection?.accessToken && imageUrl) {
+                        if (!hasUploadedVideo && !videoUrl && !hasUploadedImage && !imageUrl) {
+                            result = { platform, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
+                        } else if (connection?.accessToken) {
                             const metadata = getJsonObject(connection.metadata);
                             let boardId = getJsonString(metadata, 'boardId');
                             let boardName = getJsonString(metadata, 'boardName');
@@ -499,20 +682,33 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 break;
                             }
 
-                            const pinResult = await pinterestService.createPin(
-                                boardId,
-                                title || text.slice(0, 100) || 'Screndly Pin',
-                                text,
-                                imageUrl,
-                                connection.accessToken,
-                                {
-                                    link,
-                                    altText: title || text.slice(0, 100) || 'Screndly Pin'
-                                }
-                            );
+                            const pinResult = (hasUploadedVideo || videoUrl)
+                                ? await pinterestService.createVideoPin(
+                                    boardId,
+                                    title || text.slice(0, 100) || 'Screndly Pin',
+                                    text,
+                                    await getDownloadedVideoPath(),
+                                    connection.accessToken,
+                                    {
+                                        link,
+                                        altText: title || text.slice(0, 100) || 'Screndly Pin',
+                                        coverImageUrl: await getPreparedImageUrl(),
+                                    }
+                                )
+                                : await pinterestService.createPin(
+                                    boardId,
+                                    title || text.slice(0, 100) || 'Screndly Pin',
+                                    text,
+                                    await getPreparedImageUrl() || '',
+                                    connection.accessToken,
+                                    {
+                                        link,
+                                        altText: title || text.slice(0, 100) || 'Screndly Pin'
+                                    }
+                                );
                             result = { platform, ...pinResult, status: pinResult.success ? 'posted' : 'failed' };
                         } else {
-                            result = { platform, status: 'failed', error: 'Pinterest requires an image URL' };
+                            result = { platform, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
                         }
                         break;
 
