@@ -344,6 +344,17 @@ export class YouTubePollerService {
         return `Checked ${scannedCount} recent uploads and found no new eligible trailers. Latest outcomes: ${recentReasons}`;
     }
 
+    private isExplicitShort(video: any, titleLower: string, descriptionLower: string): boolean {
+        return (
+            (typeof video.link === 'string' && video.link.includes('/shorts/')) ||
+            titleLower.includes('#shorts') ||
+            titleLower.includes('#short') ||
+            titleLower.includes('(shorts)') ||
+            descriptionLower.includes('#shorts') ||
+            descriptionLower.includes('#short')
+        );
+    }
+
     private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
         if (downloadPath && fs.existsSync(downloadPath)) {
             fs.unlinkSync(downloadPath);
@@ -405,6 +416,7 @@ export class YouTubePollerService {
 
         const titleLower = (video.title || '').toLowerCase();
         const feedText = `${video.title || ''} ${video.contentSnippet || ''}`.toLowerCase();
+        const feedDescriptionLower = (video.contentSnippet || '').toLowerCase();
         if (trailerKeywords.length > 0) {
             const isTrailer = trailerKeywords.some((keyword) => feedText.includes(keyword));
             if (!isTrailer) {
@@ -417,7 +429,16 @@ export class YouTubePollerService {
             }
         }
 
-        const videoUrl = video.link || `https://www.youtube.com/watch?v=${videoId}`;
+        if (settings.excludeShorts && this.isExplicitShort(video, titleLower, feedDescriptionLower)) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: skipped because video is a Short`,
+                sawFreshVideo: true,
+            };
+        }
+
+        const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         let videoInfo: NormalizedVideoInfo;
         try {
             videoInfo = await this.getVideoInfo(videoUrl, videoId);
@@ -443,13 +464,7 @@ export class YouTubePollerService {
         const details = videoInfo.videoDetails;
         const descriptionLower = (details.description || video.contentSnippet || '').toLowerCase();
         if (settings.excludeShorts) {
-            const isShort =
-                (typeof video.link === 'string' && video.link.includes('/shorts/')) ||
-                titleLower.includes('#shorts') ||
-                titleLower.includes('#short') ||
-                titleLower.includes('(shorts)') ||
-                descriptionLower.includes('#shorts') ||
-                descriptionLower.includes('#short');
+            const isShort = this.isExplicitShort(video, titleLower, descriptionLower);
 
             if (isShort) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
