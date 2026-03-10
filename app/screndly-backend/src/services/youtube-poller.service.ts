@@ -1,8 +1,11 @@
 import prisma from '../lib/prisma';
 import Parser from 'rss-parser';
 import ytdl from '@distube/ytdl-core';
+import ytDlp from 'yt-dlp-exec';
+import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { promisify } from 'util';
 import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
 import { notificationService } from './notification.service';
@@ -59,7 +62,7 @@ interface GeneratedCaptions {
     fallback: string;
 }
 
-type FeedItemStatus = 'accepted' | 'ignored';
+type FeedItemStatus = 'accepted' | 'ignored' | 'failed';
 
 interface FeedVideoProcessingResult {
     kind: 'continue' | 'return';
@@ -83,9 +86,12 @@ const PLATFORM_SETTING_KEYS: Record<string, string> = {
 const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
 const MAX_RECENT_FEED_ITEMS = 15;
 const FEED_FRESHNESS_HOURS = 24;
+const MIN_TRAILER_HEIGHT = 1080;
+const MIN_TRAILER_WIDTH = 1920;
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
+const execFileAsync = promisify(execFile);
 
 export class YouTubePollerService {
     private isPolling = false;
@@ -350,8 +356,12 @@ export class YouTubePollerService {
             && supportsFeedItemStatus
             && existing?.status === 'ignored'
         );
+        const canRetryFailedVideo = Boolean(
+            supportsFeedItemStatus
+            && existing?.status === 'failed'
+        );
 
-        if (existing && !canRetryIgnoredVideo) {
+        if (existing && !canRetryIgnoredVideo && !canRetryFailedVideo) {
             return {
                 kind: 'continue',
                 reason: `${videoTitle}: already processed`,
@@ -410,9 +420,12 @@ export class YouTubePollerService {
         const descriptionLower = (details.description || video.contentSnippet || '').toLowerCase();
         if (settings.excludeShorts) {
             const isShort =
-                (details.lengthSeconds && parseInt(details.lengthSeconds, 10) < 60) ||
+                (typeof video.link === 'string' && video.link.includes('/shorts/')) ||
                 titleLower.includes('#shorts') ||
-                descriptionLower.includes('#shorts');
+                titleLower.includes('#short') ||
+                titleLower.includes('(shorts)') ||
+                descriptionLower.includes('#shorts') ||
+                descriptionLower.includes('#short');
 
             if (isShort) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
@@ -422,6 +435,16 @@ export class YouTubePollerService {
                     sawFreshVideo: true,
                 };
             }
+        }
+
+        const bestLandscapeResolution = this.getBestAvailableLandscapeResolution(videoInfo.formats || []);
+        if (!bestLandscapeResolution) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: skipped because no 1080p landscape source is available`,
+                sawFreshVideo: true,
+            };
         }
 
         const thumbnailUrl = this.getThumbnailUrl(details);
@@ -514,6 +537,14 @@ Respond ONLY "YES" or "NO".`,
         try {
             downloadPath = await this.downloadVideoWithInfo(videoInfo);
             if (!downloadPath) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
+                await notificationService.notifyUser({
+                    title: 'Trailer Download Failed',
+                    message: `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
+                    type: 'error',
+                    source: 'youtube',
+                    actionPage: '/channels'
+                });
                 return {
                     kind: 'return',
                     sawFreshVideo: true,
@@ -602,6 +633,7 @@ Respond ONLY "YES" or "NO".`,
             }
 
             if (publishResult.failedPlatforms.length > 0) {
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
                 return {
                     kind: 'return',
                     sawFreshVideo: true,
@@ -618,6 +650,7 @@ Respond ONLY "YES" or "NO".`,
                 };
             }
 
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
             return {
                 kind: 'return',
                 sawFreshVideo: true,
@@ -922,30 +955,183 @@ Respond ONLY "YES" or "NO".`,
         return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
     }
 
-    private async downloadVideoWithInfo(info: any): Promise<string | null> {
-        try {
-            const format = ytdl.chooseFormat(info.formats, { quality: 'highest', filter: 'audioandvideo' });
-            if (!format) {
-                return null;
-            }
+    private getLandscape1080Formats(formats: any[]): any[] {
+        if (!Array.isArray(formats)) {
+            return [];
+        }
 
-            const tempDir = path.join(process.cwd(), 'temp');
-            if (!fs.existsSync(tempDir)) {
-                fs.mkdirSync(tempDir);
-            }
+        return formats.filter((format) => {
+            const height = Number(format?.height || 0);
+            const width = Number(format?.width || 0);
+            const hasVideo = format?.hasVideo !== false && format?.vcodec !== 'none';
 
-            const filePath = path.join(tempDir, `${info.videoDetails.videoId}.mp4`);
+            return hasVideo
+                && height >= MIN_TRAILER_HEIGHT
+                && width >= MIN_TRAILER_WIDTH
+                && width >= height;
+        });
+    }
 
-            return await new Promise((resolve, reject) => {
-                ytdl.downloadFromInfo(info, { format })
-                    .pipe(fs.createWriteStream(filePath))
-                    .on('finish', () => resolve(filePath))
-                    .on('error', (err) => reject(err));
-            });
-        } catch (error) {
-            console.error('[YouTubePoller] Download error:', error);
+    private getBestAvailableLandscapeResolution(formats: any[]): { width: number; height: number } | null {
+        const eligible = this.getLandscape1080Formats(formats);
+        if (eligible.length === 0) {
             return null;
         }
+
+        const best = eligible.sort((left, right) => {
+            const leftHeight = Number(left?.height || 0);
+            const rightHeight = Number(right?.height || 0);
+            if (rightHeight !== leftHeight) {
+                return rightHeight - leftHeight;
+            }
+
+            return Number(right?.width || 0) - Number(left?.width || 0);
+        })[0];
+
+        return {
+            width: Number(best?.width || 0),
+            height: Number(best?.height || 0),
+        };
+    }
+
+    private ensureTempDir(): string {
+        const tempDir = path.join(process.cwd(), 'temp');
+        if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir);
+        }
+
+        return tempDir;
+    }
+
+    private removeFileIfExists(filePath: string) {
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    }
+
+    private hasDownloadContent(filePath: string): boolean {
+        try {
+            return fs.existsSync(filePath) && fs.statSync(filePath).size > 0;
+        } catch {
+            return false;
+        }
+    }
+
+    private async meetsDownloadedResolutionFloor(filePath: string): Promise<boolean> {
+        if (!this.hasDownloadContent(filePath)) {
+            return false;
+        }
+
+        try {
+            const { stdout } = await execFileAsync('ffprobe', [
+                '-v',
+                'error',
+                '-select_streams',
+                'v:0',
+                '-show_entries',
+                'stream=width,height',
+                '-of',
+                'json',
+                filePath,
+            ]);
+            const parsed = JSON.parse(stdout) as {
+                streams?: Array<{ width?: number; height?: number }>;
+            };
+            const stream = parsed.streams?.[0];
+            const width = Number(stream?.width || 0);
+            const height = Number(stream?.height || 0);
+            if (!width || !height) {
+                return false;
+            }
+
+            return width >= MIN_TRAILER_WIDTH && height >= MIN_TRAILER_HEIGHT && width >= height;
+        } catch {
+            // If ffprobe is unavailable in the runtime, fall back to the selected
+            // download format and only verify that the file is non-empty.
+            return this.meetsDownloadedResolutionFloor(filePath);
+        }
+    }
+
+    private async downloadWithYtdl(info: any, filePath: string): Promise<boolean> {
+        try {
+            const progressiveFormats = this.getLandscape1080Formats(info.formats || [])
+                .filter((format) => format?.hasAudio && format?.hasVideo)
+                .sort((left, right) => {
+                    const leftHeight = Number(left?.height || 0);
+                    const rightHeight = Number(right?.height || 0);
+                    if (rightHeight !== leftHeight) {
+                        return rightHeight - leftHeight;
+                    }
+
+                    return Number(right?.width || 0) - Number(left?.width || 0);
+                });
+            const format = progressiveFormats.length > 0
+                ? ytdl.chooseFormat(progressiveFormats, { quality: 'highest' })
+                : null;
+            if (!format) {
+                return false;
+            }
+
+            await new Promise<void>((resolve, reject) => {
+                const videoStream = ytdl.downloadFromInfo(info, { format });
+                const output = fs.createWriteStream(filePath);
+
+                videoStream.on('error', reject);
+                output.on('error', reject);
+                output.on('finish', resolve);
+
+                videoStream.pipe(output);
+            });
+
+            return this.meetsDownloadedResolutionFloor(filePath);
+        } catch (error) {
+            console.error('[YouTubePoller] ytdl-core download error:', error);
+            return false;
+        }
+    }
+
+    private async downloadWithYtDlp(videoUrl: string, filePath: string): Promise<boolean> {
+        try {
+            await ytDlp(videoUrl, {
+                output: filePath,
+                format: 'bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
+                mergeOutputFormat: 'mp4',
+                noProgress: true,
+                noWarnings: true,
+                quiet: true,
+            });
+
+            return this.hasDownloadContent(filePath);
+        } catch (error) {
+            console.error('[YouTubePoller] yt-dlp fallback download error:', error);
+            return false;
+        }
+    }
+
+    private async downloadVideoWithInfo(info: any): Promise<string | null> {
+        const videoId = info?.videoDetails?.videoId;
+        const videoUrl = info?.videoDetails?.video_url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
+
+        if (!videoId || !videoUrl) {
+            return null;
+        }
+
+        const tempDir = this.ensureTempDir();
+        const filePath = path.join(tempDir, `${videoId}.mp4`);
+        this.removeFileIfExists(filePath);
+
+        if (await this.downloadWithYtdl(info, filePath)) {
+            return filePath;
+        }
+
+        this.removeFileIfExists(filePath);
+
+        if (await this.downloadWithYtDlp(videoUrl, filePath)) {
+            return filePath;
+        }
+
+        this.removeFileIfExists(filePath);
+        return null;
     }
 
     private extractVideoId(link: string, id: string): string {

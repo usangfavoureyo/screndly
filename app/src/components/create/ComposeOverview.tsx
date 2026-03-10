@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, CalendarDays, CheckCircle2, Film, Image as ImageIcon, FileText, PencilLine } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Film, Image as ImageIcon, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -220,7 +220,6 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
         {items.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
-            <PencilLine className="w-12 h-12 text-gray-400 dark:text-[#9CA3AF] mx-auto mb-4" />
             <h3 className="text-gray-900 dark:text-white mb-2">No post drafts yet</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               Add a post to prepare media, captions, and schedules in one place.

@@ -771,7 +771,6 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
           {/* No Results State */}
           {!hasResults && searchQuery && (
             <div className="text-center py-12">
-              <Search className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <h3 className="text-gray-900 dark:text-white mb-2">No results found</h3>
               <p className="text-gray-600 dark:text-[#9CA3AF]">
                 Try searching for "api", "video", "theme", or "notifications"

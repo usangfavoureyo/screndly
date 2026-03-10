@@ -411,9 +411,6 @@ export function NotificationPanel({
         )}
         {filteredNotifications.length === 0 ? (
           <div className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-200 dark:bg-[#1A1A1A] rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCheck className="w-8 h-8 text-[#6B7280]" />
-            </div>
             <p className="text-[#9CA3AF]">No notifications</p>
             <p className="text-[#6B7280] text-sm mt-1">You're all caught up!</p>
           </div>

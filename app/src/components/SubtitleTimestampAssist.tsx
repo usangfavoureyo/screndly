@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef } from 'react';
-import { Search, Clock, FileText, Copy, Check, X, ChevronDown, ChevronUp, Cloud, Sparkles } from 'lucide-react';
+import { Search, Clock, FileText, Copy, Check, X, ChevronDown, ChevronUp, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -452,7 +452,6 @@ Coming soon to theaters everywhere.
           {/* Empty State */}
           {subtitles.length === 0 && (
             <div className="text-center py-8 text-[#6B7280] dark:text-[#9CA3AF]">
-              <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm mb-2">No subtitle file loaded</p>
               <p className="text-xs">
                 Upload a .srt file or extract subtitles from your video
@@ -506,7 +505,6 @@ Coming soon to theaters everywhere.
             </div>
           ) : (
             <div className="text-center py-8 text-[#6B7280] dark:text-[#9CA3AF]">
-              <Cloud className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm mb-2">No subtitle files found</p>
               <p className="text-xs">
                 Upload .srt, .vtt, or .sub files to your Backblaze Videos Bucket
