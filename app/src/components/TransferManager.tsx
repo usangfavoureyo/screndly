@@ -127,7 +127,6 @@ export function TransferManager({ isOpen, onClose }: TransferManagerProps) {
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {transfers.length === 0 ? (
             <div className="text-center py-12">
-              <RefreshCw className="w-12 h-12 text-gray-300 dark:text-[#444444] mx-auto mb-3" />
               <p className="text-gray-600 dark:text-[#9CA3AF]">No active transfers</p>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
                 Uploads and downloads will appear here

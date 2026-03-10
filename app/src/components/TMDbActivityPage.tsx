@@ -5,7 +5,6 @@ import {
   Clock,
   Calendar,
   RefreshCw,
-  Clapperboard,
   MoreVertical,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
@@ -784,7 +783,6 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           })
         ) : (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
-            <Clapperboard className="w-12 h-12 text-gray-400 dark:text-[#9CA3AF] mx-auto mb-4" />
             <h3 className="text-gray-900 dark:text-white mb-2">No TMDb activity</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filter === 'all'

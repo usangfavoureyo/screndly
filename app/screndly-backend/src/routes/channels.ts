@@ -36,7 +36,7 @@ router.get('/', async (_req, res) => {
 router.get('/activity', async (_req, res) => {
     try {
         const feedItemWhere = (await hasFeedItemStatusColumn())
-            ? { status: 'accepted' as const }
+            ? { status: { in: ['accepted', 'failed'] } }
             : {};
         const items = await prisma.feedItem.findMany({
             where: feedItemWhere,
@@ -191,7 +191,7 @@ router.get('/:id/videos', async (req, res) => {
         }
 
         const feedItemWhere = (await hasFeedItemStatusColumn())
-            ? { status: 'accepted' as const }
+            ? { status: { in: ['accepted', 'failed'] } }
             : {};
         const videos = await prisma.feedItem.findMany({
             where: {

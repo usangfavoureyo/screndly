@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Cloud, FileImage, X } from 'lucide-react';
+import { Upload, Cloud, X } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -568,7 +568,6 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         </div>
       ) : templates.length === 0 ? (
         <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
-          <FileImage className="w-12 h-12 text-gray-400 dark:text-[#666666] mx-auto mb-4" />
           <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No templates yet</p>
           <p className="text-sm text-gray-500 dark:text-[#6B7280]">
             Upload a PSD template or load from Backblaze to get started

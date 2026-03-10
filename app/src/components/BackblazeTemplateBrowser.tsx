@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cloud, FileImage, Search, Loader2, CheckCircle, FolderOpen } from 'lucide-react';
+import { Cloud, FileImage, Search, Loader2, CheckCircle } from 'lucide-react';
 import { toast } from "sonner";
 import { haptics } from '../utils/haptics';
 import { Button } from './ui/button';
@@ -151,7 +151,6 @@ export function BackblazeTemplateBrowser({ open, onSelectTemplate, onClose }: Ba
             </div>
           ) : filteredFiles.length === 0 ? (
             <div className="text-center py-12">
-              <FolderOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <p className="text-gray-500 dark:text-gray-400 mb-2">
                 {searchQuery ? 'No templates match your search' : 'No templates found'}
               </p>

@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
+const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
+
 interface VideoSettingsProps {
   settings: any;
   updateSetting: (key: string, value: any) => void;
@@ -95,7 +97,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
               type="number"
               min="1"
               max="60"
-              value={settings.fetchInterval || pollInterval}
+              value={settings.fetchInterval ?? pollInterval}
               onFocus={() => haptics.light()}
               onChange={(e) => handleIntervalChange(e.target.value)}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
@@ -112,7 +114,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
               type="number"
               min="1"
               max="1440"
-              value={settings.postInterval || 10}
+              value={settings.postInterval ?? 10}
               onFocus={() => haptics.light()}
               onChange={(e) => handlePostIntervalChange(e.target.value)}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
@@ -127,18 +129,21 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
             <div>
               <Label className="text-[#9CA3AF]">Trailer Keywords (comma-separated)</Label>
               <Input
-                value={settings.advancedFilters || 'trailer, teaser, official, first look, sneak peek'}
+                value={settings.advancedFilters ?? ''}
                 onFocus={() => haptics.light()}
                 onChange={(e) => handleKeywordsChange(e.target.value)}
-                placeholder="trailer, official, teaser"
+                placeholder={DEFAULT_TRAILER_KEYWORDS}
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
               />
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                Only saved keyword values are sent to the backend poller. Placeholder text is not treated as an active rule.
+              </p>
             </div>
 
             <div>
               <Label className="text-[#9CA3AF]">Region Filter (optional)</Label>
               <Input
-                value={settings.regionFilter || ''}
+                value={settings.regionFilter ?? ''}
                 onFocus={() => haptics.light()}
                 onChange={(e) => {
                   haptics.light();
@@ -158,7 +163,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
         <div>
           <h3 className="text-gray-900 dark:text-white mb-3">Format Detection</h3>
           <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mb-3">
-            Filter videos by aspect ratio and format to ensure only 16:9 landscape trailers are processed.
+            Filter videos by aspect ratio and quality to ensure only 16:9 landscape trailers at 1080p or higher are processed.
           </p>
           <div className="space-y-3">
             <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-4">
@@ -181,7 +186,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
                     Exclude YouTube Shorts (9:16 vertical videos)
                   </Label>
                   <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
-                    Automatically skip videos with /shorts/ URL and #shorts in title. Only process 16:9 landscape trailers.
+                    Automatically skip videos with /shorts/ URL and #shorts in title. Only process 16:9 landscape trailers with a minimum 1080p source.
                   </p>
                 </div>
               </div>
@@ -192,11 +197,11 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
               <div className="space-y-2 text-xs text-gray-600 dark:text-[#9CA3AF]">
                 <div className="flex items-start gap-2">
                   <span className="text-[#ec1e24]">✓</span>
-                  <span><span className="text-gray-900 dark:text-white">16:9 Format:</span> Landscape trailers (1920x1080, 3840x2160, etc.)</span>
+                  <span><span className="text-gray-900 dark:text-white">1080p Minimum:</span> Only landscape trailers at 1920x1080 or higher are accepted</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-[#ec1e24]">✗</span>
-                  <span><span className="text-gray-900 dark:text-white">9:16 Format:</span> Shorts, vertical videos, TikTok-style content</span>
+                  <span><span className="text-gray-900 dark:text-white">Below 1080p:</span> 720p, 480p, and lower resolution uploads are skipped</span>
                 </div>
                 <div className="flex items-start gap-2">
                   <span className="text-[#ec1e24]">✗</span>
@@ -212,7 +217,7 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
             <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-4">
               <h4 className="text-sm text-gray-900 dark:text-white mb-2">Platform Upload Settings</h4>
               <div className="space-y-2 text-xs text-gray-600 dark:text-[#9CA3AF]">
-                <p className="text-gray-900 dark:text-white mb-1">All platforms receive 16:9 format:</p>
+                <p className="text-gray-900 dark:text-white mb-1">All platforms receive the original 1080p+ source file:</p>
                 <div className="flex items-start gap-2">
                   <span className="text-[#ec1e24]">•</span>
                   <span><span className="text-gray-900 dark:text-white">YouTube:</span> Native 16:9 (1080p, 4K)</span>

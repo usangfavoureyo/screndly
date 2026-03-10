@@ -155,10 +155,11 @@ export function UploadManagerPage({ onBack }: UploadManagerPageProps) {
             }}
             variant="outline"
             size="sm"
+            aria-label="Refresh uploads"
+            title="Refresh uploads"
             className="border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#111111]"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
       </div>

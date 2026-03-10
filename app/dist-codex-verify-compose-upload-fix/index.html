@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="color-scheme" content="dark light" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Screndly" />
+  <meta name="description"
+    content="Automation dashboard for movie/TV trailer downloading, posting, and engagement through AI agents" />
+
+  <!-- Manifest -->
+  <link rel="manifest" href="/manifest.json?v=4" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-96x96.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-72x72.png" />
+  <link rel="shortcut icon" href="/icons/icon-72x72.png" />
+
+  <!-- Apple Touch Icons -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.png" />
+
+  <title>Screndly</title>
+  <script type="module" crossorigin src="/assets/index-CmVhsvY4.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-S6KryFNY.css">
+</head>
+
+<body style="margin: 0; padding: 0;">
+  <!-- Blocking script: apply dark mode BEFORE React loads to prevent flash -->
+  <script>
+    (function () {
+      try {
+        var theme = null;
+        var settings = localStorage.getItem('screndlySettings');
+        if (settings) {
+          try {
+            var parsedSettings = JSON.parse(settings);
+            if (typeof parsedSettings.darkMode === 'boolean') {
+              theme = parsedSettings.darkMode ? 'dark' : 'light';
+            }
+          } catch (settingsError) {
+            theme = null;
+          }
+        }
+
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = localStorage.getItem('theme');
+        }
+
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = 'dark';
+        }
+
+        var isDark = theme === 'dark';
+        var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+        var colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+
+        document.documentElement.dataset.theme = theme;
+
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.style.colorScheme = 'dark';
+          document.body.style.backgroundColor = '#000000';
+          if (themeColorMeta) themeColorMeta.setAttribute('content', '#000000');
+          if (colorSchemeMeta) colorSchemeMeta.setAttribute('content', 'dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.style.colorScheme = 'light';
+          document.body.style.backgroundColor = '#ffffff';
+          if (themeColorMeta) themeColorMeta.setAttribute('content', '#ffffff');
+          if (colorSchemeMeta) colorSchemeMeta.setAttribute('content', 'light');
+        }
+      } catch (e) {
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.classList.add('dark');
+        document.documentElement.style.colorScheme = 'dark';
+        document.body.style.backgroundColor = '#000000';
+      }
+    })();
+  </script>
+  <div id="root"></div>
+
+  <!-- Service Worker Registration -->
+
+</body>
+
+</html>

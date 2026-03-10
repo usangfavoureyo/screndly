@@ -445,6 +445,15 @@ export function mergeSettings(
     ...backendSettings,
   } as Partial<Settings>;
 
+  // If the backend copy is blank but the browser still has a real value, prefer
+  // the local value so the next save cycle can repopulate backend storage.
+  for (const [key, localValue] of Object.entries(localSettings)) {
+    const backendValue = backendSettings[key as keyof Settings];
+    if (hasMeaningfulValue(localValue) && !hasMeaningfulValue(backendValue)) {
+      merged[key as keyof Settings] = localValue as Settings[keyof Settings];
+    }
+  }
+
   // Device-local preferences must win over any stale backend copies.
   for (const key of LOCAL_PREFERENCE_KEYS) {
     if (key in localSettings) {
@@ -453,6 +462,26 @@ export function mergeSettings(
   }
 
   return merged as Settings;
+}
+
+function hasMeaningfulValue(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value as Record<string, unknown>).length > 0;
+  }
+
+  return true;
 }
 
 /**

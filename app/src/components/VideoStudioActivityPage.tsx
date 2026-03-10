@@ -1,4 +1,4 @@
-import { CheckCircle, RefreshCw, Scissors, Video } from 'lucide-react';
+import { CheckCircle, RefreshCw, Scissors } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
@@ -393,9 +393,6 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
             </div>
           ) : activities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
-              <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-[#ec1e24]/10 flex items-center justify-center mb-4">
-                <Video className="w-8 h-8 text-[#ec1e24]" />
-              </div>
               <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No activity yet</h3>
               <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] max-w-sm">
                 Generated videos and publishing activity will appear here.

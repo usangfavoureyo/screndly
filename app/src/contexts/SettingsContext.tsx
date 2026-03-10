@@ -581,9 +581,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
           if (response.success && response.data) {
             // Merge backend settings (API keys) with local settings (preferences)
+            const mergedSettings = {
+              ...getDefaultSettings(),
+              ...mergeSettings(response.data, localSettings),
+            };
             const merged = shouldInjectCultureCravePrompts
-              ? { ...mergeSettings(response.data, localSettings), ...settingsPromptDefaults }
-              : mergeSettings(response.data, localSettings);
+              ? { ...mergedSettings, ...settingsPromptDefaults }
+              : mergedSettings;
             setSettings(merged);
             syncThemeSetting(merged.darkMode);
           } else {
@@ -637,7 +641,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         const result = await saveSettingsToBackend(settings);
         if (!result.success) {
           console.error('[Settings] Failed to save to backend:', result.error);
-          toast.error('Failed to save API keys to backend');
+          toast.error('Failed to save settings to backend');
         }
       }
       // Note: Backend is optional for frontend-only PWA mode
@@ -661,9 +665,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (isSensitiveSetting(key) && backendAvailable) {
       const result = await saveSettingsToBackend({ [key]: value } as Partial<Settings>);
       if (result.success) {
-        toast.success('API key saved securely');
+        toast.success('Setting saved');
       } else {
-        toast.error('Failed to save API key');
+        toast.error('Failed to save setting');
       }
     }
   };
@@ -727,7 +731,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
  */
 function getLocalSettings(): Partial<Settings> {
   try {
-    const saved = localStorage.getItem('screndlySettings');
+    const saved =
+      localStorage.getItem(LOCAL_SETTINGS_KEY) ??
+      localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
     return saved ? JSON.parse(saved) : {};
   } catch {
     return {};

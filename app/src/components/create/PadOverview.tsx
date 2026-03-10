@@ -1,4 +1,4 @@
-import { Clock3, FilePenLine, Sparkles, Wand2 } from 'lucide-react';
+import { FilePenLine, Sparkles, Wand2 } from 'lucide-react';
 import { PAD_TEMPLATES } from '../../config/create';
 import { usePadStore } from '../../store/usePadStore';
 import type { PadSession } from '../../types/pad';
@@ -112,7 +112,6 @@ export function PadOverview({ onNavigate }: PadOverviewProps) {
 
         {sessions.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center dark:border-[#333333]">
-            <Clock3 className="h-10 w-10 text-gray-400 dark:text-[#9CA3AF] mx-auto mb-3" />
             <p className="text-gray-900 dark:text-white mb-2">No PAD sessions yet</p>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Start with a template above to create your first writing workspace.</p>
           </div>
