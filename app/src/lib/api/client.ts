@@ -27,7 +27,8 @@ export class ApiClient {
     this.baseUrl = baseUrl || getApiUrl();
     this.timeout = timeout;
     this.retryAttempts = retryAttempts;
-    this.backendAvailable = !!this.baseUrl;
+    // An empty string is a valid same-origin API base in production.
+    this.backendAvailable = this.baseUrl !== undefined && this.baseUrl !== null;
   }
 
   /**

@@ -83,8 +83,8 @@ interface RSSFeedData {
 
 const RSS_PLATFORM_IMAGE_LIMITS: Record<string, number> = {
   X: 4,
-  Threads: 1,
-  Facebook: 1,
+  Threads: 3,
+  Facebook: 3,
   Pinterest: 1,
 };
 
