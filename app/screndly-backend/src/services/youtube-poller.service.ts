@@ -120,6 +120,7 @@ const MAX_RECENT_FEED_ITEMS = 15;
 const FEED_FRESHNESS_HOURS = 24;
 const MIN_TRAILER_HEIGHT = 1080;
 const MIN_TRAILER_WIDTH = 1920;
+const DEFAULT_TRAILER_KEYWORDS = ['trailer', 'teaser', 'official', 'first look', 'sneak peek'];
 const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
@@ -183,7 +184,7 @@ export class YouTubePollerService {
                 if (!options.force && channel.lastCheck) {
                     const lastCheckTime = new Date(channel.lastCheck).getTime();
                     if (now - lastCheckTime < intervalMs) {
-                        results.push({
+                        const skippedResult = {
                             channelId: channel.channelId,
                             channelName: channel.name,
                             checked: false,
@@ -192,12 +193,16 @@ export class YouTubePollerService {
                             published: false,
                             failed: false,
                             message: 'Skipped until next polling window'
-                        });
+                        };
+                        console.log(`[YouTubePoller] ${channel.name}: ${skippedResult.message}`);
+                        results.push(skippedResult);
                         continue;
                     }
                 }
 
-                results.push(await this.processChannel(channel, settings, options));
+                const channelResult = await this.processChannel(channel, settings, options);
+                console.log(`[YouTubePoller] ${channelResult.channelName}: ${channelResult.message}`);
+                results.push(channelResult);
             }
 
             return {
@@ -265,12 +270,12 @@ export class YouTubePollerService {
             const latestVideos = [...feed.items].sort((a, b) => {
                 return new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime();
             }).slice(0, MAX_RECENT_FEED_ITEMS);
-            const trailerKeywords = settings.advancedFilters
-                ? settings.advancedFilters
-                    .split(',')
-                    .map((keyword: string) => keyword.trim().toLowerCase())
-                    .filter(Boolean)
-                : [];
+            const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
+            console.log(
+                usingDefaultTrailerKeywords
+                    ? `[YouTubePoller] ${activeChannel.name}: using default trailer filters (${trailerKeywords.join(', ')}) because advancedFilters is blank`
+                    : `[YouTubePoller] ${activeChannel.name}: using trailer filters (${trailerKeywords.join(', ')})`
+            );
             const targetPlatforms = this.getTargetPlatforms(settings);
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
@@ -389,6 +394,27 @@ export class YouTubePollerService {
         }
 
         return matchedKeywords.some((keyword) => !NON_STANDALONE_TRAILER_KEYWORDS.has(keyword));
+    }
+
+    private getTrailerKeywords(settings: LoadedVideoSettings): { keywords: string[]; usingDefault: boolean } {
+        const configuredKeywords = settings.advancedFilters
+            ? settings.advancedFilters
+                .split(',')
+                .map((keyword: string) => keyword.trim().toLowerCase())
+                .filter(Boolean)
+            : [];
+
+        if (configuredKeywords.length > 0) {
+            return {
+                keywords: configuredKeywords,
+                usingDefault: false,
+            };
+        }
+
+        return {
+            keywords: DEFAULT_TRAILER_KEYWORDS,
+            usingDefault: true,
+        };
     }
 
     private getYouTubeErrorText(error: unknown): string {
@@ -1201,7 +1227,7 @@ Respond ONLY "YES" or "NO".`,
     private async getVideoInfo(videoUrl: string, videoId: string): Promise<NormalizedVideoInfo> {
         try {
             const info = await ytdl.getInfo(videoUrl, YOUTUBE_INFO_OPTIONS);
-            return {
+            const normalizedInfo: NormalizedVideoInfo = {
                 source: 'ytdl',
                 raw: info,
                 videoDetails: {
@@ -1214,6 +1240,14 @@ Respond ONLY "YES" or "NO".`,
                 },
                 formats: info.formats || [],
             };
+
+            if (this.getBestAvailableLandscapeResolution(normalizedInfo.formats || [])) {
+                return normalizedInfo;
+            }
+
+            console.warn(
+                `[YouTubePoller] ytdl-core metadata for ${videoId} did not expose a usable 1080p landscape format; trying yt-dlp metadata fallback`
+            );
         } catch (error) {
             console.warn(`[YouTubePoller] ytdl-core metadata fetch failed for ${videoId}; trying yt-dlp fallback`, error);
         }
