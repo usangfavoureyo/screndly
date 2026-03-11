@@ -402,7 +402,7 @@ function selectImageCount(value?: string | null): number {
     return Number.parseInt(value, 10);
   }
 
-  return Math.random() < 0.5 ? 1 : 2;
+  return 2;
 }
 
 function dedupeUrls(urls: Array<string | undefined | null>): string[] {
@@ -797,7 +797,7 @@ async function upsertRSSFeedItem(
 }
 
 async function resolveRSSItemImages(
-  feed: { serperPriority: boolean },
+  feed: { serperPriority: boolean; imageCount?: string | null },
   item: RSSItem,
   limit: number,
   model?: string
@@ -812,6 +812,7 @@ async function resolveRSSItemImages(
     {
       serperPriority: feed.serperPriority,
       limit,
+      smartCount: feed.imageCount === 'random',
       model,
     }
   );

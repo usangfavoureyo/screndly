@@ -478,12 +478,12 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   >
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">1 Image</SelectItem>
-                    <SelectItem value="2">2 Images</SelectItem>
-                    <SelectItem value="3">3 Images</SelectItem>
-                    <SelectItem value="random">Random (1-2)</SelectItem>
-                  </SelectContent>
+                    <SelectContent>
+                      <SelectItem value="1">1 Image</SelectItem>
+                      <SelectItem value="2">2 Images</SelectItem>
+                      <SelectItem value="3">3 Images</SelectItem>
+                      <SelectItem value="random">Smart (1-2)</SelectItem>
+                    </SelectContent>
                 </Select>
               </div>
 
