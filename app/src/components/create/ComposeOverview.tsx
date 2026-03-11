@@ -310,56 +310,54 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                   onToggleSelection={selection.toggleSelection}
                   className="w-full text-left p-5 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
                 >
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
-                          {getComposeAssetPreviewUrl(primaryAsset) ? (
-                            primaryAsset.kind === 'video' ? (
-                              <video
-                                src={getComposeAssetPreviewUrl(primaryAsset)}
-                                className="h-full w-full object-cover"
-                                muted
-                                playsInline
-                                preload="metadata"
-                              />
-                            ) : (
-                              <img
-                                src={getComposeAssetPreviewUrl(primaryAsset)}
-                                alt={primaryAsset.fileName}
-                                className="h-full w-full object-cover"
-                              />
-                            )
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-[#ec1e24]">
-                              {primaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : primaryAsset ? <ImageIcon className="h-5 w-5" /> : <LeadingIcon className="h-5 w-5" />}
-                            </div>
-                          )}
-                          {extraAssetCount > 0 ? (
-                            <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
-                              +{extraAssetCount}
+                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-4">
+                    <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
+                      {getComposeAssetPreviewUrl(primaryAsset) ? (
+                        primaryAsset.kind === 'video' ? (
+                          <video
+                            src={getComposeAssetPreviewUrl(primaryAsset)}
+                            className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        ) : (
+                          <img
+                            src={getComposeAssetPreviewUrl(primaryAsset)}
+                            alt={primaryAsset.fileName}
+                            className="h-full w-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-[#ec1e24]">
+                          {primaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : primaryAsset ? <ImageIcon className="h-5 w-5" /> : <LeadingIcon className="h-5 w-5" />}
+                        </div>
+                      )}
+                      {extraAssetCount > 0 ? (
+                        <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
+                          +{extraAssetCount}
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="flex min-w-0 items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
+                        <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
+                          {formatItemMeta(item)}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          {item.platforms.map((platform) => (
+                            <span
+                              key={platform}
+                              className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF] uppercase"
+                            >
+                              {platform}
                             </span>
-                          ) : null}
+                          ))}
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
-                          <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
-                            {formatItemMeta(item)}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-2">
-                            {item.platforms.map((platform) => (
-                              <span
-                                key={platform}
-                                className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF] uppercase"
-                              >
-                                {platform}
-                              </span>
-                            ))}
-                          </div>
-                          {item.error ? (
-                            <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
-                          ) : null}
-                        </div>
+                        {item.error ? (
+                          <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
+                        ) : null}
                       </div>
                       <span className={`shrink-0 inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
                         {item.status === 'scheduled'
@@ -372,46 +370,64 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                       </span>
                     </div>
                     {!selection.selectionMode ? (
-                      <div className="ml-[4.25rem] w-[calc(100%-4.25rem)]">
-                        <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
-                          <Button
-                            size="sm"
-                            className="h-10 whitespace-nowrap px-3 text-sm"
-                            disabled={publishingIds.includes(item.id)}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handlePublish(item.id);
-                            }}
-                          >
-                            {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 whitespace-nowrap px-3 text-sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              handleOpenSchedule(item);
-                            }}
-                          >
-                            Schedule
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-10 whitespace-nowrap px-3 text-sm"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              haptics.light();
-                              handleEdit(item.id);
-                            }}
-                          >
-                            Edit
-                          </Button>
+                      item.status === 'draft' ? (
+                        <div className="col-start-2">
+                          <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
+                            <Button
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              disabled={publishingIds.includes(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handlePublish(item.id);
+                              }}
+                            >
+                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenSchedule(item);
+                              }}
+                            >
+                              Schedule
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                haptics.light();
+                                handleEdit(item.id);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
                         </div>
-                      </div>
+                      ) : item.status !== 'published' ? (
+                        <div className="col-start-2">
+                          <div className="max-w-[9rem]">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-full px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                haptics.light();
+                                handleEdit(item.id);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null
                     ) : null}
-
                   </div>
                 </SwipeableActivityCard>
               );
