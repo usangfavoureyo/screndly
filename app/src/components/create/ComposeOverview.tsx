@@ -15,10 +15,16 @@ import {
 } from '../ui/bottom-sheet';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
+import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { publishComposeItem } from '../../lib/create/composePublish';
+import {
+  buildComposePublishFailureNotification,
+  buildComposePublishSuccessNotification,
+  buildComposeScheduledNotification,
+} from '../../lib/create/composeNotifications';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem } from '../../types/compose';
 
@@ -69,6 +75,7 @@ function toIsoSchedule(date?: Date, time?: string) {
 
 export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
+  const { addNotification } = useNotifications();
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -118,6 +125,17 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
       });
 
       if (result.postedPlatforms.length > 0) {
+        addNotification(
+          buildComposePublishSuccessNotification(
+            {
+              ...item,
+              status: nextStatus,
+              updatedAt: new Date().toISOString(),
+              error: nextError,
+            },
+            result,
+          ),
+        );
         toast.success(
           result.failedResults.length > 0
             ? `Published to ${result.postedPlatforms.join(', ')}.`
@@ -126,15 +144,38 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
         return;
       }
 
+      addNotification(
+        buildComposePublishFailureNotification(
+          {
+            ...item,
+            status: 'failed',
+            updatedAt: new Date().toISOString(),
+            error: nextError,
+          },
+          nextError || 'Failed to publish post',
+        ),
+      );
       toast.error(nextError || 'Failed to publish post');
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to publish post';
       saveItem({
         ...item,
         status: 'failed',
         updatedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Failed to publish post',
+        error: message,
       });
-      toast.error(error instanceof Error ? error.message : 'Failed to publish post');
+      addNotification(
+        buildComposePublishFailureNotification(
+          {
+            ...item,
+            status: 'failed',
+            updatedAt: new Date().toISOString(),
+            error: message,
+          },
+          message,
+        ),
+      );
+      toast.error(message);
     } finally {
       setPublishingIds((current) => current.filter((id) => id !== itemId));
     }
@@ -157,6 +198,19 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
     haptics.medium();
     updateStatus(scheduleItemId, 'scheduled', scheduledAt);
+    if (scheduleItem) {
+      addNotification(
+        buildComposeScheduledNotification(
+          {
+            ...scheduleItem,
+            status: 'scheduled',
+            scheduledAt,
+            updatedAt: new Date().toISOString(),
+          },
+          scheduledAt,
+        ),
+      );
+    }
     setScheduleItemId(null);
     toast.success('Compose item scheduled');
   };
@@ -306,10 +360,10 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                             <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
                           ) : null}
                           {!selection.selectionMode ? (
-                            <div className="mt-3 grid w-full max-w-[21rem] grid-cols-3 gap-2">
+                            <div className="mt-3 grid w-full max-w-[24rem] grid-cols-3 gap-2">
                               <Button
                                 size="sm"
-                                className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                className="h-10 whitespace-nowrap px-3 text-sm"
                                 disabled={publishingIds.includes(item.id)}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -321,7 +375,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                className="h-10 whitespace-nowrap px-3 text-sm"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   handleOpenSchedule(item);
@@ -332,7 +386,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="min-w-0 px-2 text-[13px] sm:text-sm"
+                                className="h-10 whitespace-nowrap px-3 text-sm"
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   haptics.light();

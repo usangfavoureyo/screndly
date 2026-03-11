@@ -51,6 +51,78 @@ function verifyDevToken(token: string): boolean {
   }
 }
 
+function normalizeBase64Segment(segment: string): string {
+  const normalized = segment.replace(/-/g, '+').replace(/_/g, '/');
+  const paddingNeeded = (4 - (normalized.length % 4)) % 4;
+  return normalized.padEnd(normalized.length + paddingNeeded, '=');
+}
+
+function decodeJsonSegment(segment: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(atob(normalizeBase64Segment(segment)));
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function isLegacyDevToken(token: string): boolean {
+  if (token.includes('.')) {
+    return false;
+  }
+
+  const payload = decodeJsonSegment(token);
+  return !!payload && (
+    'authenticated' in payload ||
+    'password' in payload ||
+    'app' in payload
+  );
+}
+
+function hasUnexpiredJwt(token: string): boolean {
+  const [, payloadSegment] = token.split('.');
+  if (!payloadSegment) {
+    return false;
+  }
+
+  const payload = decodeJsonSegment(payloadSegment);
+  if (!payload) {
+    return false;
+  }
+
+  const exp = typeof payload.exp === 'number'
+    ? payload.exp
+    : typeof payload.exp === 'string'
+      ? Number(payload.exp)
+      : null;
+
+  if (exp == null || !Number.isFinite(exp)) {
+    // Treat JWTs without an exp as valid offline to avoid forced logout
+    // when the backend is unreachable.
+    return true;
+  }
+
+  return exp > Math.floor(Date.now() / 1000);
+}
+
+function hasOfflineUsableToken(token: string): boolean {
+  if (verifyDevToken(token)) {
+    return true;
+  }
+
+  if (isLegacyDevToken(token)) {
+    return false;
+  }
+
+  if (token.split('.').length === 3) {
+    return hasUnexpiredJwt(token);
+  }
+
+  // Opaque backend tokens cannot be validated client-side. If one is present,
+  // preserve the session offline and let the server re-verify when reachable.
+  return true;
+}
+
 export async function login(password: string, rememberMe: boolean = true): Promise<{
   success: boolean;
   error?: string;
@@ -145,6 +217,8 @@ export async function verifyAuth(): Promise<boolean> {
     return false;
   }
 
+  const offlineUsable = hasOfflineUsableToken(token);
+
   try {
     const backendUrl = getApiUrl();
     const response = await fetch(`${backendUrl}/api/auth/verify`, {
@@ -156,7 +230,7 @@ export async function verifyAuth(): Promise<boolean> {
     });
 
     if (response.status === 404) {
-      return verifyDevToken(token);
+      return offlineUsable;
     }
 
     const contentType = response.headers.get('content-type');
@@ -167,14 +241,18 @@ export async function verifyAuth(): Promise<boolean> {
         return true;
       }
 
-      console.log('[Auth] Token verification failed');
-      logout();
-      return false;
+      if (response.status === 401 || response.status === 403) {
+        console.log('[Auth] Token verification failed');
+        logout();
+        return false;
+      }
+
+      return offlineUsable;
     }
 
-    return verifyDevToken(token);
+    return offlineUsable;
   } catch (_error) {
-    return verifyDevToken(token);
+    return offlineUsable;
   }
 }
 
@@ -191,7 +269,7 @@ export function hasStoredAuthSession(): boolean {
   const keepSignedIn = localStorage.getItem(KEEP_SIGNED_IN_KEY) === 'true';
   const sessionActive = sessionStorage.getItem(SESSION_ACTIVE_KEY) === 'true';
 
-  return keepSignedIn || sessionActive;
+  return (keepSignedIn || sessionActive) && hasOfflineUsableToken(token);
 }
 
 export function logout(): void {

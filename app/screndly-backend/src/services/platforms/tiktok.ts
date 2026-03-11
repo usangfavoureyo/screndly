@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { pipeline } from 'stream/promises';
+import { validateVideoForTikTok } from '../platform-video-validation.service';
 
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2';
 const MAX_SINGLE_CHUNK_BYTES = 64 * 1024 * 1024;
@@ -29,6 +30,7 @@ interface TikTokCreatorInfo {
     comment_disabled?: boolean;
     duet_disabled?: boolean;
     stitch_disabled?: boolean;
+    max_video_post_duration_sec?: number;
 }
 
 interface TikTokUploadPlan {
@@ -341,6 +343,14 @@ export const tiktokService = {
 
             if (!filePath) {
                 throw new Error('TikTok requires a video file or a downloadable video URL.');
+            }
+
+            const validation = await validateVideoForTikTok(
+                filePath,
+                Math.max(30, Number(creatorInfo?.max_video_post_duration_sec || 180))
+            );
+            if (!validation.ok) {
+                throw new Error(validation.issues.join(' '));
             }
 
             let uploadInit: TikTokUploadInit;

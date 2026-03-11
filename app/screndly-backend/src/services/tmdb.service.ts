@@ -1021,10 +1021,11 @@ async function validateCandidate(
 /**
  * Refresh TMDb content - Strict Enforcement Pipeline
  */
-export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[] }> {
+export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[]; addedTitles: string[] }> {
     const errors: string[] = [];
     let added = 0;
     let rejected = 0;
+    const addedTitles: string[] = [];
 
     // Merge with defaults
     const config = { ...defaultRefreshSettings, ...settings };
@@ -1084,6 +1085,7 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
                     scheduleTime = new Date((result.effectiveScheduledTime || nextScheduledTime).getTime());
                     scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_SPACING_HOURS);
                     added++;
+                    addedTitles.push(candidate.title || candidate.name || 'Untitled');
                 }
             }
         } catch (error) {
@@ -1118,7 +1120,7 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
     if (config.enableAnniversaries) await processBatch(() => fetchAnniversaryTV(config), 'tmdb_anniversary', 'tv');
 
     console.log(`[TMDb] Refresh complete. Added: ${added}, Rejected: ${rejected}, Errors: ${errors.length}`);
-    return { added, errors };
+    return { added, errors, addedTitles };
 }
 
 

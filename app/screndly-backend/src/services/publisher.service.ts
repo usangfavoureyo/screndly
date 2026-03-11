@@ -52,6 +52,30 @@ function normalizePlatformName(platform: string): string {
     return platformMap[normalized] || platform;
 }
 
+function describePublishItem(content: PublishContent, localVideoFile?: string | null): string {
+    const explicitTitle = content.title?.trim();
+    if (explicitTitle) {
+        return explicitTitle;
+    }
+
+    const firstImage = content.imagePath || content.imageUrl || content.imageUrls?.[0];
+    const localPath = localVideoFile || content.videoUrl || firstImage || content.link;
+    if (localPath) {
+        const cleanPath = localPath.split('?')[0];
+        const lastSegment = cleanPath.split('/').pop();
+        if (lastSegment) {
+            return lastSegment;
+        }
+    }
+
+    const fallbackText = content.text?.trim();
+    if (fallbackText) {
+        return fallbackText.slice(0, 80);
+    }
+
+    return 'Untitled item';
+}
+
 export class PublisherService {
     private getMimeType(filePath: string): string {
         const extension = path.extname(filePath).toLowerCase();
@@ -442,9 +466,10 @@ export class PublisherService {
 
             // Notification Logic using helper (Only errors for now)
             if (result.status === 'failed') {
+                const itemLabel = describePublishItem(platformContent, mediaFilePath);
                 await notificationService.notifyUser({
-                    title: `Publish Failed: ${platform}`,
-                    message: `Failed to publish to ${platform}: ${result.error}`,
+                    title: `${platform} publish failed`,
+                    message: `${itemLabel} failed to publish to ${platform}: ${result.error}`,
                     type: 'error',
                     source: 'upload', // Using 'upload' as generic publish source
                     actionPage: '/uploads' // or history
