@@ -20,6 +20,7 @@ import {
     type LoadedVideoSettings,
     type PlatformThumbnailAsset,
 } from './video-enrichment.service';
+import { youtubePoTokenService } from './youtube-po-token.service';
 
 const parser = new Parser();
 
@@ -119,10 +120,15 @@ const MAX_RECENT_FEED_ITEMS = 15;
 const FEED_FRESHNESS_HOURS = 24;
 const MIN_TRAILER_HEIGHT = 1080;
 const MIN_TRAILER_WIDTH = 1920;
+const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
 const execFileAsync = promisify(execFile);
+
+function escapeRegexValue(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export class YouTubePollerService {
     private isPolling = false;
@@ -361,6 +367,64 @@ export class YouTubePollerService {
         );
     }
 
+    private titleMatchesKeyword(titleLower: string, keyword: string): boolean {
+        const normalizedKeyword = keyword.trim().toLowerCase();
+        if (!normalizedKeyword) {
+            return false;
+        }
+
+        const keywordPattern = normalizedKeyword
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((part) => escapeRegexValue(part))
+            .join('\\s+');
+
+        return new RegExp(`(^|[^a-z0-9])${keywordPattern}($|[^a-z0-9])`, 'i').test(titleLower);
+    }
+
+    private matchesTrailerFilters(titleLower: string, trailerKeywords: string[]): boolean {
+        const matchedKeywords = trailerKeywords.filter((keyword) => this.titleMatchesKeyword(titleLower, keyword));
+        if (matchedKeywords.length === 0) {
+            return false;
+        }
+
+        return matchedKeywords.some((keyword) => !NON_STANDALONE_TRAILER_KEYWORDS.has(keyword));
+    }
+
+    private getYouTubeErrorText(error: unknown): string {
+        if (error instanceof Error) {
+            const maybeRichError = error as Error & {
+                shortMessage?: string;
+                stderr?: string;
+                stdout?: string;
+                all?: string;
+            };
+
+            return [
+                error.message,
+                maybeRichError.shortMessage,
+                maybeRichError.stderr,
+                maybeRichError.stdout,
+                maybeRichError.all,
+            ]
+                .filter((value): value is string => typeof value === 'string' && value.length > 0)
+                .join('\n')
+                .toLowerCase();
+        }
+
+        return String(error || '').toLowerCase();
+    }
+
+    private isYouTubeBotChallengeError(error: unknown): boolean {
+        const errorText = this.getYouTubeErrorText(error);
+        return [
+            "not a bot",
+            'page needs to be reloaded',
+            'precondition check failed',
+            'please sign in to continue',
+        ].some((fragment) => errorText.includes(fragment));
+    }
+
     private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
         if (downloadPath && fs.existsSync(downloadPath)) {
             fs.unlinkSync(downloadPath);
@@ -371,6 +435,12 @@ export class YouTubePollerService {
                 fs.unlinkSync(asset.localPath);
             }
         }
+    }
+
+    private removeYtDlpArtifacts(filePath: string) {
+        [filePath, `${filePath}.part`, `${filePath}.ytdl`].forEach((artifactPath) => {
+            this.removeFileIfExists(artifactPath);
+        });
     }
 
     private async processFeedVideo(
@@ -421,10 +491,9 @@ export class YouTubePollerService {
         }
 
         const titleLower = (video.title || '').toLowerCase();
-        const feedText = `${video.title || ''} ${video.contentSnippet || ''}`.toLowerCase();
         const feedDescriptionLower = (video.contentSnippet || '').toLowerCase();
         if (trailerKeywords.length > 0) {
-            const isTrailer = trailerKeywords.some((keyword) => feedText.includes(keyword));
+            const isTrailer = this.matchesTrailerFilters(titleLower, trailerKeywords);
             if (!isTrailer) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
@@ -1119,6 +1188,16 @@ Respond ONLY "YES" or "NO".`,
         };
     }
 
+    private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[]): Promise<any> {
+        return ytDlp(videoUrl, {
+            dumpSingleJson: true,
+            skipDownload: true,
+            noWarnings: true,
+            quiet: true,
+            ...(extractorArgs ? { extractorArgs } : {}),
+        } as any);
+    }
+
     private async getVideoInfo(videoUrl: string, videoId: string): Promise<NormalizedVideoInfo> {
         try {
             const info = await ytdl.getInfo(videoUrl, YOUTUBE_INFO_OPTIONS);
@@ -1139,13 +1218,18 @@ Respond ONLY "YES" or "NO".`,
             console.warn(`[YouTubePoller] ytdl-core metadata fetch failed for ${videoId}; trying yt-dlp fallback`, error);
         }
 
-        const raw = await ytDlp(videoUrl, {
-            dumpSingleJson: true,
-            skipDownload: true,
-            noWarnings: true,
-            quiet: true,
-        });
+        try {
+            const raw = await this.fetchYtDlpInfo(videoUrl);
+            return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
+        } catch (error) {
+            if (!this.isYouTubeBotChallengeError(error)) {
+                throw error;
+            }
 
+            console.warn(`[YouTubePoller] yt-dlp metadata fetch hit a YouTube challenge for ${videoId}; retrying with PO token support`, error);
+        }
+
+        const raw = await this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs());
         return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
     }
 
@@ -1343,7 +1427,30 @@ Respond ONLY "YES" or "NO".`,
 
             return this.meetsDownloadedResolutionFloor(filePath);
         } catch (error) {
-            console.error('[YouTubePoller] yt-dlp fallback download error:', error);
+            if (!this.isYouTubeBotChallengeError(error)) {
+                console.error('[YouTubePoller] yt-dlp fallback download error:', error);
+                return false;
+            }
+
+            console.warn('[YouTubePoller] yt-dlp download hit a YouTube challenge; retrying with PO token support', error);
+        }
+
+        try {
+            this.removeYtDlpArtifacts(filePath);
+
+            await ytDlp(videoUrl, {
+                output: filePath,
+                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
+                mergeOutputFormat: 'mp4',
+                noProgress: true,
+                noWarnings: true,
+                quiet: true,
+                extractorArgs: await youtubePoTokenService.getExtractorArgs(),
+            } as any);
+
+            return this.meetsDownloadedResolutionFloor(filePath);
+        } catch (error) {
+            console.error('[YouTubePoller] yt-dlp PO token download error:', error);
             return false;
         }
     }
