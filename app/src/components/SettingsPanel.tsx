@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard, PenSquare } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
@@ -66,8 +66,14 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
     activePageRef.current = activeSettingsPage;
   }, [activeSettingsPage]);
 
+  const handleSettingsSaved = useCallback(() => {
+    onNewNotification?.('Settings saved', 'Your changes were saved successfully.', 'success', 'system');
+  }, [onNewNotification]);
+
   // Unified Navigation Handlers (UI drives History)
   const handleCloseSettings = () => {
+    onClose();
+    void onNavigate;
     window.history.back();
   };
 
@@ -452,7 +458,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
           className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
           onClick={handleCloseSubpage}
         />
-        <TmdbFeedsSettings onSave={updateSetting} onBack={handleCloseSubpage} />
+        <TmdbFeedsSettings onSave={handleSettingsSaved} onBack={handleCloseSubpage} />
       </>
     );
   }
@@ -467,7 +473,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
             handleCloseSubpage();
           }}
         />
-        <VideoStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />
+        <VideoStudioSettings onSave={handleSettingsSaved} onBack={handleCloseSubpage} />
       </>
     );
   }
@@ -482,7 +488,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
             handleCloseSubpage();
           }}
         />
-        <DesignStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />
+        <DesignStudioSettings onSave={handleSettingsSaved} onBack={handleCloseSubpage} />
       </>
     );
   }
@@ -596,7 +602,10 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
         />
         <ThumbnailSettings
           settings={settings}
-          updateSetting={updateSetting}
+          updateSetting={async (key, value) => {
+            updateSetting(key, value);
+            handleSettingsSaved();
+          }}
           onBack={handleCloseSubpage}
         />
       </>

@@ -9,28 +9,14 @@ import {
   Rss,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
+import type { Notification } from '../contexts/NotificationsContext';
 
-interface Notification {
-  id: string;
-  type: 'success' | 'error' | 'info' | 'warning';
-  title: string;
-  message: string;
-  timestamp: string;
-  read: boolean;
-  source?:
-    | 'tmdb'
-    | 'rss'
-    | 'upload'
-    | 'videostudio'
-    | 'system'
-    | 'design_studio'
-    | 'youtube'
-    | 'comment';
+type NotificationCardNotification = Notification & {
   actions?: any[];
-}
+};
 
 interface SwipeableNotificationCardProps {
-  notification: Notification;
+  notification: NotificationCardNotification;
   onMarkAsRead: (id: string) => void;
   onDelete: (id: string) => void;
   onActionClick?: (notificationId: string, actionType: string, e: React.MouseEvent) => void;
@@ -55,7 +41,7 @@ export function SwipeableNotificationCard({
   const touchSwipeEnabled = true;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
-  const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
+  const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
   const startX = useRef(0);
   const startY = useRef(0);
   const currentX = useRef(0);

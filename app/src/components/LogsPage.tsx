@@ -4,7 +4,6 @@ import { Button } from './ui/button';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { BackIconButton } from './BackIconButton';
-import { getPlatformConnection, PlatformType } from '../utils/platformConnections';
 import { SwipeableLogRow } from './SwipeableLogRow';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -20,7 +19,7 @@ export interface LogEntry {
   timestamp: string;
   error?: string;
   errorDetails?: string;
-  type: 'video' | 'rss' | 'tmdb' | 'videostudio' | 'scenes';
+  type: 'video' | 'rss' | 'tmdb' | 'videostudio' | 'scenes' | 'system';
 }
 
 
@@ -44,8 +43,10 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
   const logsPerPage = 10;
 
   // Get retention period from settings (default 168 hours / 7 days)
-  const retentionHours = parseInt(settings.logsRetention || '168');
+  const retentionHours = Number(settings.videoActivityRetention ?? 168);
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
+  void onNewNotification;
+  void isLoading;
 
   const platformUrls: Record<string, string> = {
     Instagram: 'https://www.instagram.com/screenrender',
@@ -54,12 +55,6 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
     TikTok: 'https://www.tiktok.com/@screenrender?_r=1&_t=ZS-91QmcxgxZy5',
     YouTube: 'https://youtube.com/@screenrender?si=4iacQp4_QN8s5WaS',
     X: 'https://x.com/screenrender?t=KPASOaPQopdLqqmd-9JSuQ&s=09',
-  };
-
-  // Get platform URL - returns user's connected account if available, otherwise Screen Render's URL
-  const getPlatformUrl = (platformName: string): string => {
-    const connection = getPlatformConnection(platformName as PlatformType);
-    return connection.profileUrl || platformUrls[platformName];
   };
 
   const handleDelete = async (logId: string) => {
@@ -109,7 +104,7 @@ export function LogsPage({ onNewNotification, onNavigate }: LogsPageProps) {
         timestamp: new Date(log.timestamp).toISOString().replace('T', ' ').substring(0, 16),
         error: log.level === 'error' ? log.message : undefined,
         errorDetails: metadata.errorDetails,
-        type: (metadata.type as any) || 'system',
+        type: (metadata.type as LogEntry['type']) || 'system',
       };
     });
   }, [logs, deletedIds]);

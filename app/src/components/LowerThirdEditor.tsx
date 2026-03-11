@@ -602,7 +602,7 @@ export function LowerThirdEditor({ onSave }: LowerThirdEditorProps) {
               // Prevent arrow keys from propagating to parent keyboard shortcuts
               if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.stopPropagation();
-                e.stopImmediatePropagation();
+                e.nativeEvent.stopImmediatePropagation();
               }
             }}
             onFocus={(e) => {
@@ -638,7 +638,7 @@ export function LowerThirdEditor({ onSave }: LowerThirdEditorProps) {
             type="text"
             value={textColor}
             onChange={(e) => setTextColor(e.target.value)}
-            onFocus={(e) => haptics.light()}
+            onFocus={() => haptics.light()}
             autoFocus={false}
             className="flex-1 px-4 py-2 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white uppercase text-sm focus:outline-none focus:border-[#292929]"
             placeholder="#FFFFFF"
@@ -665,7 +665,7 @@ export function LowerThirdEditor({ onSave }: LowerThirdEditorProps) {
             type="text"
             value={backgroundColor}
             onChange={(e) => setBackgroundColor(e.target.value)}
-            onFocus={(e) => haptics.light()}
+            onFocus={() => haptics.light()}
             autoFocus={false}
             className="flex-1 px-4 py-2 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white uppercase text-sm focus:outline-none focus:border-[#292929]"
             placeholder="#000000"

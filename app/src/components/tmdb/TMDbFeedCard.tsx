@@ -328,7 +328,7 @@ function TMDbFeedCardComponent({
     e.preventDefault();
     e.stopPropagation();
     haptics.light();
-    onToggleSelection(feed.id);
+    onToggleSelection?.(feed.id);
   };
 
   const handleCardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {

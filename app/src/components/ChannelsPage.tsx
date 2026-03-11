@@ -246,7 +246,7 @@ export function ChannelsPage() {
         open={editSheet.isOpen}
         onOpenChange={(open) => {
           if (!open) closeEditChannel();
-          editSheet.setOpen(open);
+          editSheet.setIsOpen(open);
         }}
       >
         <BottomSheetHeader>
@@ -378,7 +378,7 @@ export function ChannelsPage() {
         open={addSheet.isOpen}
         onOpenChange={(open) => {
           if (!open) closeAddChannel();
-          addSheet.setOpen(open);
+          addSheet.setIsOpen(open);
         }}
       >
         <BottomSheetHeader>

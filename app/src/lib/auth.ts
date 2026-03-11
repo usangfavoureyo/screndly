@@ -16,12 +16,12 @@ const KEEP_SIGNED_IN_KEY = 'screndly_keep_signed_in';
 const SESSION_ACTIVE_KEY = 'screndly_session_active';
 
 function getOptionalDevPassword(): string | null {
-  const enabled = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEV_AUTH === 'true';
   const password = typeof import.meta.env.VITE_APP_PASSWORD === 'string'
     ? import.meta.env.VITE_APP_PASSWORD.trim()
     : '';
+  const isDev = import.meta.env.DEV;
 
-  return enabled && password ? password : null;
+  return isDev && password ? password : null;
 }
 
 function createDevToken(password: string): string {

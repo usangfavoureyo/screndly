@@ -336,9 +336,36 @@ export function AppContent() {
     logout();
   };
 
-  const handleNavigate = (page: string, fromPage?: string, skipHistory = false) => {
-    const staticPages = ['privacy', 'terms', 'disclaimer', 'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'design-system'];
+  const handleSystemNotification = useCallback(
+    (title: string, message: string, type: 'success' | 'error' | 'info' | 'warning') => {
+      addNotification({
+        title,
+        message,
+        type,
+        source: 'system',
+      });
+    },
+    [addNotification],
+  );
 
+  const handleScopedNotification = useCallback(
+    (
+      title: string,
+      message: string,
+      type: 'success' | 'error' | 'info' | 'warning',
+      source: 'upload' | 'rss' | 'tmdb' | 'videostudio' | 'system',
+    ) => {
+      addNotification({
+        title,
+        message,
+        type,
+        source,
+      });
+    },
+    [addNotification],
+  );
+
+  const handleNavigate = (page: string, fromPage?: string, skipHistory = false) => {
     // Handle special settings sub-pages
     const settingsPages = ['settings-comment-reply', 'settings-video', 'settings-rss', 'settings-tmdb', 'settings-videostudio', 'settings-pad', 'settings-compose', 'settings-error', 'settings-cleanup', 'settings-haptic', 'settings-appearance', 'settings-notifications', 'settings-thumbnail', 'settings-autopost'];
 
@@ -600,7 +627,7 @@ export function AppContent() {
             )}
             {displayPage === "channels" && <Suspense fallback={<PageLoader />}><ChannelsPage /></Suspense>}
             {displayPage === "platforms" && <Suspense fallback={<PageLoader />}><PlatformsPage /></Suspense>}
-            {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={addNotification} onNavigate={handleNavigate} /></Suspense>}
+            {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={handleSystemNotification} onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "activity" && (
               <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} /></Suspense>
             )}
@@ -685,7 +712,7 @@ export function AppContent() {
           onLogout={handleLogout}
           onNavigate={handleNavigate}
           pageBeforeSettings={pageBeforeSettings}
-          onNewNotification={addNotification}
+          onNewNotification={handleScopedNotification}
           initialPage={settingsInitialPage}
         />
       )}

@@ -12,7 +12,7 @@ interface LogEntry {
   timestamp: string;
   error?: string;
   errorDetails?: string;
-  type: 'video' | 'rss' | 'tmdb' | 'videostudio';
+  type: 'video' | 'rss' | 'tmdb' | 'videostudio' | 'scenes' | 'system';
 }
 
 interface SwipeableLogRowProps {
@@ -178,6 +178,18 @@ export function SwipeableLogRow({
             <>
               <Film className="w-6 h-6 text-[#ec1e24]" aria-hidden="true" />
               <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">Video Studio</span>
+            </>
+          )}
+          {log.type === 'scenes' && (
+            <>
+              <Film className="w-6 h-6 text-[#ec1e24]" aria-hidden="true" />
+              <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">Scenes</span>
+            </>
+          )}
+          {log.type === 'system' && (
+            <>
+              <RefreshCw className="w-4 h-4 text-[#ec1e24]" aria-hidden="true" />
+              <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">System</span>
             </>
           )}
         </div>

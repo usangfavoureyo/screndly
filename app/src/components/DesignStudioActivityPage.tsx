@@ -257,7 +257,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               <SwipeableActivityCard
                 key={activity.id}
                 id={activity.id}
-                onDelete={handleDelete}
+                onDelete={(id) => {
+                  if (id) {
+                    void handleDelete(id);
+                  }
+                }}
                 selectionMode={selection.selectionMode}
                 selected={selection.isSelected(activity.id)}
                 onEnterSelectionMode={selection.enterSelectionMode}

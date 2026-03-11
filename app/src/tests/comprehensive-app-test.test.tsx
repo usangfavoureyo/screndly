@@ -70,7 +70,7 @@ describe('Comprehensive App Tests', () => {
       const content = fs.readFileSync(videoStudioPath, 'utf-8');
       
       // Check for correct import
-      expect(content).toContain("import { toast } from "sonner"");
+      expect(content).toContain('import { toast } from "sonner"');
     });
 
     it('should use consistent sonner@2.0.3 import pattern in BackblazeUploader', async () => {
@@ -79,7 +79,7 @@ describe('Comprehensive App Tests', () => {
       const uploaderPath = path.resolve(__dirname, '../components/BackblazeUploader.tsx');
       const content = fs.readFileSync(uploaderPath, 'utf-8');
       
-      expect(content).toContain("import { toast } from "sonner"");
+      expect(content).toContain('import { toast } from "sonner"');
     });
 
     it('should use consistent sonner@2.0.3 import pattern in BackblazeVideoBrowser', async () => {
@@ -88,7 +88,7 @@ describe('Comprehensive App Tests', () => {
       const browserPath = path.resolve(__dirname, '../components/BackblazeVideoBrowser.tsx');
       const content = fs.readFileSync(browserPath, 'utf-8');
       
-      expect(content).toContain("import { toast } from "sonner"");
+      expect(content).toContain('import { toast } from "sonner"');
     });
   });
 
