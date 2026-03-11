@@ -1229,7 +1229,7 @@ Respond ONLY "YES" or "NO".`,
             console.warn(`[YouTubePoller] yt-dlp metadata fetch hit a YouTube challenge for ${videoId}; retrying with PO token support`, error);
         }
 
-        const raw = await this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs());
+        const raw = await this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs(videoId));
         return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
     }
 
@@ -1414,7 +1414,7 @@ Respond ONLY "YES" or "NO".`,
         }
     }
 
-    private async downloadWithYtDlp(videoUrl: string, filePath: string): Promise<boolean> {
+    private async downloadWithYtDlp(videoUrl: string, filePath: string, videoId?: string): Promise<boolean> {
         try {
             await ytDlp(videoUrl, {
                 output: filePath,
@@ -1445,7 +1445,7 @@ Respond ONLY "YES" or "NO".`,
                 noProgress: true,
                 noWarnings: true,
                 quiet: true,
-                extractorArgs: await youtubePoTokenService.getExtractorArgs(),
+                extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId),
             } as any);
 
             return this.meetsDownloadedResolutionFloor(filePath);
@@ -1473,7 +1473,7 @@ Respond ONLY "YES" or "NO".`,
 
         this.removeFileIfExists(filePath);
 
-        if (await this.downloadWithYtDlp(videoUrl, filePath)) {
+        if (await this.downloadWithYtDlp(videoUrl, filePath, videoId)) {
             return filePath;
         }
 
@@ -1490,7 +1490,7 @@ Respond ONLY "YES" or "NO".`,
         const filePath = path.join(tempDir, `${videoId}.mp4`);
         this.removeFileIfExists(filePath);
 
-        if (await this.downloadWithYtDlp(videoUrl, filePath)) {
+        if (await this.downloadWithYtDlp(videoUrl, filePath, videoId)) {
             return filePath;
         }
 
