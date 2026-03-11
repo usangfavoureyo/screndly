@@ -7,7 +7,7 @@ import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
 import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
-import { uploadLocalFileToBackblaze } from './backblaze';
+import { getBackblazeAuthorizedDownloadUrl, uploadLocalFileToBackblaze } from './backblaze';
 
 export interface PublishContent {
     text: string;
@@ -93,6 +93,19 @@ export class PublisherService {
         return this.getResolvedImageUrls(content).find((value) => /^https?:\/\//i.test(value));
     }
 
+    private async getResolvedPublishImageUrls(content: PublishContent, platform: string): Promise<string[]> {
+        const rawUrls = this
+            .getResolvedImageUrls(content)
+            .slice(0, this.getPlatformImageLimit(platform));
+
+        return Promise.all(rawUrls.map((value) => getBackblazeAuthorizedDownloadUrl(value)));
+    }
+
+    private async getResolvedRemoteCoverImageUrl(content: PublishContent): Promise<string | undefined> {
+        const value = this.getRemoteCoverImageUrl(content);
+        return value ? getBackblazeAuthorizedDownloadUrl(value) : undefined;
+    }
+
     private getPlatformImageLimit(platform: string): number {
         switch (platform) {
             case 'X':
@@ -119,7 +132,7 @@ export class PublisherService {
         cache: Map<string, string>
     ): Promise<string> {
         if (this.isDirectVideoUrl(directVideoUrl)) {
-            return directVideoUrl.trim();
+            return getBackblazeAuthorizedDownloadUrl(directVideoUrl.trim());
         }
 
         if (!mediaFilePath || !this.isVideo(mediaFilePath)) {
@@ -142,8 +155,9 @@ export class PublisherService {
             }
         );
 
-        cache.set(cacheKey, uploaded.url);
-        return uploaded.url;
+        const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(uploaded.url);
+        cache.set(cacheKey, authorizedUrl);
+        return authorizedUrl;
     }
 
     /**
@@ -208,11 +222,9 @@ export class PublisherService {
                 }
 
                 try {
-                    const resolvedImageUrls = this
-                        .getResolvedImageUrls(platformContent)
-                        .slice(0, this.getPlatformImageLimit(platform));
+                    const resolvedImageUrls = await this.getResolvedPublishImageUrls(platformContent, platform);
                     const primaryImageUrl = resolvedImageUrls[0];
-                    const remoteCoverImageUrl = this.getRemoteCoverImageUrl(platformContent);
+                    const remoteCoverImageUrl = await this.getResolvedRemoteCoverImageUrl(platformContent);
                     const localVideoFile = mediaFilePath && this.isVideo(mediaFilePath) ? mediaFilePath : null;
                     const directVideoUrl = platformContent.videoUrl;
 

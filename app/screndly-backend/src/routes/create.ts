@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth';
-import { uploadBufferToBackblaze } from '../services/backblaze';
+import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
 
 const router = Router();
 const upload = multer({
@@ -26,11 +26,13 @@ router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (re
       prefix: isVideo ? 'compose/videos' : 'compose/images',
       contentType: req.file.mimetype,
     });
+    const previewUrl = await getBackblazeAuthorizedDownloadUrl(uploadResult.url, 7 * 24 * 60 * 60);
 
     res.status(201).json({
       success: true,
       data: {
         url: uploadResult.url,
+        previewUrl,
         fileName: uploadResult.fileName,
         fileId: uploadResult.fileName,
         originalName: req.file.originalname,
