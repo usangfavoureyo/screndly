@@ -26,6 +26,10 @@ type TMDbFallbackMode =
     | 'backdrop-only'
     | 'poster-only';
 
+type VideoBacklogMode =
+    | 'process-backlog'
+    | 'future-only';
+
 interface PlatformSettingsValue {
     autoPost?: boolean;
     autoThumbnail?: boolean;
@@ -140,6 +144,9 @@ export interface LoadedVideoSettings {
     postInterval: number;
     advancedFilters?: string;
     regionFilter?: string;
+    videoAgeGateHours: number | null;
+    videoBacklogMode: VideoBacklogMode;
+    videoFutureOnlySince?: string;
     excludeShorts: boolean;
     videoOpenaiModel: AIModel;
     videoUniversalCaptionPrompt?: string;
@@ -224,6 +231,9 @@ const VIDEO_SETTINGS_KEYS = [
     'postInterval',
     'advancedFilters',
     'regionFilter',
+    'videoAgeGateHours',
+    'videoBacklogMode',
+    'videoFutureOnlySince',
     'excludeShorts',
     'videoOpenaiModel',
     'videoUniversalCaptionPrompt',
@@ -297,6 +307,34 @@ function asNumber(value: unknown, fallback: number): number {
         if (Number.isFinite(parsed)) return parsed;
     }
     return fallback;
+}
+
+function parseVideoAgeGateHours(value: unknown): number | null | undefined {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.trim().toLowerCase();
+        if (!trimmed) {
+            return undefined;
+        }
+
+        if (trimmed === 'off') {
+            return null;
+        }
+    }
+
+    const parsed = asNumber(value, Number.NaN);
+    if (!Number.isFinite(parsed)) {
+        return undefined;
+    }
+
+    return Math.min(24, Math.max(1, Math.round(parsed)));
+}
+
+function parseVideoBacklogMode(value: unknown): VideoBacklogMode {
+    return value === 'future-only' ? 'future-only' : 'process-backlog';
 }
 
 function parseJsonValue<T>(value: unknown): T | null {
@@ -958,12 +996,16 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
     });
 
     const map = new Map(settings.map((entry) => [entry.key, entry.value]));
+    const parsedVideoAgeGateHours = parseVideoAgeGateHours(map.get('videoAgeGateHours'));
 
     return {
         fetchInterval: Math.max(1, asNumber(map.get('fetchInterval'), 10)),
         postInterval: Math.max(1, asNumber(map.get('postInterval'), 10)),
         advancedFilters: asString(map.get('advancedFilters')),
         regionFilter: asString(map.get('regionFilter')),
+        videoAgeGateHours: parsedVideoAgeGateHours === undefined ? 24 : parsedVideoAgeGateHours,
+        videoBacklogMode: parseVideoBacklogMode(map.get('videoBacklogMode')),
+        videoFutureOnlySince: asString(map.get('videoFutureOnlySince')),
         excludeShorts: asBoolean(map.get('excludeShorts'), true),
     videoOpenaiModel: normalizeAIModel(asString(map.get('videoOpenaiModel'))),
         videoUniversalCaptionPrompt: asString(map.get('videoUniversalCaptionPrompt')),
