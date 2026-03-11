@@ -310,6 +310,26 @@ function getMimeTypeFromFilePath(filePath: string): string {
     }
 }
 
+async function preserveUploadedFileExtension(file?: Express.Multer.File): Promise<string | null> {
+    if (!file?.path) {
+        return null;
+    }
+
+    if (path.extname(file.path)) {
+        return file.path;
+    }
+
+    const originalExtension = path.extname(file.originalname || '');
+    if (!originalExtension) {
+        return file.path;
+    }
+
+    const renamedPath = `${file.path}${originalExtension.toLowerCase()}`;
+    await fs.promises.rename(file.path, renamedPath);
+    file.path = renamedPath;
+    return renamedPath;
+}
+
 function buildRemoteFileName(remoteUrl: string, fallbackBaseName: string): string {
     try {
         const parsedUrl = new URL(remoteUrl);
@@ -421,12 +441,13 @@ async function fetchInstagramProfile(igUserId: string, accessToken: string): Pro
 // POST /api/platforms/post
 // HANDLES FILE UPLOADS for Video/Image content
 router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) => {
-    let localFilePath: string | null = req.file ? req.file.path : null;
+    let localFilePath: string | null = null;
     let downloadedVideoPath: string | null = null;
     let preparedImageUrl: string | undefined;
     let hostedVideoUrl: string | undefined;
 
     try {
+        localFilePath = await preserveUploadedFileExtension(req.file);
         const { platforms, content } = req.body;
         // Content might be JSON stringified if multipart/form-data
         const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
