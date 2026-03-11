@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
@@ -15,12 +15,19 @@ import { Plus } from 'lucide-react';
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
 import { tmdbPromptDefaults } from '../../config/cultureCravePromptDefaults';
-
-interface TMDbSettingsProps {
-  onSave?: () => void;
-}
+import { useSettings } from '../../contexts/SettingsContext';
 
 const TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_tmdb_prompts_v1';
+const TMDB_SHARED_SETTING_KEYS = new Set([
+  'tmdbCaptionModel',
+  'todayPrompt',
+  'weeklyPrompt',
+  'monthlyPrompt',
+  'anniversaryPrompt',
+  'tmdbActivityRetention',
+  'tmdbLogLevel',
+  'timezone',
+]);
 
 // TMDb Genre IDs - Official from TMDb API
 const MOVIE_GENRES = [
@@ -452,9 +459,11 @@ Guidelines:
   ...tmdbPromptDefaults,
 };
 
-export function TMDbSettings({ onSave }: TMDbSettingsProps) {
+export function TMDbSettings() {
+  const { settings: globalSettings, updateSetting: updateGlobalSetting } = useSettings();
   const [tmdbSettings, setTMDbSettings] = useState(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
+  const initialSharedSettingsRef = useRef<Record<string, any> | null>(null);
   const [expandedPrompts, setExpandedPrompts] = useState({
     today: false,
     weekly: false,
@@ -466,13 +475,22 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
   const [longPressYear, setLongPressYear] = useState<string | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
 
+  if (initialSharedSettingsRef.current === null) {
+    initialSharedSettingsRef.current = Object.fromEntries(
+      Object.entries(globalSettings as Record<string, any>).filter(([key]) =>
+        TMDB_SHARED_SETTING_KEYS.has(key)
+      )
+    );
+  }
+
   // Load settings from Backend + LocalStorage on mount
   useEffect(() => {
     async function load() {
       const shouldInjectCultureCravePrompts = !localStorage.getItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
+      const sharedSettings = initialSharedSettingsRef.current || {};
 
       // 1. Load Local (Fastest)
-      let merged = { ...defaultSettings };
+      let merged = { ...defaultSettings, ...sharedSettings };
       const local = localStorage.getItem('screndly_tmdb_settings');
       if (local) {
         try {
@@ -546,6 +564,10 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
   const updateSetting = (key: string, value: any) => {
     setTMDbSettings(prev => ({ ...prev, [key]: value }));
 
+    if (TMDB_SHARED_SETTING_KEYS.has(key)) {
+      void updateGlobalSetting(key, value);
+    }
+
     // Show toast notifications for important settings
     if (key === 'todayAutoPost') {
       toast.success(value ? "Today's Releases auto-post enabled" : "Today's Releases auto-post disabled");
@@ -584,9 +606,6 @@ export function TMDbSettings({ onSave }: TMDbSettingsProps) {
       }
     }
 
-    if (onSave) {
-      setTimeout(onSave, 100);
-    }
   };
 
   const toggleAnniversaryYear = (year: string) => {
