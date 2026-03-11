@@ -68,6 +68,10 @@ interface GetUploadUrlResponse {
   uploadUrl: string;
 }
 
+interface GetDownloadAuthorizationResponse {
+  authorizationToken: string;
+}
+
 interface ListFileNamesResponse {
   files: Array<{
     action?: string;
@@ -181,8 +185,41 @@ function buildPublicUrl(downloadUrl: string, bucketName: string, fileName: strin
   return `${downloadUrl}/file/${encodeURIComponent(bucketName)}/${encodeFileName(fileName)}`;
 }
 
+function buildAuthorizedUrl(downloadUrl: string, bucketName: string, fileName: string, authorizationToken: string): string {
+  return `${buildPublicUrl(downloadUrl, bucketName, fileName)}?Authorization=${encodeURIComponent(authorizationToken)}`;
+}
+
 function buildCacheKey(bucketType: BackblazeBucketType, config: BackblazeBucketConfig): string {
   return `${bucketType}:${config.keyId}:${config.bucketName}:${config.endpoint}`;
+}
+
+function parseBackblazeFileUrl(value: string): { bucketName: string; fileName: string } | null {
+  try {
+    const parsed = new URL(value);
+    if (parsed.searchParams.has('Authorization')) {
+      return null;
+    }
+
+    const segments = parsed.pathname.split('/').filter(Boolean);
+    const fileMarkerIndex = segments.indexOf('file');
+    if (fileMarkerIndex === -1 || segments.length < fileMarkerIndex + 3) {
+      return null;
+    }
+
+    const bucketName = decodeURIComponent(segments[fileMarkerIndex + 1] || '');
+    const fileName = segments
+      .slice(fileMarkerIndex + 2)
+      .map(segment => decodeURIComponent(segment))
+      .join('/');
+
+    if (!bucketName || !fileName) {
+      return null;
+    }
+
+    return { bucketName, fileName };
+  } catch {
+    return null;
+  }
 }
 
 async function parseErrorResponse(response: Response): Promise<{ message: string; details: unknown }> {
@@ -342,6 +379,21 @@ async function resolveBucketRuntime(bucketType: BackblazeBucketType): Promise<Ba
   return runtime;
 }
 
+async function resolveBucketRuntimeByBucketName(bucketName: string): Promise<BackblazeBucketRuntime | null> {
+  const bucketTypes: BackblazeBucketType[] = ['general', 'videos', 'design'];
+
+  for (const bucketType of bucketTypes) {
+    const config = await getBucketConfig(bucketType);
+    if (!config || config.bucketName !== bucketName) {
+      continue;
+    }
+
+    return resolveBucketRuntime(bucketType);
+  }
+
+  return null;
+}
+
 function normalizeFileRecord(runtime: BackblazeBucketRuntime, file: ListFileNamesResponse['files'][number]): BackblazeFileRecord {
   const uploadTimestamp = typeof file.uploadTimestamp === 'number' ? file.uploadTimestamp : Date.now();
   const contentLength = typeof file.contentLength === 'number'
@@ -467,4 +519,40 @@ export async function uploadLocalFileToBackblaze(
 ): Promise<{ url: string; fileName: string }> {
   const buffer = await fs.readFile(filePath);
   return uploadBufferToBackblaze(buffer, originalName, options);
+}
+
+export async function getBackblazeAuthorizedDownloadUrl(
+  fileUrl: string,
+  validDurationInSeconds = 3600
+): Promise<string> {
+  const parsed = parseBackblazeFileUrl(fileUrl);
+  if (!parsed) {
+    return fileUrl;
+  }
+
+  const runtime = await resolveBucketRuntimeByBucketName(parsed.bucketName);
+  if (!runtime) {
+    return fileUrl;
+  }
+
+  const ttl = Math.max(1, Math.min(validDurationInSeconds, 7 * 24 * 60 * 60));
+  const downloadAuth = await backblazeJsonRequest<GetDownloadAuthorizationResponse>(
+    `${runtime.apiUrl}/b2api/v2/b2_get_download_authorization`,
+    {
+      headers: {
+        Authorization: runtime.authorizationToken,
+      },
+      body: {
+        bucketId: runtime.bucketId,
+        fileNamePrefix: parsed.fileName,
+        validDurationInSeconds: ttl,
+      },
+    }
+  );
+
+  if (!downloadAuth.authorizationToken) {
+    throw new Error('Backblaze download authorization token was not returned');
+  }
+
+  return buildAuthorizedUrl(runtime.downloadUrl, runtime.bucketName, parsed.fileName, downloadAuth.authorizationToken);
 }

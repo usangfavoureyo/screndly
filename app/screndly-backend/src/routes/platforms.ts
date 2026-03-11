@@ -13,7 +13,7 @@ import { youtubeService } from '../services/platforms/youtube';
 import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
 import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
-import { uploadBufferToBackblaze, uploadLocalFileToBackblaze } from '../services/backblaze';
+import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze, uploadLocalFileToBackblaze } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
 import fs from 'fs';
@@ -257,10 +257,11 @@ function buildProfileUrl(
 }
 
 async function downloadRemoteFile(remoteUrl: string, label: string): Promise<string> {
-    const parsedUrl = new URL(remoteUrl);
+    const resolvedUrl = await getBackblazeAuthorizedDownloadUrl(remoteUrl);
+    const parsedUrl = new URL(resolvedUrl);
     const extension = path.extname(parsedUrl.pathname) || '.bin';
     const filePath = path.join(os.tmpdir(), `${label}-${Date.now()}-${randomBytes(6).toString('hex')}${extension}`);
-    const response = await axios.get(remoteUrl, { responseType: 'stream', timeout: 60000 });
+    const response = await axios.get(resolvedUrl, { responseType: 'stream', timeout: 60000 });
     await pipeline(response.data as NodeJS.ReadableStream, fs.createWriteStream(filePath));
     return filePath;
 }
@@ -324,14 +325,15 @@ function buildRemoteFileName(remoteUrl: string, fallbackBaseName: string): strin
 }
 
 async function downloadRemoteBuffer(remoteUrl: string): Promise<{ buffer: Buffer; fileName: string }> {
-    const response = await axios.get(remoteUrl, {
+    const resolvedUrl = await getBackblazeAuthorizedDownloadUrl(remoteUrl);
+    const response = await axios.get(resolvedUrl, {
         responseType: 'arraybuffer',
         timeout: 60_000,
     });
 
     return {
         buffer: Buffer.from(response.data),
-        fileName: buildRemoteFileName(remoteUrl, 'remote-media'),
+        fileName: buildRemoteFileName(resolvedUrl, 'remote-media'),
     };
 }
 
@@ -373,7 +375,7 @@ async function prepareHostedImageUrl(options: {
         }
     );
 
-    return uploadedImage.url;
+    return getBackblazeAuthorizedDownloadUrl(uploadedImage.url);
 }
 
 async function updateConnectionMetadata(platform: SupportedPlatform, patch: Prisma.JsonObject): Promise<void> {
@@ -489,7 +491,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                     : getMimeTypeFromFilePath(sourcePath),
             });
 
-            hostedVideoUrl = uploadedVideo.url;
+            hostedVideoUrl = await getBackblazeAuthorizedDownloadUrl(uploadedVideo.url);
             return hostedVideoUrl;
         };
 

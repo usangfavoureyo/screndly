@@ -193,7 +193,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           const uploaded = await uploadComposeAsset(file);
           updateAsset(asset.id, (currentAsset) => ({
             ...currentAsset,
-            previewUrl: uploaded.url,
+            previewUrl: uploaded.previewUrl || currentAsset.previewUrl,
             storageUrl: uploaded.url,
             storageFileId: uploaded.fileId,
             uploadStatus: 'uploaded',
