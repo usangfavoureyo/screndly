@@ -16,6 +16,14 @@ export interface RSSResolvedImage {
   score?: number;
 }
 
+type ImageRole =
+  | 'logo'
+  | 'brand_backdrop'
+  | 'person'
+  | 'character'
+  | 'still'
+  | 'poster';
+
 type SubjectType =
   | 'movie'
   | 'tv_show'
@@ -90,6 +98,15 @@ interface ScoredImage {
   image: SerperImageResult;
   score: number;
   reason: string;
+}
+
+interface ImageSlotPlan {
+  subject: string;
+  type: SubjectType;
+  intent: ImageIntent;
+  allowLogoOnly: boolean;
+  requiredContextTerms: string[];
+  queries: string[];
 }
 
 interface FranchiseValidationRule {
@@ -332,6 +349,80 @@ const OFFICIAL_STUDIO_TERMS = [
   'mgm',
   'amazon mgm studios',
 ];
+const CONTAINER_STORY_CUES = [
+  'live action',
+  'adaptation',
+  'remake',
+  'reboot',
+  'spinoff',
+  'sequel',
+  'prequel',
+  'movie',
+  'film',
+  'feature',
+  'series',
+  'show',
+  'character',
+  'franchise',
+  'trailer',
+  'teaser',
+  'poster',
+  'first look',
+  'release',
+  'premiere',
+  'coming to',
+  'set for',
+];
+const GENERIC_CONTAINER_SUBJECT_TERMS = [
+  'plan',
+  'plans',
+  'strategy',
+  'ceo',
+  'service',
+  'platform',
+  'pricing',
+  'subscription',
+  'brand',
+  'studio',
+  'network',
+  'business',
+  'deal',
+  'merger',
+  'slate',
+];
+const PERSON_NAME_STOPWORDS = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+  'Netflix',
+  'Disney',
+  'Prime',
+  'Paramount',
+  'Warner',
+  'Bros',
+  'Discovery',
+  'Studios',
+  'Studio',
+  'Movie',
+  'Movies',
+  'Film',
+  'Series',
+  'Season',
+  'Episode',
+  'Show',
+  'Story',
+  'Immortal',
+  'Man',
+];
 const REFERENCE_ONLY_CUES = [
   'known for',
   'best known for',
@@ -339,6 +430,7 @@ const REFERENCE_ONLY_CUES = [
   'films like',
   'movies like',
   'titles like',
+  'adaptations like',
   'such as',
   'including',
   'elements of',
@@ -417,6 +509,19 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9+]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function looksLikeNamedPerson(value: string): boolean {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2 || parts.length > 4) {
+    return false;
+  }
+
+  return parts.every((part) => /^[A-Z][A-Za-z'’.-]{1,}$/.test(part));
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -565,6 +670,128 @@ function extractLeadTitleCandidate(title: string): string | null {
   return cleaned || candidate;
 }
 
+function extractLeadPersonSubject(title: string): string | null {
+  const match = title.match(
+    /^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})\s+(?:says|said|confirms|confirmed|is|isn't|isnt|will|won't|wont|doesn't|doesnt|returns|returning|addresses|speaks|discusses|talks|joins|joined|teases|reveals|reacts|voices|voicing)\b/
+  );
+
+  const candidate = match?.[1]?.trim();
+  return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
+}
+
+function extractNamedPeople(articleText: string, analysis: RSSSubjectAnalysis): string[] {
+  return uniqueStrings(
+    Array.from(articleText.matchAll(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})\b/g))
+      .map((match) => match[1]?.trim() || '')
+      .filter((candidate) => {
+        if (!looksLikeNamedPerson(candidate)) {
+          return false;
+        }
+
+        const parts = candidate.split(/\s+/);
+        if (parts.some((part) => PERSON_NAME_STOPWORDS.includes(part))) {
+          return false;
+        }
+
+        const normalizedCandidate = normalizeText(candidate);
+        if (!normalizedCandidate) {
+          return false;
+        }
+
+        if (normalizedCandidate === normalizeText(analysis.primarySubject.name)) {
+          return false;
+        }
+
+        if (analysis.contextProject && normalizedCandidate === normalizeText(analysis.contextProject)) {
+          return false;
+        }
+
+        if (analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizedCandidate)) {
+          return false;
+        }
+
+        return true;
+      })
+  );
+}
+
+function isContainerSubjectType(type: SubjectType): boolean {
+  return type === 'studio' || type === 'streaming_service';
+}
+
+function inferContentSubjectType(articleText: string, subject: string): SubjectType {
+  const normalizedArticle = normalizeText(articleText);
+  const normalizedSubject = normalizeText(subject);
+
+  if (normalizedSubject && /\bcharacter\b/.test(normalizedArticle)) {
+    return 'character';
+  }
+
+  if (
+    normalizedSubject &&
+    new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\b`).test(normalizedArticle) &&
+    /\bactor|actress|star|cast\b/.test(normalizedArticle)
+  ) {
+    return 'actor';
+  }
+
+  if (/\bseries|season|episode|showrunner|tv show|live action series\b/i.test(articleText)) {
+    return 'tv_show';
+  }
+
+  if (/\bmovie|film|feature film|feature movie|adaptation|remake|reboot|spinoff|sequel\b/i.test(articleText)) {
+    return 'franchise';
+  }
+
+  return 'franchise';
+}
+
+function extractContainerOwnedContentSubject(title: string, studios: string[]): string | null {
+  if (studios.length === 0) {
+    return null;
+  }
+
+  const normalizedTitle = normalizeText(title);
+  if (!containsKeyword(normalizedTitle, CONTAINER_STORY_CUES)) {
+    return null;
+  }
+
+  for (const studio of [...studios].sort((a, b) => b.length - a.length)) {
+    const pattern = new RegExp(
+      `^${escapeRegExp(studio)}['’]s\\s+(.+?)(?=\\s+(?:is|are|was|were|will|can|could|set|gets|getting|coming|returns|returning|complete|completed|confirmed|delivers|ranking|ranked|reveals|breaks|changed|marks|sets|joins|joined|heads|headed|lands|live[- ]action|adaptation|movie|film|series|show|sequel|reboot|remake|spinoff|trailer|teaser|poster|release|premiere)\\b|[!?]|$)`,
+      'i'
+    );
+    const match = title.match(pattern);
+    const candidate = match?.[1]?.trim();
+    if (!candidate) {
+      continue;
+    }
+
+    const cleaned = candidate
+      .replace(/^(?:new|upcoming|beloved)\s+/i, '')
+      .replace(/\b(character|franchise|movie|film|series|show)\b$/i, '')
+      .replace(/[,:;\-–]+$/g, '')
+      .trim();
+    const normalizedCandidate = normalizeText(cleaned);
+
+    if (!normalizedCandidate) {
+      continue;
+    }
+
+    if (normalizedCandidate.split(' ').length > 6) {
+      continue;
+    }
+
+    if (GENERIC_CONTAINER_SUBJECT_TERMS.includes(normalizedCandidate)) {
+      continue;
+    }
+
+    return cleaned;
+  }
+
+  return null;
+}
+
 function extractRelevantStudios(articleText: string): string[] {
   const normalized = normalizeText(articleText);
   return OFFICIAL_STUDIO_TERMS.filter((term) => normalized.includes(normalizeText(term)));
@@ -613,7 +840,8 @@ function extractContextProject(
     (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer' || primaryType === 'character') &&
     filteredQuoted.length > 0
   ) {
-    return filteredQuoted[0];
+    const linkedQuoted = filteredQuoted.find((subject) => entityMatches(normalizeText(subject), primaryName));
+    return linkedQuoted || filteredQuoted[0];
   }
 
   const filteredSecondary = buildReferenceOnlyFreeSecondarySubjects(
@@ -651,7 +879,6 @@ function buildRequiredContextTerms(
   );
   const normalizedVisual = normalizeText(visualSubject);
   const normalizedPrimary = normalizeText(primaryName);
-  const titleStudioMatch = relevantStudios.find((studio) => entityMatches(normalizeText(articleTitle), studio)) || null;
   const wantsAnimatedOverLiveAction =
     /\blive action\b/i.test(articleText) &&
     !/\blive action\b/i.test(articleTitle) &&
@@ -662,9 +889,6 @@ function buildRequiredContextTerms(
     wantsAnimatedOverLiveAction ? 'animated' : null,
     /\bopening scene\b/i.test(articleText) ? 'opening scene' : null,
     yearTokens[0] || null,
-    (primaryType === 'movie' || primaryType === 'tv_show' || primaryType === 'franchise' || primaryType === 'character' || primaryType === 'actor')
-      ? titleStudioMatch
-      : null,
     (primaryType === 'actor' || primaryType === 'director' || primaryType === 'producer' || primaryType === 'character')
       ? filteredSecondary[0] || null
       : null,
@@ -779,6 +1003,7 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const referenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const normalizedTitle = article.title.trim();
   const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
+  const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
@@ -787,7 +1012,10 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   let primaryType: SubjectType = 'movie';
   const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
 
-  if (studios.length > 0 && titleLooksLikeStudioStory && quotedMatches.length === 0) {
+  if (containerOwnedSubject) {
+    primaryName = containerOwnedSubject;
+    primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
+  } else if (studios.length > 0 && titleLooksLikeStudioStory && quotedMatches.length === 0) {
     primaryName = studios[0];
     primaryType = /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock)\b/i.test(primaryName)
       ? 'streaming_service'
@@ -941,15 +1169,6 @@ function buildFallbackQueries(
 
 function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const fallback = guessPrimarySubject(article);
-  const editorialPrimary = typeof value?.editorialPrimary === 'string'
-    ? value.editorialPrimary.trim()
-    : fallback.editorialPrimary;
-  const primaryName = typeof value?.primarySubject?.name === 'string'
-    ? value.primarySubject.name.trim()
-    : fallback.primarySubject.name;
-  const primaryType = typeof value?.primarySubject?.type === 'string'
-    ? value.primarySubject.type as SubjectType
-    : fallback.primarySubject.type;
   const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
   const heuristicStudios = extractRelevantStudios(articleText);
   const heuristicReferenceOnlySubjects = extractReferenceOnlySubjects(articleText);
@@ -957,6 +1176,27 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     ...(Array.isArray(value?.relevantStudios) ? value.relevantStudios : []),
     ...heuristicStudios,
   ]);
+  const containerOwnedSubject = extractContainerOwnedContentSubject(article.title, relevantStudios);
+  const rawEditorialPrimary = typeof value?.editorialPrimary === 'string'
+    ? value.editorialPrimary.trim()
+    : fallback.editorialPrimary;
+  const rawPrimaryName = typeof value?.primarySubject?.name === 'string'
+    ? value.primarySubject.name.trim()
+    : fallback.primarySubject.name;
+  const rawPrimaryType = typeof value?.primarySubject?.type === 'string'
+    ? value.primarySubject.type as SubjectType
+    : fallback.primarySubject.type;
+  const shouldOverrideContainerPrimary = Boolean(
+    containerOwnedSubject && (
+      isContainerSubjectType(rawPrimaryType)
+      || relevantStudios.some((studio) => normalizeText(studio) === normalizeText(rawPrimaryName))
+    )
+  );
+  const editorialPrimary = shouldOverrideContainerPrimary ? containerOwnedSubject! : rawEditorialPrimary;
+  const primaryName = shouldOverrideContainerPrimary ? containerOwnedSubject! : rawPrimaryName;
+  const primaryType = shouldOverrideContainerPrimary
+    ? inferContentSubjectType(articleText, containerOwnedSubject!)
+    : rawPrimaryType;
   const secondarySubjects = uniqueStrings([
     ...(Array.isArray(value?.secondarySubjects) ? value.secondarySubjects : []),
     ...relevantStudios.filter((studio) => normalizeText(studio) !== normalizeText(primaryName)),
@@ -976,12 +1216,19 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     ? value.targetFormat as TargetFormat
     : resolveTargetFormat(articleText, primaryType);
   const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, relevantStudios);
-  const visualSubject = typeof value?.visualSubject === 'string'
+  const rawVisualSubject = typeof value?.visualSubject === 'string'
     ? value.visualSubject.trim()
     : visual.visualSubject;
-  const imageIntent = typeof value?.imageIntent === 'string'
+  const visualSubject = shouldOverrideContainerPrimary &&
+    relevantStudios.some((studio) => normalizeText(studio) === normalizeText(rawVisualSubject))
+      ? primaryName
+      : rawVisualSubject;
+  const rawImageIntent = typeof value?.imageIntent === 'string'
     ? value.imageIntent as ImageIntent
     : visual.imageIntent;
+  const imageIntent = shouldOverrideContainerPrimary && (rawImageIntent === 'logo' || rawImageIntent === 'brand_backdrop')
+    ? visual.imageIntent
+    : rawImageIntent;
   const contextProjectValue = typeof value?.contextProject === 'string' && value.contextProject.trim()
     ? value.contextProject.trim()
     : extractContextProject(
@@ -1006,18 +1253,19 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
       relevantStudios
     ),
   ]);
+  const fallbackQueries = buildFallbackQueries(
+    visualSubject,
+    primaryType,
+    secondarySubjects,
+    contextType,
+    imageIntent,
+    contextProjectValue,
+    requiredContextTerms
+  );
   const queries = uniqueStrings(
-    Array.isArray(value?.queries)
-      ? value.queries
-      : buildFallbackQueries(
-          visualSubject,
-          primaryType,
-          secondarySubjects,
-          contextType,
-          imageIntent,
-          contextProjectValue,
-          requiredContextTerms
-        )
+    shouldOverrideContainerPrimary || !Array.isArray(value?.queries)
+      ? fallbackQueries
+      : value.queries
   );
 
   return {
@@ -1035,19 +1283,380 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     contextProject: contextProjectValue,
     requiredContextTerms,
     referenceOnlySubjects,
-    allowLogoOnly: value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo'),
+    allowLogoOnly: shouldOverrideContainerPrimary
+      ? false
+      : value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo'),
     queries: queries.length > 0
       ? queries
-      : buildFallbackQueries(
-          visualSubject,
-          primaryType,
-          secondarySubjects,
-          contextType,
-          imageIntent,
-          contextProjectValue,
-          requiredContextTerms
-        ),
+      : fallbackQueries,
   };
+}
+
+function inferSlotType(
+  subject: string,
+  articleText: string,
+  fallbackType: SubjectType,
+  analysis: RSSSubjectAnalysis
+): SubjectType {
+  if (analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))) {
+    return /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock)\b/i.test(subject)
+      ? 'streaming_service'
+      : 'studio';
+  }
+
+  if (looksLikeNamedPerson(subject)) {
+    return 'actor';
+  }
+
+  if (
+    analysis.contextProject &&
+    normalizeText(analysis.contextProject) === normalizeText(subject)
+  ) {
+    return analysis.targetFormat === 'series' ? 'tv_show' : 'franchise';
+  }
+
+  if (
+    analysis.primarySubject.type !== 'actor' &&
+    analysis.primarySubject.type !== 'director' &&
+    analysis.primarySubject.type !== 'producer' &&
+    analysis.primarySubject.type !== 'studio' &&
+    analysis.primarySubject.type !== 'streaming_service'
+  ) {
+    return analysis.primarySubject.type;
+  }
+
+  return fallbackType;
+}
+
+function buildSlotQueries(
+  subject: string,
+  type: SubjectType,
+  intent: ImageIntent,
+  analysis: RSSSubjectAnalysis
+): string[] {
+  const baseQueries = buildFallbackQueries(
+    subject,
+    type,
+    [],
+    analysis.contextType,
+    intent,
+    analysis.contextProject,
+    analysis.requiredContextTerms
+  );
+
+  if (intent !== 'logo' || isContainerSubjectType(type)) {
+    return baseQueries;
+  }
+
+  return uniqueStrings([
+    ...baseQueries,
+    ...buildFallbackQueries(
+      subject,
+      type,
+      [],
+      analysis.contextType,
+      'still',
+      analysis.contextProject,
+      analysis.requiredContextTerms
+    ),
+  ]);
+}
+
+function buildImageSlotPlan(
+  subject: string,
+  type: SubjectType,
+  intent: ImageIntent,
+  analysis: RSSSubjectAnalysis,
+  allowLogoOnly = intent === 'logo'
+): ImageSlotPlan {
+  return {
+    subject,
+    type,
+    intent,
+    allowLogoOnly,
+    requiredContextTerms: analysis.requiredContextTerms,
+    queries: buildSlotQueries(subject, type, intent, analysis),
+  };
+}
+
+function subjectAppearsInTitle(subject: string | null | undefined, title: string): boolean {
+  if (!subject) {
+    return false;
+  }
+
+  return entityMatches(normalizeText(title), subject);
+}
+
+function isProjectAnchorType(type: SubjectType): boolean {
+  return type === 'movie' || type === 'tv_show' || type === 'franchise';
+}
+
+function findProjectContextAnchor(
+  subjects: string[],
+  articleText: string,
+  analysis: RSSSubjectAnalysis
+): string | null {
+  for (const subject of subjects) {
+    if (!subject || looksLikeNamedPerson(subject)) {
+      continue;
+    }
+
+    const inferredType = inferSlotType(subject, articleText, 'franchise', analysis);
+    if (isProjectAnchorType(inferredType)) {
+      return subject;
+    }
+  }
+
+  return null;
+}
+
+function determineSmartImagePlan(
+  article: RSSImageSelectionArticle,
+  analysis: RSSSubjectAnalysis
+): { primary: ImageSlotPlan; secondary: ImageSlotPlan | null; useTwoImages: boolean } {
+  const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
+  const nonStudioSecondarySubjects = buildReferenceOnlyFreeSecondarySubjects(
+    analysis.secondarySubjects,
+    analysis.referenceOnlySubjects,
+    analysis.primarySubject.name
+  ).filter((subject) =>
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))
+  );
+  const leadPerson = extractLeadPersonSubject(article.title);
+  const heuristicPeople = extractNamedPeople(articleText, analysis);
+  const quotedSubjects = extractQuotedSubjects(articleText).filter((subject) => {
+    const normalizedSubject = normalizeText(subject);
+    return normalizedSubject &&
+      normalizedSubject !== normalizeText(analysis.primarySubject.name) &&
+      !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject);
+  });
+  const preferredPersonSubject =
+    nonStudioSecondarySubjects.find((subject) => looksLikeNamedPerson(subject)) ||
+    heuristicPeople[0] ||
+    (leadPerson && normalizeText(leadPerson) !== normalizeText(analysis.primarySubject.name) ? leadPerson : null);
+  const preferredProjectSubject = findProjectContextAnchor(
+    nonStudioSecondarySubjects.filter((subject) => normalizeText(subject) !== normalizeText(preferredPersonSubject || '')),
+    articleText,
+    analysis
+  );
+  const titleAnchor =
+    analysis.contextProject ||
+    findProjectContextAnchor(quotedSubjects, articleText, analysis) ||
+    preferredProjectSubject ||
+    (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise'
+      ? analysis.primarySubject.name
+      : null);
+  const centralContainerPerson = preferredPersonSubject && subjectAppearsInTitle(preferredPersonSubject, article.title)
+    ? preferredPersonSubject
+    : null;
+  const centralTitlePerson = preferredPersonSubject && subjectAppearsInTitle(preferredPersonSubject, article.title)
+    ? preferredPersonSubject
+    : null;
+  const projectAnchorForPersonStory = titleAnchor && !looksLikeNamedPerson(titleAnchor)
+    ? titleAnchor
+    : null;
+
+  let primary = buildImageSlotPlan(
+    analysis.visualSubject,
+    analysis.primarySubject.type,
+    analysis.imageIntent,
+    analysis,
+    analysis.allowLogoOnly
+  );
+  let secondary: ImageSlotPlan | null = null;
+  let useTwoImages = false;
+
+  if (isContainerSubjectType(analysis.primarySubject.type)) {
+    if (centralContainerPerson) {
+      primary = buildImageSlotPlan(centralContainerPerson, 'actor', 'person_portrait', analysis, false);
+      secondary = buildImageSlotPlan(
+        analysis.primarySubject.name,
+        analysis.primarySubject.type,
+        'logo',
+        analysis,
+        true
+      );
+      useTwoImages = true;
+    }
+  } else if (
+    analysis.primarySubject.type === 'actor' ||
+    analysis.primarySubject.type === 'director' ||
+    analysis.primarySubject.type === 'producer'
+  ) {
+    if (projectAnchorForPersonStory) {
+      primary = buildImageSlotPlan(analysis.primarySubject.name, analysis.primarySubject.type, 'person_portrait', analysis, false);
+      secondary = buildImageSlotPlan(
+        projectAnchorForPersonStory,
+        inferSlotType(projectAnchorForPersonStory, articleText, 'franchise', analysis),
+        'logo',
+        analysis,
+        true
+      );
+      useTwoImages = true;
+    }
+  } else if (analysis.primarySubject.type === 'character') {
+    if (projectAnchorForPersonStory) {
+      primary = buildImageSlotPlan(analysis.visualSubject, 'character', 'character_still', analysis, false);
+      secondary = buildImageSlotPlan(
+        projectAnchorForPersonStory,
+        inferSlotType(projectAnchorForPersonStory, articleText, 'franchise', analysis),
+        'logo',
+        analysis,
+        true
+      );
+      useTwoImages = true;
+    }
+  } else if (
+    (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise') &&
+    centralTitlePerson &&
+    titleAnchor
+  ) {
+    primary = buildImageSlotPlan(centralTitlePerson, 'actor', 'person_portrait', analysis, false);
+    secondary = buildImageSlotPlan(
+      titleAnchor,
+      inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
+      'logo',
+      analysis,
+      true
+    );
+    useTwoImages = true;
+  }
+
+  return {
+    primary,
+    secondary,
+    useTwoImages,
+  };
+}
+
+function buildAnalysisForSlot(
+  base: RSSSubjectAnalysis,
+  slot: ImageSlotPlan
+): RSSSubjectAnalysis {
+  return {
+    ...base,
+    editorialPrimary: slot.subject,
+    primarySubject: {
+      name: slot.subject,
+      type: slot.type,
+    },
+    visualSubject: slot.subject,
+    imageIntent: slot.intent,
+    allowLogoOnly: slot.allowLogoOnly,
+    queries: slot.queries,
+    requiredContextTerms: slot.requiredContextTerms,
+    secondarySubjects: slot.intent === 'logo'
+      ? []
+      : base.secondarySubjects.filter((subject) => normalizeText(subject) !== normalizeText(slot.subject)),
+  };
+}
+
+function getImageRole(text: string, analysis: RSSSubjectAnalysis): ImageRole {
+  if (isLogoResult(text)) {
+    return analysis.imageIntent === 'brand_backdrop' ? 'brand_backdrop' : 'logo';
+  }
+
+  if (analysis.imageIntent === 'person_portrait' || containsKeyword(text, PORTRAIT_KEYWORDS)) {
+    return 'person';
+  }
+
+  if (analysis.imageIntent === 'character_still') {
+    return 'character';
+  }
+
+  if (isPosterResult(text)) {
+    return 'poster';
+  }
+
+  return 'still';
+}
+
+function areImageRolesComplementary(primaryRole: ImageRole, secondaryRole: ImageRole): boolean {
+  if (primaryRole === secondaryRole) {
+    return false;
+  }
+
+  if (
+    (primaryRole === 'still' && secondaryRole === 'poster') ||
+    (primaryRole === 'poster' && secondaryRole === 'still')
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+async function collectScoredImages(
+  analysis: RSSSubjectAnalysis,
+  limit: number
+): Promise<ScoredImage[]> {
+  const scoredByUrl = new Map<string, ScoredImage>();
+
+  for (const query of analysis.queries.slice(0, 4)) {
+    const results = await searchSerperImages(query, Math.max(limit * 4, 8));
+
+    for (const result of results) {
+      if (!result.imageUrl) continue;
+      const scored = scoreImage(result, analysis, query);
+      if (!scored) continue;
+
+      const current = scoredByUrl.get(result.imageUrl);
+      if (!current || scored.score > current.score) {
+        scoredByUrl.set(result.imageUrl, scored);
+      }
+    }
+
+    if (scoredByUrl.size >= limit) {
+      break;
+    }
+  }
+
+  return Array.from(scoredByUrl.values())
+    .sort((left, right) => right.score - left.score);
+}
+
+function buildResolvedImagesFromScored(
+  scoredSelections: ScoredImage[],
+  fallbackImages: string[],
+  limit: number,
+  allowFeedFallback: boolean
+): RSSResolvedImage[] {
+  const scoreThreshold = fallbackImages.length > 0
+    ? MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK
+    : MIN_CONFIDENT_SERPER_SCORE;
+  const confidentSelections = scoredSelections
+    .filter((item) => item.score >= scoreThreshold)
+    .slice(0, limit)
+    .map((item) => ({
+      url: item.image.imageUrl!,
+      reason: item.reason,
+      source: 'serper' as const,
+      score: item.score,
+    }));
+
+  if (confidentSelections.length >= limit) {
+    return confidentSelections;
+  }
+
+  if (allowFeedFallback) {
+    const fallback = buildFeedFallbackImages(
+      fallbackImages.filter((url) => !confidentSelections.some((image) => image.url === url)),
+      limit - confidentSelections.length
+    );
+
+    if (fallback.length > 0) {
+      return [...confidentSelections, ...fallback].slice(0, limit);
+    }
+  }
+
+  return scoredSelections
+    .slice(0, limit)
+    .map((item) => ({
+      url: item.image.imageUrl!,
+      reason: item.reason,
+      source: 'serper' as const,
+      score: item.score,
+    }));
 }
 
 async function extractSubjectAnalysis(
@@ -1252,7 +1861,6 @@ function scoreImage(
     analysis.visualSubject,
     analysis.primarySubject.name,
     ...nonReferenceSecondarySubjects,
-    ...analysis.relevantStudios,
   ]);
   const franchiseRule = getFranchiseValidationRule(analysis);
   const contextMatchCount = analysis.requiredContextTerms.filter((term) => entityMatches(text, term)).length;
@@ -1267,8 +1875,24 @@ function scoreImage(
   const looksLikeSeriesResult = containsKeyword(text, ['series', 'season', 'episode', 'tv show', 'streaming series', 'live action series']);
   const looksLikeMovieResult = containsKeyword(text, ['movie', 'film', 'feature film', 'theatrical']);
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
+  const suppressStudioOnlyResults = !isContainerSubjectType(analysis.primarySubject.type) && analysis.relevantStudios.length > 0;
 
   if (!mentionsRelevantEntity && !relevantStudioMatch && contextMatchCount === 0) {
+    return null;
+  }
+
+  if (suppressStudioOnlyResults && relevantStudioMatch && !mentionsRelevantEntity && contextMatchCount === 0) {
+    return null;
+  }
+
+  if (
+    analysis.imageIntent === 'logo' &&
+    !isContainerSubjectType(analysis.primarySubject.type) &&
+    isLogo &&
+    relevantStudioMatch &&
+    !primaryMatch &&
+    !visualMatch
+  ) {
     return null;
   }
 
@@ -1315,7 +1939,7 @@ function scoreImage(
   }
 
   if (relevantStudioMatch) {
-    score += analysis.primarySubject.type === 'studio' || analysis.primarySubject.type === 'streaming_service' ? 35 : 18;
+    score += isContainerSubjectType(analysis.primarySubject.type) ? 35 : 4;
   }
 
   if (entityMatches(text, query)) {
@@ -1343,6 +1967,10 @@ function scoreImage(
 
   if (referenceOnlyMatch) {
     score -= 45;
+  }
+
+  if (suppressStudioOnlyResults && relevantStudioMatch && !mentionsRelevantEntity) {
+    score -= 40;
   }
 
   if (
@@ -1408,6 +2036,7 @@ export async function resolveRelevantRSSImages(
   options: {
     serperPriority: boolean;
     limit: number;
+    smartCount?: boolean;
     model?: AIModel | string;
   }
 ): Promise<RSSResolvedImage[]> {
@@ -1421,61 +2050,54 @@ export async function resolveRelevantRSSImages(
   }
 
   const analysis = await extractSubjectAnalysis(article, options.model);
-  const scoredByUrl = new Map<string, ScoredImage>();
+  if (options.smartCount && limit >= 2) {
+    const plan = determineSmartImagePlan(article, analysis);
+    const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
+    const primaryScored = await collectScoredImages(primaryAnalysis, 4);
+    const primaryResolved = buildResolvedImagesFromScored(primaryScored, fallbackImages, 1, true);
 
-  for (const query of analysis.queries.slice(0, 4)) {
-    const results = await searchSerperImages(query, Math.max(limit * 4, 8));
+    if (primaryResolved.length === 0 || !plan.useTwoImages || !plan.secondary) {
+      return primaryResolved;
+    }
 
-    for (const result of results) {
-      if (!result.imageUrl) continue;
-      const scored = scoreImage(result, analysis, query);
-      if (!scored) continue;
+    const primaryResolvedImage = primaryResolved[0];
+    const primaryScoredImage = primaryResolvedImage.source === 'serper'
+      ? primaryScored.find((item) => item.image.imageUrl === primaryResolvedImage.url)
+      : null;
+    const primaryRole = primaryScoredImage
+      ? getImageRole(getSerperImageText(primaryScoredImage.image), primaryAnalysis)
+      : getImageRole(normalizeText(primaryResolvedImage.reason), primaryAnalysis);
 
-      const current = scoredByUrl.get(result.imageUrl);
-      if (!current || scored.score > current.score) {
-        scoredByUrl.set(result.imageUrl, scored);
+    const secondaryAnalysis = buildAnalysisForSlot(analysis, plan.secondary);
+    const secondaryScored = await collectScoredImages(secondaryAnalysis, 6);
+    const secondaryResolved = secondaryScored.find((item) => {
+      if (!item.image.imageUrl || item.image.imageUrl === primaryResolvedImage.url) {
+        return false;
       }
+
+      if (item.score < 95) {
+        return false;
+      }
+
+      const secondaryRole = getImageRole(getSerperImageText(item.image), secondaryAnalysis);
+      return areImageRolesComplementary(primaryRole, secondaryRole);
+    });
+
+    if (!secondaryResolved) {
+      return primaryResolved;
     }
 
-    if (scoredByUrl.size >= limit) {
-      break;
-    }
+    return [
+      primaryResolvedImage,
+      {
+        url: secondaryResolved.image.imageUrl!,
+        reason: secondaryResolved.reason,
+        source: 'serper',
+        score: secondaryResolved.score,
+      },
+    ];
   }
 
-  const sortedSelections = Array.from(scoredByUrl.values())
-    .sort((left, right) => right.score - left.score);
-  const scoreThreshold = fallbackImages.length > 0
-    ? MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK
-    : MIN_CONFIDENT_SERPER_SCORE;
-  const confidentSelections = sortedSelections
-    .filter((item) => item.score >= scoreThreshold)
-    .slice(0, limit)
-    .map((item) => ({
-      url: item.image.imageUrl!,
-      reason: item.reason,
-      source: 'serper' as const,
-      score: item.score,
-    }));
-
-  if (confidentSelections.length >= limit) {
-    return confidentSelections;
-  }
-
-  const fallback = buildFeedFallbackImages(
-    fallbackImages.filter((url) => !confidentSelections.some((image) => image.url === url)),
-    limit - confidentSelections.length
-  );
-
-  if (fallback.length > 0) {
-    return [...confidentSelections, ...fallback].slice(0, limit);
-  }
-
-  return sortedSelections
-    .slice(0, limit)
-    .map((item) => ({
-      url: item.image.imageUrl!,
-      reason: item.reason,
-      source: 'serper' as const,
-      score: item.score,
-    }));
+  const scoredSelections = await collectScoredImages(analysis, limit);
+  return buildResolvedImagesFromScored(scoredSelections, fallbackImages, limit, true);
 }
