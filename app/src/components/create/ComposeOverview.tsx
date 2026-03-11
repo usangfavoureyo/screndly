@@ -359,56 +359,58 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                           {item.error ? (
                             <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
                           ) : null}
-                          {!selection.selectionMode ? (
-                            <div className="mt-3 grid w-full max-w-[24rem] grid-cols-3 gap-2">
-                              <Button
-                                size="sm"
-                                className="h-10 whitespace-nowrap px-3 text-sm"
-                                disabled={publishingIds.includes(item.id)}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handlePublish(item.id);
-                                }}
-                              >
-                                {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-10 whitespace-nowrap px-3 text-sm"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  handleOpenSchedule(item);
-                                }}
-                              >
-                                Schedule
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-10 whitespace-nowrap px-3 text-sm"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  haptics.light();
-                                  handleEdit(item.id);
-                                }}
-                              >
-                                Edit
-                              </Button>
-                            </div>
-                          ) : null}
                         </div>
                       </div>
-                      <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
+                      <span className={`shrink-0 inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
                         {item.status === 'scheduled'
                           ? 'Scheduled'
                           : item.status === 'published'
                             ? 'Published'
                             : item.status === 'failed'
-                              ? 'Failed'
+                            ? 'Failed'
                               : 'Draft'}
                       </span>
                     </div>
+                    {!selection.selectionMode ? (
+                      <div className="ml-[4.25rem] w-[calc(100%-4.25rem)]">
+                        <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
+                          <Button
+                            size="sm"
+                            className="h-10 whitespace-nowrap px-3 text-sm"
+                            disabled={publishingIds.includes(item.id)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handlePublish(item.id);
+                            }}
+                          >
+                            {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 whitespace-nowrap px-3 text-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleOpenSchedule(item);
+                            }}
+                          >
+                            Schedule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-10 whitespace-nowrap px-3 text-sm"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              haptics.light();
+                              handleEdit(item.id);
+                            }}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
 
                   </div>
                 </SwipeableActivityCard>

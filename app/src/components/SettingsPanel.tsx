@@ -47,7 +47,7 @@ interface SettingsPanelProps {
 
 export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNotification, initialPage }: SettingsPanelProps) {
   const { theme, setTheme } = useTheme();
-  const { settings, updateSetting } = useSettings();
+  const { settings, updateSetting, updateSettings } = useSettings();
 
   const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
 
@@ -416,7 +416,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
           className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
           onClick={handleCloseSubpage}
         />
-        <VideoSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
+        <VideoSettings settings={settings} updateSetting={updateSetting} updateSettings={updateSettings} onBack={handleCloseSubpage} />
       </>
     );
   }

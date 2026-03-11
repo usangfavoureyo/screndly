@@ -337,7 +337,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                           ) : null}
                         </div>
                         <div className="min-w-0">
-                          <h3 className="text-gray-900 dark:text-white mb-1">{item.title}</h3>
+                          <h3 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h3>
                           <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2">
                             {item.scheduledAt ? `Scheduled ${new Date(item.scheduledAt).toLocaleString()}` : `Updated ${new Date(item.updatedAt).toLocaleString()}`}
                           </p>
@@ -349,72 +349,77 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                             ))}
                           </div>
                           {item.error ? <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p> : null}
-                          {!selection.selectionMode ? (
-                            item.status === 'draft' ? (
-                              <div className="mt-3 grid w-full max-w-[24rem] grid-cols-3 gap-2">
-                                <Button
-                                  size="sm"
-                                  className="h-10 whitespace-nowrap px-3 text-sm"
-                                  disabled={publishingIds.includes(item.id)}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handlePublish(item.id);
-                                  }}
-                                >
-                                  {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-10 whitespace-nowrap px-3 text-sm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    handleOpenSchedule(item);
-                                  }}
-                                >
-                                  Schedule
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-10 whitespace-nowrap px-3 text-sm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setActiveItemId(item.id);
-                                    onNavigate('compose-editor', 'create');
-                                  }}
-                                >
-                                  Edit
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="mt-3 flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setActiveItemId(item.id);
-                                    onNavigate('compose-editor', 'create');
-                                  }}
-                                >
-                                  Edit
-                                </Button>
-                              </div>
-                            )
-                          ) : null}
                         </div>
                       </div>
-                      <span className={`inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
+                      <span className={`shrink-0 inline-flex items-center rounded-lg px-3 py-1.5 text-sm ${getStatusTone(item.status)}`}>
                         {item.status === 'scheduled'
                           ? 'Scheduled'
                           : item.status === 'published'
                             ? 'Published'
                             : item.status === 'failed'
-                              ? 'Failed'
+                            ? 'Failed'
                               : 'Draft'}
                       </span>
                     </div>
+                    {!selection.selectionMode ? (
+                      item.status === 'draft' ? (
+                        <div className="ml-[4.25rem] w-[calc(100%-4.25rem)]">
+                          <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
+                            <Button
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              disabled={publishingIds.includes(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handlePublish(item.id);
+                              }}
+                            >
+                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenSchedule(item);
+                              }}
+                            >
+                              Schedule
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="ml-[4.25rem] w-[calc(100%-4.25rem)]">
+                          <div className="max-w-[9rem]">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 w-full px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      )
+                    ) : null}
 
                   </div>
                 </SwipeableActivityCard>

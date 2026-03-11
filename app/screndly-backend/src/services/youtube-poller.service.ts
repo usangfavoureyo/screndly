@@ -276,6 +276,12 @@ export class YouTubePollerService {
                     ? `[YouTubePoller] ${activeChannel.name}: using default trailer filters (${trailerKeywords.join(', ')}) because advancedFilters is blank`
                     : `[YouTubePoller] ${activeChannel.name}: using trailer filters (${trailerKeywords.join(', ')})`
             );
+            const futureOnlySince = this.getFutureOnlySince(settings);
+            console.log(
+                futureOnlySince
+                    ? `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}; future-only cutoff ${futureOnlySince.toISOString()}`
+                    : `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}; backlog mode ${settings.videoBacklogMode}`
+            );
             const targetPlatforms = this.getTargetPlatforms(settings);
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
@@ -417,6 +423,20 @@ export class YouTubePollerService {
         };
     }
 
+    private getFutureOnlySince(settings: LoadedVideoSettings): Date | null {
+        if (settings.videoBacklogMode !== 'future-only' || !settings.videoFutureOnlySince) {
+            return null;
+        }
+
+        const parsed = new Date(settings.videoFutureOnlySince);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    private describeVideoAgeGate(settings: LoadedVideoSettings): string {
+        const ageGate = settings.videoAgeGateHours;
+        return ageGate === null ? 'off' : `${ageGate} hour${ageGate === 1 ? '' : 's'}`;
+    }
+
     private getYouTubeErrorText(error: unknown): string {
         if (error instanceof Error) {
             const maybeRichError = error as Error & {
@@ -507,11 +527,21 @@ export class YouTubePollerService {
         }
 
         const pubDate = new Date(video.pubDate || Date.now());
-        const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
-        if (hoursSince > FEED_FRESHNESS_HOURS) {
+        const futureOnlySince = this.getFutureOnlySince(settings);
+        if (!options.force && futureOnlySince && pubDate < futureOnlySince) {
             return {
                 kind: 'continue',
-                reason: `${videoTitle}: older than ${FEED_FRESHNESS_HOURS} hours`,
+                reason: `${videoTitle}: uploaded before future-only cutoff`,
+                stopScanning: true,
+            };
+        }
+
+        const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
+        const ageGateHours = settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS;
+        if (!options.force && ageGateHours !== null && hoursSince > ageGateHours) {
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: older than ${ageGateHours} hour${ageGateHours === 1 ? '' : 's'}`,
                 stopScanning: true,
             };
         }

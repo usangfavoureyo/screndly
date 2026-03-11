@@ -9,14 +9,19 @@ import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/mod
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
+const DEFAULT_VIDEO_AGE_GATE = '24';
+const VIDEO_BACKLOG_MODE_PROCESS = 'process-backlog';
+const VIDEO_BACKLOG_MODE_FUTURE_ONLY = 'future-only';
+const VIDEO_AGE_GATE_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index + 1));
 
 interface VideoSettingsProps {
   settings: any;
   updateSetting: (key: string, value: any) => void;
+  updateSettings: (updates: Record<string, any>) => void;
   onBack: () => void;
 }
 
-export function VideoSettings({ settings, updateSetting, onBack }: VideoSettingsProps) {
+export function VideoSettings({ settings, updateSetting, updateSettings, onBack }: VideoSettingsProps) {
   const [pollInterval, setPollInterval] = useState(2);
   const [isPolling, setIsPolling] = useState(false);
 
@@ -59,6 +64,48 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
     updateSetting('postInterval', value);
     toast.success(`Post interval updated to ${minutes} minute(s)`);
   };
+
+  const handleVideoAgeGateChange = (value: string) => {
+    haptics.light();
+    updateSetting('videoAgeGateHours', value);
+    toast.success(
+      value === 'off'
+        ? 'Upload age gate turned off'
+        : `Only videos from the last ${value} hour${value === '1' ? '' : 's'} will be considered`
+    );
+  };
+
+  const handleBacklogModeChange = (value: string) => {
+    haptics.light();
+    updateSettings({
+      videoBacklogMode: value,
+      videoFutureOnlySince: value === VIDEO_BACKLOG_MODE_FUTURE_ONLY ? new Date().toISOString() : '',
+    });
+    toast.success(
+      value === VIDEO_BACKLOG_MODE_FUTURE_ONLY
+        ? 'Future-only mode enabled from now'
+        : 'Backlog processing enabled'
+    );
+  };
+
+  const videoAgeGateValue =
+    typeof settings.videoAgeGateHours === 'number'
+      ? String(settings.videoAgeGateHours)
+      : typeof settings.videoAgeGateHours === 'string' && settings.videoAgeGateHours.trim().length > 0
+        ? settings.videoAgeGateHours
+        : DEFAULT_VIDEO_AGE_GATE;
+  const videoBacklogMode =
+    settings.videoBacklogMode === VIDEO_BACKLOG_MODE_FUTURE_ONLY
+      ? VIDEO_BACKLOG_MODE_FUTURE_ONLY
+      : VIDEO_BACKLOG_MODE_PROCESS;
+  const futureOnlySinceDate =
+    videoBacklogMode === VIDEO_BACKLOG_MODE_FUTURE_ONLY && typeof settings.videoFutureOnlySince === 'string' && settings.videoFutureOnlySince
+      ? new Date(settings.videoFutureOnlySince)
+      : null;
+  const futureOnlySinceLabel =
+    futureOnlySinceDate && !Number.isNaN(futureOnlySinceDate.getTime())
+      ? futureOnlySinceDate.toLocaleString()
+      : '';
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -152,6 +199,53 @@ export function VideoSettings({ settings, updateSetting, onBack }: VideoSettings
                 placeholder="US,UK,CA"
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
               />
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Upload Age Gate</Label>
+              <Select
+                value={videoAgeGateValue}
+                onValueChange={handleVideoAgeGateChange}
+              >
+                <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                  <SelectValue placeholder="Select upload age gate" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Off</SelectItem>
+                  {VIDEO_AGE_GATE_OPTIONS.map((hours) => (
+                    <SelectItem key={hours} value={hours}>
+                      {hours} hour{hours === '1' ? '' : 's'}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                Default is 24 hours. Turn it off to allow older unprocessed uploads in the recent feed scan.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Backlog Mode</Label>
+              <Select
+                value={videoBacklogMode}
+                onValueChange={handleBacklogModeChange}
+              >
+                <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                  <SelectValue placeholder="Select backlog mode" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={VIDEO_BACKLOG_MODE_PROCESS}>Process backlog</SelectItem>
+                  <SelectItem value={VIDEO_BACKLOG_MODE_FUTURE_ONLY}>Future uploads only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                Future uploads only ignores videos already in the feed and starts from the moment you enable it.
+              </p>
+              {futureOnlySinceLabel ? (
+                <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                  Current future-only cutoff: {futureOnlySinceLabel}
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

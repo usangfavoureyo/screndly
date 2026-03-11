@@ -47,6 +47,9 @@ export interface Settings {
   postInterval?: string;
   regionFilter: string;
   advancedFilters: string;
+  videoAgeGateHours?: string;
+  videoBacklogMode?: string;
+  videoFutureOnlySince?: string;
   excludeShorts?: boolean;
   videoOpenaiModel?: string;
   videoUniversalCaptionPrompt?: string;
@@ -328,6 +331,9 @@ function getDefaultSettings(): Settings {
     postInterval: '10',
     regionFilter: 'US,UK',
     advancedFilters: 'trailer, official, teaser',
+    videoAgeGateHours: '24',
+    videoBacklogMode: 'process-backlog',
+    videoFutureOnlySince: '',
     excludeShorts: true,
     videoOpenaiModel: DEFAULT_MODELS.video,
     videoUniversalCaptionPrompt: '',
