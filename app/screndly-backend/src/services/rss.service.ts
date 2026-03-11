@@ -1215,19 +1215,69 @@ async function attemptRSSPublish(
   }
 }
 
-async function fetchRSSFeed(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Screndly RSS Reader/1.0',
-      Accept: 'application/rss+xml, application/xml, text/xml, */*',
-    },
-  });
+const RSS_PRIMARY_USER_AGENT = 'Screndly RSS Reader/1.0';
+const RSS_BROWSER_FALLBACK_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch RSS: ${response.status} ${response.statusText}`);
+function buildRSSFetchHeaders(url: string, userAgent: string): Record<string, string> {
+  let referer = url;
+  try {
+    const parsedUrl = new URL(url);
+    referer = `${parsedUrl.protocol}//${parsedUrl.host}/`;
+  } catch {
+    referer = url;
   }
 
-  return response.text();
+  return {
+    'User-Agent': userAgent,
+    Accept: 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache',
+    Referer: referer,
+  };
+}
+
+async function fetchRSSFeed(url: string): Promise<string> {
+  const attempts = [
+    {
+      label: 'primary',
+      headers: buildRSSFetchHeaders(url, RSS_PRIMARY_USER_AGENT),
+    },
+    {
+      label: 'browser-fallback',
+      headers: buildRSSFetchHeaders(url, RSS_BROWSER_FALLBACK_USER_AGENT),
+    },
+  ];
+
+  let lastError: Error | null = null;
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    const response = await fetch(url, {
+      headers: attempt.headers,
+      redirect: 'follow',
+    });
+
+    if (response.ok) {
+      return response.text();
+    }
+
+    lastError = new Error(`Failed to fetch RSS: ${response.status} ${response.statusText}`);
+
+    const canRetryWithBrowserHeaders =
+      index < attempts.length - 1 && (response.status === 403 || response.status === 429);
+
+    if (!canRetryWithBrowserHeaders) {
+      throw lastError;
+    }
+
+    console.warn(
+      `[RSS] Feed fetch for ${url} returned ${response.status} ${response.statusText}; retrying with browser headers`
+    );
+  }
+
+  throw lastError ?? new Error('Failed to fetch RSS: unknown error');
 }
 
 async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
