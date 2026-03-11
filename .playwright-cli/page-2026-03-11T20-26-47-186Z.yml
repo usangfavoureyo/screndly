@@ -1,0 +1,28 @@
+- generic [ref=e3]:
+  - generic [ref=e5]:
+    - img "Screndly Logo" [ref=e8]
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - generic [ref=e11]: Password
+        - generic [ref=e12]:
+          - textbox "Password" [ref=e13]:
+            - /placeholder: Enter your password
+          - button [ref=e14]:
+            - img [ref=e15]
+      - generic [ref=e18]:
+        - checkbox "Keep me signed in" [checked] [ref=e19]:
+          - img [ref=e20]
+        - generic [ref=e22] [cursor=pointer]: Keep me signed in
+      - button "Sign in" [disabled]
+    - paragraph [ref=e24]: Forgot your password? Contact your administrator.
+    - paragraph [ref=e26]:
+      - text: Screndly's
+      - link "Terms of Service" [ref=e27] [cursor=pointer]:
+        - /url: /terms
+      - text: and
+      - link "Privacy Policy" [ref=e28] [cursor=pointer]:
+        - /url: /privacy
+      - text: ", and"
+      - link "Disclaimer" [ref=e29] [cursor=pointer]:
+        - /url: /disclaimer
+  - paragraph [ref=e31]: Screen Render

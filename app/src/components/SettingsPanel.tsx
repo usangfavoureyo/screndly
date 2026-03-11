@@ -452,7 +452,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
           className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
           onClick={handleCloseSubpage}
         />
-        <TmdbFeedsSettings onSave={updateSetting} onBack={handleCloseSubpage} />
+        <TmdbFeedsSettings onBack={handleCloseSubpage} />
       </>
     );
   }

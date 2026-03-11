@@ -1,0 +1,444 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#main-content"
+    - generic [ref=e6]:
+      - button "Notifications" [ref=e7]:
+        - img [ref=e8]
+      - button "Open settings" [ref=e11]:
+        - img [ref=e12]
+    - complementary [ref=e15]:
+      - generic [ref=e17]:
+        - button "Go to dashboard" [ref=e19] [cursor=pointer]:
+          - img "Screndly" [ref=e20]
+        - button "Collapse sidebar" [ref=e21]:
+          - img
+      - navigation "Primary navigation" [ref=e22]:
+        - button "Dashboard" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+          - generic [ref=e30]: Dashboard
+        - button "Channels" [ref=e32] [cursor=pointer]:
+          - img [ref=e33]
+          - generic [ref=e36]: Channels
+        - button "Platforms" [ref=e38] [cursor=pointer]:
+          - img [ref=e39]
+          - generic [ref=e45]: Platforms
+        - button "Feeds" [ref=e47] [cursor=pointer]:
+          - img [ref=e48]
+          - generic [ref=e52]: Feeds
+        - button "Design Studio" [ref=e54] [cursor=pointer]:
+          - img [ref=e55]
+          - generic [ref=e59]: Design Studio
+        - button "Video Studio" [ref=e61] [cursor=pointer]:
+          - img [ref=e62]
+          - generic [ref=e64]: Video Studio
+      - button "Logout" [ref=e66] [cursor=pointer]:
+        - img
+        - generic [ref=e67]: Logout
+    - main [ref=e69]:
+      - generic [ref=e70]:
+        - generic:
+          - generic:
+            - img
+        - generic [ref=e73]:
+          - generic [ref=e74]:
+            - heading "Dashboard" [level=1] [ref=e75]
+            - paragraph [ref=e76]: Welcome back! Here's what's happening with your automation.
+          - generic [ref=e77]:
+            - generic [ref=e78]:
+              - generic [ref=e79]:
+                - generic [ref=e80]:
+                  - img [ref=e81]
+                  - generic [ref=e83]:
+                    - heading "Logs" [level=3] [ref=e84]
+                    - paragraph [ref=e85]: Log monitoring
+                - button "View all" [ref=e86]
+              - generic [ref=e87]:
+                - generic [ref=e88]:
+                  - generic [ref=e91]: Cache Hit Rate
+                  - generic [ref=e92]: TMDb cache efficiency
+                - generic [ref=e93]:
+                  - generic [ref=e96]: System Errors
+                  - generic [ref=e97]: Total errors logged
+                - generic [ref=e98]:
+                  - generic [ref=e101]: Daily Failures
+                  - generic [ref=e102]: Errors today
+                - generic [ref=e103]:
+                  - generic [ref=e106]: Daily Success
+                  - generic [ref=e107]: Successful events today
+            - generic [ref=e108]:
+              - generic [ref=e109]:
+                - generic [ref=e110]:
+                  - img [ref=e111]
+                  - generic [ref=e113]:
+                    - heading "Comment Automation" [level=3] [ref=e114]
+                    - paragraph [ref=e115]: AI-powered responses
+                - button "View all" [ref=e116]
+              - generic [ref=e117]:
+                - generic [ref=e118]:
+                  - generic [ref=e121]: Replies Today
+                  - generic [ref=e122]: Comments replied today
+                - generic [ref=e123]:
+                  - generic [ref=e126]: Success Rate
+                  - generic [ref=e127]: 0 platforms tracked
+              - heading "Recent Replies" [level=4] [ref=e129]
+            - generic [ref=e140]:
+              - generic [ref=e141]:
+                - generic [ref=e142]:
+                  - img [ref=e143]
+                  - generic [ref=e146]:
+                    - heading "Video" [level=3] [ref=e147]
+                    - paragraph [ref=e148]: Channel monitoring activity
+                - button "View all" [ref=e149]
+              - generic [ref=e150]:
+                - generic [ref=e151]:
+                  - generic [ref=e154]: Active Channels
+                  - generic [ref=e155]: Channels currently monitored
+                - generic [ref=e156]:
+                  - generic [ref=e159]: Detections Today
+                  - generic [ref=e160]: New channel videos today
+              - generic [ref=e161]:
+                - heading "Video Processing Trends" [level=4] [ref=e163]
+                - heading "Recent Detections" [level=4] [ref=e166]
+          - generic [ref=e171]:
+            - generic [ref=e172]:
+              - generic [ref=e173]:
+                - img [ref=e174]
+                - generic [ref=e178]:
+                  - heading "RSS Feeds" [level=3] [ref=e179]
+                  - paragraph [ref=e180]: Active feed monitoring
+              - button "View all" [ref=e181]
+            - generic [ref=e182]:
+              - generic [ref=e183]:
+                - generic [ref=e186]: RSS Feeds Active
+                - generic [ref=e187]: Enabled feeds
+              - generic [ref=e188]:
+                - generic [ref=e191]: Daily RSS Feeds Posted
+                - generic [ref=e192]: Published RSS items today
+          - generic [ref=e193]:
+            - generic [ref=e194]:
+              - generic [ref=e195]:
+                - img [ref=e196]
+                - generic [ref=e201]:
+                  - heading "TMDb Feeds" [level=3] [ref=e202]
+                  - paragraph [ref=e203]: Upcoming scheduled posts
+              - button "View all" [ref=e204]
+            - generic [ref=e205]:
+              - generic [ref=e206]:
+                - generic [ref=e209]: TMDb Feeds Ready
+                - generic [ref=e210]: Queued and scheduled posts
+              - generic [ref=e211]:
+                - generic [ref=e214]: Coverage
+                - generic [ref=e215]: Upcoming post coverage
+            - heading "Upcoming Schedule" [level=4] [ref=e217]
+          - generic [ref=e218]:
+            - generic [ref=e219]:
+              - generic [ref=e220]:
+                - img [ref=e221]
+                - generic [ref=e225]:
+                  - heading "Design Studio" [level=3] [ref=e226]
+                  - paragraph [ref=e227]: Creative generation activity
+              - button "View all" [ref=e228]
+            - generic [ref=e229]:
+              - generic [ref=e230]:
+                - generic [ref=e233]: Designs Generated
+                - generic [ref=e234]: Recorded renders
+              - generic [ref=e235]:
+                - generic [ref=e238]: Designs Published
+                - generic [ref=e239]: Published designs
+            - heading "Recent Activity" [level=4] [ref=e241]
+          - generic [ref=e242]:
+            - generic [ref=e243]:
+              - generic [ref=e244]:
+                - img [ref=e245]
+                - generic [ref=e247]:
+                  - heading "Video Studio" [level=3] [ref=e248]
+                  - paragraph [ref=e249]: Video generation activity
+              - button "View all" [ref=e250]
+            - generic [ref=e251]:
+              - generic [ref=e252]:
+                - generic [ref=e255]: Videos Generated
+                - generic [ref=e256]: Completed renders
+              - generic [ref=e257]:
+                - generic [ref=e260]: Videos Published
+                - generic [ref=e261]: Published videos
+            - heading "Recent Activity" [level=4] [ref=e263]
+          - generic [ref=e264]:
+            - generic [ref=e265]:
+              - generic [ref=e266]:
+                - img [ref=e267]
+                - generic [ref=e269]:
+                  - heading "Upload Manager" [level=3] [ref=e270]
+                  - paragraph [ref=e271]: Video upload pipeline
+              - button "View all" [ref=e272]
+            - generic [ref=e273]:
+              - generic [ref=e274]:
+                - generic [ref=e277]: Active Uploads
+                - generic [ref=e278]: Uploads in progress
+              - generic [ref=e279]:
+                - generic [ref=e282]: Completed Today
+                - generic [ref=e283]: Completed uploads today
+            - heading "Pipeline Status" [level=4] [ref=e285]
+          - generic [ref=e286]:
+            - generic [ref=e287]:
+              - generic [ref=e288]:
+                - img [ref=e289]
+                - generic [ref=e293]:
+                  - heading "API Usage" [level=3] [ref=e294]
+                  - paragraph [ref=e295]: Track API usage
+              - button "View all" [ref=e296]
+            - generic [ref=e297]:
+              - generic [ref=e298]:
+                - generic [ref=e301]: OpenAI API Usage
+                - generic [ref=e302]: Today
+              - generic [ref=e303]:
+                - generic [ref=e306]: Serper API Usage
+                - generic [ref=e307]: Today
+              - generic [ref=e308]:
+                - generic [ref=e311]: TMDb API Usage
+                - generic [ref=e312]: Today
+              - generic [ref=e313]:
+                - generic [ref=e316]: Shotstack API Usage
+                - generic [ref=e317]: Today
+              - generic [ref=e318]:
+                - generic [ref=e321]: Google Search API Usage
+                - generic [ref=e322]: Today
+              - generic [ref=e323]:
+                - generic [ref=e326]: GVI API Usage
+                - generic [ref=e327]: Today
+              - generic [ref=e328]:
+                - generic [ref=e330]: Today
+                - generic [ref=e333]: Total API Calls
+          - generic [ref=e334]:
+            - generic [ref=e335]:
+              - heading "Recent Activity" [level=3] [ref=e338]
+              - button "View all" [ref=e339]
+            - generic [ref=e341]: Loading...
+    - button "Open Create" [ref=e342]:
+      - img [ref=e343]
+  - dialog "Edit Caption":
+    - generic [ref=e347]:
+      - generic [ref=e348]:
+        - heading "Edit Caption" [level=2] [ref=e349]
+        - paragraph [ref=e350]: Customize the caption for this post
+      - generic [ref=e353]:
+        - generic [ref=e354]:
+          - generic [ref=e355]: Caption
+          - button [ref=e356]:
+            - img [ref=e357]
+        - textbox "Caption" [ref=e362]
+        - paragraph [ref=e363]: 0/200
+      - generic [ref=e364]:
+        - button "Cancel" [ref=e365]
+        - button "Save" [ref=e366]
+  - dialog "Edit Caption":
+    - generic [ref=e370]:
+      - generic [ref=e371]:
+        - heading "Schedule Post" [level=2] [ref=e372]
+        - paragraph [ref=e373]: Set date and time for publishing
+      - generic [ref=e375]:
+        - generic [ref=e376]:
+          - generic [ref=e377]: Platforms
+          - generic [ref=e379]:
+            - button [ref=e380]:
+              - img [ref=e381]
+            - button [ref=e383]:
+              - img [ref=e384]
+            - button [ref=e386]:
+              - img [ref=e387]
+            - button [ref=e389]:
+              - img [ref=e390]
+            - button [ref=e393]:
+              - img [ref=e394]
+        - generic [ref=e396]:
+          - generic [ref=e397]: Date
+          - button "Pick a date" [ref=e398]:
+            - img
+            - generic [ref=e399]: Pick a date
+        - generic [ref=e400]:
+          - generic [ref=e401]: Time
+          - button "12:00 AM" [ref=e402]:
+            - img
+            - generic [ref=e403]: 12:00 AM
+        - generic [ref=e405]:
+          - img [ref=e406]
+          - paragraph [ref=e409]: Posts are spaced automatically to prevent overlap.
+      - generic [ref=e410]:
+        - button "Cancel" [ref=e411]
+        - button "Schedule" [ref=e412]
+  - dialog "Edit Caption":
+    - generic [ref=e416]:
+      - generic [ref=e417]:
+        - heading "Delete Feed" [level=2] [ref=e418]
+        - paragraph [ref=e419]: This action cannot be undone.
+      - generic [ref=e421]:
+        - button "Cancel" [ref=e422]
+        - button "Delete" [ref=e423]
+  - dialog "Edit Caption":
+    - generic [ref=e427]:
+      - generic [ref=e428]:
+        - heading "Select Platforms" [level=2] [ref=e429]
+        - paragraph [ref=e430]: Choose platforms to schedule
+      - generic [ref=e433]:
+        - button [ref=e434]:
+          - img [ref=e435]
+        - button [ref=e437]:
+          - img [ref=e438]
+        - button [ref=e440]:
+          - img [ref=e441]
+        - button [ref=e443]:
+          - img [ref=e444]
+        - button [ref=e447]:
+          - img [ref=e448]
+      - generic [ref=e450]:
+        - button "Cancel" [ref=e451]
+        - button "Schedule" [ref=e452]
+  - dialog "Edit Caption":
+    - generic [ref=e456]:
+      - heading "Select Date" [level=2] [ref=e458]
+      - generic [ref=e463]:
+        - generic [ref=e464]:
+          - generic [ref=e465]: March 2026
+          - generic:
+            - button "Go to previous month" [ref=e466]:
+              - img
+            - button "Go to next month" [ref=e467]:
+              - img
+        - grid "March 2026" [ref=e468]:
+          - rowgroup [ref=e469]:
+            - row "Sunday Monday Tuesday Wednesday Thursday Friday Saturday" [ref=e470]:
+              - columnheader "Sunday" [ref=e471]: Su
+              - columnheader "Monday" [ref=e472]: Mo
+              - columnheader "Tuesday" [ref=e473]: Tu
+              - columnheader "Wednesday" [ref=e474]: We
+              - columnheader "Thursday" [ref=e475]: Th
+              - columnheader "Friday" [ref=e476]: Fr
+              - columnheader "Saturday" [ref=e477]: Sa
+          - rowgroup [ref=e478]:
+            - row "1 2 3 4 5 6 7" [ref=e479]:
+              - gridcell "1" [ref=e480]
+              - gridcell "2" [ref=e481]
+              - gridcell "3" [ref=e482]
+              - gridcell "4" [ref=e483]
+              - gridcell "5" [ref=e484]
+              - gridcell "6" [ref=e485]
+              - gridcell "7" [ref=e486]
+            - row "8 9 10 11 12 13 14" [ref=e487]:
+              - gridcell "8" [ref=e488]
+              - gridcell "9" [ref=e489]
+              - gridcell "10" [ref=e490]
+              - gridcell "11" [active] [ref=e491]
+              - gridcell "12" [ref=e492]
+              - gridcell "13" [ref=e493]
+              - gridcell "14" [ref=e494]
+            - row "15 16 17 18 19 20 21" [ref=e495]:
+              - gridcell "15" [ref=e496]
+              - gridcell "16" [ref=e497]
+              - gridcell "17" [ref=e498]
+              - gridcell "18" [ref=e499]
+              - gridcell "19" [ref=e500]
+              - gridcell "20" [ref=e501]
+              - gridcell "21" [ref=e502]
+            - row "22 23 24 25 26 27 28" [ref=e503]:
+              - gridcell "22" [ref=e504]
+              - gridcell "23" [ref=e505]
+              - gridcell "24" [ref=e506]
+              - gridcell "25" [ref=e507]
+              - gridcell "26" [ref=e508]
+              - gridcell "27" [ref=e509]
+              - gridcell "28" [ref=e510]
+            - row "29 30 31 1 2 3 4" [ref=e511]:
+              - gridcell "29" [ref=e512]
+              - gridcell "30" [ref=e513]
+              - gridcell "31" [ref=e514]
+              - gridcell "1" [ref=e515]
+              - gridcell "2" [ref=e516]
+              - gridcell "3" [ref=e517]
+              - gridcell "4" [ref=e518]
+      - generic [ref=e520]:
+        - button "Cancel" [ref=e521]
+        - button "Done" [ref=e522]
+  - dialog "Edit Caption":
+    - generic [ref=e526]:
+      - heading "Select Time" [level=2] [ref=e528]
+      - generic [ref=e530]:
+        - generic [ref=e533]:
+          - button "1" [ref=e534]
+          - button "2" [ref=e535]
+          - button "3" [ref=e536]
+          - button "4" [ref=e537]
+          - button "5" [ref=e538]
+          - button "6" [ref=e539]
+          - button "7" [ref=e540]
+          - button "8" [ref=e541]
+          - button "9" [ref=e542]
+          - button "10" [ref=e543]
+          - button "11" [ref=e544]
+          - button "12" [ref=e545]
+        - generic [ref=e548]:
+          - button "00" [ref=e549]
+          - button "01" [ref=e550]
+          - button "02" [ref=e551]
+          - button "03" [ref=e552]
+          - button "04" [ref=e553]
+          - button "05" [ref=e554]
+          - button "06" [ref=e555]
+          - button "07" [ref=e556]
+          - button "08" [ref=e557]
+          - button "09" [ref=e558]
+          - button "10" [ref=e559]
+          - button "11" [ref=e560]
+          - button "12" [ref=e561]
+          - button "13" [ref=e562]
+          - button "14" [ref=e563]
+          - button "15" [ref=e564]
+          - button "16" [ref=e565]
+          - button "17" [ref=e566]
+          - button "18" [ref=e567]
+          - button "19" [ref=e568]
+          - button "20" [ref=e569]
+          - button "21" [ref=e570]
+          - button "22" [ref=e571]
+          - button "23" [ref=e572]
+          - button "24" [ref=e573]
+          - button "25" [ref=e574]
+          - button "26" [ref=e575]
+          - button "27" [ref=e576]
+          - button "28" [ref=e577]
+          - button "29" [ref=e578]
+          - button "30" [ref=e579]
+          - button "31" [ref=e580]
+          - button "32" [ref=e581]
+          - button "33" [ref=e582]
+          - button "34" [ref=e583]
+          - button "35" [ref=e584]
+          - button "36" [ref=e585]
+          - button "37" [ref=e586]
+          - button "38" [ref=e587]
+          - button "39" [ref=e588]
+          - button "40" [ref=e589]
+          - button "41" [ref=e590]
+          - button "42" [ref=e591]
+          - button "43" [ref=e592]
+          - button "44" [ref=e593]
+          - button "45" [ref=e594]
+          - button "46" [ref=e595]
+          - button "47" [ref=e596]
+          - button "48" [ref=e597]
+          - button "49" [ref=e598]
+          - button "50" [ref=e599]
+          - button "51" [ref=e600]
+          - button "52" [ref=e601]
+          - button "53" [ref=e602]
+          - button "54" [ref=e603]
+          - button "55" [ref=e604]
+          - button "56" [ref=e605]
+          - button "57" [ref=e606]
+          - button "58" [ref=e607]
+          - button "59" [ref=e608]
+        - generic [ref=e611]:
+          - button "AM" [ref=e612]
+          - button "PM" [ref=e613]
+      - generic [ref=e615]:
+        - button "Cancel" [ref=e616]
+        - button "Done" [ref=e617]

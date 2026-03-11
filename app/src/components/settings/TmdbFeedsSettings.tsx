@@ -11,11 +11,10 @@ import { TMDbSettings } from './TMDbSettings';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 interface TmdbFeedsSettingsProps {
-  onSave: () => void;
   onBack: () => void;
 }
 
-export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
+export function TmdbFeedsSettings({ onBack }: TmdbFeedsSettingsProps) {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Checking whether the backend can reach TMDb...');
@@ -139,7 +138,7 @@ export function TmdbFeedsSettings({ onSave, onBack }: TmdbFeedsSettingsProps) {
         </Card>
 
         <TMDbScheduler />
-        <TMDbSettings onSave={onSave} />
+        <TMDbSettings />
       </div>
     </div>
   );
