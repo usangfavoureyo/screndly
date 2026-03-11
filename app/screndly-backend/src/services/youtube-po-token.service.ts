@@ -15,16 +15,22 @@ interface YouTubePoTokenSession {
     visitorData: string;
     poToken: string;
     expiresAt: number;
+    playerTokens: Map<string, Promise<string> | string>;
 }
 
 class YouTubePoTokenService {
     private cachedSession: YouTubePoTokenSession | null = null;
     private pendingSession: Promise<YouTubePoTokenSession> | null = null;
 
-    async getExtractorArgs(): Promise<string[]> {
+    async getExtractorArgs(videoId?: string): Promise<string[]> {
         const session = await this.getSession();
+        const poTokens = [`mweb.gvs+${session.poToken}`];
+        if (videoId) {
+            poTokens.push(`mweb.player+${await this.getPlayerToken(session, videoId)}`);
+        }
+
         return [
-            `youtube:player-client=default,mweb;po_token=mweb.gvs+${session.poToken};visitor_data=${session.visitorData};player_skip=webpage,configs`,
+            `youtube:player-client=default,mweb;po_token=${poTokens.join(',')};visitor_data=${session.visitorData};player_skip=webpage,configs`,
         ];
     }
 
@@ -56,6 +62,30 @@ class YouTubePoTokenService {
         );
     }
 
+    private async getPlayerToken(session: YouTubePoTokenSession, videoId: string): Promise<string> {
+        const cached = session.playerTokens.get(videoId);
+        if (typeof cached === 'string') {
+            return cached;
+        }
+
+        if (cached) {
+            return cached;
+        }
+
+        const pendingToken = this.mintPoToken(videoId)
+            .then((result) => {
+                session.playerTokens.set(videoId, result.poToken);
+                return result.poToken;
+            })
+            .catch((error) => {
+                session.playerTokens.delete(videoId);
+                throw error;
+            });
+
+        session.playerTokens.set(videoId, pendingToken);
+        return pendingToken;
+    }
+
     private async mintSession(): Promise<YouTubePoTokenSession> {
         console.log('[YouTubePoToken] Minting a new session token for yt-dlp fallback');
 
@@ -64,11 +94,27 @@ class YouTubePoTokenService {
             throw new Error('YouTube visitor data is unavailable');
         }
 
+        const poTokenResult = await this.mintPoToken(visitorData);
+
+        const ttlMs = Math.max(
+            60 * 1000,
+            poTokenResult.ttlMs || YOUTUBE_PO_TOKEN_FALLBACK_TTL_MS
+        );
+
+        return {
+            visitorData,
+            poToken: poTokenResult.poToken,
+            expiresAt: Date.now() + ttlMs,
+            playerTokens: new Map(),
+        };
+    }
+
+    private async mintPoToken(identifier: string): Promise<{ poToken: string; ttlMs: number }> {
         const poTokenResult = await this.withYouTubeDomGlobals(async () => {
             const bgConfig = {
                 fetch: globalThis.fetch.bind(globalThis),
                 globalObj: globalThis,
-                identifier: visitorData,
+                identifier,
                 requestKey: YOUTUBE_PO_TOKEN_REQUEST_KEY,
             };
 
@@ -91,15 +137,12 @@ class YouTubePoTokenService {
             });
         });
 
-        const ttlMs = Math.max(
-            60 * 1000,
-            Number(poTokenResult.integrityTokenData?.estimatedTtlSecs || 0) * 1000 || YOUTUBE_PO_TOKEN_FALLBACK_TTL_MS
-        );
-
         return {
-            visitorData,
             poToken: poTokenResult.poToken,
-            expiresAt: Date.now() + ttlMs,
+            ttlMs: Math.max(
+                60 * 1000,
+                Number(poTokenResult.integrityTokenData?.estimatedTtlSecs || 0) * 1000 || YOUTUBE_PO_TOKEN_FALLBACK_TTL_MS
+            ),
         };
     }
 
