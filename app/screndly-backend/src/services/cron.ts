@@ -20,6 +20,96 @@ async function logCron(level: string, message: string, service: string = 'cron')
     }
 }
 
+function quoteItem(value: string): string {
+    return `"${value.replace(/\s+/g, ' ').trim()}"`;
+}
+
+function formatHighlightedTitles(titles: string[], max = 3): string {
+    const normalized = titles
+        .map((title) => title?.trim())
+        .filter((title): title is string => Boolean(title));
+
+    if (normalized.length === 0) {
+        return '';
+    }
+
+    const visible = normalized.slice(0, max).map(quoteItem);
+    const extraCount = normalized.length - visible.length;
+    return `${visible.join(', ')}${extraCount > 0 ? `, and ${extraCount} more` : ''}`;
+}
+
+function buildTmdbRefreshNotification(
+    label: string,
+    result: { added: number; addedTitles?: string[] }
+): { title: string; message: string } {
+    const highlightedTitles = formatHighlightedTitles(result.addedTitles || []);
+
+    if (result.added === 1 && result.addedTitles?.[0]) {
+        return {
+            title: `${label}: ${result.addedTitles[0]}`,
+            message: `${quoteItem(result.addedTitles[0])} was added to the ${label.toLowerCase()} queue.`,
+        };
+    }
+
+    return {
+        title: label,
+        message: highlightedTitles
+            ? `Added ${result.added} items: ${highlightedTitles}.`
+            : `Added ${result.added} new items.`,
+    };
+}
+
+function buildRssSuccessNotification(results: Array<{ feedName: string; itemsAdded: number; latestItemTitle?: string }>) {
+    const successfulFeeds = results.filter((result) => result.itemsAdded > 0);
+    const totalItems = successfulFeeds.reduce((sum, result) => sum + result.itemsAdded, 0);
+
+    if (successfulFeeds.length === 0 || totalItems === 0) {
+        return null;
+    }
+
+    if (successfulFeeds.length === 1) {
+        const [feed] = successfulFeeds;
+        if (feed.latestItemTitle) {
+            return {
+                title: `RSS: ${feed.feedName}`,
+                message: `Published ${quoteItem(feed.latestItemTitle)} from ${feed.feedName}.`,
+            };
+        }
+
+        return {
+            title: `RSS: ${feed.feedName}`,
+            message: `Published ${feed.itemsAdded} new item${feed.itemsAdded === 1 ? '' : 's'} from ${feed.feedName}.`,
+        };
+    }
+
+    const feedHighlights = successfulFeeds.slice(0, 3).map((feed) => (
+        feed.latestItemTitle
+            ? `${feed.feedName}: ${quoteItem(feed.latestItemTitle)}`
+            : `${feed.feedName}: ${feed.itemsAdded} item${feed.itemsAdded === 1 ? '' : 's'}`
+    ));
+    const extraFeeds = successfulFeeds.length - Math.min(successfulFeeds.length, 3);
+
+    return {
+        title: 'RSS Feed Updates',
+        message: `Published ${totalItems} item${totalItems === 1 ? '' : 's'}. ${feedHighlights.join('; ')}${extraFeeds > 0 ? `; +${extraFeeds} more feed${extraFeeds === 1 ? '' : 's'}` : ''}.`,
+    };
+}
+
+function buildRssFailureNotification(results: Array<{ feedName: string; error?: string }>) {
+    const failedFeeds = results.filter((result) => Boolean(result.error));
+    if (failedFeeds.length === 0) {
+        return null;
+    }
+
+    const highlights = failedFeeds.slice(0, 3).map((feed) => `${feed.feedName}: ${feed.error}`);
+    const extraFeeds = failedFeeds.length - Math.min(failedFeeds.length, 3);
+
+    return {
+        title: failedFeeds.length === 1 ? `RSS Refresh Error: ${failedFeeds[0].feedName}` : 'RSS Refresh Errors',
+        message: `${highlights.join('; ')}${extraFeeds > 0 ? `; +${extraFeeds} more feed${extraFeeds === 1 ? '' : 's'}` : ''}.`,
+    };
+}
+
 export async function initCronJobs() {
     console.log('🕐 Initializing Cron Jobs...');
 
@@ -68,9 +158,10 @@ export async function initCronJobs() {
 
             // NOTIFY: Success
             if (result.added > 0) {
+                const notification = buildTmdbRefreshNotification('TMDb Today Refresh', result);
                 await notificationService.notifyUser({
-                    title: 'TMDb Today Refresh',
-                    message: `Added ${result.added} new movies releasing today.`,
+                    title: notification.title,
+                    message: notification.message,
                     type: 'success',
                     source: 'tmdb',
                     actionPage: '/tmdb-feeds'
@@ -124,9 +215,10 @@ export async function initCronJobs() {
             await logCron('info', `TMDb Weekly refresh completed: ${result.added} posts added`);
 
             if (result.added > 0) {
+                const notification = buildTmdbRefreshNotification('TMDb Weekly Refresh', result);
                 await notificationService.notifyUser({
-                    title: 'TMDb Weekly Refresh',
-                    message: `Added ${result.added} new movies releasing this week.`,
+                    title: notification.title,
+                    message: notification.message,
                     type: 'success',
                     source: 'tmdb',
                     actionPage: '/tmdb-feeds'
@@ -161,9 +253,10 @@ export async function initCronJobs() {
             await logCron('info', `TMDb Monthly refresh completed: ${result.added} posts added`);
 
             if (result.added > 0) {
+                const notification = buildTmdbRefreshNotification('TMDb Monthly Refresh', result);
                 await notificationService.notifyUser({
-                    title: 'TMDb Monthly Refresh',
-                    message: `Added ${result.added} new movies releasing this month.`,
+                    title: notification.title,
+                    message: notification.message,
                     type: 'success',
                     source: 'tmdb',
                     actionPage: '/tmdb-feeds'
@@ -198,9 +291,10 @@ export async function initCronJobs() {
             await logCron('info', `TMDb Anniversary refresh completed: ${result.added} posts added`);
 
             if (result.added > 0) {
+                const notification = buildTmdbRefreshNotification('TMDb Anniversary Refresh', result);
                 await notificationService.notifyUser({
-                    title: 'TMDb Anniversary Refresh',
-                    message: `Found ${result.added} movie anniversaries today.`,
+                    title: notification.title,
+                    message: notification.message,
                     type: 'success',
                     source: 'tmdb',
                     actionPage: '/tmdb-feeds'
@@ -228,27 +322,33 @@ export async function initCronJobs() {
             if (result.results.length > 0) {
                 const added = result.results.reduce((acc, r) => acc + r.itemsAdded, 0);
                 if (added > 0) {
+                    const notification = buildRssSuccessNotification(result.results);
                     await logCron('info', `RSS scheduled refresh: ${added} new items from ${result.results.length} feeds checked.`);
-                    await notificationService.notifyUser({
-                        title: 'RSS Feed Updates',
-                        message: `Found ${added} new items across ${result.results.length} feeds.`,
-                        type: 'info',
-                        source: 'rss',
-                        actionPage: '/rss-feeds'
-                    });
+                    if (notification) {
+                        await notificationService.notifyUser({
+                            title: notification.title,
+                            message: notification.message,
+                            type: 'info',
+                            source: 'rss',
+                            actionPage: '/rss-feeds'
+                        });
+                    }
                 }
             }
 
             if (result.failed > 0) {
                 const failedFeeds = result.results.filter(r => r.error).map(r => `${r.feedName}: ${r.error}`).join(', ');
+                const notification = buildRssFailureNotification(result.results);
                 await logCron('warn', `RSS scheduled refresh errors: ${failedFeeds}`);
-                await notificationService.notifyUser({
-                    title: 'RSS Refresh Errors',
-                    message: `Failed to refresh ${result.failed} feeds.`,
-                    type: 'warning',
-                    source: 'rss',
-                    actionPage: '/rss-feeds'
-                });
+                if (notification) {
+                    await notificationService.notifyUser({
+                        title: notification.title,
+                        message: notification.message,
+                        type: 'warning',
+                        source: 'rss',
+                        actionPage: '/rss-feeds'
+                    });
+                }
             }
         } catch (error) {
             await logCron('error', `RSS Feed refresh failed: ${error}`);

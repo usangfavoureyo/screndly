@@ -136,6 +136,19 @@ const BLOCKED_DOMAINS = [
   'temu.com',
   'redbubble.com',
   'teepublic.com',
+  'tiktok.com',
+  'tiktokcdn.com',
+  'tiktokcdn-us.com',
+  'facebook.com',
+  'fbcdn.net',
+  'fbsbx.com',
+  'lookaside.fbsbx.com',
+  'instagram.com',
+  'cdninstagram.com',
+  'threads.net',
+  'x.com',
+  'twitter.com',
+  'twimg.com',
 ];
 const STOCK_IMAGE_DOMAINS = [
   'gettyimages.com',
@@ -191,6 +204,12 @@ const GOOD_DOMAINS = [
   'gamesradar.com',
   'digitalspy.com',
   'theplaylist.net',
+  'collider.com',
+  'bloody-disgusting.com',
+  'movieweb.com',
+  'cbr.com',
+  'looper.com',
+  'inverse.com',
 ];
 const WATERMARK_KEYWORDS = [
   'getty',
@@ -215,6 +234,10 @@ const BLOCKED_KEYWORDS = [
   'fake poster',
   'ai generated',
   'midjourney',
+  'lookaside',
+  'crawler media',
+  'api img',
+  'photomode video share card',
 ];
 const HARD_REJECT_KEYWORDS = [
   'happy birthday',
@@ -253,9 +276,7 @@ const HARD_REJECT_KEYWORDS = [
   'aliexpress',
   'temu',
 ];
-const FEED_FALLBACK_BLOCKED_DOMAINS = [
-  'comicbook.com',
-];
+const FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [];
 const FEED_FALLBACK_BLOCKED_URL_KEYWORDS = [
   'exclusive',
 ];
@@ -464,6 +485,7 @@ const FRANCHISE_VALIDATION_RULES: FranchiseValidationRule[] = [
 ];
 const MIN_CONFIDENT_SERPER_SCORE = 135;
 const MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK = 170;
+const MIN_ACCEPTABLE_SERPER_SCORE = 90;
 
 const SUBJECT_EXTRACTION_PROMPT = `You analyze entertainment-news articles for image selection.
 
@@ -555,6 +577,23 @@ function splitIntoSentences(value: string): string[] {
     .filter(Boolean);
 }
 
+function getLeadContextWindow(description?: string): string {
+  if (!description) {
+    return '';
+  }
+
+  const sentences = splitIntoSentences(description);
+  if (sentences.length === 0) {
+    return description.trim().slice(0, 320);
+  }
+
+  return sentences
+    .slice(0, 2)
+    .join(' ')
+    .trim()
+    .slice(0, 320);
+}
+
 function dedupeUrls(values: Array<string | null | undefined>): string[] {
   const seen = new Set<string>();
   const urls: string[] = [];
@@ -594,6 +633,10 @@ function isBlockedFeedFallbackUrl(url: string): boolean {
 
 function filterAllowedFeedFallbackUrls(urls: string[]): string[] {
   return urls.filter((url) => !isBlockedFeedFallbackUrl(url));
+}
+
+function shouldUseFeedFallbackImages(article: RSSImageSelectionArticle): boolean {
+  return !/\[exclusive\]|\bexclusive\b/i.test(article.title || '');
 }
 
 function getSerperImageText(image: SerperImageResult): string {
@@ -1387,6 +1430,34 @@ function subjectAppearsInTitle(subject: string | null | undefined, title: string
   return entityMatches(normalizeText(title), subject);
 }
 
+function subjectAppearsInLead(subject: string | null | undefined, description?: string): boolean {
+  if (!subject) {
+    return false;
+  }
+
+  const leadWindow = normalizeText(getLeadContextWindow(description));
+  if (!leadWindow) {
+    return false;
+  }
+
+  return entityMatches(leadWindow, subject);
+}
+
+function subjectAppearsProminently(
+  subject: string | null | undefined,
+  article: RSSImageSelectionArticle
+): boolean {
+  return subjectAppearsInTitle(subject, article.title) || subjectAppearsInLead(subject, article.description);
+}
+
+function isListLikeArticle(article: RSSImageSelectionArticle): boolean {
+  const normalizedTitle = normalizeText(article.title);
+
+  return /^(every|all)\b/.test(normalizedTitle) ||
+    /^\d+\s+.*\b(movies|films|shows|books|episodes|moments|heroes|villains|characters|reasons|ways)\b/.test(normalizedTitle) ||
+    /\branked\b|\branking\b|from best to worst|from worst to best|\btop\s+\d+\b/.test(normalizedTitle);
+}
+
 function isProjectAnchorType(type: SubjectType): boolean {
   return type === 'movie' || type === 'tv_show' || type === 'franchise';
 }
@@ -1404,6 +1475,39 @@ function findProjectContextAnchor(
     const inferredType = inferSlotType(subject, articleText, 'franchise', analysis);
     if (isProjectAnchorType(inferredType)) {
       return subject;
+    }
+  }
+
+  return null;
+}
+
+function extractFranchiseCharacterAnchor(
+  article: RSSImageSelectionArticle,
+  analysis: RSSSubjectAnalysis
+): string | null {
+  const franchiseRule = getFranchiseValidationRule(analysis);
+  if (!franchiseRule) {
+    return null;
+  }
+
+  const articleLead = getLeadContextWindow(article.description);
+
+  for (const requiredTerm of franchiseRule.requiredTerms) {
+    const normalizedRequired = normalizeText(requiredTerm);
+    if (!normalizedRequired) {
+      continue;
+    }
+
+    if (franchiseRule.matchAny.some((matchTerm) => normalizeText(matchTerm) === normalizedRequired)) {
+      continue;
+    }
+
+    if (looksLikeNamedPerson(requiredTerm)) {
+      continue;
+    }
+
+    if (subjectAppearsInTitle(requiredTerm, article.title) || subjectAppearsInLead(requiredTerm, articleLead)) {
+      return requiredTerm;
     }
   }
 
@@ -1439,6 +1543,7 @@ function determineSmartImagePlan(
     articleText,
     analysis
   );
+  const preferredCharacterSubject = extractFranchiseCharacterAnchor(article, analysis);
   const titleAnchor =
     analysis.contextProject ||
     findProjectContextAnchor(quotedSubjects, articleText, analysis) ||
@@ -1446,15 +1551,17 @@ function determineSmartImagePlan(
     (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise'
       ? analysis.primarySubject.name
       : null);
-  const centralContainerPerson = preferredPersonSubject && subjectAppearsInTitle(preferredPersonSubject, article.title)
+  const centralContainerPerson = preferredPersonSubject && subjectAppearsProminently(preferredPersonSubject, article)
     ? preferredPersonSubject
     : null;
-  const centralTitlePerson = preferredPersonSubject && subjectAppearsInTitle(preferredPersonSubject, article.title)
+  const centralTitlePerson = preferredPersonSubject && subjectAppearsProminently(preferredPersonSubject, article)
     ? preferredPersonSubject
     : null;
   const projectAnchorForPersonStory = titleAnchor && !looksLikeNamedPerson(titleAnchor)
+    && subjectAppearsProminently(titleAnchor, article)
     ? titleAnchor
     : null;
+  const isListArticle = isListLikeArticle(article);
 
   let primary = buildImageSlotPlan(
     analysis.visualSubject,
@@ -1465,6 +1572,14 @@ function determineSmartImagePlan(
   );
   let secondary: ImageSlotPlan | null = null;
   let useTwoImages = false;
+
+  if (isListArticle) {
+    return {
+      primary,
+      secondary: null,
+      useTwoImages: false,
+    };
+  }
 
   if (isContainerSubjectType(analysis.primarySubject.type)) {
     if (centralContainerPerson) {
@@ -1478,6 +1593,20 @@ function determineSmartImagePlan(
       );
       useTwoImages = true;
     }
+  } else if (
+    (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise') &&
+    preferredCharacterSubject &&
+    titleAnchor
+  ) {
+    primary = buildImageSlotPlan(preferredCharacterSubject, 'character', 'character_still', analysis, false);
+    secondary = buildImageSlotPlan(
+      titleAnchor,
+      inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
+      'logo',
+      analysis,
+      true
+    );
+    useTwoImages = true;
   } else if (
     analysis.primarySubject.type === 'actor' ||
     analysis.primarySubject.type === 'director' ||
@@ -1649,8 +1778,15 @@ function buildResolvedImagesFromScored(
     }
   }
 
-  return scoredSelections
-    .slice(0, limit)
+  const acceptableSelections = scoredSelections
+    .filter((item) => item.score >= MIN_ACCEPTABLE_SERPER_SCORE)
+    .slice(0, limit);
+
+  if (acceptableSelections.length === 0) {
+    return [];
+  }
+
+  return acceptableSelections
     .map((item) => ({
       url: item.image.imageUrl!,
       reason: item.reason,
@@ -1862,11 +1998,21 @@ function scoreImage(
     analysis.primarySubject.name,
     ...nonReferenceSecondarySubjects,
   ]);
+  const projectAnchorTerms = uniqueStrings([
+    analysis.contextProject,
+    isProjectAnchorType(analysis.primarySubject.type) ? analysis.primarySubject.name : null,
+    isProjectAnchorType(analysis.primarySubject.type) &&
+      normalizeText(analysis.editorialPrimary) !== normalizeText(analysis.primarySubject.name)
+      ? analysis.editorialPrimary
+      : null,
+    !looksLikeNamedPerson(analysis.visualSubject) ? analysis.visualSubject : null,
+  ]);
   const franchiseRule = getFranchiseValidationRule(analysis);
   const contextMatchCount = analysis.requiredContextTerms.filter((term) => entityMatches(text, term)).length;
   const referenceOnlyMatch = analysis.referenceOnlySubjects.some((subject) => entityMatches(text, subject));
 
   const mentionsRelevantEntity = hasRelevantEntityMatch(text, relevantEntities);
+  const projectAnchorMatch = hasRelevantEntityMatch(text, projectAnchorTerms);
   const relevantStudioMatch = analysis.relevantStudios.some((studio) => entityMatches(text, studio));
   const visualMatch = entityMatches(text, analysis.visualSubject);
   const primaryMatch = entityMatches(text, analysis.primarySubject.name);
@@ -1877,11 +2023,11 @@ function scoreImage(
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
   const suppressStudioOnlyResults = !isContainerSubjectType(analysis.primarySubject.type) && analysis.relevantStudios.length > 0;
 
-  if (!mentionsRelevantEntity && !relevantStudioMatch && contextMatchCount === 0) {
+  if (!mentionsRelevantEntity && !projectAnchorMatch && !relevantStudioMatch && contextMatchCount === 0) {
     return null;
   }
 
-  if (suppressStudioOnlyResults && relevantStudioMatch && !mentionsRelevantEntity && contextMatchCount === 0) {
+  if (suppressStudioOnlyResults && relevantStudioMatch && !mentionsRelevantEntity && !projectAnchorMatch && contextMatchCount === 0) {
     return null;
   }
 
@@ -1908,7 +2054,8 @@ function scoreImage(
     referenceOnlyMatch &&
     !visualMatch &&
     !entityMatches(text, analysis.primarySubject.name) &&
-    contextMatchCount === 0
+    contextMatchCount === 0 &&
+    !projectAnchorMatch
   ) {
     return null;
   }
@@ -1921,7 +2068,8 @@ function scoreImage(
     franchiseRule &&
     !hasRelevantEntityMatch(text, franchiseRule.requiredTerms) &&
     !visualMatch &&
-    contextMatchCount === 0
+    contextMatchCount === 0 &&
+    !projectAnchorMatch
   ) {
     return null;
   }
@@ -1936,6 +2084,10 @@ function scoreImage(
 
   if (contextMatchCount > 0) {
     score += Math.min(28, contextMatchCount * 14);
+  }
+
+  if (projectAnchorMatch) {
+    score += (isLogo || isPoster) ? 22 : 12;
   }
 
   if (relevantStudioMatch) {
@@ -2040,9 +2192,11 @@ export async function resolveRelevantRSSImages(
     model?: AIModel | string;
   }
 ): Promise<RSSResolvedImage[]> {
-  const fallbackImages = filterAllowedFeedFallbackUrls(
-    dedupeUrls(article.fallbackImages || [])
-  );
+  const fallbackImages = shouldUseFeedFallbackImages(article)
+    ? filterAllowedFeedFallbackUrls(
+      dedupeUrls(article.fallbackImages || [])
+    )
+    : [];
   const limit = Math.max(options.limit, 1);
 
   if (!options.serperPriority) {

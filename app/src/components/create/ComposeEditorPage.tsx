@@ -35,11 +35,18 @@ import {
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
 import { publishComposeItem } from '../../lib/create/composePublish';
+import {
+  buildComposeDraftNotification,
+  buildComposePublishFailureNotification,
+  buildComposePublishSuccessNotification,
+  buildComposeScheduledNotification,
+} from '../../lib/create/composeNotifications';
 import { uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../types/compose';
 import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
+import { useNotifications } from '../../contexts/NotificationsContext';
 
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -140,6 +147,7 @@ function getPlatformCardTone(isSelected: boolean, supported: boolean, connected:
 
 export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPageProps) {
   const { activeItemId, getItemById, saveItem } = useComposeStore();
+  const { addNotification } = useNotifications();
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
@@ -337,20 +345,26 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     };
   };
 
-  const persistItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string) => {
-    saveItem(buildItem(status, scheduledAt, error));
-  };
-
   const handleSaveDraft = () => {
     if (!validate('draft')) return;
-    persistItem('draft');
+    const nextItem = buildItem('draft');
+    saveItem(nextItem);
+    addNotification(buildComposeDraftNotification(nextItem, existingItem ? 'updated' : 'created'));
     toast.success(existingItem ? 'Post draft updated' : 'Post draft saved');
     onNavigate('create', previousPage || 'create');
   };
 
   const handleSchedule = () => {
     if (!validate('scheduled')) return;
-    persistItem('scheduled', toIsoSchedule(scheduleDate, scheduleTime));
+    const scheduledAt = toIsoSchedule(scheduleDate, scheduleTime);
+    if (!scheduledAt) {
+      toast.error('Choose a date and time for the scheduled post');
+      return;
+    }
+
+    const nextItem = buildItem('scheduled', scheduledAt);
+    saveItem(nextItem);
+    addNotification(buildComposeScheduledNotification(nextItem, scheduledAt));
     setIsScheduleOpen(false);
     toast.success('Post scheduled');
     onNavigate('create', previousPage || 'create');
@@ -368,22 +382,27 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
       const nextError =
         result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
 
-      persistItem(nextStatus, undefined, nextError);
+      const nextItem = buildItem(nextStatus, undefined, nextError);
+      saveItem(nextItem);
 
       if (result.postedPlatforms.length > 0) {
+        addNotification(buildComposePublishSuccessNotification(nextItem, result));
         toast.success(
           result.failedResults.length > 0
             ? `Published to ${result.postedPlatforms.join(', ')}.`
             : `Published to ${result.postedPlatforms.join(', ')}.`,
         );
       } else {
+        addNotification(buildComposePublishFailureNotification(nextItem, nextError || 'Failed to publish post'));
         toast.error(nextError || 'Failed to publish post');
       }
 
       onNavigate('create', previousPage || 'create');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to publish post';
-      persistItem('failed', undefined, message);
+      const failedItem = buildItem('failed', undefined, message);
+      saveItem(failedItem);
+      addNotification(buildComposePublishFailureNotification(failedItem, message));
       toast.error(message);
     } finally {
       setIsPublishing(false);

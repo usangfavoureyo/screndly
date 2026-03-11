@@ -8,6 +8,7 @@ export type NotificationSource =
   | 'rss'
   | 'tmdb'
   | 'videostudio'
+  | 'create_studio'
   | 'system'
   | 'design_studio'
   | 'youtube'
@@ -49,9 +50,17 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 function normalizeSource(source: string | undefined): NotificationSource {
   if (source === 'video_studio') return 'videostudio';
   if (source === 'design_studio') return 'design_studio';
+  if (source === 'create_studio') return 'create_studio';
   if (source === 'youtube') return 'youtube';
   if (source === 'comment') return 'comment';
-  if (source === 'upload' || source === 'rss' || source === 'tmdb' || source === 'videostudio' || source === 'system') {
+  if (
+    source === 'upload' ||
+    source === 'rss' ||
+    source === 'tmdb' ||
+    source === 'videostudio' ||
+    source === 'create_studio' ||
+    source === 'system'
+  ) {
     return source;
   }
   return 'system';

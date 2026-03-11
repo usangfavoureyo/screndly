@@ -218,6 +218,11 @@ const LOCAL_PREFERENCE_KEYS = [
 export interface SettingsApiResponse {
   success: boolean;
   data?: Settings;
+  meta?: {
+    changedKeys?: string[];
+    notificationTitle?: string;
+    notificationMessage?: string;
+  };
   error?: {
     code: string;
     message: string;
@@ -278,6 +283,8 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
     // Separate backend-persisted settings from purely local preferences.
     const backendPersistedSettings = extractBackendPersistedSettings(settings);
     const nonSensitiveSettings = extractNonSensitiveSettings(settings);
+    let backendResponseMeta: SettingsApiResponse['meta'];
+    let backendResponseData: SettingsApiResponse['data'];
 
     // Save backend-persisted settings using PUT (backend expects PUT)
     if (Object.keys(backendPersistedSettings).length > 0) {
@@ -302,7 +309,11 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
         };
       }
 
+      const json = await response.json().catch(() => ({ success: true }));
       console.log('[Settings API] Settings saved to backend successfully');
+
+      backendResponseData = json.data;
+      backendResponseMeta = json.meta;
     }
 
     // Save non-sensitive settings to localStorage
@@ -314,7 +325,11 @@ export async function saveSettings(settings: Partial<Settings>): Promise<Setting
       localStorage.setItem(LEGACY_LOCAL_SETTINGS_KEY, serialized);
     }
 
-    return { success: true };
+    return {
+      success: true,
+      data: backendResponseData,
+      meta: backendResponseMeta,
+    };
   } catch (error: any) {
     console.error('[Settings API] Failed to save settings:', error);
     return {

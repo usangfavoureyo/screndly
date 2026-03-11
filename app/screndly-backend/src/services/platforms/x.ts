@@ -4,6 +4,7 @@
 import { PlatformConnection } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
+import { validateVideoForX } from '../platform-video-validation.service';
 
 interface XPostResult {
     success: boolean;
@@ -102,6 +103,13 @@ export class XService {
         }
 
         try {
+            if (!/^https?:\/\//i.test(videoSource)) {
+                const validation = await validateVideoForX(videoSource);
+                if (!validation.ok) {
+                    return { success: false, error: validation.issues.join(' ') };
+                }
+            }
+
             const mediaId = await this.uploadVideo(videoSource, connection);
             if (!mediaId) {
                 return { success: false, error: 'Failed to upload video to X' };

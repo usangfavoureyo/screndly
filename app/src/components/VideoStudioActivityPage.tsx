@@ -393,7 +393,7 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
             </div>
           ) : activities.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No activity yet</h3>
+              <h3 className="text-lg font-medium text-gray-600 dark:text-[#9CA3AF] mb-2">No activity yet</h3>
               <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] max-w-sm">
                 Generated videos and publishing activity will appear here.
               </p>

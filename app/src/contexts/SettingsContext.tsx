@@ -665,7 +665,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (isSensitiveSetting(key) && backendAvailable) {
       const result = await saveSettingsToBackend({ [key]: value } as Partial<Settings>);
       if (result.success) {
-        toast.success('Setting saved');
+        toast.success(result.meta?.notificationTitle || 'Setting saved', result.meta?.notificationMessage ? {
+          description: result.meta.notificationMessage,
+        } : undefined);
       } else {
         toast.error('Failed to save setting');
       }
@@ -691,7 +693,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (hasSensitiveUpdates && backendAvailable) {
       const result = await saveSettingsToBackend(updates);
       if (result.success) {
-        toast.success('Settings saved securely');
+        toast.success(result.meta?.notificationTitle || 'Settings saved securely', result.meta?.notificationMessage ? {
+          description: result.meta.notificationMessage,
+        } : undefined);
       } else {
         toast.error('Failed to save some settings');
       }

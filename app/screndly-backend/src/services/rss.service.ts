@@ -338,6 +338,30 @@ function stripHtml(value?: string): string {
   return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function extractLeadParagraphText(item: Record<string, any>): string {
+  const htmlContent = item['content:encoded'] || item.contentEncoded || item.content;
+  if (typeof htmlContent === 'string' && htmlContent.trim()) {
+    const paragraphs = Array.from(htmlContent.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
+      .map((match) => stripHtml(match[1] || ''))
+      .filter((paragraph) => paragraph.length >= 40);
+
+    if (paragraphs.length > 0) {
+      return paragraphs
+        .slice(0, 2)
+        .join(' ')
+        .trim();
+    }
+  }
+
+  return stripHtml(
+    item.contentSnippet ||
+    item.summary ||
+    item.description ||
+    htmlContent ||
+    ''
+  );
+}
+
 function normalizeMaxItemAgeMinutes(value: Prisma.JsonValue | undefined): number | null {
   const parsed = asNumber(value);
   if (parsed === undefined) return null;
@@ -1216,7 +1240,7 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
     lastBuildDate: parsed.lastBuildDate ? new Date(parsed.lastBuildDate) : undefined,
     items: (parsed.items || [])
       .map((item: any) => {
-        const description = stripHtml(item.contentSnippet || item.content || item['content:encoded'] || item.summary || item.contentEncoded || '');
+        const description = extractLeadParagraphText(item);
         const pubDate = item.isoDate || item.pubDate ? new Date(item.isoDate || item.pubDate) : new Date();
         const imageUrls = extractImageUrls(item);
 
