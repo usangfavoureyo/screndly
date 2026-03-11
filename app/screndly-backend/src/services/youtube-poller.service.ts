@@ -87,6 +87,12 @@ interface NormalizedVideoInfo {
     formats: NormalizedVideoFormat[];
 }
 
+interface ProbedDownloadedVideo {
+    width?: number;
+    height?: number;
+    durationSeconds?: number;
+}
+
 type FeedItemStatus = 'accepted' | 'ignored' | 'failed';
 
 interface FeedVideoProcessingResult {
@@ -440,28 +446,16 @@ export class YouTubePollerService {
 
         const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
         let videoInfo: NormalizedVideoInfo;
+        let metadataFetchFailed = false;
         try {
             videoInfo = await this.getVideoInfo(videoUrl, videoId);
         } catch (error) {
-            console.error(`[YouTubePoller] Failed to fetch metadata for ${videoId}:`, error);
-            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
-            return {
-                kind: 'return',
-                sawFreshVideo: true,
-                result: {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: false,
-                    newVideoDetected: true,
-                    published: false,
-                    failed: true,
-                    message: `Failed to fetch video metadata for ${videoTitle}; it will retry on the next polling cycle`
-                }
-            };
+            metadataFetchFailed = true;
+            console.warn(`[YouTubePoller] Failed to fetch metadata for ${videoId}; continuing with feed metadata fallback`, error);
+            videoInfo = this.buildFallbackVideoInfo(video, videoId, videoUrl);
         }
 
-        const details = videoInfo.videoDetails;
+        let details = videoInfo.videoDetails;
         const descriptionLower = (details.description || video.contentSnippet || '').toLowerCase();
         if (settings.excludeShorts) {
             const isShort = this.isExplicitShort(video, titleLower, descriptionLower);
@@ -476,8 +470,12 @@ export class YouTubePollerService {
             }
         }
 
-        const bestLandscapeResolution = this.getBestAvailableLandscapeResolution(videoInfo.formats || []);
-        if (!bestLandscapeResolution) {
+        const hasFormatMetadata = Array.isArray(videoInfo.formats) && videoInfo.formats.length > 0;
+        const bestLandscapeResolution = hasFormatMetadata
+            ? this.getBestAvailableLandscapeResolution(videoInfo.formats || [])
+            : null;
+        const shouldVerifyResolutionAfterDownload = metadataFetchFailed || !bestLandscapeResolution;
+        if (hasFormatMetadata && !bestLandscapeResolution) {
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
             return {
                 kind: 'continue',
@@ -503,24 +501,10 @@ export class YouTubePollerService {
             };
         }
 
-        if (settings.videoFilterPrompt) {
-            const aiResult = await aiService.generateCompletion({
-                model: settings.videoOpenaiModel,
-                prompt: `Validate this video against rules:
-Title: ${video.title}
-Channel: ${activeChannel.name}
-Duration: ${details.lengthSeconds}s
-Description: ${details.description}
-Keywords: ${details.keywords?.join(', ')}
-
-Validation Rules:
-${settings.videoFilterPrompt}
-
-Respond ONLY "YES" or "NO".`,
-                maxTokens: 10
-            });
-
-            if (aiResult.success && aiResult.content.trim().toUpperCase().includes('NO')) {
+        const aiValidationDeferred = Boolean(settings.videoFilterPrompt && metadataFetchFailed);
+        if (!aiValidationDeferred && settings.videoFilterPrompt) {
+            const aiPassed = await this.passesAiValidation(video, activeChannel, details, settings);
+            if (!aiPassed) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
                     kind: 'continue',
@@ -574,7 +558,9 @@ Respond ONLY "YES" or "NO".`,
         let socialPoster: PlatformThumbnailAsset | null = null;
 
         try {
-            downloadPath = await this.downloadVideoWithInfo(videoInfo);
+            downloadPath = metadataFetchFailed
+                ? await this.downloadVideoWithoutMetadata(videoId, videoUrl)
+                : await this.downloadVideoWithInfo(videoInfo);
             if (!downloadPath) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
                 await notificationService.notifyUser({
@@ -598,6 +584,43 @@ Respond ONLY "YES" or "NO".`,
                         message: `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
                     }
                 };
+            }
+
+            if (shouldVerifyResolutionAfterDownload) {
+                const probedDownload = await this.probeDownloadedVideo(downloadPath);
+                const width = Number(probedDownload.width || 0);
+                const height = Number(probedDownload.height || 0);
+                if (!width || !height || width < MIN_TRAILER_WIDTH || height < MIN_TRAILER_HEIGHT || width < height) {
+                    await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+                    return {
+                        kind: 'continue',
+                        reason: `${videoTitle}: skipped because downloaded video is below the 1080p landscape floor`,
+                        sawFreshVideo: true,
+                    };
+                }
+
+                if (metadataFetchFailed && probedDownload.durationSeconds) {
+                    details = {
+                        ...details,
+                        lengthSeconds: String(Math.max(0, Math.round(probedDownload.durationSeconds))),
+                    };
+                    videoInfo = {
+                        ...videoInfo,
+                        videoDetails: details,
+                    };
+                }
+            }
+
+            if (aiValidationDeferred) {
+                const aiPassed = await this.passesAiValidation(video, activeChannel, details, settings);
+                if (!aiPassed) {
+                    await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+                    return {
+                        kind: 'continue',
+                        reason: `${videoTitle}: skipped by AI validation filter`,
+                        sawFreshVideo: true,
+                    };
+                }
             }
 
             const captions = await this.generateCaptions(video, details, settings, enrichedMetadata, targetPlatforms);
@@ -835,6 +858,35 @@ Respond ONLY "YES" or "NO".`,
             .map(([, platform]) => platform);
     }
 
+    private async passesAiValidation(
+        video: any,
+        activeChannel: any,
+        details: NormalizedVideoDetails,
+        settings: LoadedVideoSettings
+    ): Promise<boolean> {
+        if (!settings.videoFilterPrompt) {
+            return true;
+        }
+
+        const aiResult = await aiService.generateCompletion({
+            model: settings.videoOpenaiModel,
+            prompt: `Validate this video against rules:
+Title: ${video.title}
+Channel: ${activeChannel.name}
+Duration: ${details.lengthSeconds}s
+Description: ${details.description}
+Keywords: ${details.keywords?.join(', ')}
+
+Validation Rules:
+${settings.videoFilterPrompt}
+
+Respond ONLY "YES" or "NO".`,
+            maxTokens: 10
+        });
+
+        return !(aiResult.success && aiResult.content.trim().toUpperCase().includes('NO'));
+    }
+
     private getPlatformAutomationSettings(platform: string, settings: LoadedVideoSettings): PlatformAutomationSettings {
         const key = PLATFORM_SETTING_KEYS[platform] || platform.trim().toLowerCase();
         const value = settings.platformSettings?.[key];
@@ -992,6 +1044,36 @@ Respond ONLY "YES" or "NO".`,
         }
 
         return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
+    }
+
+    private buildFallbackThumbnails(videoId: string): Array<{ url?: string }> {
+        if (!videoId) {
+            return [];
+        }
+
+        return [
+            { url: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg` },
+            { url: `https://i.ytimg.com/vi/${videoId}/sddefault.jpg` },
+            { url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` },
+            { url: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` },
+        ];
+    }
+
+    private buildFallbackVideoInfo(video: any, videoId: string, videoUrl: string, durationSeconds?: number): NormalizedVideoInfo {
+        return {
+            source: 'yt-dlp',
+            videoDetails: {
+                videoId,
+                video_url: videoUrl,
+                description: typeof video?.contentSnippet === 'string' ? video.contentSnippet : '',
+                lengthSeconds: durationSeconds && Number.isFinite(durationSeconds)
+                    ? String(Math.max(0, Math.round(durationSeconds)))
+                    : '0',
+                thumbnails: this.buildFallbackThumbnails(videoId),
+                keywords: [],
+            },
+            formats: [],
+        };
     }
 
     private normalizeYtDlpInfo(raw: any, fallbackVideoId: string, fallbackUrl: string): NormalizedVideoInfo {
@@ -1164,11 +1246,57 @@ Respond ONLY "YES" or "NO".`,
         }
     }
 
+    private async probeDownloadedVideo(filePath: string): Promise<ProbedDownloadedVideo> {
+        if (!this.hasDownloadContent(filePath)) {
+            return {};
+        }
+
+        try {
+            const { stdout } = await execFileAsync('ffprobe', [
+                '-v',
+                'error',
+                '-select_streams',
+                'v:0',
+                '-show_entries',
+                'stream=width,height',
+                '-show_entries',
+                'format=duration',
+                '-of',
+                'json',
+                filePath,
+            ]);
+            const parsed = JSON.parse(stdout) as {
+                streams?: Array<{ width?: number; height?: number }>;
+                format?: { duration?: string };
+            };
+            const stream = parsed.streams?.[0];
+            const width = Number(stream?.width || 0) || undefined;
+            const height = Number(stream?.height || 0) || undefined;
+            const durationSeconds = Number.parseFloat(parsed.format?.duration || '') || undefined;
+
+            return {
+                width,
+                height,
+                durationSeconds,
+            };
+        } catch {
+            return {};
+        }
+    }
+
     private async downloadWithYtdl(info: any, filePath: string): Promise<boolean> {
         try {
             const progressiveFormats = this.getLandscape1080Formats(info.formats || [])
                 .filter((format) => format?.hasAudio && format?.hasVideo)
                 .sort((left, right) => {
+                    const leftIsPreferredMp4 = String(left?.container || '').toLowerCase() === 'mp4'
+                        && String(left?.codecs || left?.vcodec || '').toLowerCase().includes('avc1');
+                    const rightIsPreferredMp4 = String(right?.container || '').toLowerCase() === 'mp4'
+                        && String(right?.codecs || right?.vcodec || '').toLowerCase().includes('avc1');
+                    if (leftIsPreferredMp4 !== rightIsPreferredMp4) {
+                        return rightIsPreferredMp4 ? 1 : -1;
+                    }
+
                     const leftHeight = Number(left?.height || 0);
                     const rightHeight = Number(right?.height || 0);
                     if (rightHeight !== leftHeight) {
@@ -1206,7 +1334,7 @@ Respond ONLY "YES" or "NO".`,
         try {
             await ytDlp(videoUrl, {
                 output: filePath,
-                format: 'bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
+                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
                 mergeOutputFormat: 'mp4',
                 noProgress: true,
                 noWarnings: true,
@@ -1236,6 +1364,23 @@ Respond ONLY "YES" or "NO".`,
             return filePath;
         }
 
+        this.removeFileIfExists(filePath);
+
+        if (await this.downloadWithYtDlp(videoUrl, filePath)) {
+            return filePath;
+        }
+
+        this.removeFileIfExists(filePath);
+        return null;
+    }
+
+    private async downloadVideoWithoutMetadata(videoId: string, videoUrl: string): Promise<string | null> {
+        if (!videoId || !videoUrl) {
+            return null;
+        }
+
+        const tempDir = this.ensureTempDir();
+        const filePath = path.join(tempDir, `${videoId}.mp4`);
         this.removeFileIfExists(filePath);
 
         if (await this.downloadWithYtDlp(videoUrl, filePath)) {
