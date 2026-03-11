@@ -1,11 +1,13 @@
 import { BG } from 'bgutils-js';
 import { JSDOM } from 'jsdom';
-import { Innertube } from 'youtubei.js';
 
 const YOUTUBE_PO_TOKEN_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 const YOUTUBE_PO_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const YOUTUBE_PO_TOKEN_FALLBACK_TTL_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_PO_TOKEN_SOURCE_URL = 'https://www.youtube.com/';
+const YOUTUBE_BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
+const YOUTUBE_ACCEPT_LANGUAGE = 'en-US,en;q=0.9';
+const YOUTUBE_VISITOR_DATA_PATTERN = /"visitorData":"([^"]+)/;
 
 type GlobalDomKey = 'window' | 'document' | 'location' | 'origin' | 'navigator';
 
@@ -57,11 +59,7 @@ class YouTubePoTokenService {
     private async mintSession(): Promise<YouTubePoTokenSession> {
         console.log('[YouTubePoToken] Minting a new session token for yt-dlp fallback');
 
-        const innertube = await Innertube.create({
-            retrieve_player: false,
-            enable_session_cache: false,
-        });
-        const visitorData = innertube.session.context.client.visitorData;
+        const visitorData = await this.fetchVisitorData();
         if (!visitorData) {
             throw new Error('YouTube visitor data is unavailable');
         }
@@ -105,6 +103,27 @@ class YouTubePoTokenService {
         };
     }
 
+    private async fetchVisitorData(): Promise<string> {
+        const response = await fetch(YOUTUBE_PO_TOKEN_SOURCE_URL, {
+            headers: {
+                'user-agent': YOUTUBE_BROWSER_USER_AGENT,
+                'accept-language': YOUTUBE_ACCEPT_LANGUAGE,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`YouTube visitor data request failed: ${response.status} ${response.statusText}`);
+        }
+
+        const html = await response.text();
+        const visitorData = html.match(YOUTUBE_VISITOR_DATA_PATTERN)?.[1];
+        if (!visitorData) {
+            throw new Error('YouTube visitor data was not present in the homepage response');
+        }
+
+        return visitorData;
+    }
+
     private async withYouTubeDomGlobals<T>(operation: () => Promise<T>): Promise<T> {
         const dom = new JSDOM('', { url: YOUTUBE_PO_TOKEN_SOURCE_URL });
         const keys: GlobalDomKey[] = ['window', 'document', 'location', 'origin', 'navigator'];
@@ -113,6 +132,11 @@ class YouTubePoTokenService {
         for (const key of keys) {
             originalDescriptors.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
         }
+
+        Object.defineProperty(dom.window.navigator, 'userAgent', {
+            configurable: true,
+            value: YOUTUBE_BROWSER_USER_AGENT,
+        });
 
         Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: dom.window });
         Object.defineProperty(globalThis, 'document', { configurable: true, writable: true, value: dom.window.document });
