@@ -1,5 +1,8 @@
+import axios from 'axios';
+import fs from 'fs/promises';
 import prisma from '../lib/prisma';
 import path from 'path';
+import sharp from 'sharp';
 import { xService } from './platforms/x';
 import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
@@ -7,7 +10,7 @@ import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
 import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
-import { getBackblazeAuthorizedDownloadUrl, uploadLocalFileToBackblaze } from './backblaze';
+import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze, uploadLocalFileToBackblaze } from './backblaze';
 
 export interface PublishContent {
     text: string;
@@ -130,6 +133,88 @@ export class PublisherService {
         return value ? getBackblazeAuthorizedDownloadUrl(value) : undefined;
     }
 
+    private async prepareHostedMetaImageUrl(source: string, cache: Map<string, string>): Promise<string> {
+        const cacheKey = source.trim();
+        const cached = cache.get(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        let sourceBuffer: Buffer;
+        let originalName: string;
+
+        if (/^https?:\/\//i.test(cacheKey)) {
+            const resolvedUrl = await getBackblazeAuthorizedDownloadUrl(cacheKey);
+            const response = await axios.get<ArrayBuffer>(resolvedUrl, {
+                responseType: 'arraybuffer',
+                timeout: 60_000,
+            });
+
+            sourceBuffer = Buffer.from(response.data);
+
+            try {
+                const parsedUrl = new URL(resolvedUrl);
+                originalName = path.basename(parsedUrl.pathname) || 'image';
+            } catch {
+                originalName = 'image';
+            }
+        } else {
+            sourceBuffer = await fs.readFile(cacheKey);
+            originalName = path.basename(cacheKey);
+        }
+
+        const baseName = path.parse(originalName).name || 'image';
+        const normalizedBuffer = await sharp(sourceBuffer, { animated: false })
+            .rotate()
+            .resize({
+                width: 4096,
+                height: 4096,
+                fit: 'inside',
+                withoutEnlargement: true,
+            })
+            .flatten({ background: '#ffffff' })
+            .jpeg({ quality: 90, mozjpeg: true })
+            .toBuffer();
+
+        const uploadedImage = await uploadBufferToBackblaze(
+            normalizedBuffer,
+            `${baseName}.jpg`,
+            {
+                bucketTypes: ['general', 'design'],
+                prefix: 'social-publish/meta-images',
+                contentType: 'image/jpeg',
+            }
+        );
+
+        const hostedUrl = await getBackblazeAuthorizedDownloadUrl(uploadedImage.url);
+        cache.set(cacheKey, hostedUrl);
+        return hostedUrl;
+    }
+
+    private async getResolvedMetaPublishImageUrls(
+        content: PublishContent,
+        platform: string,
+        cache: Map<string, string>
+    ): Promise<string[]> {
+        const rawUrls = this
+            .getResolvedImageUrls(content)
+            .slice(0, this.getPlatformImageLimit(platform));
+
+        const resolved: string[] = [];
+        for (const value of rawUrls) {
+            const trimmed = value.trim();
+            if (!trimmed) {
+                continue;
+            }
+
+            if (/^https?:\/\//i.test(trimmed) || this.isImage(trimmed)) {
+                resolved.push(await this.prepareHostedMetaImageUrl(trimmed, cache));
+            }
+        }
+
+        return resolved;
+    }
+
     private getPlatformImageLimit(platform: string): number {
         switch (platform) {
             case 'X':
@@ -196,6 +281,7 @@ export class PublisherService {
         const results: PublishResult[] = [];
         const normalizedPlatforms = platforms.map(normalizePlatformName);
         const hostedVideoUrlCache = new Map<string, string>();
+        const hostedMetaImageUrlCache = new Map<string, string>();
 
         console.log(`[Publisher] Publishing to ${normalizedPlatforms.join(', ')}...`);
 
@@ -246,7 +332,10 @@ export class PublisherService {
                 }
 
                 try {
-                    const resolvedImageUrls = await this.getResolvedPublishImageUrls(platformContent, platform);
+                    const useMetaSafeImages = platform === 'Facebook' || platform === 'Instagram' || platform === 'Threads';
+                    const resolvedImageUrls = useMetaSafeImages
+                        ? await this.getResolvedMetaPublishImageUrls(platformContent, platform, hostedMetaImageUrlCache)
+                        : await this.getResolvedPublishImageUrls(platformContent, platform);
                     const primaryImageUrl = resolvedImageUrls[0];
                     const remoteCoverImageUrl = await this.getResolvedRemoteCoverImageUrl(platformContent);
                     const localVideoFile = mediaFilePath && this.isVideo(mediaFilePath) ? mediaFilePath : null;
