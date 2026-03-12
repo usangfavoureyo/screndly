@@ -1,11 +1,11 @@
 import prisma from '../lib/prisma';
 import Parser from 'rss-parser';
 import ytdl from '@distube/ytdl-core';
-import ytDlp from 'yt-dlp-exec';
 import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
+import ytDlp from '../lib/yt-dlp';
 import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
 import { notificationService } from './notification.service';

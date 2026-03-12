@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const binaryDir = path.join(process.cwd(), 'node_modules', 'yt-dlp-exec', 'bin');
+const binaryDir = path.join(process.cwd(), 'bin');
 const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const binaryPath = path.join(binaryDir, binaryName);
 const releaseEndpoint = process.env.YOUTUBE_DL_HOST || 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest';

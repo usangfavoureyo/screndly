@@ -1,6 +1,5 @@
 [variables]
 NIXPACKS_NODE_VERSION = "20"
-NPM_CONFIG_IGNORE_SCRIPTS = "true"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "python3", "ffmpeg"]
