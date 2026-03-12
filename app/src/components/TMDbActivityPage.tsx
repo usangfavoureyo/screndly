@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
-import { useTMDbPosts } from '../contexts/TMDbPostsContext';
+import { useTMDbPosts, type TMDbPost } from '../contexts/TMDbPostsContext';
 import { useChatInputKeyHandler } from '../contexts/KeyboardContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
@@ -60,6 +60,40 @@ interface TMDbActivityPageProps {
   previousPage?: string | null;
 }
 
+function getActivityTimestamp(post: TMDbPost): string {
+  if (post.status === 'published') {
+    return post.publishedTime || post.updatedAt || post.createdAt || post.scheduledTime;
+  }
+
+  if (post.status === 'failed') {
+    return post.updatedAt || post.createdAt || post.scheduledTime || post.publishedTime || new Date().toISOString();
+  }
+
+  if (post.status === 'scheduled') {
+    return post.scheduledTime || post.updatedAt || post.createdAt || new Date().toISOString();
+  }
+
+  return post.updatedAt || post.createdAt || post.scheduledTime || post.publishedTime || new Date().toISOString();
+}
+
+function formatActivityTimestamp(timestamp: string): string {
+  const parsed = new Date(timestamp);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return timestamp;
+  }
+
+  return parsed.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
 export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageProps) {
   const { posts, fetchPosts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
   const { settings } = useSettings();
@@ -92,6 +126,15 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const retentionHours = Number(tmdbPreferenceOverrides.tmdbActivityRetention ?? settings.tmdbActivityRetention ?? 24);
   const retentionMs = retentionHours * 60 * 60 * 1000; // Convert to milliseconds
   const logLevel = String(tmdbPreferenceOverrides.tmdbLogLevel ?? settings.tmdbLogLevel ?? 'standard');
+  const activityItems = useMemo<TMDbActivityItem[]>(
+    () =>
+      posts.map((post) => ({
+        ...post,
+        timestamp: getActivityTimestamp(post),
+        error: post.errorMessage,
+      })),
+    [posts]
+  );
 
   // Helper function to check if an item should be filtered based on retention
   const shouldKeepItem = (item: TMDbActivityItem): boolean => {
@@ -104,6 +147,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     if (item.status === 'published' || item.status === 'failed') {
       try {
         const itemDate = new Date(item.timestamp);
+        if (Number.isNaN(itemDate.getTime())) {
+          return true;
+        }
+
         const now = new Date();
         const ageMs = now.getTime() - itemDate.getTime();
         return ageMs <= retentionMs;
@@ -116,7 +163,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     return true;
   };
 
-  const logLevelItems = posts
+  const logLevelItems = activityItems
     .filter(item => shouldKeepItem(item))
     .filter((item) => {
       if (logLevel === 'minimal') return item.status === 'failed';
@@ -628,7 +675,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                             {getSourceLabel(item.source)}
                           </span>
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{item.timestamp}</span>
+                        <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{formatActivityTimestamp(item.timestamp)}</span>
                       </div>
 
                       {/* Status Badge and Retry Button */}
