@@ -94,6 +94,29 @@ export class NotificationService {
             console.error('[NotificationService] Error sending notification:', error);
         }
     }
+
+    async notifyUserOnceWithinWindow(options: NotificationOptions, windowMinutes: number): Promise<void> {
+        try {
+            const recentDuplicate = await prisma.notification.findFirst({
+                where: {
+                    title: options.title,
+                    message: options.message,
+                    source: options.source,
+                    createdAt: {
+                        gte: new Date(Date.now() - windowMinutes * 60 * 1000),
+                    },
+                },
+            });
+
+            if (recentDuplicate) {
+                return;
+            }
+        } catch (error) {
+            console.error('[NotificationService] Error checking duplicate notifications:', error);
+        }
+
+        await this.notifyUser(options);
+    }
 }
 
 export const notificationService = new NotificationService();
