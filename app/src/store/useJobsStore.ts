@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { apiClient } from '../lib/api/client';
 
 // Job stages for 7-stage pipeline
 export type JobStage =
@@ -110,7 +111,6 @@ export const useJobsStore = create<JobsState>()(
 
       refreshJobs: async () => {
         try {
-          const { apiClient } = await import('../lib/api/client');
           const response = await apiClient.get<any[]>('/api/jobs');
           if (response.success && response.data) {
             set({
@@ -126,7 +126,6 @@ export const useJobsStore = create<JobsState>()(
       // Job management
       addJob: async (job) => {
         try {
-          const { apiClient } = await import('../lib/api/client');
           const response = await apiClient.post<any>('/api/jobs', job);
           if (!response.success) throw new Error(response.error?.message || 'Failed to create job');
           const data = response.data;
@@ -183,7 +182,6 @@ export const useJobsStore = create<JobsState>()(
 
         void (async () => {
           try {
-            const { apiClient } = await import('../lib/api/client');
             const response = await apiClient.delete(`/api/jobs/${id}`);
             if (!response.success) {
               throw new Error(response.error?.message || 'Failed to delete job');
@@ -255,7 +253,6 @@ export const useJobsStore = create<JobsState>()(
 
         void (async () => {
           try {
-            const { apiClient } = await import('../lib/api/client');
             const response = await apiClient.post(`/api/jobs/${id}/retry`);
             if (!response.success) {
               throw new Error(response.error?.message || 'Retry failed');
@@ -343,7 +340,6 @@ export const useJobsStore = create<JobsState>()(
           try {
             // In a real app we would only fetch active jobs or rely on websockets.
             // For now we just poll the list of jobs to refresh state.
-            const { apiClient } = await import('../lib/api/client');
             const response = await apiClient.get<any[]>('/api/jobs');
             if (response.success && response.data) {
               const data = response.data;
@@ -391,7 +387,6 @@ export const useJobsStore = create<JobsState>()(
 
         void (async () => {
           try {
-            const { apiClient } = await import('../lib/api/client');
             await Promise.all(completedIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
           } catch (error) {
             console.error('Clear completed jobs failed', error);
@@ -414,7 +409,6 @@ export const useJobsStore = create<JobsState>()(
 
         void (async () => {
           try {
-            const { apiClient } = await import('../lib/api/client');
             await Promise.all(failedIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
           } catch (error) {
             console.error('Clear failed jobs failed', error);
@@ -438,7 +432,6 @@ export const useJobsStore = create<JobsState>()(
 
         void (async () => {
           try {
-            const { apiClient } = await import('../lib/api/client');
             await Promise.all(jobIds.map(id => apiClient.delete(`/api/jobs/${id}`)));
           } catch (error) {
             console.error('Clear all jobs failed', error);

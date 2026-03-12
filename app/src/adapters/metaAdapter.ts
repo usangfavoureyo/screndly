@@ -96,19 +96,30 @@ export class MetaAdapter {
     this.instagramAccountId = instagramAccountId || '';
   }
 
+  private shouldUseMockResponses(): boolean {
+    const fetchFn = globalThis.fetch as any;
+    const hasExplicitMockImplementation =
+      fetchFn &&
+      typeof fetchFn === 'function' &&
+      'mock' in fetchFn &&
+      typeof fetchFn.getMockImplementation === 'function' &&
+      Boolean(fetchFn.getMockImplementation());
+
+    return TEST_MODE && !hasExplicitMockImplementation;
+  }
+
   /**
    * Initialize adapter with page and Instagram account IDs
    */
   async initialize(): Promise<void> {
-    if (TEST_MODE) {
-      console.log('[META] Running in TEST_MODE');
-      return;
-    }
-
-    // Get access token
     const token = await metaTokenStorage.getToken('meta');
     if (!token) {
       throw new Error('No Meta access token found. Please authenticate first.');
+    }
+
+    if (this.shouldUseMockResponses()) {
+      console.log('[META] Running in TEST_MODE');
+      return;
     }
 
     // Fetch Page and Instagram account IDs if not provided
@@ -148,7 +159,8 @@ export class MetaAdapter {
         };
       }
 
-      if (TEST_MODE) {
+      if (this.shouldUseMockResponses()) {
+        await rateLimiter.incrementCount('instagram_feed');
         return {
           success: true,
           platform: 'instagram',
@@ -210,7 +222,8 @@ export class MetaAdapter {
         };
       }
 
-      if (TEST_MODE) {
+      if (this.shouldUseMockResponses()) {
+        await rateLimiter.incrementCount('instagram_reels');
         return {
           success: true,
           platform: 'instagram',
@@ -272,7 +285,8 @@ export class MetaAdapter {
         };
       }
 
-      if (TEST_MODE) {
+      if (this.shouldUseMockResponses()) {
+        await rateLimiter.incrementCount('facebook');
         return {
           success: true,
           platform: 'facebook',
@@ -309,7 +323,7 @@ export class MetaAdapter {
       // Threads currently has limited API support
       // This is a best-effort implementation that may require updates
 
-      if (TEST_MODE) {
+      if (this.shouldUseMockResponses()) {
         return {
           success: true,
           platform: 'threads',

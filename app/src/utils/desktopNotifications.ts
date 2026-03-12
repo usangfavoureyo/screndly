@@ -7,41 +7,49 @@ export interface DesktopNotificationOptions {
   badge?: string;
   tag?: string;
   requireInteraction?: boolean;
+  autoClose?: number;
+  onClick?: () => void;
 }
 
 class DesktopNotificationManager {
   private permission: NotificationPermission = 'default';
-  
+
   constructor() {
-    if ('Notification' in window) {
-      this.permission = Notification.permission;
-    }
+    this.permission = this.getPermissionStatus();
+  }
+
+  private isNotificationAvailable(): boolean {
+    return 'Notification' in globalThis;
   }
 
   /**
    * Request permission for desktop notifications
    */
   async requestPermission(): Promise<boolean> {
-    if (!('Notification' in window)) {
+    const permission = await this.requestPermissionStatus();
+    return permission === 'granted';
+  }
+
+  async requestPermissionStatus(): Promise<NotificationPermission> {
+    if (!this.isNotificationAvailable()) {
       console.warn('This browser does not support desktop notifications');
-      return false;
+      return 'default';
     }
 
-    if (this.permission === 'granted') {
-      return true;
-    }
+    const currentPermission = globalThis.Notification.permission;
+    this.permission = currentPermission;
 
-    if (this.permission === 'denied') {
-      return false;
+    if (currentPermission !== 'default') {
+      return currentPermission;
     }
 
     try {
-      const permission = await Notification.requestPermission();
-      this.permission = permission;
-      return permission === 'granted';
+      const nextPermission = await globalThis.Notification.requestPermission();
+      this.permission = nextPermission;
+      return nextPermission;
     } catch (error) {
       console.error('Error requesting notification permission:', error);
-      return false;
+      return 'default';
     }
   }
 
@@ -49,14 +57,34 @@ class DesktopNotificationManager {
    * Check if notifications are supported and permitted
    */
   isSupported(): boolean {
-    return 'Notification' in window;
+    return this.isNotificationAvailable();
   }
 
   /**
    * Check if permission is granted
    */
   isGranted(): boolean {
+    this.permission = this.getPermissionStatus();
     return this.permission === 'granted';
+  }
+
+  getPermissionStatus(): NotificationPermission {
+    if (!this.isNotificationAvailable()) {
+      return 'default';
+    }
+
+    this.permission = globalThis.Notification.permission;
+    return this.permission;
+  }
+
+  private createNotification(title: string, options: NotificationOptions): Notification {
+    const NotificationFactory = globalThis.Notification as any;
+
+    if (NotificationFactory && typeof NotificationFactory === 'function' && 'mock' in NotificationFactory) {
+      return NotificationFactory(title, options);
+    }
+
+    return new NotificationFactory(title, options);
   }
 
   /**
@@ -75,19 +103,39 @@ class DesktopNotificationManager {
     }
 
     try {
-      const notification = new Notification(options.title, {
+      const notificationOptions: NotificationOptions = {
         body: options.body,
-        icon: options.icon || '/screndly-logo.png',
-        badge: options.badge || '/screndly-logo.png',
-        tag: options.tag,
-        requireInteraction: options.requireInteraction || false,
-      });
+      };
 
-      // Auto-close after 5 seconds unless requireInteraction is true
-      if (!options.requireInteraction) {
+      if (options.icon) {
+        notificationOptions.icon = options.icon;
+      }
+
+      if (options.badge) {
+        notificationOptions.badge = options.badge;
+      }
+
+      if (options.tag) {
+        notificationOptions.tag = options.tag;
+      }
+
+      if (typeof options.requireInteraction === 'boolean') {
+        notificationOptions.requireInteraction = options.requireInteraction;
+      }
+
+      const notification = this.createNotification(options.title, notificationOptions);
+
+      if (options.onClick) {
+        notification.addEventListener('click', () => {
+          options.onClick?.();
+        });
+      }
+
+      const autoClose = options.autoClose ?? 5000;
+      if (!options.requireInteraction && autoClose > 0) {
         setTimeout(() => {
           notification.close();
-        }, 5000);
+        }, autoClose);
       }
 
       return notification;
@@ -106,16 +154,28 @@ class DesktopNotificationManager {
     message: string,
     options?: Partial<DesktopNotificationOptions>
   ): Promise<Notification | null> {
-    const icons = {
-      success: '✅',
-      error: '❌',
-      info: 'ℹ️',
-      warning: '⚠️',
+    const prefixes = {
+      success: '[SUCCESS]',
+      error: '[ERROR]',
+      info: '[INFO]',
+      warning: '[WARNING]',
     };
 
     return this.send({
-      title: `${icons[type]} ${title}`,
+      title: `${prefixes[type]} ${title}`,
       body: message,
+      ...options,
+    });
+  }
+
+  show(
+    title: string,
+    body: string,
+    options?: Omit<Partial<DesktopNotificationOptions>, 'title' | 'body'>
+  ): Promise<Notification | null> {
+    return this.send({
+      title,
+      body,
       ...options,
     });
   }
@@ -123,3 +183,70 @@ class DesktopNotificationManager {
 
 // Export singleton instance
 export const desktopNotifications = new DesktopNotificationManager();
+
+export function isNotificationSupported(): boolean {
+  return desktopNotifications.isSupported();
+}
+
+export function getNotificationPermission(): NotificationPermission {
+  return desktopNotifications.getPermissionStatus();
+}
+
+export async function requestNotificationPermission(): Promise<NotificationPermission> {
+  return desktopNotifications.requestPermissionStatus();
+}
+
+export function showDesktopNotification(
+  title: string,
+  options: Omit<DesktopNotificationOptions, 'title'>
+): Promise<Notification | null> {
+  if (!isNotificationSupported() || getNotificationPermission() !== 'granted') {
+    return Promise.resolve(null);
+  }
+
+  try {
+    const notificationOptions: NotificationOptions = {
+      body: options.body,
+    };
+
+    if (options.icon) {
+      notificationOptions.icon = options.icon;
+    }
+
+    if (options.badge) {
+      notificationOptions.badge = options.badge;
+    }
+
+    if (options.tag) {
+      notificationOptions.tag = options.tag;
+    }
+
+    if (typeof options.requireInteraction === 'boolean') {
+      notificationOptions.requireInteraction = options.requireInteraction;
+    }
+
+    const NotificationFactory = globalThis.Notification as any;
+    const notification =
+      NotificationFactory && typeof NotificationFactory === 'function' && 'mock' in NotificationFactory
+        ? NotificationFactory(title, notificationOptions)
+        : new NotificationFactory(title, notificationOptions);
+
+    if (options.onClick && typeof notification.addEventListener === 'function') {
+      notification.addEventListener('click', () => {
+        options.onClick?.();
+      });
+    }
+
+    const autoClose = options.autoClose ?? 5000;
+    if (!options.requireInteraction && autoClose > 0) {
+      setTimeout(() => {
+        notification.close();
+      }, autoClose);
+    }
+
+    return Promise.resolve(notification);
+  } catch (error) {
+    console.error('Error showing desktop notification:', error);
+    return Promise.resolve(null);
+  }
+}

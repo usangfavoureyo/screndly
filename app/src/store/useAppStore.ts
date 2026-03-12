@@ -125,6 +125,9 @@ interface AppState {
   closeModal: () => void;
 }
 
+const createStoreId = (prefix: string): string =>
+  `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
 const defaultSettings: Settings = {
   // API Keys
   youtubeKey: '••••••••••••••••',
@@ -201,7 +204,7 @@ export const useAppStore = create<AppState>()(
       unreadCount: 0,
       addNotification: (title, message, type, source) => {
         const notification: Notification = {
-          id: Date.now().toString(),
+          id: createStoreId('notification'),
           title,
           message,
           type,
@@ -256,7 +259,7 @@ export const useAppStore = create<AppState>()(
       addJob: (job) => {
         const newJob: VideoStudioJob = {
           ...job,
-          id: Date.now().toString(),
+          id: createStoreId('video_job'),
           createdAt: new Date(),
         };
         set(state => ({
@@ -283,7 +286,7 @@ export const useAppStore = create<AppState>()(
       clearCompletedJobs: () => {
         set(state => ({
           videoStudioJobs: state.videoStudioJobs.filter(
-            job => job.status !== 'completed' && job.status !== 'failed'
+            job => job.status !== 'completed'
           ),
         }));
       },

@@ -13,6 +13,19 @@ interface TMDbFeed {
   title: string;
 }
 
+interface ScheduledTaskMetadata {
+  title?: string;
+  type?: TMDbFeed['source'];
+}
+
+interface ScheduledTask {
+  id: string;
+  scheduledFor: Date;
+  callback: () => void;
+  metadata?: ScheduledTaskMetadata;
+  timeoutId?: ReturnType<typeof setTimeout>;
+}
+
 interface SchedulingConfig {
   today: {
     hoursApart: number; // 3 hours apart
@@ -46,6 +59,89 @@ const DEFAULT_CONFIG: SchedulingConfig = {
   },
   minGapMinutes: 60, // 1 hour minimum between posts
 };
+
+const createTaskId = (): string =>
+  `tmdb_task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+export class TMDbScheduler {
+  private readonly tasks = new Map<string, ScheduledTask>();
+
+  schedule(
+    scheduledFor: Date,
+    callback: () => void,
+    metadata?: ScheduledTaskMetadata
+  ): string {
+    const taskId = createTaskId();
+    const task: ScheduledTask = {
+      id: taskId,
+      scheduledFor: new Date(scheduledFor),
+      callback,
+      metadata,
+    };
+
+    this.tasks.set(taskId, task);
+
+    const delay = scheduledFor.getTime() - Date.now();
+    if (delay <= 0) {
+      callback();
+      this.tasks.delete(taskId);
+      return taskId;
+    }
+
+    task.timeoutId = setTimeout(() => {
+      task.callback();
+      this.tasks.delete(taskId);
+    }, delay);
+
+    return taskId;
+  }
+
+  cancel(taskId: string): void {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      return;
+    }
+
+    if (task.timeoutId) {
+      clearTimeout(task.timeoutId);
+    }
+
+    this.tasks.delete(taskId);
+  }
+
+  reschedule(taskId: string, scheduledFor: Date): string {
+    const task = this.tasks.get(taskId);
+    if (!task) {
+      throw new Error(`Task not found: ${taskId}`);
+    }
+
+    const { callback, metadata } = task;
+    this.cancel(taskId);
+    return this.schedule(scheduledFor, callback, metadata);
+  }
+
+  getTasks(): Array<{
+    id: string;
+    scheduledFor: Date;
+    metadata?: ScheduledTaskMetadata;
+  }> {
+    return Array.from(this.tasks.values()).map(task => ({
+      id: task.id,
+      scheduledFor: new Date(task.scheduledFor),
+      metadata: task.metadata,
+    }));
+  }
+
+  clearAll(): void {
+    for (const task of this.tasks.values()) {
+      if (task.timeoutId) {
+        clearTimeout(task.timeoutId);
+      }
+    }
+
+    this.tasks.clear();
+  }
+}
 
 /**
  * Get optimal posting times for a given day

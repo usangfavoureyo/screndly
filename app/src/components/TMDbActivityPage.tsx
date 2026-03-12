@@ -34,6 +34,7 @@ import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFrom
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
+import { useTMDbModalStore } from '../stores/tmdbModalStore';
 
 interface TMDbActivityItem {
   id: string;
@@ -98,6 +99,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const { posts, fetchPosts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
+  const openImagePreview = useTMDbModalStore(s => s.openImagePreview);
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangeDateOpen, setIsChangeDateOpen] = useState(false);
@@ -166,8 +168,12 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const logLevelItems = activityItems
     .filter(item => shouldKeepItem(item))
     .filter((item) => {
-      if (logLevel === 'minimal') return item.status === 'failed';
-      if (logLevel === 'standard') return item.status === 'published' || item.status === 'failed';
+      if (item.status === 'queued' || item.status === 'scheduled' || item.status === 'failed') {
+        return true;
+      }
+
+      if (logLevel === 'minimal') return false;
+      if (logLevel === 'standard') return item.status === 'published';
       return true;
     });
 
@@ -494,6 +500,16 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
   };
 
+  const handleImagePreview = (id: string) => {
+    if (selection.selectionMode) return;
+
+    const selectedPost = posts.find((post) => post.id === id);
+    if (!selectedPost?.imageUrl) return;
+
+    haptics.light();
+    openImagePreview(selectedPost);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -653,13 +669,22 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 <div className="flex gap-4">
                   {/* Thumbnail */}
                   {item.imageUrl && (
-                    <div className="w-20 h-28 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A]">
+                    <button
+                      type="button"
+                      data-prevent-card-selection="true"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleImagePreview(item.id);
+                      }}
+                      className="w-20 h-28 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] transition-opacity hover:opacity-90"
+                      aria-label={`Expand ${item.imageType === 'backdrop' ? 'backdrop' : 'poster'} for ${item.title}`}
+                    >
                       <img
                         src={item.imageUrl}
                         alt={item.title}
                         className="w-full h-full object-cover"
                       />
-                    </div>
+                    </button>
                   )}
 
                   <div className="flex-1 min-w-0 flex flex-col">
@@ -830,7 +855,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           })
         ) : (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
-            <h3 className="text-gray-900 dark:text-white mb-2">No TMDb activity</h3>
+            <h3 className="text-gray-600 dark:text-[#9CA3AF] mb-2">No TMDb activity</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filter === 'all'
                 ? 'TMDb feed activity will appear here once posts are processed.'

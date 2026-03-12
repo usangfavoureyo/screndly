@@ -37,6 +37,8 @@ export interface Feed {
     startFromNowAt?: string | null;
     maxItemAgeMinutes?: number | null;
   };
+  serperEnabled: boolean;
+  tmdbEnabled: boolean;
   serperPriority: boolean;
   rehostImages: boolean;
   lastProcessedAt?: string;

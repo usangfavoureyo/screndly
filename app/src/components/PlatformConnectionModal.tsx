@@ -13,6 +13,7 @@ import { XIcon } from './icons/XIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { getOAuthRedirectUri } from '../utils/oauthRedirect';
+import { apiClient } from '../lib/api/client';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
@@ -144,7 +145,6 @@ export function PlatformConnectionModal({
         }
       };
 
-      const { apiClient } = await import('../lib/api/client');
       const redirectUri = getOAuthRedirectUri(platform);
       const response = await apiClient.get<{ url?: string }>(
         `/api/platforms/auth/${platform}?redirectUri=${encodeURIComponent(redirectUri)}`

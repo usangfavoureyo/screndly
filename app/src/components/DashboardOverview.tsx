@@ -36,6 +36,118 @@ function formatSourceLabel(source: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+const EMPTY_DASHBOARD_STATS: DashboardStats = {
+  system: {
+    cacheHitRate: 0,
+    systemErrors: 0,
+    dailyFailures: 0,
+    dailySuccess: 0,
+  },
+  comments: {
+    repliesToday: 0,
+    successRate: 0,
+    recentReplies: [],
+    activePlatforms: 0,
+  },
+  video: {
+    activeChannels: 0,
+    dailyVideos: 0,
+    trends: [],
+    recentActivity: [],
+  },
+  rss: {
+    activeFeeds: 0,
+    dailyPosted: 0,
+    recentFeeds: [],
+  },
+  tmdb: {
+    readyCount: 0,
+    coverageDays: 0,
+    upcoming: [],
+  },
+  designStudio: {
+    generated: 0,
+    published: 0,
+    recentActivity: [],
+  },
+  videoStudio: {
+    generated: 0,
+    published: 0,
+    recentActivity: [],
+  },
+  uploads: {
+    activeUploads: 0,
+    completedToday: 0,
+    pipeline: [],
+  },
+  usage: {
+    openai: 0,
+    serper: 0,
+    tmdb: 0,
+    shotstack: 0,
+    googleSearch: 0,
+    googleVideo: 0,
+    total: 0,
+  },
+  recentActivity: [],
+};
+
+function normalizeDashboardStats(payload: unknown): DashboardStats {
+  const raw = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? payload as Partial<DashboardStats>
+    : {};
+
+  return {
+    ...EMPTY_DASHBOARD_STATS,
+    ...raw,
+    system: {
+      ...EMPTY_DASHBOARD_STATS.system,
+      ...(raw.system ?? {}),
+    },
+    comments: {
+      ...EMPTY_DASHBOARD_STATS.comments,
+      ...(raw.comments ?? {}),
+      recentReplies: Array.isArray(raw.comments?.recentReplies) ? raw.comments.recentReplies : [],
+    },
+    video: {
+      ...EMPTY_DASHBOARD_STATS.video,
+      ...(raw.video ?? {}),
+      trends: Array.isArray(raw.video?.trends) ? raw.video.trends : [],
+      recentActivity: Array.isArray(raw.video?.recentActivity) ? raw.video.recentActivity : [],
+    },
+    rss: {
+      ...EMPTY_DASHBOARD_STATS.rss,
+      ...(raw.rss ?? {}),
+      recentFeeds: Array.isArray(raw.rss?.recentFeeds) ? raw.rss.recentFeeds : [],
+    },
+    tmdb: {
+      ...EMPTY_DASHBOARD_STATS.tmdb,
+      ...(raw.tmdb ?? {}),
+      upcoming: Array.isArray(raw.tmdb?.upcoming) ? raw.tmdb.upcoming : [],
+    },
+    designStudio: {
+      ...EMPTY_DASHBOARD_STATS.designStudio,
+      ...(raw.designStudio ?? {}),
+      recentActivity: Array.isArray(raw.designStudio?.recentActivity) ? raw.designStudio.recentActivity : [],
+    },
+    videoStudio: {
+      ...EMPTY_DASHBOARD_STATS.videoStudio,
+      ...(raw.videoStudio ?? {}),
+      recentActivity: Array.isArray(raw.videoStudio?.recentActivity) ? raw.videoStudio.recentActivity : [],
+    },
+    uploads: {
+      ...EMPTY_DASHBOARD_STATS.uploads,
+      ...(raw.uploads ?? {}),
+      pipeline: Array.isArray(raw.uploads?.pipeline) ? raw.uploads.pipeline : [],
+    },
+    usage: {
+      ...EMPTY_DASHBOARD_STATS.usage,
+      ...(raw.usage ?? {}),
+    },
+    recentActivity: Array.isArray(raw.recentActivity) ? raw.recentActivity : [],
+  };
+}
+
 export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -47,7 +159,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       try {
         const response = await dashboardApi.getStats();
         if (response.success && response.data) {
-          setStats(response.data);
+          setStats(normalizeDashboardStats(response.data));
         } else {
           toast.error(response.error?.message || 'Failed to load dashboard');
         }

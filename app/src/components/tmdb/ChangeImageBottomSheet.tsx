@@ -11,6 +11,7 @@ import {
     BottomSheetBody,
     BottomSheetFooter
 } from '../ui/bottom-sheet';
+import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 
 interface ChangeImageBottomSheetProps {
     open: boolean;
@@ -34,6 +35,7 @@ export function ChangeImageBottomSheet({
     const [selectedImageType, setSelectedImageType] = useState<'poster' | 'backdrop' | 'custom'>(currentImageType);
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
     const [isLoadingImage, setIsLoadingImage] = useState(false);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Reset state when opening
@@ -41,8 +43,15 @@ export function ChangeImageBottomSheet({
         if (open) {
             setSelectedImageType(currentImageType);
             setPreviewImageUrl(null);
+            setIsPreviewOpen(false);
         }
     }, [open, currentImageType]);
+
+    useEffect(() => {
+        if (!open) {
+            setIsPreviewOpen(false);
+        }
+    }, [open]);
 
     const handleSelectFile = (e: React.MouseEvent) => {
         // Prevent bubbling which might close sheet in some implementations
@@ -183,109 +192,136 @@ export function ChangeImageBottomSheet({
     const handleCancel = () => {
         haptics.light();
         setPreviewImageUrl(null);
+        setIsPreviewOpen(false);
         onOpenChange(false);
     };
 
+    const previewImageType =
+        selectedImageType === 'backdrop'
+            ? 'backdrop'
+            : currentImageType === 'backdrop'
+                ? 'backdrop'
+                : 'poster';
+
     return (
-        <BottomSheet open={open} onOpenChange={(val) => !val && handleCancel()}>
-            <BottomSheetHeader>
-                <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
-                <BottomSheetDescription>Tap to fetch a new image</BottomSheetDescription>
-            </BottomSheetHeader>
-            <BottomSheetBody>
-                <div className="flex gap-3">
-                    {/* Poster Button */}
-                    <button
-                        onClick={() => handleFetchImage('poster')}
-                        disabled={isLoadingImage}
-                        className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                            ${selectedImageType === 'poster' && (previewImageUrl || isLoadingImage)
-                                ? 'border-[#ec1e24]'
-                                : 'border-gray-200 dark:border-[#333333]'
-                            } 
-                            active:border-[#ec1e24] 
-                            disabled:opacity-50`}
-                    >
-                        {isLoadingImage && selectedImageType === 'poster' ? (
-                            <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
-                        ) : (
-                            <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                        )}
-                        <p className="text-sm">{isLoadingImage && selectedImageType === 'poster' ? 'Loading...' : 'Poster'}</p>
-                    </button>
+        <>
+            <BottomSheet open={open} onOpenChange={(val) => !val && handleCancel()}>
+                <BottomSheetHeader>
+                    <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
+                    <BottomSheetDescription>Tap to fetch a new image</BottomSheetDescription>
+                </BottomSheetHeader>
+                <BottomSheetBody>
+                    <div className="flex gap-3">
+                        {/* Poster Button */}
+                        <button
+                            onClick={() => handleFetchImage('poster')}
+                            disabled={isLoadingImage}
+                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
+                                ${selectedImageType === 'poster' && (previewImageUrl || isLoadingImage)
+                                    ? 'border-[#ec1e24]'
+                                    : 'border-gray-200 dark:border-[#333333]'
+                                } 
+                                active:border-[#ec1e24] 
+                                disabled:opacity-50`}
+                        >
+                            {isLoadingImage && selectedImageType === 'poster' ? (
+                                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
+                            ) : (
+                                <ImageIcon className="w-6 h-6 mx-auto mb-2" />
+                            )}
+                            <p className="text-sm">{isLoadingImage && selectedImageType === 'poster' ? 'Loading...' : 'Poster'}</p>
+                        </button>
 
-                    {/* Backdrop Button */}
-                    <button
-                        onClick={() => handleFetchImage('backdrop')}
-                        disabled={isLoadingImage}
-                        className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                            ${selectedImageType === 'backdrop' && (previewImageUrl || isLoadingImage)
-                                ? 'border-[#ec1e24]'
-                                : 'border-gray-200 dark:border-[#333333]'
-                            } 
-                            active:border-[#ec1e24] 
-                            disabled:opacity-50`}
-                    >
-                        {isLoadingImage && selectedImageType === 'backdrop' ? (
-                            <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
-                        ) : (
-                            <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                        )}
-                        <p className="text-sm">{isLoadingImage && selectedImageType === 'backdrop' ? 'Loading...' : 'Backdrop'}</p>
-                    </button>
+                        {/* Backdrop Button */}
+                        <button
+                            onClick={() => handleFetchImage('backdrop')}
+                            disabled={isLoadingImage}
+                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
+                                ${selectedImageType === 'backdrop' && (previewImageUrl || isLoadingImage)
+                                    ? 'border-[#ec1e24]'
+                                    : 'border-gray-200 dark:border-[#333333]'
+                                } 
+                                active:border-[#ec1e24] 
+                                disabled:opacity-50`}
+                        >
+                            {isLoadingImage && selectedImageType === 'backdrop' ? (
+                                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
+                            ) : (
+                                <ImageIcon className="w-6 h-6 mx-auto mb-2" />
+                            )}
+                            <p className="text-sm">{isLoadingImage && selectedImageType === 'backdrop' ? 'Loading...' : 'Backdrop'}</p>
+                        </button>
 
-                    {/* Upload Button */}
-                    <button
-                        onClick={handleSelectFile}
-                        disabled={isLoadingImage}
-                        className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                            ${selectedImageType === 'custom' && (previewImageUrl || isLoadingImage)
-                                ? 'border-[#ec1e24]'
-                                : 'border-gray-200 dark:border-[#333333]'
-                            } 
-                            active:border-[#ec1e24] 
-                            disabled:opacity-50`}
-                    >
-                        <Upload className="w-6 h-6 mx-auto mb-2" />
-                        <p className="text-sm">Upload</p>
-                    </button>
+                        {/* Upload Button */}
+                        <button
+                            onClick={handleSelectFile}
+                            disabled={isLoadingImage}
+                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
+                                ${selectedImageType === 'custom' && (previewImageUrl || isLoadingImage)
+                                    ? 'border-[#ec1e24]'
+                                    : 'border-gray-200 dark:border-[#333333]'
+                                } 
+                                active:border-[#ec1e24] 
+                                disabled:opacity-50`}
+                        >
+                            <Upload className="w-6 h-6 mx-auto mb-2" />
+                            <p className="text-sm">Upload</p>
+                        </button>
 
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileUpload}
-                        accept="image/*"
-                        className="hidden"
-                        onClick={(e) => {
-                            // Reset value to allow selecting same file again
-                            (e.target as HTMLInputElement).value = '';
-                        }}
-                    />
-                </div>
-
-                {/* Image Preview */}
-                {previewImageUrl && (
-                    <div className="mt-4 rounded-lg overflow-hidden border-2 border-[#ec1e24]">
-                        <img src={previewImageUrl} alt="Preview" className="w-full h-32 object-cover" />
-                        <p className="text-xs text-center py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-600 dark:text-[#9CA3AF]">Preview - tap Save to apply</p>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            onChange={handleFileUpload}
+                            accept="image/*"
+                            className="hidden"
+                            onClick={(e) => {
+                                // Reset value to allow selecting same file again
+                                (e.target as HTMLInputElement).value = '';
+                            }}
+                        />
                     </div>
-                )}
-            </BottomSheetBody>
 
-            <BottomSheetFooter>
-                <Button variant="outline" onClick={handleCancel}>
-                    Cancel
-                </Button>
+                    {/* Image Preview */}
+                    {previewImageUrl && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                haptics.light();
+                                setIsPreviewOpen(true);
+                            }}
+                            className="mt-4 w-full rounded-lg overflow-hidden border-2 border-[#ec1e24] text-left transition-opacity hover:opacity-95"
+                            aria-label={`Expand ${previewImageType} preview for ${title}`}
+                        >
+                            <img src={previewImageUrl} alt="Preview" className="w-full h-32 object-cover" />
+                            <p className="text-xs text-center py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-600 dark:text-[#9CA3AF]">Preview - tap to expand</p>
+                        </button>
+                    )}
+                </BottomSheetBody>
 
-                <Button
-                    onClick={handleSaveImage}
-                    disabled={!previewImageUrl || isLoadingImage}
-                >
-                    {isLoadingImage ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading...</>
-                    ) : 'Save'}
-                </Button>
-            </BottomSheetFooter>
-        </BottomSheet>
+                <BottomSheetFooter>
+                    <Button variant="outline" onClick={handleCancel}>
+                        Cancel
+                    </Button>
+
+                    <Button
+                        onClick={handleSaveImage}
+                        disabled={!previewImageUrl || isLoadingImage}
+                    >
+                        {isLoadingImage ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading...</>
+                        ) : 'Save'}
+                    </Button>
+                </BottomSheetFooter>
+            </BottomSheet>
+
+            <TMDbImagePreviewDialog
+                open={isPreviewOpen}
+                onOpenChange={setIsPreviewOpen}
+                onClose={() => setIsPreviewOpen(false)}
+                imageUrl={previewImageUrl}
+                title={title}
+                imageType={previewImageType}
+            />
+        </>
     );
 }

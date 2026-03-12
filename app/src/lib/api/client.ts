@@ -4,7 +4,7 @@
 // Centralized HTTP client with error handling, retries, and interceptors
 
 import { ApiResponse, ApiError } from './types';
-import { getAuthHeaders as getStandardAuthHeaders, getToken } from './authToken';
+import { CLIENT_VERSION, getAuthHeaders as getStandardAuthHeaders, getToken } from './authToken';
 
 /**
  * Get API URL from environment variables with fallback
@@ -84,13 +84,12 @@ export class ApiClient {
     attempt: number = 1
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       // Create abort controller for timeout
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-
-      const { CLIENT_VERSION } = await import('./authToken');
+      timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
       // Build request options
       const requestOptions: RequestInit = {
@@ -115,7 +114,6 @@ export class ApiClient {
 
       // Make request
       const response = await fetch(url, requestOptions);
-      clearTimeout(timeoutId);
 
       // Handle response
       if (!response.ok) {
@@ -155,6 +153,10 @@ export class ApiClient {
       }
 
       return { success: false, error: apiError };
+    } finally {
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
     }
   }
 

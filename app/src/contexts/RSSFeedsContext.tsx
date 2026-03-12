@@ -43,6 +43,8 @@ export interface RSSFeed {
   platformImageCounts?: PlatformImageCounts;
   dedupeDays: number;
   filters: FeedFilters;
+  serperEnabled: boolean;
+  tmdbEnabled: boolean;
   serperPriority: boolean;
   rehostImages: boolean;
   autoPost: boolean;
@@ -167,6 +169,16 @@ function buildRefreshToastMessage(result: RSSRefreshResult): string {
   return `${result.feedName}: ${segments.join(', ')}`;
 }
 
+function normalizeFeed(feed: RSSFeed): RSSFeed {
+  return {
+    ...feed,
+    serperEnabled: feed.serperEnabled ?? true,
+    tmdbEnabled: feed.tmdbEnabled ?? false,
+    serperPriority: feed.serperPriority ?? true,
+    rehostImages: feed.rehostImages ?? false,
+  };
+}
+
 export function RSSFeedsProvider({ children }: { children: ReactNode }) {
   const [feeds, setFeeds] = useState<RSSFeed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -182,7 +194,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to fetch RSS feeds');
       }
 
-      setFeeds(Array.isArray(response.data) ? response.data : []);
+      setFeeds(Array.isArray(response.data) ? response.data.map((feed) => normalizeFeed(feed)) : []);
     } catch (err) {
       console.error('Error fetching RSS feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch feeds');
@@ -203,9 +215,10 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to add feed');
       }
 
-      setFeeds((prev) => [response.data!, ...prev]);
+      const normalizedFeed = normalizeFeed(response.data);
+      setFeeds((prev) => [normalizedFeed, ...prev]);
       toast.success('Feed added successfully');
-      return response.data;
+      return normalizedFeed;
     } catch (err) {
       console.error('Error adding RSS feed:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to add feed');
@@ -235,7 +248,8 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to update feed');
       }
 
-      setFeeds((prev) => prev.map((feed) => (feed.id === feedId ? { ...feed, ...response.data! } : feed)));
+      const normalizedFeed = normalizeFeed(response.data);
+      setFeeds((prev) => prev.map((feed) => (feed.id === feedId ? { ...feed, ...normalizedFeed } : feed)));
     } catch (err) {
       console.error('Error updating RSS feed:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to update feed');

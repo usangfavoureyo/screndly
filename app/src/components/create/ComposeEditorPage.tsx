@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Film, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
@@ -47,6 +47,7 @@ import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../t
 import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
+import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
 
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -86,7 +87,6 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
 };
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
-const YOUTUBE_PLAYLISTS = ['Upcoming Posts', 'Reviews', 'Highlights'];
 const SHARED_CAPTION_PLATFORMS: ComposePlatformKey[] = ['instagram', 'facebook', 'threads', 'x', 'tiktok'];
 
 function createInitialForm(item?: ComposeItem): FormState {
@@ -153,6 +153,10 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
+  const [isLoadingYouTubePlaylists, setIsLoadingYouTubePlaylists] = useState(false);
+  const [hasLoadedYouTubePlaylists, setHasLoadedYouTubePlaylists] = useState(false);
+  const [youtubePlaylistError, setYouTubePlaylistError] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
   );
@@ -170,6 +174,47 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const selectedPlatformIssues = formState.platforms.map((platform) => compatibilityMap[platform]).filter((entry) => !entry.supported);
   const hasUploadingAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'uploading');
   const hasFailedAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'failed');
+  const isYouTubeSelected = formState.platforms.includes('youtube');
+  const hasYouTubeConnection = connectedPlatforms.has('youtube');
+  const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
+
+  useEffect(() => {
+    if (!isYouTubeSelected || !hasYouTubeConnection || hasLoadedYouTubePlaylists) {
+      return;
+    }
+
+    let isActive = true;
+    setIsLoadingYouTubePlaylists(true);
+    setYouTubePlaylistError(null);
+
+    void fetchYouTubePlaylists()
+      .then((playlists) => {
+        if (!isActive) {
+          return;
+        }
+
+        setYouTubePlaylists(playlists);
+        setHasLoadedYouTubePlaylists(true);
+      })
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : 'Failed to load YouTube playlists';
+        setYouTubePlaylistError(message);
+        toast.error(message);
+      })
+      .finally(() => {
+        if (isActive) {
+          setIsLoadingYouTubePlaylists(false);
+        }
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [hasLoadedYouTubePlaylists, hasYouTubeConnection, isYouTubeSelected]);
 
   const updateAsset = (assetId: string, updater: (asset: ComposeMediaAsset) => ComposeMediaAsset) => {
     setFormState((current) => ({
@@ -634,13 +679,37 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                       <SelectValue placeholder="Select a playlist" />
                     </SelectTrigger>
                     <SelectContent>
-                      {YOUTUBE_PLAYLISTS.map((playlist) => (
-                        <SelectItem key={playlist} value={playlist}>
-                          {playlist}
+                      {formState.youtubePlaylist && !hasMatchingYouTubePlaylist && (
+                        <SelectItem value={formState.youtubePlaylist}>
+                          {formState.youtubePlaylist}
+                        </SelectItem>
+                      )}
+                      {isLoadingYouTubePlaylists && (
+                        <SelectItem value="__youtube-playlists-loading" disabled>
+                          Loading playlists...
+                        </SelectItem>
+                      )}
+                      {!isLoadingYouTubePlaylists && youtubePlaylists.length === 0 && (
+                        <SelectItem value="__youtube-playlists-empty" disabled>
+                          No channel playlists found
+                        </SelectItem>
+                      )}
+                      {youtubePlaylists.map((playlist) => (
+                        <SelectItem key={playlist.id} value={playlist.title}>
+                          {playlist.title}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    {youtubePlaylistError
+                      ? youtubePlaylistError
+                      : isLoadingYouTubePlaylists
+                        ? 'Loading playlists from your connected YouTube channel...'
+                        : youtubePlaylists.length > 0
+                          ? 'Showing playlists from your connected YouTube channel.'
+                          : 'Connect YouTube and create channel playlists to choose from them here.'}
+                  </p>
                 </div>
               </div>
             </div>

@@ -140,6 +140,32 @@ export function throttle<T extends (...args: any[]) => any>(
 }
 
 /**
+ * Memoize pure function results by serialized arguments
+ */
+export function memoize<T extends (...args: any[]) => any>(func: T): T {
+  const cache = new Map<string, ReturnType<T>>();
+  const serialize = (value: unknown): string => {
+    if (value === undefined) {
+      return '__undefined__';
+    }
+
+    return JSON.stringify(value);
+  };
+
+  return ((...args: Parameters<T>) => {
+    const key = args.map(serialize).join('|');
+
+    if (cache.has(key)) {
+      return cache.get(key) as ReturnType<T>;
+    }
+
+    const result = func(...args);
+    cache.set(key, result);
+    return result;
+  }) as T;
+}
+
+/**
  * Request Idle Callback polyfill
  */
 export const requestIdleCallback =

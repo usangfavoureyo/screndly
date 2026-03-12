@@ -4,9 +4,10 @@
 
 import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
+import { JSDOM } from 'jsdom';
 import Parser from 'rss-parser';
 import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
-import { publisherService } from './publisher.service';
+import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 
 export interface RSSFeedFilters {
@@ -52,6 +53,8 @@ export interface RSSFeedInput {
   platformImageCounts?: PlatformImageCounts;
   dedupeDays?: number;
   filters?: RSSFeedFilters;
+  serperEnabled?: boolean;
+  tmdbEnabled?: boolean;
   serperPriority?: boolean;
   rehostImages?: boolean;
   autoPost?: boolean;
@@ -69,6 +72,7 @@ interface RSSItem {
   pubDate: Date;
   imageUrl?: string;
   imageUrls: string[];
+  contentHtml?: string;
   author?: string;
   guid?: string;
 }
@@ -112,10 +116,13 @@ export interface RSSActivityItem {
   link?: string;
   description?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   status: 'pending' | 'published' | 'failed';
   timestamp: string;
   publishedAt?: string;
   platforms: string[];
+  platformPostIds?: Record<string, string>;
+  platformResults?: PublishResult[];
   error?: string;
 }
 
@@ -147,9 +154,12 @@ interface RSSActivityMetadata {
   itemLink?: string;
   description?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   publishedAt?: string;
   status: 'pending' | 'published' | 'failed';
   platforms: string[];
+  platformPostIds?: Record<string, string>;
+  platformResults?: PublishResult[];
   errorMessage?: string;
 }
 
@@ -175,6 +185,7 @@ interface RSSRuntimeSettings {
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
+const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
@@ -198,6 +209,8 @@ type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
   trickle: boolean;
   feedItemsTable: boolean;
+  serperEnabled: boolean;
+  tmdbEnabled: boolean;
 };
 
 let rssFeedColumnSupportPromise: Promise<RSSFeedColumnSupport> | null = null;
@@ -228,7 +241,7 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           FROM information_schema.columns
           WHERE table_schema = current_schema()
             AND table_name = 'RSSFeed'
-            AND column_name IN ('platformImageCounts', 'trickle')
+            AND column_name IN ('platformImageCounts', 'trickle', 'serperEnabled', 'tmdbEnabled')
         `;
 
         const tableNames = new Set(tables.map((table) => table.table_name));
@@ -237,6 +250,8 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           platformImageCounts: columnNames.has('platformImageCounts'),
           trickle: columnNames.has('trickle'),
           feedItemsTable: tableNames.has('RSSFeedItem'),
+          serperEnabled: columnNames.has('serperEnabled'),
+          tmdbEnabled: columnNames.has('tmdbEnabled'),
         };
       } catch (error) {
         console.warn('[RSS] Failed to inspect RSSFeed columns. Assuming latest schema.', error);
@@ -244,6 +259,8 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           platformImageCounts: true,
           trickle: true,
           feedItemsTable: true,
+          serperEnabled: true,
+          tmdbEnabled: true,
         };
       }
     })();
@@ -265,6 +282,8 @@ async function getRSSFeedSelect(): Promise<Prisma.RSSFeedSelect> {
     imageCount: true,
     dedupeDays: true,
     filters: true,
+    ...(support.serperEnabled ? { serperEnabled: true } : {}),
+    ...(support.tmdbEnabled ? { tmdbEnabled: true } : {}),
     serperPriority: true,
     rehostImages: true,
     autoPost: true,
@@ -291,6 +310,8 @@ async function getRSSFeedSelect(): Promise<Prisma.RSSFeedSelect> {
 function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T): (T & {
   platformImageCounts?: Prisma.JsonValue | null;
   trickle: 'newest_first' | 'oldest_first';
+  serperEnabled: boolean;
+  tmdbEnabled: boolean;
 }) | null {
   if (!feed) {
     return null;
@@ -300,16 +321,27 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
     ...feed,
     platformImageCounts: 'platformImageCounts' in feed ? feed.platformImageCounts : null,
     trickle: normalizeTrickle(typeof feed.trickle === 'string' ? feed.trickle : undefined),
+    serperEnabled: typeof feed.serperEnabled === 'boolean'
+      ? feed.serperEnabled
+      : (typeof feed.serperPriority === 'boolean' ? feed.serperPriority : true),
+    tmdbEnabled: typeof feed.tmdbEnabled === 'boolean' ? feed.tmdbEnabled : false,
   };
 }
 
 function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]): Array<T & {
   platformImageCounts?: Prisma.JsonValue | null;
   trickle: 'newest_first' | 'oldest_first';
+  serperEnabled: boolean;
+  tmdbEnabled: boolean;
 }> {
   return feeds
     .map((feed) => applyRSSFeedCompatibility(feed))
-    .filter((feed): feed is T & { platformImageCounts?: Prisma.JsonValue | null; trickle: 'newest_first' | 'oldest_first' } => Boolean(feed));
+    .filter((feed): feed is T & {
+      platformImageCounts?: Prisma.JsonValue | null;
+      trickle: 'newest_first' | 'oldest_first';
+      serperEnabled: boolean;
+      tmdbEnabled: boolean;
+    } => Boolean(feed));
 }
 
 function asString(value: Prisma.JsonValue | undefined): string | undefined {
@@ -591,6 +623,26 @@ async function clearPendingFeedItems(feedId: string, reason: string): Promise<vo
   });
 }
 
+async function clearQuietHoursPendingFeedItems(feedId: string): Promise<void> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    return;
+  }
+
+  await prisma.rSSFeedItem.updateMany({
+    where: {
+      feedId,
+      status: 'pending',
+      errorMessage: QUIET_HOURS_BLOCK_REASON,
+    },
+    data: {
+      status: 'filtered',
+      lastAttemptedAt: new Date(),
+      errorMessage: 'Cleared because quiet hours were active.',
+    },
+  });
+}
+
 function getFilterScopeText(item: RSSItem, scope: RSSFeedFilters['scope']): string[] {
   const title = item.title || '';
   const body = item.description || '';
@@ -676,6 +728,8 @@ function evaluateFeedRules(item: RSSItem, filters: RSSFeedFilters): { allowed: b
 
 function extractImageUrls(item: Record<string, any>): string[] {
   const urls: Array<string | undefined> = [];
+  const rankedBodyImages = extractRankedArticleBodyImageUrls(item);
+  urls.push(...rankedBodyImages);
   const enclosure = item.enclosure;
   if (enclosure?.url && (!enclosure.type || String(enclosure.type).startsWith('image/'))) {
     urls.push(enclosure.url);
@@ -710,6 +764,182 @@ function extractImageUrls(item: Record<string, any>): string[] {
   return dedupeUrls(urls);
 }
 
+function getRawHtmlContent(item: Record<string, any>): string {
+  const htmlContent = item['content:encoded'] || item.contentEncoded || item.content || item.contentSnippet || item.summary;
+  return typeof htmlContent === 'string' ? htmlContent : '';
+}
+
+function isRevealDrivenHeadline(text: string): boolean {
+  return /\b(reveals?|revealed|unveils?|unveiled|debuts?|debuted|first look|exclusive image|new poster|official poster|character poster|teaser poster|new still|new image|new images|check out .*poster|check out .*image|gallery|photos?)\b/i.test(text);
+}
+
+function getRevealAssetIntent(text: string): 'poster' | 'still' | 'logo' | 'gallery' | 'general_reveal' | null {
+  if (!isRevealDrivenHeadline(text)) {
+    return null;
+  }
+
+  if (/\b(logo|title treatment|wordmark|key art logo)\b/i.test(text)) {
+    return 'logo';
+  }
+
+  if (/\b(gallery|photos?|set photos?|cast photos?|behind-the-scenes|bts)\b/i.test(text)) {
+    return 'gallery';
+  }
+
+  if (/\b(poster|one sheet|character poster|teaser poster|imax poster|key art)\b/i.test(text)) {
+    return 'poster';
+  }
+
+  if (/\b(first look|new still|exclusive image|new image|new images|stills?)\b/i.test(text)) {
+    return 'still';
+  }
+
+  return 'general_reveal';
+}
+
+function resolveDomImageSource(element: Element): string | null {
+  const htmlElement = element as HTMLElement;
+  const srcCandidates = [
+    htmlElement.getAttribute('src'),
+    htmlElement.getAttribute('data-src'),
+    htmlElement.getAttribute('data-lazy-src'),
+    htmlElement.getAttribute('data-original'),
+  ].filter((value): value is string => Boolean(value && value.trim()));
+
+  const srcset = htmlElement.getAttribute('srcset') || htmlElement.getAttribute('data-srcset');
+  if (srcset) {
+    const first = srcset
+      .split(',')
+      .map((entry) => entry.trim().split(/\s+/)[0])
+      .filter(Boolean)
+      .pop();
+    if (first) {
+      srcCandidates.unshift(first);
+    }
+  }
+
+  const source = srcCandidates.find((value) => /^https?:\/\//i.test(value));
+  return source?.trim() || null;
+}
+
+function collectLocalImageContext(image: Element): string {
+  const fragments = [
+    image.getAttribute('alt'),
+    image.getAttribute('title'),
+    image.closest('figure')?.querySelector('figcaption')?.textContent,
+    image.parentElement?.textContent,
+    image.previousElementSibling?.textContent,
+    image.nextElementSibling?.textContent,
+    image.closest('article')?.querySelector('h2, h3')?.textContent,
+  ];
+
+  return stripHtml(fragments.filter(Boolean).join(' '));
+}
+
+function scoreArticleBodyImageCandidate(
+  articleTitle: string,
+  articleDescription: string,
+  localContext: string,
+  sourceUrl: string,
+  width: number,
+  height: number
+): number {
+  const articleText = `${articleTitle} ${articleDescription}`;
+  const revealIntent = getRevealAssetIntent(articleText);
+  let score = 0;
+
+  if (isRevealDrivenHeadline(articleText)) {
+    score += 25;
+  }
+
+  if (isRevealDrivenHeadline(localContext)) {
+    score += 35;
+  }
+
+  if (revealIntent === 'poster') {
+    if (height > width && width >= 240) score += 28;
+    if (/\bposter|key art|one sheet|character poster\b/i.test(localContext)) score += 24;
+  } else if (revealIntent === 'still') {
+    if (width >= height) score += 22;
+    if (/\bfirst look|still|image|scene|exclusive\b/i.test(localContext)) score += 20;
+  } else if (revealIntent === 'logo') {
+    if (/\blogo|wordmark|title treatment\b/i.test(localContext)) score += 22;
+  } else if (revealIntent === 'gallery') {
+    if (/\bgallery|photo|photos|set photo|cast photo|behind-the-scenes|bts\b/i.test(localContext)) score += 20;
+  }
+
+  const normalizedTitleTokens = articleTitle
+    .split(/[^A-Za-z0-9]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4);
+  const titleMatches = normalizedTitleTokens.filter((token) => new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(localContext)).length;
+  score += Math.min(titleMatches * 8, 24);
+
+  if (width * height >= 500_000) {
+    score += 12;
+  }
+
+  if (/(avatar|author|logo|icon|sprite|thumbnail|thumb|related|promo|advert|adservice)/i.test(sourceUrl)) {
+    score -= 45;
+  }
+
+  if (/\b(related|recommended|newsletter|subscribe)\b/i.test(localContext)) {
+    score -= 30;
+  }
+
+  return score;
+}
+
+function extractRankedArticleBodyImageUrls(item: Record<string, any>): string[] {
+  const htmlContent = getRawHtmlContent(item);
+  if (!htmlContent || !/<img[\s>]/i.test(htmlContent)) {
+    return [];
+  }
+
+  try {
+    const dom = new JSDOM(`<article>${htmlContent}</article>`);
+    const document = dom.window.document;
+    const articleTitle = String(item.title || '').trim();
+    const articleDescription = extractLeadParagraphText(item);
+
+    const ranked = Array.from(document.querySelectorAll('img'))
+      .map((image) => {
+        const sourceUrl = resolveDomImageSource(image);
+        if (!sourceUrl) {
+          return null;
+        }
+
+        const width = Number.parseInt(image.getAttribute('width') || '0', 10) || 0;
+        const height = Number.parseInt(image.getAttribute('height') || '0', 10) || 0;
+        const localContext = collectLocalImageContext(image);
+        const score = scoreArticleBodyImageCandidate(
+          articleTitle,
+          articleDescription,
+          localContext,
+          sourceUrl,
+          width,
+          height
+        );
+
+        if (score < 0) {
+          return null;
+        }
+
+        return {
+          sourceUrl,
+          score,
+        };
+      })
+      .filter((entry): entry is { sourceUrl: string; score: number } => Boolean(entry))
+      .sort((left, right) => right.score - left.score);
+
+    return dedupeUrls(ranked.map((entry) => entry.sourceUrl));
+  } catch (error) {
+    console.warn('[RSS] Failed to extract ranked article body images from feed item HTML.', error);
+    return [];
+  }
+}
+
 function normalizeRSSDedupeValue(value?: string | null): string {
   return String(value || '')
     .toLowerCase()
@@ -741,6 +971,7 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     pubDate: item.pubDate.toISOString(),
     imageUrl: item.imageUrl ?? null,
     imageUrls: item.imageUrls,
+    contentHtml: item.contentHtml ?? null,
     author: item.author ?? null,
     guid: item.guid ?? null,
   } satisfies Prisma.InputJsonValue;
@@ -764,6 +995,7 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
     imageUrls: Array.isArray(value.imageUrls)
       ? value.imageUrls.filter((entry): entry is string => typeof entry === 'string')
       : [],
+    contentHtml: typeof value.contentHtml === 'string' ? value.contentHtml : undefined,
     author: typeof value.author === 'string' ? value.author : undefined,
     guid: typeof value.guid === 'string' ? value.guid : undefined,
   };
@@ -821,7 +1053,12 @@ async function upsertRSSFeedItem(
 }
 
 async function resolveRSSItemImages(
-  feed: { serperPriority: boolean; imageCount?: string | null },
+  feed: {
+    serperEnabled?: boolean | null;
+    tmdbEnabled?: boolean | null;
+    serperPriority: boolean;
+    imageCount?: string | null;
+  },
   item: RSSItem,
   limit: number,
   model?: string
@@ -834,6 +1071,8 @@ async function resolveRSSItemImages(
       fallbackImages: dedupeUrls([...(item.imageUrls || []), item.imageUrl]),
     },
     {
+      serperEnabled: feed.serperEnabled ?? true,
+      tmdbEnabled: feed.tmdbEnabled ?? false,
       serperPriority: feed.serperPriority,
       limit,
       smartCount: feed.imageCount === 'random',
@@ -912,6 +1151,74 @@ async function logRSSActivity(metadata: RSSActivityMetadata): Promise<void> {
   });
 }
 
+function parseRSSActivityImageUrls(value: Prisma.JsonValue | undefined): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const imageUrls = value
+    .filter((entry): entry is string => typeof entry === 'string')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  return imageUrls.length > 0 ? imageUrls : undefined;
+}
+
+function parseRSSActivityPlatformPostIds(value: Prisma.JsonValue | undefined): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value as Prisma.JsonObject)
+    .filter(([, entryValue]) => typeof entryValue === 'string' && entryValue.trim())
+    .map(([key, entryValue]) => [key, String(entryValue).trim()] as const);
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function parseRSSActivityPlatformResults(value: Prisma.JsonValue | undefined): PublishResult[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const results = value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+
+      const record = entry as Prisma.JsonObject;
+      const platform = typeof record.platform === 'string' ? record.platform : null;
+      const status = record.status;
+      if (!platform || (status !== 'posted' && status !== 'failed' && status !== 'skipped')) {
+        return null;
+      }
+
+      const result: PublishResult = {
+        platform,
+        status,
+        postedAt: typeof record.postedAt === 'string' ? record.postedAt : new Date().toISOString(),
+      };
+
+      if (typeof record.error === 'string') {
+        result.error = record.error;
+      }
+
+      if (typeof record.id === 'string') {
+        result.id = record.id;
+      }
+
+      if (typeof record.url === 'string') {
+        result.url = record.url;
+      }
+
+      return result;
+    })
+    .filter((entry): entry is PublishResult => Boolean(entry));
+
+  return results.length > 0 ? results : undefined;
+}
+
 function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prisma.JsonValue | null }): RSSActivityItem | null {
   const metadata = log.metadata as Prisma.JsonObject | null;
   if (!metadata || metadata.category !== RSS_ACTIVITY_CATEGORY) {
@@ -935,10 +1242,13 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
     link: typeof metadata.itemLink === 'string' ? metadata.itemLink : undefined,
     description: typeof metadata.description === 'string' ? metadata.description : undefined,
     imageUrl: typeof metadata.imageUrl === 'string' ? metadata.imageUrl : undefined,
+    imageUrls: parseRSSActivityImageUrls(metadata.imageUrls),
     status,
     timestamp: log.timestamp.toISOString(),
     publishedAt: typeof metadata.publishedAt === 'string' ? metadata.publishedAt : undefined,
     platforms,
+    platformPostIds: parseRSSActivityPlatformPostIds(metadata.platformPostIds),
+    platformResults: parseRSSActivityPlatformResults(metadata.platformResults),
     error: typeof metadata.errorMessage === 'string' ? metadata.errorMessage : undefined,
   };
 }
@@ -990,10 +1300,13 @@ function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMeta
     link: metadata.itemLink,
     description: metadata.description,
     imageUrl: metadata.imageUrl,
+    imageUrls: metadata.imageUrls,
     status: metadata.status,
     timestamp: new Date().toISOString(),
     publishedAt: metadata.publishedAt,
     platforms: metadata.platforms,
+    platformPostIds: metadata.platformPostIds,
+    platformResults: metadata.platformResults,
     error: metadata.errorMessage,
   });
 }
@@ -1025,7 +1338,7 @@ function isWithinQuietHours(settings: RSSRuntimeSettings, now: Date = new Date()
 
 async function getPublishingBlockReason(platforms: string[], settings: RSSRuntimeSettings): Promise<string | null> {
   if (isWithinQuietHours(settings)) {
-    return 'Publishing is paused by quiet hours.';
+    return QUIET_HOURS_BLOCK_REASON;
   }
 
   if (settings.rssPostingIntervalMinutes > 0) {
@@ -1148,11 +1461,17 @@ async function attemptRSSPublish(
       status: 'published';
       caption: string;
       imageUrl?: string;
+      imageUrls: string[];
       successfulPlatforms: string[];
+      platformPostIds: Record<string, string>;
+      platformResults: PublishResult[];
     }
   | {
       status: 'failed';
       imageUrl?: string;
+      imageUrls: string[];
+      platformPostIds: Record<string, string>;
+      platformResults: PublishResult[];
       errorMessage: string;
     }
 > {
@@ -1189,11 +1508,19 @@ async function attemptRSSPublish(
     const successfulPlatforms = publishResults
       .filter((result) => result.status === 'posted')
       .map((result) => result.platform);
+    const platformPostIds = Object.fromEntries(
+      publishResults
+        .filter((result) => result.status === 'posted' && typeof result.id === 'string' && result.id.trim())
+        .map((result) => [result.platform, result.id!.trim()] as const)
+    );
 
     if (successfulPlatforms.length === 0) {
       return {
         status: 'failed',
         imageUrl: publishImageUrl,
+        imageUrls: publishImageUrls,
+        platformPostIds,
+        platformResults: publishResults,
         errorMessage: publishResults
           .map((result) => `${result.platform}: ${result.error || result.status}`)
           .join('; ') || 'Publishing failed.',
@@ -1204,12 +1531,19 @@ async function attemptRSSPublish(
       status: 'published',
       caption,
       imageUrl: publishImageUrl,
+      imageUrls: publishImageUrls,
       successfulPlatforms,
+      platformPostIds,
+      platformResults: publishResults,
     };
   } catch (error) {
+    const fallbackImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
     return {
       status: 'failed',
       imageUrl: item.imageUrl,
+      imageUrls: fallbackImageUrls,
+      platformPostIds: {},
+      platformResults: [],
       errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
     };
   }
@@ -1293,6 +1627,7 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
         const description = extractLeadParagraphText(item);
         const pubDate = item.isoDate || item.pubDate ? new Date(item.isoDate || item.pubDate) : new Date();
         const imageUrls = extractImageUrls(item);
+        const contentHtml = getRawHtmlContent(item);
 
         return {
           title: String(item.title || '').trim(),
@@ -1301,6 +1636,7 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
           pubDate: Number.isNaN(pubDate.getTime()) ? new Date() : pubDate,
           imageUrl: imageUrls[0],
           imageUrls,
+          contentHtml: contentHtml || undefined,
           author: String(item.creator || item.author || item.dcCreator || '').trim() || undefined,
           guid: String(item.guid || '').trim() || undefined,
         } satisfies RSSItem;
@@ -1374,6 +1710,14 @@ async function createFeed(data: RSSFeedInput) {
     status: data.status ?? 'active',
     source: feedTitle || data.name,
   };
+
+  if (support.serperEnabled) {
+    createData.serperEnabled = data.serperEnabled ?? true;
+  }
+
+  if (support.tmdbEnabled) {
+    createData.tmdbEnabled = data.tmdbEnabled ?? false;
+  }
 
   if (support.platformImageCounts) {
     createData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
@@ -1469,6 +1813,8 @@ async function updateFeed(
         : data.startFromNowAt,
     }) as unknown as Prisma.InputJsonValue;
   }
+  if (support.serperEnabled && data.serperEnabled !== undefined) updateData.serperEnabled = data.serperEnabled;
+  if (support.tmdbEnabled && data.tmdbEnabled !== undefined) updateData.tmdbEnabled = data.tmdbEnabled;
   if (data.serperPriority !== undefined) updateData.serperPriority = data.serperPriority;
   if (data.rehostImages !== undefined) updateData.rehostImages = data.rehostImages;
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
@@ -1558,6 +1904,28 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
   const runtimeSettings = await getRuntimeSettings();
   const nextRunAt = new Date(Date.now() + feed.interval * 60 * 1000);
+  const quietHoursBlocked = isWithinQuietHours(runtimeSettings);
+
+  if (quietHoursBlocked) {
+    await clearQuietHoursPendingFeedItems(feed.id);
+    await updateFeed(id, {
+      status: 'active',
+      nextRunAt,
+      errorMessage: null,
+    });
+
+    return {
+      feedId: feed.id,
+      feedName: feed.name,
+      itemsAdded: 0,
+      checkedCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      latestItemTitle: feed.title || undefined,
+      error: options.manualRun ? 'RSS polling is paused by quiet hours.' : undefined,
+      selectionMode: options.manualRun ? 'latest_item' : 'backlog',
+    };
+  }
 
   try {
     const xml = await fetchRSSFeed(feed.url);
@@ -1751,9 +2119,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           itemLink: item.link,
           description: item.description,
           imageUrl: publishAttempt.imageUrl,
+          imageUrls: publishAttempt.imageUrls,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
+          platformPostIds: publishAttempt.platformPostIds,
+          platformResults: publishAttempt.platformResults,
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
@@ -1780,9 +2151,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         itemLink: item.link,
         description: item.description,
         imageUrl: publishAttempt.imageUrl,
+        imageUrls: publishAttempt.imageUrls,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,
+        platformPostIds: publishAttempt.platformPostIds,
+        platformResults: publishAttempt.platformResults,
         errorMessage: publishAttempt.errorMessage,
       };
       await logRSSActivity(failedMetadata);
@@ -1809,6 +2183,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
+        const pendingImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
         const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1816,7 +2191,8 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           itemTitle: item.title,
           itemLink: item.link,
           description: item.description,
-          imageUrl: item.imageUrl,
+          imageUrl: pendingImageUrls[0],
+          imageUrls: pendingImageUrls,
           publishedAt: item.pubDate.toISOString(),
           status: 'pending',
           platforms,
@@ -1841,6 +2217,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       const blockReason = await getPublishingBlockReason(platforms, runtimeSettings);
       if (blockReason) {
         pendingCount += 1;
+        const pendingImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
         const pendingMetadata: RSSActivityMetadata = {
           category: RSS_ACTIVITY_CATEGORY,
           feedId: feed.id,
@@ -1848,7 +2225,8 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           itemTitle: item.title,
           itemLink: item.link,
           description: item.description,
-          imageUrl: item.imageUrl,
+          imageUrl: pendingImageUrls[0],
+          imageUrls: pendingImageUrls,
           publishedAt: item.pubDate.toISOString(),
           status: 'pending',
           platforms,
@@ -1886,9 +2264,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           itemLink: item.link,
           description: item.description,
           imageUrl: publishAttempt.imageUrl,
+          imageUrls: publishAttempt.imageUrls,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
+          platformPostIds: publishAttempt.platformPostIds,
+          platformResults: publishAttempt.platformResults,
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
@@ -1908,9 +2289,12 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         itemLink: item.link,
         description: item.description,
         imageUrl: publishAttempt.imageUrl,
+        imageUrls: publishAttempt.imageUrls,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,
+        platformPostIds: publishAttempt.platformPostIds,
+        platformResults: publishAttempt.platformResults,
         errorMessage: publishAttempt.errorMessage,
       };
       await logRSSActivity(failedMetadata);

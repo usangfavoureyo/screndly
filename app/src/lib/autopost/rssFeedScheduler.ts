@@ -48,6 +48,8 @@ export interface RSSFeedConfig {
       active: boolean;
     }>;
   };
+  serperEnabled?: boolean;
+  tmdbEnabled?: boolean;
   serperPriority: boolean;
   rehostImages: boolean;
   platformsEnabled: { x: boolean; threads: boolean; facebook: boolean; pinterest: boolean };

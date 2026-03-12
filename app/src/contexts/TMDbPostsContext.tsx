@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { getSettingsForBackend } from '../lib/tmdb';
+import { apiClient } from '../lib/api/client';
 
 interface FetchPostsOptions {
   silent?: boolean;
@@ -84,7 +85,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.get<any[]>('/api/tmdb/posts');
 
       if (response.success && Array.isArray(response.data)) {
@@ -151,8 +151,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   const refreshFromTMDb = useCallback(async (): Promise<{ added: number; errors: string[] }> => {
     try {
       const settings = getSettingsForBackend();
-      const { apiClient } = await import('../lib/api/client');
-
       const response = await apiClient.post<any>('/api/tmdb/refresh', { settings });
 
       if (response.success) {
@@ -187,7 +185,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.put(
         `/api/tmdb/posts/${post.id}`,
         normalizeTmdbPayload({ ...post, status: 'scheduled' })
@@ -219,7 +216,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.post('/api/tmdb/posts', post);
       if (!response.success) throw new Error(response.error?.message || 'Failed to restore post');
     } catch (err) {
@@ -238,7 +234,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.put(`/api/tmdb/posts/${postId}`, { scheduledTime: newScheduledTime });
       if (!response.success) throw new Error(response.error?.message || 'Failed to reschedule post');
     } catch (err) {
@@ -267,7 +262,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.put(
         `/api/tmdb/posts/${postId}`,
         normalizeTmdbPayload({ status, publishedTime, errorMessage })
@@ -290,7 +284,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       const response = await apiClient.put(`/api/tmdb/posts/${postId}`, normalizeTmdbPayload(updates));
       if (!response.success) throw new Error(response.error?.message || 'Failed to update post');
     } catch (err) {
@@ -308,7 +301,6 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const { apiClient } = await import('../lib/api/client');
       await apiClient.delete(`/api/tmdb/posts/${postId}`);
     } catch (err) {
       console.error('Failed to delete from backend:', err);

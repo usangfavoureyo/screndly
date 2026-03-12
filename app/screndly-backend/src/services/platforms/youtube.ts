@@ -4,6 +4,46 @@ import { OAuth2Client } from 'google-auth-library';
 import { env } from '../../lib/env';
 
 export const youtubeService = {
+    async listPlaylists(accessToken: string, refreshToken?: string) {
+        const auth = this.getClient(accessToken, refreshToken);
+        const youtube = google.youtube({ version: 'v3', auth });
+        const playlists: Array<{
+            id: string;
+            title: string;
+            itemCount?: number;
+            privacyStatus?: string;
+        }> = [];
+        let pageToken: string | undefined;
+
+        do {
+            const response = await youtube.playlists.list({
+                part: ['snippet', 'contentDetails', 'status'],
+                mine: true,
+                maxResults: 50,
+                pageToken,
+            });
+
+            for (const item of response.data.items || []) {
+                if (!item.id || !item.snippet?.title) {
+                    continue;
+                }
+
+                playlists.push({
+                    id: item.id,
+                    title: item.snippet.title,
+                    itemCount: typeof item.contentDetails?.itemCount === 'number'
+                        ? item.contentDetails.itemCount
+                        : undefined,
+                    privacyStatus: item.status?.privacyStatus || undefined,
+                });
+            }
+
+            pageToken = response.data.nextPageToken || undefined;
+        } while (pageToken);
+
+        return playlists;
+    },
+
     async resolvePlaylistIds(youtube: any, playlistNamesOrIds: string[]): Promise<string[]> {
         const requested = playlistNamesOrIds
             .map((value) => value.trim())

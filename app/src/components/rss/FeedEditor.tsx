@@ -56,6 +56,8 @@ function createDefaultFormData(): Partial<Feed> {
     imageCount: '2',
     dedupeDays: 30,
     filters: DEFAULT_FILTERS,
+    serperEnabled: true,
+    tmdbEnabled: false,
     serperPriority: true,
     rehostImages: false,
     platformsEnabled: { x: true, threads: true, facebook: false, pinterest: false },
@@ -81,6 +83,10 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     if (feed) {
       setFormData({
         ...feed,
+        serperEnabled: feed.serperEnabled ?? true,
+        tmdbEnabled: feed.tmdbEnabled ?? false,
+        serperPriority: feed.serperPriority ?? true,
+        rehostImages: feed.rehostImages ?? false,
         filters: {
           ...DEFAULT_FILTERS,
           ...feed.filters,
@@ -109,6 +115,8 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
         imageCount: formData.imageCount || '2',
         dedupeDays: formData.dedupeDays || 30,
         filters: formFilters,
+        serperEnabled: formData.serperEnabled ?? true,
+        tmdbEnabled: formData.tmdbEnabled ?? false,
         serperPriority: formData.serperPriority ?? true,
         rehostImages: formData.rehostImages ?? false,
         platformsEnabled: formData.platformsEnabled || { x: true, threads: true, facebook: false, pinterest: false },
@@ -575,13 +583,53 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <Label className="text-gray-600 dark:text-[#9CA3AF]">Serper Priority</Label>
-                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">Use Serper images first</p>
+                  <Label className="text-gray-600 dark:text-[#9CA3AF]">TMDb Structured Assets</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">Use TMDb for posters, backdrops, logos, and profiles</p>
                 </div>
                 <Switch
-                  checked={formData.serperPriority}
-                  onCheckedChange={(checked) => setFormData({ ...formData, serperPriority: checked })}
+                  checked={formData.tmdbEnabled ?? false}
+                  onCheckedChange={(checked) => setFormData({ ...formData, tmdbEnabled: checked })}
                 />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-gray-600 dark:text-[#9CA3AF]">Serper Open-Web Retrieval</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">Use Serper for fresher web and editorial image fallback</p>
+                </div>
+                <Switch
+                  checked={formData.serperEnabled ?? true}
+                  onCheckedChange={(checked) => setFormData({ ...formData, serperEnabled: checked })}
+                />
+              </div>
+
+              <div>
+                <Label className="text-gray-600 dark:text-[#9CA3AF]">Source Priority</Label>
+                <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">
+                  When both sources are enabled, choose which one gets the first image pass
+                </p>
+                <Select
+                  value={(formData.serperPriority ?? true) ? 'serper_first' : 'tmdb_first'}
+                  onValueChange={(value) => setFormData({ ...formData, serperPriority: value === 'serper_first' })}
+                  disabled={!formData.serperEnabled || !formData.tmdbEnabled}
+                >
+                  <SelectTrigger
+                    className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 disabled:opacity-50"
+                    onFocus={() => haptics.light()}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tmdb_first">TMDb first, Serper fallback</SelectItem>
+                    <SelectItem value="serper_first">Serper first, TMDb fallback</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-[#1F2937] bg-gray-50 dark:bg-[#050505] px-3 py-2">
+                <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                  Feed and article images stay as the final fallback if the enabled sources do not find a good match.
+                </p>
               </div>
 
               <div className="flex items-center justify-between">

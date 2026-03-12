@@ -16,6 +16,9 @@ export interface PublishContent {
     link?: string; // For Pinterest/FB
     imageUrl?: string; // If posting image
     videoUrl?: string; // If posting video from URL
+    youtubeTitle?: string;
+    youtubeDescription?: string;
+    youtubePlaylistIds?: string[];
 }
 
 export interface PublishResult {
