@@ -76,7 +76,8 @@ export function getYtDlpAuthOptions(): YtDlpOptions {
 }
 
 export function hasYtDlpAuthConfiguration(): boolean {
-    return Object.keys(getYtDlpAuthOptions()).length > 0;
+    const options = getYtDlpAuthOptions();
+    return Boolean(options.cookies || options.proxy);
 }
 
 export function describeYtDlpAuthConfiguration(): string {
