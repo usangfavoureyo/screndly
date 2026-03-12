@@ -3,3 +3,4 @@ NIXPACKS_NODE_VERSION = "20"
 
 [phases.setup]
 nixPkgs = ["nodejs_20", "python3", "ffmpeg"]
+aptPkgs = ["python-is-python3"]
