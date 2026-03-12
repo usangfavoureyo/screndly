@@ -105,6 +105,11 @@ interface FeedVideoProcessingResult {
     stopScanning?: boolean;
 }
 
+interface ChannelVideoSourceResult {
+    items: any[];
+    source: 'rss' | 'yt-dlp';
+}
+
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
     Facebook: 'facebook',
@@ -252,9 +257,12 @@ export class YouTubePollerService {
         try {
             activeChannel = await this.ensureCanonicalChannel(channel);
             const supportsFeedItemStatus = await hasFeedItemStatusColumn();
+            const { items: latestVideos, source } = await this.getRecentChannelVideos(activeChannel);
+            if (source === 'yt-dlp') {
+                console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
+            }
 
-            const feed = await parser.parseURL(`https://www.youtube.com/feeds/videos.xml?channel_id=${activeChannel.channelId}`);
-            if (!feed.items || feed.items.length === 0) {
+            if (latestVideos.length === 0) {
                 return this.completeChannelCheck(activeChannel.id, {
                     channelId: activeChannel.channelId,
                     channelName: activeChannel.name,
@@ -263,13 +271,9 @@ export class YouTubePollerService {
                     newVideoDetected: false,
                     published: false,
                     failed: false,
-                    message: 'No videos found in feed'
+                    message: 'No videos found in channel source'
                 });
             }
-
-            const latestVideos = [...feed.items].sort((a, b) => {
-                return new Date(b.pubDate || 0).getTime() - new Date(a.pubDate || 0).getTime();
-            }).slice(0, MAX_RECENT_FEED_ITEMS);
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
             console.log(
                 usingDefaultTrailerKeywords
@@ -341,6 +345,97 @@ export class YouTubePollerService {
                 message: error.message || 'Unknown channel processing error'
             });
         }
+    }
+
+    private sortRecentChannelVideos(videos: any[]): any[] {
+        return [...videos]
+            .sort((left, right) => new Date(right?.pubDate || 0).getTime() - new Date(left?.pubDate || 0).getTime())
+            .slice(0, MAX_RECENT_FEED_ITEMS);
+    }
+
+    private async getRecentChannelVideos(channel: any): Promise<ChannelVideoSourceResult> {
+        const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`;
+
+        try {
+            const feed = await parser.parseURL(rssUrl);
+            const items = Array.isArray(feed.items) ? this.sortRecentChannelVideos(feed.items) : [];
+            if (items.length > 0) {
+                return {
+                    items,
+                    source: 'rss',
+                };
+            }
+
+            console.warn(`[YouTubePoller] ${channel.name}: RSS feed returned no items; trying yt-dlp channel fallback`);
+        } catch (error) {
+            console.warn(`[YouTubePoller] ${channel.name}: RSS feed fetch failed; trying yt-dlp channel fallback`, error);
+        }
+
+        return {
+            items: await this.fetchRecentChannelVideosWithYtDlp(channel.channelId, channel.name),
+            source: 'yt-dlp',
+        };
+    }
+
+    private parseYtDlpPublishedAt(raw: any): string | undefined {
+        if (typeof raw?.timestamp === 'number' && Number.isFinite(raw.timestamp)) {
+            return new Date(raw.timestamp * 1000).toISOString();
+        }
+
+        if (typeof raw?.upload_date === 'string' && /^\d{8}$/.test(raw.upload_date)) {
+            const year = raw.upload_date.slice(0, 4);
+            const month = raw.upload_date.slice(4, 6);
+            const day = raw.upload_date.slice(6, 8);
+            return `${year}-${month}-${day}T00:00:00.000Z`;
+        }
+
+        return undefined;
+    }
+
+    private async fetchRecentChannelVideosWithYtDlp(channelId: string, channelName: string): Promise<any[]> {
+        const channelUrl = `https://www.youtube.com/channel/${channelId}/videos`;
+        const playlist = await ytDlp(channelUrl, {
+            flatPlaylist: true,
+            playlistEnd: MAX_RECENT_FEED_ITEMS,
+            dumpSingleJson: true,
+            skipDownload: true,
+            noWarnings: true,
+            quiet: true,
+        } as any);
+
+        const entries = Array.isArray((playlist as any)?.entries) ? (playlist as any).entries : [];
+        const resolvedVideos = await Promise.all(entries.map(async (entry: any) => {
+            const videoId = typeof entry?.id === 'string' ? entry.id.trim() : '';
+            if (!videoId) {
+                return null;
+            }
+
+            const videoUrl = typeof entry?.url === 'string' && entry.url.trim().length > 0
+                ? entry.url
+                : `https://www.youtube.com/watch?v=${videoId}`;
+
+            try {
+                const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
+                return {
+                    id: `yt:video:${videoId}`,
+                    link: typeof raw?.webpage_url === 'string' ? raw.webpage_url : videoUrl,
+                    title: typeof raw?.title === 'string' && raw.title.trim().length > 0
+                        ? raw.title
+                        : (typeof entry?.title === 'string' && entry.title.trim().length > 0 ? entry.title : 'Untitled YouTube upload'),
+                    pubDate: this.parseYtDlpPublishedAt(raw),
+                    contentSnippet: typeof raw?.description === 'string'
+                        ? raw.description
+                        : (typeof entry?.description === 'string' ? entry.description : ''),
+                };
+            } catch (error) {
+                console.warn(`[YouTubePoller] ${channelName}: failed to resolve yt-dlp fallback metadata for ${videoId}; skipping entry`, error);
+                return null;
+            }
+        }));
+
+        return this.sortRecentChannelVideos(
+            resolvedVideos.filter((video): video is any => Boolean(video?.pubDate))
+        );
     }
 
     private async completeChannelCheck(
@@ -1254,6 +1349,20 @@ Respond ONLY "YES" or "NO".`,
         } as any);
     }
 
+    private async fetchYtDlpVideoInfo(videoUrl: string, videoId?: string): Promise<any> {
+        try {
+            return await this.fetchYtDlpInfo(videoUrl);
+        } catch (error) {
+            if (!videoId || !this.isYouTubeBotChallengeError(error)) {
+                throw error;
+            }
+
+            console.warn(`[YouTubePoller] yt-dlp metadata fetch hit a YouTube challenge for ${videoId}; retrying with PO token support`, error);
+        }
+
+        return this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs(videoId));
+    }
+
     private async getVideoInfo(videoUrl: string, videoId: string): Promise<NormalizedVideoInfo> {
         try {
             const info = await ytdl.getInfo(videoUrl, YOUTUBE_INFO_OPTIONS);
@@ -1282,18 +1391,7 @@ Respond ONLY "YES" or "NO".`,
             console.warn(`[YouTubePoller] ytdl-core metadata fetch failed for ${videoId}; trying yt-dlp fallback`, error);
         }
 
-        try {
-            const raw = await this.fetchYtDlpInfo(videoUrl);
-            return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
-        } catch (error) {
-            if (!this.isYouTubeBotChallengeError(error)) {
-                throw error;
-            }
-
-            console.warn(`[YouTubePoller] yt-dlp metadata fetch hit a YouTube challenge for ${videoId}; retrying with PO token support`, error);
-        }
-
-        const raw = await this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs(videoId));
+        const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
         return this.normalizeYtDlpInfo(raw, videoId, videoUrl);
     }
 
