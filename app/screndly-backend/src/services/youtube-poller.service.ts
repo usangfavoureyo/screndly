@@ -9,6 +9,7 @@ import {
     describeYtDlpAuthConfiguration,
     getYtDlpAuthOptions,
     hasYtDlpAuthConfiguration,
+    type YtDlpOptions,
 } from '../lib/yt-dlp';
 import ytDlp from '../lib/yt-dlp';
 import { publisherService, PublishContent } from './publisher.service';
@@ -137,6 +138,7 @@ const YOUTUBE_INFO_OPTIONS = {
 };
 const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
 const execFileAsync = promisify(execFile);
+const YT_DLP_ANDROID_SDKLESS_ARGS = ['youtube:player-client=android_sdkless'];
 
 class YouTubeDownloadBlockedError extends Error {
     constructor(message: string) {
@@ -1375,9 +1377,14 @@ Respond ONLY "YES" or "NO".`,
         };
     }
 
-    private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[]): Promise<any> {
+    private getYtDlpPublicOptions(): YtDlpOptions {
+        const { cookies: _cookies, ...options } = getYtDlpAuthOptions();
+        return options;
+    }
+
+    private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[], baseOptions: YtDlpOptions = getYtDlpAuthOptions()): Promise<any> {
         return ytDlp(videoUrl, {
-            ...getYtDlpAuthOptions(),
+            ...baseOptions,
             dumpSingleJson: true,
             skipDownload: true,
             noWarnings: true,
@@ -1387,6 +1394,12 @@ Respond ONLY "YES" or "NO".`,
     }
 
     private async fetchYtDlpVideoInfo(videoUrl: string, videoId?: string): Promise<any> {
+        try {
+            return await this.fetchYtDlpInfo(videoUrl, YT_DLP_ANDROID_SDKLESS_ARGS, this.getYtDlpPublicOptions());
+        } catch (error) {
+            console.warn(`[YouTubePoller] yt-dlp android-sdkless metadata fetch failed for ${videoId || videoUrl}; trying default yt-dlp metadata`, error);
+        }
+
         try {
             return await this.fetchYtDlpInfo(videoUrl);
         } catch (error) {
@@ -1615,8 +1628,28 @@ Respond ONLY "YES" or "NO".`,
 
     private async downloadWithYtDlp(videoUrl: string, filePath: string, videoId?: string): Promise<boolean> {
         const authOptions = getYtDlpAuthOptions();
+        const publicOptions = this.getYtDlpPublicOptions();
 
         try {
+            await ytDlp(videoUrl, {
+                ...publicOptions,
+                output: filePath,
+                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
+                mergeOutputFormat: 'mp4',
+                noProgress: true,
+                noWarnings: true,
+                quiet: true,
+                extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+            });
+
+            return this.meetsDownloadedResolutionFloor(filePath);
+        } catch (error) {
+            console.warn('[YouTubePoller] yt-dlp android-sdkless download failed; trying authenticated yt-dlp fallback', error);
+        }
+
+        try {
+            this.removeYtDlpArtifacts(filePath);
+
             await ytDlp(videoUrl, {
                 ...authOptions,
                 output: filePath,
@@ -1625,7 +1658,7 @@ Respond ONLY "YES" or "NO".`,
                 noProgress: true,
                 noWarnings: true,
                 quiet: true,
-            });
+            } as any);
 
             return this.meetsDownloadedResolutionFloor(filePath);
         } catch (error) {
