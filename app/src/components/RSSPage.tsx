@@ -54,6 +54,8 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     platformImageCounts: feed.platformImageCounts,
     dedupeDays: feed.dedupeDays,
     filters: feed.filters,
+    serperEnabled: feed.serperEnabled,
+    tmdbEnabled: feed.tmdbEnabled,
     serperPriority: feed.serperPriority,
     rehostImages: feed.rehostImages,
     autoPost: feed.autoPost,

@@ -1,11 +1,40 @@
-// ============================================================================
-// SETTINGS CONTEXT TESTS
-// ============================================================================
-
-import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { SettingsProvider, useSettings } from '../../contexts/SettingsContext';
 import React from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SettingsProvider, useSettings } from '../../contexts/SettingsContext';
+
+const settingsApiMock = vi.hoisted(() => ({
+  fetchSettings: vi.fn(),
+  saveSettings: vi.fn(),
+  deleteSettings: vi.fn(),
+  checkBackendHealth: vi.fn(),
+  mergeSettings: vi.fn(),
+  isSensitiveSetting: vi.fn(),
+}));
+
+const analyticsIngesterMock = vi.hoisted(() => ({
+  trackSettingChange: vi.fn(),
+}));
+
+const themeStorageMock = vi.hoisted(() => ({
+  dispatchThemeChange: vi.fn(),
+  persistThemePreference: vi.fn(),
+}));
+
+vi.mock('../../lib/api/settings', () => ({
+  fetchSettings: settingsApiMock.fetchSettings,
+  saveSettings: settingsApiMock.saveSettings,
+  deleteSettings: settingsApiMock.deleteSettings,
+  checkBackendHealth: settingsApiMock.checkBackendHealth,
+  mergeSettings: settingsApiMock.mergeSettings,
+  isSensitiveSetting: settingsApiMock.isSensitiveSetting,
+}));
+
+vi.mock('../../lib/optimization/analyticsIngester', () => ({
+  analyticsIngester: analyticsIngesterMock,
+}));
+
+vi.mock('../../lib/theme/themeStorage', () => themeStorageMock);
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <SettingsProvider>{children}</SettingsProvider>
@@ -14,227 +43,111 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 describe('SettingsContext', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.clearAllMocks();
+
+    settingsApiMock.checkBackendHealth.mockResolvedValue(false);
+    settingsApiMock.fetchSettings.mockResolvedValue({ success: false });
+    settingsApiMock.saveSettings.mockResolvedValue({ success: true });
+    settingsApiMock.deleteSettings.mockResolvedValue({ success: true });
+    settingsApiMock.mergeSettings.mockImplementation((backendSettings = {}, localSettings = {}) => ({
+      ...backendSettings,
+      ...localSettings,
+    }));
+    settingsApiMock.isSensitiveSetting.mockImplementation((key: string) =>
+      ['youtubeKey', 'openaiKey', 'serperKey', 'tmdbKey'].includes(key)
+    );
   });
 
-  describe('General Settings', () => {
-    it('should update a setting', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('youtubeApiKey', 'test_api_key_123');
-      });
-
-      expect(result.current.settings.youtubeApiKey).toBe('test_api_key_123');
+  it('loads backend settings when the backend is available', async () => {
+    settingsApiMock.checkBackendHealth.mockResolvedValue(true);
+    settingsApiMock.fetchSettings.mockResolvedValue({
+      success: true,
+      data: {
+        darkMode: false,
+        hapticsEnabled: false,
+        youtubeKey: 'masked-youtube',
+      },
     });
 
-    it('should persist settings to localStorage', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
+    const { result } = renderHook(() => useSettings(), { wrapper });
 
-      act(() => {
-        result.current.updateSetting('youtubeApiKey', 'persisted_key');
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      const stored = localStorage.getItem('screndly_settings');
-      expect(stored).toBeTruthy();
-      
-      const parsed = JSON.parse(stored!);
-      expect(parsed.youtubeApiKey).toBe('persisted_key');
-    });
-
-    it('should load settings from localStorage on mount', () => {
-      localStorage.setItem('screndly_settings', JSON.stringify({
-        youtubeApiKey: 'loaded_key',
-        tmdbApiKey: 'loaded_tmdb_key',
-      }));
-
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      expect(result.current.settings.youtubeApiKey).toBe('loaded_key');
-      expect(result.current.settings.tmdbApiKey).toBe('loaded_tmdb_key');
-    });
+    expect(result.current.settings.darkMode).toBe(false);
+    expect(result.current.settings.hapticsEnabled).toBe(false);
+    expect(result.current.settings.youtubeKey).toBe('masked-youtube');
+    expect(settingsApiMock.fetchSettings).toHaveBeenCalledTimes(1);
   });
 
-  describe('Haptic Settings', () => {
-    it('should toggle haptics', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
+  it('loads local preference settings when the backend is unavailable', async () => {
+    localStorage.setItem(
+      'screndlySettings',
+      JSON.stringify({
+        darkMode: false,
+        hapticsEnabled: false,
+        desktopNotifications: true,
+      })
+    );
 
-      const initialState = result.current.settings.hapticsEnabled;
+    const { result } = renderHook(() => useSettings(), { wrapper });
 
-      act(() => {
-        result.current.updateSetting('hapticsEnabled', !initialState);
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      expect(result.current.settings.hapticsEnabled).toBe(!initialState);
-    });
-
-    it('should update haptic intensity', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('hapticsIntensity', 'heavy');
-      });
-
-      expect(result.current.settings.hapticsIntensity).toBe('heavy');
-    });
+    expect(result.current.settings.darkMode).toBe(false);
+    expect(result.current.settings.hapticsEnabled).toBe(false);
+    expect(result.current.settings.desktopNotifications).toBe(true);
   });
 
-  describe('Notification Settings', () => {
-    it('should toggle desktop notifications', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
+  it('updates settings immediately in memory', async () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
 
-      act(() => {
-        result.current.updateSetting('desktopNotifications', true);
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      expect(result.current.settings.desktopNotifications).toBe(true);
+    await act(async () => {
+      await result.current.updateSetting('timezone', 'Africa/Lagos');
     });
 
-    it('should toggle sound notifications', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('soundNotifications', false);
-      });
-
-      expect(result.current.settings.soundNotifications).toBe(false);
-    });
+    expect(result.current.settings.timezone).toBe('Africa/Lagos');
+    expect(analyticsIngesterMock.trackSettingChange).toHaveBeenCalledWith(
+      'timezone',
+      'Africa/Lagos',
+      expect.anything(),
+      'SettingsContext'
+    );
   });
 
-  describe('Error Handling Settings', () => {
-    it('should toggle auto retry', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
+  it('persists non-sensitive settings to localStorage after the debounce window', async () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
 
-      act(() => {
-        result.current.updateSetting('errorAutoRetry', true);
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      expect(result.current.settings.errorAutoRetry).toBe(true);
+    await act(async () => {
+      await result.current.updateSetting('desktopNotifications', true);
     });
 
-    it('should update max retry attempts', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('errorMaxRetries', 5);
-      });
-
-      expect(result.current.settings.errorMaxRetries).toBe(5);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
     });
+
+    const stored = JSON.parse(localStorage.getItem('screndlySettings') ?? '{}');
+    expect(stored.desktopNotifications).toBe(true);
+    expect(localStorage.getItem('screndly_settings')).toBeTruthy();
   });
 
-  describe('Platform Settings', () => {
-    it('should update YouTube settings', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
+  it('does not persist sensitive API keys to localStorage', async () => {
+    const { result } = renderHook(() => useSettings(), { wrapper });
 
-      act(() => {
-        result.current.updateSetting('youtubeDefaultPrivacy', 'unlisted');
-        result.current.updateSetting('youtubeAutoPublish', true);
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      expect(result.current.settings.youtubeDefaultPrivacy).toBe('unlisted');
-      expect(result.current.settings.youtubeAutoPublish).toBe(true);
+    await act(async () => {
+      await result.current.updateSetting('youtubeKey', 'super-secret-key');
     });
 
-    it('should update X (Twitter) settings', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('xAutoPublish', false);
-        result.current.updateSetting('xDefaultVisibility', 'public');
-      });
-
-      expect(result.current.settings.xAutoPublish).toBe(false);
-      expect(result.current.settings.xDefaultVisibility).toBe('public');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
     });
 
-    it('should update Meta settings', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('metaAutoPublish', true);
-        result.current.updateSetting('metaDefaultImageCount', '3');
-      });
-
-      expect(result.current.settings.metaAutoPublish).toBe(true);
-      expect(result.current.settings.metaDefaultImageCount).toBe('3');
-    });
-  });
-
-  describe('RSS Feed Settings', () => {
-    it('should update RSS polling interval', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('rssPollingInterval', 30);
-      });
-
-      expect(result.current.settings.rssPollingInterval).toBe(30);
-    });
-
-    it('should update RSS caption model', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('rssCaptionModel', 'gpt-4o-mini');
-      });
-
-      expect(result.current.settings.rssCaptionModel).toBe('gpt-4o-mini');
-    });
-  });
-
-  describe('TMDb Settings', () => {
-    it('should update TMDb API key', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('tmdbApiKey', 'tmdb_test_key');
-      });
-
-      expect(result.current.settings.tmdbApiKey).toBe('tmdb_test_key');
-    });
-
-    it('should toggle TMDb feeds', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('tmdbTodayEnabled', true);
-        result.current.updateSetting('tmdbWeeklyEnabled', false);
-      });
-
-      expect(result.current.settings.tmdbTodayEnabled).toBe(true);
-      expect(result.current.settings.tmdbWeeklyEnabled).toBe(false);
-    });
-  });
-
-  describe('Video Studio Settings', () => {
-    it('should update OpenAI model', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('openaiModel', 'gpt-4-turbo');
-      });
-
-      expect(result.current.settings.openaiModel).toBe('gpt-4-turbo');
-    });
-
-    it('should update temperature setting', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('temperature', 0.8);
-      });
-
-      expect(result.current.settings.temperature).toBe(0.8);
-    });
-
-    it('should update caption model', () => {
-      const { result } = renderHook(() => useSettings(), { wrapper });
-
-      act(() => {
-        result.current.updateSetting('captionOpenaiModel', 'gpt-4o-mini');
-      });
-
-      expect(result.current.settings.captionOpenaiModel).toBe('gpt-4o-mini');
-    });
+    const stored = JSON.parse(localStorage.getItem('screndlySettings') ?? '{}');
+    expect(stored.youtubeKey).toBeUndefined();
   });
 });

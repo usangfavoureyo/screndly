@@ -1,6 +1,11 @@
 import { getSecretSetting } from '../lib/settings';
 import aiService, { DEFAULT_OPENAI_MODEL, type AIModel, normalizeAIModel } from './ai.service';
 import { trackApiUsage } from './api-usage.service';
+import {
+  resolveStructuredTMDbImages,
+  type ResolvedStructuredTMDbImage,
+  type StructuredTMDbImageRole,
+} from './rss-tmdb-image-selection.service';
 
 export interface RSSImageSelectionArticle {
   title: string;
@@ -12,7 +17,7 @@ export interface RSSImageSelectionArticle {
 export interface RSSResolvedImage {
   url: string;
   reason: string;
-  source: 'serper' | 'feed';
+  source: 'tmdb' | 'serper' | 'feed';
   score?: number;
 }
 
@@ -486,6 +491,27 @@ const FRANCHISE_VALIDATION_RULES: FranchiseValidationRule[] = [
 const MIN_CONFIDENT_SERPER_SCORE = 135;
 const MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK = 170;
 const MIN_ACCEPTABLE_SERPER_SCORE = 90;
+const MIN_BRAND_FALLBACK_SERPER_SCORE = 72;
+const MIN_GENERAL_LIST_SERPER_SCORE = 78;
+const MIN_TRAILER_STILL_SERPER_SCORE = 82;
+const MIN_SMART_PRIMARY_SERPER_SCORE = 100;
+const MIN_SMART_SECONDARY_SCORE = 88;
+const MIN_SMART_LOGO_SECONDARY_SCORE = 74;
+
+type RSSImageSource = 'tmdb' | 'serper';
+
+function isRevealDrivenArticle(article: RSSImageSelectionArticle): boolean {
+  return /\b(reveals?|revealed|unveils?|unveiled|debuts?|debuted|first look|exclusive image|new poster|official poster|character poster|teaser poster|new still|new image|new images|gallery|photos?|check out .*poster|check out .*image)\b/i
+    .test([article.title, article.description].filter(Boolean).join(' '));
+}
+
+function getRevealDrivenFallbackLimit(article: RSSImageSelectionArticle, limit: number): number {
+  if (/\b(poster|first look|exclusive image|new still|new image|new poster|official poster)\b/i.test([article.title, article.description].filter(Boolean).join(' '))) {
+    return 1;
+  }
+
+  return Math.max(1, Math.min(limit, 2));
+}
 
 const SUBJECT_EXTRACTION_PROMPT = `You analyze entertainment-news articles for image selection.
 
@@ -1046,6 +1072,7 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const referenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const normalizedTitle = article.title.trim();
   const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
+  const leadPersonCandidate = extractLeadPersonSubject(normalizedTitle);
   const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
@@ -1058,6 +1085,9 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   if (containerOwnedSubject) {
     primaryName = containerOwnedSubject;
     primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
+  } else if (leadPersonCandidate && quotedMatches.length === 0 && !titleLooksLikeStudioStory) {
+    primaryName = leadPersonCandidate;
+    primaryType = 'actor';
   } else if (studios.length > 0 && titleLooksLikeStudioStory && quotedMatches.length === 0) {
     primaryName = studios[0];
     primaryType = /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock)\b/i.test(primaryName)
@@ -1213,6 +1243,7 @@ function buildFallbackQueries(
 function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const fallback = guessPrimarySubject(article);
   const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
+  const isListArticle = isListLikeArticle(article);
   const heuristicStudios = extractRelevantStudios(articleText);
   const heuristicReferenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const relevantStudios = uniqueStrings([
@@ -1272,6 +1303,11 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
   const imageIntent = shouldOverrideContainerPrimary && (rawImageIntent === 'logo' || rawImageIntent === 'brand_backdrop')
     ? visual.imageIntent
     : rawImageIntent;
+  const allowLogoOnly = isContainerSubjectType(primaryType)
+    ? true
+    : shouldOverrideContainerPrimary
+      ? false
+      : value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo');
   const contextProjectValue = typeof value?.contextProject === 'string' && value.contextProject.trim()
     ? value.contextProject.trim()
     : extractContextProject(
@@ -1305,11 +1341,17 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     contextProjectValue,
     requiredContextTerms
   );
-  const queries = uniqueStrings(
-    shouldOverrideContainerPrimary || !Array.isArray(value?.queries)
-      ? fallbackQueries
-      : value.queries
+  const leadGeneralSubject = secondarySubjects.find((subject) =>
+    normalizeText(subject) !== normalizeText(primaryName) &&
+    !relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))
   );
+  const queries = uniqueStrings([
+    ...(shouldOverrideContainerPrimary || !Array.isArray(value?.queries)
+      ? fallbackQueries
+      : value.queries),
+    (isListArticle || primaryType === 'general' || /\bcollage\b/i.test(rawVisualSubject)) ? article.title : null,
+    (isListArticle || primaryType === 'general') && leadGeneralSubject ? `${leadGeneralSubject} still` : null,
+  ]);
 
   return {
     editorialPrimary,
@@ -1326,9 +1368,7 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
     contextProject: contextProjectValue,
     requiredContextTerms,
     referenceOnlySubjects,
-    allowLogoOnly: shouldOverrideContainerPrimary
-      ? false
-      : value?.allowLogoOnly !== false && (visual.allowLogoOnly || imageIntent === 'logo'),
+    allowLogoOnly,
     queries: queries.length > 0
       ? queries
       : fallbackQueries,
@@ -1392,16 +1432,13 @@ function buildSlotQueries(
   }
 
   return uniqueStrings([
+    `${subject} official title logo`,
+    `${subject} title logo`,
+    `${subject} official logo transparent`,
+    `${subject} title treatment`,
+    `${subject} wordmark`,
+    `${subject} logo dark background`,
     ...baseQueries,
-    ...buildFallbackQueries(
-      subject,
-      type,
-      [],
-      analysis.contextType,
-      'still',
-      analysis.contextProject,
-      analysis.requiredContextTerms
-    ),
   ]);
 }
 
@@ -1455,7 +1492,9 @@ function isListLikeArticle(article: RSSImageSelectionArticle): boolean {
 
   return /^(every|all)\b/.test(normalizedTitle) ||
     /^\d+\s+.*\b(movies|films|shows|books|episodes|moments|heroes|villains|characters|reasons|ways)\b/.test(normalizedTitle) ||
-    /\branked\b|\branking\b|from best to worst|from worst to best|\btop\s+\d+\b/.test(normalizedTitle);
+    /\branked\b|\branking\b|from best to worst|from worst to best|\btop\s+\d+\b/.test(normalizedTitle) ||
+    (/\bonly launched\b/.test(normalizedTitle) && /\bfranchises\b/.test(normalizedTitle)) ||
+    (/\b(best|worst)\b/.test(normalizedTitle) && /\b\d+\b/.test(normalizedTitle));
 }
 
 function isProjectAnchorType(type: SubjectType): boolean {
@@ -1475,6 +1514,50 @@ function findProjectContextAnchor(
     const inferredType = inferSlotType(subject, articleText, 'franchise', analysis);
     if (isProjectAnchorType(inferredType)) {
       return subject;
+    }
+  }
+
+  return null;
+}
+
+function extractLeadProjectAnchor(
+  article: RSSImageSelectionArticle,
+  analysis: RSSSubjectAnalysis
+): string | null {
+  const leadWindow = getLeadContextWindow(article.description);
+  if (!leadWindow) {
+    return null;
+  }
+
+  const patterns = [
+    /\b(?:we(?:'re| are) talking about|talking about)\s+([A-Z][A-Za-z0-9'’:&\-]+(?:\s+[A-Z][A-Za-z0-9'’:&\-]+){0,5})/i,
+    /\b(?:the film|the movie|the series|the show)\s+([A-Z][A-Za-z0-9'’:&\-]+(?:\s+[A-Z][A-Za-z0-9'’:&\-]+){0,5})/i,
+    /\b([A-Z][A-Za-z0-9'’:&\-]+(?:\s+[A-Z][A-Za-z0-9'’:&\-]+){0,5}),\s+the\s+(?:seminal|iconic|beloved|upcoming|new)\s+(?:film|movie|series|show)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = leadWindow.match(pattern);
+    const candidate = match?.[1]?.trim();
+    if (!candidate || looksLikeNamedPerson(candidate)) {
+      continue;
+    }
+
+    const normalizedCandidate = normalizeText(candidate);
+    if (!normalizedCandidate) {
+      continue;
+    }
+
+    if (normalizedCandidate === normalizeText(analysis.primarySubject.name)) {
+      continue;
+    }
+
+    if (analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizedCandidate)) {
+      continue;
+    }
+
+    const inferredType = inferSlotType(candidate, [article.title, article.description, article.author].filter(Boolean).join(' '), 'franchise', analysis);
+    if (isProjectAnchorType(inferredType)) {
+      return candidate;
     }
   }
 
@@ -1543,9 +1626,11 @@ function determineSmartImagePlan(
     articleText,
     analysis
   );
+  const inferredLeadProjectSubject = extractLeadProjectAnchor(article, analysis);
   const preferredCharacterSubject = extractFranchiseCharacterAnchor(article, analysis);
   const titleAnchor =
     analysis.contextProject ||
+    inferredLeadProjectSubject ||
     findProjectContextAnchor(quotedSubjects, articleText, analysis) ||
     preferredProjectSubject ||
     (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise'
@@ -1578,6 +1663,22 @@ function determineSmartImagePlan(
       primary,
       secondary: null,
       useTwoImages: false,
+    };
+  }
+
+  if (leadPerson && inferredLeadProjectSubject) {
+    primary = buildImageSlotPlan(leadPerson, 'actor', 'person_portrait', analysis, false);
+    secondary = buildImageSlotPlan(
+      inferredLeadProjectSubject,
+      inferSlotType(inferredLeadProjectSubject, articleText, 'franchise', analysis),
+      'logo',
+      analysis,
+      true
+    );
+    return {
+      primary,
+      secondary,
+      useTwoImages: true,
     };
   }
 
@@ -1685,6 +1786,10 @@ function getImageRole(text: string, analysis: RSSSubjectAnalysis): ImageRole {
     return analysis.imageIntent === 'brand_backdrop' ? 'brand_backdrop' : 'logo';
   }
 
+  if ((analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop') && containsKeyword(text, BACKDROP_KEYWORDS)) {
+    return 'brand_backdrop';
+  }
+
   if (analysis.imageIntent === 'person_portrait' || containsKeyword(text, PORTRAIT_KEYWORDS)) {
     return 'person';
   }
@@ -1713,6 +1818,33 @@ function areImageRolesComplementary(primaryRole: ImageRole, secondaryRole: Image
   }
 
   return true;
+}
+
+function isLogoLikeRole(role: ImageRole): boolean {
+  return role === 'logo' || role === 'brand_backdrop';
+}
+
+function isSquareishAspect(image: SerperImageResult): boolean {
+  const ratio = getAspectRatio(image);
+  return ratio !== null && ratio >= 0.85 && ratio <= 1.2;
+}
+
+function isEligibleSmartSecondaryCandidate(
+  primaryRole: ImageRole,
+  secondaryRole: ImageRole,
+  secondaryImage: SerperImageResult,
+  score: number,
+  secondaryIntent: ImageIntent
+): boolean {
+  if (secondaryIntent === 'logo') {
+    return score >= MIN_SMART_LOGO_SECONDARY_SCORE &&
+      isLogoLikeRole(secondaryRole) &&
+      !isTallPosterAspect(secondaryImage) &&
+      areImageRolesComplementary(primaryRole, secondaryRole);
+  }
+
+  return score >= MIN_SMART_SECONDARY_SCORE &&
+    areImageRolesComplementary(primaryRole, secondaryRole);
 }
 
 async function collectScoredImages(
@@ -1793,6 +1925,278 @@ function buildResolvedImagesFromScored(
       source: 'serper' as const,
       score: item.score,
     }));
+}
+
+function getEnabledImageSources(options: {
+  serperEnabled?: boolean;
+  tmdbEnabled?: boolean;
+  serperPriority?: boolean;
+}): RSSImageSource[] {
+  const serperEnabled = options.serperEnabled !== false;
+  const tmdbEnabled = options.tmdbEnabled === true;
+
+  if (serperEnabled && tmdbEnabled) {
+    return options.serperPriority === false ? ['tmdb', 'serper'] : ['serper', 'tmdb'];
+  }
+
+  if (tmdbEnabled) {
+    return ['tmdb'];
+  }
+
+  if (serperEnabled) {
+    return ['serper'];
+  }
+
+  return [];
+}
+
+function mergeResolvedImages(
+  baseImages: RSSResolvedImage[],
+  nextImages: RSSResolvedImage[],
+  limit: number
+): RSSResolvedImage[] {
+  const seen = new Set(baseImages.map((image) => image.url));
+  const merged = [...baseImages];
+
+  for (const image of nextImages) {
+    if (seen.has(image.url)) {
+      continue;
+    }
+
+    merged.push(image);
+    seen.add(image.url);
+
+    if (merged.length >= limit) {
+      break;
+    }
+  }
+
+  return merged;
+}
+
+function mapStructuredTMDbRoleToImageRole(role: StructuredTMDbImageRole): ImageRole {
+  switch (role) {
+    case 'logo':
+      return 'logo';
+    case 'brand_backdrop':
+      return 'brand_backdrop';
+    case 'person':
+      return 'person';
+    case 'character':
+      return 'character';
+    case 'poster':
+      return 'poster';
+    case 'still':
+    default:
+      return 'still';
+  }
+}
+
+function buildResolvedImagesFromTMDb(
+  tmdbSelections: ResolvedStructuredTMDbImage[]
+): Array<RSSResolvedImage & { role: ImageRole }> {
+  return tmdbSelections.map((item) => ({
+    url: item.url,
+    reason: item.reason,
+    source: 'tmdb' as const,
+    score: item.score,
+    role: mapStructuredTMDbRoleToImageRole(item.role),
+  }));
+}
+
+async function collectStructuredTMDbImages(
+  analysis: RSSSubjectAnalysis,
+  limit: number,
+  excludeUrls: string[] = []
+): Promise<Array<RSSResolvedImage & { role: ImageRole }>> {
+  const tmdbSelections = await resolveStructuredTMDbImages({
+    primarySubject: analysis.primarySubject,
+    visualSubject: analysis.visualSubject,
+    imageIntent: analysis.imageIntent,
+    contextProject: analysis.contextProject,
+    requiredContextTerms: analysis.requiredContextTerms,
+    relevantStudios: analysis.relevantStudios,
+    queries: analysis.queries,
+    limit,
+    excludeUrls,
+  });
+
+  return buildResolvedImagesFromTMDb(tmdbSelections);
+}
+
+async function resolveSingleSlotImages(
+  analysis: RSSSubjectAnalysis,
+  fallbackImages: string[],
+  sources: RSSImageSource[],
+  limit: number
+): Promise<RSSResolvedImage[]> {
+  let resolved: RSSResolvedImage[] = [];
+
+  for (const source of sources) {
+    if (resolved.length >= limit) {
+      break;
+    }
+
+    if (source === 'tmdb') {
+      const tmdbResolved = await collectStructuredTMDbImages(
+        analysis,
+        limit - resolved.length,
+        resolved.map((image) => image.url)
+      );
+      resolved = mergeResolvedImages(resolved, tmdbResolved, limit);
+      continue;
+    }
+
+    const serperResolved = buildResolvedImagesFromScored(
+      await collectScoredImages(analysis, limit - resolved.length),
+      [],
+      limit - resolved.length,
+      false
+    );
+    resolved = mergeResolvedImages(resolved, serperResolved, limit);
+  }
+
+  if (resolved.length < limit) {
+    resolved = mergeResolvedImages(
+      resolved,
+      buildFeedFallbackImages(
+        fallbackImages.filter((url) => !resolved.some((image) => image.url === url)),
+        limit - resolved.length
+      ),
+      limit
+    );
+  }
+
+  return resolved.slice(0, limit);
+}
+
+async function resolveSmartPrimaryCandidate(
+  article: RSSImageSelectionArticle,
+  analysis: RSSSubjectAnalysis,
+  sources: RSSImageSource[]
+): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
+  for (const source of sources) {
+    if (source === 'tmdb') {
+      const tmdbResolved = await collectStructuredTMDbImages(analysis, 1);
+      if (tmdbResolved[0]) {
+        return {
+          image: tmdbResolved[0],
+          role: tmdbResolved[0].role,
+        };
+      }
+      continue;
+    }
+
+    const primaryScored = await collectScoredImages(analysis, 4);
+    const preferredSmartPrimary = primaryScored.find((item) => item.score >= MIN_SMART_PRIMARY_SERPER_SCORE);
+    const rescuedBrandPrimary = (!preferredSmartPrimary &&
+      (analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop'))
+      ? primaryScored.find((item) => item.score >= MIN_BRAND_FALLBACK_SERPER_SCORE)
+      : null;
+    const rescuedTrailerPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary &&
+      (analysis.imageIntent === 'still' || analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'character_still') &&
+      analysis.contextType === 'trailer')
+      ? primaryScored.find((item) => item.score >= MIN_TRAILER_STILL_SERPER_SCORE)
+      : null;
+    const rescuedGeneralListPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary && !rescuedTrailerPrimary &&
+      (analysis.imageIntent === 'still' || analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'character_still') &&
+      isListLikeArticle(article) &&
+      analysis.primarySubject.type === 'general')
+      ? primaryScored.find((item) => item.score >= MIN_GENERAL_LIST_SERPER_SCORE)
+      : null;
+    const fallbackPrimary = buildResolvedImagesFromScored(primaryScored, [], 1, false)[0];
+    const primaryResolvedImage = preferredSmartPrimary?.image.imageUrl
+      ? {
+          url: preferredSmartPrimary.image.imageUrl,
+          reason: preferredSmartPrimary.reason,
+          source: 'serper' as const,
+          score: preferredSmartPrimary.score,
+        }
+      : rescuedBrandPrimary?.image.imageUrl
+        ? {
+            url: rescuedBrandPrimary.image.imageUrl,
+            reason: rescuedBrandPrimary.reason,
+            source: 'serper' as const,
+            score: rescuedBrandPrimary.score,
+          }
+        : rescuedTrailerPrimary?.image.imageUrl
+          ? {
+              url: rescuedTrailerPrimary.image.imageUrl,
+              reason: rescuedTrailerPrimary.reason,
+              source: 'serper' as const,
+              score: rescuedTrailerPrimary.score,
+            }
+          : rescuedGeneralListPrimary?.image.imageUrl
+            ? {
+                url: rescuedGeneralListPrimary.image.imageUrl,
+                reason: rescuedGeneralListPrimary.reason,
+                source: 'serper' as const,
+                score: rescuedGeneralListPrimary.score,
+              }
+            : fallbackPrimary;
+
+    if (!primaryResolvedImage) {
+      continue;
+    }
+
+    const matchedScoredImage = primaryScored.find((item) => item.image.imageUrl === primaryResolvedImage.url);
+    return {
+      image: primaryResolvedImage,
+      role: matchedScoredImage
+        ? getImageRole(getSerperImageText(matchedScoredImage.image), analysis)
+        : getImageRole(normalizeText(primaryResolvedImage.reason), analysis),
+    };
+  }
+
+  return null;
+}
+
+async function resolveSmartSecondaryCandidate(
+  analysis: RSSSubjectAnalysis,
+  primaryImage: RSSResolvedImage,
+  primaryRole: ImageRole,
+  sources: RSSImageSource[]
+): Promise<RSSResolvedImage | null> {
+  for (const source of sources) {
+    if (source === 'tmdb') {
+      const tmdbResolved = await collectStructuredTMDbImages(analysis, 4, [primaryImage.url]);
+      const candidate = tmdbResolved.find((item) =>
+        item.url !== primaryImage.url &&
+        areImageRolesComplementary(primaryRole, item.role)
+      );
+      if (candidate) {
+        return candidate;
+      }
+      continue;
+    }
+
+    const secondaryScored = await collectScoredImages(analysis, 6);
+    const candidate = secondaryScored.find((item) => {
+      if (!item.image.imageUrl || item.image.imageUrl === primaryImage.url) {
+        return false;
+      }
+
+      const secondaryRole = getImageRole(getSerperImageText(item.image), analysis);
+      return isEligibleSmartSecondaryCandidate(
+        primaryRole,
+        secondaryRole,
+        item.image,
+        item.score,
+        analysis.imageIntent
+      );
+    });
+
+    if (candidate?.image.imageUrl) {
+      return {
+        url: candidate.image.imageUrl,
+        reason: candidate.reason,
+        source: 'serper',
+        score: candidate.score,
+      };
+    }
+  }
+
+  return null;
 }
 
 async function extractSubjectAnalysis(
@@ -1878,10 +2282,16 @@ async function searchSerperImages(query: string, limit: number): Promise<SerperI
 }
 
 function isBlockedResult(image: SerperImageResult): boolean {
+  return isBlockedResultForIntent(image, null);
+}
+
+function isBlockedResultForIntent(image: SerperImageResult, intent: ImageIntent | null): boolean {
   const text = getSerperImageText(image);
   const domain = normalizeText(image.domain || '');
+  const minWidth = intent === 'logo' || intent === 'brand_backdrop' ? 240 : MIN_IMAGE_WIDTH;
+  const minHeight = intent === 'logo' || intent === 'brand_backdrop' ? 100 : MIN_IMAGE_HEIGHT;
 
-  if ((image.imageWidth || 0) < MIN_IMAGE_WIDTH || (image.imageHeight || 0) < MIN_IMAGE_HEIGHT) {
+  if ((image.imageWidth || 0) < minWidth || (image.imageHeight || 0) < minHeight) {
     return true;
   }
 
@@ -1983,7 +2393,7 @@ function scoreImage(
   analysis: RSSSubjectAnalysis,
   query: string
 ): ScoredImage | null {
-  if (!image.imageUrl || isBlockedResult(image)) {
+  if (!image.imageUrl || isBlockedResultForIntent(image, analysis.imageIntent)) {
     return null;
   }
 
@@ -2145,15 +2555,47 @@ function scoreImage(
   }
 
   if ((analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'still' || analysis.imageIntent === 'character_still') && isTallPosterAspect(image)) {
-    score -= 25;
+    score -= 35;
   }
 
   if ((analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'still') && isLandscapeAspect(image)) {
-    score += 20;
+    score += 24;
+  }
+
+  if (analysis.imageIntent === 'character_still' && isLandscapeAspect(image)) {
+    score += 18;
+  }
+
+  if ((analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'still' || analysis.imageIntent === 'character_still') && !isLandscapeAspect(image) && isSquareishAspect(image)) {
+    score -= 8;
   }
 
   if (analysis.imageIntent === 'person_portrait' && isLandscapeAspect(image)) {
     score -= 12;
+  }
+
+  if (analysis.imageIntent === 'logo') {
+    if (isTallPosterAspect(image)) {
+      score -= 60;
+    }
+
+    if (isSquareishAspect(image)) {
+      score += 16;
+    } else if (isLandscapeAspect(image)) {
+      score += 12;
+    }
+  }
+
+  if (analysis.imageIntent === 'brand_backdrop') {
+    if (isTallPosterAspect(image)) {
+      score -= 50;
+    }
+
+    if (isLandscapeAspect(image)) {
+      score += 18;
+    } else if (isSquareishAspect(image)) {
+      score += 10;
+    }
   }
 
   if (analysis.contextType === 'trailer' && containsKeyword(text, ['trailer', 'teaser'])) {
@@ -2186,7 +2628,9 @@ function buildFeedFallbackImages(fallbackImages: string[], limit: number): RSSRe
 export async function resolveRelevantRSSImages(
   article: RSSImageSelectionArticle,
   options: {
-    serperPriority: boolean;
+    serperEnabled?: boolean;
+    tmdbEnabled?: boolean;
+    serperPriority?: boolean;
     limit: number;
     smartCount?: boolean;
     model?: AIModel | string;
@@ -2198,8 +2642,16 @@ export async function resolveRelevantRSSImages(
     )
     : [];
   const limit = Math.max(options.limit, 1);
+  const sources = getEnabledImageSources(options);
 
-  if (!options.serperPriority) {
+  if (isRevealDrivenArticle(article) && fallbackImages.length > 0) {
+    return buildFeedFallbackImages(
+      fallbackImages,
+      getRevealDrivenFallbackLimit(article, limit)
+    );
+  }
+
+  if (sources.length === 0) {
     return buildFeedFallbackImages(fallbackImages, limit);
   }
 
@@ -2207,51 +2659,34 @@ export async function resolveRelevantRSSImages(
   if (options.smartCount && limit >= 2) {
     const plan = determineSmartImagePlan(article, analysis);
     const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
-    const primaryScored = await collectScoredImages(primaryAnalysis, 4);
-    const primaryResolved = buildResolvedImagesFromScored(primaryScored, fallbackImages, 1, true);
+    const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources);
 
-    if (primaryResolved.length === 0 || !plan.useTwoImages || !plan.secondary) {
-      return primaryResolved;
+    if (!primaryResolved) {
+      const fallbackPrimary = buildFeedFallbackImages(fallbackImages, 1)[0];
+      return fallbackPrimary ? [fallbackPrimary] : [];
     }
 
-    const primaryResolvedImage = primaryResolved[0];
-    const primaryScoredImage = primaryResolvedImage.source === 'serper'
-      ? primaryScored.find((item) => item.image.imageUrl === primaryResolvedImage.url)
-      : null;
-    const primaryRole = primaryScoredImage
-      ? getImageRole(getSerperImageText(primaryScoredImage.image), primaryAnalysis)
-      : getImageRole(normalizeText(primaryResolvedImage.reason), primaryAnalysis);
+    if (!plan.useTwoImages || !plan.secondary) {
+      return [primaryResolved.image];
+    }
 
     const secondaryAnalysis = buildAnalysisForSlot(analysis, plan.secondary);
-    const secondaryScored = await collectScoredImages(secondaryAnalysis, 6);
-    const secondaryResolved = secondaryScored.find((item) => {
-      if (!item.image.imageUrl || item.image.imageUrl === primaryResolvedImage.url) {
-        return false;
-      }
-
-      if (item.score < 95) {
-        return false;
-      }
-
-      const secondaryRole = getImageRole(getSerperImageText(item.image), secondaryAnalysis);
-      return areImageRolesComplementary(primaryRole, secondaryRole);
-    });
+    const secondaryResolved = await resolveSmartSecondaryCandidate(
+      secondaryAnalysis,
+      primaryResolved.image,
+      primaryResolved.role,
+      sources
+    );
 
     if (!secondaryResolved) {
-      return primaryResolved;
+      return [primaryResolved.image];
     }
 
     return [
-      primaryResolvedImage,
-      {
-        url: secondaryResolved.image.imageUrl!,
-        reason: secondaryResolved.reason,
-        source: 'serper',
-        score: secondaryResolved.score,
-      },
+      primaryResolved.image,
+      secondaryResolved,
     ];
   }
 
-  const scoredSelections = await collectScoredImages(analysis, limit);
-  return buildResolvedImagesFromScored(scoredSelections, fallbackImages, limit, true);
+  return resolveSingleSlotImages(analysis, fallbackImages, sources, limit);
 }

@@ -53,6 +53,13 @@ interface PinterestBoardPayload {
     pin_count?: number;
 }
 
+interface YouTubePlaylistPayload {
+    id: string;
+    title: string;
+    itemCount?: number;
+    privacyStatus?: string;
+}
+
 const META_GRAPH_BASE = 'https://graph.facebook.com/v19.0';
 
 function normalizePlatform(value?: string | null): SupportedPlatform | null {
@@ -357,6 +364,19 @@ async function downloadRemoteBuffer(remoteUrl: string): Promise<{ buffer: Buffer
     };
 }
 
+function normalizeYouTubePlaylist(playlist: any): YouTubePlaylistPayload | null {
+    if (!playlist?.id || !playlist?.title) {
+        return null;
+    }
+
+    return {
+        id: String(playlist.id),
+        title: String(playlist.title),
+        itemCount: typeof playlist.itemCount === 'number' ? playlist.itemCount : undefined,
+        privacyStatus: typeof playlist.privacyStatus === 'string' ? playlist.privacyStatus : undefined,
+    };
+}
+
 async function prepareHostedImageUrl(options: {
     localFilePath?: string | null;
     originalName?: string | null;
@@ -451,7 +471,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         const { platforms, content } = req.body;
         // Content might be JSON stringified if multipart/form-data
         const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
-        const { text, link, title } = parsedContent;
+        const { text, link, title, youtubeTitle, youtubeDescription } = parsedContent;
         const youtubePlaylists = Array.isArray(parsedContent?.youtubePlaylistIds)
             ? parsedContent.youtubePlaylistIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
             : typeof parsedContent?.youtubePlaylistIds === 'string'
@@ -652,8 +672,8 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 connection.accessToken,
                                 localFilePath || downloadedVideoPath!,
                                 {
-                                    title: title || text.slice(0, 100),
-                                    description: text,
+                                    title: youtubeTitle || title || text.slice(0, 100),
+                                    description: youtubeDescription || text,
                                     privacyStatus: 'public',
                                     playlistIds: youtubePlaylists,
                                 },
@@ -848,6 +868,43 @@ router.get('/pinterest/boards', authenticate, async (_req, res) => {
         return res.status(500).json({
             success: false,
             error: { message: extractProviderMessage(error) || 'Failed to fetch Pinterest boards' },
+        });
+    }
+});
+
+// GET /api/platforms/youtube/playlists (Protected)
+router.get('/youtube/playlists', authenticate, async (_req, res) => {
+    try {
+        const connection = await prisma.platformConnection.findUnique({
+            where: { platform: 'YouTube' },
+        });
+        const freshConnection = await ensureFreshPlatformConnection(connection);
+
+        if (!freshConnection || !hasUsablePlatformAccessToken(freshConnection)) {
+            return res.status(404).json({ success: false, error: { message: 'YouTube is not connected' } });
+        }
+
+        const accessToken = freshConnection.accessToken;
+        if (!accessToken) {
+            return res.status(404).json({ success: false, error: { message: 'YouTube is not connected' } });
+        }
+
+        const playlists = await youtubeService.listPlaylists(
+            accessToken,
+            freshConnection.refreshToken || undefined
+        );
+
+        return res.json({
+            success: true,
+            data: playlists
+                .map(normalizeYouTubePlaylist)
+                .filter((playlist): playlist is YouTubePlaylistPayload => !!playlist),
+        });
+    } catch (error: any) {
+        console.error('YouTube playlists fetch error:', error?.response?.data || error);
+        return res.status(500).json({
+            success: false,
+            error: { message: extractProviderMessage(error) || 'Failed to fetch YouTube playlists' },
         });
     }
 });

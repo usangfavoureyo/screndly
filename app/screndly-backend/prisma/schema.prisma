@@ -73,6 +73,8 @@ model RSSFeed {
   filters         Json     @default("{\"scope\":\"title_or_body\",\"required\":[],\"blocked\":[]}")
   
   // Image Settings
+  serperEnabled   Boolean  @default(true)
+  tmdbEnabled     Boolean  @default(false)
   serperPriority  Boolean  @default(true)
   rehostImages    Boolean  @default(false)
   platformImageCounts Json?

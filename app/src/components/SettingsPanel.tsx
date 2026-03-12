@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
 import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard, PenSquare } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
@@ -6,34 +6,43 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Separator } from './ui/separator';
 import { haptics } from '../utils/haptics';
-
-import { VideoSettings } from './settings/VideoSettings';
-import { CommentReplySettings } from './settings/CommentReplySettings';
-import { RssSettings } from './settings/RssSettings';
-import { TmdbFeedsSettings } from './settings/TmdbFeedsSettings';
-import { ErrorHandlingSettings } from './settings/ErrorHandlingSettings';
-import { CleanupSettings } from './settings/CleanupSettings';
-import { HapticSettings } from './settings/HapticSettings';
-import { AppearanceSettings } from './settings/AppearanceSettings';
-import { NotificationsSettings } from './settings/NotificationsSettings';
-import { VideoStudioSettings } from './settings/VideoStudioSettings';
-import { DesignStudioSettings } from './settings/DesignStudioSettings';
-import { PadSettings } from './settings/PadSettings';
-import { ComposeSettings } from './settings/ComposeSettings';
-import { PWASettings } from './settings/PWASettings';
-import { TimezoneSettings } from './settings/TimezoneSettings';
-import { ThumbnailSettings } from './settings/ThumbnailSettings';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { useScrollLock } from '../hooks/useScrollLock';
-import { PrivacyPage } from './PrivacyPage';
-import { TermsPage } from './TermsPage';
-import { DisclaimerPage } from './DisclaimerPage';
-import { CookiePage } from './CookiePage';
-import { ContactPage } from './ContactPage';
-import { AboutPage } from './AboutPage';
-import { DesignSystemPage } from './DesignSystemPage';
-import { AppInfoPage } from './AppInfoPage';
-import { DataDeletionPage } from './DataDeletionPage';
+
+const VideoSettings = lazy(() => import('./settings/VideoSettings').then((module) => ({ default: module.VideoSettings })));
+const CommentReplySettings = lazy(() => import('./settings/CommentReplySettings').then((module) => ({ default: module.CommentReplySettings })));
+const RssSettings = lazy(() => import('./settings/RssSettings').then((module) => ({ default: module.RssSettings })));
+const TmdbFeedsSettings = lazy(() => import('./settings/TmdbFeedsSettings').then((module) => ({ default: module.TmdbFeedsSettings })));
+const ErrorHandlingSettings = lazy(() => import('./settings/ErrorHandlingSettings').then((module) => ({ default: module.ErrorHandlingSettings })));
+const CleanupSettings = lazy(() => import('./settings/CleanupSettings').then((module) => ({ default: module.CleanupSettings })));
+const HapticSettings = lazy(() => import('./settings/HapticSettings').then((module) => ({ default: module.HapticSettings })));
+const AppearanceSettings = lazy(() => import('./settings/AppearanceSettings').then((module) => ({ default: module.AppearanceSettings })));
+const NotificationsSettings = lazy(() => import('./settings/NotificationsSettings').then((module) => ({ default: module.NotificationsSettings })));
+const VideoStudioSettings = lazy(() => import('./settings/VideoStudioSettings').then((module) => ({ default: module.VideoStudioSettings })));
+const DesignStudioSettings = lazy(() => import('./settings/DesignStudioSettings').then((module) => ({ default: module.DesignStudioSettings })));
+const PadSettings = lazy(() => import('./settings/PadSettings').then((module) => ({ default: module.PadSettings })));
+const ComposeSettings = lazy(() => import('./settings/ComposeSettings').then((module) => ({ default: module.ComposeSettings })));
+const PWASettings = lazy(() => import('./settings/PWASettings').then((module) => ({ default: module.PWASettings })));
+const TimezoneSettings = lazy(() => import('./settings/TimezoneSettings').then((module) => ({ default: module.TimezoneSettings })));
+const ThumbnailSettings = lazy(() => import('./settings/ThumbnailSettings').then((module) => ({ default: module.ThumbnailSettings })));
+const PrivacyPage = lazy(() => import('./PrivacyPage').then((module) => ({ default: module.PrivacyPage })));
+const TermsPage = lazy(() => import('./TermsPage').then((module) => ({ default: module.TermsPage })));
+const DisclaimerPage = lazy(() => import('./DisclaimerPage').then((module) => ({ default: module.DisclaimerPage })));
+const CookiePage = lazy(() => import('./CookiePage').then((module) => ({ default: module.CookiePage })));
+const ContactPage = lazy(() => import('./ContactPage').then((module) => ({ default: module.ContactPage })));
+const AboutPage = lazy(() => import('./AboutPage').then((module) => ({ default: module.AboutPage })));
+const DesignSystemPage = lazy(() => import('./DesignSystemPage').then((module) => ({ default: module.DesignSystemPage })));
+const AppInfoPage = lazy(() => import('./AppInfoPage').then((module) => ({ default: module.AppInfoPage })));
+const DataDeletionPage = lazy(() => import('./DataDeletionPage').then((module) => ({ default: module.DataDeletionPage })));
+
+const SettingsContentLoader = () => (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/95 dark:bg-black/95">
+    <div className="flex items-center gap-3 text-gray-600 dark:text-[#9CA3AF]" role="status" aria-live="polite">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#ec1e24] border-t-transparent" />
+      <span>Loading settings...</span>
+    </div>
+  </div>
+);
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -392,6 +401,17 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
 
   if (!isOpen) return null;
 
+  const renderSettingsSubpage = (
+    content: ReactNode,
+    overlayClassName = 'hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64',
+    onOverlayClick = handleCloseSubpage,
+  ) => (
+    <>
+      <div className={overlayClassName} onClick={onOverlayClick} />
+      <Suspense fallback={<SettingsContentLoader />}>{content}</Suspense>
+    </>
+  );
+
   const renderStaticSettingsPage = (content: ReactNode) => (
     <>
       <div className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64" onClick={handleCloseSubpage} />
@@ -401,7 +421,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
         className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto overscroll-y-contain touch-pan-y"
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
-        {content}
+        <Suspense fallback={<SettingsContentLoader />}>{content}</Suspense>
       </div>
     </>
   );
@@ -409,197 +429,101 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   // Render sub-page if one is active
 
   if (activeSettingsPage === 'video') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <VideoSettings settings={settings} updateSetting={updateSetting} updateSettings={updateSettings} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <VideoSettings settings={settings} updateSetting={updateSetting} updateSettings={updateSettings} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'comment') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <CommentReplySettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <CommentReplySettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'rss') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <RssSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <RssSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'tmdb') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <TmdbFeedsSettings onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <TmdbFeedsSettings onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'videostudio') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={() => {
-            haptics.light();
-            handleCloseSubpage();
-          }}
-        />
-        <VideoStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <VideoStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64',
+      () => {
+        haptics.light();
+        handleCloseSubpage();
+      }
     );
   }
   if (activeSettingsPage === 'designstudio') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={() => {
-            haptics.light();
-            handleCloseSubpage();
-          }}
-        />
-        <DesignStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <DesignStudioSettings onSave={updateSetting} onBack={handleCloseSubpage} />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64',
+      () => {
+        haptics.light();
+        handleCloseSubpage();
+      }
     );
   }
   if (activeSettingsPage === 'pad') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64" onClick={handleCloseSubpage} />
-        <PadSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <PadSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'compose') {
-    return (
-      <>
-        <div className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64" onClick={handleCloseSubpage} />
-        <ComposeSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <ComposeSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'error') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <ErrorHandlingSettings onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <ErrorHandlingSettings onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'cleanup') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <CleanupSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <CleanupSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'haptic') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <HapticSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <HapticSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'appearance') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-50 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <AppearanceSettings theme={theme} setTheme={setTheme} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <AppearanceSettings theme={theme} setTheme={setTheme} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'notifications') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <NotificationsSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <NotificationsSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64'
     );
   }
   if (activeSettingsPage === 'pwa') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <PWASettings onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <PWASettings onBack={handleCloseSubpage} />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64'
     );
   }
   if (activeSettingsPage === 'timezone') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <TimezoneSettings onBack={handleCloseSubpage} />
-      </>
+    return renderSettingsSubpage(
+      <TimezoneSettings onBack={handleCloseSubpage} />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64'
     );
   }
   if (activeSettingsPage === 'thumbnail') {
-    return (
-      <>
-        {/* Overlay for inner settings */}
-        <div
-          className="hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64"
-          onClick={handleCloseSubpage}
-        />
-        <ThumbnailSettings
-          settings={settings}
-          updateSetting={updateSetting}
-          onBack={handleCloseSubpage}
-        />
-      </>
+    return renderSettingsSubpage(
+      <ThumbnailSettings
+        settings={settings}
+        updateSetting={updateSetting}
+        onBack={handleCloseSubpage}
+      />,
+      'hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64'
     );
   }
 

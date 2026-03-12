@@ -2,33 +2,82 @@
 // JOBS STORE TESTS
 // ============================================================================
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { useJobsStore } from '../../store/useJobsStore';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useJobsStore, type UploadJob } from '../../store/useJobsStore';
+
+const apiClientMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  delete: vi.fn(),
+}));
+
+vi.mock('../../lib/api/client', () => ({
+  apiClient: apiClientMock,
+}));
+
+function createServerJob(
+  job: Omit<UploadJob, 'id' | 'createdAt' | 'updatedAt' | 'events'>,
+  id: string
+): UploadJob {
+  const now = new Date('2026-03-12T00:00:00.000Z');
+  return {
+    ...job,
+    id,
+    createdAt: now,
+    updatedAt: now,
+    events: [],
+  };
+}
 
 describe('useJobsStore', () => {
+  let jobCounter = 0;
+
   beforeEach(() => {
-    // Reset store before each test
-    useJobsStore.setState({
-      jobs: [],
-      selectedJobId: null,
-      isPolling: false,
-      lastPollTime: null,
-      systemLogs: [],
+    localStorage.clear();
+    useJobsStore.setState(useJobsStore.getInitialState(), true);
+
+    jobCounter = 0;
+    apiClientMock.post.mockReset();
+    apiClientMock.get.mockReset();
+    apiClientMock.delete.mockReset();
+
+    apiClientMock.post.mockImplementation(async (endpoint: string, payload?: Omit<UploadJob, 'id' | 'createdAt' | 'updatedAt' | 'events'>) => {
+      if (endpoint === '/api/jobs' && payload) {
+        jobCounter += 1;
+        return {
+          success: true,
+          data: createServerJob(payload, `job-${jobCounter}`),
+        };
+      }
+
+      if (endpoint.endsWith('/retry')) {
+        return { success: true, data: { retried: true } };
+      }
+
+      return { success: true, data: {} };
     });
+
+    apiClientMock.get.mockImplementation(async () => ({
+      success: true,
+      data: useJobsStore.getState().jobs.map((job) => ({ ...job })),
+    }));
+
+    apiClientMock.delete.mockResolvedValue({ success: true, data: null });
+
     vi.clearAllTimers();
   });
 
   afterEach(() => {
-    const { stopPolling } = useJobsStore.getState();
-    stopPolling();
+    useJobsStore.getState().stopPolling();
+    vi.useRealTimers();
     vi.clearAllTimers();
   });
 
   describe('Job Management', () => {
-    it('should add a new job', () => {
-      const { addJob, jobs } = useJobsStore.getState();
+    it('should add a new job', async () => {
+      const { addJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'trailer.mp4',
         fileSize: 1024000,
         status: 'pending',
@@ -47,10 +96,10 @@ describe('useJobsStore', () => {
       expect(state.jobs[0]).toHaveProperty('updatedAt');
     });
 
-    it('should update a job', () => {
+    it('should update a job', async () => {
       const { addJob, updateJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'test.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -71,10 +120,10 @@ describe('useJobsStore', () => {
       expect(state.jobs[0].stage).toBe('encoding');
     });
 
-    it('should delete a job', () => {
+    it('should delete a job', async () => {
       const { addJob, deleteJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'test.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -89,22 +138,22 @@ describe('useJobsStore', () => {
       expect(state.jobs).toHaveLength(0);
     });
 
-    it('should duplicate a job', () => {
+    it('should duplicate a job', async () => {
       const { addJob, duplicateJob } = useJobsStore.getState();
 
-      const originalId = addJob({
+      const originalId = await addJob({
         fileName: 'original.mp4',
         fileSize: 1000,
         status: 'completed',
         stage: 'published',
         progress: 100,
-        metadata: { 
+        metadata: {
           title: 'Test Video',
-          thumbnailAvailable: true 
+          thumbnailAvailable: true,
         },
       });
 
-      const duplicatedId = duplicateJob(originalId);
+      const duplicatedId = await duplicateJob(originalId);
 
       const state = useJobsStore.getState();
       expect(state.jobs).toHaveLength(2);
@@ -114,10 +163,10 @@ describe('useJobsStore', () => {
       expect(duplicatedId).toBeTruthy();
     });
 
-    it('should retry a failed job', () => {
+    it('should retry a failed job', async () => {
       const { addJob, updateJob, retryJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'test.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -126,7 +175,6 @@ describe('useJobsStore', () => {
         metadata: { thumbnailAvailable: false },
       });
 
-      // Simulate failure
       updateJob(jobId, {
         status: 'failed',
         error: {
@@ -134,7 +182,6 @@ describe('useJobsStore', () => {
         },
       });
 
-      // Retry the job
       retryJob(jobId);
 
       const state = useJobsStore.getState();
@@ -146,10 +193,10 @@ describe('useJobsStore', () => {
   });
 
   describe('Job Queries', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const { addJob } = useJobsStore.getState();
-      
-      addJob({
+
+      await addJob({
         fileName: 'pending.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -158,7 +205,7 @@ describe('useJobsStore', () => {
         metadata: { thumbnailAvailable: false },
       });
 
-      addJob({
+      await addJob({
         fileName: 'processing.mp4',
         fileSize: 2000,
         status: 'processing',
@@ -167,7 +214,7 @@ describe('useJobsStore', () => {
         metadata: { thumbnailAvailable: false },
       });
 
-      addJob({
+      await addJob({
         fileName: 'completed.mp4',
         fileSize: 3000,
         status: 'completed',
@@ -176,7 +223,7 @@ describe('useJobsStore', () => {
         metadata: { thumbnailAvailable: true },
       });
 
-      addJob({
+      await addJob({
         fileName: 'failed.mp4',
         fileSize: 4000,
         status: 'failed',
@@ -189,15 +236,16 @@ describe('useJobsStore', () => {
 
     it('should get job by ID', () => {
       const { jobs, getJob } = useJobsStore.getState();
-      const job = getJob(jobs[0].id);
-      
+      const target = jobs.find((job) => job.fileName === 'pending.mp4');
+      const job = getJob(target!.id);
+
       expect(job).toBeDefined();
       expect(job?.fileName).toBe('pending.mp4');
     });
 
     it('should get jobs by status', () => {
       const { getJobsByStatus } = useJobsStore.getState();
-      
+
       const completedJobs = getJobsByStatus('completed');
       expect(completedJobs).toHaveLength(1);
       expect(completedJobs[0].fileName).toBe('completed.mp4');
@@ -205,16 +253,16 @@ describe('useJobsStore', () => {
 
     it('should get active jobs', () => {
       const { getActiveJobs } = useJobsStore.getState();
-      
+
       const activeJobs = getActiveJobs();
-      expect(activeJobs).toHaveLength(2); // pending + processing
-      expect(activeJobs.some(j => j.fileName === 'pending.mp4')).toBe(true);
-      expect(activeJobs.some(j => j.fileName === 'processing.mp4')).toBe(true);
+      expect(activeJobs).toHaveLength(2);
+      expect(activeJobs.some((job) => job.fileName === 'pending.mp4')).toBe(true);
+      expect(activeJobs.some((job) => job.fileName === 'processing.mp4')).toBe(true);
     });
 
     it('should get failed jobs', () => {
       const { getFailedJobs } = useJobsStore.getState();
-      
+
       const failedJobs = getFailedJobs();
       expect(failedJobs).toHaveLength(1);
       expect(failedJobs[0].fileName).toBe('failed.mp4');
@@ -222,10 +270,10 @@ describe('useJobsStore', () => {
   });
 
   describe('Job Events', () => {
-    it('should add event to job', () => {
+    it('should add event to job', async () => {
       const { addJob, addJobEvent, getJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'test.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -263,8 +311,7 @@ describe('useJobsStore', () => {
     it('should limit system logs to 500', () => {
       const { addSystemLog } = useJobsStore.getState();
 
-      // Add 600 logs
-      for (let i = 0; i < 600; i++) {
+      for (let i = 0; i < 600; i += 1) {
         addSystemLog({
           severity: 'info',
           message: `Log ${i}`,
@@ -273,7 +320,7 @@ describe('useJobsStore', () => {
 
       const state = useJobsStore.getState();
       expect(state.systemLogs).toHaveLength(500);
-      expect(state.systemLogs[0].message).toBe('Log 599'); // Most recent
+      expect(state.systemLogs[0].message).toBe('Log 599');
     });
 
     it('should clear system logs', () => {
@@ -290,11 +337,11 @@ describe('useJobsStore', () => {
   });
 
   describe('Bulk Operations', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       const { addJob } = useJobsStore.getState();
-      
-      for (let i = 0; i < 5; i++) {
-        addJob({
+
+      for (let i = 0; i < 5; i += 1) {
+        await addJob({
           fileName: `completed-${i}.mp4`,
           fileSize: 1000,
           status: 'completed',
@@ -304,8 +351,8 @@ describe('useJobsStore', () => {
         });
       }
 
-      for (let i = 0; i < 3; i++) {
-        addJob({
+      for (let i = 0; i < 3; i += 1) {
+        await addJob({
           fileName: `failed-${i}.mp4`,
           fileSize: 1000,
           status: 'failed',
@@ -315,7 +362,7 @@ describe('useJobsStore', () => {
         });
       }
 
-      addJob({
+      await addJob({
         fileName: 'pending.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -326,13 +373,13 @@ describe('useJobsStore', () => {
     });
 
     it('should clear completed jobs', () => {
-      const { clearCompletedJobs, jobs } = useJobsStore.getState();
+      const { clearCompletedJobs } = useJobsStore.getState();
 
       clearCompletedJobs();
 
       const state = useJobsStore.getState();
-      expect(state.jobs).toHaveLength(4); // 3 failed + 1 pending
-      expect(state.jobs.every(j => j.status !== 'completed')).toBe(true);
+      expect(state.jobs).toHaveLength(4);
+      expect(state.jobs.every((job) => job.status !== 'completed')).toBe(true);
     });
 
     it('should clear failed jobs', () => {
@@ -341,8 +388,8 @@ describe('useJobsStore', () => {
       clearFailedJobs();
 
       const state = useJobsStore.getState();
-      expect(state.jobs).toHaveLength(6); // 5 completed + 1 pending
-      expect(state.jobs.every(j => j.status !== 'failed')).toBe(true);
+      expect(state.jobs).toHaveLength(6);
+      expect(state.jobs.every((job) => job.status !== 'failed')).toBe(true);
     });
 
     it('should clear all jobs', () => {
@@ -384,10 +431,10 @@ describe('useJobsStore', () => {
       expect(state.isPolling).toBe(false);
     });
 
-    it('should update job progress during polling', () => {
+    it('should update job progress during polling', async () => {
       const { addJob, startPolling, getJob } = useJobsStore.getState();
 
-      const jobId = addJob({
+      const jobId = await addJob({
         fileName: 'test.mp4',
         fileSize: 1000,
         status: 'pending',
@@ -396,13 +443,21 @@ describe('useJobsStore', () => {
         metadata: { thumbnailAvailable: false },
       });
 
-      startPolling();
+      apiClientMock.get.mockImplementation(async () => ({
+        success: true,
+        data: useJobsStore.getState().jobs.map((job) =>
+          job.id === jobId
+            ? { ...job, status: 'processing', progress: 25, stage: 'encoding' }
+            : job
+        ),
+      }));
 
-      // Fast forward through polling intervals
-      vi.advanceTimersByTime(3000);
+      startPolling();
+      await vi.advanceTimersByTimeAsync(3000);
 
       const job = getJob(jobId);
       expect(job?.progress).toBeGreaterThan(0);
+      expect(job?.status).toBe('processing');
     });
   });
 });

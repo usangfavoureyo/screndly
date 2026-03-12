@@ -1,229 +1,236 @@
-// ============================================================================
-// RSS FEEDS CONTEXT TESTS
-// ============================================================================
-
-import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
-import { RSSFeedsProvider, useRSSFeeds } from '../../contexts/RSSFeedsContext';
 import React from 'react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  RSSFeedsProvider,
+  type RSSFeed,
+  useRSSFeeds,
+} from '../../contexts/RSSFeedsContext';
+
+const apiClientMock = vi.hoisted(() => ({
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+}));
+
+const toastMock = vi.hoisted(() => ({
+  success: vi.fn(),
+  error: vi.fn(),
+  info: vi.fn(),
+}));
+
+vi.mock('../../lib/api', () => ({
+  apiClient: apiClientMock,
+}));
+
+vi.mock('sonner', () => ({
+  toast: toastMock,
+}));
 
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <RSSFeedsProvider>{children}</RSSFeedsProvider>
 );
 
+function createFeed(overrides: Partial<RSSFeed> = {}): RSSFeed {
+  return {
+    id: overrides.id ?? 'feed-1',
+    name: overrides.name ?? 'Test Feed',
+    url: overrides.url ?? 'https://example.com/feed.xml',
+    enabled: overrides.enabled ?? true,
+    interval: overrides.interval ?? 15,
+    imageCount: overrides.imageCount ?? 'random',
+    dedupeDays: overrides.dedupeDays ?? 7,
+    filters: overrides.filters ?? {
+      scope: 'title_or_body',
+      required: [],
+      blocked: [],
+      onlyFetchNewItems: true,
+      startFromNowAt: null,
+      maxItemAgeMinutes: null,
+    },
+    serperEnabled: overrides.serperEnabled ?? true,
+    tmdbEnabled: overrides.tmdbEnabled ?? false,
+    serperPriority: overrides.serperPriority ?? false,
+    rehostImages: overrides.rehostImages ?? false,
+    autoPost: overrides.autoPost ?? false,
+    platformsEnabled: overrides.platformsEnabled ?? {
+      x: true,
+      threads: false,
+      facebook: false,
+      pinterest: false,
+    },
+    status: overrides.status ?? 'active',
+    favicon: overrides.favicon,
+    platformImageCounts: overrides.platformImageCounts,
+    trickle: overrides.trickle,
+    lastProcessedAt: overrides.lastProcessedAt,
+    nextRunAt: overrides.nextRunAt,
+    errorMessage: overrides.errorMessage,
+    createdAt: overrides.createdAt ?? '2026-03-12T00:00:00.000Z',
+    updatedAt: overrides.updatedAt ?? '2026-03-12T00:00:00.000Z',
+  };
+}
+
 describe('RSSFeedsContext', () => {
+  let backendFeeds: RSSFeed[];
+
   beforeEach(() => {
-    localStorage.clear();
+    backendFeeds = [];
+    vi.clearAllMocks();
+
+    apiClientMock.get.mockImplementation(async (endpoint: string) => {
+      if (endpoint === '/api/rss/feeds') {
+        return { success: true, data: [...backendFeeds] };
+      }
+
+      return { success: true, data: null };
+    });
+
+    apiClientMock.post.mockImplementation(async (endpoint: string, payload?: Partial<RSSFeed>) => {
+      if (endpoint === '/api/rss/feeds') {
+        const createdFeed = createFeed({
+          id: `feed-${backendFeeds.length + 1}`,
+          ...payload,
+        });
+        backendFeeds = [createdFeed, ...backendFeeds];
+        return { success: true, data: createdFeed };
+      }
+
+      if (endpoint.endsWith('/refresh')) {
+        return {
+          success: true,
+          data: {
+            feedId: backendFeeds[0]?.id ?? 'feed-1',
+            feedName: backendFeeds[0]?.name ?? 'Test Feed',
+            itemsAdded: 2,
+            checkedCount: 3,
+            pendingCount: 1,
+            failedCount: 0,
+          },
+        };
+      }
+
+      return { success: true, data: null };
+    });
+
+    apiClientMock.put.mockImplementation(async (endpoint: string, updates: Partial<RSSFeed>) => {
+      const feedId = endpoint.split('/').pop()!;
+      const existingFeed = backendFeeds.find((feed) => feed.id === feedId);
+      const updatedFeed = { ...existingFeed, ...updates } as RSSFeed;
+      backendFeeds = backendFeeds.map((feed) => (feed.id === feedId ? updatedFeed : feed));
+      return { success: true, data: updatedFeed };
+    });
+
+    apiClientMock.delete.mockImplementation(async (endpoint: string) => {
+      const feedId = endpoint.split('/').pop()!;
+      backendFeeds = backendFeeds.filter((feed) => feed.id !== feedId);
+      return { success: true, data: null };
+    });
   });
 
-  it('should add a new RSS feed', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Test Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: ['trailer', 'teaser'],
-        platforms: ['youtube', 'x'],
-      });
-    });
-
-    expect(result.current.feeds).toHaveLength(1);
-    expect(result.current.feeds[0].name).toBe('Test Feed');
-  });
-
-  it('should update an RSS feed', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    let feedId: string;
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Original Name',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
-      feedId = result.current.feeds[0].id;
-    });
-
-    act(() => {
-      result.current.updateFeed(feedId, {
-        name: 'Updated Name',
-        interval: 30,
-      });
-    });
-
-    expect(result.current.feeds[0].name).toBe('Updated Name');
-    expect(result.current.feeds[0].interval).toBe(30);
-  });
-
-  it('should delete an RSS feed', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    let feedId: string;
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Test Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
-      feedId = result.current.feeds[0].id;
-    });
-
-    act(() => {
-      result.current.deleteFeed(feedId);
-    });
-
-    expect(result.current.feeds).toHaveLength(0);
-  });
-
-  it('should toggle feed enabled state', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    let feedId: string;
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Test Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
-      feedId = result.current.feeds[0].id;
-    });
-
-    act(() => {
-      result.current.toggleFeed(feedId);
-    });
-
-    expect(result.current.feeds[0].enabled).toBe(false);
-
-    act(() => {
-      result.current.toggleFeed(feedId);
-    });
-
-    expect(result.current.feeds[0].enabled).toBe(true);
-  });
-
-  it('should update feed stats', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    let feedId: string;
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Test Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
-      feedId = result.current.feeds[0].id;
-    });
-
-    act(() => {
-      result.current.updateFeedStats(feedId, {
-        itemsFound: 10,
-        itemsProcessed: 5,
-        lastError: 'Network error',
-      });
-    });
-
-    expect(result.current.feeds[0].itemsFound).toBe(10);
-    expect(result.current.feeds[0].itemsProcessed).toBe(5);
-    expect(result.current.feeds[0].lastError).toBe('Network error');
-  });
-
-  it('should persist feeds to localStorage', () => {
-    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
-
-    act(() => {
-      result.current.addFeed({
-        name: 'Persisted Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
-    });
-
-    const stored = localStorage.getItem('screndly_rss_feeds');
-    expect(stored).toBeTruthy();
-    
-    const parsed = JSON.parse(stored!);
-    expect(parsed).toHaveLength(1);
-    expect(parsed[0].name).toBe('Persisted Feed');
-  });
-
-  it('should load feeds from localStorage', () => {
-    const mockFeeds = [
-      {
-        id: 'feed1',
-        name: 'Loaded Feed',
-        url: 'https://example.com/feed.xml',
-        enabled: true,
-        interval: 15,
-        keywords: ['test'],
-        platforms: ['youtube'],
-        itemsFound: 0,
-        itemsProcessed: 0,
-      },
-    ];
-
-    localStorage.setItem('screndly_rss_feeds', JSON.stringify(mockFeeds));
+  it('loads feeds from the backend on mount', async () => {
+    backendFeeds = [createFeed({ id: 'feed-loaded', name: 'Loaded Feed' })];
 
     const { result } = renderHook(() => useRSSFeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(result.current.feeds).toHaveLength(1);
     expect(result.current.feeds[0].name).toBe('Loaded Feed');
   });
 
-  it('should handle multiple feeds', () => {
+  it('adds a feed via the backend and prepends it locally', async () => {
     const { result } = renderHook(() => useRSSFeeds(), { wrapper });
 
-    act(() => {
-      result.current.addFeed({
-        name: 'Feed 1',
-        url: 'https://example.com/feed1.xml',
-        enabled: true,
-        interval: 15,
-        keywords: [],
-        platforms: [],
-      });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      result.current.addFeed({
-        name: 'Feed 2',
-        url: 'https://example.com/feed2.xml',
+    await act(async () => {
+      await result.current.addFeed({
+        name: 'Breaking Feed',
+        url: 'https://example.com/breaking.xml',
         enabled: true,
         interval: 30,
-        keywords: [],
-        platforms: [],
-      });
-
-      result.current.addFeed({
-        name: 'Feed 3',
-        url: 'https://example.com/feed3.xml',
-        enabled: false,
-        interval: 60,
-        keywords: [],
-        platforms: [],
       });
     });
 
-    expect(result.current.feeds).toHaveLength(3);
-    expect(result.current.feeds.filter(f => f.enabled)).toHaveLength(2);
+    expect(result.current.feeds).toHaveLength(1);
+    expect(result.current.feeds[0].name).toBe('Breaking Feed');
+    expect(apiClientMock.post).toHaveBeenCalledWith(
+      '/api/rss/feeds',
+      expect.objectContaining({
+        name: 'Breaking Feed',
+        url: 'https://example.com/breaking.xml',
+      })
+    );
+  });
+
+  it('updates an existing feed from backend data', async () => {
+    backendFeeds = [createFeed({ id: 'feed-update', name: 'Original Name' })];
+
+    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.feeds).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updateFeed('feed-update', {
+        name: 'Updated Name',
+        interval: 60,
+      });
+    });
+
+    expect(result.current.feeds[0].name).toBe('Updated Name');
+    expect(result.current.feeds[0].interval).toBe(60);
+  });
+
+  it('toggles a feed enabled state and status', async () => {
+    backendFeeds = [createFeed({ id: 'feed-toggle', enabled: true, status: 'active' })];
+
+    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.feeds).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.toggleFeedEnabled('feed-toggle', false);
+    });
+
+    expect(result.current.feeds[0].enabled).toBe(false);
+    expect(result.current.feeds[0].status).toBe('paused');
+    expect(toastMock.info).toHaveBeenCalled();
+  });
+
+  it('deletes a feed after backend confirmation', async () => {
+    backendFeeds = [createFeed({ id: 'feed-delete' })];
+
+    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.feeds).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.deleteFeed('feed-delete');
+    });
+
+    expect(result.current.feeds).toHaveLength(0);
+    expect(apiClientMock.delete).toHaveBeenCalledWith('/api/rss/feeds/feed-delete');
+  });
+
+  it('refreshes a feed and returns backend summary data', async () => {
+    backendFeeds = [createFeed({ id: 'feed-refresh', name: 'Refresh Feed' })];
+
+    const { result } = renderHook(() => useRSSFeeds(), { wrapper });
+
+    await waitFor(() => expect(result.current.feeds).toHaveLength(1));
+
+    let refreshResult;
+    await act(async () => {
+      refreshResult = await result.current.refreshFeed('feed-refresh', { showToast: false, manualRun: true });
+    });
+
+    expect(refreshResult).toMatchObject({
+      feedId: 'feed-refresh',
+      feedName: 'Refresh Feed',
+      itemsAdded: 2,
+      checkedCount: 3,
+    });
   });
 });

@@ -362,7 +362,7 @@ export function isFFmpegLoaded(): boolean {
  */
 export function validateTimestamp(timestamp: string): boolean {
   // Accepts HH:MM:SS or MM:SS format
-  const hhmmss = /^([0-9]{1,2}):([0-5][0-9]):([0-5][0-9])$/;
+  const hhmmss = /^([0-9]{2}):([0-5][0-9]):([0-5][0-9])$/;
   const mmss = /^([0-5]?[0-9]):([0-5][0-9])$/;
   
   return hhmmss.test(timestamp) || mmss.test(timestamp);

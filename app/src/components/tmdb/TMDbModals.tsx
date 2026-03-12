@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Clock, Loader2, X } from 'lucide-react';
+import { RefreshCw, Clock, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -19,6 +19,7 @@ import { generateTMDbCaption, getFeedTypeFromSource } from '../../utils/tmdbCapt
 import { logFeedUpdate, logFeedDeletion } from '../../utils/tmdbLogger';
 import { getInitialTMDbPlatformKeys, publishTMDbPost, toTMDbPlatformNames } from '../../lib/tmdb/tmdbPublish';
 import { ChangeImageBottomSheet } from './ChangeImageBottomSheet';
+import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import {
     BottomSheet,
     BottomSheetHeader,
@@ -27,13 +28,6 @@ import {
     BottomSheetBody,
     BottomSheetFooter
 } from '../ui/bottom-sheet';
-import {
-    Dialog,
-    DialogContent,
-    DialogTitle,
-    DialogDescription,
-} from '../ui/dialog';
-import { VisuallyHidden } from '../ui/visually-hidden';
 
 /**
  * TMDbModals - Portal Rendered Modals
@@ -126,6 +120,15 @@ export function TMDbModals() {
         window.addEventListener('popstate', handlePopState);
         return () => window.removeEventListener('popstate', handlePopState);
     }, [imagePreviewModal.open]);
+
+    const handleCloseImagePreview = () => {
+        if (typeof window !== 'undefined' && imagePreviewModal.open) {
+            window.history.back();
+            return;
+        }
+
+        closeImagePreview();
+    };
 
     // === EDIT CAPTION HANDLERS ===
     const handleSaveCaption = () => {
@@ -356,33 +359,14 @@ export function TMDbModals() {
     return (
         <>
             {/* Image Preview Modal */}
-            <Dialog open={imagePreviewModal.open} onOpenChange={(open) => !open && closeImagePreview()}>
-                <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
-                    <VisuallyHidden>
-                        <DialogTitle>{imagePreviewModal.feed?.title}</DialogTitle>
-                        <DialogDescription>Full size image</DialogDescription>
-                    </VisuallyHidden>
-                    {/* Close Button - Translucent dark background */}
-                    <button
-                        onClick={() => {
-                            haptics.light();
-                            // Go back in history which triggers the popstate listener to close the modal
-                            window.history.back();
-                        }}
-                        className="absolute top-4 right-4 z-50 p-2 rounded-full bg-black hover:bg-[#111111] transition-colors"
-                        aria-label="Close image"
-                    >
-                        <X className="w-6 h-6 text-white" />
-                    </button>
-                    {imagePreviewModal.feed && (
-                        <img
-                            src={imagePreviewModal.feed.imageUrl}
-                            alt={imagePreviewModal.feed.title}
-                            className="w-full h-auto max-h-[90vh] object-contain"
-                        />
-                    )}
-                </DialogContent>
-            </Dialog>
+            <TMDbImagePreviewDialog
+                open={imagePreviewModal.open}
+                onOpenChange={(open) => !open && handleCloseImagePreview()}
+                onClose={handleCloseImagePreview}
+                imageUrl={imagePreviewModal.feed?.imageUrl}
+                title={imagePreviewModal.feed?.title}
+                imageType={imagePreviewModal.feed?.imageType}
+            />
 
             {/* Edit Caption Modal */}
             <BottomSheet open={editCaptionModal.open} onOpenChange={(open) => !open && closeEditCaption()}>

@@ -2,116 +2,156 @@
 // PWA UTILITY TESTS
 // ============================================================================
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { 
-  isPWAInstalled, 
-  isInstallPromptAvailable, 
-  showInstallPrompt,
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  isInstallPromptAvailable,
+  isPWAInstalled,
   registerServiceWorker,
-  unregisterServiceWorker
+  setupInstallPrompt,
+  showInstallPrompt,
+  unregisterServiceWorker,
 } from '../../utils/pwa';
+
+function createInstallPromptEvent(outcome: 'accepted' | 'dismissed' = 'accepted') {
+  const prompt = vi.fn().mockResolvedValue(undefined);
+  const event = new Event('beforeinstallprompt') as Event & {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+    preventDefault: () => void;
+  };
+
+  event.prompt = prompt;
+  event.userChoice = Promise.resolve({ outcome });
+  event.preventDefault = vi.fn();
+
+  return { event, prompt };
+}
 
 describe('PWA Utilities', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete (window as any).matchMedia;
+
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    delete (navigator as Navigator & { standalone?: boolean }).standalone;
+    window.dispatchEvent(new Event('appinstalled'));
   });
 
   describe('isPWAInstalled', () => {
     it('should return true when running in standalone mode', () => {
-      window.matchMedia = vi.fn().mockImplementation((query) => ({
+      window.matchMedia = vi.fn().mockImplementation((query: string) => ({
         matches: query === '(display-mode: standalone)',
         media: query,
+        onchange: null,
         addEventListener: vi.fn(),
         removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
       }));
 
       expect(isPWAInstalled()).toBe(true);
     });
 
     it('should return true when navigator.standalone is true (iOS)', () => {
-      (window.navigator as any).standalone = true;
+      (navigator as Navigator & { standalone?: boolean }).standalone = true;
+
       expect(isPWAInstalled()).toBe(true);
     });
 
     it('should return false when not installed', () => {
-      window.matchMedia = vi.fn().mockReturnValue({
-        matches: false,
-        media: '',
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
-      
       expect(isPWAInstalled()).toBe(false);
     });
   });
 
-  describe('isInstallPromptAvailable', () => {
-    it('should return true when install prompt event exists', () => {
-      (window as any).deferredPrompt = {};
+  describe('install prompt flow', () => {
+    it('should report prompt availability after capturing the install event', () => {
+      setupInstallPrompt();
+      const { event } = createInstallPromptEvent();
+
+      window.dispatchEvent(event);
+
       expect(isInstallPromptAvailable()).toBe(true);
     });
 
-    it('should return false when no prompt available', () => {
-      delete (window as any).deferredPrompt;
+    it('should show the install prompt and clear it after user acceptance', async () => {
+      setupInstallPrompt();
+      const { event, prompt } = createInstallPromptEvent('accepted');
+
+      window.dispatchEvent(event);
+
+      const result = await showInstallPrompt();
+
+      expect(prompt).toHaveBeenCalledTimes(1);
+      expect(result).toBe('accepted');
       expect(isInstallPromptAvailable()).toBe(false);
     });
-  });
 
-  describe('showInstallPrompt', () => {
-    it('should trigger prompt when available', async () => {
-      const mockPrompt = vi.fn().mockResolvedValue({ outcome: 'accepted' });
-      (window as any).deferredPrompt = { prompt: mockPrompt };
-
-      const result = await showInstallPrompt();
-
-      expect(mockPrompt).toHaveBeenCalled();
-      expect(result).toBe('accepted');
-      expect((window as any).deferredPrompt).toBeNull();
-    });
-
-    it('should return null when no prompt available', async () => {
-      delete (window as any).deferredPrompt;
-      const result = await showInstallPrompt();
-      expect(result).toBeNull();
+    it('should return unavailable when no prompt has been captured', async () => {
+      expect(isInstallPromptAvailable()).toBe(false);
+      await expect(showInstallPrompt()).resolves.toBe('unavailable');
     });
   });
 
   describe('Service Worker', () => {
-    it('should register service worker successfully', async () => {
-      const mockRegister = vi.fn().mockResolvedValue({});
-      (navigator as any).serviceWorker = {
-        register: mockRegister,
+    it('should register the service worker with the current build id', async () => {
+      const registration = {
+        scope: '/',
+        installing: null,
+        update: vi.fn(),
+        addEventListener: vi.fn(),
       };
 
-      await registerServiceWorker();
+      const register = vi.fn().mockResolvedValue(registration);
+      (navigator as Navigator & { serviceWorker: any }).serviceWorker = {
+        controller: null,
+        register,
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        addEventListener: vi.fn(),
+      };
 
-      expect(mockRegister).toHaveBeenCalledWith('/sw.js');
+      const result = await registerServiceWorker();
+
+      expect(register).toHaveBeenCalledWith('/sw.js?build=test-build', { scope: '/' });
+      expect(result).toBe(registration);
     });
 
-    it('should handle service worker registration failure', async () => {
-      const mockRegister = vi.fn().mockRejectedValue(new Error('Registration failed'));
-      (navigator as any).serviceWorker = {
-        register: mockRegister,
+    it('should return null when service worker registration fails', async () => {
+      const register = vi.fn().mockRejectedValue(new Error('Registration failed'));
+      (navigator as Navigator & { serviceWorker: any }).serviceWorker = {
+        controller: null,
+        register,
+        getRegistrations: vi.fn().mockResolvedValue([]),
+        addEventListener: vi.fn(),
       };
 
-      await expect(registerServiceWorker()).rejects.toThrow('Registration failed');
+      await expect(registerServiceWorker()).resolves.toBeNull();
     });
 
-    it('should unregister service worker', async () => {
-      const mockUnregister = vi.fn().mockResolvedValue(true);
-      const mockGetRegistration = vi.fn().mockResolvedValue({
-        unregister: mockUnregister,
-      });
-      
-      (navigator as any).serviceWorker = {
-        getRegistration: mockGetRegistration,
+    it('should unregister the active service worker', async () => {
+      const unregister = vi.fn().mockResolvedValue(true);
+      const getRegistration = vi.fn().mockResolvedValue({ unregister });
+
+      (navigator as Navigator & { serviceWorker: any }).serviceWorker = {
+        getRegistration,
       };
 
-      await unregisterServiceWorker();
-
-      expect(mockGetRegistration).toHaveBeenCalled();
-      expect(mockUnregister).toHaveBeenCalled();
+      await expect(unregisterServiceWorker()).resolves.toBe(true);
+      expect(getRegistration).toHaveBeenCalledTimes(1);
+      expect(unregister).toHaveBeenCalledTimes(1);
     });
   });
 });

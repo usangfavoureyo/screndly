@@ -47,6 +47,9 @@ interface NotificationsContextType {
 
 const NotificationsContext = createContext<NotificationsContextType | undefined>(undefined);
 
+const createNotificationId = (): string =>
+  `notification_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
 function normalizeSource(source: string | undefined): NotificationSource {
   if (source === 'video_studio') return 'videostudio';
   if (source === 'design_studio') return 'design_studio';
@@ -123,7 +126,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     actionPage?: string;
   }) => {
     // Optimistic update
-    const tempId = Date.now().toString();
+    const tempId = createNotificationId();
     const newNotification: Notification = {
       id: tempId,
       ...notification,

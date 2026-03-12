@@ -2,14 +2,11 @@ import { useState, lazy, Suspense, useEffect, useCallback } from "react";
 import { DashboardOverview } from "./DashboardOverview";
 import { Navigation } from "./Navigation";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { SettingsPanel } from "./SettingsPanel";
-import { NotificationPanel } from "./NotificationPanel";
 import { InstallPrompt } from "./InstallPrompt";
 import { NotFoundPage } from "./NotFoundPage";
 import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
-import { TMDbModals } from "./tmdb/TMDbModals";
 import { ComposeScheduler } from "./create/ComposeScheduler";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
@@ -20,6 +17,7 @@ import { useBackNavigation } from "../contexts/BackNavigationContext";
 import { setupInstallPrompt, registerServiceWorker } from "../utils/pwa";
 import { toast } from "sonner";
 import { logout } from "../lib/auth";
+import { useTMDbModalStore } from "../stores/tmdbModalStore";
 
 const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
 const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
@@ -47,6 +45,7 @@ const VideoStudioPage = lazy(() => import("./VideoStudioPage").then(m => ({ defa
 const VideoStudioActivityPage = lazy(() => import("./VideoStudioActivityPage").then(m => ({ default: m.VideoStudioActivityPage })));
 const DesignStudioPage = lazy(() => import("./DesignStudioPage").then(m => ({ default: m.default })));
 const DesignStudioActivityPage = lazy(() => import("./DesignStudioActivityPage").then(m => ({ default: m.DesignStudioActivityPage })));
+const SettingsPanel = lazy(() => import("./SettingsPanel").then(m => ({ default: m.SettingsPanel })));
 const PrivacyPage = lazy(() => import("./PrivacyPage").then(m => ({ default: m.PrivacyPage })));
 const TermsPage = lazy(() => import("./TermsPage").then(m => ({ default: m.TermsPage })));
 const DisclaimerPage = lazy(() => import("./DisclaimerPage").then(m => ({ default: m.DisclaimerPage })));
@@ -59,12 +58,22 @@ const APIUsage = lazy(() => import("./APIUsage").then(m => ({ default: m.APIUsag
 const OAuthCallbackPage = lazy(() => import("./OAuthCallbackPage").then(m => ({ default: m.OAuthCallbackPage })));
 const CommentAutomationPage = lazy(() => import("./CommentAutomationPage").then(m => ({ default: m.CommentAutomationPage })));
 const UploadManagerPage = lazy(() => import("./jobs/UploadManagerPage").then(m => ({ default: m.UploadManagerPage })));
+const NotificationPanel = lazy(() => import("./NotificationPanel").then(m => ({ default: m.NotificationPanel })));
+const TMDbModals = lazy(() => import("./tmdb/TMDbModals").then(m => ({ default: m.TMDbModals })));
 
 // Loading component
 const PageLoader = () => (
   <div className="flex items-center justify-center h-64" role="status" aria-live="polite">
     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ec1e24]"></div>
     <span className="sr-only">Loading...</span>
+  </div>
+);
+
+const OverlayLoader = () => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status" aria-live="polite">
+    <div className="rounded-xl bg-white px-5 py-4 text-gray-900 shadow-lg dark:bg-[#000000] dark:text-white">
+      Loading...
+    </div>
   </div>
 );
 
@@ -158,6 +167,18 @@ function getInitialNavigationState(): PersistedAppState {
   };
 }
 
+function scrollToTop(): void {
+  if (typeof window === "undefined" || typeof window.scrollTo !== "function") {
+    return;
+  }
+
+  try {
+    window.scrollTo(0, 0);
+  } catch {
+    // Ignore environments that do not implement scroll APIs.
+  }
+}
+
 export function AppContent() {
   const {
     notifications,
@@ -188,16 +209,32 @@ export function AppContent() {
   const [isDesktopViewport, setIsDesktopViewport] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth >= 1024 : false,
   );
+  const [shouldMountNotificationPanel, setShouldMountNotificationPanel] = useState(false);
+  const [shouldMountTMDbModals, setShouldMountTMDbModals] = useState(false);
+  const hasOpenTMDbModal = useTMDbModalStore((state) =>
+    state.editCaptionModal.open ||
+    state.changeImageModal.open ||
+    state.rescheduleModal.open ||
+    state.deleteModal.open ||
+    state.platformSelectModal.open ||
+    state.imagePreviewModal.open,
+  );
+  const shouldRenderNotificationPanel = shouldMountNotificationPanel || isNotificationsOpen;
+  const shouldRenderTMDbModals = shouldMountTMDbModals || hasOpenTMDbModal;
 
-  // Wrapper to update URL when page changes
-  const setCurrentPage = (page: string) => {
+  const updateCurrentPage = useCallback((page: string, historyMode: "push" | "replace" = "push") => {
     setCurrentPageState(page);
-    // Update URL without reload (for bookmarking/sharing)
+
     const newUrl = page === 'dashboard' ? '/' : `/${page}`;
     if (window.location.pathname !== newUrl) {
+      if (historyMode === "replace") {
+        window.history.replaceState({ page }, "", newUrl);
+        return;
+      }
+
       window.history.pushState({ page }, '', newUrl);
     }
-  };
+  }, []);
 
   // Check if current page is valid, if not show 404
   const displayPage = isValidPage(currentPage) ? currentPage : 'not-found';
@@ -316,9 +353,9 @@ export function AppContent() {
 
   // Create a stable navigation callback for BackNavigationContext
   const navigationCallback = useCallback((page: string) => {
-    setCurrentPage(page);
-    window.scrollTo(0, 0);
-  }, []);
+    updateCurrentPage(page, "replace");
+    scrollToTop();
+  }, [updateCurrentPage]);
 
   // Register navigation callback with BackNavigationContext for child page back navigation
   // Register navigation callback with BackNavigationContext for child page back navigation
@@ -412,13 +449,7 @@ export function AppContent() {
         pushChildPage(page, parentPage);
       }
 
-      setCurrentPage(page);
-
-      // Push to browser history for back button support (crucial for Android PWA)
-      if (!skipHistory) {
-        const url = page === 'dashboard' ? '/' : `/${page}`;
-        window.history.pushState({ page }, '', url);
-      }
+      updateCurrentPage(page, skipHistory ? "replace" : "push");
 
       // If navigating to a static page, close settings after setting the page
       // NO LONGER NEEDED: Static pages are now handled within SettingsPanel
@@ -426,7 +457,7 @@ export function AppContent() {
       //   setIsSettingsOpen(false);
       // }
       // Reset scroll position instantly without animation
-      window.scrollTo(0, 0);
+      scrollToTop();
     }
   };
 
@@ -527,6 +558,10 @@ export function AppContent() {
 
   // Initialize PWA functionality
   useEffect(() => {
+    if (import.meta.env.MODE === "test") {
+      return;
+    }
+
     // Set up the install prompt listener
     setupInstallPrompt();
 
@@ -540,6 +575,18 @@ export function AppContent() {
       setIsDesktopSidebarCollapsed(savedSidebarState === "true");
     }
   }, []);
+
+  useEffect(() => {
+    if (isNotificationsOpen) {
+      setShouldMountNotificationPanel(true);
+    }
+  }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (hasOpenTMDbModal) {
+      setShouldMountTMDbModals(true);
+    }
+  }, [hasOpenTMDbModal]);
 
   useEffect(() => {
     window.localStorage.setItem(
@@ -679,28 +726,34 @@ export function AppContent() {
         onNavigate={handleNavigate}
       />
       {isSettingsOpen && (
-        <SettingsPanel
-          isOpen={isSettingsOpen}
-          onClose={handleCloseSettings}
-          onLogout={handleLogout}
-          onNavigate={handleNavigate}
-          pageBeforeSettings={pageBeforeSettings}
-          onNewNotification={addNotification}
-          initialPage={settingsInitialPage}
-        />
+        <Suspense fallback={<OverlayLoader />}>
+          <SettingsPanel
+            isOpen={isSettingsOpen}
+            onClose={handleCloseSettings}
+            onLogout={handleLogout}
+            onNavigate={handleNavigate}
+            pageBeforeSettings={pageBeforeSettings}
+            onNewNotification={addNotification}
+            initialPage={settingsInitialPage}
+          />
+        </Suspense>
       )}
-        <NotificationPanel
-          isOpen={isNotificationsOpen}
-          onClose={() => setIsNotificationsOpen(false)}
-        notifications={notifications}
-        onMarkAsRead={markAsRead}
-        onMarkAllAsRead={markAllAsRead}
-        onClearAll={clearAll}
-          onDeleteNotification={handleDeleteNotification}
-          onDeleteNotifications={handleDeleteNotifications}
-          onNotificationAction={handleNotificationAction}
-          onOpenPage={handleOpenNotificationPage}
-        />
+      {shouldRenderNotificationPanel && (
+        <Suspense fallback={<OverlayLoader />}>
+          <NotificationPanel
+            isOpen={isNotificationsOpen}
+            onClose={() => setIsNotificationsOpen(false)}
+            notifications={notifications}
+            onMarkAsRead={markAsRead}
+            onMarkAllAsRead={markAllAsRead}
+            onClearAll={clearAll}
+            onDeleteNotification={handleDeleteNotification}
+            onDeleteNotifications={handleDeleteNotifications}
+            onNotificationAction={handleNotificationAction}
+            onOpenPage={handleOpenNotificationPage}
+          />
+        </Suspense>
+      )}
 
       {/* Undo Toast */}
       <UndoToast />
@@ -712,7 +765,11 @@ export function AppContent() {
       <ShortcutsHelp isOpen={isShortcutsHelpOpen} onClose={() => setIsShortcutsHelpOpen(false)} />
 
       {/* TMDb Portal Modals - rendered at app level for render isolation */}
-      <TMDbModals />
+      {shouldRenderTMDbModals && (
+        <Suspense fallback={<OverlayLoader />}>
+          <TMDbModals />
+        </Suspense>
+      )}
       <ComposeScheduler />
     </div>
   );

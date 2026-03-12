@@ -68,6 +68,11 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
       item.platformFields.youtube?.title ||
       item.platformFields.pinterest?.title ||
       item.title,
+    youtubeTitle: item.platformFields.youtube?.title,
+    youtubeDescription: item.platformFields.youtube?.description,
+    youtubePlaylistIds: item.platformFields.youtube?.playlist
+      ? [item.platformFields.youtube.playlist]
+      : undefined,
     imageUrl: primaryAsset.kind === 'image' ? mediaUrl : undefined,
     videoUrl: primaryAsset.kind === 'video' ? mediaUrl : undefined,
   };

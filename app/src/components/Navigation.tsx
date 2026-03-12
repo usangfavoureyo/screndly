@@ -108,11 +108,6 @@ export function Navigation({
             <button
               key={item.id}
               onClick={() => handleNavClick(item.id)}
-              onPointerDown={(e) => {
-                if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-                  handleNavClick(item.id);
-                }
-              }}
               className={cn(
                 'group relative cursor-pointer w-full overflow-hidden rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
                 isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex items-center gap-3 px-4 py-3 text-left',
@@ -138,11 +133,6 @@ export function Navigation({
         <Button
           type="button"
           onClick={onLogout}
-          onPointerDown={(e) => {
-            if (e.pointerType === 'mouse' || e.pointerType === 'pen') {
-              onLogout();
-            }
-          }}
           variant="ghost"
           className={cn(
             'cursor-pointer rounded-xl text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',

@@ -1,0 +1,1 @@
+function t(o){try{const n=new URL(o);return n.hostname==="localhost"&&(n.hostname="127.0.0.1"),n.origin}catch{return o}}function i(o){return typeof window>"u"?"":`${o==="X"?t(window.location.origin):window.location.origin}/platforms/callback`}export{i as g};

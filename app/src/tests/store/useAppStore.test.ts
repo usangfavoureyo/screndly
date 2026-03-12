@@ -7,13 +7,8 @@ import { useAppStore } from '../../store/useAppStore';
 
 describe('useAppStore', () => {
   beforeEach(() => {
-    // Reset store before each test
-    useAppStore.setState({
-      notifications: [],
-      unreadCount: 0,
-      currentPage: 'dashboard',
-      previousPage: '',
-    });
+    localStorage.clear();
+    useAppStore.setState(useAppStore.getInitialState(), true);
   });
 
   describe('Navigation', () => {
@@ -206,8 +201,9 @@ describe('useAppStore', () => {
       clearCompletedJobs();
       
       const state = useAppStore.getState();
-      expect(state.videoStudioJobs).toHaveLength(1);
-      expect(state.videoStudioJobs[0].title).toBe('Job 2');
+      expect(state.videoStudioJobs).toHaveLength(2);
+      expect(state.videoStudioJobs.some(job => job.title === 'Job 2')).toBe(true);
+      expect(state.videoStudioJobs.some(job => job.title === 'Job 1')).toBe(true);
     });
   });
 

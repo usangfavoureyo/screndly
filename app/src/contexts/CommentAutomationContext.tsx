@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { apiClient } from '../lib/api/client';
 
 interface CommentReply {
   comment: string;
@@ -52,7 +53,6 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
   useEffect(() => {
     const fetchCommentData = async () => {
       try {
-        const { apiClient } = await import('../lib/api/client');
         const response = await apiClient.get<any[]>('/api/comments/automation/stats');
 
         if (!response.success || !Array.isArray(response.data)) {

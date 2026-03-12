@@ -32,6 +32,7 @@ export const LEGACY_OPENAI_MODELS = [
 export type SupportedOpenAIModel = typeof SUPPORTED_OPENAI_MODELS[number];
 export type LegacyOpenAIModel = typeof LEGACY_OPENAI_MODELS[number];
 export type AIModel = SupportedOpenAIModel | LegacyOpenAIModel | 'flash-3';
+export type AIReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
@@ -62,6 +63,7 @@ export interface AIRequest {
     maxTokens?: number;
     temperature?: number;
     jsonMode?: boolean;
+    reasoningEffort?: AIReasoningEffort;
 }
 
 export interface AIResponse {
@@ -158,6 +160,32 @@ function normalizeGeneratedText(content: string, preferredJsonKeys: string[] = [
     return trimmed.replace(/^"|"$/g, '');
 }
 
+function extractOpenAIMessageContent(content: unknown): string {
+    if (typeof content === 'string') {
+        return content;
+    }
+
+    if (!Array.isArray(content)) {
+        return '';
+    }
+
+    return content
+        .map((part) => {
+            if (typeof part === 'string') {
+                return part;
+            }
+
+            if (part && typeof part === 'object' && 'text' in part) {
+                const text = (part as { text?: unknown }).text;
+                return typeof text === 'string' ? text : '';
+            }
+
+            return '';
+        })
+        .join('')
+        .trim();
+}
+
 // ============================================
 // OPENAI COMPLETION
 // ============================================
@@ -188,6 +216,10 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
 
         if (isGPT5Model) {
             body.max_completion_tokens = request.maxTokens || 1024;
+            const reasoningEffort = request.reasoningEffort || (request.jsonMode ? 'minimal' : undefined);
+            if (reasoningEffort) {
+                body.reasoning_effort = reasoningEffort;
+            }
         } else {
             body.max_tokens = request.maxTokens || 1024;
             body.temperature = request.temperature || 0.7;
@@ -218,9 +250,10 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
         }
 
         const data = await response.json() as {
-            choices?: Array<{ message?: { content?: string } }>;
+            choices?: Array<{ message?: { content?: unknown } }>;
             usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
         };
+        const content = extractOpenAIMessageContent(data.choices?.[0]?.message?.content);
 
         await trackApiUsage({
             service: 'openai',
@@ -232,7 +265,7 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
 
         return {
             success: true,
-            content: data.choices?.[0]?.message?.content || '',
+            content,
             model: request.model,
             tokens: {
                 prompt: data.usage?.prompt_tokens || 0,

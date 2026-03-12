@@ -514,27 +514,25 @@ describe('Screndly PWA - Full Application Test Suite', () => {
     });
 
     it('should validate timestamp format (HH:MM:SS)', () => {
-      const timestampPattern = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/;
+      const timestampPattern = /^(\d{2}):([0-5]\d):([0-5]\d)$/;
       
       expect(timestampPattern.test('01:23:45')).toBe(true);
-      expect(timestampPattern.test('1:23:45')).toBe(true);
+      expect(timestampPattern.test('1:23:45')).toBe(false);
       expect(timestampPattern.test('99:99:99')).toBe(false);
     });
 
     it('should sanitize user input to prevent XSS', () => {
       const sanitize = (input: string) => {
-        return input
-          .replace(/</g, '<')
-          .replace(/>/g, '>')
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#x27;');
+        const div = document.createElement('div');
+        div.textContent = input;
+        return div.innerHTML;
       };
       
       const malicious = '<script>alert("xss")</script>';
       const sanitized = sanitize(malicious);
       
       expect(sanitized).not.toContain('<script>');
-      expect(sanitized).toContain('<script>');
+      expect(sanitized).toContain('&lt;script&gt;');
     });
   });
 

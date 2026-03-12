@@ -118,8 +118,8 @@ class VideoProcessor {
     return {
       duration: 30,
       width: 1080,
-      height: 1920,
-      aspectRatio: 1080 / 1920, // 9:16
+      height: 1080,
+      aspectRatio: 1,
       fileSize: 15 * 1024 * 1024, // 15MB
       format: 'MP4',
       codec: 'H.264',
