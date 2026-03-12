@@ -5,12 +5,42 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 const LOCAL_BINARY_PATH = path.join(process.cwd(), 'bin', process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
+const LOCAL_COOKIE_FILE_PATH = path.join(process.cwd(), 'temp', 'yt-dlp-cookies.txt');
 const DEFAULT_BINARY_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 type YtDlpArrayValue = Array<string | number>;
-type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
-type YtDlpOptions = Record<string, YtDlpOptionValue>;
+export type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
+export type YtDlpOptions = Record<string, YtDlpOptionValue>;
+
+function ensureLocalCookieFile(contents: string): string {
+    fs.mkdirSync(path.dirname(LOCAL_COOKIE_FILE_PATH), { recursive: true });
+
+    if (!fs.existsSync(LOCAL_COOKIE_FILE_PATH) || fs.readFileSync(LOCAL_COOKIE_FILE_PATH, 'utf8') !== contents) {
+        fs.writeFileSync(LOCAL_COOKIE_FILE_PATH, contents, { encoding: 'utf8', mode: 0o600 });
+    }
+
+    return LOCAL_COOKIE_FILE_PATH;
+}
+
+function resolveCookieFilePath(): string | null {
+    const configuredPath = process.env.YT_DLP_COOKIE_FILE_PATH?.trim();
+    if (configuredPath) {
+        return configuredPath;
+    }
+
+    const rawContents = process.env.YT_DLP_COOKIE_FILE;
+    if (rawContents && rawContents.trim().length > 0) {
+        return ensureLocalCookieFile(rawContents.replace(/\r\n/g, '\n'));
+    }
+
+    const base64Contents = process.env.YT_DLP_COOKIE_FILE_BASE64?.trim();
+    if (base64Contents) {
+        return ensureLocalCookieFile(Buffer.from(base64Contents, 'base64').toString('utf8'));
+    }
+
+    return null;
+}
 
 function resolveBinaryPath(): string {
     const configuredPath = process.env.YT_DLP_BINARY_PATH?.trim();
@@ -23,6 +53,49 @@ function resolveBinaryPath(): string {
     }
 
     return DEFAULT_BINARY_NAME;
+}
+
+export function getYtDlpAuthOptions(): YtDlpOptions {
+    const options: YtDlpOptions = {};
+    const cookieFilePath = resolveCookieFilePath();
+    if (cookieFilePath) {
+        options.cookies = cookieFilePath;
+    }
+
+    const proxy = process.env.YT_DLP_PROXY_URL?.trim();
+    if (proxy) {
+        options.proxy = proxy;
+    }
+
+    const userAgent = process.env.YT_DLP_USER_AGENT?.trim();
+    if (userAgent) {
+        options.userAgent = userAgent;
+    }
+
+    return options;
+}
+
+export function hasYtDlpAuthConfiguration(): boolean {
+    return Object.keys(getYtDlpAuthOptions()).length > 0;
+}
+
+export function describeYtDlpAuthConfiguration(): string {
+    const options = getYtDlpAuthOptions();
+    const enabledModes: string[] = [];
+
+    if (options.cookies) {
+        enabledModes.push('cookies');
+    }
+
+    if (options.proxy) {
+        enabledModes.push('proxy');
+    }
+
+    if (options.userAgent) {
+        enabledModes.push('user-agent');
+    }
+
+    return enabledModes.length > 0 ? enabledModes.join(', ') : 'none';
 }
 
 function toCliFlag(optionName: string): string {

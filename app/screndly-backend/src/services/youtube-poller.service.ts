@@ -5,6 +5,11 @@ import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
+import {
+    describeYtDlpAuthConfiguration,
+    getYtDlpAuthOptions,
+    hasYtDlpAuthConfiguration,
+} from '../lib/yt-dlp';
 import ytDlp from '../lib/yt-dlp';
 import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
@@ -130,7 +135,15 @@ const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
+const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
 const execFileAsync = promisify(execFile);
+
+class YouTubeDownloadBlockedError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'YouTubeDownloadBlockedError';
+    }
+}
 
 function escapeRegexValue(value: string): string {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -166,6 +179,7 @@ export class YouTubePollerService {
 
         this.isPolling = true;
         console.log('[YouTubePoller] Starting poll...');
+        console.log(`[YouTubePoller] yt-dlp auth mode: ${describeYtDlpAuthConfiguration()}`);
 
         try {
             const settings = await getYouTubeRuntimeSettings();
@@ -773,23 +787,43 @@ export class YouTubePollerService {
 
         console.log(`[YouTubePoller] Downloading ${videoId}...`);
         let downloadPath: string | null = null;
+        let downloadBlockedByYouTube = false;
         let youtubeThumbnail: PlatformThumbnailAsset | null = null;
         let xThumbnail: PlatformThumbnailAsset | null = null;
         let socialPoster: PlatformThumbnailAsset | null = null;
 
         try {
-            downloadPath = metadataFetchFailed
-                ? await this.downloadVideoWithoutMetadata(videoId, videoUrl)
-                : await this.downloadVideoWithInfo(videoInfo);
+            try {
+                downloadPath = metadataFetchFailed
+                    ? await this.downloadVideoWithoutMetadata(videoId, videoUrl)
+                    : await this.downloadVideoWithInfo(videoInfo);
+            } catch (error) {
+                if (error instanceof YouTubeDownloadBlockedError || this.isYouTubeBotChallengeError(error)) {
+                    downloadBlockedByYouTube = true;
+                    console.error('[YouTubePoller] YouTube blocked automated trailer download:', error);
+                } else {
+                    throw error;
+                }
+            }
+
             if (!downloadPath) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
-                await notificationService.notifyUser({
-                    title: 'Trailer Download Failed',
-                    message: `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
+                const shouldPauseRetries = downloadBlockedByYouTube && !hasYtDlpAuthConfiguration();
+                await this.recordFeedItem(
+                    videoId,
+                    activeChannel.channelId,
+                    videoTitle,
+                    pubDate,
+                    shouldPauseRetries ? 'ignored' : 'failed'
+                );
+                await notificationService.notifyUserOnceWithinWindow({
+                    title: downloadBlockedByYouTube ? 'YouTube Download Blocked' : 'Trailer Download Failed',
+                    message: downloadBlockedByYouTube
+                        ? `${videoTitle} matched detection rules but YouTube blocked the production downloader. Configure authenticated yt-dlp access, then force a reprocess for this video.`
+                        : `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
                     type: 'error',
                     source: 'youtube',
                     actionPage: '/channels'
-                });
+                }, DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES);
                 return {
                     kind: 'return',
                     sawFreshVideo: true,
@@ -801,7 +835,9 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: false,
                         failed: true,
-                        message: `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
+                        message: downloadBlockedByYouTube && shouldPauseRetries
+                            ? `YouTube blocked automated download for ${videoTitle}; retries are paused until authenticated yt-dlp access is configured`
+                            : `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
                     }
                 };
             }
@@ -1341,6 +1377,7 @@ Respond ONLY "YES" or "NO".`,
 
     private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[]): Promise<any> {
         return ytDlp(videoUrl, {
+            ...getYtDlpAuthOptions(),
             dumpSingleJson: true,
             skipDownload: true,
             noWarnings: true,
@@ -1577,8 +1614,11 @@ Respond ONLY "YES" or "NO".`,
     }
 
     private async downloadWithYtDlp(videoUrl: string, filePath: string, videoId?: string): Promise<boolean> {
+        const authOptions = getYtDlpAuthOptions();
+
         try {
             await ytDlp(videoUrl, {
+                ...authOptions,
                 output: filePath,
                 format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
                 mergeOutputFormat: 'mp4',
@@ -1601,6 +1641,7 @@ Respond ONLY "YES" or "NO".`,
             this.removeYtDlpArtifacts(filePath);
 
             await ytDlp(videoUrl, {
+                ...authOptions,
                 output: filePath,
                 format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
                 mergeOutputFormat: 'mp4',
@@ -1612,6 +1653,12 @@ Respond ONLY "YES" or "NO".`,
 
             return this.meetsDownloadedResolutionFloor(filePath);
         } catch (error) {
+            if (this.isYouTubeBotChallengeError(error)) {
+                throw new YouTubeDownloadBlockedError(
+                    `YouTube is rejecting automated downloads for ${videoId || videoUrl}. Configure YT_DLP_PROXY_URL and optionally YT_DLP_COOKIE_FILE_BASE64 or YT_DLP_COOKIE_FILE_PATH.`
+                );
+            }
+
             console.error('[YouTubePoller] yt-dlp PO token download error:', error);
             return false;
         }
