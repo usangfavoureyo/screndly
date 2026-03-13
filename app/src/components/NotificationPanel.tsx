@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   CheckCheck,
+  Clapperboard,
   ExternalLink,
   Filter,
   Film,
@@ -20,6 +21,7 @@ import { apiClient } from '../lib/api/client';
 import type { Notification, NotificationSource } from '../contexts/NotificationsContext';
 import { formatCalendarDate, formatDateTime } from '../utils/calendarDate';
 import { toast } from 'sonner';
+import { useBackNavigation } from '../contexts/BackNavigationContext';
 
 export interface NotificationAction {
   id: string;
@@ -124,6 +126,7 @@ export function NotificationPanel({
   onNotificationAction,
   onOpenPage,
 }: NotificationPanelProps) {
+  const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -153,6 +156,22 @@ export function NotificationPanel({
       selection.clearSelection();
     }
   }, [isOpen, selection.clearSelection]);
+
+  useEffect(() => {
+    if (!selectedNotification) {
+      unregisterModal('notification-detail');
+      return;
+    }
+
+    registerModalWithCloseHandler('notification-detail', () => {
+      setSelectedNotification(null);
+      setDetail(null);
+    });
+
+    return () => {
+      unregisterModal('notification-detail');
+    };
+  }, [detail, registerModalWithCloseHandler, selectedNotification, unregisterModal]);
 
   const unreadCount = filteredNotifications.filter((n) => !n.read).length;
   const sources = Array.from(new Set(notifications.map((n) => n.source).filter(Boolean)));
@@ -406,6 +425,8 @@ export function NotificationPanel({
           <ActivitySelectionToolbar
             selectedCount={selection.selectedCount}
             isDeleting={isDeletingSelected}
+            allSelected={selection.allSelected}
+            onSelectAll={selection.selectAll}
             onClear={selection.clearSelection}
             onDelete={handleDeleteSelected}
             itemLabel="notifications"

@@ -5,6 +5,8 @@ import { haptics } from '../utils/haptics';
 interface ActivitySelectionToolbarProps {
   selectedCount: number;
   isDeleting?: boolean;
+  allSelected?: boolean;
+  onSelectAll: () => void;
   onClear: () => void;
   onDelete: () => void;
   itemLabel?: string;
@@ -14,6 +16,8 @@ interface ActivitySelectionToolbarProps {
 export function ActivitySelectionToolbar({
   selectedCount,
   isDeleting = false,
+  allSelected = false,
+  onSelectAll,
   onClear,
   onDelete,
   itemLabel = 'items',
@@ -30,6 +34,11 @@ export function ActivitySelectionToolbar({
     onDelete();
   };
 
+  const handleSelectAll = () => {
+    haptics.light();
+    onSelectAll();
+  };
+
   const toolbarContent = (
     <div className="flex flex-col gap-3">
       <div>
@@ -40,11 +49,11 @@ export function ActivitySelectionToolbar({
         <Button
           type="button"
           variant="outline"
-          onClick={handleClear}
-          disabled={isDeleting}
+          onClick={handleSelectAll}
+          disabled={isDeleting || allSelected}
           className="border-gray-300 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
         >
-          Cancel
+          {allSelected ? 'All Selected' : 'Select All'}
         </Button>
         <Button
           type="button"
@@ -53,6 +62,15 @@ export function ActivitySelectionToolbar({
           className="bg-[#ec1e24] text-white hover:bg-[#d01a20]"
         >
           {isDeleting ? 'Deleting...' : 'Delete Selected'}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleClear}
+          disabled={isDeleting}
+          className="border-gray-300 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+        >
+          Cancel
         </Button>
       </div>
     </div>

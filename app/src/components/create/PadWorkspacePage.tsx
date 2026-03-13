@@ -19,11 +19,14 @@ import { generatePadReply } from '../../lib/create/generation';
 import { usePadStore } from '../../store/usePadStore';
 import type { PadAttachment, PadMessage, PadSession } from '../../types/pad';
 import { haptics } from '../../utils/haptics';
+import { useBackEntry } from '../../hooks/useBackEntry';
+import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 
 interface PadWorkspacePageProps {
   onNavigate: (page: string, fromPage?: string) => void;
   previousPage?: string | null;
   embedded?: boolean;
+  onPendingChangesChange?: (hasPendingChanges: boolean) => void;
 }
 
 function createChatSession(systemPrompt: string): PadSession {
@@ -56,7 +59,12 @@ function formatMessageTime(value: string) {
   return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }: PadWorkspacePageProps) {
+export function PadWorkspacePage({
+  onNavigate,
+  previousPage,
+  embedded = false,
+  onPendingChangesChange,
+}: PadWorkspacePageProps) {
   const {
     sessions,
     activeSessionId,
@@ -79,6 +87,13 @@ export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }:
   const [renameValue, setRenameValue] = useState('');
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const longPressTimer = useRef<number | null>(null);
+  const hasPendingInput = draft.trim().length > 0 || attachments.length > 0;
+
+  const unsavedDraftGuard = useUnsavedBackGuard({
+    isDirty: hasPendingInput,
+    title: 'Discard PAD draft?',
+    description: 'You have unsent PAD text or attachments. Leaving this chat will remove them.',
+  });
 
   const session = getSessionById(activeSessionId);
 
@@ -113,6 +128,30 @@ export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }:
       createSession(nextSession);
     }
   }, [createSession, session, sessions.length, settings.padChatSystemPrompt]);
+
+  useEffect(() => {
+    onPendingChangesChange?.(hasPendingInput);
+  }, [hasPendingInput, onPendingChangesChange]);
+
+  useEffect(() => {
+    return () => {
+      onPendingChangesChange?.(false);
+    };
+  }, [onPendingChangesChange]);
+
+  useBackEntry({
+    enabled: !embedded && hasPendingInput,
+    priority: 100,
+    onBack: (source) => {
+      if (source !== 'system') {
+        return false;
+      }
+
+      return unsavedDraftGuard.guardAction(() => {
+        onNavigate(previousPage || 'create');
+      });
+    },
+  });
 
   const handleNewChat = () => {
     const nextSession = createChatSession(
@@ -289,7 +328,14 @@ export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }:
     <div className="space-y-6" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       {!embedded ? (
         <div className="mb-4 flex items-start gap-4">
-          <BackIconButton onClick={() => onNavigate(previousPage || 'create')} className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white" />
+          <BackIconButton
+            onClick={() => {
+              unsavedDraftGuard.guardAction(() => {
+                onNavigate(previousPage || 'create');
+              });
+            }}
+            className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
+          />
           <div className="flex-1">
             <h1 className="mb-2 text-gray-900 dark:text-white">PAD Chat</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">Use the left panel to manage chats and keep each thread focused with its own context.</p>
@@ -441,6 +487,7 @@ export function PadWorkspacePage({ onNavigate, previousPage, embedded = false }:
           </div>
         </BottomSheetFooter>
       </BottomSheet>
+      {unsavedDraftGuard.prompt}
     </div>
   );
 }

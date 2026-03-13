@@ -102,31 +102,7 @@ export function TMDbModals() {
         }
     }, [platformSelectModal.open, platformSelectModal.feed]);
 
-    // === BACK NAVIGATION FOR IMAGE PREVIEW ===
-    useEffect(() => {
-        if (imagePreviewModal.open) {
-            // Push history state when modal opens
-            window.history.pushState({ modal: 'tmdb-image-preview' }, '');
-        }
-
-        const handlePopState = (event: PopStateEvent) => {
-            // If we're on the image preview modal, close it
-            // We check the store state directly since this effect depends on the open state
-            if (useTMDbModalStore.getState().imagePreviewModal.open) {
-                closeImagePreview();
-            }
-        };
-
-        window.addEventListener('popstate', handlePopState);
-        return () => window.removeEventListener('popstate', handlePopState);
-    }, [imagePreviewModal.open]);
-
     const handleCloseImagePreview = () => {
-        if (typeof window !== 'undefined' && imagePreviewModal.open) {
-            window.history.back();
-            return;
-        }
-
         closeImagePreview();
     };
 

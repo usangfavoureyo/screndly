@@ -297,6 +297,8 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
               <ActivitySelectionToolbar
                 selectedCount={selection.selectedCount}
                 isDeleting={isDeletingSelected}
+                allSelected={selection.allSelected}
+                onSelectAll={selection.selectAll}
                 onClear={selection.clearSelection}
                 onDelete={handleDeleteSelected}
                 itemLabel="content items"

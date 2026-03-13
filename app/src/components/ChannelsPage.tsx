@@ -15,6 +15,7 @@ import { Trash2, Edit, RefreshCw } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useBottomSheet } from '../hooks/useBottomSheet';
+import { useUnsavedBackGuard } from '../hooks/useUnsavedBackGuard';
 import { apiClient } from '../lib/api/client';
 import { useUndo } from './UndoContext';
 
@@ -25,8 +26,6 @@ interface Channel {
   status: string;
   videoCount?: number;
 }
-
-type ChannelsUIState = 'CHANNELS' | 'ADD_CHANNEL' | 'EDIT_CHANNEL';
 
 export function ChannelsPage() {
   const addSheet = useBottomSheet();
@@ -41,12 +40,26 @@ export function ChannelsPage() {
   const [editingChannel, setEditingChannel] = useState<Channel | null>(null);
   const [editChannelName, setEditChannelName] = useState('');
   const [editChannelId, setEditChannelId] = useState('');
-
-  const [uiState, setUIState] = useState<ChannelsUIState>('CHANNELS');
+  const isAddDirty = Boolean(newChannelName.trim() || newChannelId.trim());
+  const isEditDirty = Boolean(
+    editingChannel && (
+      editChannelName.trim() !== (editingChannel.name ?? '').trim() ||
+      editChannelId.trim() !== editingChannel.channelId.trim()
+    ),
+  );
+  const addSheetGuard = useUnsavedBackGuard({
+    isDirty: isAddDirty,
+    title: 'Discard new channel?',
+    description: 'You have unsaved channel details in this sheet. Closing it now will lose them.',
+  });
+  const editSheetGuard = useUnsavedBackGuard({
+    isDirty: isEditDirty,
+    title: 'Discard channel changes?',
+    description: 'You have unsaved edits in this channel sheet. Closing it now will lose them.',
+  });
 
   const openAddChannel = () => {
     haptics.light();
-    setUIState('ADD_CHANNEL');
     addSheet.open();
   };
 
@@ -54,7 +67,6 @@ export function ChannelsPage() {
     addSheet.close();
     setNewChannelName('');
     setNewChannelId('');
-    setUIState('CHANNELS');
   };
 
   const closeEditChannel = () => {
@@ -62,25 +74,7 @@ export function ChannelsPage() {
     setEditingChannel(null);
     setEditChannelName('');
     setEditChannelId('');
-    setUIState('CHANNELS');
   };
-
-  useEffect(() => {
-    if (uiState === 'CHANNELS') return;
-
-    window.history.pushState({ uiState }, '');
-
-    const handlePopState = () => {
-      if (uiState === 'ADD_CHANNEL') {
-        closeAddChannel();
-      } else if (uiState === 'EDIT_CHANNEL') {
-        closeEditChannel();
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, [uiState]);
 
   useEffect(() => {
     void fetchChannels();
@@ -196,8 +190,15 @@ export function ChannelsPage() {
     setEditingChannel(channel);
     setEditChannelName(channel.name);
     setEditChannelId(channel.channelId);
-    setUIState('EDIT_CHANNEL');
     editSheet.open();
+  };
+
+  const requestCloseAddChannel = () => {
+    addSheetGuard.guardAction(closeAddChannel);
+  };
+
+  const requestCloseEditChannel = () => {
+    editSheetGuard.guardAction(closeEditChannel);
   };
 
   const updateChannel = async () => {
@@ -245,8 +246,12 @@ export function ChannelsPage() {
       <BottomSheet
         open={editSheet.isOpen}
         onOpenChange={(open) => {
-          if (!open) closeEditChannel();
-          editSheet.setOpen(open);
+          if (open) {
+            editSheet.setIsOpen(true);
+            return;
+          }
+
+          requestCloseEditChannel();
         }}
       >
         <BottomSheetHeader>
@@ -288,7 +293,7 @@ export function ChannelsPage() {
             variant="outline"
             onClick={() => {
               haptics.medium();
-              closeEditChannel();
+              requestCloseEditChannel();
             }}
           >
             Cancel
@@ -377,8 +382,12 @@ export function ChannelsPage() {
       <BottomSheet
         open={addSheet.isOpen}
         onOpenChange={(open) => {
-          if (!open) closeAddChannel();
-          addSheet.setOpen(open);
+          if (open) {
+            addSheet.setIsOpen(true);
+            return;
+          }
+
+          requestCloseAddChannel();
         }}
       >
         <BottomSheetHeader>
@@ -422,7 +431,7 @@ export function ChannelsPage() {
             variant="outline"
             onClick={() => {
               haptics.medium();
-              closeAddChannel();
+              requestCloseAddChannel();
             }}
           >
             Cancel
@@ -439,6 +448,8 @@ export function ChannelsPage() {
           </Button>
         </BottomSheetFooter>
       </BottomSheet>
+      {addSheetGuard.prompt}
+      {editSheetGuard.prompt}
     </div>
   );
 }

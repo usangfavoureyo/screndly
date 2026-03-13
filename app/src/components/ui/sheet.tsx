@@ -3,6 +3,7 @@
 import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
+import { useBackNavigation } from "../../contexts/BackNavigationContext";
 
 import { cn } from "./utils";
 
@@ -54,6 +55,23 @@ function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
 }) {
+  const closeButtonRef = React.useRef<HTMLButtonElement>(null);
+  const uniqueId = React.useMemo(
+    () => `sheet-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    [],
+  );
+  const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
+
+  React.useEffect(() => {
+    registerModalWithCloseHandler(uniqueId, () => {
+      closeButtonRef.current?.click();
+    });
+
+    return () => {
+      unregisterModal(uniqueId);
+    };
+  }, [registerModalWithCloseHandler, uniqueId, unregisterModal]);
+
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -74,7 +92,7 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none text-gray-900 dark:text-white p-1">
+        <SheetPrimitive.Close ref={closeButtonRef} className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none text-gray-900 dark:text-white p-1">
           <XIcon className="w-[26px] h-[26px] stroke-1" />
           <span className="sr-only">Close</span>
         </SheetPrimitive.Close>

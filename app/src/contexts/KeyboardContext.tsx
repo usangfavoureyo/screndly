@@ -53,7 +53,7 @@ export function KeyboardProvider({ children }: { children: React.ReactNode }) {
                 // If backNav handles it (returns true), we stop.
                 // If backNav doesn't handle it (no UI open), then we blur input.
 
-                const handled = handleBackPress();
+                const handled = handleBackPress('escape');
                 if (handled) {
                     // Prevent default ESC behavior if we closed a UI element
                     // This creates a "native" feel

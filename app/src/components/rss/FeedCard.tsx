@@ -75,6 +75,21 @@ function formatNextRunTimestamp(value?: string): string {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
+function resolveFeedSiteUrl(url: string): string | null {
+  if (!url) {
+    return null;
+  }
+
+  const normalizedUrl = /^[a-z]+:\/\//i.test(url) ? url : `https://${url}`;
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+}
+
 export function FeedCard({
   feed,
   onEdit,
@@ -221,10 +236,12 @@ export function FeedCard({
     pinterest: PinterestIcon,
   };
 
+  const siteUrl = resolveFeedSiteUrl(feed.url);
   let domain = '';
-  try {
-    domain = new URL(feed.url).hostname.replace('www.', '');
-  } catch {
+
+  if (siteUrl) {
+    domain = new URL(siteUrl).hostname.replace('www.', '');
+  } else {
     domain = feed.url || '';
   }
 
@@ -267,7 +284,22 @@ export function FeedCard({
             <div className="flex-1 min-w-0">
               <h3 className="text-gray-900 dark:text-white truncate mb-1">{feed.name}</h3>
               <div className="flex items-center gap-2">
-                <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
+                {siteUrl ? (
+                  <a
+                    href={siteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => {
+                      haptics.light();
+                    }}
+                    className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate hover:text-[#ec1e24] dark:hover:text-[#ec1e24] underline-offset-2 hover:underline"
+                    title={siteUrl}
+                  >
+                    {domain}
+                  </a>
+                ) : (
+                  <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm truncate">{domain}</p>
+                )}
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium uppercase ${getStatusColor()}`}>
                   {feed.status}
                 </span>

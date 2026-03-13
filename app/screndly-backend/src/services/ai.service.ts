@@ -383,12 +383,22 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
         const isGPT5Model = request.model.startsWith('gpt-5');
         const body: Record<string, unknown> = {
             model: request.model,
-            input: request.prompt,
+            input: request.jsonMode
+                ? `Return a valid JSON object.\n\n${request.prompt}`
+                : request.prompt,
             max_output_tokens: request.maxTokens || 1024,
         };
 
         if (request.systemPrompt) {
             body.instructions = request.systemPrompt;
+        }
+
+        if (request.jsonMode) {
+            body.text = {
+                format: {
+                    type: 'json_object',
+                },
+            };
         }
 
         if (!isGPT5Model && typeof request.temperature === 'number') {

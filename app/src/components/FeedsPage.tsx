@@ -1,6 +1,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { haptics } from '../utils/haptics';
 import { lazyWithRetry } from '../utils/performance';
+import { useBackEntry } from '../hooks/useBackEntry';
 
 // Lazy load the feed pages
 const RSSPage = lazyWithRetry(() => import('./RSSPage').then(m => ({ default: m.RSSPage })), 'RSSPage');
@@ -27,20 +28,45 @@ export function FeedsPage({ onNavigate, previousPage }: FeedsPageProps) {
     const savedTab = localStorage.getItem('feedsActiveTab');
     return (savedTab === 'rss' || savedTab === 'tmdb') ? savedTab : 'rss';
   });
+  const [tabHistory, setTabHistory] = useState<FeedTab[]>([]);
 
   // Persist active tab to localStorage
   useEffect(() => {
     localStorage.setItem('feedsActiveTab', activeTab);
   }, [activeTab]);
 
-  const handleTabChange = (tab: FeedTab) => {
+  const applyTabChange = (tab: FeedTab, mode: 'push' | 'replace' = 'push') => {
     if (tab !== activeTab) {
       haptics.light();
+      if (mode === 'push') {
+        setTabHistory((current) => (
+          current[current.length - 1] === activeTab ? current : [...current, activeTab]
+        ));
+      }
       setActiveTab(tab);
       // Scroll to top when switching tabs
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
+
+  const handleTabChange = (tab: FeedTab) => {
+    applyTabChange(tab, 'push');
+  };
+
+  useBackEntry({
+    enabled: tabHistory.length > 0,
+    priority: 50,
+    onBack: (source) => {
+      if (source !== 'system' || tabHistory.length === 0) {
+        return false;
+      }
+
+      const previousTab = tabHistory[tabHistory.length - 1];
+      setTabHistory((current) => current.slice(0, -1));
+      applyTabChange(previousTab, 'replace');
+      return true;
+    },
+  });
 
   return (
     <div className="space-y-6">

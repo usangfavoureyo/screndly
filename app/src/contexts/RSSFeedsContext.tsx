@@ -148,7 +148,7 @@ interface RSSFeedsContextType {
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
   togglePlatform: (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => Promise<void>;
   getFeedsByStatus: (status: RSSFeed['status']) => RSSFeed[];
-  refetch: () => Promise<void>;
+  refetch: (options?: { silent?: boolean }) => Promise<void>;
 }
 
 const RSSFeedsContext = createContext<RSSFeedsContextType | undefined>(undefined);
@@ -184,9 +184,13 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchFeeds = useCallback(async () => {
+  const fetchFeeds = useCallback(async (options: { silent?: boolean } = {}) => {
+    const silent = options.silent === true;
+
     try {
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      }
       setError(null);
 
       const response = await apiClient.get<RSSFeed[]>('/api/rss/feeds');
@@ -198,9 +202,13 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error('Error fetching RSS feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch feeds');
-      setFeeds([]);
+      if (!silent) {
+        setFeeds([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
@@ -320,7 +328,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to refresh feed');
       }
 
-      await fetchFeeds();
+      await fetchFeeds({ silent: true });
       if (options.showToast !== false) {
         toast.success(buildRefreshToastMessage(response.data));
       }
@@ -341,7 +349,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to refresh feeds');
       }
 
-      await fetchFeeds();
+      await fetchFeeds({ silent: true });
       toast.success(`Refreshed ${response.data.success} of ${response.data.total} feeds`);
     } catch (err) {
       console.error('Error refreshing RSS feeds:', err);

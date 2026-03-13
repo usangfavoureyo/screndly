@@ -49,6 +49,8 @@ import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
+import { useBackEntry } from '../../hooks/useBackEntry';
+import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -179,6 +181,38 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const isYouTubeSelected = formState.platforms.includes('youtube');
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
+  const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(formState) !== initialFormSnapshot,
+    [formState, initialFormSnapshot],
+  );
+  const unsavedChangesGuard = useUnsavedBackGuard({
+    isDirty: hasUnsavedChanges,
+    title: 'Discard post changes?',
+    description: 'You have unsaved changes in this post editor. Leaving now will lose them.',
+  });
+
+  useEffect(() => {
+    setFormState(createInitialForm(existingItem));
+    setScheduleDate(existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined);
+    setScheduleTime(
+      existingItem?.scheduledAt ? new Date(existingItem.scheduledAt).toISOString().slice(11, 16) : '09:00',
+    );
+  }, [activeItemId, existingItem]);
+
+  useBackEntry({
+    enabled: hasUnsavedChanges,
+    priority: 100,
+    onBack: (source) => {
+      if (source !== 'system') {
+        return false;
+      }
+
+      return unsavedChangesGuard.guardAction(() => {
+        onNavigate(previousPage || 'create');
+      });
+    },
+  });
 
   useEffect(() => {
     if (!isYouTubeSelected || !hasYouTubeConnection || hasLoadedYouTubePlaylists) {
@@ -470,7 +504,11 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     <div className="space-y-6">
       <div className="mb-4 flex items-start gap-4">
         <BackIconButton
-          onClick={() => onNavigate(previousPage || 'create')}
+          onClick={() => {
+            unsavedChangesGuard.guardAction(() => {
+              onNavigate(previousPage || 'create');
+            });
+          }}
           className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
         />
         <div className="flex-1">
@@ -843,6 +881,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           }
         }}
       />
+      {unsavedChangesGuard.prompt}
     </div>
   );
 }

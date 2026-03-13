@@ -100,6 +100,29 @@ const VALID_PAGES = [
 
 type ValidPage = typeof VALID_PAGES[number];
 
+const ROOT_PAGE_MAP: Record<string, string> = {
+  dashboard: 'dashboard',
+  channels: 'channels',
+  platforms: 'platforms',
+  feeds: 'feeds',
+  create: 'create',
+  'design-studio': 'design-studio',
+  'video-studio': 'video-studio',
+  rss: 'feeds',
+  tmdb: 'feeds',
+  'rss-activity': 'feeds',
+  'tmdb-activity': 'feeds',
+  'compose-editor': 'create',
+  'compose-activity': 'create',
+  'pad-workspace': 'create',
+  'design-studio-activity': 'design-studio',
+  'video-studio-activity': 'video-studio',
+};
+
+function getRootPage(page: string): string | null {
+  return ROOT_PAGE_MAP[page] ?? null;
+}
+
 interface PersistedAppState {
   currentPage: ValidPage;
   previousPage: string | null;
@@ -254,34 +277,14 @@ export function AppContent() {
     registerModalWithCloseHandler,
     unregisterModal,
     setNavigationCallback: setBackNavCallback,
-    pushChildPage
+    pushChildPage,
+    recordRootNavigation,
   } = useBackNavigation();
 
   // Sync current page with BackNavigationContext
   // Sync current page with BackNavigationContext
   useEffect(() => {
-    // Map page names to root page categories
-    const rootPageMap: Record<string, string> = {
-      'dashboard': 'dashboard',
-      'channels': 'channels',
-      'platforms': 'platforms',
-      'feeds': 'feeds',
-      'create': 'create',
-      'design-studio': 'design-studio',
-      'video-studio': 'video-studio',
-      // Child pages map to their parent
-      'rss': 'feeds',
-      'tmdb': 'feeds',
-      'rss-activity': 'feeds',
-      'tmdb-activity': 'feeds',
-      'compose-editor': 'create',
-      'compose-activity': 'create',
-      'pad-workspace': 'create',
-      'design-studio-activity': 'design-studio',
-      'video-studio-activity': 'video-studio',
-    };
-
-    const mappedPage = rootPageMap[currentPage] || currentPage;
+    const mappedPage = getRootPage(currentPage) || currentPage;
     setBackNavPage(mappedPage);
   }, [currentPage, setBackNavPage]);
 
@@ -375,8 +378,6 @@ export function AppContent() {
   };
 
   const handleNavigate = (page: string, fromPage?: string, skipHistory = false) => {
-    const staticPages = ['privacy', 'terms', 'disclaimer', 'cookie', 'contact', 'about', 'data-deletion', 'app-info', 'design-system'];
-
     // Handle special settings sub-pages
     const settingsPages = ['settings-comment-reply', 'settings-video', 'settings-rss', 'settings-tmdb', 'settings-videostudio', 'settings-pad', 'settings-compose', 'settings-error', 'settings-cleanup', 'settings-haptic', 'settings-appearance', 'settings-notifications', 'settings-thumbnail', 'settings-autopost'];
 
@@ -449,6 +450,8 @@ export function AppContent() {
         const parentPage = resolvedParentPage;
         pushChildPage(page, parentPage);
       }
+
+      recordRootNavigation(getRootPage(currentPage), getRootPage(page) || page, skipHistory ? 'replace' : 'push');
 
       updateCurrentPage(page, skipHistory ? "replace" : "push");
 

@@ -3,3 +3,7 @@ dist
 temp
 .env
 *-player-script.js
+bin/yt-dlp.exe
+*.tgz
+uploads
+build.log

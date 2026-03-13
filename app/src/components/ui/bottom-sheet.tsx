@@ -110,14 +110,13 @@ export function BottomSheet({
       if (!window.history.state?.bottomSheetId) {
         window.history.pushState({ bottomSheetId: uniqueId }, '');
       }
+      return () => {
+        unregisterBottomSheet(uniqueId);
+      };
     }
 
-    return () => {
-      // Clean up when closed or unmounted
-      if (!open) {
-        unregisterBottomSheet(uniqueId);
-      }
-    };
+    unregisterBottomSheet(uniqueId);
+    return undefined;
   }, [open, uniqueId, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
 
   // Reset dismissing state when sheet closes

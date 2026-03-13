@@ -327,16 +327,24 @@ function collectCrewNames(crew: Array<{ name?: string; job?: string; department?
 }
 
 function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string | null {
-  if (input.contextProject?.trim()) {
-    return input.contextProject.trim();
-  }
-
   if (
     input.primarySubject.type === 'movie' ||
     input.primarySubject.type === 'tv_show' ||
     input.primarySubject.type === 'franchise'
   ) {
     return input.primarySubject.name;
+  }
+
+  const contextProject = input.contextProject?.trim();
+  if (contextProject) {
+    const normalizedContextProject = normalizeText(contextProject);
+    const contextMatchesStudio = input.relevantStudios.some(
+      (studio) => normalizeText(studio) === normalizedContextProject
+    );
+
+    if (!contextMatchesStudio) {
+      return contextProject;
+    }
   }
 
   const visualSubject = input.visualSubject.trim();
