@@ -98,6 +98,7 @@ const VIDEO_BACKEND_KEYS = [
   'videoFutureOnlySince',
   'videoFilterCache',
   'videoFilterTmdbValidation',
+  'videoYoutubeSelectedPlaylists',
   'videoTitleCleaningRegex',
   'videoTmdbFallback',
   'videoYoutubeXThumbnailPrompt',

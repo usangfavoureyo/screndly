@@ -38,6 +38,7 @@ const SETTING_LABEL_OVERRIDES: Record<string, string> = {
     videoFutureOnlySince: 'Future-only cutoff',
     excludeShorts: 'Exclude Shorts',
     videoOpenaiModel: 'Caption model',
+    videoYoutubeSelectedPlaylists: 'YouTube playlists',
     rssCaptionPrompt: 'Caption prompt',
     rssCaptionModel: 'Caption model',
     rssCaptionTone: 'Caption tone',

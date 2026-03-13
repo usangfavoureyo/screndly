@@ -999,42 +999,238 @@ Write ONLY the caption text.`;
 // YOUTUBE PLAYLIST DETECTOR
 // ============================================
 
+export interface YouTubePlaylistOption {
+    id: string;
+    title: string;
+    itemCount?: number;
+    privacyStatus?: 'private' | 'public' | 'unlisted';
+}
+
+export interface YouTubePlaylistDetectionContext {
+    videoTitle: string;
+    description: string;
+    channelName?: string;
+    cleanedTitle?: string;
+    trailerType?: string;
+    mediaType?: 'movie' | 'tv';
+    releaseDate?: string;
+    year?: number;
+    tmdbTitle?: string;
+    genres?: string[];
+    cast?: string[];
+    productionNames?: string[];
+}
+
+function normalizePlaylistKey(value: string): string {
+    return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function parseDetectedPlaylistIds(
+    content: string,
+    availablePlaylists: YouTubePlaylistOption[]
+): string[] {
+    const byId = new Map(availablePlaylists.map((playlist) => [playlist.id, playlist.id]));
+    const byTitle = new Map(
+        availablePlaylists.map((playlist) => [normalizePlaylistKey(playlist.title), playlist.id])
+    );
+
+    const coercePlaylistIds = (value: unknown): string[] => {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        return value.flatMap((entry) => {
+            if (typeof entry === 'string') {
+                const trimmed = entry.trim();
+                if (!trimmed) {
+                    return [];
+                }
+                return [byId.get(trimmed) || byTitle.get(normalizePlaylistKey(trimmed))].filter(
+                    (id): id is string => typeof id === 'string' && id.length > 0
+                );
+            }
+
+            if (entry && typeof entry === 'object') {
+                const record = entry as { id?: unknown; title?: unknown };
+                if (typeof record.id === 'string' && byId.has(record.id)) {
+                    return [record.id];
+                }
+                if (typeof record.title === 'string') {
+                    const matchedId = byTitle.get(normalizePlaylistKey(record.title));
+                    return matchedId ? [matchedId] : [];
+                }
+            }
+
+            return [];
+        });
+    };
+
+    try {
+        const parsed = JSON.parse(content) as
+            | string[]
+            | {
+                playlists?: unknown;
+                playlistIds?: unknown;
+                selectedIds?: unknown;
+                selectedPlaylists?: unknown;
+            };
+
+        const fromRoot = coercePlaylistIds(parsed);
+        if (fromRoot.length > 0) {
+            return Array.from(new Set(fromRoot));
+        }
+
+        if (parsed && typeof parsed === 'object') {
+            const record = parsed as Record<string, unknown>;
+            const fromNested = [
+                ...coercePlaylistIds(record.selectedIds),
+                ...coercePlaylistIds(record.playlistIds),
+                ...coercePlaylistIds(record.playlists),
+                ...coercePlaylistIds(record.selectedPlaylists),
+            ];
+
+            if (fromNested.length > 0) {
+                return Array.from(new Set(fromNested));
+            }
+        }
+    } catch {
+        // Fall through to line-based parsing.
+    }
+
+    const lineMatches = content
+        .split(/[\r\n,]+/)
+        .flatMap((part) => {
+            const trimmed = part.trim().replace(/^[-*]\s*/, '').replace(/^"+|"+$/g, '');
+            if (!trimmed) {
+                return [];
+            }
+            return [byId.get(trimmed) || byTitle.get(normalizePlaylistKey(trimmed))].filter(
+                (id): id is string => typeof id === 'string' && id.length > 0
+            );
+        });
+
+    return Array.from(new Set(lineMatches));
+}
+
+function detectPlaylistHeuristicFallback(
+    context: YouTubePlaylistDetectionContext,
+    availablePlaylists: YouTubePlaylistOption[]
+): string[] {
+    const title = `${context.videoTitle} ${context.cleanedTitle || ''}`.toLowerCase();
+    const description = context.description.toLowerCase();
+    const trailerType = (context.trailerType || '').toLowerCase();
+    const genres = Array.isArray(context.genres) ? context.genres.map((genre) => genre.toLowerCase()) : [];
+
+    const isAnime = genres.includes('animation')
+        || /\banime\b/.test(title)
+        || /\banime\b/.test(description)
+        || /\bcrunchyroll\b/.test(description);
+    const isClip = /\bclip\b/.test(trailerType)
+        || /\bclip\b/.test(title)
+        || /\bscene\b/.test(title)
+        || /\bfeaturette\b/.test(title)
+        || /\bspot\b/.test(title);
+    const mediaType = context.mediaType
+        || (/\bseason\b|\bepisode\b|\bseries\b|\bshow\b/.test(title) ? 'tv' : 'movie');
+
+    const orderedMatches: string[] = [];
+    const pushMatchingTitles = (patterns: RegExp[]) => {
+        for (const playlist of availablePlaylists) {
+            const normalizedTitle = normalizePlaylistKey(playlist.title);
+            if (patterns.some((pattern) => pattern.test(normalizedTitle)) && !orderedMatches.includes(playlist.id)) {
+                orderedMatches.push(playlist.id);
+            }
+        }
+    };
+
+    if (isAnime && !isClip) {
+        pushMatchingTitles([/\banime\b/]);
+    }
+
+    if (mediaType === 'tv' && isClip) {
+        pushMatchingTitles([/\btv\b.*\bclip\b/, /\bshow\b.*\bclip\b/, /\bseries\b.*\bclip\b/]);
+    }
+
+    if (mediaType === 'movie' && isClip) {
+        pushMatchingTitles([/\bmovie\b.*\bclip\b/, /\bfilm\b.*\bclip\b/, /\bclip\b/]);
+    }
+
+    if (mediaType === 'tv' && !isClip) {
+        pushMatchingTitles([/\btv\b.*\btrailer\b/, /\bshow\b.*\btrailer\b/, /\bseries\b.*\btrailer\b/]);
+    }
+
+    if (mediaType === 'movie' && !isClip) {
+        pushMatchingTitles([/\bmovie\b.*\btrailer\b/, /\bfilm\b.*\btrailer\b/, /\btrailer\b/]);
+    }
+
+    if (isAnime && orderedMatches.length === 0) {
+        pushMatchingTitles([/\banimation\b/, /\banime\b/]);
+    }
+
+    return orderedMatches.slice(0, 3);
+}
+
 export async function detectYouTubePlaylists(
-    videoTitle: string,
-    description: string,
-    availablePlaylists: string[],
+    context: YouTubePlaylistDetectionContext,
+    availablePlaylists: YouTubePlaylistOption[],
     model: AIModel = DEFAULT_OPENAI_MODEL,
     customPrompt?: string
 ): Promise<string[]> {
-    const defaultPrompt = `Analyze the video metadata and select matching playlists from the available list.
-    Respond ONLY with a JSON array of strings.`;
+    if (!Array.isArray(availablePlaylists) || availablePlaylists.length === 0) {
+        return [];
+    }
 
-    const prompt = `Video Title: ${videoTitle}
-    Description: ${description}
-    
-    Available Playlists:
-    ${availablePlaylists.map(p => `- ${p}`).join('\n')}
-    
-    Select the most appropriate playlists for this video.
-    ${customPrompt || defaultPrompt}`;
+    const defaultPrompt = `You are assigning a Screen Render YouTube upload to the correct existing channel playlists.
+Return ONLY valid JSON.
+
+Rules:
+- You may choose multiple playlists only when they are genuinely relevant.
+- Choose ONLY from the exact playlist IDs provided below.
+- Never invent a playlist name or ID.
+- Use live web search when needed to verify whether the title is a movie, TV show, anime, trailer, teaser, clip, featurette, or scene.
+- Prefer the tightest exact fit.
+- If confidence is low, return [] instead of guessing.
+
+Return format:
+{"selectedIds":["playlist-id-1","playlist-id-2"]}`;
+
+    const prompt = `Video Title: ${context.videoTitle}
+Cleaned Title: ${context.cleanedTitle || 'N/A'}
+Channel: ${context.channelName || 'N/A'}
+Trailer Type: ${context.trailerType || 'N/A'}
+Media Type: ${context.mediaType || 'N/A'}
+TMDb Match: ${context.tmdbTitle || 'N/A'}
+Release Date: ${context.releaseDate || 'N/A'}
+Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
+Genres: ${formatPromptList(context.genres)}
+Cast: ${formatPromptList(context.cast)}
+Studios / Networks: ${formatPromptList(context.productionNames)}
+Description: ${context.description}
+
+Available Channel Playlists:
+${availablePlaylists.map((playlist) => `- ${playlist.id}: ${playlist.title}`).join('\n')}
+
+Select the most appropriate real channel playlist IDs for this upload.
+${customPrompt || defaultPrompt}`;
 
     const response = await generateCompletion({
         model,
         prompt,
         jsonMode: true,
-        temperature: 0.1
+        temperature: 0.1,
+        enableWebSearch: true,
     });
 
-    if (!response.success) return [];
-
-    try {
-        const result = JSON.parse(response.content);
-        if (Array.isArray(result)) return result;
-        if (result.playlists && Array.isArray(result.playlists)) return result.playlists;
-        return [];
-    } catch {
-        return [];
+    if (!response.success) {
+        return detectPlaylistHeuristicFallback(context, availablePlaylists);
     }
+
+    const parsedIds = parseDetectedPlaylistIds(response.content, availablePlaylists);
+    if (parsedIds.length > 0) {
+        return parsedIds;
+    }
+
+    return detectPlaylistHeuristicFallback(context, availablePlaylists);
 }
 
 // ============================================

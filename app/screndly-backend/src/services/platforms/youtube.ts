@@ -97,26 +97,6 @@ export const youtubeService = {
             const existingId = byNormalizedTitle.get(normalizedTitle);
             if (existingId) {
                 resolvedIds.push(existingId);
-                continue;
-            }
-
-            const createdPlaylist = await youtube.playlists.insert({
-                part: ['snippet', 'status'],
-                requestBody: {
-                    snippet: {
-                        title: requestedValue,
-                    },
-                    status: {
-                        privacyStatus: 'public',
-                    },
-                },
-            });
-
-            const createdId = createdPlaylist.data.id;
-            if (createdId) {
-                resolvedIds.push(createdId);
-                byId.add(createdId);
-                byNormalizedTitle.set(normalizedTitle, createdId);
             }
         }
 

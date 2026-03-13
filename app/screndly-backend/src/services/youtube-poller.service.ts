@@ -885,7 +885,7 @@ export class YouTubePollerService {
             }
 
             const captions = await this.generateCaptions(video, details, settings, enrichedMetadata, targetPlatforms);
-            const playlists = await this.detectPlaylists(video, details, settings);
+            const playlists = await this.detectPlaylists(video, details, settings, enrichedMetadata, activeChannel);
             const youtubeMetadata =
                 targetPlatforms.includes('YouTube') && this.isAutoCaptionEnabled('YouTube', settings)
                     ? await generateYouTubePublishMetadata(
@@ -1264,15 +1264,34 @@ Respond ONLY "YES" or "NO".`,
         return `Waiting for the ${postIntervalMinutes}-minute post interval before the next trailer publish`;
     }
 
-    private async detectPlaylists(video: any, details: any, settings: any): Promise<string[]> {
-        if (!settings.videoYoutubePlaylists || !settings.videoYoutubePlaylistPrompt) {
-            return [];
-        }
+    private async detectPlaylists(
+        video: any,
+        details: any,
+        settings: LoadedVideoSettings,
+        metadata: EnrichedVideoMetadata,
+        channel: { name?: string }
+    ): Promise<string[]> {
+        const exactPlaylists = Array.isArray(settings.videoYoutubeSelectedPlaylists)
+            ? settings.videoYoutubeSelectedPlaylists
+                .filter((playlist) => playlist?.id && playlist?.title)
+                .map((playlist) => ({
+                    id: playlist.id,
+                    title: playlist.title,
+                    itemCount: playlist.itemCount,
+                    privacyStatus: playlist.privacyStatus,
+                }))
+            : [];
 
-        const available = settings.videoYoutubePlaylists
+        const fallbackPlaylists = (settings.videoYoutubePlaylists || '')
             .split(',')
-            .map((value: string) => value.trim())
-            .filter(Boolean);
+            .map((value) => value.trim())
+            .filter(Boolean)
+            .map((title) => ({
+                id: title,
+                title,
+            }));
+
+        const available = exactPlaylists.length > 0 ? exactPlaylists : fallbackPlaylists;
 
         if (available.length === 0) {
             return [];
@@ -1280,8 +1299,20 @@ Respond ONLY "YES" or "NO".`,
 
         try {
             return await aiService.detectYouTubePlaylists(
-                video.title || '',
-                details.description || '',
+                {
+                    videoTitle: video.title || '',
+                    description: details.description || '',
+                    channelName: channel.name,
+                    cleanedTitle: metadata.cleanedTitle,
+                    trailerType: metadata.trailerType,
+                    mediaType: metadata.tmdbMatch?.mediaType,
+                    releaseDate: metadata.tmdbMatch?.releaseDate,
+                    year: metadata.tmdbMatch?.year,
+                    tmdbTitle: metadata.tmdbMatch?.title,
+                    genres: metadata.tmdbMatch?.genres,
+                    cast: metadata.tmdbMatch?.castNames,
+                    productionNames: metadata.tmdbMatch?.productionNames,
+                },
                 available,
                 settings.videoOpenaiModel,
                 settings.videoYoutubePlaylistPrompt

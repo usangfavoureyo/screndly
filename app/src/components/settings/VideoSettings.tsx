@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Checkbox } from '../ui/checkbox';
 import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 
 const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
@@ -24,6 +26,21 @@ interface VideoSettingsProps {
 export function VideoSettings({ settings, updateSetting, updateSettings, onBack }: VideoSettingsProps) {
   const [pollInterval, setPollInterval] = useState(2);
   const [isPolling, setIsPolling] = useState(false);
+  const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
+  const [isLoadingYouTubePlaylists, setIsLoadingYouTubePlaylists] = useState(false);
+  const [youtubePlaylistsError, setYouTubePlaylistsError] = useState('');
+  const migratedLegacyPlaylistsRef = useRef(false);
+
+  const selectedYouTubePlaylists = Array.isArray(settings.videoYoutubeSelectedPlaylists)
+    ? settings.videoYoutubeSelectedPlaylists.filter((playlist: any) => playlist?.id && playlist?.title)
+    : [];
+  const selectedPlaylistIds = new Set(selectedYouTubePlaylists.map((playlist: any) => playlist.id));
+  const playlistChoices = [...youtubePlaylists];
+  for (const playlist of selectedYouTubePlaylists) {
+    if (!playlistChoices.some((option) => option.id === playlist.id)) {
+      playlistChoices.push(playlist);
+    }
+  }
 
   useEffect(() => {
     // Get current polling state
@@ -31,6 +48,70 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
     // setIsPolling(youtubePoller.getIsPolling());
     // setPollInterval(youtubePoller.getCurrentInterval());
   }, []);
+
+  const loadYouTubePlaylists = async (showToast = false) => {
+    setIsLoadingYouTubePlaylists(true);
+    setYouTubePlaylistsError('');
+
+    try {
+      const playlists = await fetchYouTubePlaylists();
+      setYouTubePlaylists(playlists);
+
+      if (showToast) {
+        toast.success(
+          playlists.length > 0
+            ? `Loaded ${playlists.length} YouTube playlist${playlists.length === 1 ? '' : 's'}`
+            : 'No playlists were found on the connected YouTube channel'
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to fetch YouTube playlists';
+      setYouTubePlaylists([]);
+      setYouTubePlaylistsError(message);
+      if (showToast) {
+        toast.error(message);
+      }
+    } finally {
+      setIsLoadingYouTubePlaylists(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadYouTubePlaylists();
+  }, []);
+
+  useEffect(() => {
+    if (migratedLegacyPlaylistsRef.current || youtubePlaylists.length === 0 || selectedYouTubePlaylists.length > 0) {
+      return;
+    }
+
+    const legacyTitles = typeof settings.videoYoutubePlaylists === 'string'
+      ? settings.videoYoutubePlaylists
+          .split(',')
+          .map((value: string) => value.trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+
+    if (legacyTitles.length === 0) {
+      migratedLegacyPlaylistsRef.current = true;
+      return;
+    }
+
+    const matchedPlaylists = youtubePlaylists.filter((playlist) =>
+      legacyTitles.includes(playlist.title.trim().toLowerCase())
+    );
+
+    migratedLegacyPlaylistsRef.current = true;
+
+    if (matchedPlaylists.length === 0) {
+      return;
+    }
+
+    updateSettings({
+      videoYoutubeSelectedPlaylists: matchedPlaylists,
+      videoYoutubePlaylists: matchedPlaylists.map((playlist) => playlist.title).join(', '),
+    });
+  }, [settings.videoYoutubePlaylists, selectedYouTubePlaylists.length, updateSettings, youtubePlaylists]);
 
   const handleIntervalChange = (value: string) => {
     haptics.light();
@@ -85,6 +166,43 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
       value === VIDEO_BACKLOG_MODE_FUTURE_ONLY
         ? 'Future-only mode enabled from now'
         : 'Backlog processing enabled'
+    );
+  };
+
+  const handleYouTubePlaylistToggle = (playlist: YouTubePlaylist, checked: boolean) => {
+    haptics.light();
+
+    const nextById = new Map(
+      selectedYouTubePlaylists.map((entry: any) => [
+        entry.id,
+        {
+          id: entry.id,
+          title: entry.title,
+          itemCount: entry.itemCount,
+          privacyStatus: entry.privacyStatus,
+        },
+      ])
+    );
+
+    if (checked) {
+      nextById.set(playlist.id, playlist);
+    } else {
+      nextById.delete(playlist.id);
+    }
+
+    const ordered = playlistChoices
+      .filter((entry) => nextById.has(entry.id))
+      .map((entry) => nextById.get(entry.id)!);
+
+    updateSettings({
+      videoYoutubeSelectedPlaylists: ordered,
+      videoYoutubePlaylists: ordered.map((entry) => entry.title).join(', '),
+    });
+
+    toast.success(
+      checked
+        ? `${playlist.title} added to available YouTube routing playlists`
+        : `${playlist.title} removed from available YouTube routing playlists`
     );
   };
 
@@ -574,39 +692,28 @@ Tone: Professional, informative, SEO-rich`}
             <Label htmlFor="video-youtube-playlist-prompt" className="text-[#9CA3AF]">YouTube Playlist Detection Prompt</Label>
             <textarea
               id="video-youtube-playlist-prompt"
-              value={settings.videoYoutubePlaylistPrompt || `You are a content categorization expert for Screen Render's YouTube channel. Analyze trailer videos and determine which playlist(s) they belong to.
+              value={settings.videoYoutubePlaylistPrompt || `You are assigning Screen Render uploads to the exact playlists that already exist on the connected YouTube channel.
 
-INPUT: Movie/TV title, genre, content type, studio, trailer metadata
-OUTPUT: JSON array of matching playlist names
+INPUT: cleaned title, TMDb match, trailer type, description, release context, and the exact channel playlist IDs and titles
+OUTPUT: JSON object containing ONLY exact playlist IDs from the provided list
 
-Available Playlists:
-- "Movie Trailers" - All theatrical movie trailers
-- "TV Show Trailers" - All TV series, limited series, and streaming show trailers
-- "Movie Clips" - Exclusive clips, scenes, and featurettes from movies
-- "Anime Trailers" - Anime films and series trailers
-- "Horror Trailers" - Horror genre films and shows
-- "Action Trailers" - Action genre films and shows
-- "Comedy Trailers" - Comedy genre films and shows
-- "Documentary Trailers" - Documentary films and series
-- "4K Trailers" - High quality 4K resolution trailers
-- "Coming Soon 2025" - All content releasing in 2025
-- "Awards Season" - Oscar bait and awards contenders
+Core Rules:
+- Never invent a playlist title or ID.
+- Choose only from the exact playlists provided for this channel.
+- Use live search when needed to confirm whether the upload is a movie, TV show, anime, trailer, teaser, clip, featurette, or scene.
+- Prefer the tightest exact fit for the primary category.
+- If confidence is low, return no playlist instead of guessing.
+- A video may go into more than one playlist only when that is clearly justified.
 
-Detection Rules:
-- A video can belong to multiple playlists
-- Always include the primary category (Movie/TV/Clip/Anime)
-- Add genre-specific playlist if applicable
-- Add "4K Trailers" if video quality is 4K
-- Add year-specific playlist based on release date
-- Add "Awards Season" for prestige films (September-February releases, A24, Searchlight, etc.)
+Primary routing examples:
+- Movie trailer -> Movie Trailers
+- TV show trailer -> TV Show Trailers
+- Movie clip or featurette -> Movie Clips
+- TV show clip -> TV Show Clips
+- Anime trailer -> Anime Trailers
 
-Output Format:
-Return ONLY a JSON array: ["Playlist 1", "Playlist 2", "Playlist 3"]
-
-Example outputs:
-- Action movie in 4K releasing 2025: ["Movie Trailers", "Action Trailers", "4K Trailers", "Coming Soon 2025"]
-- Horror anime film: ["Anime Trailers", "Movie Trailers", "Horror Trailers"]
-- TV drama for awards season: ["TV Show Trailers", "Awards Season"]`}
+Output format:
+{"selectedIds":["playlist-id-1","playlist-id-2"]}`}
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
@@ -616,26 +723,88 @@ Example outputs:
               className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
             />
             <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
-              AI automatically categorizes trailers into appropriate YouTube playlists
+              The model can only choose from the exact playlists selected below. It cannot invent new playlist names.
             </p>
           </div>
 
           {/* YouTube Playlist Management */}
           <div>
-            <Label htmlFor="video-youtube-playlists" className="text-[#9CA3AF]">YouTube Playlists (comma-separated)</Label>
-            <textarea
-              id="video-youtube-playlists"
-              value={settings.videoYoutubePlaylists || 'Movie Trailers, TV Show Trailers, Movie Clips, Anime Trailers, Horror Trailers, Action Trailers, Comedy Trailers, Documentary Trailers, 4K Trailers, Coming Soon 2025, Awards Season'}
-              onFocus={() => haptics.light()}
-              onChange={(e) => {
-                haptics.light();
-                updateSetting('videoYoutubePlaylists', e.target.value);
-              }}
-              rows={4}
-              className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white mt-1 resize-none"
-            />
-            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
-              List of available playlists on your YouTube channel (one per line or comma-separated)
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-[#9CA3AF]">Connected YouTube Channel Playlists</Label>
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.light();
+                  void loadYouTubePlaylists(true);
+                }}
+                className="text-xs px-3 py-2 rounded-full border border-gray-200 dark:border-[#333333] text-gray-700 dark:text-[#E5E7EB]"
+              >
+                {isLoadingYouTubePlaylists ? 'Refreshing...' : 'Refresh Playlists'}
+              </button>
+            </div>
+
+            <div className="mt-2 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 space-y-3">
+              {isLoadingYouTubePlaylists && playlistChoices.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-[#9CA3AF]">
+                  Loading playlists from the connected YouTube channel...
+                </p>
+              ) : null}
+
+              {!isLoadingYouTubePlaylists && youtubePlaylistsError ? (
+                <div className="rounded-xl border border-red-200 dark:border-[#5B1B1B] bg-red-50 dark:bg-[#140708] p-3">
+                  <p className="text-sm text-red-700 dark:text-[#FCA5A5]">
+                    {youtubePlaylistsError}
+                  </p>
+                  <p className="text-xs text-red-600 dark:text-[#F87171] mt-1">
+                    Connect the correct YouTube account, then refresh to load the real channel playlists.
+                  </p>
+                </div>
+              ) : null}
+
+              {!isLoadingYouTubePlaylists && !youtubePlaylistsError && playlistChoices.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-[#9CA3AF]">
+                  No playlists were found on the connected YouTube channel yet.
+                </p>
+              ) : null}
+
+              {playlistChoices.length > 0 ? (
+                <div className="space-y-2">
+                  {playlistChoices.map((playlist) => (
+                    <label
+                      key={playlist.id}
+                      className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-[#333333] px-3 py-3 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={selectedPlaylistIds.has(playlist.id)}
+                        onCheckedChange={(checked) => handleYouTubePlaylistToggle(playlist, checked === true)}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm text-gray-900 dark:text-white">{playlist.title}</span>
+                          {typeof playlist.itemCount === 'number' ? (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
+                              {playlist.itemCount} item{playlist.itemCount === 1 ? '' : 's'}
+                            </span>
+                          ) : null}
+                          {playlist.privacyStatus ? (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF] capitalize">
+                              {playlist.privacyStatus}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1 break-all">
+                          {playlist.id}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-2">
+              Only the playlists checked here are eligible for automatic YouTube routing. The upload flow will use the exact channel playlists and will no longer create missing playlists from AI guesses.
             </p>
           </div>
         </div>

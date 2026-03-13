@@ -38,6 +38,13 @@ interface PlatformSettingsValue {
     commentAutomation?: boolean;
 }
 
+interface SelectedYouTubePlaylist {
+    id: string;
+    title: string;
+    itemCount?: number;
+    privacyStatus?: 'private' | 'public' | 'unlisted';
+}
+
 interface TMDbSearchResult {
     id: number;
     media_type: 'movie' | 'tv';
@@ -154,6 +161,7 @@ export interface LoadedVideoSettings {
     videoYoutubeDescriptionPrompt?: string;
     videoYoutubePlaylistPrompt?: string;
     videoYoutubePlaylists?: string;
+    videoYoutubeSelectedPlaylists?: SelectedYouTubePlaylist[];
     videoFilterPrompt?: string;
     videoFilterCache: boolean;
     videoFilterTmdbValidation: boolean;
@@ -241,6 +249,7 @@ const VIDEO_SETTINGS_KEYS = [
     'videoYoutubeDescriptionPrompt',
     'videoYoutubePlaylistPrompt',
     'videoYoutubePlaylists',
+    'videoYoutubeSelectedPlaylists',
     'videoFilterPrompt',
     'videoFilterCache',
     'videoFilterTmdbValidation',
@@ -368,6 +377,28 @@ function parseThumbnailConfig(platform: LandscapePlatform, value: unknown): Thum
         ...(parsed || {}),
         platform,
     };
+}
+
+function parseSelectedYouTubePlaylists(value: unknown): SelectedYouTubePlaylist[] {
+    const parsed = parseJsonValue<SelectedYouTubePlaylist[]>(value);
+    if (!Array.isArray(parsed)) {
+        return [];
+    }
+
+    return parsed
+        .filter((playlist) => playlist && typeof playlist === 'object')
+        .map((playlist) => ({
+            id: asString(playlist.id) || '',
+            title: asString(playlist.title) || '',
+            itemCount: typeof playlist.itemCount === 'number' ? playlist.itemCount : undefined,
+            privacyStatus:
+                playlist.privacyStatus === 'private'
+                || playlist.privacyStatus === 'public'
+                || playlist.privacyStatus === 'unlisted'
+                    ? playlist.privacyStatus
+                    : undefined,
+        }))
+        .filter((playlist) => playlist.id && playlist.title);
 }
 
 function normalizeText(value: string): string {
@@ -1013,6 +1044,7 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
         videoYoutubeDescriptionPrompt: asString(map.get('videoYoutubeDescriptionPrompt')),
         videoYoutubePlaylistPrompt: asString(map.get('videoYoutubePlaylistPrompt')),
         videoYoutubePlaylists: asString(map.get('videoYoutubePlaylists')),
+        videoYoutubeSelectedPlaylists: parseSelectedYouTubePlaylists(map.get('videoYoutubeSelectedPlaylists')),
         videoFilterPrompt: asString(map.get('videoFilterPrompt')),
         videoFilterCache: asBoolean(map.get('videoFilterCache'), true),
         videoFilterTmdbValidation: asBoolean(map.get('videoFilterTmdbValidation'), true),

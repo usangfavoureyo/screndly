@@ -21,6 +21,13 @@ const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
 const CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_prompts_v1';
 
 export interface Settings {
+  videoYoutubeSelectedPlaylists?: Array<{
+    id: string;
+    title: string;
+    itemCount?: number;
+    privacyStatus?: 'private' | 'public' | 'unlisted';
+  }>;
+
   // API Keys
   youtubeKey: string;
   openaiKey: string;
@@ -341,6 +348,7 @@ function getDefaultSettings(): Settings {
     videoYoutubeDescriptionPrompt: '',
     videoYoutubePlaylistPrompt: '',
     videoYoutubePlaylists: '',
+    videoYoutubeSelectedPlaylists: [],
     videoFilterPrompt: '',
     videoFilterCache: true,
     videoFilterTmdbValidation: true,
