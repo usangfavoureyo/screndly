@@ -1,39 +1,38 @@
-import { lazy, Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard, PenSquare } from 'lucide-react';
+import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
+import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Separator } from './ui/separator';
 import { haptics } from '../utils/haptics';
+import { lazyWithRetry } from '../utils/performance';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { useScrollLock } from '../hooks/useScrollLock';
 
-const VideoSettings = lazy(() => import('./settings/VideoSettings').then((module) => ({ default: module.VideoSettings })));
-const CommentReplySettings = lazy(() => import('./settings/CommentReplySettings').then((module) => ({ default: module.CommentReplySettings })));
-const RssSettings = lazy(() => import('./settings/RssSettings').then((module) => ({ default: module.RssSettings })));
-const TmdbFeedsSettings = lazy(() => import('./settings/TmdbFeedsSettings').then((module) => ({ default: module.TmdbFeedsSettings })));
-const ErrorHandlingSettings = lazy(() => import('./settings/ErrorHandlingSettings').then((module) => ({ default: module.ErrorHandlingSettings })));
-const CleanupSettings = lazy(() => import('./settings/CleanupSettings').then((module) => ({ default: module.CleanupSettings })));
-const HapticSettings = lazy(() => import('./settings/HapticSettings').then((module) => ({ default: module.HapticSettings })));
-const AppearanceSettings = lazy(() => import('./settings/AppearanceSettings').then((module) => ({ default: module.AppearanceSettings })));
-const NotificationsSettings = lazy(() => import('./settings/NotificationsSettings').then((module) => ({ default: module.NotificationsSettings })));
-const VideoStudioSettings = lazy(() => import('./settings/VideoStudioSettings').then((module) => ({ default: module.VideoStudioSettings })));
-const DesignStudioSettings = lazy(() => import('./settings/DesignStudioSettings').then((module) => ({ default: module.DesignStudioSettings })));
-const PadSettings = lazy(() => import('./settings/PadSettings').then((module) => ({ default: module.PadSettings })));
-const ComposeSettings = lazy(() => import('./settings/ComposeSettings').then((module) => ({ default: module.ComposeSettings })));
-const PWASettings = lazy(() => import('./settings/PWASettings').then((module) => ({ default: module.PWASettings })));
-const TimezoneSettings = lazy(() => import('./settings/TimezoneSettings').then((module) => ({ default: module.TimezoneSettings })));
-const ThumbnailSettings = lazy(() => import('./settings/ThumbnailSettings').then((module) => ({ default: module.ThumbnailSettings })));
-const PrivacyPage = lazy(() => import('./PrivacyPage').then((module) => ({ default: module.PrivacyPage })));
-const TermsPage = lazy(() => import('./TermsPage').then((module) => ({ default: module.TermsPage })));
-const DisclaimerPage = lazy(() => import('./DisclaimerPage').then((module) => ({ default: module.DisclaimerPage })));
-const CookiePage = lazy(() => import('./CookiePage').then((module) => ({ default: module.CookiePage })));
-const ContactPage = lazy(() => import('./ContactPage').then((module) => ({ default: module.ContactPage })));
-const AboutPage = lazy(() => import('./AboutPage').then((module) => ({ default: module.AboutPage })));
-const DesignSystemPage = lazy(() => import('./DesignSystemPage').then((module) => ({ default: module.DesignSystemPage })));
-const AppInfoPage = lazy(() => import('./AppInfoPage').then((module) => ({ default: module.AppInfoPage })));
-const DataDeletionPage = lazy(() => import('./DataDeletionPage').then((module) => ({ default: module.DataDeletionPage })));
+const VideoSettings = lazyWithRetry(() => import('./settings/VideoSettings').then((module) => ({ default: module.VideoSettings })), 'VideoSettings');
+const CommentReplySettings = lazyWithRetry(() => import('./settings/CommentReplySettings').then((module) => ({ default: module.CommentReplySettings })), 'CommentReplySettings');
+const RssSettings = lazyWithRetry(() => import('./settings/RssSettings').then((module) => ({ default: module.RssSettings })), 'RssSettings');
+const TmdbFeedsSettings = lazyWithRetry(() => import('./settings/TmdbFeedsSettings').then((module) => ({ default: module.TmdbFeedsSettings })), 'TmdbFeedsSettings');
+const ErrorHandlingSettings = lazyWithRetry(() => import('./settings/ErrorHandlingSettings').then((module) => ({ default: module.ErrorHandlingSettings })), 'ErrorHandlingSettings');
+const CleanupSettings = lazyWithRetry(() => import('./settings/CleanupSettings').then((module) => ({ default: module.CleanupSettings })), 'CleanupSettings');
+const HapticSettings = lazyWithRetry(() => import('./settings/HapticSettings').then((module) => ({ default: module.HapticSettings })), 'HapticSettings');
+const AppearanceSettings = lazyWithRetry(() => import('./settings/AppearanceSettings').then((module) => ({ default: module.AppearanceSettings })), 'AppearanceSettings');
+const NotificationsSettings = lazyWithRetry(() => import('./settings/NotificationsSettings').then((module) => ({ default: module.NotificationsSettings })), 'NotificationsSettings');
+const VideoStudioSettings = lazyWithRetry(() => import('./settings/VideoStudioSettings').then((module) => ({ default: module.VideoStudioSettings })), 'VideoStudioSettings');
+const DesignStudioSettings = lazyWithRetry(() => import('./settings/DesignStudioSettings').then((module) => ({ default: module.DesignStudioSettings })), 'DesignStudioSettings');
+const PWASettings = lazyWithRetry(() => import('./settings/PWASettings').then((module) => ({ default: module.PWASettings })), 'PWASettings');
+const TimezoneSettings = lazyWithRetry(() => import('./settings/TimezoneSettings').then((module) => ({ default: module.TimezoneSettings })), 'TimezoneSettings');
+const ThumbnailSettings = lazyWithRetry(() => import('./settings/ThumbnailSettings').then((module) => ({ default: module.ThumbnailSettings })), 'ThumbnailSettings');
+const PrivacyPage = lazyWithRetry(() => import('./PrivacyPage').then((module) => ({ default: module.PrivacyPage })), 'PrivacyPage');
+const TermsPage = lazyWithRetry(() => import('./TermsPage').then((module) => ({ default: module.TermsPage })), 'TermsPage');
+const DisclaimerPage = lazyWithRetry(() => import('./DisclaimerPage').then((module) => ({ default: module.DisclaimerPage })), 'DisclaimerPage');
+const CookiePage = lazyWithRetry(() => import('./CookiePage').then((module) => ({ default: module.CookiePage })), 'CookiePage');
+const ContactPage = lazyWithRetry(() => import('./ContactPage').then((module) => ({ default: module.ContactPage })), 'ContactPage');
+const AboutPage = lazyWithRetry(() => import('./AboutPage').then((module) => ({ default: module.AboutPage })), 'AboutPage');
+const DesignSystemPage = lazyWithRetry(() => import('./DesignSystemPage').then((module) => ({ default: module.DesignSystemPage })), 'DesignSystemPage');
+const AppInfoPage = lazyWithRetry(() => import('./AppInfoPage').then((module) => ({ default: module.AppInfoPage })), 'AppInfoPage');
+const DataDeletionPage = lazyWithRetry(() => import('./DataDeletionPage').then((module) => ({ default: module.DataDeletionPage })), 'DataDeletionPage');
 
 const SettingsContentLoader = () => (
   <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/95 dark:bg-black/95">
@@ -54,6 +53,14 @@ interface SettingsPanelProps {
   initialPage?: string | null;
 }
 
+function normalizeSettingsPage(page: string | null | undefined): string | null {
+  if (page === 'pad' || page === 'compose') {
+    return null;
+  }
+
+  return page ?? null;
+}
+
 export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNotification, initialPage }: SettingsPanelProps) {
   const { theme, setTheme } = useTheme();
   const { settings, updateSetting, updateSettings } = useSettings();
@@ -62,14 +69,14 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
 
   useScrollLock(isOpen);
 
-  const [activeSettingsPage, setActiveSettingsPage] = useState<string | null>(initialPage || null);
+  const [activeSettingsPage, setActiveSettingsPage] = useState<string | null>(normalizeSettingsPage(initialPage));
   const [searchQuery, setSearchQuery] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const staticPageScrollRef = useRef<HTMLDivElement>(null);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
 
   // Track active page in ref for synchronous access in popstate listener
-  const activePageRef = useRef<string | null>(initialPage || null);
+  const activePageRef = useRef<string | null>(normalizeSettingsPage(initialPage));
 
   useEffect(() => {
     activePageRef.current = activeSettingsPage;
@@ -258,18 +265,6 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
         'max results', 'result limit',
         'enable', 'disable', 'turn on', 'turn off'
       ]
-    },
-    {
-      id: 'pad',
-      label: 'PAD',
-      icon: MessageSquare,
-      keywords: ['pad', 'chat', 'ai chat', 'model', 'prompt', 'system prompt', 'assistant', 'conversation', 'thread']
-    },
-    {
-      id: 'compose',
-      label: 'Compose',
-      icon: PenSquare,
-      keywords: ['compose', 'content', 'schedule', 'draft', 'retention', 'default schedule']
     },
     {
       id: 'timezone',
@@ -466,16 +461,6 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
         haptics.light();
         handleCloseSubpage();
       }
-    );
-  }
-  if (activeSettingsPage === 'pad') {
-    return renderSettingsSubpage(
-      <PadSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
-    );
-  }
-  if (activeSettingsPage === 'compose') {
-    return renderSettingsSubpage(
-      <ComposeSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
     );
   }
   if (activeSettingsPage === 'error') {

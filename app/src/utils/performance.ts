@@ -34,25 +34,42 @@ export function reportWebVitals(metric: any) {
 /**
  * Lazy load component with retry logic
  */
+const FORCE_REFRESH_STORAGE_KEY = 'page-has-been-force-refreshed';
+
+function isRecoverableChunkError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    /ChunkLoadError/i.test(message) ||
+    /Loading chunk [\w-]+ failed/i.test(message) ||
+    /Failed to fetch dynamically imported module/i.test(message) ||
+    /Importing a module script failed/i.test(message)
+  );
+}
+
 export function lazyWithRetry<T extends React.ComponentType<any>>(
   componentImport: () => Promise<{ default: T }>,
   componentName: string
 ): React.LazyExoticComponent<T> {
   return React.lazy(async () => {
     const pageHasAlreadyBeenForceRefreshed = JSON.parse(
-      window.localStorage.getItem('page-has-been-force-refreshed') || 'false'
+      window.localStorage.getItem(FORCE_REFRESH_STORAGE_KEY) || 'false'
     );
 
     try {
       const component = await componentImport();
-      window.localStorage.setItem('page-has-been-force-refreshed', 'false');
+      window.localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, 'false');
       return component;
     } catch (error) {
-      if (!pageHasAlreadyBeenForceRefreshed) {
-        // Assuming that the user is not on the latest version of the app
-        window.localStorage.setItem('page-has-been-force-refreshed', 'true');
+      if (!pageHasAlreadyBeenForceRefreshed && isRecoverableChunkError(error)) {
+        // Force a single full refresh so the latest app shell can recover stale chunks.
+        window.localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, 'true');
         console.log(`[Performance] Reloading ${componentName} due to chunk load error`);
-        return window.location.reload();
+        window.location.reload();
+
+        return new Promise<{ default: T }>(() => {
+          // Keep the lazy boundary pending while the reload is taking over.
+        });
       }
 
       // If the page has already been force refreshed, throw the error

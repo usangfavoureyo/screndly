@@ -1,9 +1,10 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { haptics } from '../utils/haptics';
+import { lazyWithRetry } from '../utils/performance';
 
 // Lazy load the feed pages
-const RSSPage = lazy(() => import('./RSSPage').then(m => ({ default: m.RSSPage })));
-const TMDbFeedsPage = lazy(() => import('./TMDbFeedsPage').then(m => ({ default: m.TMDbFeedsPage })));
+const RSSPage = lazyWithRetry(() => import('./RSSPage').then(m => ({ default: m.RSSPage })), 'RSSPage');
+const TMDbFeedsPage = lazyWithRetry(() => import('./TMDbFeedsPage').then(m => ({ default: m.TMDbFeedsPage })), 'TMDbFeedsPage');
 
 interface FeedsPageProps {
   onNavigate: (page: string) => void;
