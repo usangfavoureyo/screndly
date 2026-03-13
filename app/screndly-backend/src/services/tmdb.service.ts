@@ -12,6 +12,9 @@ const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
 const TMDB_SCHEDULE_BUFFER_HOURS = 1;
 const TMDB_SCHEDULE_SPACING_HOURS = 4;
+const TMDB_DISCOVER_MAX_PAGES = 3;
+const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
+const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
 type SaveTMDbPostAction = 'created' | 'skipped';
 
 interface SaveTMDbPostResult {
@@ -39,6 +42,12 @@ type MediaType = 'movie' | 'tv';
 
 interface TMDbCredits {
     cast: Array<{ name: string; character: string; order: number }>;
+}
+
+interface TMDbDiscoverResponse {
+    results: TMDbMovie[];
+    page?: number;
+    total_pages?: number;
 }
 
 function reserveTMDbScheduleTime(reservedTimes: number[], scheduledTime: Date) {
@@ -78,6 +87,97 @@ async function getReservedTMDbScheduleTimes(now: Date): Promise<number[]> {
     });
 
     return scheduledPosts.map((post) => post.scheduledTime.getTime());
+}
+
+function getRequestedItemCount(value: number | undefined, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+
+    return Math.max(1, Math.floor(value));
+}
+
+function getCandidatePoolSize(targetCount: number): number {
+    return Math.max(TMDB_DISCOVER_MIN_POOL_SIZE, targetCount * TMDB_DISCOVER_POOL_MULTIPLIER);
+}
+
+function filterPopularResults(results: TMDbMovie[], config: RefreshSettings): TMDbMovie[] {
+    if (!config.onlyPopular) {
+        return results;
+    }
+
+    return results.filter((item) => item.popularity >= 50);
+}
+
+function appendUniqueCandidates(target: TMDbMovie[], candidates: TMDbMovie[], limit?: number) {
+    const seenIds = new Set(target.map((item) => item.id));
+
+    for (const candidate of candidates) {
+        if (seenIds.has(candidate.id)) {
+            continue;
+        }
+
+        target.push(candidate);
+        seenIds.add(candidate.id);
+
+        if (limit && target.length >= limit) {
+            break;
+        }
+    }
+}
+
+async function fetchDiscoverCandidatePool(
+    endpoint: string,
+    params: Record<string, string>,
+    config: RefreshSettings,
+    desiredCount: number
+): Promise<TMDbMovie[]> {
+    const candidates: TMDbMovie[] = [];
+    const poolSize = getCandidatePoolSize(desiredCount);
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages && page <= TMDB_DISCOVER_MAX_PAGES && candidates.length < poolSize) {
+        const data = await tmdbFetch<TMDbDiscoverResponse>(endpoint, {
+            ...params,
+            page: String(page)
+        });
+
+        totalPages = Math.max(1, data.total_pages || 1);
+        appendUniqueCandidates(candidates, filterPopularResults(data.results || [], config), poolSize);
+        page += 1;
+    }
+
+    return candidates;
+}
+
+function getAnniversaryBucketKey(candidate: TMDbMovie): string | null {
+    const releaseValue = candidate.release_date || candidate.first_air_date;
+    if (!releaseValue) {
+        return null;
+    }
+
+    const releaseYear = new Date(releaseValue).getFullYear();
+    if (Number.isNaN(releaseYear)) {
+        return null;
+    }
+
+    return String(new Date().getFullYear() - releaseYear);
+}
+
+function getTargetCountForBatch(sourceLabel: string, config: RefreshSettings): number {
+    switch (sourceLabel) {
+        case 'tmdb_today':
+            return getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
+        case 'tmdb_weekly':
+            return getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
+        case 'tmdb_monthly':
+            return getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
+        case 'tmdb_anniversary':
+            return getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5);
+        default:
+            return 1;
+    }
 }
 
 /**
@@ -231,6 +331,8 @@ export async function fetchAnniversaryMovies(settings?: RefreshSettings): Promis
     if (milestones.length === 0) milestones = defaultMilestones;
 
     console.log(`[TMDb] Checking anniversaries for years: ${milestones.join(', ')}`);
+    const overallPoolLimit = getCandidatePoolSize(getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5));
+    const perYearTarget = getRequestedItemCount(config.maxPerAnniversary, 2);
 
     for (const years of milestones) {
         const targetYear = today.getFullYear() - years;
@@ -244,17 +346,18 @@ export async function fetchAnniversaryMovies(settings?: RefreshSettings): Promis
             };
             applyCommonDiscoverFilters(params, 'movie', config);
 
-            const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
-
-            if (data.results.length > 0) {
-                anniversaryMovies.push(...data.results.slice(0, config.maxPerAnniversary || 2));
-            }
+            const candidates = await fetchDiscoverCandidatePool('/discover/movie', params, config, perYearTarget);
+            appendUniqueCandidates(anniversaryMovies, candidates, overallPoolLimit);
         } catch (error) {
             console.error(`Failed to fetch ${years}yr anniversaries:`, error);
         }
+
+        if (anniversaryMovies.length >= overallPoolLimit) {
+            break;
+        }
     }
 
-    return anniversaryMovies.slice(0, config.anniversaryMaxItems || 5);
+    return anniversaryMovies;
 }
 
 /**
@@ -277,6 +380,8 @@ export async function fetchAnniversaryTV(settings?: RefreshSettings): Promise<TM
     if (milestones.length === 0) milestones = defaultMilestones;
 
     console.log(`[TMDb] Checking TV anniversaries for years: ${milestones.join(', ')}`);
+    const overallPoolLimit = getCandidatePoolSize(getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5));
+    const perYearTarget = getRequestedItemCount(config.maxPerAnniversary, 2);
 
     for (const years of milestones) {
         const targetYear = today.getFullYear() - years;
@@ -291,17 +396,18 @@ export async function fetchAnniversaryTV(settings?: RefreshSettings): Promise<TM
             };
             applyCommonDiscoverFilters(params, 'tv', config);
 
-            const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
-
-            if (data.results.length > 0) {
-                anniversaryShows.push(...data.results.slice(0, config.maxPerAnniversary || 2));
-            }
+            const candidates = await fetchDiscoverCandidatePool('/discover/tv', params, config, perYearTarget);
+            appendUniqueCandidates(anniversaryShows, candidates, overallPoolLimit);
         } catch (error) {
             console.error(`Failed to fetch TV ${years}yr anniversaries:`, error);
         }
+
+        if (anniversaryShows.length >= overallPoolLimit) {
+            break;
+        }
     }
 
-    return anniversaryShows.slice(0, config.anniversaryMaxItems || 5);
+    return anniversaryShows;
 }
 
 /**
@@ -521,6 +627,7 @@ export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TM
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
 
     // Build query params from settings
     const params: Record<string, string> = {
@@ -531,15 +638,7 @@ export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TM
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
-
-    // Apply popularity filter if onlyPopular is true
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, config.todayMaxItems || 5);
+    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
 }
 
 /**
@@ -552,6 +651,7 @@ export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<T
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
 
     const params: Record<string, string> = {
         'primary_release_date.gte': tomorrow.toISOString().split('T')[0],
@@ -561,14 +661,7 @@ export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<T
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
-
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, config.weeklyMaxItems || 10);
+    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
 }
 
 /**
@@ -581,6 +674,7 @@ export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<
     const thirtyDaysLater = new Date(today);
     thirtyDaysLater.setDate(today.getDate() + 30);
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
 
     const params: Record<string, string> = {
         'primary_release_date.gte': nextEightDays.toISOString().split('T')[0],
@@ -590,14 +684,7 @@ export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/movie', params);
-
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, config.monthlyMaxItems || 30);
+    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
 }
 
 // ===== TV SHOW FETCH FUNCTIONS =====
@@ -609,6 +696,7 @@ export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TM
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
 
     const params: Record<string, string> = {
         'first_air_date.gte': dateStr,
@@ -618,14 +706,7 @@ export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TM
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
-
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, Math.floor((config.todayMaxItems || 5) / 2));
+    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
 }
 
 /**
@@ -638,6 +719,7 @@ export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<T
     const nextWeek = new Date(today);
     nextWeek.setDate(today.getDate() + 7);
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
 
     const params: Record<string, string> = {
         'first_air_date.gte': tomorrow.toISOString().split('T')[0],
@@ -647,14 +729,7 @@ export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<T
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
-
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, Math.floor((config.weeklyMaxItems || 10) / 2));
+    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
 }
 
 /**
@@ -667,6 +742,7 @@ export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<
     const thirtyDaysLater = new Date(today);
     thirtyDaysLater.setDate(today.getDate() + 30);
     const config = { ...defaultRefreshSettings, ...settings };
+    const targetCount = getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
 
     const params: Record<string, string> = {
         'first_air_date.gte': nextEightDays.toISOString().split('T')[0],
@@ -676,14 +752,7 @@ export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/discover/tv', params);
-
-    let results = data.results;
-    if (config.onlyPopular) {
-        results = results.filter(m => m.popularity >= 50);
-    }
-
-    return results.slice(0, Math.floor((config.monthlyMaxItems || 30) / 2));
+    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
 }
 
 /**
@@ -1049,8 +1118,30 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
             console.log(`[TMDb] Fetching candidates for ${sourceLabel}...`);
             const candidates = await fetcher();
             console.log(`[TMDb] ${sourceLabel}: Found ${candidates.length} candidates. Starting validation...`);
+            const targetCount = getTargetCountForBatch(sourceLabel, config);
+            const anniversaryBucketLimit = sourceLabel === 'tmdb_anniversary'
+                ? getRequestedItemCount(config.maxPerAnniversary, 2)
+                : null;
+            const acceptedBuckets = new Map<string, number>();
+            let acceptedForBatch = 0;
 
             for (const candidate of candidates) {
+                if (acceptedForBatch >= targetCount) {
+                    break;
+                }
+
+                const anniversaryBucketKey = anniversaryBucketLimit
+                    ? getAnniversaryBucketKey(candidate)
+                    : null;
+
+                if (
+                    anniversaryBucketLimit &&
+                    anniversaryBucketKey &&
+                    (acceptedBuckets.get(anniversaryBucketKey) || 0) >= anniversaryBucketLimit
+                ) {
+                    continue;
+                }
+
                 // RUN THE PIPELINE
                 const validation = await validateCandidate(candidate, type, sourceLabel, config);
 
@@ -1086,9 +1177,16 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
                     scheduleTime = new Date((result.effectiveScheduledTime || nextScheduledTime).getTime());
                     scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_SPACING_HOURS);
                     added++;
+                    acceptedForBatch++;
                     addedTitles.push(candidate.title || candidate.name || 'Untitled');
+
+                    if (anniversaryBucketLimit && anniversaryBucketKey) {
+                        acceptedBuckets.set(anniversaryBucketKey, (acceptedBuckets.get(anniversaryBucketKey) || 0) + 1);
+                    }
                 }
             }
+
+            console.log(`[TMDb] ${sourceLabel}: Added ${acceptedForBatch}/${targetCount} ${type} posts after validation.`);
         } catch (error) {
             const msg = `Failed processing ${sourceLabel}: ${error}`;
             errors.push(msg);
