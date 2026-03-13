@@ -343,7 +343,7 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
         <div>
           <h3 className="text-gray-900 dark:text-white mb-1">Caption Generation</h3>
           <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-3">
-            AI-powered caption generation from Video content for social media publishing
+            AI-powered caption generation from video content for social publishing, with live verification for release date and theater or network or streaming destination when useful.
           </p>
 
           {/* OpenAI Model Selection */}
@@ -368,6 +368,9 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+              OpenAI models use the Responses API with web search, while Flash 3 uses grounded Google Search, for release-context enrichment during caption and metadata generation.
+            </p>
           </div>
         </div>
 
@@ -379,7 +382,7 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Universal Social Media Caption Generation</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              Single prompt generates optimized captions for all 5 platforms in one API call
+              Single prompt generates optimized captions for all 5 platforms in one API call, with live release-context verification when the model needs it.
             </p>
           </div>
 
@@ -452,7 +455,7 @@ Tone: Platform-aware, optimized for engagement, culturally relevant`}
               className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
             />
             <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
-              Generates all 5 platform captions in one API call with JSON output
+              Generates all 5 platform captions in one API call with JSON output and optional live verification for release date and platform context.
             </p>
           </div>
         </div>
@@ -465,7 +468,7 @@ Tone: Platform-aware, optimized for engagement, culturally relevant`}
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">YouTube Upload Settings</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              AI-powered title, description, and playlist detection for YouTube uploads
+              AI-powered title, description, and playlist detection for YouTube uploads, with live verification for release dates and theater or platform context.
             </p>
           </div>
 
@@ -645,7 +648,7 @@ Example outputs:
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Pinterest Publishing Settings</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              Pinterest requires structured content: Title + Description + Link + Board. Configure AI generation for each field.
+              Pinterest requires structured content: Title + Description + Link + Board. Configure AI generation for each field, with live verification for release date and platform context when the model needs it.
             </p>
           </div>
 

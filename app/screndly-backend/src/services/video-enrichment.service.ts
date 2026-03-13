@@ -1172,6 +1172,13 @@ export async function generateYouTubePublishMetadata(
         metadata.trailerType,
         metadata.tmdbMatch
     );
+    const releaseResearchGuidance = `
+
+Release-context research rules:
+- Use live web search when helpful to verify the release date and whether this title is going to theaters or to a specific network/streaming platform.
+- Mention a network/platform only if it is confidently verified.
+- If it is theatrical, prefer "in theaters" / "theaters" instead of inventing a platform.
+- If release destination is unclear or conflicting, omit it instead of guessing.`;
 
     const model = settings.videoOpenaiModel || DEFAULT_OPENAI_MODEL;
 
@@ -1179,16 +1186,18 @@ export async function generateYouTubePublishMetadata(
         aiService.generateCompletion({
             model,
             systemPrompt: settings.videoYoutubeTitlePrompt,
-            prompt: `${context}\n\nGenerate the final YouTube upload title only.`,
+            prompt: `${context}${releaseResearchGuidance}\n\nGenerate the final YouTube upload title only.`,
             maxTokens: 120,
             temperature: 0.4,
+            enableWebSearch: true,
         }),
         aiService.generateCompletion({
             model,
             systemPrompt: settings.videoYoutubeDescriptionPrompt,
-            prompt: `${context}\n\nGenerate the final YouTube upload description only.`,
+            prompt: `${context}${releaseResearchGuidance}\n\nGenerate the final YouTube upload description only.`,
             maxTokens: 500,
             temperature: 0.6,
+            enableWebSearch: true,
         }),
     ]);
 

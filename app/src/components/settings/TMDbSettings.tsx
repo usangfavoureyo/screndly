@@ -692,7 +692,7 @@ export function TMDbSettings() {
         <div>
           <h3 className="text-gray-900 dark:text-white mb-1">Caption Generation</h3>
           <p className="text-sm text-[#9CA3AF]">
-            AI-powered caption generation for TMDb feed posts
+            AI-powered caption generation for TMDb feed posts, with live release-context verification when the model needs to confirm theaters, networks, or streaming platforms.
           </p>
         </div>
 
@@ -718,6 +718,9 @@ export function TMDbSettings() {
               ))}
             </SelectContent>
           </Select>
+          <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+            OpenAI models use the Responses API with web search, while Flash 3 uses grounded Google Search, to verify release date and network or platform details when helpful.
+          </p>
         </div>
 
         {/* Today's Releases Prompt */}

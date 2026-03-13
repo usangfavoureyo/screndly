@@ -18,6 +18,7 @@ import { notificationService } from './notification.service';
 import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { resolveYouTubeChannel } from './youtube-channel-resolver';
 import {
+    type EnrichedVideoMetadata,
     enrichYouTubeVideoMetadata,
     generateLandscapeThumbnail,
     generateSocialPosterThumbnail,
@@ -67,6 +68,8 @@ interface PlatformAutomationSettings {
 interface GeneratedCaptions {
     generated?: string;
     fallback: string;
+    pinterestTitle?: string;
+    pinterestDescription?: string;
 }
 
 interface NormalizedVideoFormat {
@@ -1138,8 +1141,11 @@ Keywords: ${details.keywords?.join(', ')}
 Validation Rules:
 ${settings.videoFilterPrompt}
 
+Use web search when needed to verify title origin, original language, dub status, region/country fit, distributor/platform, or whether the content is documentary, sports, fan-made, or otherwise out of scope.
+
 Respond ONLY "YES" or "NO".`,
-            maxTokens: 10
+            maxTokens: 10,
+            enableWebSearch: true,
         });
 
         return !(aiResult.success && aiResult.content.trim().toUpperCase().includes('NO'));
@@ -1199,6 +1205,10 @@ Respond ONLY "YES" or "NO".`,
         video: any,
         settings: LoadedVideoSettings
     ): string {
+        if (platform === 'Pinterest' && captions.pinterestDescription?.trim()) {
+            return captions.pinterestDescription.trim();
+        }
+
         const normalizedCaption = this.buildPlatformCaptionBase(platform, captions, settings);
 
         return [normalizedCaption, video.link].filter(Boolean).join('\n\n');
@@ -1210,6 +1220,10 @@ Respond ONLY "YES" or "NO".`,
         video: any,
         settings: LoadedVideoSettings
     ): string {
+        if (platform === 'Pinterest' && captions.pinterestTitle?.trim()) {
+            return captions.pinterestTitle.trim();
+        }
+
         const text = this.buildPlatformCaptionBase(platform, captions, settings);
         return text.slice(0, 100) || video.title || 'Screndly Upload';
     }
@@ -1797,13 +1811,14 @@ Respond ONLY "YES" or "NO".`,
         video: any,
         details: any,
         settings: LoadedVideoSettings,
-        metadata: { cleanedTitle: string; tmdbMatch?: { title: string; overview: string } },
+        metadata: EnrichedVideoMetadata,
         targetPlatforms: string[]
     ): Promise<GeneratedCaptions> {
         const fallback = this.buildFallbackCaption(video, metadata);
         const needsGeneratedCaption = targetPlatforms.some((platform) => this.isAutoCaptionEnabled(platform, settings));
+        const needsPinterestMetadata = targetPlatforms.includes('Pinterest') && this.isAutoCaptionEnabled('Pinterest', settings);
 
-        if (!needsGeneratedCaption) {
+        if (!needsGeneratedCaption && !needsPinterestMetadata) {
             return { fallback };
         }
 
@@ -1811,19 +1826,59 @@ Respond ONLY "YES" or "NO".`,
             videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
             channelName: video.author || 'YouTube Channel',
             description: metadata.tmdbMatch?.overview || details.description || video.contentSnippet || '',
-            platform: 'X' as const
+            platform: 'X' as const,
+            trailerType: metadata.trailerType,
+            mediaType: metadata.tmdbMatch?.mediaType,
+            releaseDate: metadata.tmdbMatch?.releaseDate,
+            year: metadata.tmdbMatch?.year,
+            cast: metadata.tmdbMatch?.castNames?.slice(0, 3),
+            genres: metadata.tmdbMatch?.genres,
+            productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
         };
 
         const model = settings.videoOpenaiModel || 'gpt-5-mini';
         const customPrompt = settings.videoUniversalCaptionPrompt;
+        let generatedCaption: string | undefined;
+        let pinterestTitle: string | undefined;
+        let pinterestDescription: string | undefined;
 
         try {
-            const caption = await aiService.generateYouTubeCaption(context, model, customPrompt);
-            return { generated: caption, fallback };
+            if (needsGeneratedCaption) {
+                generatedCaption = await aiService.generateYouTubeCaption(context, model, customPrompt);
+            }
         } catch (error) {
             console.error('[YouTubePoller] AI caption generation failed', error);
-            return { fallback };
         }
+
+        try {
+            if (needsPinterestMetadata) {
+                const pinterestMetadata = await aiService.generatePinterestMetadata(
+                    {
+                        title: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
+                        description: metadata.tmdbMatch?.overview || details.description || video.contentSnippet || '',
+                        cast: metadata.tmdbMatch?.castNames?.slice(0, 3),
+                        mediaType: metadata.tmdbMatch?.mediaType,
+                        releaseDate: metadata.tmdbMatch?.releaseDate,
+                        year: metadata.tmdbMatch?.year,
+                        productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
+                    },
+                    model,
+                    settings.videoPinterestTitlePrompt,
+                    settings.videoPinterestDescriptionPrompt
+                );
+                pinterestTitle = pinterestMetadata.title;
+                pinterestDescription = pinterestMetadata.description;
+            }
+        } catch (error) {
+            console.error('[YouTubePoller] Pinterest metadata generation failed', error);
+        }
+
+        return {
+            generated: generatedCaption,
+            pinterestTitle,
+            pinterestDescription,
+            fallback,
+        };
     }
 }
 

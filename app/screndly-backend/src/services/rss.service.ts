@@ -867,8 +867,18 @@ function getRevealAssetIntent(text: string): 'poster' | 'still' | 'logo' | 'gall
   return 'general_reveal';
 }
 
-function resolveDomImageSource(element: Element): string | null {
-  const htmlElement = element as HTMLElement;
+type RSSDomElement = {
+  getAttribute: (name: string) => string | null;
+  closest: (selector: string) => RSSDomElement | null;
+  querySelector: (selector: string) => RSSDomElement | null;
+  textContent: string | null;
+  parentElement: RSSDomElement | null;
+  previousElementSibling: RSSDomElement | null;
+  nextElementSibling: RSSDomElement | null;
+};
+
+function resolveDomImageSource(element: RSSDomElement): string | null {
+  const htmlElement = element;
   const srcCandidates = [
     htmlElement.getAttribute('src'),
     htmlElement.getAttribute('data-src'),
@@ -880,7 +890,7 @@ function resolveDomImageSource(element: Element): string | null {
   if (srcset) {
     const first = srcset
       .split(',')
-      .map((entry) => entry.trim().split(/\s+/)[0])
+      .map((entry: string) => entry.trim().split(/\s+/)[0])
       .filter(Boolean)
       .pop();
     if (first) {
@@ -892,7 +902,7 @@ function resolveDomImageSource(element: Element): string | null {
   return source?.trim() || null;
 }
 
-function collectLocalImageContext(image: Element): string {
+function collectLocalImageContext(image: RSSDomElement): string {
   const fragments = [
     image.getAttribute('alt'),
     image.getAttribute('title'),
@@ -972,7 +982,7 @@ function extractRankedArticleBodyImageUrls(item: Record<string, any>): string[] 
     const articleTitle = String(item.title || '').trim();
     const articleDescription = extractLeadParagraphText(item);
 
-    const ranked = Array.from(document.querySelectorAll('img'))
+    const ranked = Array.from(document.querySelectorAll('img') as Iterable<RSSDomElement>)
       .map((image) => {
         const sourceUrl = resolveDomImageSource(image);
         if (!sourceUrl) {

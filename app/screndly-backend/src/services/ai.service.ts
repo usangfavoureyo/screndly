@@ -64,6 +64,7 @@ export interface AIRequest {
     temperature?: number;
     jsonMode?: boolean;
     reasoningEffort?: AIReasoningEffort;
+    enableWebSearch?: boolean;
 }
 
 export interface AIResponse {
@@ -186,11 +187,64 @@ function extractOpenAIMessageContent(content: unknown): string {
         .trim();
 }
 
+function extractOpenAIResponsesContent(data: {
+    output_text?: unknown;
+    output?: Array<{
+        type?: string;
+        content?: Array<{
+            type?: string;
+            text?: string;
+        }>;
+    }>;
+}): string {
+    if (typeof data.output_text === 'string' && data.output_text.trim()) {
+        return data.output_text.trim();
+    }
+
+    if (!Array.isArray(data.output)) {
+        return '';
+    }
+
+    return data.output
+        .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
+        .map((part) => (part?.type === 'output_text' || part?.type === 'text') && typeof part.text === 'string' ? part.text : '')
+        .join('')
+        .trim();
+}
+
+function isModernOpenAIModel(model: AIModel): model is SupportedOpenAIModel {
+    return (SUPPORTED_OPENAI_MODELS as readonly string[]).includes(model);
+}
+
+function formatPromptList(values?: string[]): string {
+    if (!Array.isArray(values)) {
+        return 'N/A';
+    }
+
+    const filtered = values
+        .map((value) => typeof value === 'string' ? value.trim() : '')
+        .filter(Boolean);
+
+    return filtered.length > 0 ? filtered.join(', ') : 'N/A';
+}
+
+function withReleaseResearchInstructions(systemPrompt?: string): string {
+    const researchGuidance = `Release-context research rules:
+- Use live web search when it helps verify the release or premiere date, theatrical status, or original network/streaming platform.
+- Mention a network/platform only when it is confidently verifiable.
+- If the title is theatrical, prefer "in theaters" / "theaters" instead of inventing a platform.
+- If sources conflict or the platform/network is unclear, omit it instead of guessing.
+- For anniversary copy, mention the original network/platform only when it is confidently verifiable and improves the caption.
+- Do not hallucinate a release destination, release date, or distributor.`;
+
+    return [systemPrompt, researchGuidance].filter(Boolean).join('\n\n');
+}
+
 // ============================================
 // OPENAI COMPLETION
 // ============================================
 
-async function callOpenAI(request: AIRequest): Promise<AIResponse> {
+async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse> {
     const apiKey = await getOpenAIKey();
 
     if (!apiKey) {
@@ -295,6 +349,128 @@ async function callOpenAI(request: AIRequest): Promise<AIResponse> {
 // FLASH 3 (JORDANITE) COMPLETION
 // ============================================
 
+async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
+    const apiKey = await getOpenAIKey();
+
+    if (!apiKey) {
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: 'OpenAI API key not configured'
+        };
+    }
+
+    let tracked = false;
+
+    try {
+        const isGPT5Model = request.model.startsWith('gpt-5');
+        const body: Record<string, unknown> = {
+            model: request.model,
+            input: request.prompt,
+            max_output_tokens: request.maxTokens || 1024,
+        };
+
+        if (request.systemPrompt) {
+            body.instructions = request.systemPrompt;
+        }
+
+        if (!isGPT5Model && typeof request.temperature === 'number') {
+            body.temperature = request.temperature;
+        } else if (!isGPT5Model && request.temperature === undefined) {
+            body.temperature = 0.7;
+        }
+
+        const reasoningEffort = request.reasoningEffort || (request.jsonMode ? 'minimal' : undefined);
+        if (reasoningEffort) {
+            body.reasoning = { effort: reasoningEffort };
+        }
+
+        if (request.enableWebSearch) {
+            body.tools = [{ type: 'web_search' }];
+            body.tool_choice = 'auto';
+        }
+
+        const response = await fetch('https://api.openai.com/v1/responses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json() as { error?: { message?: string } };
+            await trackApiUsage({
+                service: 'openai',
+                endpoint: '/v1/responses',
+                success: false,
+            });
+            tracked = true;
+            throw new Error(errorData.error?.message || 'OpenAI Responses API error');
+        }
+
+        const data = await response.json() as {
+            output_text?: unknown;
+            output?: Array<{
+                type?: string;
+                content?: Array<{
+                    type?: string;
+                    text?: string;
+                }>;
+            }>;
+            usage?: {
+                input_tokens?: number;
+                output_tokens?: number;
+                total_tokens?: number;
+            };
+        };
+        const content = extractOpenAIResponsesContent(data);
+
+        await trackApiUsage({
+            service: 'openai',
+            endpoint: '/v1/responses',
+            tokens: data.usage?.total_tokens || 0,
+            success: true,
+        });
+        tracked = true;
+
+        return {
+            success: true,
+            content,
+            model: request.model,
+            tokens: {
+                prompt: data.usage?.input_tokens || 0,
+                completion: data.usage?.output_tokens || 0,
+                total: data.usage?.total_tokens || 0
+            }
+        };
+    } catch (error) {
+        if (!tracked) {
+            await trackApiUsage({
+                service: 'openai',
+                endpoint: '/v1/responses',
+                success: false,
+            });
+        }
+
+        console.warn('[AI] OpenAI Responses API failed, falling back to Chat Completions:', error);
+        return callOpenAIChatCompletions({
+            ...request,
+            enableWebSearch: false,
+        });
+    }
+}
+
+async function callOpenAI(request: AIRequest): Promise<AIResponse> {
+    if (isModernOpenAIModel(request.model)) {
+        return callOpenAIResponses(request);
+    }
+
+    return callOpenAIChatCompletions(request);
+}
+
 async function callFlash3(request: AIRequest): Promise<AIResponse> {
     const apiKey = await getFlash3Key();
 
@@ -320,6 +496,11 @@ async function callFlash3(request: AIRequest): Promise<AIResponse> {
                             : request.prompt
                     }]
                 }],
+                ...(request.enableWebSearch ? {
+                    tools: [{
+                        google_search: {}
+                    }]
+                } : {}),
                 generationConfig: {
                     maxOutputTokens: request.maxTokens || 1024,
                     temperature: request.temperature || 0.7,
@@ -490,7 +671,8 @@ Respond in JSON:
         systemPrompt,
         maxTokens: 300,
         temperature: 0.3,
-        jsonMode: true
+        jsonMode: true,
+        enableWebSearch: true
     });
 
     if (!response.success) {
@@ -530,6 +712,7 @@ export interface CaptionContext {
     temporalTag: 'releasing_today' | 'releasing_this_week' | 'releasing_this_month' | 'anniversary' | 'already_released';
     daysUntil: number;
     releaseDate?: string;
+    year?: number;
     anniversaryYears?: number;
     cast: string[];
     genres: string[];
@@ -556,7 +739,7 @@ Your goal is to write a single, punchy, engaging caption based STRICTLY on the p
   - anniversary -> NOSTALGIC ("Released X years ago", "A classic turns X")
 `;
 
-    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const systemPrompt = withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt);
 
     const prompt = `Generate a caption for this content:
 Title: ${context.title}
@@ -564,10 +747,13 @@ Type: ${context.mediaType}
 Tag: ${context.temporalTag}
 Days Until: ${context.daysUntil}
 Release Date: ${context.releaseDate || 'N/A'}
+Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
 Anniversary Years: ${typeof context.anniversaryYears === 'number' ? context.anniversaryYears : 'N/A'}
-Cast: ${context.cast.join(', ')}
-Genres: ${context.genres.join(', ')}
+Cast: ${formatPromptList(context.cast)}
+Genres: ${formatPromptList(context.genres)}
 Platform: ${context.platform}
+
+If the caption benefits from release context, verify whether it is theatrical or tied to a specific network/streaming platform before mentioning it. If that context is unnecessary or uncertain, leave it out.
 
 Write ONLY the caption text. No preamble.`;
 
@@ -577,7 +763,8 @@ Write ONLY the caption text. No preamble.`;
         systemPrompt,
         maxTokens: 150,
         temperature: customTemperature !== undefined ? customTemperature : 0.7, // Custom temp or default high temp for creativity
-        jsonMode: false
+        jsonMode: false,
+        enableWebSearch: true,
     });
 
     if (!response.success) {
@@ -649,6 +836,13 @@ export interface YouTubeContext {
     channelName: string;
     description: string;
     platform: 'X' | 'Threads' | 'Facebook';
+    trailerType?: string;
+    mediaType?: 'movie' | 'tv';
+    releaseDate?: string;
+    year?: number;
+    cast?: string[];
+    genres?: string[];
+    productionNames?: string[];
 }
 
 export async function generateYouTubeCaption(
@@ -665,13 +859,22 @@ Goal: Drive views to the video with high-energy copy.
 - Length: Under 280 chars.
 `;
 
-    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const systemPrompt = withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt);
 
     const prompt = `Generate a caption for this video:
 Channel: ${context.channelName}
 Title: ${context.videoTitle}
-Description: ${context.description.slice(0, 300)}...
+Trailer Type: ${context.trailerType || 'N/A'}
+Type: ${context.mediaType || 'N/A'}
+Release Date: ${context.releaseDate || 'N/A'}
+Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
+Cast: ${formatPromptList(context.cast)}
+Genres: ${formatPromptList(context.genres)}
+Studios / Networks: ${formatPromptList(context.productionNames)}
+Description: ${context.description.slice(0, 500)}...
 Platform: ${context.platform}
+
+Use live search when needed to confirm the release date and whether the title is going to theaters or to a specific network/streaming platform. Mention that destination only if it is confidently verified and helpful to the caption.
 
 Write ONLY the caption.`;
 
@@ -681,7 +884,8 @@ Write ONLY the caption.`;
         systemPrompt,
         maxTokens: 150,
         temperature: customTemperature !== undefined ? customTemperature : 0.8,
-        jsonMode: false
+        jsonMode: false,
+        enableWebSearch: true,
     });
 
     if (!response.success) {
@@ -838,7 +1042,15 @@ export async function detectYouTubePlaylists(
 // ============================================
 
 export async function generatePinterestMetadata(
-    context: { title: string; description: string; cast?: string[] },
+    context: {
+        title: string;
+        description: string;
+        cast?: string[];
+        mediaType?: 'movie' | 'tv';
+        releaseDate?: string;
+        year?: number;
+        productionNames?: string[];
+    },
     model: AIModel = DEFAULT_OPENAI_MODEL,
     titlePrompt?: string,
     descPrompt?: string
@@ -847,22 +1059,33 @@ export async function generatePinterestMetadata(
     // generate title
     const tPrompt = `Generate a Pinterest Pin Title for:
     Title: ${context.title}
-    Cast: ${context.cast?.join(', ')}
+    Type: ${context.mediaType || 'N/A'}
+    Release Date: ${context.releaseDate || 'N/A'}
+    Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
+    Cast: ${formatPromptList(context.cast)}
+    Studios / Networks: ${formatPromptList(context.productionNames)}
     
     ${titlePrompt || 'Create a searchable, SEO-friendly title under 100 chars.'}
+    Use live search when needed to verify the release date and the theater/network/platform destination before mentioning it.
     Return ONLY the title text.`;
 
     // generate description
     const dPrompt = `Generate a Pinterest Pin Description for:
     Title: ${context.title}
+    Type: ${context.mediaType || 'N/A'}
+    Release Date: ${context.releaseDate || 'N/A'}
+    Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
+    Cast: ${formatPromptList(context.cast)}
+    Studios / Networks: ${formatPromptList(context.productionNames)}
     Desc: ${context.description}
     
     ${descPrompt || 'Create an engaging, keyword-rich description under 500 chars with 2-3 hashtags.'}
+    Use live search when needed to verify the release date and the theater/network/platform destination before mentioning it.
     Return ONLY the description text.`;
 
     const [titleRes, descRes] = await Promise.all([
-        generateCompletion({ model, prompt: tPrompt, temperature: 0.7 }),
-        generateCompletion({ model, prompt: dPrompt, temperature: 0.7 })
+        generateCompletion({ model, prompt: tPrompt, temperature: 0.7, enableWebSearch: true }),
+        generateCompletion({ model, prompt: dPrompt, temperature: 0.7, enableWebSearch: true })
     ]);
 
     return {

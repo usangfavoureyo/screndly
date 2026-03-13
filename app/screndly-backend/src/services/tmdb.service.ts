@@ -413,6 +413,7 @@ export async function saveTMDbPost(
             temporalTag,
             daysUntil,
             releaseDate: config?.includeDate === false ? undefined : releaseDate,
+            year,
             anniversaryYears,
             cast: captionCast,
             genres: [], // TODO: Pass genres if available in movie object
