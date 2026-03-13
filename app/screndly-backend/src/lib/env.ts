@@ -36,6 +36,9 @@ const envSchema = z.object({
     OPENAI_API_KEY: z.string().optional(),
     GOOGLE_API_KEY: z.string().optional(),
     SHOTSTACK_API_KEY: z.string().optional(),
+    WEB_PUSH_VAPID_PUBLIC_KEY: z.string().optional(),
+    WEB_PUSH_VAPID_PRIVATE_KEY: z.string().optional(),
+    WEB_PUSH_VAPID_SUBJECT: z.string().optional(),
 
     // URLs
     FRONTEND_URL: z.string().default('http://localhost:5173'),

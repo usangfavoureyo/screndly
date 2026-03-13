@@ -8,6 +8,7 @@ import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { ComposeScheduler } from "./create/ComposeScheduler";
+import { PostFlowSheet, type PostFlowView } from "./create/PostFlowSheet";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
@@ -38,8 +39,6 @@ const RSSActivityPage = lazyWithRetry(() => import("./RSSActivityPage").then(m =
 const TMDbFeedsPage = lazyWithRetry(() => import("./TMDbFeedsPage").then(m => ({ default: m.TMDbFeedsPage })), "TMDbFeedsPage");
 const TMDbActivityPage = lazyWithRetry(() => import("./TMDbActivityPage").then(m => ({ default: m.TMDbActivityPage })), "TMDbActivityPage");
 const CreatePage = lazyWithRetry(() => import("./CreatePage").then(m => ({ default: m.CreatePage })), "CreatePage");
-const ComposeEditorPage = lazyWithRetry(() => import("./create/ComposeEditorPage").then(m => ({ default: m.ComposeEditorPage })), "ComposeEditorPage");
-const ComposeActivityPage = lazyWithRetry(() => import("./create/ComposeActivityPage").then(m => ({ default: m.ComposeActivityPage })), "ComposeActivityPage");
 const PadWorkspacePage = lazyWithRetry(() => import("./create/PadWorkspacePage").then(m => ({ default: m.PadWorkspacePage })), "PadWorkspacePage");
 const VideoDetailsPage = lazyWithRetry(() => import("./VideoDetailsPage").then(m => ({ default: m.VideoDetailsPage })), "VideoDetailsPage");
 const VideoActivityPage = lazyWithRetry(() => import("./VideoActivityPage").then(m => ({ default: m.VideoActivityPage })), "VideoActivityPage");
@@ -112,6 +111,22 @@ const ROOT_PAGE_MAP: Record<string, string> = {
 
 function getRootPage(page: string): string | null {
   return ROOT_PAGE_MAP[page] ?? null;
+}
+
+function getPostFlowView(page: string): PostFlowView | null {
+  if (page === 'compose-activity') {
+    return 'activity';
+  }
+
+  if (page === 'compose-editor') {
+    return 'editor';
+  }
+
+  return null;
+}
+
+function normalizeShellPage(page: string): string {
+  return getPostFlowView(page) ? 'create' : page;
 }
 
 interface PersistedAppState {
@@ -209,12 +224,15 @@ export function AppContent() {
   const { showUndo } = useUndo();
 
   const [initialNavigationState] = useState<PersistedAppState>(() => getInitialNavigationState());
+  const initialPostFlowView = getPostFlowView(initialNavigationState.currentPage);
 
   // Initialize currentPage from URL (preserves state on refresh) and local storage (restores cold starts)
-  const [currentPage, setCurrentPageState] = useState<string>(() => initialNavigationState.currentPage);
+  const [currentPage, setCurrentPageState] = useState<string>(() => normalizeShellPage(initialNavigationState.currentPage));
   const [previousPage, setPreviousPage] = useState<string | null>(() => initialNavigationState.previousPage);
   const [createSourcePage, setCreateSourcePage] = useState(() => initialNavigationState.createSourcePage);
   const [pageBeforeSettings, setPageBeforeSettings] = useState(() => initialNavigationState.pageBeforeSettings);
+  const [isPostFlowOpen, setIsPostFlowOpen] = useState(() => initialPostFlowView !== null);
+  const [postFlowInitialView, setPostFlowInitialView] = useState<PostFlowView>(() => initialPostFlowView ?? 'overview');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialPage, setSettingsInitialPage] = useState<string | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -252,7 +270,8 @@ export function AppContent() {
   }, []);
 
   // Check if current page is valid, if not show 404
-  const displayPage = isValidPage(currentPage) ? currentPage : 'not-found';
+  const normalizedDisplayPage = normalizeShellPage(currentPage);
+  const displayPage = isValidPage(normalizedDisplayPage) ? normalizedDisplayPage : 'not-found';
 
   // NOTE: URL-based routing implemented. Refresh preserves current page.
 
@@ -361,6 +380,11 @@ export function AppContent() {
     };
   }, [setBackNavCallback, navigationCallback]);
 
+  const openPostFlow = useCallback((view: PostFlowView = 'overview') => {
+    setPostFlowInitialView(view);
+    setIsPostFlowOpen(true);
+  }, []);
+
   const handleLogout = () => {
     // Clear saved app state so login defaults to Dashboard
     localStorage.removeItem('screndly_app_state');
@@ -388,8 +412,6 @@ export function AppContent() {
       'rss-activity': 'feeds',
       'tmdb-activity': 'feeds',
       // Create child pages
-      'compose-editor': 'create',
-      'compose-activity': 'create',
       'pad-workspace': 'create',
       // Studio Activity pages
       'design-studio-activity': 'design-studio',
@@ -399,6 +421,12 @@ export function AppContent() {
     // Redirect old RSS and TMDb routes to unified Feeds page
     if (page === 'rss' || page === 'tmdb') {
       page = 'feeds';
+    }
+
+    const postFlowView = getPostFlowView(page);
+    if (postFlowView) {
+      openPostFlow(postFlowView);
+      return;
     }
 
     if (page === 'settings') {
@@ -428,11 +456,11 @@ export function AppContent() {
       }
 
       const resolvedParentPage =
-        page === 'create' && !['create', 'compose-editor', 'compose-activity', 'pad-workspace'].includes(currentPage)
+        page === 'create' && !['create', 'pad-workspace'].includes(currentPage)
           ? currentPage
           : childPageMap[page];
 
-      if (page === 'create' && !['create', 'compose-editor', 'compose-activity', 'pad-workspace'].includes(currentPage)) {
+      if (page === 'create' && !['create', 'pad-workspace'].includes(currentPage)) {
         setCreateSourcePage(fromPage || currentPage);
       }
 
@@ -634,7 +662,7 @@ export function AppContent() {
         role="main"
       >
         <PullToRefresh
-          disabled={isDesktopViewport || isSettingsOpen || isNotificationsOpen || isCaptionEditorOpen}
+          disabled={isDesktopViewport || isSettingsOpen || isNotificationsOpen || isCaptionEditorOpen || isPostFlowOpen}
         >
           <div className="p-4 sm:p-6 lg:p-8 transition-opacity duration-200">
             {displayPage === "dashboard" && (
@@ -666,12 +694,6 @@ export function AppContent() {
             )}
             {displayPage === "create" && (
               <Suspense fallback={<PageLoader />}><CreatePage onNavigate={handleNavigate} previousPage={createSourcePage} /></Suspense>
-            )}
-            {displayPage === "compose-editor" && (
-              <Suspense fallback={<PageLoader />}><ComposeEditorPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
-            )}
-            {displayPage === "compose-activity" && (
-              <Suspense fallback={<PageLoader />}><ComposeActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
             )}
             {displayPage === "pad-workspace" && (
               <Suspense fallback={<PageLoader />}><PadWorkspacePage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
@@ -716,9 +738,15 @@ export function AppContent() {
       />
       <CreateFab
         currentPage={currentPage}
+        isPostFlowOpen={isPostFlowOpen}
         isSettingsOpen={isSettingsOpen}
         isNotificationsOpen={isNotificationsOpen}
-        onNavigate={handleNavigate}
+        onOpenPostFlow={() => openPostFlow('overview')}
+      />
+      <PostFlowSheet
+        open={isPostFlowOpen}
+        initialView={postFlowInitialView}
+        onOpenChange={setIsPostFlowOpen}
       />
       {isSettingsOpen && (
         <Suspense fallback={<OverlayLoader />}>

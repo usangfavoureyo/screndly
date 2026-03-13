@@ -200,7 +200,10 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
       }
       onClose();
     }}>
-      <SheetContent className="w-full sm:max-w-2xl bg-white dark:bg-[#000000] overflow-y-auto">
+      <SheetContent
+        className="w-full sm:max-w-2xl bg-white dark:bg-[#000000] overflow-y-auto"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
         <SheetHeader>
           <SheetTitle className="text-gray-900 dark:text-white">
             {feed ? 'Edit Feed' : 'Add New Feed'}

@@ -1,5 +1,6 @@
 
 import prisma from '../lib/prisma';
+import { webPushService } from './web-push.service';
 
 export type NotificationType = 'info' | 'success' | 'warning' | 'error';
 export type NotificationSource = 'system' | 'tmdb' | 'rss' | 'youtube' | 'upload' | 'design_studio' | 'video_studio';
@@ -11,6 +12,21 @@ interface NotificationOptions {
     source: NotificationSource;
     actionPage?: string;
     metadata?: any;
+}
+
+function normalizePushTarget(actionPage?: string): string {
+    switch (actionPage) {
+        case '/tmdb-feeds':
+            return '/tmdb';
+        case '/rss-feeds':
+            return '/rss';
+        case '/uploads':
+            return '/upload-manager';
+        case '/settings':
+            return '/dashboard';
+        default:
+            return actionPage || '/';
+    }
 }
 
 export class NotificationService {
@@ -48,9 +64,8 @@ export class NotificationService {
                 return s.value === true || s.value === 'true';
             };
 
-            // Master switch
-            if (!getSetting('inAppNotifications')) {
-                // console.log('[NotificationService] Skipped: In-App Notifications disabled');
+            const inAppNotificationsEnabled = getSetting('inAppNotifications');
+            if (!inAppNotificationsEnabled) {
                 return;
             }
 
@@ -80,15 +95,20 @@ export class NotificationService {
                     source,
                     actionPage,
                     read: false,
-                    // metadata: metadata ? JSON.stringify(metadata) : undefined // Schema doesn't have metadata yet? Check schema.
-                    // Assuming schema is simple for now based on route view.
                 }
             });
 
             console.log(`[NotificationService] Sent: ${title}`);
 
-            // 3. (Future) Push / Email / Desktop
-            // This is where we would integrate Web Push or Nodemailer using 'desktopNotifications' or 'emailNotifications' settings.
+            // 3. Send Web Push to subscribed PWA devices.
+            await webPushService.sendNotification({
+                title,
+                body: message,
+                url: normalizePushTarget(actionPage),
+                source,
+                type,
+                tag: `screndly-${source}`,
+            });
 
         } catch (error) {
             console.error('[NotificationService] Error sending notification:', error);

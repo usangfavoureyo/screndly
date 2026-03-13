@@ -10,25 +10,34 @@ import {
   clearAllCaches,
   getCacheSize,
   isOffline,
-  requestNotificationPermission,
+  getPushSubscription,
+  isPushNotificationSupported,
   registerServiceWorker,
+  sendTestPushNotification,
+  subscribeToPushNotifications,
+  unsubscribeFromPushNotifications,
   unregisterServiceWorker,
 } from '../../utils/pwa';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 
 interface PWASettingsProps {
+  settings: any;
+  updateSetting: (key: string, value: any) => void;
   onBack: () => void;
 }
 
-export function PWASettings({ onBack }: PWASettingsProps) {
+export function PWASettings({ settings, updateSetting, onBack }: PWASettingsProps) {
   const [isInstalled, setIsInstalled] = useState(false);
   const [canInstall, setCanInstall] = useState(false);
   const [offline, setOffline] = useState(false);
   const [cacheSize, setCacheSize] = useState(0);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
   const [isClearing, setIsClearing] = useState(false);
+  const [isPushBusy, setIsPushBusy] = useState(false);
+  const [isPushSubscribed, setIsPushSubscribed] = useState(Boolean(settings.pushNotifications));
   const [swRegistered, setSwRegistered] = useState(false);
+  const pushSupported = isPushNotificationSupported();
 
   useEffect(() => {
     // Check installation status
@@ -43,8 +52,12 @@ export function PWASettings({ onBack }: PWASettingsProps) {
 
     // Check service worker registration
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistration().then((reg) => {
+      navigator.serviceWorker.getRegistration().then(async (reg) => {
         setSwRegistered(!!reg);
+        if (reg && pushSupported) {
+          const subscription = await getPushSubscription(reg);
+          setIsPushSubscribed(!!subscription);
+        }
       });
     }
 
@@ -106,18 +119,56 @@ export function PWASettings({ onBack }: PWASettingsProps) {
 
   const handleNotificationToggle = async (enabled: boolean) => {
     haptics.light();
+    setIsPushBusy(true);
 
-    if (enabled) {
-      const permission = await requestNotificationPermission();
-      setNotificationPermission(permission);
-
-      if (permission === 'granted') {
-        toast.success('Notifications enabled');
-      } else {
-        toast.error('Notification permission denied');
+    try {
+      if (!pushSupported) {
+        updateSetting('pushNotifications', false);
+        toast.error('Push notifications are not supported on this browser');
+        return;
       }
-    } else {
-      toast.info('Notifications disabled in browser settings');
+
+      let registration = await navigator.serviceWorker.getRegistration();
+
+      if (enabled) {
+        if (!registration) {
+          registration = await registerServiceWorker();
+        }
+
+        if (!registration) {
+          throw new Error('Push notifications require the production PWA service worker');
+        }
+
+        const subscription = await subscribeToPushNotifications(registration);
+        const permission = 'Notification' in window ? Notification.permission : 'denied';
+        setNotificationPermission(permission);
+
+        if (!subscription) {
+          throw new Error(permission === 'denied'
+            ? 'Notification permission denied in browser settings'
+            : 'Failed to subscribe this device to push notifications');
+        }
+
+        setSwRegistered(true);
+        setIsPushSubscribed(true);
+        updateSetting('pushNotifications', true);
+
+        await sendTestPushNotification(subscription.endpoint);
+        toast.success('Push notifications enabled');
+      } else {
+        if (registration) {
+          await unsubscribeFromPushNotifications(registration);
+        }
+
+        setIsPushSubscribed(false);
+        updateSetting('pushNotifications', false);
+        toast.info('Push notifications disabled on this device');
+      }
+    } catch (error) {
+      console.error('Failed to update push notifications:', error);
+      toast.error((error as Error).message || 'Failed to update push notifications');
+    } finally {
+      setIsPushBusy(false);
     }
   };
 
@@ -177,10 +228,10 @@ export function PWASettings({ onBack }: PWASettingsProps) {
                   Development Mode
                 </h4>
                 <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
-                  You're viewing Screndly in a development/preview environment. Full PWA features (Service Worker, offline support) will be available when you deploy to a production server.
+                  You're viewing Screndly in a development/preview environment. Full PWA features like offline caching and push delivery only work when the real service worker is active on a production deployment.
                 </p>
                 <p className="text-xs text-gray-600 dark:text-[#9CA3AF]">
-                  Features available now: Install prompts, push notifications, cache clearing, and network detection.
+                  Features available now: install prompts, cache clearing, and network detection. Real mobile push requires the production app.
                 </p>
               </div>
             </div>
@@ -257,20 +308,30 @@ export function PWASettings({ onBack }: PWASettingsProps) {
                   Push Notifications
                 </Label>
                 <p className="text-xs text-gray-600 dark:text-[#9CA3AF]">
-                  Receive notifications even when app is closed
+                  Receive notifications even when the app is closed
                 </p>
               </div>
             </div>
             <Switch
               id="pwa-notifications"
-              checked={notificationPermission === 'granted'}
+              checked={isPushSubscribed}
               onCheckedChange={handleNotificationToggle}
-              disabled={notificationPermission === 'denied'}
+              disabled={notificationPermission === 'denied' || isPushBusy || !pushSupported}
             />
           </div>
+          {!pushSupported && (
+            <p className="text-xs text-[#6B7280] mt-2 ml-[52px]">
+              This browser does not support PWA push notifications.
+            </p>
+          )}
           {notificationPermission === 'denied' && (
             <p className="text-xs text-red-500 mt-2 ml-[52px]">
               Notifications blocked. Enable in browser settings.
+            </p>
+          )}
+          {notificationPermission === 'granted' && !isPushSubscribed && (
+            <p className="text-xs text-[#6B7280] mt-2 ml-[52px]">
+              Permission is granted, but this device is not currently subscribed.
             </p>
           )}
         </div>

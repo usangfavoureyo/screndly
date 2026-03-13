@@ -49,7 +49,7 @@ describe('ComposeActivityPage', () => {
     useComposeStore.setState({ items: [], activeItemId: null });
   });
 
-  it('does not show an edit action for scheduled post cards', () => {
+  it('shows an edit action for scheduled post cards', () => {
     useComposeStore.setState({
       items: [
         {
@@ -75,6 +75,6 @@ describe('ComposeActivityPage', () => {
     );
 
     expect(screen.getByText('Campaign poster')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
   });
 });

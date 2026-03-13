@@ -279,23 +279,9 @@ export function BottomSheet({
     };
   }, [isDragging, startY]);
 
-  // Keyboard support
-  React.useEffect(() => {
-    if (!open) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [open, handleClose]);
-
-  // NOTE: Android back button is handled by BackNavigationContext
-  // The sheet registers itself via registerBottomSheetWithCloseHandler when open
-  // Do NOT add a separate popstate listener here - it causes double handling
+  // NOTE: Android back button and desktop Escape are handled by BackNavigationContext.
+  // The sheet registers itself via registerBottomSheetWithCloseHandler when open,
+  // so do not add local popstate or keydown listeners here.
 
   if (!mounted) return null;
 

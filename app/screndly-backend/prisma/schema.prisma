@@ -237,6 +237,23 @@ model Notification {
   @@index([createdAt])
 }
 
+model PushSubscription {
+  id             String   @id @default(uuid())
+  endpoint       String   @unique @db.Text
+  p256dh         String   @db.Text
+  auth           String   @db.Text
+  expirationTime DateTime?
+  userAgent      String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  lastSuccessAt  DateTime?
+  lastFailureAt  DateTime?
+  failureCount   Int      @default(0)
+
+  @@index([createdAt])
+  @@index([updatedAt])
+}
+
 // ============================================
 // LOGS
 // ============================================

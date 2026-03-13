@@ -56,6 +56,7 @@ import { PageLoader, RedSpinner } from '../PageLoader';
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
   previousPage?: string | null;
+  registerCloseRequestHandler?: (handler: (() => boolean) | null) => void;
 }
 
 type FormState = {
@@ -149,7 +150,11 @@ function getPlatformCardTone(isSelected: boolean, supported: boolean, connected:
   return 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]';
 }
 
-export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPageProps) {
+export function ComposeEditorPage({
+  onNavigate,
+  previousPage,
+  registerCloseRequestHandler,
+}: ComposeEditorPageProps) {
   const { activeItemId, getItemById, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
   const existingItem = getItemById(activeItemId);
@@ -192,6 +197,26 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
     title: 'Discard post changes?',
     description: 'You have unsaved changes in this post editor. Leaving now will lose them.',
   });
+
+  useEffect(() => {
+    if (!registerCloseRequestHandler) {
+      return;
+    }
+
+    registerCloseRequestHandler(() => {
+      if (!hasUnsavedChanges) {
+        return false;
+      }
+
+      return unsavedChangesGuard.guardAction(() => {
+        onNavigate(previousPage || 'create');
+      });
+    });
+
+    return () => {
+      registerCloseRequestHandler(null);
+    };
+  }, [hasUnsavedChanges, onNavigate, previousPage, registerCloseRequestHandler, unsavedChangesGuard]);
 
   useEffect(() => {
     setFormState(createInitialForm(existingItem));

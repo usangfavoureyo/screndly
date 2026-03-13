@@ -5,24 +5,27 @@ import { haptics } from '../utils/haptics';
 
 interface CreateFabProps {
   currentPage: string;
+  isPostFlowOpen: boolean;
   isSettingsOpen: boolean;
   isNotificationsOpen: boolean;
-  onNavigate: (page: string, fromPage?: string) => void;
+  onOpenPostFlow: () => void;
 }
 
-const HIDDEN_PAGES = new Set(['create', 'compose-editor', 'compose-activity', 'pad-workspace']);
+const HIDDEN_PAGES = new Set(['pad-workspace']);
 
 export function CreateFab({
   currentPage,
+  isPostFlowOpen,
   isSettingsOpen,
   isNotificationsOpen,
-  onNavigate,
+  onOpenPostFlow,
 }: CreateFabProps) {
   const { isInputFocused } = useKeyboard();
   const scrollDirection = useScrollDirection();
 
   const isHidden =
     HIDDEN_PAGES.has(currentPage) ||
+    isPostFlowOpen ||
     isSettingsOpen ||
     isNotificationsOpen ||
     isInputFocused;
@@ -32,9 +35,9 @@ export function CreateFab({
       type="button"
       onClick={() => {
         haptics.medium();
-        onNavigate('create', currentPage);
+        onOpenPostFlow();
       }}
-      aria-label="Open Create"
+      aria-label="Open Posts"
       className={`fixed right-4 bottom-[calc(env(safe-area-inset-bottom,0px)+5.25rem)] z-[45] flex h-14 w-14 items-center justify-center rounded-full bg-[#ec1e24] text-white shadow-none transition-all duration-300 hover:bg-[#d11b20] lg:right-8 lg:bottom-8 ${
         isHidden
           ? 'pointer-events-none translate-y-24 opacity-0'

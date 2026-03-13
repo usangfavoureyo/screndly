@@ -293,20 +293,34 @@ self.addEventListener('fetch', (event) => {
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
 
+  let payload = {};
+  if (event.data) {
+    try {
+      payload = event.data.json();
+    } catch (error) {
+      payload = {
+        body: event.data.text(),
+      };
+    }
+  }
+
+  const targetUrl = payload.url || '/';
   const options = {
-    body: event.data ? event.data.text() : 'New notification from Screndly',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/icon-72x72.png',
+    body: payload.body || 'New notification from Screndly',
+    icon: payload.icon || '/icons/icon-192x192.png',
+    badge: payload.badge || '/icons/icon-72x72.png',
     vibrate: [200, 100, 200],
-    tag: 'screndly-notification',
-    requireInteraction: false,
+    tag: payload.tag || 'screndly-notification',
+    requireInteraction: Boolean(payload.requireInteraction),
     data: {
-      url: '/'
+      url: targetUrl,
+      source: payload.source || 'system',
+      type: payload.type || 'info',
     }
   };
 
   event.waitUntil(
-    self.registration.showNotification('Screndly', options)
+    self.registration.showNotification(payload.title || 'Screndly', options)
   );
 });
 
@@ -314,18 +328,19 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   console.log('[SW] Notification clicked');
   event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       // If a window is already open, focus it
       for (const client of clientList) {
-        if (client.url === event.notification.data.url && 'focus' in client) {
+        if (client.url === targetUrl && 'focus' in client) {
           return client.focus();
         }
       }
       // Otherwise, open a new window
       if (clients.openWindow) {
-        return clients.openWindow(event.notification.data.url || '/');
+        return clients.openWindow(targetUrl);
       }
     })
   );

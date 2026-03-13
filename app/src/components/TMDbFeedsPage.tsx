@@ -231,7 +231,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
           ))
         ) : (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
-            <h3 className="text-gray-900 dark:text-white mb-2">No {filterType !== 'all' ? filterType : ''} queued posts</h3>
+            <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No {filterType !== 'all' ? filterType : ''} queued posts</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filterType !== 'all'
                 ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} posts will appear here automatically when fetched and left waiting for publish or scheduling.`

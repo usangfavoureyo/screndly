@@ -481,6 +481,26 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
         };
     }, []); // Empty deps - only run once on mount
 
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key !== 'Escape' || event.defaultPrevented || event.repeat) {
+                return;
+            }
+
+            const handled = handleBackPressRef.current('escape');
+            if (handled) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, []);
+
     // ============================================
     // CONTEXT VALUE
     // ============================================

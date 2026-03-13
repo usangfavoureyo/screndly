@@ -22,6 +22,7 @@ const SENSITIVE_KEYS = [
     'backblazeVideosKeyId', 'backblazeVideosApplicationKey',
     'backblazeDesignKeyId', 'backblazeDesignApplicationKey',
     'videoGoogleSearchApiKey', 'photopeaApiKey',
+    'webPushVapidPrivateKey',
     'commentGoogleSearchApiKey'
 ];
 

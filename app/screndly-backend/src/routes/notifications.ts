@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { getActiveNotificationWhere, getExpiredNotificationWhere, purgeExpiredNotifications } from '../services/notification-retention.service';
+import { authenticate } from '../middleware/auth';
+import { webPushService } from '../services/web-push.service';
 
 const router = Router();
 
@@ -97,6 +99,83 @@ async function buildNotificationDetail(notification: any) {
         }))
     };
 }
+
+router.get('/push/public-key', async (req, res) => {
+    try {
+        const publicKey = await webPushService.getPublicKey();
+        res.json({
+            success: true,
+            data: {
+                publicKey,
+            },
+        });
+    } catch (error) {
+        console.error('[Notifications] Failed to load web push public key:', error);
+        res.status(500).json({
+            success: false,
+            error: { message: 'Failed to load web push configuration' },
+        });
+    }
+});
+
+router.post('/push/subscribe', authenticate, async (req, res) => {
+    try {
+        const subscription = req.body?.subscription ?? req.body;
+        await webPushService.saveSubscription(subscription, req.get('user-agent'));
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('[Notifications] Failed to save push subscription:', error);
+        res.status(400).json({
+            success: false,
+            error: { message: error?.message || 'Failed to save push subscription' },
+        });
+    }
+});
+
+router.post('/push/unsubscribe', authenticate, async (req, res) => {
+    try {
+        const endpoint = String(req.body?.endpoint || '').trim();
+        const deleted = await webPushService.removeSubscription(endpoint);
+        res.json({
+            success: true,
+            data: { deleted },
+        });
+    } catch (error: any) {
+        console.error('[Notifications] Failed to remove push subscription:', error);
+        res.status(400).json({
+            success: false,
+            error: { message: error?.message || 'Failed to remove push subscription' },
+        });
+    }
+});
+
+router.post('/push/test', authenticate, async (req, res) => {
+    try {
+        const endpoint = String(req.body?.endpoint || '').trim() || undefined;
+        const result = await webPushService.sendNotification(
+            {
+                title: 'Screndly Push Notifications',
+                body: 'Push notifications are now fully enabled on this device.',
+                url: '/',
+                source: 'system',
+                type: 'success',
+                tag: 'screndly-push-test',
+            },
+            endpoint ? { endpoint } : {}
+        );
+
+        res.json({
+            success: true,
+            data: result,
+        });
+    } catch (error: any) {
+        console.error('[Notifications] Failed to send test push notification:', error);
+        res.status(500).json({
+            success: false,
+            error: { message: error?.message || 'Failed to send test push notification' },
+        });
+    }
+});
 
 // GET /api/notifications
 router.get('/', async (req, res) => {

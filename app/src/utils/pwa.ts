@@ -1,8 +1,19 @@
 // PWA Service Worker Registration and Utilities
+import { getApiUrl } from '../lib/api/config';
+import { getAuthHeaders } from '../lib/api/authToken';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
+interface SerializedPushSubscription {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: {
+    p256dh?: string;
+    auth?: string;
+  };
 }
 
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
@@ -197,6 +208,111 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   return 'denied';
 }
 
+function buildPushApiUrl(path: string): string {
+  return `${getApiUrl()}${path}`;
+}
+
+function assertSuccessfulResponse(response: Response, fallbackMessage: string): Promise<void> {
+  if (response.ok) {
+    return Promise.resolve();
+  }
+
+  return response.json()
+    .catch(() => ({ error: { message: fallbackMessage } }))
+    .then((payload) => {
+      const message = payload?.error?.message || fallbackMessage;
+      throw new Error(message);
+    });
+}
+
+function serializePushSubscription(subscription: PushSubscription): SerializedPushSubscription {
+  const json = subscription.toJSON();
+  return {
+    endpoint: subscription.endpoint,
+    expirationTime: json.expirationTime ?? null,
+    keys: {
+      p256dh: json.keys?.p256dh,
+      auth: json.keys?.auth,
+    },
+  };
+}
+
+async function fetchPushPublicKey(): Promise<string> {
+  const response = await fetch(buildPushApiUrl('/api/notifications/push/public-key'), {
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to load push notification configuration');
+  }
+
+  const payload = await response.json();
+  const publicKey = payload?.data?.publicKey;
+  if (typeof publicKey !== 'string' || publicKey.trim() === '') {
+    throw new Error('Push notification public key is missing');
+  }
+
+  return publicKey;
+}
+
+async function persistPushSubscription(subscription: PushSubscription): Promise<void> {
+  const response = await fetch(buildPushApiUrl('/api/notifications/push/subscribe'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({
+      subscription: serializePushSubscription(subscription),
+    }),
+  });
+
+  await assertSuccessfulResponse(response, 'Failed to save push subscription');
+}
+
+async function removePushSubscriptionFromServer(endpoint: string): Promise<void> {
+  const response = await fetch(buildPushApiUrl('/api/notifications/push/unsubscribe'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ endpoint }),
+  });
+
+  await assertSuccessfulResponse(response, 'Failed to remove push subscription');
+}
+
+export async function sendTestPushNotification(endpoint: string): Promise<void> {
+  const response = await fetch(buildPushApiUrl('/api/notifications/push/test'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
+    },
+    body: JSON.stringify({ endpoint }),
+  });
+
+  await assertSuccessfulResponse(response, 'Failed to send test push notification');
+}
+
+export function isPushNotificationSupported(): boolean {
+  return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+export async function getPushSubscription(
+  registration: ServiceWorkerRegistration
+): Promise<PushSubscription | null> {
+  if (!('pushManager' in registration)) {
+    return null;
+  }
+
+  return registration.pushManager.getSubscription();
+}
+
 /**
  * Subscribe to push notifications
  */
@@ -204,26 +320,33 @@ export async function subscribeToPushNotifications(
   registration: ServiceWorkerRegistration
 ): Promise<PushSubscription | null> {
   try {
+    if (!isPushNotificationSupported()) {
+      throw new Error('Push notifications are not supported in this browser');
+    }
+
     const permission = await requestNotificationPermission();
     if (permission !== 'granted') {
       console.log('[PWA] Notification permission denied');
       return null;
     }
 
+    const publicKey = await fetchPushPublicKey();
+
     // Check if already subscribed
-    let subscription = await registration.pushManager.getSubscription();
+    let subscription = await getPushSubscription(registration);
 
     if (!subscription) {
       // Subscribe to push notifications
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(
-          // You'll need to add your VAPID public key here
-          'YOUR_VAPID_PUBLIC_KEY'
+          publicKey
         ),
       });
       console.log('[PWA] Push subscription created:', subscription);
     }
+
+    await persistPushSubscription(subscription);
 
     return subscription;
   } catch (error) {
@@ -239,9 +362,13 @@ export async function unsubscribeFromPushNotifications(
   registration: ServiceWorkerRegistration
 ): Promise<boolean> {
   try {
-    const subscription = await registration.pushManager.getSubscription();
+    const subscription = await getPushSubscription(registration);
     if (subscription) {
+      const endpoint = subscription.endpoint;
       const result = await subscription.unsubscribe();
+      await removePushSubscriptionFromServer(endpoint).catch((error) => {
+        console.warn('[PWA] Failed to remove push subscription from backend:', error);
+      });
       console.log('[PWA] Push subscription removed:', result);
       return result;
     }

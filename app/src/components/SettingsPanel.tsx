@@ -494,7 +494,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   }
   if (activeSettingsPage === 'pwa') {
     return renderSettingsSubpage(
-      <PWASettings onBack={handleCloseSubpage} />,
+      <PWASettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />,
       'hidden lg:block fixed inset-0 bg-black/50 z-40 lg:pl-64'
     );
   }
