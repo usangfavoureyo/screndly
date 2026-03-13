@@ -22,6 +22,7 @@ import type { Notification, NotificationSource } from '../contexts/Notifications
 import { formatCalendarDate, formatDateTime } from '../utils/calendarDate';
 import { toast } from 'sonner';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
+import { PageLoader } from './PageLoader';
 
 export interface NotificationAction {
   id: string;
@@ -527,8 +528,8 @@ export function NotificationPanel({
           </div>
 
           {isDetailLoading && (
-            <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center text-[#6B7280]">
-              Loading details...
+            <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl p-6">
+              <PageLoader size="sm" className="h-auto py-2" label="Loading notification details..." />
             </div>
           )}
 

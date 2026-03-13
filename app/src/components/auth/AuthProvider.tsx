@@ -10,6 +10,7 @@ import { useState, useEffect, ReactNode, Suspense } from 'react';
 import { hasStoredAuthSession, verifyAuth } from '../../lib/auth';
 import { LoginPage } from '../LoginPage';
 import { lazyWithRetry } from '../../utils/performance';
+import { PageLoader } from '../PageLoader';
 
 // Lazy load public pages (using named exports)
 const PrivacyPage = lazyWithRetry(() => import('../PrivacyPage').then(m => ({ default: m.PrivacyPage })), 'PrivacyPage');
@@ -73,7 +74,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
     // If this is a public route, render it directly without auth check
     if (PublicComponent) {
         return (
-            <Suspense fallback={<div className="flex items-center justify-center min-h-screen bg-white dark:bg-black"><div className="text-gray-600 dark:text-gray-400">Loading...</div></div>}>
+            <Suspense fallback={<PageLoader fullScreen />}>
                 <PublicComponent onNavigate={() => window.location.href = '/'} />
             </Suspense>
         );

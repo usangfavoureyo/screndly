@@ -131,6 +131,20 @@ const THUMBNAIL_BACKEND_KEYS = [
   'thumbnailConfig_x',
 ] as const;
 
+const CLEANUP_BACKEND_KEYS = [
+  'cleanupEnabled',
+  'cleanupInterval',
+  'storageRetention',
+  'videoCleanupInterval',
+  'videoStorageRetention',
+  'imageCleanupInterval',
+  'imageStorageRetention',
+  'videoStudioCleanupInterval',
+  'videoStudioStorageRetention',
+  'logsRetention',
+  'recentActivityRetention',
+] as const;
+
 /**
  * TMDb settings that are not secret, but still need backend persistence
  * so refresh jobs, scheduling, and publishing use the user's actual config.
@@ -204,6 +218,7 @@ const BACKEND_PERSISTED_KEYS = [
     ...DESIGN_STUDIO_BACKEND_KEYS,
     ...VIDEO_STUDIO_BACKEND_KEYS,
     ...THUMBNAIL_BACKEND_KEYS,
+    ...CLEANUP_BACKEND_KEYS,
     ...TMDB_BACKEND_KEYS,
   ]),
 ];

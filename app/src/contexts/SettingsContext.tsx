@@ -261,6 +261,8 @@ export interface Settings {
   imageStorageRetention: string;
   videoStudioCleanupInterval: string;
   videoStudioStorageRetention: string;
+  logsRetention: string;
+  recentActivityRetention: string;
 
   // Appearance
   darkMode: boolean;
@@ -544,6 +546,8 @@ Guidelines:
     imageStorageRetention: '48',
     videoStudioCleanupInterval: 'daily',
     videoStudioStorageRetention: '48',
+    logsRetention: '168',
+    recentActivityRetention: '24',
 
     // Appearance
     darkMode: true,

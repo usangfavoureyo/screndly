@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, Send } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Send } from 'lucide-react';
 import {
   BottomSheet,
   BottomSheetBody,
@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { PlatformType } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
+import { RedSpinner } from './PageLoader';
 
 interface PlatformTestPublishModalProps {
   platform: PlatformType;
@@ -423,8 +424,8 @@ export function PlatformTestPublishModal({
         <Button onClick={handlePublish} disabled={isPublishing}>
           {isPublishing ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Publishing...
+              <RedSpinner size="sm" className="mr-2" label={`Publishing ${platform} live test...`} />
+              Publish Live Test
             </>
           ) : (
             <>

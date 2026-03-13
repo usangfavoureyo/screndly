@@ -7,10 +7,21 @@ import { haptics } from '../../utils/haptics';
 interface CleanupSettingsProps {
   settings: any;
   updateSetting: (key: string, value: any) => void;
+  updateSettings: (values: Record<string, any>) => void;
   onBack: () => void;
 }
 
-export function CleanupSettings({ settings, updateSetting, onBack }: CleanupSettingsProps) {
+export function CleanupSettings({ settings, updateSetting, updateSettings, onBack }: CleanupSettingsProps) {
+  const activityRetentionValue = String(
+    settings.recentActivityRetention ||
+      settings.videoActivityRetention ||
+      settings.rssActivityRetention ||
+      settings.designStudioActivityRetention ||
+      settings.videoStudioActivityRetention ||
+      settings.tmdbActivityRetention ||
+      '24'
+  );
+
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
       {/* Header */}
@@ -186,11 +197,20 @@ export function CleanupSettings({ settings, updateSetting, onBack }: CleanupSett
             <Label className="text-[#9CA3AF]">Activity Retention (hours)</Label>
             <Input
               type="number"
-              value={settings.recentActivityRetention || '24'}
+              value={activityRetentionValue}
               onFocus={() => haptics.light()}
               onChange={(e) => {
                 haptics.light();
-                updateSetting('recentActivityRetention', e.target.value);
+                const retentionHours = e.target.value || '24';
+                const parsedHours = Number.parseInt(retentionHours, 10) || 24;
+                updateSettings({
+                  recentActivityRetention: retentionHours,
+                  rssActivityRetention: parsedHours,
+                  videoActivityRetention: parsedHours,
+                  designStudioActivityRetention: parsedHours,
+                  videoStudioActivityRetention: parsedHours,
+                  tmdbActivityRetention: parsedHours,
+                });
               }}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />

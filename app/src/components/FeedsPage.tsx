@@ -2,6 +2,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { haptics } from '../utils/haptics';
 import { lazyWithRetry } from '../utils/performance';
 import { useBackEntry } from '../hooks/useBackEntry';
+import { PageLoader } from './PageLoader';
 
 // Lazy load the feed pages
 const RSSPage = lazyWithRetry(() => import('./RSSPage').then(m => ({ default: m.RSSPage })), 'RSSPage');
@@ -13,14 +14,6 @@ interface FeedsPageProps {
 }
 
 type FeedTab = 'rss' | 'tmdb';
-
-// Loading component
-const PageLoader = () => (
-  <div className="flex items-center justify-center h-64" role="status" aria-live="polite">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ec1e24]"></div>
-    <span className="sr-only">Loading...</span>
-  </div>
-);
 
 export function FeedsPage({ onNavigate, previousPage }: FeedsPageProps) {
   // Load active tab from localStorage, default to RSS Feeds

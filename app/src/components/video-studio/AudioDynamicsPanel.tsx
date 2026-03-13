@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { TrailerHooksPreview } from '../TrailerHooksPreview';
 import { TrailerAnalysis, VideoMoment } from '../../lib/api/googleVideoIntelligence';
 import { MonthlyTrailerAnalysis } from '../../lib/api/monthlyCompilation';
+import { RedSpinner } from '../PageLoader';
 
 interface AudioDynamicsPanelProps {
     isOpen: boolean;
@@ -682,9 +683,15 @@ export function AudioDynamicsPanel({
                         {isAudioPreviewPlaying && (
                             <div className="space-y-2 p-4 bg-white dark:bg-black rounded-xl border border-gray-200 dark:border-[#333333]">
                                 <div className="flex items-center justify-between text-xs">
-                                    <span className="text-gray-600 dark:text-[#9CA3AF]">
-                                        Playing: {audioPreviewCurrentSegment || 'Loading...'}
-                                    </span>
+                                    {audioPreviewCurrentSegment ? (
+                                        <span className="text-gray-600 dark:text-[#9CA3AF]">
+                                            Playing: {audioPreviewCurrentSegment}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-2 text-gray-600 dark:text-[#9CA3AF]">
+                                            <RedSpinner size="sm" label="Loading audio preview segment..." />
+                                        </span>
+                                    )}
                                     <span className="text-gray-900 dark:text-white font-medium">
                                         {Math.floor((audioPreviewProgress / 100) * 15)}s / 15s
                                     </span>

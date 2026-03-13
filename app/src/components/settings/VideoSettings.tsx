@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
+import { PageLoader, RedSpinner } from '../PageLoader';
 
 const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
 const DEFAULT_VIDEO_AGE_GATE = '24';
@@ -739,15 +740,18 @@ Output format:
                 }}
                 className="text-xs px-3 py-2 rounded-full border border-gray-200 dark:border-[#333333] text-gray-700 dark:text-[#E5E7EB]"
               >
-                {isLoadingYouTubePlaylists ? 'Refreshing...' : 'Refresh Playlists'}
+                {isLoadingYouTubePlaylists ? (
+                  <span className="inline-flex items-center gap-2">
+                    <RedSpinner size="sm" label="Refreshing YouTube playlists..." />
+                    Refresh Playlists
+                  </span>
+                ) : 'Refresh Playlists'}
               </button>
             </div>
 
             <div className="mt-2 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 space-y-3">
               {isLoadingYouTubePlaylists && playlistChoices.length === 0 ? (
-                <p className="text-sm text-gray-500 dark:text-[#9CA3AF]">
-                  Loading playlists from the connected YouTube channel...
-                </p>
+                <PageLoader size="sm" className="h-auto py-2" label="Loading playlists from the connected YouTube channel..." />
               ) : null}
 
               {!isLoadingYouTubePlaylists && youtubePlaylistsError ? (

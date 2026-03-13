@@ -9,6 +9,7 @@ import { haptics } from '../utils/haptics';
 import { lazyWithRetry } from '../utils/performance';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { useScrollLock } from '../hooks/useScrollLock';
+import { PageLoader } from './PageLoader';
 
 const VideoSettings = lazyWithRetry(() => import('./settings/VideoSettings').then((module) => ({ default: module.VideoSettings })), 'VideoSettings');
 const CommentReplySettings = lazyWithRetry(() => import('./settings/CommentReplySettings').then((module) => ({ default: module.CommentReplySettings })), 'CommentReplySettings');
@@ -35,11 +36,8 @@ const AppInfoPage = lazyWithRetry(() => import('./AppInfoPage').then((module) =>
 const DataDeletionPage = lazyWithRetry(() => import('./DataDeletionPage').then((module) => ({ default: module.DataDeletionPage })), 'DataDeletionPage');
 
 const SettingsContentLoader = () => (
-  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-white/95 dark:bg-black/95">
-    <div className="flex items-center gap-3 text-gray-600 dark:text-[#9CA3AF]" role="status" aria-live="polite">
-      <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#ec1e24] border-t-transparent" />
-      <span>Loading settings...</span>
-    </div>
+  <div className="fixed inset-0 z-[60] bg-white/95 dark:bg-black/95">
+    <PageLoader fullScreen size="md" className="bg-transparent" label="Loading settings..." />
   </div>
 );
 
@@ -470,7 +468,12 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   }
   if (activeSettingsPage === 'cleanup') {
     return renderSettingsSubpage(
-      <CleanupSettings settings={settings} updateSetting={updateSetting} onBack={handleCloseSubpage} />
+      <CleanupSettings
+        settings={settings}
+        updateSetting={updateSetting}
+        updateSettings={updateSettings}
+        onBack={handleCloseSubpage}
+      />
     );
   }
   if (activeSettingsPage === 'haptic') {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './select';
 import { fetchPinterestBoards, PinterestBoard } from '../../lib/api/pinterest';
 import { haptics } from '../../utils/haptics';
+import { RedSpinner } from '../PageLoader';
 
 interface PinterestBoardSelectProps {
   value: string;
@@ -43,12 +44,14 @@ export function PinterestBoardSelect({
         id={id}
         className={className || 'bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1'}
       >
-        <SelectValue placeholder={isLoading ? 'Loading boards...' : placeholder} />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent className="max-h-[300px]">
         {isLoading ? (
           <SelectItem value="loading" disabled>
-            Loading boards...
+            <div className="flex w-full items-center justify-center py-1">
+              <RedSpinner size="sm" label="Loading Pinterest boards..." />
+            </div>
           </SelectItem>
         ) : boards.length === 0 ? (
           <SelectItem value="no-boards" disabled>

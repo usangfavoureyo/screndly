@@ -21,6 +21,7 @@ import {
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { listVideoStudioFiles } from '../lib/api/backblaze';
+import { RedSpinner } from './PageLoader';
 
 interface SubtitleTimestampAssistProps {
   videoFileName?: string;
@@ -314,8 +315,8 @@ Coming soon to theaters everywhere.
               >
                 {isLoadingBackblaze ? (
                   <>
-                    <div className="w-4 h-4 mr-2 border-2 border-gray-300 border-t-[#ec1e24] rounded-full animate-spin" />
-                    Loading...
+                    <RedSpinner size="sm" className="mr-2" label="Loading subtitle files..." />
+                    <span className="sr-only">Loading subtitle files...</span>
                   </>
                 ) : (
                   <>

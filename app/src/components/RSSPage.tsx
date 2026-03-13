@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, Loader2, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import { useSettings } from '../contexts/SettingsContext';
 import { useRSSFeeds, RSSActivityItem, PlatformsEnabled } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
+import { PageLoader } from './PageLoader';
 
 interface RSSPageProps {
   onNavigate?: (page: string) => void;
@@ -334,9 +335,8 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               </div>
             </div>
             {isLoading && feeds.length === 0 ? (
-              <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center flex items-center justify-center gap-3 text-[#6B7280] dark:text-[#9CA3AF]">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Loading RSS feeds...
+              <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12">
+                <PageLoader size="md" className="h-auto py-2" label="Loading RSS feeds..." />
               </div>
             ) : feeds.length === 0 ? (
               <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">

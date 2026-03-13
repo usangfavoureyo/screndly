@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Upload, CheckCircle2, XCircle, Loader2 } from 'lucide-react';
+import { Upload, CheckCircle2, XCircle } from 'lucide-react';
 import { uploadToBackblaze, generateFileName, isBackblazeConfigured } from '../utils/backblaze';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
+import { RedSpinner } from './PageLoader';
 
 interface BackblazeUploaderProps {
   onUploadComplete?: (url: string, fileId: string) => void;
@@ -148,9 +149,9 @@ export function BackblazeUploader({
         >
           {uploading ? (
             <>
-              <Loader2 className="w-5 h-5 text-[#ec1e24] animate-spin" />
+              <RedSpinner size="sm" label={`Uploading to Backblaze. ${Math.round(progress)} percent complete.`} />
               <span className="text-gray-900 dark:text-white">
-                Uploading... {Math.round(progress)}%
+                {Math.round(progress)}%
               </span>
             </>
           ) : (

@@ -51,6 +51,7 @@ import { useNotifications } from '../../contexts/NotificationsContext';
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
+import { PageLoader, RedSpinner } from '../PageLoader';
 
 interface ComposeEditorPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -535,8 +536,12 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                 <Label htmlFor="compose-media" className="cursor-pointer">
                   <span className="sr-only">Upload media</span>
                   <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
-                    <Upload className="h-4 w-4 text-[#ec1e24]" />
-                    {isUploadingMedia ? 'Uploading...' : 'Upload'}
+                    {isUploadingMedia ? (
+                      <RedSpinner size="sm" label="Uploading media..." />
+                    ) : (
+                      <Upload className="h-4 w-4 text-[#ec1e24]" />
+                    )}
+                    Upload
                   </div>
                 </Label>
                 <input id="compose-media" type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaSelected} />
@@ -586,7 +591,12 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                                 ? 'Stored in Backblaze'
                                 : asset.uploadStatus === 'idle'
                                   ? 'Stored locally'
-                                : 'Uploading to Backblaze...'}
+                                : (
+                                  <span className="inline-flex items-center gap-2">
+                                    <RedSpinner size="sm" label={`Uploading ${asset.fileName} to Backblaze...`} />
+                                    Backblaze
+                                  </span>
+                                )}
                           </p>
                         </div>
                         <button
@@ -763,7 +773,9 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                       )}
                       {isLoadingYouTubePlaylists && (
                         <SelectItem value="__youtube-playlists-loading" disabled>
-                          Loading playlists...
+                          <div className="flex w-full items-center justify-center py-1">
+                            <RedSpinner size="sm" label="Loading YouTube playlists..." />
+                          </div>
                         </SelectItem>
                       )}
                       {!isLoadingYouTubePlaylists && youtubePlaylists.length === 0 && (
@@ -778,15 +790,17 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                    {youtubePlaylistError
-                      ? youtubePlaylistError
-                      : isLoadingYouTubePlaylists
-                        ? 'Loading playlists from your connected YouTube channel...'
-                        : youtubePlaylists.length > 0
-                          ? 'Showing playlists from your connected YouTube channel.'
-                          : 'Connect YouTube and create channel playlists to choose from them here.'}
-                  </p>
+                  {youtubePlaylistError ? (
+                    <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">{youtubePlaylistError}</p>
+                  ) : isLoadingYouTubePlaylists ? (
+                    <PageLoader size="sm" className="mt-2 h-auto justify-start py-1" label="Loading YouTube playlists..." />
+                  ) : (
+                    <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      {youtubePlaylists.length > 0
+                        ? 'Showing playlists from your connected YouTube channel.'
+                        : 'Connect YouTube and create channel playlists to choose from them here.'}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -799,7 +813,12 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
             <div className="space-y-3">
               <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia}>Save</Button>
               <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || isPublishing}>
-                {isPublishing ? 'Publishing...' : 'Publish'}
+                {isPublishing ? (
+                  <>
+                    <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
+                    Publish
+                  </>
+                ) : 'Publish'}
               </Button>
               <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia}>Schedule</Button>
             </div>

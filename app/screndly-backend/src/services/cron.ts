@@ -1,4 +1,6 @@
 import cron from 'node-cron';
+import fs from 'fs/promises';
+import path from 'path';
 import prisma from '../lib/prisma';
 import { refreshTMDbContent, isTMDbConfigured, getTMDbSettings, cleanupQueuedTMDbPosts } from './tmdb.service';
 import { youtubePollerService } from './youtube-poller.service';
@@ -7,6 +9,166 @@ import { refreshAllFeeds } from './rss.service';
 import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
+import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
+
+const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
+const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
+const LOCAL_CLEANUP_DIRECTORIES = ['temp', 'uploads'];
+const GLOBAL_CLEANUP_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'never']);
+
+const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
+    {
+        bucketTypes: ['videos', 'general'],
+        prefixes: ['youtube-poller/videos'],
+    },
+];
+
+const IMAGE_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
+    {
+        bucketTypes: ['general', 'design'],
+        prefixes: ['social-publish/meta-images', 'rss/logo-cards', 'generated-thumbnails/'],
+    },
+];
+
+const VIDEO_STUDIO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
+    {
+        bucketTypes: ['videos', 'general'],
+        prefixes: ['video-studio/'],
+    },
+];
+
+function parseBooleanSettingValue(value: unknown, fallback: boolean): boolean {
+    if (typeof value === 'boolean') {
+        return value;
+    }
+
+    if (value === null || value === undefined) {
+        return fallback;
+    }
+
+    const normalized = String(value).trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(normalized)) {
+        return true;
+    }
+
+    if (['false', '0', 'no', 'off'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+}
+
+function parsePositiveIntSettingValue(value: unknown, fallback: number): number {
+    const parsed = Number.parseInt(String(value ?? ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseCleanupIntervalValue(value: unknown, fallback: string = 'daily'): 'daily' | 'weekly' | 'monthly' | 'never' {
+    const normalized = String(value ?? fallback).trim().toLowerCase();
+    if (GLOBAL_CLEANUP_INTERVALS.has(normalized)) {
+        return normalized as 'daily' | 'weekly' | 'monthly' | 'never';
+    }
+
+    return fallback as 'daily' | 'weekly' | 'monthly' | 'never';
+}
+
+function shouldRunCleanupInterval(interval: 'daily' | 'weekly' | 'monthly' | 'never', now: Date): boolean {
+    switch (interval) {
+        case 'never':
+            return false;
+        case 'weekly':
+            return now.getUTCDay() === 0;
+        case 'monthly':
+            return now.getUTCDate() === 1;
+        default:
+            return true;
+    }
+}
+
+async function collectFilesRecursively(rootPath: string): Promise<string[]> {
+    try {
+        const entries = await fs.readdir(rootPath, { withFileTypes: true });
+        const nested = await Promise.all(entries.map(async (entry) => {
+            const entryPath = path.join(rootPath, entry.name);
+            if (entry.isDirectory()) {
+                return collectFilesRecursively(entryPath);
+            }
+
+            return [entryPath];
+        }));
+
+        return nested.flat();
+    } catch {
+        return [];
+    }
+}
+
+async function cleanupLocalFilesByExtension(
+    rootDirectories: string[],
+    cutoff: Date,
+    allowedExtensions: Set<string>
+): Promise<number> {
+    let deletedCount = 0;
+
+    for (const directory of rootDirectories) {
+        const absoluteRoot = path.join(process.cwd(), directory);
+        const files = await collectFilesRecursively(absoluteRoot);
+
+        for (const filePath of files) {
+            const extension = path.extname(filePath).toLowerCase();
+            if (!allowedExtensions.has(extension)) {
+                continue;
+            }
+
+            try {
+                const stats = await fs.stat(filePath);
+                if (!stats.isFile() || stats.mtime >= cutoff) {
+                    continue;
+                }
+
+                await fs.unlink(filePath);
+                deletedCount += 1;
+            } catch (error) {
+                console.warn(`[CRON] Failed to delete local file "${filePath}":`, error);
+            }
+        }
+    }
+
+    return deletedCount;
+}
+
+async function cleanupBackblazeTargets(
+    targets: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }>,
+    cutoff: Date
+): Promise<number> {
+    let deletedCount = 0;
+
+    for (const target of targets) {
+        for (const bucketType of target.bucketTypes) {
+            for (const prefix of target.prefixes) {
+                try {
+                    const files = await listBackblazeFiles(bucketType, {
+                        prefix,
+                        maxFileCount: 1000,
+                    });
+
+                    for (const file of files) {
+                        if (file.lastModified >= cutoff) {
+                            continue;
+                        }
+
+                        await deleteBackblazeFile(bucketType, file);
+                        deletedCount += 1;
+                    }
+                } catch (error) {
+                    console.warn(`[CRON] Failed to clean Backblaze prefix "${prefix}" in bucket "${bucketType}":`, error);
+                }
+            }
+        }
+    }
+
+    return deletedCount;
+}
 
 // Log helper
 async function logCron(level: string, message: string, service: string = 'cron') {
@@ -474,90 +636,200 @@ export async function initCronJobs() {
     cron.schedule('0 3 * * *', async () => {
         await logCron('info', 'Running cleanup tasks...');
         try {
-            // Granular Retention Settings
+            const now = new Date();
             const keys = [
+                'cleanupEnabled',
+                'cleanupInterval',
+                'storageRetention',
+                'videoCleanupInterval',
+                'videoStorageRetention',
+                'imageCleanupInterval',
+                'imageStorageRetention',
+                'videoStudioCleanupInterval',
+                'videoStudioStorageRetention',
+                'logsRetention',
+                'recentActivityRetention',
                 'retentionDays',
                 'commentRetention',
                 'rssActivityRetention',
+                'videoActivityRetention',
                 'designStudioActivityRetention',
                 'videoStudioActivityRetention',
                 'tmdbActivityRetention',
             ];
-            const settings = await prisma.setting.findMany({ where: { key: { in: keys } } });
-
-            const logRetentionDays = parseInt(settings.find(s => s.key === 'retentionDays')?.value as string) || 30;
-            const commentRetentionHours = parseInt(settings.find(s => s.key === 'commentRetention')?.value as string) || 168; // 7 days default
-            const rssActivityRetentionHours = parseInt(settings.find(s => s.key === 'rssActivityRetention')?.value as string) || 24;
-            const designStudioActivityRetentionHours = parseInt(settings.find(s => s.key === 'designStudioActivityRetention')?.value as string) || 24;
-            const videoStudioActivityRetentionHours = parseInt(settings.find(s => s.key === 'videoStudioActivityRetention')?.value as string) || 24;
-            const tmdbActivityRetentionHours = parseInt(settings.find(s => s.key === 'tmdbActivityRetention')?.value as string) || 24;
-
-            const logCutoff = new Date(Date.now() - logRetentionDays * 24 * 60 * 60 * 1000);
-            const commentCutoff = new Date(Date.now() - commentRetentionHours * 60 * 60 * 1000);
-            const rssActivityCutoff = new Date(Date.now() - rssActivityRetentionHours * 60 * 60 * 1000);
-            const designStudioCutoff = new Date(Date.now() - designStudioActivityRetentionHours * 60 * 60 * 1000);
-            const videoStudioCutoff = new Date(Date.now() - videoStudioActivityRetentionHours * 60 * 60 * 1000);
-            const tmdbActivityCutoff = new Date(Date.now() - tmdbActivityRetentionHours * 60 * 60 * 1000);
-
-            // Clean old logs
-            const logsDeleted = await prisma.log.deleteMany({
-                where: { createdAt: { lt: logCutoff } }
+            const settings = await prisma.setting.findMany({
+                where: { key: { in: keys } },
+                select: { key: true, value: true },
             });
+            const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
 
-            // Clean expired notifications
-            const notifsDeleted = await purgeExpiredNotifications();
+            const cleanupEnabled = parseBooleanSettingValue(settingsMap.get('cleanupEnabled'), true);
+            if (!cleanupEnabled) {
+                await logCron('info', 'Cleanup skipped because Auto Cleanup is disabled.');
+                return;
+            }
 
-            // Clean old processed comments (Activity Retention)
-            const commentsDeleted = await prisma.comment.deleteMany({
-                where: {
-                    processed: true,
-                    updatedAt: { lt: commentCutoff }
-                }
-            });
+            const globalCleanupInterval = parseCleanupIntervalValue(settingsMap.get('cleanupInterval'), 'daily');
+            const globalStorageRetentionHours = parsePositiveIntSettingValue(settingsMap.get('storageRetention'), 48);
+            const legacyLogRetentionHours = parsePositiveIntSettingValue(settingsMap.get('retentionDays'), 7) * 24;
+            const recentActivityRetentionHours = parsePositiveIntSettingValue(settingsMap.get('recentActivityRetention'), 24);
 
-            const designStudioDeleted = await prisma.designStudioActivity.deleteMany({
-                where: { createdAt: { lt: designStudioCutoff } }
-            });
+            const logsRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('logsRetention'),
+                legacyLogRetentionHours
+            );
+            const commentRetentionHours = parsePositiveIntSettingValue(settingsMap.get('commentRetention'), 168);
+            const rssActivityRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('rssActivityRetention'),
+                recentActivityRetentionHours
+            );
+            const designStudioActivityRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('designStudioActivityRetention'),
+                recentActivityRetentionHours
+            );
+            const videoStudioActivityRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('videoStudioActivityRetention'),
+                recentActivityRetentionHours
+            );
+            const tmdbActivityRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('tmdbActivityRetention'),
+                recentActivityRetentionHours
+            );
 
-            const videoStudioDeleted = await prisma.videoStudioActivity.deleteMany({
-                where: {
-                    status: { in: ['completed', 'failed'] },
-                    updatedAt: { lt: videoStudioCutoff }
-                }
-            });
+            const videoCleanupInterval = parseCleanupIntervalValue(
+                settingsMap.get('videoCleanupInterval'),
+                globalCleanupInterval
+            );
+            const imageCleanupInterval = parseCleanupIntervalValue(
+                settingsMap.get('imageCleanupInterval'),
+                globalCleanupInterval
+            );
+            const videoStudioCleanupInterval = parseCleanupIntervalValue(
+                settingsMap.get('videoStudioCleanupInterval'),
+                globalCleanupInterval
+            );
 
-            const tmdbPublishedDeleted = await prisma.tMDbPost.deleteMany({
-                where: {
-                    status: 'published',
-                    publishedTime: { lt: tmdbActivityCutoff }
-                }
-            });
+            const videoStorageRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('videoStorageRetention'),
+                globalStorageRetentionHours
+            );
+            const imageStorageRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('imageStorageRetention'),
+                globalStorageRetentionHours
+            );
+            const videoStudioStorageRetentionHours = parsePositiveIntSettingValue(
+                settingsMap.get('videoStudioStorageRetention'),
+                globalStorageRetentionHours
+            );
 
-            const tmdbFailedDeleted = await prisma.tMDbPost.deleteMany({
-                where: {
-                    status: 'failed',
-                    updatedAt: { lt: tmdbActivityCutoff }
-                }
-            });
+            let logsDeleted = 0;
+            if (shouldRunCleanupInterval(globalCleanupInterval, now)) {
+                const logCutoff = new Date(now.getTime() - logsRetentionHours * 60 * 60 * 1000);
+                const logDeletion = await prisma.log.deleteMany({
+                    where: { createdAt: { lt: logCutoff } },
+                });
+                logsDeleted = logDeletion.count;
+            }
 
+            const notifsDeleted = await purgeExpiredNotifications(now);
+
+            let commentsDeleted = 0;
             let rssActivityDeleted = 0;
-            try {
-                rssActivityDeleted = Number(
-                    await prisma.$executeRaw`
-                        DELETE FROM "Log"
-                        WHERE service = 'rss'
-                          AND "createdAt" < ${rssActivityCutoff}
-                          AND metadata IS NOT NULL
-                          AND metadata->>'category' = 'rss_activity'
-                    `
+            let designStudioDeleted = 0;
+            let videoStudioDeleted = 0;
+            let tmdbActivityDeleted = 0;
+
+            if (shouldRunCleanupInterval(globalCleanupInterval, now)) {
+                const commentCutoff = new Date(now.getTime() - commentRetentionHours * 60 * 60 * 1000);
+                const rssActivityCutoff = new Date(now.getTime() - rssActivityRetentionHours * 60 * 60 * 1000);
+                const designStudioCutoff = new Date(now.getTime() - designStudioActivityRetentionHours * 60 * 60 * 1000);
+                const videoStudioCutoff = new Date(now.getTime() - videoStudioActivityRetentionHours * 60 * 60 * 1000);
+                const tmdbActivityCutoff = new Date(now.getTime() - tmdbActivityRetentionHours * 60 * 60 * 1000);
+
+                const commentsDeletion = await prisma.comment.deleteMany({
+                    where: {
+                        processed: true,
+                        updatedAt: { lt: commentCutoff },
+                    },
+                });
+                commentsDeleted = commentsDeletion.count;
+
+                const designStudioDeletion = await prisma.designStudioActivity.deleteMany({
+                    where: { createdAt: { lt: designStudioCutoff } },
+                });
+                designStudioDeleted = designStudioDeletion.count;
+
+                const videoStudioDeletion = await prisma.videoStudioActivity.deleteMany({
+                    where: {
+                        status: { in: ['completed', 'failed'] },
+                        updatedAt: { lt: videoStudioCutoff },
+                    },
+                });
+                videoStudioDeleted = videoStudioDeletion.count;
+
+                const tmdbPublishedDeleted = await prisma.tMDbPost.deleteMany({
+                    where: {
+                        status: 'published',
+                        publishedTime: { lt: tmdbActivityCutoff },
+                    },
+                });
+
+                const tmdbFailedDeleted = await prisma.tMDbPost.deleteMany({
+                    where: {
+                        status: 'failed',
+                        updatedAt: { lt: tmdbActivityCutoff },
+                    },
+                });
+                tmdbActivityDeleted = tmdbPublishedDeleted.count + tmdbFailedDeleted.count;
+
+                try {
+                    rssActivityDeleted = Number(
+                        await prisma.$executeRaw`
+                            DELETE FROM "Log"
+                            WHERE service = 'rss'
+                              AND "createdAt" < ${rssActivityCutoff}
+                              AND metadata IS NOT NULL
+                              AND metadata->>'category' = 'rss_activity'
+                        `
+                    );
+                } catch (rssCleanupError) {
+                    console.error('[CRON] Failed to clean RSS activity logs:', rssCleanupError);
+                }
+            }
+
+            let localVideosDeleted = 0;
+            let remoteVideosDeleted = 0;
+            if (shouldRunCleanupInterval(videoCleanupInterval, now)) {
+                const videoCutoff = new Date(now.getTime() - videoStorageRetentionHours * 60 * 60 * 1000);
+                localVideosDeleted = await cleanupLocalFilesByExtension(
+                    LOCAL_CLEANUP_DIRECTORIES,
+                    videoCutoff,
+                    VIDEO_FILE_EXTENSIONS
                 );
-            } catch (rssCleanupError) {
-                console.error('[CRON] Failed to clean RSS activity logs:', rssCleanupError);
+                remoteVideosDeleted = await cleanupBackblazeTargets(VIDEO_STORAGE_TARGETS, videoCutoff);
+            }
+
+            let localImagesDeleted = 0;
+            let remoteImagesDeleted = 0;
+            if (shouldRunCleanupInterval(imageCleanupInterval, now)) {
+                const imageCutoff = new Date(now.getTime() - imageStorageRetentionHours * 60 * 60 * 1000);
+                localImagesDeleted = await cleanupLocalFilesByExtension(
+                    LOCAL_CLEANUP_DIRECTORIES,
+                    imageCutoff,
+                    IMAGE_FILE_EXTENSIONS
+                );
+                remoteImagesDeleted = await cleanupBackblazeTargets(IMAGE_STORAGE_TARGETS, imageCutoff);
+            }
+
+            let remoteVideoStudioDeleted = 0;
+            if (shouldRunCleanupInterval(videoStudioCleanupInterval, now)) {
+                const videoStudioCutoff = new Date(now.getTime() - videoStudioStorageRetentionHours * 60 * 60 * 1000);
+                remoteVideoStudioDeleted = await cleanupBackblazeTargets(VIDEO_STUDIO_STORAGE_TARGETS, videoStudioCutoff);
             }
 
             await logCron(
                 'info',
-                `Cleanup completed. Deleted ${logsDeleted.count} logs, ${notifsDeleted} notifications, ${commentsDeleted.count} old comments, ${rssActivityDeleted} RSS activity rows, ${designStudioDeleted.count} design activity rows, ${videoStudioDeleted.count} video activity rows, and ${tmdbPublishedDeleted.count + tmdbFailedDeleted.count} TMDb activity rows.`
+                `Cleanup completed. Deleted ${logsDeleted} logs, ${notifsDeleted} notifications, ${commentsDeleted} old comments, ${rssActivityDeleted} RSS activity rows, ${designStudioDeleted} design activity rows, ${videoStudioDeleted} video studio activity rows, ${tmdbActivityDeleted} TMDb activity rows, ${localVideosDeleted} local videos, ${remoteVideosDeleted} hosted videos, ${localImagesDeleted} local images, ${remoteImagesDeleted} hosted images, and ${remoteVideoStudioDeleted} hosted Video Studio files.`
             );
         } catch (error) {
             await logCron('error', `Cleanup failed: ${error}`);

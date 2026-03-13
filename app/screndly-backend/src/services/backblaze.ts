@@ -454,6 +454,26 @@ export async function listBackblazeFiles(
   return results;
 }
 
+export async function deleteBackblazeFile(
+  bucketType: BackblazeBucketType,
+  file: Pick<BackblazeFileRecord, 'fileId' | 'fileName'>
+): Promise<void> {
+  const runtime = await resolveBucketRuntime(bucketType);
+
+  await backblazeJsonRequest(
+    `${runtime.apiUrl}/b2api/v2/b2_delete_file_version`,
+    {
+      headers: {
+        Authorization: runtime.authorizationToken,
+      },
+      body: {
+        fileId: file.fileId,
+        fileName: file.fileName,
+      },
+    }
+  );
+}
+
 async function uploadBufferWithBucket(
   buffer: Buffer,
   originalName: string,

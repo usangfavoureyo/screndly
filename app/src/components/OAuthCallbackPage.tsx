@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { getAuthHeaders } from '../lib/api/authToken';
 import { getApiUrl } from '../lib/api/config';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { getOAuthRedirectUri } from '../utils/oauthRedirect';
+import { PageLoader } from './PageLoader';
 
 export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) => void }) {
     const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
@@ -169,11 +170,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] p-8">
             {status === 'loading' && (
-                <>
-                    <Loader2 className="w-12 h-12 text-[#ec1e24] animate-spin mb-4" />
-                    <h2 className="text-xl font-semibold dark:text-white mb-2">Connecting to Platform...</h2>
-                    <p className="text-gray-500 text-center">Please wait while we establish the connection securely.</p>
-                </>
+                <PageLoader size="lg" className="h-auto py-8" label="Connecting to platform..." />
             )}
 
             {status === 'success' && (

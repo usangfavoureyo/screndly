@@ -65,6 +65,17 @@ const SETTING_LABEL_OVERRIDES: Record<string, string> = {
     captionScenesPrompt: 'Scenes prompt',
     composeDefaultScheduleTime: 'Default schedule time',
     composeActivityRetention: 'Activity retention',
+    cleanupEnabled: 'Auto cleanup',
+    cleanupInterval: 'Cleanup interval',
+    storageRetention: 'Storage retention',
+    videoCleanupInterval: 'Video cleanup interval',
+    videoStorageRetention: 'Video storage retention',
+    imageCleanupInterval: 'Image cleanup interval',
+    imageStorageRetention: 'Image storage retention',
+    videoStudioCleanupInterval: 'Video Studio cleanup interval',
+    videoStudioStorageRetention: 'Video Studio storage retention',
+    logsRetention: 'Log retention',
+    recentActivityRetention: 'Recent activity retention',
     darkMode: 'Dark mode',
     hapticsEnabled: 'Haptics',
     emailNotifications: 'Email notifications',
@@ -152,6 +163,19 @@ function getSettingsSectionLabel(key: string): string {
 
     if (key.startsWith('compose')) {
         return 'Post';
+    }
+
+    if (
+        key.startsWith('cleanup')
+        || key.startsWith('videoCleanup')
+        || key.startsWith('imageCleanup')
+        || key.startsWith('videoStudioCleanup')
+        || key.endsWith('StorageRetention')
+        || key === 'storageRetention'
+        || key === 'logsRetention'
+        || key === 'recentActivityRetention'
+    ) {
+        return 'Cleanup';
     }
 
     if (key.startsWith('pad')) {

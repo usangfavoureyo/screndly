@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Cloud, Search, Loader2, CheckCircle, Film } from 'lucide-react';
+import { Cloud, Search, CheckCircle, Film } from 'lucide-react';
 import { toast } from "sonner";
 import { haptics } from '../utils/haptics';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { BackblazeBrowserFile, listVideoStudioFiles } from '../lib/api/backblaze';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
+import { PageLoader } from './PageLoader';
 
 interface BackblazeVideoBrowserProps {
   open: boolean;
@@ -134,10 +135,7 @@ export function BackblazeVideoBrowser({ open, onSelectVideo, onClose }: Backblaz
 
         <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Loader2 className="w-12 h-12 text-[#ec1e24] animate-spin mb-4" />
-              <p className="text-gray-600 dark:text-gray-400">Loading videos from Backblaze...</p>
-            </div>
+            <PageLoader size="md" className="h-auto py-12" label="Loading videos from Backblaze..." />
           ) : filteredFiles.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500 dark:text-gray-400 mb-2">

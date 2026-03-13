@@ -28,6 +28,7 @@ import {
 } from '../../lib/create/composeNotifications';
 import { useComposeStore } from '../../store/useComposeStore';
 import type { ComposeItem, ComposeMediaAsset } from '../../types/compose';
+import { RedSpinner } from '../PageLoader';
 
 interface ComposeOverviewProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -411,7 +412,12 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                                 handlePublish(item.id);
                               }}
                             >
-                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                              {publishingIds.includes(item.id) ? (
+                                <>
+                                  <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
+                                  Publish
+                                </>
+                              ) : 'Publish'}
                             </Button>
                             <Button
                               variant="outline"

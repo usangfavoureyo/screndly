@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Clock, Loader2 } from 'lucide-react';
+import { RefreshCw, Clock } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
@@ -28,6 +28,7 @@ import {
     BottomSheetBody,
     BottomSheetFooter
 } from '../ui/bottom-sheet';
+import { RedSpinner } from '../PageLoader';
 
 /**
  * TMDbModals - Portal Rendered Modals
@@ -483,7 +484,10 @@ export function TMDbModals() {
                     <Button variant="outline" onClick={() => { haptics.light(); closeReschedule(); }}>Cancel</Button>
                     <Button onClick={handleSaveSchedule} disabled={isSaving}>
                         {isSaving ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving...</>
+                            <>
+                                <RedSpinner size="sm" className="mr-2" label="Saving schedule..." />
+                                Schedule
+                            </>
                         ) : 'Schedule'}
                     </Button>
                 </BottomSheetFooter>
@@ -541,7 +545,20 @@ export function TMDbModals() {
                     </Button>
                     <Button onClick={handleSchedulePost} className="flex-1 bg-[#ec1e24]" disabled={isSaving}>
                         {isSaving ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {platformSelectModal.mode === 'publish' ? 'Publishing...' : platformSelectModal.mode === 'update-platforms' ? 'Saving...' : 'Scheduling...'}</>
+                            <>
+                                <RedSpinner
+                                    size="sm"
+                                    className="mr-2"
+                                    label={
+                                        platformSelectModal.mode === 'publish'
+                                            ? 'Publishing TMDb post...'
+                                            : platformSelectModal.mode === 'update-platforms'
+                                                ? 'Saving TMDb platforms...'
+                                                : 'Scheduling TMDb post...'
+                                    }
+                                />
+                                {platformSelectActionLabel}
+                            </>
                         ) : (
                             platformSelectActionLabel
                         )}

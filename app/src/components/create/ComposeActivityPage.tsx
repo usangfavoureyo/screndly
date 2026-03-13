@@ -29,6 +29,7 @@ import {
   buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
 import type { ComposeItem, ComposeMediaAsset, ComposeStatus } from '../../types/compose';
+import { RedSpinner } from '../PageLoader';
 
 interface ComposeActivityPageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -401,7 +402,12 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                                 handlePublish(item.id);
                               }}
                             >
-                              {publishingIds.includes(item.id) ? 'Publishing...' : 'Publish'}
+                              {publishingIds.includes(item.id) ? (
+                                <>
+                                  <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
+                                  Publish
+                                </>
+                              ) : 'Publish'}
                             </Button>
                             <Button
                               variant="outline"

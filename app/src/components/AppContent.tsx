@@ -19,6 +19,7 @@ import { setupInstallPrompt, registerServiceWorker } from "../utils/pwa";
 import { toast } from "sonner";
 import { logout } from "../lib/auth";
 import { useTMDbModalStore } from "../stores/tmdbModalStore";
+import { PageLoader, RedSpinner } from "./PageLoader";
 
 const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
 const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
@@ -62,19 +63,9 @@ const UploadManagerPage = lazyWithRetry(() => import("./jobs/UploadManagerPage")
 const NotificationPanel = lazyWithRetry(() => import("./NotificationPanel").then(m => ({ default: m.NotificationPanel })), "NotificationPanel");
 const TMDbModals = lazyWithRetry(() => import("./tmdb/TMDbModals").then(m => ({ default: m.TMDbModals })), "TMDbModals");
 
-// Loading component
-const PageLoader = () => (
-  <div className="flex items-center justify-center h-64" role="status" aria-live="polite">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#ec1e24]"></div>
-    <span className="sr-only">Loading...</span>
-  </div>
-);
-
 const OverlayLoader = () => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="status" aria-live="polite">
-    <div className="rounded-xl bg-white px-5 py-4 text-gray-900 shadow-lg dark:bg-[#000000] dark:text-white">
-      Loading...
-    </div>
+    <RedSpinner />
   </div>
 );
 

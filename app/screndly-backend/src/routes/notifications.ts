@@ -102,8 +102,9 @@ async function buildNotificationDetail(notification: any) {
 router.get('/', async (req, res) => {
     try {
         await purgeExpiredNotifications();
+        const activeWhere = await getActiveNotificationWhere();
         const notifications = await prisma.notification.findMany({
-            where: getActiveNotificationWhere(),
+            where: activeWhere,
             orderBy: { createdAt: 'desc' },
             take: 50
         });
@@ -127,11 +128,16 @@ router.get('/:id/detail', async (req, res) => {
             });
         }
 
+        const expiredWhere = await getExpiredNotificationWhere();
         const isExpired = await prisma.notification.findFirst({
-            where: {
-                id: notification.id,
-                ...getExpiredNotificationWhere(),
-            },
+            where: expiredWhere
+                ? {
+                    id: notification.id,
+                    ...expiredWhere,
+                }
+                : {
+                    id: '__cleanup-disabled__',
+                },
             select: { id: true },
         });
 

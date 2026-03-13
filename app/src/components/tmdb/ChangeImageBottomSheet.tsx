@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Upload } from 'lucide-react';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
     BottomSheetFooter
 } from '../ui/bottom-sheet';
 import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
+import { RedSpinner } from '../PageLoader';
 
 interface ChangeImageBottomSheetProps {
     open: boolean;
@@ -225,11 +226,11 @@ export function ChangeImageBottomSheet({
                                 disabled:opacity-50`}
                         >
                             {isLoadingImage && selectedImageType === 'poster' ? (
-                                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
+                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading poster image..." />
                             ) : (
                                 <ImageIcon className="w-6 h-6 mx-auto mb-2" />
                             )}
-                            <p className="text-sm">{isLoadingImage && selectedImageType === 'poster' ? 'Loading...' : 'Poster'}</p>
+                            <p className="text-sm">Poster</p>
                         </button>
 
                         {/* Backdrop Button */}
@@ -245,11 +246,11 @@ export function ChangeImageBottomSheet({
                                 disabled:opacity-50`}
                         >
                             {isLoadingImage && selectedImageType === 'backdrop' ? (
-                                <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin text-[#ec1e24]" />
+                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading backdrop image..." />
                             ) : (
                                 <ImageIcon className="w-6 h-6 mx-auto mb-2" />
                             )}
-                            <p className="text-sm">{isLoadingImage && selectedImageType === 'backdrop' ? 'Loading...' : 'Backdrop'}</p>
+                            <p className="text-sm">Backdrop</p>
                         </button>
 
                         {/* Upload Button */}
@@ -308,7 +309,10 @@ export function ChangeImageBottomSheet({
                         disabled={!previewImageUrl || isLoadingImage}
                     >
                         {isLoadingImage ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading...</>
+                            <>
+                                <RedSpinner size="sm" className="mr-2" label="Saving selected image..." />
+                                Save
+                            </>
                         ) : 'Save'}
                     </Button>
                 </BottomSheetFooter>

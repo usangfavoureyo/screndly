@@ -18,6 +18,7 @@ import { haptics } from '../utils/haptics';
 import { dashboardApi, DashboardStats } from '../lib/api/dashboard';
 import { useComposeStore } from '../store/useComposeStore';
 import { toast } from 'sonner';
+import { PageLoader } from './PageLoader';
 
 interface DashboardOverviewProps {
   onNavigate: (page: string, source?: string) => void;
@@ -763,7 +764,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       >
         <div className="space-y-3">
           {isLoading ? (
-            <div className="text-center py-4 text-gray-500">Loading...</div>
+            <PageLoader size="sm" className="h-auto py-4" />
           ) : stats?.recentActivity.length ? (
             stats.recentActivity.map((activity) => (
               <div key={activity.id} className="flex items-center justify-between p-3 rounded-xl transition-colors duration-200">
