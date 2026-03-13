@@ -1,0 +1,404 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Pause, Play, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
+import { VisuallyHidden } from '../ui/visually-hidden';
+import { haptics } from '../../utils/haptics';
+
+type MediaPreviewKind = 'image' | 'video';
+
+interface MediaPreviewDialogProps {
+  open: boolean;
+  src?: string | null;
+  mediaType: MediaPreviewKind;
+  title?: string;
+  badgeLabel?: string;
+  onOpenChange: (open: boolean) => void;
+}
+
+const MIN_SCALE = 1;
+const MAX_SCALE = 4;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function getTouchDistance(touchA: Touch, touchB: Touch) {
+  return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY);
+}
+
+function formatPlaybackTime(value: number) {
+  if (!Number.isFinite(value) || value < 0) {
+    return '0:00';
+  }
+
+  const wholeSeconds = Math.floor(value);
+  const hours = Math.floor(wholeSeconds / 3600);
+  const minutes = Math.floor((wholeSeconds % 3600) / 60);
+  const seconds = wholeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function MediaPreviewDialog({
+  open,
+  src,
+  mediaType,
+  title,
+  badgeLabel,
+  onOpenChange,
+}: MediaPreviewDialogProps) {
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [scale, setScale] = useState(MIN_SCALE);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [isInteracting, setIsInteracting] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const scaleRef = useRef(MIN_SCALE);
+  const offsetRef = useRef({ x: 0, y: 0 });
+  const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
+  const panStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+
+  useEffect(() => {
+    scaleRef.current = scale;
+  }, [scale]);
+
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+
+  const clampOffset = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
+    if (nextScale <= MIN_SCALE) {
+      return { x: 0, y: 0 };
+    }
+
+    const rect = imageContainerRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return nextOffset;
+    }
+
+    const maxOffsetX = ((nextScale - 1) * rect.width) / 2;
+    const maxOffsetY = ((nextScale - 1) * rect.height) / 2;
+
+    return {
+      x: clamp(nextOffset.x, -maxOffsetX, maxOffsetX),
+      y: clamp(nextOffset.y, -maxOffsetY, maxOffsetY),
+    };
+  }, []);
+
+  const resetImageTransform = useCallback(() => {
+    pinchStartRef.current = null;
+    panStartRef.current = null;
+    scaleRef.current = MIN_SCALE;
+    offsetRef.current = { x: 0, y: 0 };
+    setScale(MIN_SCALE);
+    setOffset({ x: 0, y: 0 });
+    setIsInteracting(false);
+  }, []);
+
+  const updateTransform = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
+    const safeScale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
+    const safeOffset = clampOffset(safeScale, nextOffset);
+
+    scaleRef.current = safeScale;
+    offsetRef.current = safeOffset;
+    setScale(safeScale);
+    setOffset(safeOffset);
+  }, [clampOffset]);
+
+  const resetVideoPlayback = useCallback(() => {
+    const video = videoRef.current;
+    if (video) {
+      video.pause();
+
+      try {
+        video.currentTime = 0;
+      } catch {
+        // Ignore media reset issues in unsupported environments.
+      }
+    }
+
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      resetImageTransform();
+      resetVideoPlayback();
+      return;
+    }
+
+    if (mediaType === 'image') {
+      resetImageTransform();
+      return;
+    }
+
+    resetVideoPlayback();
+  }, [mediaType, open, resetImageTransform, resetVideoPlayback, src]);
+
+  const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen) {
+      resetImageTransform();
+      resetVideoPlayback();
+    }
+
+    onOpenChange(nextOpen);
+  }, [onOpenChange, resetImageTransform, resetVideoPlayback]);
+
+  const handleClose = useCallback(() => {
+    haptics.light();
+    handleDialogOpenChange(false);
+  }, [handleDialogOpenChange]);
+
+  const handleImageTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 2) {
+      const [touchA, touchB] = [event.touches[0], event.touches[1]];
+      pinchStartRef.current = {
+        distance: getTouchDistance(touchA, touchB),
+        scale: scaleRef.current,
+      };
+      panStartRef.current = null;
+      setIsInteracting(true);
+      return;
+    }
+
+    if (event.touches.length === 1 && scaleRef.current > MIN_SCALE) {
+      const touch = event.touches[0];
+      panStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        offsetX: offsetRef.current.x,
+        offsetY: offsetRef.current.y,
+      };
+      setIsInteracting(true);
+    }
+  };
+
+  const handleImageTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 2 && pinchStartRef.current) {
+      event.preventDefault();
+
+      const [touchA, touchB] = [event.touches[0], event.touches[1]];
+      const distance = getTouchDistance(touchA, touchB);
+      const nextScale = pinchStartRef.current.scale * (distance / pinchStartRef.current.distance);
+      updateTransform(nextScale, offsetRef.current);
+      return;
+    }
+
+    if (event.touches.length === 1 && scaleRef.current > MIN_SCALE && panStartRef.current) {
+      event.preventDefault();
+
+      const touch = event.touches[0];
+      updateTransform(scaleRef.current, {
+        x: panStartRef.current.offsetX + (touch.clientX - panStartRef.current.x),
+        y: panStartRef.current.offsetY + (touch.clientY - panStartRef.current.y),
+      });
+    }
+  };
+
+  const handleImageTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length < 2) {
+      pinchStartRef.current = null;
+    }
+
+    if (event.touches.length === 1 && scaleRef.current > MIN_SCALE) {
+      const touch = event.touches[0];
+      panStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        offsetX: offsetRef.current.x,
+        offsetY: offsetRef.current.y,
+      };
+      return;
+    }
+
+    panStartRef.current = null;
+    setIsInteracting(false);
+
+    if (scaleRef.current <= 1.01) {
+      resetImageTransform();
+    }
+  };
+
+  const handleImageDoubleClick = () => {
+    if (scaleRef.current > MIN_SCALE) {
+      resetImageTransform();
+      return;
+    }
+
+    updateTransform(2, { x: 0, y: 0 });
+  };
+
+  const toggleVideoPlayback = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    if (video.paused) {
+      try {
+        await video.play();
+        setIsPlaying(true);
+      } catch {
+        setIsPlaying(false);
+      }
+
+      return;
+    }
+
+    video.pause();
+    setIsPlaying(false);
+  }, []);
+
+  const handleVideoScrub = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const nextTime = Number(event.target.value);
+    const video = videoRef.current;
+    if (!video || !Number.isFinite(nextTime)) {
+      return;
+    }
+
+    video.currentTime = nextTime;
+    setCurrentTime(nextTime);
+  };
+
+  const previewTitle = title || (mediaType === 'video' ? 'Video preview' : 'Image preview');
+  const previewDescription = mediaType === 'video'
+    ? 'Expanded video preview with tap playback and scrub controls.'
+    : 'Expanded image preview with pinch and double-tap zoom.';
+
+  return (
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
+      <DialogContent
+        className="w-[calc(100%-1rem)] max-w-6xl overflow-hidden border-none bg-transparent p-0 shadow-none"
+        hideCloseButton
+      >
+        <VisuallyHidden>
+          <DialogTitle>{previewTitle}</DialogTitle>
+          <DialogDescription>{previewDescription}</DialogDescription>
+        </VisuallyHidden>
+
+        <div className="relative overflow-hidden rounded-2xl bg-black">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="absolute right-4 top-4 z-50 rounded-full bg-black/80 p-2 text-white transition-colors hover:bg-black"
+            aria-label="Close preview"
+          >
+            <X className="h-6 w-6" />
+          </button>
+
+          {badgeLabel ? (
+            <div className="absolute left-4 top-4 z-40 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white">
+              {badgeLabel}
+            </div>
+          ) : null}
+
+          {mediaType === 'image' ? (
+            <div
+              ref={imageContainerRef}
+              className="flex h-[90vh] w-full select-none items-center justify-center overflow-hidden bg-black"
+              style={{ touchAction: 'none' }}
+              onDoubleClick={handleImageDoubleClick}
+              onTouchStart={handleImageTouchStart}
+              onTouchMove={handleImageTouchMove}
+              onTouchEnd={handleImageTouchEnd}
+              onTouchCancel={handleImageTouchEnd}
+            >
+              {src ? (
+                <img
+                  src={src}
+                  alt={previewTitle}
+                  draggable={false}
+                  className="max-h-full max-w-full object-contain"
+                  style={{
+                    transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
+                    transition: isInteracting ? 'none' : 'transform 180ms ease-out',
+                    transformOrigin: 'center center',
+                  }}
+                />
+              ) : (
+                <div className="text-sm text-white/70">Preview unavailable</div>
+              )}
+            </div>
+          ) : (
+            <div className="relative flex h-[90vh] w-full items-center justify-center overflow-hidden bg-black">
+              {src ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    src={src}
+                    className="h-full w-full object-contain"
+                    playsInline
+                    preload="metadata"
+                    onClick={() => {
+                      void toggleVideoPlayback();
+                    }}
+                    onLoadedMetadata={(event) => {
+                      setDuration(event.currentTarget.duration || 0);
+                      setCurrentTime(event.currentTarget.currentTime || 0);
+                    }}
+                    onTimeUpdate={(event) => {
+                      setCurrentTime(event.currentTarget.currentTime || 0);
+                    }}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
+                    onEnded={() => setIsPlaying(false)}
+                  />
+
+                  {!isPlaying ? (
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black/60 text-white shadow-[0_0_30px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+                        <Play className="ml-1 h-10 w-10 fill-current" />
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/65 to-transparent p-4 sm:p-5">
+                    <div className="pointer-events-auto flex items-center gap-3 text-white">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void toggleVideoPlayback();
+                        }}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 transition-colors hover:bg-white/15"
+                        aria-label={isPlaying ? 'Pause video' : 'Play video'}
+                      >
+                        {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
+                      </button>
+                      <span className="min-w-[3rem] text-xs tabular-nums sm:text-sm">
+                        {formatPlaybackTime(currentTime)}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={duration > 0 ? duration : 1}
+                        step="0.1"
+                        value={duration > 0 ? Math.min(currentTime, duration) : 0}
+                        onChange={handleVideoScrub}
+                        className="h-1 flex-1 cursor-pointer accent-[#ec1e24]"
+                        aria-label="Scrub video playback"
+                      />
+                      <span className="min-w-[3rem] text-right text-xs tabular-nums sm:text-sm">
+                        {formatPlaybackTime(duration)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-white/70">Preview unavailable</div>
+              )}
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
