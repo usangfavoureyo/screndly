@@ -60,7 +60,7 @@ interface ModalState {
     platformSelectModal: {
         open: boolean;
         feed: TMDbFeed | null;
-        isPostNow: boolean;
+        mode: 'publish' | 'schedule' | 'update-platforms';
     };
 
     // Image Preview Modal
@@ -88,7 +88,7 @@ interface ModalActions {
     closeDelete: () => void;
 
     // Platform Select
-    openPlatformSelect: (feed: TMDbFeed, isPostNow?: boolean) => void;
+    openPlatformSelect: (feed: TMDbFeed, mode?: 'publish' | 'schedule' | 'update-platforms') => void;
     closePlatformSelect: () => void;
 
     // Image Preview
@@ -104,7 +104,7 @@ const initialState: ModalState = {
     changeImageModal: { open: false, feed: null },
     rescheduleModal: { open: false, feed: null },
     deleteModal: { open: false, feed: null },
-    platformSelectModal: { open: false, feed: null, isPostNow: false },
+    platformSelectModal: { open: false, feed: null, mode: 'schedule' },
     imagePreviewModal: { open: false, feed: null },
 };
 
@@ -144,11 +144,11 @@ export const useTMDbModalStore = create<ModalState & ModalActions>((set) => ({
     }),
 
     // Platform Select
-    openPlatformSelect: (feed, isPostNow = false) => set({
-        platformSelectModal: { open: true, feed, isPostNow }
+    openPlatformSelect: (feed, mode = 'schedule') => set({
+        platformSelectModal: { open: true, feed, mode }
     }),
     closePlatformSelect: () => set({
-        platformSelectModal: { open: false, feed: null, isPostNow: false }
+        platformSelectModal: { open: false, feed: null, mode: 'schedule' }
     }),
 
     // Image Preview

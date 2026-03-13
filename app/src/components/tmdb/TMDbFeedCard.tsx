@@ -142,7 +142,7 @@ function TMDbFeedCardComponent({
   const handlePostNow = useCallback(() => {
     if (selectionMode) return;
     haptics.light();
-    openPlatformSelect(feed, true);
+    openPlatformSelect(feed, 'publish');
   }, [feed, openPlatformSelect, selectionMode]);
 
   const handleDelete = useCallback(() => {

@@ -428,7 +428,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                             </Button>
                           </div>
                         </div>
-                      ) : item.status === 'failed' ? (
+                      ) : item.status === 'failed' || item.status === 'scheduled' ? (
                         <div className="col-start-2">
                           <div className="max-w-[9rem]">
                             <Button

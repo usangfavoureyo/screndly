@@ -258,7 +258,8 @@ export function TMDbModals() {
             return;
         }
 
-        const isPublishNow = platformSelectModal.isPostNow;
+        const mode = platformSelectModal.mode;
+        const isPublishNow = mode === 'publish';
         const platformNames = toTMDbPlatformNames(selectedPlatforms);
 
         setIsSaving(true);
@@ -315,22 +316,45 @@ export function TMDbModals() {
 
             haptics.success();
             closePlatformSelect();
-            toast.success('Post scheduled');
+            toast.success(mode === 'update-platforms' ? 'Platforms updated' : 'Post scheduled');
             logFeedUpdate(
                 platformSelectModal.feed.id,
                 platformSelectModal.feed.title,
                 'scheduled',
                 'System',
-                { platforms: platformNames }
+                { platforms: platformNames, action: mode === 'update-platforms' ? 'platforms-updated' : 'scheduled' }
             );
         } catch (error) {
             console.error('Failed to publish/schedule post', error);
-            const message = error instanceof Error ? error.message : (isPublishNow ? 'Failed to publish post' : 'Failed to schedule post');
+            const message = error instanceof Error
+                ? error.message
+                : (isPublishNow ? 'Failed to publish post' : mode === 'update-platforms' ? 'Failed to update platforms' : 'Failed to schedule post');
             toast.error(message);
         } finally {
             setIsSaving(false);
         }
     };
+
+    const platformSelectTitle =
+        platformSelectModal.mode === 'publish'
+            ? 'Select Platforms'
+            : platformSelectModal.mode === 'update-platforms'
+                ? 'Edit Platforms'
+                : 'Select Platforms';
+
+    const platformSelectDescription =
+        platformSelectModal.mode === 'publish'
+            ? 'Choose platforms to post on'
+            : platformSelectModal.mode === 'update-platforms'
+                ? 'Update the platforms for this scheduled post'
+                : 'Choose platforms to schedule';
+
+    const platformSelectActionLabel =
+        platformSelectModal.mode === 'publish'
+            ? 'Publish'
+            : platformSelectModal.mode === 'update-platforms'
+                ? 'Save Platforms'
+                : 'Schedule';
 
     return (
         <>
@@ -486,10 +510,8 @@ export function TMDbModals() {
             {/* Platform Select Modal */}
             <BottomSheet open={platformSelectModal.open} onOpenChange={(open) => !open && closePlatformSelect()}>
                 <BottomSheetHeader>
-                    <BottomSheetTitle>Select Platforms</BottomSheetTitle>
-                    <BottomSheetDescription>
-                        Choose platforms to {platformSelectModal.isPostNow ? 'post on' : 'schedule'}
-                    </BottomSheetDescription>
+                    <BottomSheetTitle>{platformSelectTitle}</BottomSheetTitle>
+                    <BottomSheetDescription>{platformSelectDescription}</BottomSheetDescription>
                 </BottomSheetHeader>
                 <BottomSheetBody>
                     <div className="py-4 flex justify-center">
@@ -519,9 +541,9 @@ export function TMDbModals() {
                     </Button>
                     <Button onClick={handleSchedulePost} className="flex-1 bg-[#ec1e24]" disabled={isSaving}>
                         {isSaving ? (
-                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {platformSelectModal.isPostNow ? 'Publishing...' : 'Scheduling...'}</>
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> {platformSelectModal.mode === 'publish' ? 'Publishing...' : platformSelectModal.mode === 'update-platforms' ? 'Saving...' : 'Scheduling...'}</>
                         ) : (
-                            platformSelectModal.isPostNow ? 'Publish' : 'Schedule'
+                            platformSelectActionLabel
                         )}
                     </Button>
                 </BottomSheetFooter>

@@ -100,6 +100,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const openImagePreview = useTMDbModalStore(s => s.openImagePreview);
+  const openPlatformSelect = useTMDbModalStore(s => s.openPlatformSelect);
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangeDateOpen, setIsChangeDateOpen] = useState(false);
@@ -478,6 +479,17 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     setIsChangeImageOpen(true);
   };
 
+  const handleEditPlatforms = (id: string) => {
+    const selectedPost = posts.find((post) => post.id === id);
+    if (!selectedPost) {
+      toast.error('Unable to load platform settings for this post');
+      return;
+    }
+
+    haptics.light();
+    openPlatformSelect(selectedPost, 'update-platforms');
+  };
+
   const handleRegenerateCaption = async (id: string, title: string) => {
     haptics.light();
     setIsRegenerating(true);
@@ -814,6 +826,16 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
                                 Change Image
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setOpenMenuItemId(null);
+                                  haptics.light();
+                                  handleEditPlatforms(item.id);
+                                }}
+                                className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
+                              >
+                                Edit Platforms
                               </button>
                               <button
                                 onClick={() => {
