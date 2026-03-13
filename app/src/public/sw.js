@@ -1,5 +1,5 @@
 // Screndly PWA Service Worker - Enhanced with Advanced Caching Strategies
-const SW_VERSION = 'v1.2.3-network-first-app-shell';
+const SW_VERSION = 'v1.3.0-resume-recovery';
 const CACHE_NAME = `screndly-${SW_VERSION}`;
 const RUNTIME_CACHE = `screndly-runtime-${SW_VERSION}`;
 const IMAGE_CACHE = `screndly-images-${SW_VERSION}`;
@@ -24,6 +24,7 @@ const CORE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/offline.html',
 ];
 
 // Install event - cache core assets
@@ -96,17 +97,35 @@ function createCachedResponse(response) {
   });
 }
 
-function isAppShellRequest(request, url) {
+function isNavigationRequest(request, url) {
   return (
     request.mode === 'navigate' ||
     url.pathname === '/' ||
-    url.pathname === '/index.html' ||
+    url.pathname === '/index.html'
+  );
+}
+
+function isStaticAssetRequest(request, url) {
+  return (
+    request.destination === 'script' ||
+    request.destination === 'style' ||
+    request.destination === 'worker' ||
+    request.destination === 'manifest' ||
+    request.destination === 'font' ||
     url.pathname === '/manifest.json' ||
     url.pathname.startsWith('/assets/') ||
     url.pathname.endsWith('.js') ||
-    url.pathname.endsWith('.css') ||
-    url.pathname.endsWith('.html')
+    url.pathname.endsWith('.css')
   );
+}
+
+async function getNavigationFallback() {
+  const rootDocument = await caches.match('/');
+  if (rootDocument) {
+    return rootDocument;
+  }
+
+  return caches.match('/offline.html');
 }
 
 // Strategy: Cache First (for images)
@@ -214,29 +233,52 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Strategy 3: Network First for the app shell so users do not get stale JS after deploys.
-  if (isAppShellRequest(event.request, url)) {
+  // Strategy 3: Network First for HTML navigations with cache fallback for resume/offline recovery.
+  if (isNavigationRequest(event.request, url)) {
     event.respondWith(
       networkFirst(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
-        if (event.request.mode === 'navigate') {
-          return caches.match('/');
-        }
-        return new Response('Offline', {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: new Headers({ 'Content-Type': 'text/plain' })
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          return getNavigationFallback();
         });
       })
     );
     return;
   }
 
-  // Strategy 4: Stale While Revalidate for everything else
+  // Strategy 4: Serve static app assets from cache immediately and refresh them in the background.
+  if (isStaticAssetRequest(event.request, url)) {
+    event.respondWith(
+      staleWhileRevalidate(event.request, CACHE_NAME, CACHE_EXPIRATION.runtime).then((response) => {
+        if (response) {
+          return response;
+        }
+
+        return caches.match(event.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          return new Response('Offline', {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: new Headers({ 'Content-Type': 'text/plain' })
+          });
+        });
+      })
+    );
+    return;
+  }
+
+  // Strategy 5: Stale While Revalidate for everything else
   event.respondWith(
     staleWhileRevalidate(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
       // Fallback for navigation requests
       if (event.request.mode === 'navigate') {
-        return caches.match('/');
+        return getNavigationFallback();
       }
       return new Response('Offline', {
         status: 503,

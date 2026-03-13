@@ -6,18 +6,19 @@
  * for platform compliance (Meta, TikTok, etc.)
  */
 
-import { useState, useEffect, ReactNode, lazy, Suspense } from 'react';
+import { useState, useEffect, ReactNode, Suspense } from 'react';
 import { hasStoredAuthSession, verifyAuth } from '../../lib/auth';
 import { LoginPage } from '../LoginPage';
+import { lazyWithRetry } from '../../utils/performance';
 
 // Lazy load public pages (using named exports)
-const PrivacyPage = lazy(() => import('../PrivacyPage').then(m => ({ default: m.PrivacyPage })));
-const TermsPage = lazy(() => import('../TermsPage').then(m => ({ default: m.TermsPage })));
-const DataDeletionPage = lazy(() => import('../DataDeletionPage').then(m => ({ default: m.DataDeletionPage })));
-const CookiePage = lazy(() => import('../CookiePage').then(m => ({ default: m.CookiePage })));
-const DisclaimerPage = lazy(() => import('../DisclaimerPage').then(m => ({ default: m.DisclaimerPage })));
-const AboutPage = lazy(() => import('../AboutPage').then(m => ({ default: m.AboutPage })));
-const ContactPage = lazy(() => import('../ContactPage').then(m => ({ default: m.ContactPage })));
+const PrivacyPage = lazyWithRetry(() => import('../PrivacyPage').then(m => ({ default: m.PrivacyPage })), 'PrivacyPage');
+const TermsPage = lazyWithRetry(() => import('../TermsPage').then(m => ({ default: m.TermsPage })), 'TermsPage');
+const DataDeletionPage = lazyWithRetry(() => import('../DataDeletionPage').then(m => ({ default: m.DataDeletionPage })), 'DataDeletionPage');
+const CookiePage = lazyWithRetry(() => import('../CookiePage').then(m => ({ default: m.CookiePage })), 'CookiePage');
+const DisclaimerPage = lazyWithRetry(() => import('../DisclaimerPage').then(m => ({ default: m.DisclaimerPage })), 'DisclaimerPage');
+const AboutPage = lazyWithRetry(() => import('../AboutPage').then(m => ({ default: m.AboutPage })), 'AboutPage');
+const ContactPage = lazyWithRetry(() => import('../ContactPage').then(m => ({ default: m.ContactPage })), 'ContactPage');
 
 // Public routes that don't require authentication
 const PUBLIC_ROUTES: Record<string, React.ComponentType<any>> = {

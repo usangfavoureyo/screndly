@@ -1,0 +1,80 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ReactNode } from 'react';
+import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { ComposeActivityPage } from '../../components/create/ComposeActivityPage';
+import { BackNavigationProvider } from '../../contexts/BackNavigationContext';
+import { useComposeStore } from '../../store/useComposeStore';
+
+vi.mock('../../contexts/NotificationsContext', () => ({
+  useNotifications: () => ({
+    addNotification: vi.fn(),
+  }),
+}));
+
+vi.mock('../../utils/haptics', () => ({
+  haptics: {
+    light: vi.fn(),
+    medium: vi.fn(),
+  },
+}));
+
+vi.mock('../../components/SwipeableActivityCard', () => ({
+  SwipeableActivityCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock('../../components/media/MediaPreviewDialog', () => ({
+  MediaPreviewDialog: () => null,
+}));
+
+vi.mock('../../components/ui/date-picker', () => ({
+  DatePicker: () => <div />,
+}));
+
+vi.mock('../../components/ui/time-picker', () => ({
+  TimePicker: () => <div />,
+}));
+
+vi.mock('../../components/ui/bottom-sheet', () => ({
+  BottomSheet: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetBody: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
+describe('ComposeActivityPage', () => {
+  beforeEach(() => {
+    useComposeStore.setState({ items: [], activeItemId: null });
+  });
+
+  it('does not show an edit action for scheduled post cards', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'scheduled-post',
+          title: 'Campaign poster',
+          status: 'scheduled',
+          mediaAssets: [],
+          platforms: ['instagram'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          scheduledAt: '2026-03-13T09:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeActivityPage onNavigate={vi.fn()} previousPage="create" />
+      </BackNavigationProvider>,
+    );
+
+    expect(screen.getByText('Campaign poster')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+});

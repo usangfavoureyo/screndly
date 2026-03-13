@@ -9,12 +9,14 @@ import {
   Key,
   Film,
   Image,
+  PenSquare,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Button } from './ui/button';
 import { Skeleton } from './ui/skeleton';
 import { haptics } from '../utils/haptics';
 import { dashboardApi, DashboardStats } from '../lib/api/dashboard';
+import { useComposeStore } from '../store/useComposeStore';
 import { toast } from 'sonner';
 
 interface DashboardOverviewProps {
@@ -34,6 +36,33 @@ function formatSourceLabel(source: string): string {
     .replace(/^tmdb_/, '')
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function toTimestamp(value?: string | null): number {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function formatComposeStatusLabel(status: 'draft' | 'scheduled' | 'published' | 'failed'): string {
+  switch (status) {
+    case 'scheduled':
+      return 'Scheduled';
+    case 'published':
+      return 'Published';
+    case 'failed':
+      return 'Failed';
+    default:
+      return 'Draft';
+  }
+}
+
+function getComposeStatusTone(status: 'draft' | 'scheduled' | 'published' | 'failed'): string {
+  if (status === 'failed') {
+    return 'bg-[#FEE2E2] dark:bg-[#991B1B] text-[#991B1B] dark:text-[#FEE2E2]';
+  }
+
+  return 'bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]';
 }
 
 const EMPTY_DASHBOARD_STATS: DashboardStats = {
@@ -149,6 +178,7 @@ function normalizeDashboardStats(payload: unknown): DashboardStats {
 }
 
 export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
+  const composeItems = useComposeStore((state) => state.items);
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -209,6 +239,23 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
   const hasVideoTrendData = useMemo(
     () => videoTrends.some((point) => (point.videos ?? 0) > 0),
     [videoTrends]
+  );
+  const composeStats = useMemo(() => ({
+    total: composeItems.length,
+    drafts: composeItems.filter((item) => item.status === 'draft').length,
+    scheduled: composeItems.filter((item) => item.status === 'scheduled').length,
+    published: composeItems.filter((item) => item.status === 'published').length,
+  }), [composeItems]);
+  const recentComposeItems = useMemo(
+    () =>
+      [...composeItems]
+        .sort((left, right) => {
+          const rightTimestamp = toTimestamp(right.scheduledAt ?? right.updatedAt ?? right.createdAt);
+          const leftTimestamp = toTimestamp(left.scheduledAt ?? left.updatedAt ?? left.createdAt);
+          return rightTimestamp - leftTimestamp;
+        })
+        .slice(0, 4),
+    [composeItems],
   );
 
   return (
@@ -420,6 +467,62 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           </div>
         </div>
       </div>
+
+      <SectionCard
+        icon={<PenSquare className="w-6 h-6 text-[#ec1e24]" />}
+        title="Posts"
+        subtitle="Drafts, scheduled items, and published post activity"
+        onViewAll={() => handleNavigate('compose-activity', 'dashboard')}
+      >
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <MetricCard
+            label="Post Items"
+            value={composeStats.total}
+            caption="Items in the compose workflow"
+          />
+          <MetricCard
+            label="Draft Posts"
+            value={composeStats.drafts}
+            caption="Ready to edit or publish"
+          />
+          <MetricCard
+            label="Scheduled Posts"
+            value={composeStats.scheduled}
+            caption="Queued for a future time"
+          />
+          <MetricCard
+            label="Published Posts"
+            value={composeStats.published}
+            caption="Successfully published items"
+          />
+        </div>
+
+        <div className="space-y-3">
+          <h4 className="text-sm text-gray-900 dark:text-white">Recent Posts</h4>
+          {recentComposeItems.length ? (
+            recentComposeItems.map((item) => (
+              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                <div className="min-w-0 pr-4">
+                  <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
+                  <p className="text-sm text-gray-600 dark:text-[#9CA3AF] truncate">
+                    {item.platforms.length ? `${item.platforms.length} platform${item.platforms.length === 1 ? '' : 's'}` : 'No platforms selected'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className={`inline-flex items-center rounded-lg px-3 py-1 text-xs ${getComposeStatusTone(item.status)}`}>
+                    {formatComposeStatusLabel(item.status)}
+                  </span>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-[#6B7280]">
+                    {formatTimeAgo(item.scheduledAt ?? item.updatedAt ?? item.createdAt)}
+                  </p>
+                </div>
+              </div>
+            ))
+          ) : (
+            <EmptyCardMessage message="No post activity recorded yet." />
+          )}
+        </div>
+      </SectionCard>
 
       <SectionCard
         icon={<Rss className="w-6 h-6 text-[#ec1e24]" />}
