@@ -375,6 +375,28 @@ const OFFICIAL_STUDIO_TERMS = [
   'mgm',
   'amazon mgm studios',
 ];
+const STREAMING_PLATFORM_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
+  { canonical: 'HBO Max', aliases: ['hbo max'] },
+  { canonical: 'Max', aliases: ['max'] },
+  { canonical: 'Netflix', aliases: ['netflix'] },
+  { canonical: 'Disney+', aliases: ['disney+', 'disney plus'] },
+  { canonical: 'Prime Video', aliases: ['prime video', 'amazon prime video'] },
+  { canonical: 'Apple TV+', aliases: ['apple tv+', 'apple tv plus'] },
+  { canonical: 'Hulu', aliases: ['hulu'] },
+  { canonical: 'Peacock', aliases: ['peacock'] },
+  { canonical: 'Paramount+', aliases: ['paramount+', 'paramount plus'] },
+];
+const STREAMING_AVAILABILITY_PATTERNS = [
+  /\bnow\s+streaming\s+on\b/i,
+  /\bstreaming\s+on\b/i,
+  /\bavailable\s+(?:to\s+stream\s+)?on\b/i,
+  /\blanded\s+on\b/i,
+  /\blands\s+on\b/i,
+  /\barrives?\s+on\b/i,
+  /\bcoming\s+to\b/i,
+  /\bheaded\s+to\b/i,
+  /\bjoins?\s+.*\blibrary\b/i,
+];
 const CONTAINER_STORY_CUES = [
   'live action',
   'adaptation',
@@ -864,6 +886,45 @@ function extractContainerOwnedContentSubject(title: string, studios: string[]): 
 function extractRelevantStudios(articleText: string): string[] {
   const normalized = normalizeText(articleText);
   return OFFICIAL_STUDIO_TERMS.filter((term) => normalized.includes(normalizeText(term)));
+}
+
+function extractStreamingPlatformMentions(articleText: string): string[] {
+  const normalized = normalizeText(articleText);
+
+  return uniqueStrings(
+    STREAMING_PLATFORM_ALIASES
+      .filter((entry) => entry.aliases.some((alias) => {
+        const normalizedAlias = normalizeText(alias).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return new RegExp(`\\b${normalizedAlias}\\b`, 'i').test(normalized);
+      }))
+      .map((entry) => entry.canonical)
+  );
+}
+
+function isStreamingAvailabilityStory(
+  article: RSSImageSelectionArticle,
+  analysis?: RSSSubjectAnalysis
+): boolean {
+  const articleText = [article.title, article.description, article.author].filter(Boolean).join(' ');
+  if (!STREAMING_AVAILABILITY_PATTERNS.some((pattern) => pattern.test(articleText))) {
+    return false;
+  }
+
+  if (extractStreamingPlatformMentions(articleText).length === 0) {
+    return false;
+  }
+
+  if (!analysis) {
+    return true;
+  }
+
+  return analysis.primarySubject.type === 'movie' ||
+    analysis.primarySubject.type === 'tv_show' ||
+    analysis.primarySubject.type === 'franchise';
+}
+
+function getPrimaryStreamingPlatform(articleText: string): string | null {
+  return extractStreamingPlatformMentions(articleText)[0] || null;
 }
 
 function buildReferenceOnlyFreeSecondarySubjects(
@@ -1657,6 +1718,27 @@ function determineSmartImagePlan(
   );
   let secondary: ImageSlotPlan | null = null;
   let useTwoImages = false;
+  const primaryStreamingPlatform = getPrimaryStreamingPlatform(articleText);
+
+  if (
+    primaryStreamingPlatform &&
+    isStreamingAvailabilityStory(article, analysis) &&
+    (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise')
+  ) {
+    secondary = buildImageSlotPlan(
+      primaryStreamingPlatform,
+      'streaming_service',
+      'logo',
+      analysis,
+      true
+    );
+
+    return {
+      primary,
+      secondary,
+      useTwoImages: true,
+    };
+  }
 
   if (isListArticle) {
     return {
@@ -2656,7 +2738,10 @@ export async function resolveRelevantRSSImages(
   }
 
   const analysis = await extractSubjectAnalysis(article, options.model);
-  if (options.smartCount && limit >= 2) {
+  const shouldUseStructuredPairing = limit >= 2 &&
+    (options.smartCount || isStreamingAvailabilityStory(article, analysis));
+
+  if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);
     const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
     const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources);

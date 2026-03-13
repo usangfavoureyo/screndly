@@ -15,6 +15,7 @@ import {
 } from '../ui/bottom-sheet';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
+import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
@@ -26,7 +27,7 @@ import {
   buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
 import { useComposeStore } from '../../store/useComposeStore';
-import type { ComposeItem } from '../../types/compose';
+import type { ComposeItem, ComposeMediaAsset } from '../../types/compose';
 
 interface ComposeOverviewProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -79,6 +80,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
   const selection = useBulkSelection(items.map((item) => item.id));
@@ -225,6 +227,16 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     toast.success('Selected compose items deleted');
   };
 
+  const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
+    const previewUrl = getComposeAssetPreviewUrl(asset);
+    if (!asset || !previewUrl) {
+      return;
+    }
+
+    haptics.light();
+    setPreviewAsset(asset);
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -294,6 +306,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
             {items.map((item) => {
               const LeadingIcon = getLeadingIcon(item.status);
               const primaryAsset = getPrimaryAsset(item);
+              const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);
               const extraAssetCount = Math.max((item.mediaAssets?.length ?? (item.media ? 1 : 0)) - 1, 0);
 
               return (
@@ -311,34 +324,48 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                   className="w-full text-left p-5 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
                 >
                   <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-4">
-                    <div className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10">
-                      {getComposeAssetPreviewUrl(primaryAsset) ? (
-                        primaryAsset.kind === 'video' ? (
-                          <video
-                            src={getComposeAssetPreviewUrl(primaryAsset)}
-                            className="h-full w-full object-cover"
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
+                    {primaryPreviewUrl && primaryAsset ? (
+                      <button
+                        type="button"
+                        data-prevent-card-selection="true"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handlePreviewAsset(primaryAsset);
+                        }}
+                        className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10 transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#ec1e24]/60"
+                        aria-label={`Preview ${primaryAsset.kind} ${primaryAsset.fileName}`}
+                      >
+                        {primaryAsset.kind === 'video' ? (
+                          <>
+                            <video
+                              src={primaryPreviewUrl}
+                              className="pointer-events-none h-full w-full object-cover"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
+                              <Film className="h-4 w-4 text-white" />
+                            </div>
+                          </>
                         ) : (
                           <img
-                            src={getComposeAssetPreviewUrl(primaryAsset)}
+                            src={primaryPreviewUrl}
                             alt={primaryAsset.fileName}
-                            className="h-full w-full object-cover"
+                            className="pointer-events-none h-full w-full object-cover"
                           />
-                        )
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-[#ec1e24]">
-                          {primaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : primaryAsset ? <ImageIcon className="h-5 w-5" /> : <LeadingIcon className="h-5 w-5" />}
-                        </div>
-                      )}
-                      {extraAssetCount > 0 ? (
-                        <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
-                          +{extraAssetCount}
-                        </span>
-                      ) : null}
-                    </div>
+                        )}
+                        {extraAssetCount > 0 ? (
+                          <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
+                            +{extraAssetCount}
+                          </span>
+                        ) : null}
+                      </button>
+                    ) : (
+                      <div className="relative mt-0.5 flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl bg-[#ec1e24]/10 text-[#ec1e24]">
+                        {primaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : primaryAsset ? <ImageIcon className="h-5 w-5" /> : <LeadingIcon className="h-5 w-5" />}
+                      </div>
+                    )}
                     <div className="flex min-w-0 items-start justify-between gap-4">
                       <div className="min-w-0">
                         <h4 className="text-gray-900 dark:text-white mb-1 truncate">{item.title}</h4>
@@ -470,6 +497,19 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           </div>
         </BottomSheetFooter>
       </BottomSheet>
+
+      <MediaPreviewDialog
+        open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
+        src={getComposeAssetPreviewUrl(previewAsset)}
+        mediaType={previewAsset?.kind ?? 'image'}
+        title={previewAsset?.fileName}
+        badgeLabel={previewAsset?.kind}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewAsset(null);
+          }
+        }}
+      />
     </div>
   );
 }

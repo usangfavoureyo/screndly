@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
 import { Film, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
+import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -153,6 +154,7 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
   const [isLoadingYouTubePlaylists, setIsLoadingYouTubePlaylists] = useState(false);
   const [hasLoadedYouTubePlaylists, setHasLoadedYouTubePlaylists] = useState(false);
@@ -288,6 +290,16 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
         .filter((asset) => asset.id !== assetId)
         .map((asset, index) => ({ ...asset, order: index })),
     }));
+  };
+
+  const handlePreviewAsset = (asset: ComposeMediaAsset) => {
+    const previewUrl = getComposeAssetPreviewUrl(asset);
+    if (!previewUrl) {
+      return;
+    }
+
+    haptics.light();
+    setPreviewAsset(asset);
   };
 
   const togglePlatform = (platform: ComposePlatformKey, connected: boolean) => {
@@ -548,19 +560,46 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
                           <X className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="bg-black">
-                        {getComposeAssetPreviewUrl(asset) ? (
-                          asset.kind === 'video' ? (
-                            <video src={getComposeAssetPreviewUrl(asset)} className="h-48 w-full object-contain" controls />
+                      {getComposeAssetPreviewUrl(asset) ? (
+                        <button
+                          type="button"
+                          onClick={() => handlePreviewAsset(asset)}
+                          className="group relative block w-full bg-black text-left"
+                          aria-label={`Preview ${asset.kind} ${asset.fileName}`}
+                        >
+                          {asset.kind === 'video' ? (
+                            <>
+                              <video
+                                src={getComposeAssetPreviewUrl(asset)}
+                                className="pointer-events-none h-48 w-full object-contain"
+                                muted
+                                playsInline
+                                preload="metadata"
+                              />
+                              <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/30">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
+                                  <Film className="h-5 w-5" />
+                                </div>
+                              </div>
+                            </>
                           ) : (
-                            <img src={getComposeAssetPreviewUrl(asset)} alt={asset.fileName} className="h-48 w-full object-cover" />
-                          )
-                        ) : (
-                          <div className="flex h-48 items-center justify-center">
-                            {asset.kind === 'video' ? <Film className="h-8 w-8 text-white/70" /> : <ImageIcon className="h-8 w-8 text-white/70" />}
+                            <img
+                              src={getComposeAssetPreviewUrl(asset)}
+                              alt={asset.fileName}
+                              className="pointer-events-none h-48 w-full object-cover"
+                            />
+                          )}
+                          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent px-4 py-3">
+                            <p className="text-xs font-medium text-white">
+                              Tap to preview {asset.kind === 'video' ? 'video' : 'image'}
+                            </p>
                           </div>
-                        )}
-                      </div>
+                        </button>
+                      ) : (
+                        <div className="flex h-48 items-center justify-center bg-black">
+                          {asset.kind === 'video' ? <Film className="h-8 w-8 text-white/70" /> : <ImageIcon className="h-8 w-8 text-white/70" />}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -791,6 +830,19 @@ export function ComposeEditorPage({ onNavigate, previousPage }: ComposeEditorPag
           </div>
         </BottomSheetFooter>
       </BottomSheet>
+
+      <MediaPreviewDialog
+        open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
+        src={getComposeAssetPreviewUrl(previewAsset)}
+        mediaType={previewAsset?.kind ?? 'image'}
+        title={previewAsset?.fileName}
+        badgeLabel={previewAsset?.kind}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewAsset(null);
+          }
+        }}
+      />
     </div>
   );
 }

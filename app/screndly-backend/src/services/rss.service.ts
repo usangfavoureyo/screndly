@@ -186,6 +186,7 @@ const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
+const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
 const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
@@ -317,14 +318,24 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
     return null;
   }
 
+  const storedImageSourceSettings = extractStoredImageSourceSettings(
+    'filters' in feed ? feed.filters as Prisma.JsonValue | undefined : undefined
+  );
+
   return {
     ...feed,
     platformImageCounts: 'platformImageCounts' in feed ? feed.platformImageCounts : null,
     trickle: normalizeTrickle(typeof feed.trickle === 'string' ? feed.trickle : undefined),
     serperEnabled: typeof feed.serperEnabled === 'boolean'
       ? feed.serperEnabled
+      : typeof storedImageSourceSettings.serperEnabled === 'boolean'
+        ? storedImageSourceSettings.serperEnabled
       : (typeof feed.serperPriority === 'boolean' ? feed.serperPriority : true),
-    tmdbEnabled: typeof feed.tmdbEnabled === 'boolean' ? feed.tmdbEnabled : false,
+    tmdbEnabled: typeof feed.tmdbEnabled === 'boolean'
+      ? feed.tmdbEnabled
+      : typeof storedImageSourceSettings.tmdbEnabled === 'boolean'
+        ? storedImageSourceSettings.tmdbEnabled
+        : false,
   };
 }
 
@@ -418,6 +429,65 @@ function ensureFeedFilters(filters?: RSSFeedFilters): RSSFeedFilters {
       filters?.maxItemAgeMinutes as Prisma.JsonValue | undefined
     ),
   };
+}
+
+function extractStoredImageSourceSettings(
+  filters?: Prisma.JsonValue | RSSFeedFilters | null
+): {
+  serperEnabled?: boolean;
+  tmdbEnabled?: boolean;
+} {
+  if (!filters || typeof filters !== 'object' || Array.isArray(filters)) {
+    return {};
+  }
+
+  const rawSettings = (filters as Record<string, unknown>)[RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY];
+  if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
+    return {};
+  }
+
+  const parsedSettings = rawSettings as Record<string, unknown>;
+  const resolved: {
+    serperEnabled?: boolean;
+    tmdbEnabled?: boolean;
+  } = {};
+
+  if (typeof parsedSettings.serperEnabled === 'boolean') {
+    resolved.serperEnabled = parsedSettings.serperEnabled;
+  }
+
+  if (typeof parsedSettings.tmdbEnabled === 'boolean') {
+    resolved.tmdbEnabled = parsedSettings.tmdbEnabled;
+  }
+
+  return resolved;
+}
+
+function withStoredImageSourceSettings(
+  filters: RSSFeedFilters,
+  sourceSettings: {
+    serperEnabled?: boolean;
+    tmdbEnabled?: boolean;
+  }
+): Prisma.InputJsonValue {
+  const persistedFilters: Record<string, unknown> = {
+    ...filters,
+  };
+  const persistedSettings: Record<string, boolean> = {};
+
+  if (typeof sourceSettings.serperEnabled === 'boolean') {
+    persistedSettings.serperEnabled = sourceSettings.serperEnabled;
+  }
+
+  if (typeof sourceSettings.tmdbEnabled === 'boolean') {
+    persistedSettings.tmdbEnabled = sourceSettings.tmdbEnabled;
+  }
+
+  if (Object.keys(persistedSettings).length > 0) {
+    persistedFilters[RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY] = persistedSettings;
+  }
+
+  return persistedFilters as Prisma.InputJsonValue;
 }
 
 function ensurePlatformsEnabled(platforms?: PlatformsEnabled): PlatformsEnabled {
@@ -1691,6 +1761,10 @@ async function createFeed(data: RSSFeedInput) {
     explicitOnlyFetchNewItems: data.onlyFetchNewItems,
     explicitStartFromNowAt: data.startFromNowAt,
   });
+  const persistedImageSourceSettings = {
+    serperEnabled: data.serperEnabled ?? true,
+    tmdbEnabled: data.tmdbEnabled ?? false,
+  };
   const support = await getRSSFeedColumnSupport();
   const select = await getRSSFeedSelect();
 
@@ -1702,7 +1776,7 @@ async function createFeed(data: RSSFeedInput) {
     interval: data.interval ?? 10,
     imageCount: data.imageCount ?? '2',
     dedupeDays: data.dedupeDays ?? 30,
-    filters: resolvedFilters as unknown as Prisma.InputJsonValue,
+    filters: withStoredImageSourceSettings(resolvedFilters, persistedImageSourceSettings),
     serperPriority: data.serperPriority ?? true,
     rehostImages: data.rehostImages ?? false,
     autoPost: data.autoPost ?? true,
@@ -1757,6 +1831,8 @@ async function updateFeed(
       enabled: true,
       status: true,
       interval: true,
+      ...(support.serperEnabled ? { serperEnabled: true } : {}),
+      ...(support.tmdbEnabled ? { tmdbEnabled: true } : {}),
     },
   });
 
@@ -1766,6 +1842,7 @@ async function updateFeed(
 
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   const existingFilters = ensureFeedFilters(existingFeed.filters as unknown as RSSFeedFilters);
+  const existingStoredImageSourceSettings = extractStoredImageSourceSettings(existingFeed.filters);
   const nextEnabled = data.enabled ?? existingFeed.enabled;
   const nextStatus =
     data.status ??
@@ -1793,6 +1870,9 @@ async function updateFeed(
     data.onlyFetchNewItems !== undefined ||
     data.startFromNowAt !== undefined ||
     shouldResetStartFromNow;
+  const shouldPersistImageSourceSettings =
+    data.serperEnabled !== undefined ||
+    data.tmdbEnabled !== undefined;
 
   if (data.name !== undefined) updateData.name = data.name;
   if (data.url !== undefined) updateData.url = data.url;
@@ -1804,14 +1884,30 @@ async function updateFeed(
     updateData.platformImageCounts = ensurePlatformImageCounts(data.platformImageCounts) as unknown as Prisma.InputJsonValue;
   }
   if (data.dedupeDays !== undefined) updateData.dedupeDays = data.dedupeDays;
-  if (shouldResolveFilters) {
-    updateData.filters = resolveForwardOnlySettings(data.filters ?? existingFilters, {
-      previousFilters: existingFilters,
-      explicitOnlyFetchNewItems: data.onlyFetchNewItems,
-      explicitStartFromNowAt: shouldResetStartFromNow
-        ? new Date().toISOString()
-        : data.startFromNowAt,
-    }) as unknown as Prisma.InputJsonValue;
+  const nextStoredImageSourceSettings = {
+    serperEnabled: data.serperEnabled ??
+      (typeof (existingFeed as Record<string, unknown>).serperEnabled === 'boolean'
+        ? (existingFeed as Record<string, unknown>).serperEnabled as boolean
+        : existingStoredImageSourceSettings.serperEnabled ??
+          (data.serperPriority ?? true)),
+    tmdbEnabled: data.tmdbEnabled ??
+      (typeof (existingFeed as Record<string, unknown>).tmdbEnabled === 'boolean'
+        ? (existingFeed as Record<string, unknown>).tmdbEnabled as boolean
+        : existingStoredImageSourceSettings.tmdbEnabled ?? false),
+  };
+
+  if (shouldResolveFilters || shouldPersistImageSourceSettings) {
+    const resolvedFilters = shouldResolveFilters
+      ? resolveForwardOnlySettings(data.filters ?? existingFilters, {
+          previousFilters: existingFilters,
+          explicitOnlyFetchNewItems: data.onlyFetchNewItems,
+          explicitStartFromNowAt: shouldResetStartFromNow
+            ? new Date().toISOString()
+            : data.startFromNowAt,
+        })
+      : existingFilters;
+
+    updateData.filters = withStoredImageSourceSettings(resolvedFilters, nextStoredImageSourceSettings);
   }
   if (support.serperEnabled && data.serperEnabled !== undefined) updateData.serperEnabled = data.serperEnabled;
   if (support.tmdbEnabled && data.tmdbEnabled !== undefined) updateData.tmdbEnabled = data.tmdbEnabled;
