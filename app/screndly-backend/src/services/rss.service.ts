@@ -10,6 +10,8 @@ import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service'
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 
+const RSS_IMAGE_ANALYSIS_MODEL = DEFAULT_OPENAI_MODEL;
+
 export interface RSSFeedFilters {
   scope: 'title' | 'body' | 'title_or_body' | 'title_and_body';
   required: Array<{
@@ -1140,8 +1142,7 @@ async function resolveRSSItemImages(
     imageCount?: string | null;
   },
   item: RSSItem,
-  limit: number,
-  model?: string
+  limit: number
 ): Promise<RSSResolvedImage[]> {
   return resolveRelevantRSSImages(
     {
@@ -1156,7 +1157,7 @@ async function resolveRSSItemImages(
       serperPriority: feed.serperPriority,
       limit,
       smartCount: feed.imageCount === 'random',
-      model,
+      model: RSS_IMAGE_ANALYSIS_MODEL,
     }
   );
 }
@@ -1559,8 +1560,7 @@ async function attemptRSSPublish(
     const publishImages = await resolveRSSItemImages(
       feed,
       item,
-      imagePlan.maxImageCount,
-      runtimeSettings.rssCaptionModel
+      imagePlan.maxImageCount
     );
     const publishImageUrls = publishImages.map((image) => image.url);
     const publishImageUrl = publishImageUrls[0];
@@ -2522,8 +2522,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   const resolvedImages = await resolveRSSItemImages(
     feed as any,
     previewItem,
-    imagePlan.maxImageCount,
-    runtimeSettings.rssCaptionModel
+    imagePlan.maxImageCount
   );
   const imageUrls = resolvedImages.map((image) => image.url);
   const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {

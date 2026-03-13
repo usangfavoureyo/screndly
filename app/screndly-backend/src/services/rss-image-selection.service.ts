@@ -2747,8 +2747,7 @@ export async function resolveRelevantRSSImages(
     const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources);
 
     if (!primaryResolved) {
-      const fallbackPrimary = buildFeedFallbackImages(fallbackImages, 1)[0];
-      return fallbackPrimary ? [fallbackPrimary] : [];
+      return buildFeedFallbackImages(fallbackImages, limit);
     }
 
     if (!plan.useTwoImages || !plan.secondary) {
@@ -2764,7 +2763,14 @@ export async function resolveRelevantRSSImages(
     );
 
     if (!secondaryResolved) {
-      return [primaryResolved.image];
+      const fallbackSecondary = buildFeedFallbackImages(
+        fallbackImages.filter((url) => url !== primaryResolved.image.url),
+        1
+      )[0];
+
+      return fallbackSecondary
+        ? [primaryResolved.image, fallbackSecondary]
+        : [primaryResolved.image];
     }
 
     return [

@@ -32,7 +32,7 @@ export const LEGACY_OPENAI_MODELS = [
 export type SupportedOpenAIModel = typeof SUPPORTED_OPENAI_MODELS[number];
 export type LegacyOpenAIModel = typeof LEGACY_OPENAI_MODELS[number];
 export type AIModel = SupportedOpenAIModel | LegacyOpenAIModel | 'flash-3';
-export type AIReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+export type AIReasoningEffort = 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
 export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
@@ -77,6 +77,22 @@ export interface AIResponse {
         total: number;
     };
     error?: string;
+}
+
+function resolveReasoningEffort(request: AIRequest): AIReasoningEffort | undefined {
+    if (request.reasoningEffort) {
+        if (request.model.startsWith('gpt-5') && request.reasoningEffort === 'minimal') {
+            return 'low';
+        }
+
+        return request.reasoningEffort;
+    }
+
+    if (!request.jsonMode) {
+        return undefined;
+    }
+
+    return request.model.startsWith('gpt-5') ? 'low' : 'minimal';
 }
 
 export interface ValidationResult {
@@ -270,7 +286,7 @@ async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse
 
         if (isGPT5Model) {
             body.max_completion_tokens = request.maxTokens || 1024;
-            const reasoningEffort = request.reasoningEffort || (request.jsonMode ? 'minimal' : undefined);
+            const reasoningEffort = resolveReasoningEffort(request);
             if (reasoningEffort) {
                 body.reasoning_effort = reasoningEffort;
             }
@@ -381,7 +397,7 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
             body.temperature = 0.7;
         }
 
-        const reasoningEffort = request.reasoningEffort || (request.jsonMode ? 'minimal' : undefined);
+        const reasoningEffort = resolveReasoningEffort(request);
         if (reasoningEffort) {
             body.reasoning = { effort: reasoningEffort };
         }
