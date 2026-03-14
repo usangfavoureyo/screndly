@@ -18,11 +18,13 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { SwipeableNotificationCard } from './SwipeableNotificationCard';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { apiClient } from '../lib/api/client';
+import { useComposeStore } from '../store/useComposeStore';
 import type { Notification, NotificationSource } from '../contexts/NotificationsContext';
 import { formatCalendarDate, formatDateTime } from '../utils/calendarDate';
 import { toast } from 'sonner';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { PageLoader } from './PageLoader';
+import { getComposeAssetPreviewUrl } from '../lib/create/composeMedia';
 
 export interface NotificationAction {
   id: string;
@@ -50,7 +52,7 @@ interface NotificationRelatedItem {
 }
 
 interface NotificationDetail {
-  kind: 'generic' | 'tmdb_refresh';
+  kind: 'generic' | 'tmdb_refresh' | 'post_activity';
   actionTarget?: NotificationActionTarget | null;
   relatedItems: NotificationRelatedItem[];
 }
@@ -110,9 +112,42 @@ function getItemMeta(item: NotificationRelatedItem) {
     parts.push(item.source.replace(/^tmdb_/, '').replace(/_/g, ' '));
   }
   if (item.status) {
-    parts.push(item.status);
+    parts.push(item.status.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()));
   }
   return parts.join(' • ');
+}
+
+function extractPostLabel(title: string) {
+  const parts = title.split(':');
+  if (parts.length < 2) return title.trim();
+  return parts.slice(1).join(':').trim();
+}
+
+function buildPostRelatedItems(notification: Notification, composeItems: ReturnType<typeof useComposeStore>['items']): NotificationRelatedItem[] {
+  const label = extractPostLabel(notification.title).toLowerCase();
+  if (!label) return [];
+
+  const matches = composeItems.filter((item) => {
+    const title = item.title?.toLowerCase() || '';
+    const firstAssetName = item.mediaAssets?.[0]?.fileName?.toLowerCase() || '';
+    const caption = item.sharedCaption?.toLowerCase() || '';
+    return title === label || firstAssetName === label || caption.startsWith(label);
+  });
+
+  if (!matches.length) return [];
+
+  return matches.map((item) => {
+    const primaryAsset = item.mediaAssets?.[0] ?? item.media;
+    return {
+      id: item.id,
+      title: item.title || primaryAsset?.fileName || 'Untitled post',
+      source: 'post',
+      status: item.status,
+      imageUrl: getComposeAssetPreviewUrl(primaryAsset),
+      scheduledTime: item.scheduledAt,
+      createdAt: item.updatedAt || item.createdAt,
+    };
+  });
 }
 
 export function NotificationPanel({
@@ -136,6 +171,7 @@ export function NotificationPanel({
   const [detail, setDetail] = useState<NotificationDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const composeItems = useComposeStore((state) => state.items);
   const filteredNotifications = useMemo(
     () =>
       notifications.filter((notification) => {
@@ -227,13 +263,35 @@ export function NotificationPanel({
       );
 
       if (response.success && response.data) {
-        setDetail(response.data.detail);
+        const fallbackPostItems = notification.source === 'create_studio'
+          ? buildPostRelatedItems(notification, composeItems)
+          : [];
+        const nextDetail = fallbackPostItems.length
+          ? {
+            ...response.data.detail,
+            kind: 'post_activity' as const,
+            relatedItems: fallbackPostItems,
+          }
+          : response.data.detail;
+        setDetail(nextDetail);
       } else {
-        setDetail(null);
+        setDetail(notification.source === 'create_studio'
+          ? {
+            kind: 'post_activity',
+            actionTarget: { page: 'create' },
+            relatedItems: buildPostRelatedItems(notification, composeItems),
+          }
+          : null);
       }
     } catch (error) {
       console.error('Failed to load notification detail:', error);
-      setDetail(null);
+      setDetail(notification.source === 'create_studio'
+        ? {
+          kind: 'post_activity',
+          actionTarget: { page: 'create' },
+          relatedItems: buildPostRelatedItems(notification, composeItems),
+        }
+        : null);
     } finally {
       setIsDetailLoading(false);
     }
@@ -536,9 +594,13 @@ export function NotificationPanel({
           {!isDetailLoading && detail?.relatedItems?.length ? (
             <div className="space-y-3">
               <div>
-                <h4 className="text-gray-900 dark:text-white">Related items</h4>
+                <h4 className="text-gray-900 dark:text-white">
+                  {detail.kind === 'post_activity' ? 'Post items' : 'Related items'}
+                </h4>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Items created during this notification cycle.
+                  {detail.kind === 'post_activity'
+                    ? 'Posts linked to this notification.'
+                    : 'Items created during this notification cycle.'}
                 </p>
               </div>
 
