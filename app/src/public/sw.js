@@ -1,5 +1,16 @@
 // Screndly PWA Service Worker - Enhanced with Advanced Caching Strategies
-const SW_VERSION = 'v1.3.0-resume-recovery';
+// Note: The SW is registered with a `?build=...` query param in `src/utils/pwa.ts`.
+// We use that build id to version caches precisely without nuking everything.
+function getBuildId() {
+  try {
+    return new URL(self.location.href).searchParams.get('build') || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
+const BUILD_ID = getBuildId();
+const SW_VERSION = `v1.3.0-resume-recovery-${BUILD_ID}`;
 const CACHE_NAME = `screndly-${SW_VERSION}`;
 const RUNTIME_CACHE = `screndly-runtime-${SW_VERSION}`;
 const IMAGE_CACHE = `screndly-images-${SW_VERSION}`;
@@ -44,14 +55,13 @@ self.addEventListener('install', (event) => {
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
+  const screndlyCachesToKeep = new Set([CACHE_NAME, RUNTIME_CACHE, IMAGE_CACHE, API_CACHE]);
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME &&
-            cacheName !== RUNTIME_CACHE &&
-            cacheName !== IMAGE_CACHE &&
-            cacheName !== API_CACHE) {
+          // Only delete our own caches; do not touch other app/libs caches on the same origin.
+          if (cacheName.startsWith('screndly-') && !screndlyCachesToKeep.has(cacheName)) {
             console.log('[SW] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
@@ -77,9 +87,13 @@ async function trimCache(cacheName, maxSize) {
 
 // Helper: Check if cache entry is expired
 function isCacheExpired(response, maxAge) {
-  const cachedDate = new Date(response.headers.get('sw-cache-date'));
-  const now = new Date();
-  return (now - cachedDate) > maxAge;
+  if (!maxAge || typeof maxAge !== 'number') return true;
+  const cachedDateHeader = response.headers.get('sw-cache-date');
+  if (!cachedDateHeader) return true;
+  const cachedDate = new Date(cachedDateHeader);
+  const cachedMs = cachedDate.getTime();
+  if (!Number.isFinite(cachedMs)) return true;
+  return (Date.now() - cachedMs) > maxAge;
 }
 
 // Helper: Add metadata to cached response
@@ -180,6 +194,8 @@ async function networkFirst(request, cacheName, maxAge) {
 async function staleWhileRevalidate(request, cacheName, maxAge) {
   const cache = await caches.open(cacheName);
   const cachedResponse = await cache.match(request);
+  const usableCachedResponse =
+    cachedResponse && !isCacheExpired(cachedResponse, maxAge) ? cachedResponse : null;
 
   const fetchPromise = fetch(request).then(async (networkResponse) => {
     if (networkResponse.status === 200) {
@@ -188,9 +204,26 @@ async function staleWhileRevalidate(request, cacheName, maxAge) {
       await trimCache(cacheName, MAX_CACHE_SIZE.runtime);
     }
     return networkResponse;
-  }).catch(() => cachedResponse);
+  }).catch(() => usableCachedResponse);
 
-  return cachedResponse || fetchPromise;
+  return usableCachedResponse || fetchPromise;
+}
+
+// Only cache a small allowlist of safe, unauthenticated API requests.
+// Everything else is passed through to the network (or fails) to avoid serving stale/private data.
+const API_CACHE_ALLOWLIST = new Set([
+  '/api/diag/oauth-config',
+]);
+
+function isCacheableApiRequest(request, url) {
+  if (request.method !== 'GET') return false;
+  if (url.origin !== self.location.origin) return false;
+  if (!API_CACHE_ALLOWLIST.has(url.pathname)) return false;
+  if (request.headers.get('Authorization')) return false;
+  // Avoid caching requests that explicitly opt out.
+  const cacheControl = request.headers.get('Cache-Control') || '';
+  if (cacheControl.toLowerCase().includes('no-store')) return false;
+  return true;
 }
 
 // Fetch event - intelligent caching strategies
@@ -229,7 +262,11 @@ self.addEventListener('fetch', (event) => {
 
   // Strategy 2: Network First for API calls
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(networkFirst(event.request, API_CACHE, CACHE_EXPIRATION.api));
+    if (isCacheableApiRequest(event.request, url)) {
+      event.respondWith(networkFirst(event.request, API_CACHE, CACHE_EXPIRATION.api));
+    } else {
+      event.respondWith(fetch(event.request));
+    }
     return;
   }
 

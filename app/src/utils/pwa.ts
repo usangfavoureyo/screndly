@@ -28,11 +28,6 @@ async function syncInstalledBuildId(): Promise<void> {
 
   localStorage.setItem(BUILD_ID_STORAGE_KEY, __APP_BUILD_ID__);
 
-  if ('caches' in window) {
-    const cacheNames = await caches.keys();
-    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
-  }
-
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(

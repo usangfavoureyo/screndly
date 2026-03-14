@@ -16,6 +16,7 @@ const PORT = env.PORT;
 
 // Middleware
 app.set('trust proxy', 1);
+app.set('etag', 'strong');
 app.use(helmet());
 app.use(cors({
     origin: [
@@ -36,6 +37,40 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Cache headers: keep API responses non-cacheable by default, and explicitly opt-in a small public allowlist.
+// This prevents accidental caching of user-specific data by browsers, CDNs, or service workers.
+const PUBLIC_CACHEABLE_API_PATHS = new Set<string>([
+    '/api/diag/oauth-config',
+]);
+
+app.use((req, res, next) => {
+    const path = req.path;
+
+    // Never cache health checks.
+    if (path === '/health') {
+        res.setHeader('Cache-Control', 'no-store');
+        return next();
+    }
+
+    if (path.startsWith('/api/')) {
+        res.vary('Authorization');
+
+        const hasAuthHeader = typeof req.header('Authorization') === 'string' && req.header('Authorization')!.trim() !== '';
+        const isPublicCacheable =
+            req.method === 'GET' &&
+            !hasAuthHeader &&
+            PUBLIC_CACHEABLE_API_PATHS.has(path);
+
+        if (isPublicCacheable) {
+            res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+        } else {
+            res.setHeader('Cache-Control', 'no-store');
+        }
+    }
+
+    return next();
+});
 
 // Routes
 import settingsRoutes from './routes/settings';
