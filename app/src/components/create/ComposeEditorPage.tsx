@@ -474,7 +474,8 @@ export function ComposeEditorPage({
     }
 
     haptics.light();
-    setPreviewThumbnail(thumbnail);
+    setPreviewAsset(null);
+    setPreviewThumbnail({ ...thumbnail });
   };
 
   const togglePlatform = (platform: ComposePlatformKey, connected: boolean) => {
@@ -1169,7 +1170,7 @@ export function ComposeEditorPage({
         }}
       />
       <MediaPreviewDialog
-        open={Boolean(previewThumbnail && (previewThumbnail.previewUrl || previewThumbnail.storageUrl))}
+        open={Boolean(previewThumbnail)}
         src={previewThumbnail?.previewUrl || previewThumbnail?.storageUrl}
         mediaType="image"
         title={previewThumbnail?.fileName}
