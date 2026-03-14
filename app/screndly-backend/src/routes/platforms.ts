@@ -609,7 +609,28 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     connection.accessToken,
                                     link
                                 );
-                            result = { platform, ...fbResult, status: fbResult.success ? 'posted' : 'failed' };
+
+                            let warning: string | undefined;
+                            if (fbResult.success && (hasUploadedVideo || videoUrl) && sharedThumbnailUrl) {
+                                const thumbnailPath = await getDownloadedThumbnailPath(sharedThumbnailUrl);
+                                if (thumbnailPath) {
+                                    const thumbnailResult = await metaService.setFacebookVideoThumbnail(
+                                        fbResult.data.id,
+                                        thumbnailPath,
+                                        connection.accessToken
+                                    );
+                                    if (!thumbnailResult.success) {
+                                        warning = thumbnailResult.error;
+                                    }
+                                }
+                            }
+
+                            result = {
+                                platform,
+                                ...fbResult,
+                                status: fbResult.success ? 'posted' : 'failed',
+                                ...(warning ? { warning } : {}),
+                            };
                         }
                         break;
 
@@ -799,8 +820,10 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         // Cleanup uploaded file
         await cleanupFile(localFilePath);
         await cleanupFile(downloadedVideoPath);
+        await cleanupFile(downloadedThumbnailPath);
         localFilePath = null;
         downloadedVideoPath = null;
+        downloadedThumbnailPath = null;
 
         const posted = results.filter(r => r.status === 'posted').length;
         const failed = results.filter(r => r.status === 'failed').length;
@@ -816,6 +839,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         console.error('Platform post error:', error);
         await cleanupFile(localFilePath);
         await cleanupFile(downloadedVideoPath);
+        await cleanupFile(downloadedThumbnailPath);
         res.status(500).json({ success: false, error: { message: 'Failed to post to platforms' } });
     }
 });

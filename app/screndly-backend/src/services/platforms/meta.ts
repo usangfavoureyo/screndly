@@ -50,6 +50,22 @@ function getMimeType(filePath: string): string {
     }
 }
 
+function getImageMimeType(filePath: string): string {
+    switch (path.extname(filePath).toLowerCase()) {
+        case '.jpg':
+        case '.jpeg':
+            return 'image/jpeg';
+        case '.png':
+            return 'image/png';
+        case '.webp':
+            return 'image/webp';
+        case '.gif':
+            return 'image/gif';
+        default:
+            return 'image/jpeg';
+    }
+}
+
 function normalizeImageSources(imageSources?: string | string[] | null): string[] {
     if (!imageSources) {
         return [];
@@ -314,6 +330,53 @@ export const metaService = {
             };
         } catch (error: any) {
             console.error('[Meta] Facebook Video Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
+    async setFacebookVideoThumbnail(
+        videoId: string,
+        thumbnailPath: string,
+        accessToken: string,
+        isPreferred = true
+    ): Promise<MetaPostResult> {
+        try {
+            const fileBuffer = await fs.readFile(thumbnailPath);
+            const formData = new FormData();
+            formData.append('access_token', accessToken);
+            formData.append('is_preferred', isPreferred ? 'true' : 'false');
+            formData.append(
+                'source',
+                new Blob([fileBuffer], { type: getImageMimeType(thumbnailPath) }),
+                path.basename(thumbnailPath)
+            );
+
+            const response = await fetch(`${BASE_URL}/${videoId}/thumbnails`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            const data: any = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(
+                    data?.error?.message
+                    || data?.message
+                    || `Facebook thumbnail upload failed (${response.status})`
+                );
+            }
+
+            return {
+                success: Boolean(data?.success ?? true),
+                data: {
+                    id: videoId,
+                    platform: 'Facebook',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Facebook Video Thumbnail Error:', error?.response?.data || error);
             return {
                 success: false,
                 error: extractMetaError(error),
