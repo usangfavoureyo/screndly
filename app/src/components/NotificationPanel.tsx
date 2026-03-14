@@ -117,20 +117,26 @@ function getItemMeta(item: NotificationRelatedItem) {
   return parts.join(' • ');
 }
 
-function extractPostLabel(title: string) {
+function extractPostLabel(title?: string | null) {
+  if (!title) return '';
   const parts = title.split(':');
   if (parts.length < 2) return title.trim();
   return parts.slice(1).join(':').trim();
 }
 
-function buildPostRelatedItems(notification: Notification, composeItems: ReturnType<typeof useComposeStore>['items']): NotificationRelatedItem[] {
-  const label = extractPostLabel(notification.title).toLowerCase();
-  if (!label) return [];
+function buildPostRelatedItems(
+  notification: Notification,
+  composeItems: ReturnType<typeof useComposeStore>['items'],
+): NotificationRelatedItem[] {
+  const label = extractPostLabel(notification.title)?.toLowerCase?.() || '';
+  if (!label) {
+    return [];
+  }
 
   const matches = composeItems.filter((item) => {
-    const title = item.title?.toLowerCase() || '';
-    const firstAssetName = item.mediaAssets?.[0]?.fileName?.toLowerCase() || '';
-    const caption = item.sharedCaption?.toLowerCase() || '';
+    const title = item.title?.toLowerCase?.() || '';
+    const firstAssetName = item.mediaAssets?.[0]?.fileName?.toLowerCase?.() || '';
+    const caption = item.sharedCaption?.toLowerCase?.() || '';
     return title === label || firstAssetName === label || caption.startsWith(label);
   });
 
