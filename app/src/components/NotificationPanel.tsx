@@ -79,7 +79,7 @@ function getSourceLabel(source: NotificationSource) {
     case 'videostudio':
       return 'Video Studio';
     case 'create_studio':
-      return 'Create Studio';
+      return 'Post';
     case 'design_studio':
       return 'Design Studio';
     case 'youtube':
@@ -96,7 +96,7 @@ function getTargetLabel(target?: NotificationActionTarget | null) {
   if (target.page === 'feeds' && target.tab === 'tmdb') return 'Open TMDb Feeds';
   if (target.page === 'feeds' && target.tab === 'rss') return 'Open RSS Feeds';
   if (target.page === 'channels') return 'Open Channels';
-  if (target.page === 'create') return 'Open Create Studio';
+  if (target.page === 'create') return 'Open Post';
   if (target.page === 'logs') return 'Open Logs';
   return 'Open Page';
 }

@@ -46,7 +46,7 @@ export async function generateComposeCaption(input: ComposeCaptionInput): Promis
 
 export async function generatePadOutput(input: PadGenerationInput): Promise<string> {
   return runTextGeneration(
-    'You are Screndly PAD, a focused AI writing copilot for entertainment and social publishing workflows. Produce polished draft copy only.',
+    'You are Screndly Post, a focused AI writing copilot for entertainment and social publishing workflows. Produce polished draft copy only.',
     `Template: ${input.templateName}\n\nBrief:\n${input.brief}\n\nAdditional context:\n${input.context}`,
   );
 }
@@ -63,7 +63,7 @@ export async function generatePadReply(input: PadReplyInput): Promise<string> {
         role: 'system',
         content:
           input.systemPrompt ||
-          'You are Screndly PAD, a focused AI writing copilot for entertainment and social publishing workflows. Reply conversationally and stay on the user-defined chat context.',
+          'You are Screndly Post, a focused AI writing copilot for entertainment and social publishing workflows. Reply conversationally and stay on the user-defined chat context.',
       },
       ...input.history.map((entry) => ({
         role: entry.role,

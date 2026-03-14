@@ -215,7 +215,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
       );
     }
     setScheduleItemId(null);
-    toast.success('Compose item scheduled');
+    toast.success('Post scheduled');
   };
 
   const handleDeleteSelected = async () => {
@@ -225,7 +225,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     selection.selectedIds.forEach((id) => deleteItem(id));
     selection.clearSelection();
     setIsDeletingSelected(false);
-    toast.success('Selected compose items deleted');
+    toast.success('Selected post items deleted');
   };
 
   const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
@@ -479,7 +479,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
       <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
         <BottomSheetHeader>
-          <BottomSheetTitle>Schedule Compose Item</BottomSheetTitle>
+          <BottomSheetTitle>Schedule Post</BottomSheetTitle>
           <BottomSheetDescription>
             {scheduleItem ? `Choose when "${scheduleItem.title}" should move into the scheduled queue.` : 'Choose a schedule.'}
           </BottomSheetDescription>

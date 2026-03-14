@@ -530,7 +530,7 @@ Guidelines:
 
     // PAD
     padChatModel: DEFAULT_MODELS.video,
-    padChatSystemPrompt: 'You are Screndly PAD. Stay aligned to the chat context, write like a sharp entertainment and social publishing copilot, and keep replies useful and editable.',
+    padChatSystemPrompt: 'You are Screndly Post. Stay aligned to the chat context, write like a sharp entertainment and social publishing copilot, and keep replies useful and editable.',
 
     // Compose
     composeActivityRetention: 30,

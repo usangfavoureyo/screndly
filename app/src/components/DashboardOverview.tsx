@@ -479,7 +479,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           <MetricCard
             label="Post Items"
             value={composeStats.total}
-            caption="Items in the compose workflow"
+            caption="Items in the post workflow"
           />
           <MetricCard
             label="Draft Posts"

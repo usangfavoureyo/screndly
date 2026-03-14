@@ -91,8 +91,8 @@ export function PadWorkspacePage({
 
   const unsavedDraftGuard = useUnsavedBackGuard({
     isDirty: hasPendingInput,
-    title: 'Discard PAD draft?',
-    description: 'You have unsent PAD text or attachments. Leaving this chat will remove them.',
+    title: 'Discard post draft?',
+    description: 'You have unsent post text or attachments. Leaving this chat will remove them.',
   });
 
   const session = getSessionById(activeSessionId);
@@ -123,7 +123,7 @@ export function PadWorkspacePage({
   useEffect(() => {
     if (!session && sessions.length === 0) {
       const nextSession = createChatSession(
-        settings.padChatSystemPrompt || 'You are Screndly PAD. Respond like a focused writing copilot and follow the chat context for future replies.',
+        settings.padChatSystemPrompt || 'You are Screndly Post. Respond like a focused writing copilot and follow the chat context for future replies.',
       );
       createSession(nextSession);
     }
@@ -155,7 +155,7 @@ export function PadWorkspacePage({
 
   const handleNewChat = () => {
     const nextSession = createChatSession(
-      settings.padChatSystemPrompt || 'You are Screndly PAD. Respond like a focused writing copilot and follow the chat context for future replies.',
+      settings.padChatSystemPrompt || 'You are Screndly Post. Respond like a focused writing copilot and follow the chat context for future replies.',
     );
     createSession(nextSession);
     setDraft('');
@@ -218,7 +218,7 @@ export function PadWorkspacePage({
       haptics.success();
     } catch (error) {
       haptics.error();
-      toast.error(error instanceof Error ? error.message : 'Failed to generate PAD reply');
+      toast.error(error instanceof Error ? error.message : 'Failed to generate post reply');
     } finally {
       setIsGenerating(false);
     }
@@ -317,7 +317,7 @@ export function PadWorkspacePage({
     return (
       <div className="space-y-6">
         <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-[#333333] dark:bg-[#000000]">
-          <p className="mb-2 text-gray-900 dark:text-white">No PAD chat selected</p>
+          <p className="mb-2 text-gray-900 dark:text-white">No post chat selected</p>
           <Button onClick={handleNewChat}>Start New Chat</Button>
         </div>
       </div>
@@ -337,7 +337,7 @@ export function PadWorkspacePage({
             className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
           />
           <div className="flex-1">
-            <h1 className="mb-2 text-gray-900 dark:text-white">PAD Chat</h1>
+            <h1 className="mb-2 text-gray-900 dark:text-white">Post Chat</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">Use the left panel to manage chats and keep each thread focused with its own context.</p>
           </div>
         </div>
@@ -416,7 +416,7 @@ export function PadWorkspacePage({
                   haptics.selection();
                 }}
                 onFocus={() => haptics.light()}
-                placeholder="Send a message to PAD"
+                placeholder="Send a message to Post"
                 className="min-h-[120px] border-0 bg-transparent px-0 shadow-none focus-visible:ring-0 dark:bg-transparent"
               />
 
@@ -442,7 +442,7 @@ export function PadWorkspacePage({
         <SheetContent side="left" className="w-[85%] max-w-sm border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]">
           <SheetHeader>
             <SheetTitle className="text-gray-900 dark:text-white">Chats</SheetTitle>
-            <SheetDescription className="text-[#6B7280] dark:text-[#9CA3AF]">Search, pin, and switch PAD chats.</SheetDescription>
+            <SheetDescription className="text-[#6B7280] dark:text-[#9CA3AF]">Search, pin, and switch post chats.</SheetDescription>
           </SheetHeader>
           <div className="flex-1 overflow-hidden">{renderThreadList(true)}</div>
         </SheetContent>

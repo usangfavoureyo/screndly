@@ -13,8 +13,8 @@ export function CreatePage({ onNavigate, previousPage }: CreatePageProps) {
 
   const padGuard = useUnsavedBackGuard({
     isDirty: hasPendingPadInput,
-    title: 'Discard PAD draft?',
-    description: 'You have unsent PAD text or attachments. Leaving PAD now will remove them.',
+    title: 'Discard post draft?',
+    description: 'You have unsent post text or attachments. Leaving this post now will remove them.',
   });
 
   useBackEntry({

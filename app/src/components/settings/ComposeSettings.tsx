@@ -16,8 +16,8 @@ export function ComposeSettings({ settings, updateSetting, onBack }: ComposeSett
         <div className="flex items-start gap-4">
           <BackIconButton onClick={() => { haptics.light(); onBack(); }} className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white" />
           <div>
-            <h2 className="text-gray-900 dark:text-white">Compose Settings</h2>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Control the default scheduling time and local activity retention for Compose.</p>
+            <h2 className="text-gray-900 dark:text-white">Post Settings</h2>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Control the default scheduling time and local activity retention for posts.</p>
           </div>
         </div>
       </div>
@@ -34,7 +34,7 @@ export function ComposeSettings({ settings, updateSetting, onBack }: ComposeSett
         </div>
 
         <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-[#333333] dark:bg-[#000000]">
-          <Label className="text-gray-600 dark:text-[#9CA3AF]">Compose Activity Retention (days)</Label>
+          <Label className="text-gray-600 dark:text-[#9CA3AF]">Post Activity Retention (days)</Label>
           <Input
             type="number"
             min="1"

@@ -42,7 +42,7 @@ export function PadOverview({ onNavigate }: PadOverviewProps) {
       title,
       settings.padChatSystemPrompt
         ? `${settings.padChatSystemPrompt}\n\nTemplate focus: ${title}.`
-        : `You are Screndly PAD. Stay focused on the ${title} workflow and respond like a creative writing copilot.`,
+        : `You are Screndly Post. Stay focused on the ${title} workflow and respond like a creative writing copilot.`,
     );
     createPadSession(session);
     setActiveSessionId(session.id);
@@ -74,7 +74,7 @@ export function PadOverview({ onNavigate }: PadOverviewProps) {
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Quick Start</h3>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Choose a PAD template to open a focused writing workspace.</p>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Choose a post template to open a focused writing workspace.</p>
           </div>
           <div className="rounded-xl bg-[#ec1e24]/10 p-3 text-[#ec1e24]">
             <Sparkles className="h-5 w-5" />
@@ -112,7 +112,7 @@ export function PadOverview({ onNavigate }: PadOverviewProps) {
 
         {sessions.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-200 p-10 text-center dark:border-[#333333]">
-            <p className="text-gray-900 dark:text-white mb-2">No PAD sessions yet</p>
+            <p className="text-gray-900 dark:text-white mb-2">No post sessions yet</p>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Start with a template above to create your first writing workspace.</p>
           </div>
         ) : (

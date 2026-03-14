@@ -51,7 +51,7 @@ function describeMedia(item: ComposeItem): string {
 
 function describeItem(item: ComposeItem): string {
   const title = item.title?.trim();
-  if (title && title !== 'Untitled compose item') {
+  if (title && title !== 'Untitled post') {
     return title;
   }
 

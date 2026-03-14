@@ -143,7 +143,7 @@ function buildItemTitle(formState: FormState) {
     formState.pinterestTitle ||
     buildComposeItemTitleFromAssets(formState.mediaAssets, '') ||
     formState.sharedCaption.slice(0, 42) ||
-    'Untitled compose item'
+    'Untitled post'
   );
 }
 
