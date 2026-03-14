@@ -627,7 +627,8 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     connection.userId,
                                     text,
                                     await getHostedVideoUrl(),
-                                    instagramAccessToken
+                                    instagramAccessToken,
+                                    await getPreparedImageUrl()
                                 )
                                 : await metaService.postToInstagram(
                                     connection.userId,

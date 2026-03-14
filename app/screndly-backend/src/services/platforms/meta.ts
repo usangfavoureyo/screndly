@@ -482,7 +482,8 @@ export const metaService = {
         igUserId: string,
         caption: string,
         videoUrl: string,
-        accessToken: string
+        accessToken: string,
+        coverUrl?: string
     ): Promise<MetaPostResult> {
         try {
             const containerParams = new URLSearchParams({
@@ -492,6 +493,9 @@ export const metaService = {
                 share_to_feed: 'true',
                 access_token: accessToken,
             });
+            if (coverUrl) {
+                containerParams.append('cover_url', coverUrl);
+            }
 
             const containerRes = await axios.post(
                 `${BASE_URL}/${igUserId}/media`,
