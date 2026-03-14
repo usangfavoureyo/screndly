@@ -236,6 +236,12 @@ export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {
   return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
 }
 
+export function getComposeThumbnailPublishUrl(thumbnail?: ComposeThumbnailAsset) {
+  if (!thumbnail) return undefined;
+  const candidates = [thumbnail.storageUrl, thumbnail.previewUrl];
+  return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
+}
+
 export function summarizeComposeMedia(assets: ComposeMediaAsset[]): ComposeMediaSummary {
   const imageCount = assets.filter((asset) => asset.kind === 'image').length;
   const videoCount = assets.filter((asset) => asset.kind === 'video').length;

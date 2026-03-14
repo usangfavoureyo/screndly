@@ -169,6 +169,7 @@ export function ComposeEditorPage({
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
+  const [previewThumbnail, setPreviewThumbnail] = useState<ComposeThumbnailAsset | null>(null);
   const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
   const [isLoadingYouTubePlaylists, setIsLoadingYouTubePlaylists] = useState(false);
   const [hasLoadedYouTubePlaylists, setHasLoadedYouTubePlaylists] = useState(false);
@@ -464,6 +465,16 @@ export function ComposeEditorPage({
 
     haptics.light();
     setPreviewAsset(asset);
+  };
+
+  const handlePreviewThumbnail = (thumbnail: ComposeThumbnailAsset) => {
+    const previewUrl = thumbnail.previewUrl || thumbnail.storageUrl;
+    if (!previewUrl) {
+      return;
+    }
+
+    haptics.light();
+    setPreviewThumbnail(thumbnail);
   };
 
   const togglePlatform = (platform: ComposePlatformKey, connected: boolean) => {
@@ -887,11 +898,23 @@ export function ComposeEditorPage({
 
                       <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-black/90 dark:border-[#333333]">
                         {previewUrl ? (
-                          <img
-                            src={previewUrl}
-                            alt={thumbnail?.fileName || label}
-                            className="h-36 w-full object-cover"
-                          />
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewThumbnail(thumbnail)}
+                            className="group relative block w-full text-left"
+                            aria-label={`Preview ${label}`}
+                          >
+                            <img
+                              src={previewUrl}
+                              alt={thumbnail?.fileName || label}
+                              className="h-36 w-full object-cover"
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
+                                <ImageIcon className="h-4 w-4" />
+                              </div>
+                            </div>
+                          </button>
                         ) : (
                           <div className="flex h-36 items-center justify-center">
                             <ImageIcon className="h-6 w-6 text-white/70" />
@@ -1142,6 +1165,18 @@ export function ComposeEditorPage({
         onOpenChange={(open) => {
           if (!open) {
             setPreviewAsset(null);
+          }
+        }}
+      />
+      <MediaPreviewDialog
+        open={Boolean(previewThumbnail && (previewThumbnail.previewUrl || previewThumbnail.storageUrl))}
+        src={previewThumbnail?.previewUrl || previewThumbnail?.storageUrl}
+        mediaType="image"
+        title={previewThumbnail?.fileName}
+        badgeLabel="Thumbnail"
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewThumbnail(null);
           }
         }}
       />

@@ -1,5 +1,5 @@
 import { publishContent, type PlatformSelection } from '../api/platforms';
-import { getComposeAssetPublishUrl } from './composeMedia';
+import { getComposeAssetPublishUrl, getComposeThumbnailPublishUrl } from './composeMedia';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
 
 export interface ComposePublishOutcome {
@@ -62,6 +62,10 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
     );
   }
 
+  const sharedThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.shared);
+  const youtubeThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.youtube);
+  const xThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.x);
+
   const content = {
     text: item.sharedCaption?.trim() || item.title,
     title:
@@ -73,6 +77,9 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
     youtubePlaylistIds: item.platformFields.youtube?.playlist
       ? [item.platformFields.youtube.playlist]
       : undefined,
+    sharedThumbnailUrl: primaryAsset.kind === 'video' ? sharedThumbnailUrl : undefined,
+    youtubeThumbnailUrl: primaryAsset.kind === 'video' ? youtubeThumbnailUrl : undefined,
+    xThumbnailUrl: primaryAsset.kind === 'video' ? xThumbnailUrl : undefined,
     imageUrl: primaryAsset.kind === 'image' ? mediaUrl : undefined,
     videoUrl: primaryAsset.kind === 'video' ? mediaUrl : undefined,
   };

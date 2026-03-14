@@ -463,6 +463,7 @@ async function fetchInstagramProfile(igUserId: string, accessToken: string): Pro
 router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) => {
     let localFilePath: string | null = null;
     let downloadedVideoPath: string | null = null;
+    let downloadedThumbnailPath: string | null = null;
     let preparedImageUrl: string | undefined;
     let hostedVideoUrl: string | undefined;
 
@@ -471,7 +472,15 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         const { platforms, content } = req.body;
         // Content might be JSON stringified if multipart/form-data
         const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
-        const { text, link, title, youtubeTitle, youtubeDescription } = parsedContent;
+        const {
+            text,
+            link,
+            title,
+            youtubeTitle,
+            youtubeDescription,
+            sharedThumbnailUrl,
+            youtubeThumbnailUrl
+        } = parsedContent;
         const youtubePlaylists = Array.isArray(parsedContent?.youtubePlaylistIds)
             ? parsedContent.youtubePlaylistIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
             : typeof parsedContent?.youtubePlaylistIds === 'string'
@@ -482,6 +491,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         let videoUrl = parsedContent.videoUrl;
         const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
         const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
+        const coverImageUrl = sharedThumbnailUrl || imageUrl;
 
         const getPreparedImageUrl = async (): Promise<string | undefined> => {
             if (preparedImageUrl !== undefined) {
@@ -491,7 +501,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
             preparedImageUrl = await prepareHostedImageUrl({
                 localFilePath: hasUploadedImage ? localFilePath : null,
                 originalName: req.file?.originalname,
-                remoteUrl: !hasUploadedImage ? imageUrl : null,
+                remoteUrl: !hasUploadedImage ? coverImageUrl : null,
             });
 
             return preparedImageUrl;
@@ -534,6 +544,19 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
             hostedVideoUrl = await getBackblazeAuthorizedDownloadUrl(uploadedVideo.url);
             return hostedVideoUrl;
+        };
+
+        const getDownloadedThumbnailPath = async (thumbnailUrl?: string): Promise<string | null> => {
+            if (!thumbnailUrl) {
+                return null;
+            }
+
+            if (downloadedThumbnailPath) {
+                return downloadedThumbnailPath;
+            }
+
+            downloadedThumbnailPath = await downloadRemoteFile(thumbnailUrl, 'screndly-thumbnail');
+            return downloadedThumbnailPath;
         };
 
         const results = [];
@@ -667,6 +690,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         }
 
                         if (connection?.accessToken && (localFilePath || downloadedVideoPath)) {
+                            const youtubeThumbnailPath = await getDownloadedThumbnailPath(youtubeThumbnailUrl);
                             // Refresh token logic should be handled here or in service
                             const ytResult = await youtubeService.uploadVideo(
                                 connection.accessToken,
@@ -675,6 +699,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     title: youtubeTitle || title || text.slice(0, 100),
                                     description: youtubeDescription || text,
                                     privacyStatus: 'public',
+                                    thumbnailPath: youtubeThumbnailPath || undefined,
                                     playlistIds: youtubePlaylists,
                                 },
                                 connection.refreshToken || undefined
