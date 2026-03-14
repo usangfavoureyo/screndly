@@ -64,6 +64,22 @@ export interface ComposePlatformFields {
     description: string;
     playlist: string;
   };
+  thumbnails?: {
+    shared?: ComposeThumbnailAsset;
+    youtube?: ComposeThumbnailAsset;
+    x?: ComposeThumbnailAsset;
+  };
+}
+
+export interface ComposeThumbnailAsset {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  previewUrl?: string;
+  storageUrl?: string;
+  storageFileId?: string;
+  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  uploadError?: string;
 }
 
 export interface ComposeItem {

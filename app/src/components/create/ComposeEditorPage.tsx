@@ -44,7 +44,7 @@ import {
 } from '../../lib/create/composeNotifications';
 import { uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
-import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey } from '../../types/compose';
+import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey, ComposeThumbnailAsset } from '../../types/compose';
 import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
@@ -69,6 +69,9 @@ type FormState = {
   youtubeTitle: string;
   youtubeDescription: string;
   youtubePlaylist: string;
+  sharedThumbnail: ComposeThumbnailAsset | null;
+  youtubeThumbnail: ComposeThumbnailAsset | null;
+  xThumbnail: ComposeThumbnailAsset | null;
 };
 
 const PLATFORM_ICONS = {
@@ -107,6 +110,9 @@ function createInitialForm(item?: ComposeItem): FormState {
     youtubeTitle: normalized?.platformFields.youtube?.title ?? '',
     youtubeDescription: normalized?.platformFields.youtube?.description ?? '',
     youtubePlaylist: normalized?.platformFields.youtube?.playlist ?? '',
+    sharedThumbnail: normalized?.platformFields.thumbnails?.shared ?? null,
+    youtubeThumbnail: normalized?.platformFields.thumbnails?.youtube ?? null,
+    xThumbnail: normalized?.platformFields.thumbnails?.x ?? null,
   };
 }
 
@@ -184,6 +190,11 @@ export function ComposeEditorPage({
   const selectedPlatformIssues = formState.platforms.map((platform) => compatibilityMap[platform]).filter((entry) => !entry.supported);
   const hasUploadingAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'uploading');
   const hasFailedAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'failed');
+  const isSingleVideo = mediaSummary.kind === 'single-video' && formState.mediaAssets[0]?.kind === 'video';
+  const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
+    .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
+  const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
+    .some((thumbnail) => thumbnail?.uploadStatus === 'failed');
   const isYouTubeSelected = formState.platforms.includes('youtube');
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
@@ -285,6 +296,16 @@ export function ComposeEditorPage({
     }));
   };
 
+  const updateThumbnail = (
+    key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail',
+    updater: (thumbnail: ComposeThumbnailAsset | null) => ComposeThumbnailAsset | null,
+  ) => {
+    setFormState((current) => ({
+      ...current,
+      [key]: updater(current[key]),
+    }));
+  };
+
   const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []).filter(
       (file) => file.type.startsWith('image/') || file.type.startsWith('video/'),
@@ -343,6 +364,89 @@ export function ComposeEditorPage({
     setIsUploadingMedia(false);
   };
 
+  const handleThumbnailSelected = async (
+    event: ChangeEvent<HTMLInputElement>,
+    key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail',
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Upload an image file for the thumbnail.');
+      event.target.value = '';
+      return;
+    }
+
+    event.target.value = '';
+    let previewUrl: string | undefined;
+    try {
+      previewUrl = await readFileAsDataUrl(file);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to read thumbnail.');
+    }
+
+    updateThumbnail(key, () => ({
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+      previewUrl,
+      uploadStatus: 'uploading',
+    }));
+
+    try {
+      const uploaded = await uploadComposeAsset(file);
+      updateThumbnail(key, (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          previewUrl: uploaded.previewUrl || current.previewUrl,
+          storageUrl: uploaded.url,
+          storageFileId: uploaded.fileId,
+          uploadStatus: 'uploaded',
+          uploadError: undefined,
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed';
+
+      if (message.toLowerCase().includes('not configured')) {
+        updateThumbnail(key, (current) => {
+          if (!current) {
+            return current;
+          }
+
+          return {
+            ...current,
+            storageUrl: undefined,
+            storageFileId: undefined,
+            uploadStatus: 'idle',
+            uploadError: undefined,
+          };
+        });
+        return;
+      }
+
+      updateThumbnail(key, (current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          uploadStatus: 'failed',
+          uploadError: message,
+        };
+      });
+      toast.error(message);
+    }
+  };
+
+  const removeThumbnail = (key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail') => {
+    updateThumbnail(key, () => null);
+  };
+
   const removeAsset = (assetId: string) => {
     setFormState((current) => ({
       ...current,
@@ -393,8 +497,16 @@ export function ComposeEditorPage({
       toast.error('Wait for media uploads to finish before saving');
       return false;
     }
+    if (hasUploadingThumbnails) {
+      toast.error('Wait for thumbnail uploads to finish before saving');
+      return false;
+    }
     if (hasFailedAssets) {
       toast.error('Remove or re-upload media that failed to upload to Backblaze');
+      return false;
+    }
+    if (hasFailedThumbnails) {
+      toast.error('Remove or re-upload thumbnails that failed to upload');
       return false;
     }
     if ((mode === 'scheduled' || mode === 'published') && formState.mediaAssets.some((asset) => !getComposeAssetPublishUrl(asset))) {
@@ -454,6 +566,11 @@ export function ComposeEditorPage({
               playlist: formState.youtubePlaylist,
             }
           : undefined,
+        thumbnails: {
+          shared: formState.sharedThumbnail ?? undefined,
+          youtube: formState.youtubeThumbnail ?? undefined,
+          x: formState.xThumbnail ?? undefined,
+        },
       },
       createdAt: existingItem?.createdAt || now,
       updatedAt: now,
@@ -685,6 +802,109 @@ export function ComposeEditorPage({
             )}
           </div>
 
+          {isSingleVideo ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+              <div className="mb-4">
+                <h3 className="mb-1 text-gray-900 dark:text-white">Video Thumbnails</h3>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                  Add optional thumbnails for a single-video post. Shared thumbnail is used for Facebook, Instagram, Threads, and TikTok.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  {
+                    key: 'sharedThumbnail' as const,
+                    label: 'Shared Thumbnail',
+                    description: 'Facebook, Instagram, Threads, TikTok',
+                  },
+                  {
+                    key: 'youtubeThumbnail' as const,
+                    label: 'YouTube Thumbnail',
+                    description: 'YouTube only',
+                  },
+                  {
+                    key: 'xThumbnail' as const,
+                    label: 'X Thumbnail',
+                    description: 'X only',
+                  },
+                ].map(({ key, label, description }) => {
+                  const thumbnail = formState[key];
+                  const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
+
+                  return (
+                    <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{description}</p>
+                        </div>
+                        {thumbnail ? (
+                          <button
+                            type="button"
+                            onClick={() => removeThumbnail(key)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                            aria-label={`Remove ${label}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-3">
+                        <Label htmlFor={`compose-thumbnail-${key}`} className="cursor-pointer">
+                          <span className="sr-only">Upload {label}</span>
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
+                            {thumbnail?.uploadStatus === 'uploading' ? (
+                              <RedSpinner size="sm" label="Uploading thumbnail..." />
+                            ) : (
+                              <Upload className="h-3.5 w-3.5 text-[#ec1e24]" />
+                            )}
+                            Upload
+                          </div>
+                        </Label>
+                        <input
+                          id={`compose-thumbnail-${key}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(event) => handleThumbnailSelected(event, key)}
+                        />
+                        {thumbnail ? (
+                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                            {thumbnail.uploadStatus === 'failed'
+                              ? thumbnail.uploadError || 'Upload failed'
+                              : thumbnail.uploadStatus === 'uploaded'
+                                ? 'Stored in Backblaze'
+                                : thumbnail.uploadStatus === 'idle'
+                                  ? 'Stored locally'
+                                  : 'Uploading...'}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">PNG or JPG recommended</p>
+                        )}
+                      </div>
+
+                      <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-black/90 dark:border-[#333333]">
+                        {previewUrl ? (
+                          <img
+                            src={previewUrl}
+                            alt={thumbnail?.fileName || label}
+                            className="h-36 w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-36 items-center justify-center">
+                            <ImageIcon className="h-6 w-6 text-white/70" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
             <div className="mt-4 grid grid-cols-3 gap-3">
@@ -836,8 +1056,8 @@ export function ComposeEditorPage({
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
-              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia}>Save</Button>
-              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || isPublishing}>
+              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails}>Save</Button>
+              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || isPublishing}>
                 {isPublishing ? (
                   <>
                     <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
@@ -845,7 +1065,7 @@ export function ComposeEditorPage({
                   </>
                 ) : 'Publish'}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia}>Schedule</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails}>Schedule</Button>
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">

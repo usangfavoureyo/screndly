@@ -6,6 +6,7 @@ import type {
   ComposeMediaSummary,
   ComposePlatformCompatibility,
   ComposePlatformKey,
+  ComposeThumbnailAsset,
 } from '../../types/compose';
 
 type PlatformCapability = {
@@ -125,6 +126,10 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
     ...item,
     mediaAssets,
     media: undefined,
+    platformFields: {
+      ...item.platformFields,
+      thumbnails: normalizeThumbnails(item.platformFields?.thumbnails),
+    },
   };
 }
 
@@ -141,6 +146,66 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
         asset.uploadStatus ??
         (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
     })),
+    platformFields: {
+      ...normalized.platformFields,
+      thumbnails: sanitizeThumbnails(normalized.platformFields?.thumbnails),
+    },
+  };
+}
+
+function normalizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
+  if (!asset) return undefined;
+  const previewUrl = asset.previewUrl || asset.storageUrl;
+  const normalizedStatus =
+    asset.uploadStatus === 'uploading'
+      ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+        ? 'uploaded'
+        : 'idle'
+      : asset.uploadStatus ?? (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+
+  return {
+    ...asset,
+    previewUrl,
+    storageUrl: asset.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    uploadStatus: normalizedStatus,
+  };
+}
+
+function normalizeThumbnails(thumbnails?: {
+  shared?: ComposeThumbnailAsset;
+  youtube?: ComposeThumbnailAsset;
+  x?: ComposeThumbnailAsset;
+}) {
+  if (!thumbnails) return undefined;
+  return {
+    shared: normalizeThumbnailAsset(thumbnails.shared),
+    youtube: normalizeThumbnailAsset(thumbnails.youtube),
+    x: normalizeThumbnailAsset(thumbnails.x),
+  };
+}
+
+function sanitizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
+  if (!asset) return undefined;
+  return {
+    ...asset,
+    previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+    storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+    uploadStatus:
+      asset.uploadStatus ??
+      (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
+  };
+}
+
+function sanitizeThumbnails(thumbnails?: {
+  shared?: ComposeThumbnailAsset;
+  youtube?: ComposeThumbnailAsset;
+  x?: ComposeThumbnailAsset;
+}) {
+  if (!thumbnails) return undefined;
+  return {
+    shared: sanitizeThumbnailAsset(thumbnails.shared),
+    youtube: sanitizeThumbnailAsset(thumbnails.youtube),
+    x: sanitizeThumbnailAsset(thumbnails.x),
   };
 }
 

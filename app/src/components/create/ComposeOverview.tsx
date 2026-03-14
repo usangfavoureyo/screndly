@@ -240,6 +240,12 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-gray-900 dark:text-white mb-2">Post</h1>
+        <p className="text-[#6B7280] dark:text-[#9CA3AF]">
+          Manage drafts, schedules, and publishing from the post flow.
+        </p>
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Drafts</p>
