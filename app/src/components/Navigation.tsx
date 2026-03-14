@@ -37,7 +37,6 @@ export function Navigation({
   onToggleDesktopSidebar,
 }: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isDesktopSidebarHovered, setIsDesktopSidebarHovered] = useState(false);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
 
@@ -53,13 +52,15 @@ export function Navigation({
         isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
       )}>
         <div className={cn('flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
-          <div className={cn('relative flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'gap-3')}>
+          <div className={cn(
+            'flex items-center',
+            isCollapsed && isDesktop ? 'flex-col gap-2' : 'gap-3',
+          )}>
             <button
               onClick={() => handleNavClick('dashboard')}
               className={cn(
                 'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop ? 'justify-center' : 'gap-3',
-                isDesktop && isCollapsed && isDesktopSidebarHovered && 'opacity-0 pointer-events-none',
               )}
               aria-label="Go to dashboard"
             >
@@ -72,14 +73,11 @@ export function Navigation({
                 size="icon"
                 variant="ghost"
                 onClick={onToggleDesktopSidebar}
-                className={cn(
-                  'absolute inset-0 hidden h-10 w-10 items-center justify-center p-0 text-gray-600 opacity-0 transition-all duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:flex',
-                  isDesktopSidebarHovered && 'opacity-100',
-                )}
-                aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-                aria-pressed={isCollapsed}
+                className="hidden h-10 w-10 items-center justify-center p-0 text-gray-600 transition-all duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:flex"
+                aria-label="Expand sidebar"
+                aria-pressed={true}
               >
-                {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                <PanelLeftOpen className="h-5 w-5" />
               </Button>
             )}
           </div>
@@ -214,8 +212,6 @@ export function Navigation({
       <aside
         className="pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
         style={{ isolation: 'isolate', width: desktopSidebarWidth }}
-        onMouseEnter={() => setIsDesktopSidebarHovered(true)}
-        onMouseLeave={() => setIsDesktopSidebarHovered(false)}
       >
         <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
       </aside>
