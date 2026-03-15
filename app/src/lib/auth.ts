@@ -198,29 +198,36 @@ function handleDevLogin(password: string, rememberMe: boolean): {
 }
 
 export async function verifyAuth(): Promise<boolean> {
+  console.log('[verifyAuth] started');
   const keepSignedIn = localStorage.getItem(KEEP_SIGNED_IN_KEY) === 'true';
   const sessionActive = sessionStorage.getItem(SESSION_ACTIVE_KEY) === 'true';
+  console.log('[verifyAuth] keepSignedIn:', keepSignedIn, 'sessionActive:', sessionActive);
 
   if (!keepSignedIn && !sessionActive) {
     if (localStorage.getItem(TOKEN_KEY)) {
       console.log('[Auth] Session ended (Keep Me Signed In = false). Logging out.');
       logout();
     }
+    console.log('[verifyAuth] returning false (!keepSignedIn && !sessionActive)');
     return false;
   }
 
   sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
 
   const token = getToken();
+  console.log('[verifyAuth] token present:', !!token);
 
   if (!token) {
+    console.log('[verifyAuth] returning false (!token)');
     return false;
   }
 
   const offlineUsable = hasOfflineUsableToken(token);
+  console.log('[verifyAuth] offlineUsable:', offlineUsable);
 
   try {
     const backendUrl = getApiUrl();
+    console.log('[verifyAuth] fetching from', backendUrl);
     const response = await fetch(`${backendUrl}/api/auth/verify`, {
       method: 'POST',
       headers: {
@@ -228,6 +235,7 @@ export async function verifyAuth(): Promise<boolean> {
       },
       body: JSON.stringify({ token })
     });
+    console.log('[verifyAuth] response status:', response.status);
 
     if (response.status === 404) {
       return offlineUsable;
@@ -236,6 +244,7 @@ export async function verifyAuth(): Promise<boolean> {
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
       const data = await response.json();
+      console.log('[verifyAuth] data:', data);
 
       if (response.ok && data.valid) {
         return true;
@@ -252,6 +261,7 @@ export async function verifyAuth(): Promise<boolean> {
 
     return offlineUsable;
   } catch (_error) {
+    console.log('[verifyAuth] error caught:', _error);
     return offlineUsable;
   }
 }

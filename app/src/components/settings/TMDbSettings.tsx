@@ -470,7 +470,14 @@ export function TMDbSettings() {
     monthly: false,
     anniversary: false
   });
-  const [customAnniversaryYears, setCustomAnniversaryYears] = useState<string[]>([]);
+  const [customAnniversaryYears, setCustomAnniversaryYears] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('screndly_custom_anniversary_years');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [newYearInput, setNewYearInput] = useState('');
   const [longPressYear, setLongPressYear] = useState<string | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
@@ -674,7 +681,7 @@ export function TMDbSettings() {
     const timer = setTimeout(() => {
       removeCustomAnniversaryYear(year);
       toast.success(`Removed custom anniversary year: ${year}`);
-    }, 1000);
+    }, 3000);
     setLongPressTimer(timer);
   };
 

@@ -151,7 +151,7 @@ export function Navigation({
     <>
       {/* Desktop/Mobile Header */}
       <div
-        className={`fixed left-0 right-0 h-16 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] z-40 flex items-center justify-between px-4 transition-[padding,transform] duration-200 ease-in-out lg:pl-[var(--desktop-sidebar-width)] ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'
+        className={`fixed right-0 h-16 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] z-40 flex items-center justify-between px-4 transition-[padding,transform,left] duration-200 ease-in-out left-0 lg:left-[var(--desktop-sidebar-width)] ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'
           }`}
         style={{ top: 0, ["--desktop-sidebar-width" as string]: desktopSidebarWidth }}
       >
@@ -213,7 +213,7 @@ export function Navigation({
       {/* Sidebar - Desktop Only (lg and above) */}
       <aside
         className="pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
-        style={{ isolation: 'isolate', width: desktopSidebarWidth }}
+        style={{ width: desktopSidebarWidth }}
         onMouseEnter={() => setIsDesktopSidebarHovered(true)}
         onMouseLeave={() => setIsDesktopSidebarHovered(false)}
       >

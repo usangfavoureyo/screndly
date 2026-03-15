@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { ComposeOverview } from './ComposeOverview';
 import { ComposeActivityPage } from './ComposeActivityPage';
@@ -77,19 +77,7 @@ export function PostFlowSheet({
     }
   }, []);
 
-  const handleCloseRequest = useCallback(() => {
-    const handledByView = closeRequestHandlerRef.current?.() ?? false;
-    if (handledByView) {
-      return;
-    }
 
-    if (stack.length > 1) {
-      setStack((currentStack) => currentStack.slice(0, -1));
-      return;
-    }
-
-    onOpenChange(false);
-  }, [onOpenChange, stack.length]);
 
   const editorPreviousPage = useMemo(
     () => (previousView === 'activity' ? 'compose-activity' : 'create'),
@@ -105,7 +93,8 @@ export function PostFlowSheet({
           return;
         }
 
-        handleCloseRequest();
+        // Swipe-dismiss always fully closes the sheet
+        onOpenChange(false);
       }}
       heightMode="full"
       sheetId="post-flow-sheet"

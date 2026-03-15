@@ -48,36 +48,10 @@ if (typeof window !== 'undefined') {
  * and ensures WASM only loads when actually needed.
  */
 if (typeof window !== 'undefined') {
-  // Suppress console errors FIRST - before anything else
+  // Temporarily disabled console suppression for debugging
   const originalConsoleError = console.error;
   const originalConsoleWarn = console.warn;
 
-  console.error = (...args: any[]) => {
-    const errorString = args.join(' ');
-    if (
-      errorString.includes('WebAssembly') ||
-      errorString.includes('wasm') ||
-      errorString.includes('compilation aborted') ||
-      errorString.includes('Network error: error') ||
-      (errorString.includes('Network error') && errorString.includes('compilation'))
-    ) {
-      return; // Suppress silently
-    }
-    originalConsoleError.apply(console, args);
-  };
-
-  console.warn = (...args: any[]) => {
-    const warnString = args.join(' ');
-    if (
-      warnString.includes('WebAssembly') ||
-      warnString.includes('wasm') ||
-      warnString.includes('compilation aborted') ||
-      warnString.includes('Network error: error')
-    ) {
-      return; // Suppress silently
-    }
-    originalConsoleWarn.apply(console, args);
-  };
 
   // Flag to control WebAssembly access
   let allowWebAssembly = false;

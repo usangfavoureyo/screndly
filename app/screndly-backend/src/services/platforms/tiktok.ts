@@ -131,7 +131,8 @@ async function downloadRemoteVideo(videoUrl: string): Promise<{ filePath: string
             : undefined;
 
         if (mimeType && !mimeType.startsWith('video/') && mimeType !== 'application/octet-stream') {
-            throw new Error('TikTok could not fetch a video file from the provided URL. Use a direct downloadable video URL or upload the file instead.');
+            console.error(`[TikTok] Download rejected: unexpected content-type "${mimeType}" from URL: ${videoUrl}`);
+            throw new Error(`TikTok could not fetch a video file from the provided URL (received content-type: ${mimeType}). Ensure the URL points directly to a video file.`);
         }
 
         const extension = getExtensionFromSource(videoUrl, mimeType);
@@ -142,13 +143,20 @@ async function downloadRemoteVideo(videoUrl: string): Promise<{ filePath: string
 
         await pipeline(response.data as NodeJS.ReadableStream, fs.createWriteStream(tempFilePath));
         return { filePath: tempFilePath, mimeType };
-    } catch (error) {
+    } catch (error: any) {
         await cleanupFile(tempFilePath);
         if (error instanceof Error && error.message.includes('TikTok could not fetch a video file')) {
             throw error;
         }
 
-        throw new Error('TikTok could not download the provided video URL. Use a direct downloadable video URL or upload the file instead.');
+        const statusCode = error?.response?.status;
+        const statusText = error?.response?.statusText;
+        const errorDetail = statusCode
+            ? `HTTP ${statusCode} ${statusText || ''}`
+            : (error?.code || error?.message || 'Unknown error');
+        console.error(`[TikTok] Video download failed for URL: ${videoUrl} — ${errorDetail}`);
+
+        throw new Error(`TikTok could not download the video (${errorDetail}). Verify the URL is publicly accessible and points to a downloadable video file.`);
     }
 }
 

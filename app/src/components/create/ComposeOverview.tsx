@@ -93,6 +93,10 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     pending: items.filter((item) => item.status === 'failed').length,
   };
 
+  // Only show draft items on the Post overview page
+  // Published, scheduled, and failed items appear on the Post Activity page
+  const draftItems = items.filter((item) => item.status === 'draft');
+
   const scheduleItem = useMemo(
     () => items.find((item) => item.id === scheduleItemId),
     [items, scheduleItemId],
@@ -277,7 +281,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
 
       <div>
         <div className="flex items-center justify-between mb-3 gap-3">
-          <h3 className="text-gray-900 dark:text-white">Post Items ({items.length})</h3>
+          <h3 className="text-gray-900 dark:text-white">Post Items ({draftItems.length})</h3>
           <Button
             variant="outline"
             size="sm"
@@ -291,7 +295,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           </Button>
         </div>
 
-        {items.length === 0 ? (
+        {draftItems.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
             <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No post drafts yet</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
@@ -312,7 +316,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
               />
             )}
 
-            {items.map((item) => {
+            {draftItems.map((item) => {
               const LeadingIcon = getLeadingIcon(item.status);
               const primaryAsset = getPrimaryAsset(item);
               const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);

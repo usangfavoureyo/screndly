@@ -234,7 +234,6 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               }}
               className="w-full bg-[#ec1e24] hover:bg-[#d01a20] text-white mb-4 shadow-none hover:shadow-none active:shadow-none focus:shadow-none hover:scale-100 active:scale-100"
             >
-              <Plus className="w-4 h-4 mr-2" />
               Add Feed
             </Button>
 
