@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { ComposeOverview } from './ComposeOverview';
 import { ComposeActivityPage } from './ComposeActivityPage';
