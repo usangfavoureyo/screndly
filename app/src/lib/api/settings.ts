@@ -156,6 +156,7 @@ const TMDB_BACKEND_KEYS = [
   'enableMonthly',
   'enableAnniversaries',
   'anniversaryYears',
+  'customAnniversaryYears',
   'anniversaryStartYear',
   'maxPerAnniversary',
   'todayMaxItems',

@@ -37,6 +37,7 @@ export interface TMDbSettings {
 
     // Anniversary settings
     anniversaryYears: string[];
+    customAnniversaryYears?: string[];
     anniversaryStartYear: string;
     maxPerAnniversary: string;
 
@@ -113,6 +114,7 @@ const defaultSettings: TMDbSettings = {
     monthlyMaxItems: '30',
     anniversaryMaxItems: '5',
     anniversaryYears: ['1', '2', '3', '5', '10', '15', '20', '25'],
+    customAnniversaryYears: [],
     anniversaryStartYear: '1995',
     maxPerAnniversary: '2',
     preferredImage: 'poster',
@@ -323,7 +325,15 @@ export function getTimezone(): string {
  */
 export function getAnniversaryYears(): number[] {
     const settings = getTMDbSettings();
-    return (settings.anniversaryYears || []).map(y => parseInt(y)).filter(y => !isNaN(y));
+    const rawYears = [
+        ...(settings.anniversaryYears || []),
+        ...(settings.customAnniversaryYears || []),
+    ];
+
+    return rawYears
+        .map(y => parseInt(y))
+        .filter(y => !isNaN(y))
+        .filter((year, index, years) => years.indexOf(year) === index);
 }
 
 /**
@@ -370,6 +380,7 @@ export function getSettingsForBackend(): Record<string, any> {
         monthlyPrompt: settings.monthlyPrompt,
         anniversaryPrompt: settings.anniversaryPrompt,
         anniversaryYears: getAnniversaryYears(),
+        customAnniversaryYears: settings.customAnniversaryYears || [],
         maxPerAnniversary: getMaxPerAnniversary(),
         captionMaxLength: parseInt(settings.captionMaxLength) || 100,
         includeCast: settings.includeCast,

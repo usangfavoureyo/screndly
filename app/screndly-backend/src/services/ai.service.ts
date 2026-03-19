@@ -12,6 +12,7 @@ import { trackApiUsage } from './api-usage.service';
 // ============================================
 
 export const SUPPORTED_OPENAI_MODELS = [
+    'gpt-5.4',
     'gpt-5.2',
     'gpt-5.1',
     'gpt-5',
@@ -37,6 +38,7 @@ export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
     switch (value) {
+        case 'gpt-5.4':
         case 'gpt-5.2':
         case 'gpt-5.1':
         case 'gpt-5':

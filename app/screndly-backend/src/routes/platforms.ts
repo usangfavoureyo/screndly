@@ -611,7 +611,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 );
 
                             let warning: string | undefined;
-                            if (fbResult.success && (hasUploadedVideo || videoUrl) && sharedThumbnailUrl) {
+                            if (fbResult.success && fbResult.data?.id && (hasUploadedVideo || videoUrl) && sharedThumbnailUrl) {
                                 const thumbnailPath = await getDownloadedThumbnailPath(sharedThumbnailUrl);
                                 if (thumbnailPath) {
                                     const thumbnailResult = await metaService.setFacebookVideoThumbnail(
@@ -689,12 +689,12 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                     case 'TikTok':
                         if (connection?.accessToken) {
                             if (localFilePath || videoUrl) {
+                                const tiktokSourcePath = await getDownloadedVideoPath();
                                 const ttResult = await tiktokService.postVideo(
                                     {
-                                        filePath: localFilePath || undefined,
-                                        fileName: req.file?.originalname,
-                                        mimeType: req.file?.mimetype,
-                                        videoUrl: videoUrl || undefined,
+                                        filePath: tiktokSourcePath,
+                                        fileName: req.file?.originalname || buildRemoteFileName(videoUrl || '', 'screndly-tiktok-video'),
+                                        mimeType: req.file?.mimetype || getMimeTypeFromFilePath(tiktokSourcePath),
                                     },
                                     title || text,
                                     connection.accessToken

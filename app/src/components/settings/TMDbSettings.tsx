@@ -107,6 +107,7 @@ const defaultSettings = {
   enableMonthly: true,
   enableAnniversaries: true,
   anniversaryYears: ['1', '2', '3', '5', '10', '15', '20', '25'],
+  customAnniversaryYears: [],
   anniversaryStartYear: '1995',
   maxPerAnniversary: '2',
   // Four independent feed max_items (replaced global maxItemsPerFeed)
@@ -470,14 +471,6 @@ export function TMDbSettings() {
     monthly: false,
     anniversary: false
   });
-  const [customAnniversaryYears, setCustomAnniversaryYears] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem('screndly_custom_anniversary_years');
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
   const [newYearInput, setNewYearInput] = useState('');
   const [longPressYear, setLongPressYear] = useState<string | null>(null);
   const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(null);
@@ -507,12 +500,36 @@ export function TMDbSettings() {
         }
       }
 
+      if (!Array.isArray(merged.customAnniversaryYears) || merged.customAnniversaryYears.length === 0) {
+        try {
+          const legacyCustomYears = localStorage.getItem('screndly_custom_anniversary_years');
+          if (legacyCustomYears) {
+            const parsedLegacyYears = JSON.parse(legacyCustomYears);
+            if (Array.isArray(parsedLegacyYears)) {
+              merged.customAnniversaryYears = parsedLegacyYears;
+            }
+          }
+        } catch (e) {
+          console.error('Legacy custom anniversary years parse error', e);
+        }
+      }
+
+      const localCustomAnniversaryYears = Array.isArray(merged.customAnniversaryYears)
+        ? [...merged.customAnniversaryYears]
+        : [];
+
       // 2. Load Backend (Source of Truth for Cron)
       try {
         const response = await fetchSettings();
         if (response.success && response.data) {
           // Merge backend data
           merged = { ...merged, ...response.data };
+          if (
+            localCustomAnniversaryYears.length > 0 &&
+            (!Array.isArray(response.data.customAnniversaryYears) || response.data.customAnniversaryYears.length === 0)
+          ) {
+            merged.customAnniversaryYears = localCustomAnniversaryYears;
+          }
         }
       } catch (e) {
         console.error('Backend settings fetch error', e);
@@ -534,6 +551,10 @@ export function TMDbSettings() {
 
     // 1. LocalStorage (Instant)
     localStorage.setItem('screndly_tmdb_settings', JSON.stringify(tmdbSettings));
+    localStorage.setItem(
+      'screndly_custom_anniversary_years',
+      JSON.stringify(tmdbSettings.customAnniversaryYears || [])
+    );
 
     // 2. Backend (Debounced for Cron Sync)
     const timeout = setTimeout(() => {
@@ -544,13 +565,6 @@ export function TMDbSettings() {
 
     return () => clearTimeout(timeout);
   }, [tmdbSettings, isLoaded]);
-
-  // Custom Anniversary Years persist only locally for now (UI preference)
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('screndly_custom_anniversary_years', JSON.stringify(customAnniversaryYears));
-    }
-  }, [customAnniversaryYears, isLoaded]);
 
   const platformIcons: Record<string, React.ComponentType<any>> = {
     x: XIcon,
@@ -623,6 +637,8 @@ export function TMDbSettings() {
     updateSetting('anniversaryYears', newYears);
   };
 
+  const customAnniversaryYears = tmdbSettings.customAnniversaryYears || [];
+
   const toggleMovieGenre = (genreId: number) => {
     const genres = tmdbSettings.movieGenres;
     const newGenres = genres.includes(genreId)
@@ -663,7 +679,7 @@ export function TMDbSettings() {
     }
 
     // Add the year
-    setCustomAnniversaryYears(prev => [...prev, year]);
+    updateSetting('customAnniversaryYears', [...customAnniversaryYears, year]);
 
     // Also add it to active anniversary years
     toggleAnniversaryYear(year);
@@ -673,7 +689,14 @@ export function TMDbSettings() {
   };
 
   const removeCustomAnniversaryYear = (year: string) => {
-    setCustomAnniversaryYears(prev => prev.filter(y => y !== year));
+    updateSetting(
+      'customAnniversaryYears',
+      customAnniversaryYears.filter(y => y !== year)
+    );
+
+    if (tmdbSettings.anniversaryYears.includes(year)) {
+      toggleAnniversaryYear(year);
+    }
   };
 
   const handleLongPress = (year: string) => {
@@ -1558,10 +1581,6 @@ export function TMDbSettings() {
                   const timer = setTimeout(() => {
                     haptics.light();
                     removeCustomAnniversaryYear(year);
-                    // Also remove from active years if it was selected
-                    if (tmdbSettings.anniversaryYears.includes(year)) {
-                      toggleAnniversaryYear(year);
-                    }
                     toast.success(`Deleted custom year: ${year}y`);
                   }, 3000);
                   setLongPressTimer(timer);

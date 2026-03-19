@@ -257,13 +257,13 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           tmdbEnabled: columnNames.has('tmdbEnabled'),
         };
       } catch (error) {
-        console.warn('[RSS] Failed to inspect RSSFeed columns. Assuming latest schema.', error);
+        console.warn('[RSS] Failed to inspect RSSFeed schema. Falling back to legacy-compatible mode.', error);
         return {
-          platformImageCounts: true,
-          trickle: true,
-          feedItemsTable: true,
-          serperEnabled: true,
-          tmdbEnabled: true,
+          platformImageCounts: false,
+          trickle: false,
+          feedItemsTable: false,
+          serperEnabled: false,
+          tmdbEnabled: false,
         };
       }
     })();

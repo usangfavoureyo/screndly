@@ -202,6 +202,7 @@ export interface Settings {
   tmdbWeeklyPrompt?: string;
   tmdbMonthlyPrompt?: string;
   tmdbAnniversaryPrompt?: string;
+  customAnniversaryYears?: string[];
   todayPrompt?: string;
   weeklyPrompt?: string;
   monthlyPrompt?: string;

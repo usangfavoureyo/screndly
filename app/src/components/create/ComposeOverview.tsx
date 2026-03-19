@@ -84,7 +84,11 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
   const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
-  const selection = useBulkSelection(items.map((item) => item.id));
+  const draftItems = useMemo(
+    () => items.filter((item) => item.status === 'draft'),
+    [items],
+  );
+  const selection = useBulkSelection(draftItems.map((item) => item.id));
 
   const stats = {
     drafts: items.filter((item) => item.status === 'draft').length,
@@ -92,10 +96,6 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
     published: items.filter((item) => item.status === 'published').length,
     pending: items.filter((item) => item.status === 'failed').length,
   };
-
-  // Only show draft items on the Post overview page
-  // Published, scheduled, and failed items appear on the Post Activity page
-  const draftItems = items.filter((item) => item.status === 'draft');
 
   const scheduleItem = useMemo(
     () => items.find((item) => item.id === scheduleItemId),

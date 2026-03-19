@@ -1,37 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export function useScrollDirection() {
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down' | null>(null);
-  const [prevScrollY, setPrevScrollY] = useState(0);
+  const prevScrollYRef = useRef(0);
+  const hideTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    let ticking = false;
+    prevScrollYRef.current = window.scrollY;
 
     const updateScrollDirection = () => {
       const scrollY = window.scrollY;
+      const delta = scrollY - prevScrollYRef.current;
 
-      if (Math.abs(scrollY - prevScrollY) < 5) {
-        // Ignore small scroll changes
-        ticking = false;
+      if (Math.abs(delta) < 5) {
         return;
       }
 
-      setScrollDirection(scrollY > prevScrollY ? 'down' : 'up');
-      setPrevScrollY(scrollY);
-      ticking = false;
+      prevScrollYRef.current = scrollY;
+      setScrollDirection(delta > 0 ? 'down' : 'up');
+
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+
+      hideTimerRef.current = window.setTimeout(() => {
+        setScrollDirection(null);
+        hideTimerRef.current = null;
+      }, 180);
     };
 
     const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(updateScrollDirection);
-        ticking = true;
-      }
+      window.requestAnimationFrame(updateScrollDirection);
     };
 
     window.addEventListener('scroll', onScroll);
 
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [prevScrollY]);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (hideTimerRef.current !== null) {
+        window.clearTimeout(hideTimerRef.current);
+      }
+    };
+  }, []);
 
   return scrollDirection;
 }

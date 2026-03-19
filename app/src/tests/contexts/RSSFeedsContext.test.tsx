@@ -176,11 +176,69 @@ describe('RSSFeedsContext', () => {
       await result.current.updateFeed('feed-update', {
         name: 'Updated Name',
         interval: 60,
+        filters: {
+          scope: 'title',
+          required: [
+            {
+              text: 'exclusive',
+              matchType: 'contains',
+              caseSensitive: false,
+              active: true,
+            },
+          ],
+          blocked: [
+            {
+              text: 'spoiler',
+              matchType: 'exact',
+              caseSensitive: true,
+              active: true,
+            },
+          ],
+          onlyFetchNewItems: true,
+          startFromNowAt: '2026-03-18T00:00:00.000Z',
+          maxItemAgeMinutes: 120,
+        },
       });
     });
 
     expect(result.current.feeds[0].name).toBe('Updated Name');
     expect(result.current.feeds[0].interval).toBe(60);
+    expect(result.current.feeds[0].filters).toMatchObject({
+      scope: 'title',
+      required: [
+        {
+          text: 'exclusive',
+          matchType: 'contains',
+          caseSensitive: false,
+          active: true,
+        },
+      ],
+      blocked: [
+        {
+          text: 'spoiler',
+          matchType: 'exact',
+          caseSensitive: true,
+          active: true,
+        },
+      ],
+      onlyFetchNewItems: true,
+      startFromNowAt: '2026-03-18T00:00:00.000Z',
+      maxItemAgeMinutes: 120,
+    });
+    expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/api/rss/feeds/feed-update',
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          scope: 'title',
+          required: expect.arrayContaining([
+            expect.objectContaining({ text: 'exclusive' }),
+          ]),
+          blocked: expect.arrayContaining([
+            expect.objectContaining({ text: 'spoiler' }),
+          ]),
+        }),
+      })
+    );
   });
 
   it('toggles a feed enabled state and status', async () => {

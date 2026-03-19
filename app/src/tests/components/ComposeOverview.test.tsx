@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import { ComposeActivityPage } from '../../components/create/ComposeActivityPage';
 import { BackNavigationProvider } from '../../contexts/BackNavigationContext';
+import { ComposeOverview } from '../../components/create/ComposeOverview';
 import { useComposeStore } from '../../store/useComposeStore';
 
 vi.mock('../../contexts/NotificationsContext', () => ({
@@ -44,20 +44,20 @@ vi.mock('../../components/ui/bottom-sheet', () => ({
   BottomSheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-describe('ComposeActivityPage', () => {
+describe('ComposeOverview', () => {
   beforeEach(() => {
     useComposeStore.setState({ items: [], activeItemId: null });
   });
 
-  it('shows an edit action for scheduled post cards', () => {
+  it('shows only draft items on the post overview page', () => {
     useComposeStore.setState({
       items: [
         {
           id: 'draft-post',
-          title: 'Draft article',
+          title: 'Draft title',
           status: 'draft',
           mediaAssets: [],
-          platforms: ['x'],
+          platforms: ['instagram'],
           sharedCaption: '',
           platformFields: {},
           createdAt: '2026-03-12T07:00:00.000Z',
@@ -65,15 +65,26 @@ describe('ComposeActivityPage', () => {
         },
         {
           id: 'scheduled-post',
-          title: 'Campaign poster',
+          title: 'Scheduled title',
           status: 'scheduled',
           mediaAssets: [],
-          platforms: ['instagram'],
+          platforms: ['x'],
           sharedCaption: '',
           platformFields: {},
           createdAt: '2026-03-12T07:00:00.000Z',
           updatedAt: '2026-03-12T08:00:00.000Z',
           scheduledAt: '2026-03-13T09:00:00.000Z',
+        },
+        {
+          id: 'published-post',
+          title: 'Published title',
+          status: 'published',
+          mediaAssets: [],
+          platforms: ['youtube'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
         },
       ],
       activeItemId: null,
@@ -81,12 +92,12 @@ describe('ComposeActivityPage', () => {
 
     render(
       <BackNavigationProvider>
-        <ComposeActivityPage onNavigate={vi.fn()} previousPage="create" />
+        <ComposeOverview onNavigate={vi.fn()} />
       </BackNavigationProvider>,
     );
 
-    expect(screen.getByText('Draft article')).toBeInTheDocument();
-    expect(screen.getByText('Campaign poster')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByText('Draft title')).toBeInTheDocument();
+    expect(screen.queryByText('Scheduled title')).not.toBeInTheDocument();
+    expect(screen.queryByText('Published title')).not.toBeInTheDocument();
   });
 });

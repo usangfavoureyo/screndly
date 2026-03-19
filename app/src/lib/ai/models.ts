@@ -21,6 +21,15 @@ export interface AIModel {
 export const AI_MODELS: AIModel[] = [
   // GPT-5 Series
   {
+    id: 'gpt-5.4',
+    displayName: 'GPT-5.4',
+    tier: 'flagship',
+    description: 'Current flagship GPT-5 model for highest quality generation and planning',
+    contextWindow: 400000,
+    maxOutput: 128000,
+    reasoningTokens: true,
+  },
+  {
     id: 'gpt-5.2',
     displayName: 'GPT-5.2',
     tier: 'flagship',

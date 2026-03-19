@@ -780,6 +780,7 @@ interface RefreshSettings {
     dedupeWindow?: number;
     tmdbQueuedRetentionHours?: number;
     anniversaryYears?: string[] | number[];
+    customAnniversaryYears?: string[] | number[];
     maxPerAnniversary?: number;
     anniversaryStartYear?: string | number;
     captionMaxLength?: number;

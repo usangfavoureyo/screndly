@@ -369,7 +369,7 @@ export const metaService = {
             }
 
             return {
-                success: Boolean(data?.success ?? true),
+                success: true,
                 data: {
                     id: videoId,
                     platform: 'Facebook',
