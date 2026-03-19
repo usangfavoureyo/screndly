@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
-import { Trash2, Globe } from 'lucide-react';
+import { Copy, Trash2, Globe } from 'lucide-react';
 import { InstagramIcon } from '../icons/InstagramIcon';
 import { FacebookIcon } from '../icons/FacebookIcon';
 import { ThreadsIcon } from '../icons/ThreadsIcon';
@@ -54,6 +54,7 @@ interface FeedCardProps {
   feed: Feed;
   onEdit: (id: string) => void;
   onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
   onPreview: (id: string) => void;
   onTogglePlatform: (feedId: string, platform: string, enabled: boolean) => void;
   onToggleEnabled: (feedId: string, enabled: boolean) => void;
@@ -94,6 +95,7 @@ export function FeedCard({
   feed,
   onEdit,
   onDelete,
+  onDuplicate,
   onPreview,
   onTogglePlatform,
   onToggleEnabled,
@@ -151,7 +153,7 @@ export function FeedCard({
       const deltaY = Math.abs(diffY);
 
       // Prefer vertical page scrolling. Horizontal swipe should only latch
-      // after a deliberate left swipe.
+      // after a deliberate horizontal gesture.
       if (swipeDirectionRef.current === 'none') {
         if (deltaY >= 10 && deltaY > deltaX) {
           swipeDirectionRef.current = 'vertical';
@@ -159,7 +161,7 @@ export function FeedCard({
           return;
         }
 
-        if (diffX < 0 && deltaX >= 24 && deltaX > deltaY * 2) {
+        if (deltaX >= 24 && deltaX > deltaY * 2) {
           swipeDirectionRef.current = 'horizontal';
           isSwipingRef.current = true;
           setSwipeDirection('horizontal');
@@ -170,19 +172,20 @@ export function FeedCard({
       }
 
       if (swipeDirectionRef.current === 'horizontal') {
-        if (diffX <= 0) {
-          const maxSwipe = 120;
-          const clampedDiff = Math.max(-maxSwipe, diffX);
-          swipeXRef.current = clampedDiff;
-          setSwipeX(clampedDiff);
-        }
+        const maxSwipe = 120;
+        const clampedDiff = Math.max(-maxSwipe, Math.min(maxSwipe, diffX));
+        swipeXRef.current = clampedDiff;
+        setSwipeX(clampedDiff);
       }
     };
 
     const onTouchEnd = () => {
       if (swipeDirectionRef.current === 'horizontal') {
         const threshold = 90;
-        if (swipeXRef.current < -threshold) {
+        if (swipeXRef.current > threshold) {
+          haptics.medium();
+          onDuplicate(feed.id);
+        } else if (swipeXRef.current < -threshold) {
           haptics.medium();
           onDelete(feed.id);
         }
@@ -205,7 +208,7 @@ export function FeedCard({
       card.removeEventListener('touchmove', onTouchMove);
       card.removeEventListener('touchend', onTouchEnd);
     };
-  }, [feed.id, onDelete, touchSwipeEnabled]);
+  }, [feed.id, onDelete, onDuplicate, touchSwipeEnabled]);
 
   const handleRunNow = async () => {
     haptics.medium();
@@ -247,9 +250,15 @@ export function FeedCard({
 
   return (
     <div className="relative overflow-hidden rounded-2xl group">
-      <div className="absolute inset-0 flex justify-end items-center bg-[#ec1e24] rounded-2xl">
+      <div className="absolute inset-0 flex items-center justify-between rounded-2xl overflow-hidden">
+        <div className="flex h-full items-center justify-center bg-[#111827] px-6 text-white" style={{ width: '120px' }}>
+          <div className="flex flex-col items-center gap-1" style={{ opacity: swipeX > 0 ? 1 : 0 }}>
+            <Copy className="w-5 h-5" />
+            <span className="text-xs whitespace-nowrap">Duplicate</span>
+          </div>
+        </div>
         <div
-          className="flex items-center justify-center px-6 text-white transition-opacity h-full"
+          className="flex h-full items-center justify-center bg-[#ec1e24] px-6 text-white transition-opacity"
           style={{ opacity: swipeX < 0 ? 1 : 0, width: '120px' }}
         >
           <div className="flex flex-col items-center gap-1">
@@ -308,6 +317,16 @@ export function FeedCard({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => {
+                haptics.medium();
+                onDuplicate(feed.id);
+              }}
+              className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-gray-900 dark:hover:text-white"
+              aria-label="Duplicate feed"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
             <button
               onClick={() => {
                 haptics.medium();

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
@@ -142,6 +142,55 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
         }
       }
     });
+  };
+
+  const handleDuplicateFeed = async (id: string) => {
+    haptics.medium();
+    const sourceFeed = transformedFeeds.find((entry) => entry.id === id);
+    if (!sourceFeed) {
+      toast.error('Feed not found');
+      return;
+    }
+
+    const duplicateCount = transformedFeeds.filter(
+      (entry) => entry.name === `${sourceFeed.name} (Copy)` || entry.name.startsWith(`${sourceFeed.name} (Copy `)
+    ).length;
+    const duplicateName = duplicateCount === 0
+      ? `${sourceFeed.name} (Copy)`
+      : `${sourceFeed.name} (Copy ${duplicateCount + 1})`;
+
+    try {
+      const duplicatedFeed = await addFeed({
+        name: duplicateName,
+        url: sourceFeed.url,
+        enabled: sourceFeed.enabled,
+        interval: sourceFeed.interval,
+        imageCount: sourceFeed.imageCount,
+        platformImageCounts: sourceFeed.platformImageCounts ? { ...sourceFeed.platformImageCounts } : undefined,
+        dedupeDays: sourceFeed.dedupeDays,
+        filters: {
+          ...sourceFeed.filters,
+          required: sourceFeed.filters.required.map((keyword) => ({ ...keyword })),
+          blocked: sourceFeed.filters.blocked.map((keyword) => ({ ...keyword })),
+        },
+        serperEnabled: sourceFeed.serperEnabled,
+        tmdbEnabled: sourceFeed.tmdbEnabled,
+        serperPriority: sourceFeed.serperPriority,
+        rehostImages: sourceFeed.rehostImages,
+        autoPost: sourceFeed.autoPost,
+        platformsEnabled: sourceFeed.platformsEnabled ? { ...sourceFeed.platformsEnabled } : undefined,
+        trickle: sourceFeed.trickle,
+      });
+
+      if (!duplicatedFeed) {
+        throw new Error('Failed to duplicate feed');
+      }
+
+      await loadActivity();
+      toast.success('Feed duplicated');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to duplicate feed');
+    }
   };
 
   const handleSaveFeed = async (feed: Feed) => {
@@ -343,12 +392,13 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {feeds.map((feed) => (
+                {transformedFeeds.map((feed) => (
                   <FeedCard
                     key={feed.id}
-                    feed={feed as Feed}
+                    feed={feed}
                     onEdit={handleEditFeed}
                     onDelete={handleDeleteFeed}
+                    onDuplicate={handleDuplicateFeed}
                     onPreview={handlePreview}
                     onTogglePlatform={handleTogglePlatform}
                     onToggleEnabled={handleToggleEnabled}
