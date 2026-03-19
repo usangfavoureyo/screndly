@@ -1757,12 +1757,14 @@ async function createFeed(data: RSSFeedInput) {
   }
 
   let feedTitle = data.name;
+  let feedDescription = '';
   try {
     const xml = await fetchRSSFeed(data.url);
     const parsed = await parseRSSFeed(xml);
     if (!feedTitle || feedTitle === 'New Feed') {
       feedTitle = parsed.title;
     }
+    feedDescription = parsed.description || '';
   } catch (error) {
     console.warn('[RSS] Could not fetch feed during creation:', error);
   }
@@ -1793,6 +1795,9 @@ async function createFeed(data: RSSFeedInput) {
     platformsEnabled: ensurePlatformsEnabled(data.platformsEnabled) as unknown as Prisma.InputJsonValue,
     status: data.status ?? 'active',
     source: feedTitle || data.name,
+    title: feedTitle || data.name,
+    description: feedDescription,
+    publishedDate: new Date(),
   };
 
   if (support.serperEnabled) {
