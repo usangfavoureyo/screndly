@@ -6,6 +6,10 @@ import { getApiUsageActivitySummary } from '../services/api-usage.service';
 
 const router = Router();
 
+function logDashboardFallback(segment: string, error: unknown) {
+  console.error(`Dashboard fallback for ${segment}:`, error);
+}
+
 function startOfToday(): Date {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -123,7 +127,21 @@ router.get('/stats', authenticate, async (_req, res) => {
           status: true,
         },
       }),
-      getApiUsageActivitySummary(),
+      getApiUsageActivitySummary().catch((error) => {
+        logDashboardFallback('apiUsage', error);
+        return {
+          cards: {
+            openai: 0,
+            serper: 0,
+            tmdb: 0,
+            shotstack: 0,
+            googleSearch: 0,
+            googleVideo: 0,
+            total: 0,
+          },
+          summary: [],
+        };
+      }),
       prisma.channel.count({
         where: { status: 'active' },
       }),
@@ -213,6 +231,9 @@ router.get('/stats', authenticate, async (_req, res) => {
           details: true,
           createdAt: true,
         },
+      }).catch((error) => {
+        logDashboardFallback('designStudioActivity', error);
+        return [];
       }),
       prisma.videoStudioActivity.findMany({
         orderBy: { createdAt: 'desc' },
@@ -225,6 +246,9 @@ router.get('/stats', authenticate, async (_req, res) => {
           published: true,
           createdAt: true,
         },
+      }).catch((error) => {
+        logDashboardFallback('videoStudioActivity', error);
+        return [];
       }),
       prisma.log.findMany({
         orderBy: { timestamp: 'desc' },

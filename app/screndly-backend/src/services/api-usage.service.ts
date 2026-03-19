@@ -106,11 +106,22 @@ export async function trackApiUsage(input: TrackApiUsageInput): Promise<void> {
 }
 
 export async function getApiUsageActivitySummary(): Promise<ApiUsageActivitySummary> {
-    const [dailyCounts, weeklyCounts, monthlyCounts] = await Promise.all([
-        getCountsSince(daysAgo(0)),
-        getCountsSince(daysAgo(6)),
-        getCountsSince(daysAgo(29)),
-    ]);
+    let dailyCounts: Record<ApiUsageService, number>;
+    let weeklyCounts: Record<ApiUsageService, number>;
+    let monthlyCounts: Record<ApiUsageService, number>;
+
+    try {
+        [dailyCounts, weeklyCounts, monthlyCounts] = await Promise.all([
+            getCountsSince(daysAgo(0)),
+            getCountsSince(daysAgo(6)),
+            getCountsSince(daysAgo(29)),
+        ]);
+    } catch (error) {
+        console.error('[ApiUsage] Failed to load usage summary, returning empty stats:', error);
+        dailyCounts = emptyCounts();
+        weeklyCounts = emptyCounts();
+        monthlyCounts = emptyCounts();
+    }
 
     const summary = API_USAGE_SERVICE_ORDER.map<ApiUsageSummaryRow>((service) => ({
         service,
