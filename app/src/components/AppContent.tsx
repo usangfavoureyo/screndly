@@ -746,6 +746,7 @@ export function AppContent() {
       <PostFlowSheet
         open={isPostFlowOpen}
         initialView={postFlowInitialView}
+        isDesktopViewport={isDesktopViewport}
         onOpenChange={setIsPostFlowOpen}
       />
       {isSettingsOpen && (

@@ -1,6 +1,6 @@
 import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import brandIcon from '../assets/brand-icon.png';
@@ -37,11 +37,32 @@ export function Navigation({
   onToggleDesktopSidebar,
 }: NavigationProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pendingPointerActivationRef = useRef<string | null>(null);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
   const handleNavClick = (page: string) => {
     onNavigate(page);
     setIsMobileMenuOpen(false);
+  };
+
+  const armPointerActivation = (activationId: string, callback: () => void) => (event: React.PointerEvent<HTMLElement>) => {
+    if (event.pointerType === 'touch' || event.button !== 0) {
+      return;
+    }
+
+    pendingPointerActivationRef.current = activationId;
+    event.preventDefault();
+    event.stopPropagation();
+    callback();
+  };
+
+  const shouldSkipClick = (activationId: string) => {
+    if (pendingPointerActivationRef.current !== activationId) {
+      return false;
+    }
+
+    pendingPointerActivationRef.current = null;
+    return true;
   };
 
   const NavContent = ({ isCollapsed, isDesktop }: { isCollapsed: boolean; isDesktop: boolean }) => (
@@ -51,26 +72,19 @@ export function Navigation({
         isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
       )}>
         <div className={cn('relative z-10 flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
-          <div
-            className={cn(isCollapsed && isDesktop ? 'relative h-10 w-10' : 'flex items-center gap-3')}
-            onClick={isCollapsed && isDesktop ? onToggleDesktopSidebar : undefined}
-            role={isCollapsed && isDesktop ? 'button' : undefined}
-            tabIndex={isCollapsed && isDesktop ? 0 : undefined}
-            onKeyDown={isCollapsed && isDesktop ? (event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                onToggleDesktopSidebar();
-              }
-            } : undefined}
-            aria-label={isCollapsed && isDesktop ? 'Expand sidebar' : undefined}
-          >
+          <div className={cn(isCollapsed && isDesktop ? 'relative h-10 w-10' : 'flex items-center gap-3')}>
             <button
               type="button"
               onClick={() => {
+                if (shouldSkipClick('brand-dashboard')) {
+                  return;
+                }
+
                 if (!isCollapsed || !isDesktop) {
                   handleNavClick('dashboard');
                 }
               }}
+              onPointerUp={!isCollapsed || !isDesktop ? armPointerActivation('brand-dashboard', () => handleNavClick('dashboard')) : undefined}
               className={cn(
                 'relative z-10 flex cursor-pointer items-center touch-manipulation transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop
@@ -83,19 +97,18 @@ export function Navigation({
             </button>
 
             {isDesktop && isCollapsed && (
-              <Button
+              <button
                 type="button"
-                size="icon"
-                variant="ghost"
                 onClick={onToggleDesktopSidebar}
+                onPointerUp={armPointerActivation('toggle-sidebar-collapsed', onToggleDesktopSidebar)}
                 className={cn(
-                  'absolute inset-0 z-20 hidden h-10 w-10 items-center justify-center p-0 text-gray-600 opacity-0 transition-all duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
+                  'absolute inset-0 z-20 hidden h-10 w-10 cursor-pointer items-center justify-center rounded-md p-0 text-gray-600 opacity-0 transition-all duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40 dark:text-[#9CA3AF] lg:inline-flex',
                 )}
                 aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-pressed={isCollapsed}
               >
                 {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-              </Button>
+              </button>
             )}
           </div>
 
@@ -104,7 +117,14 @@ export function Navigation({
               type="button"
               size="icon"
               variant="ghost"
-              onClick={onToggleDesktopSidebar}
+              onClick={() => {
+                if (shouldSkipClick('toggle-sidebar-expanded')) {
+                  return;
+                }
+
+                onToggleDesktopSidebar();
+              }}
+              onPointerUp={armPointerActivation('toggle-sidebar-expanded', onToggleDesktopSidebar)}
               className="hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 transition-colors duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
               aria-label="Collapse sidebar"
               aria-pressed={false}
@@ -123,9 +143,16 @@ export function Navigation({
             <button
               key={item.id}
               type="button"
-              onClick={() => handleNavClick(item.id)}
+              onClick={() => {
+                if (shouldSkipClick(`nav-${item.id}`)) {
+                  return;
+                }
+
+                handleNavClick(item.id);
+              }}
+              onPointerUp={armPointerActivation(`nav-${item.id}`, () => handleNavClick(item.id))}
               className={cn(
-                'group relative z-10 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-all duration-200 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
+                'group relative z-10 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-[background-color,color,box-shadow] duration-150 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
                 isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex items-center gap-3 px-4 py-3 text-left',
                 isActive
                   ? 'bg-[#ec1e24] text-white shadow-[0_10px_24px_rgba(236,30,36,0.22)]'
@@ -151,7 +178,7 @@ export function Navigation({
           onClick={onLogout}
           variant="ghost"
           className={cn(
-            'cursor-pointer rounded-xl text-gray-600 transition-all duration-200 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
+            'cursor-pointer rounded-xl text-gray-600 transition-[background-color,color,box-shadow] duration-150 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
             isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'w-full justify-start gap-3 px-4 py-3',
           )}
           aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}

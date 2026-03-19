@@ -51,9 +51,13 @@ function SheetContent({
   className,
   children,
   side = "right",
+  closeButtonClassName,
+  showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: "top" | "right" | "bottom" | "left";
+  closeButtonClassName?: string;
+  showCloseButton?: boolean;
 }) {
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
   const uniqueId = React.useMemo(
@@ -92,10 +96,18 @@ function SheetContent({
         {...props}
       >
         {children}
-        <SheetPrimitive.Close ref={closeButtonRef} className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none text-gray-900 dark:text-white p-1">
-          <XIcon className="w-[26px] h-[26px] stroke-1" />
-          <span className="sr-only">Close</span>
-        </SheetPrimitive.Close>
+        {showCloseButton ? (
+          <SheetPrimitive.Close
+            ref={closeButtonRef}
+            className={cn(
+              "ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none text-gray-900 dark:text-white p-1",
+              closeButtonClassName,
+            )}
+          >
+            <XIcon className="w-[26px] h-[26px] stroke-1" />
+            <span className="sr-only">Close</span>
+          </SheetPrimitive.Close>
+        ) : null}
       </SheetPrimitive.Content>
     </SheetPortal>
   );
