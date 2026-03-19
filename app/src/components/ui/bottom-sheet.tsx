@@ -289,12 +289,12 @@ export function BottomSheet({
   const getHeightClass = () => {
     switch (heightMode) {
       case 'half':
-        return 'h-[50vh]';
+        return 'h-[50dvh] max-h-[50dvh]';
       case 'full':
-        return 'h-[100vh] sm:h-[calc(100vh-env(safe-area-inset-top))]';
+        return 'h-[100dvh] max-h-[100dvh] sm:h-[calc(100dvh-env(safe-area-inset-top))] sm:max-h-[calc(100dvh-env(safe-area-inset-top))]';
       case 'auto':
       default:
-        return 'max-h-[90vh]';
+        return 'max-h-[90dvh]';
     }
   };
 
@@ -378,7 +378,7 @@ export function BottomSheet({
             className={cn(
               "overflow-y-auto",
               heightMode === 'full' && 'flex flex-col',
-              heightMode === 'auto' ? 'max-h-[calc(90vh-4rem)]' : 'h-[calc(100%-4rem)]'
+              heightMode === 'auto' ? 'max-h-[calc(90dvh-4rem)]' : 'h-[calc(100%-4rem)]'
             )}
             data-scrollable
           >

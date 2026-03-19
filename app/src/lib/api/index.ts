@@ -7,7 +7,8 @@
 export { apiClient, ApiClient } from './client';
 
 // API services
-export { youtubeApi, YouTubeApi } from './youtube';
+export { fetchYouTubePlaylists } from './youtube';
+export type { YouTubePlaylist } from './youtube';
 export { openaiApi, OpenAIApi } from './openai';
 export { shotstackApi, ShotstackApi } from './shotstack';
 export { tmdbApi, TMDbApi } from './tmdb';

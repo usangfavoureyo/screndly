@@ -29,6 +29,45 @@ const TMDB_SHARED_SETTING_KEYS = new Set([
   'timezone',
 ]);
 
+const DEFAULT_ANNIVERSARY_YEARS = ['1', '2', '3', '5', '10', '15', '20', '25'];
+
+function normalizeAnniversaryYear(value: unknown): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  const parsedYear = Number.parseInt(String(value).trim(), 10);
+  if (!Number.isFinite(parsedYear) || parsedYear <= 0) {
+    return null;
+  }
+
+  return String(parsedYear);
+}
+
+function sortAnniversaryYears(years: string[]): string[] {
+  return [...years].sort((a, b) => Number.parseInt(a, 10) - Number.parseInt(b, 10));
+}
+
+function getNormalizedUniqueAnniversaryYears(years: unknown): string[] {
+  if (!Array.isArray(years)) {
+    return [];
+  }
+
+  const normalizedYears = years
+    .map(normalizeAnniversaryYear)
+    .filter((year): year is string => Boolean(year));
+
+  return sortAnniversaryYears(Array.from(new Set(normalizedYears)));
+}
+
+function getVisibleCustomAnniversaryYears(allYears: unknown, customYears: unknown): string[] {
+  const normalizedAllYears = getNormalizedUniqueAnniversaryYears(allYears);
+  const normalizedCustomYears = getNormalizedUniqueAnniversaryYears(customYears);
+  const promotedStoredCustomYears = normalizedAllYears.filter((year) => !DEFAULT_ANNIVERSARY_YEARS.includes(year));
+
+  return sortAnniversaryYears(Array.from(new Set([...normalizedCustomYears, ...promotedStoredCustomYears])));
+}
+
 // TMDb Genre IDs - Official from TMDb API
 const MOVIE_GENRES = [
   { id: 28, name: 'Action' },
@@ -106,7 +145,7 @@ const defaultSettings = {
   enableWeekly: true,
   enableMonthly: true,
   enableAnniversaries: true,
-  anniversaryYears: ['1', '2', '3', '5', '10', '15', '20', '25'],
+  anniversaryYears: DEFAULT_ANNIVERSARY_YEARS,
   customAnniversaryYears: [],
   anniversaryStartYear: '1995',
   maxPerAnniversary: '2',
@@ -539,6 +578,15 @@ export function TMDbSettings() {
         merged = { ...merged, ...tmdbPromptDefaults };
         localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
       }
+      const normalizedAnniversaryYears = getNormalizedUniqueAnniversaryYears(merged.anniversaryYears);
+      merged.anniversaryYears = normalizedAnniversaryYears.length > 0
+        ? normalizedAnniversaryYears
+        : [...DEFAULT_ANNIVERSARY_YEARS];
+      merged.customAnniversaryYears = getVisibleCustomAnniversaryYears(
+        merged.anniversaryYears,
+        merged.customAnniversaryYears,
+      );
+
       setTMDbSettings(merged as typeof defaultSettings);
       setIsLoaded(true);
     }
@@ -637,7 +685,10 @@ export function TMDbSettings() {
     updateSetting('anniversaryYears', newYears);
   };
 
-  const customAnniversaryYears = tmdbSettings.customAnniversaryYears || [];
+  const customAnniversaryYears = getVisibleCustomAnniversaryYears(
+    tmdbSettings.anniversaryYears,
+    tmdbSettings.customAnniversaryYears,
+  );
 
   const toggleMovieGenre = (genreId: number) => {
     const genres = tmdbSettings.movieGenres;
@@ -664,25 +715,24 @@ export function TMDbSettings() {
   };
 
   const addCustomAnniversaryYear = () => {
-    const year = newYearInput.trim();
+    const year = normalizeAnniversaryYear(newYearInput);
 
-    // Check if year is empty
     if (!year) {
+      toast.error('Enter a valid anniversary year');
       return;
     }
 
-    // Check if year already exists in default years or custom years
-    const allYears = [...tmdbSettings.anniversaryYears, ...customAnniversaryYears];
+    const allYears = getNormalizedUniqueAnniversaryYears([
+      ...tmdbSettings.anniversaryYears,
+      ...customAnniversaryYears,
+    ]);
     if (allYears.includes(year)) {
       toast.error(`Year ${year} is already in the list`);
       return;
     }
 
-    // Add the year
-    updateSetting('customAnniversaryYears', [...customAnniversaryYears, year]);
-
-    // Also add it to active anniversary years
-    toggleAnniversaryYear(year);
+    updateSetting('customAnniversaryYears', sortAnniversaryYears([...customAnniversaryYears, year]));
+    updateSetting('anniversaryYears', sortAnniversaryYears([...tmdbSettings.anniversaryYears, year]));
 
     setNewYearInput('');
     toast.success(`Added custom anniversary year: ${year}y`);
