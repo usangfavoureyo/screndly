@@ -25,8 +25,6 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     addFeed,
     updateFeed,
     deleteFeed: deleteFeedFromContext,
-    removeFeedLocal,
-    restoreFeed,
     toggleFeedEnabled,
     togglePlatform,
     refreshFeed,
@@ -117,31 +115,56 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     setIsEditorOpen(true);
   };
 
+  const buildFeedCreatePayload = (feed: Feed, name: string = feed.name) => ({
+    name,
+    url: feed.url,
+    enabled: feed.enabled,
+    interval: feed.interval,
+    imageCount: feed.imageCount,
+    platformImageCounts: feed.platformImageCounts ? { ...feed.platformImageCounts } : undefined,
+    dedupeDays: feed.dedupeDays,
+    filters: {
+      ...feed.filters,
+      required: feed.filters.required.map((keyword) => ({ ...keyword })),
+      blocked: feed.filters.blocked.map((keyword) => ({ ...keyword })),
+    },
+    serperEnabled: feed.serperEnabled,
+    tmdbEnabled: feed.tmdbEnabled,
+    serperPriority: feed.serperPriority,
+    rehostImages: feed.rehostImages,
+    autoPost: feed.autoPost,
+    platformsEnabled: feed.platformsEnabled ? { ...feed.platformsEnabled } : undefined,
+    trickle: feed.trickle,
+  });
+
   const handleDeleteFeed = async (id: string) => {
     haptics.medium();
-    const feedIndex = feeds.findIndex((feed) => feed.id === id);
-    const feed = feedIndex >= 0 ? feeds[feedIndex] : null;
+    const feed = transformedFeeds.find((entry) => entry.id === id);
     if (!feed) return;
 
-    removeFeedLocal(id);
+    try {
+      await deleteFeedFromContext(id);
+      await loadActivity();
 
-    showUndo({
-      id: `rss-feed-${id}`,
-      itemName: feed.name,
-      onUndo: () => {
-        restoreFeed(feed, feedIndex);
-      },
-      onConfirm: async () => {
-        try {
-          await deleteFeedFromContext(id);
+      showUndo({
+        id: `rss-feed-${id}`,
+        itemName: feed.name,
+        onUndo: async () => {
+          const restoredFeed = await addFeed(buildFeedCreatePayload(feed));
+          if (!restoredFeed) {
+            toast.error('Failed to restore feed');
+            return;
+          }
+
           await loadActivity();
-          toast.success('Feed deleted');
-        } catch (error) {
-          restoreFeed(feed, feedIndex);
-          toast.error(error instanceof Error ? error.message : 'Failed to delete feed');
-        }
-      }
-    });
+          toast.success('Feed restored');
+        },
+      });
+
+      toast.success('Feed deleted');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to delete feed');
+    }
   };
 
   const handleDuplicateFeed = async (id: string) => {
@@ -160,27 +183,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
       : `${sourceFeed.name} (Copy ${duplicateCount + 1})`;
 
     try {
-      const duplicatedFeed = await addFeed({
-        name: duplicateName,
-        url: sourceFeed.url,
-        enabled: sourceFeed.enabled,
-        interval: sourceFeed.interval,
-        imageCount: sourceFeed.imageCount,
-        platformImageCounts: sourceFeed.platformImageCounts ? { ...sourceFeed.platformImageCounts } : undefined,
-        dedupeDays: sourceFeed.dedupeDays,
-        filters: {
-          ...sourceFeed.filters,
-          required: sourceFeed.filters.required.map((keyword) => ({ ...keyword })),
-          blocked: sourceFeed.filters.blocked.map((keyword) => ({ ...keyword })),
-        },
-        serperEnabled: sourceFeed.serperEnabled,
-        tmdbEnabled: sourceFeed.tmdbEnabled,
-        serperPriority: sourceFeed.serperPriority,
-        rehostImages: sourceFeed.rehostImages,
-        autoPost: sourceFeed.autoPost,
-        platformsEnabled: sourceFeed.platformsEnabled ? { ...sourceFeed.platformsEnabled } : undefined,
-        trickle: sourceFeed.trickle,
-      });
+      const duplicatedFeed = await addFeed(buildFeedCreatePayload(sourceFeed, duplicateName));
 
       if (!duplicatedFeed) {
         throw new Error('Failed to duplicate feed');

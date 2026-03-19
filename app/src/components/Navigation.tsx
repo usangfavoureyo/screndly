@@ -39,7 +39,6 @@ export function Navigation({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
-
   const handleNavClick = (page: string) => {
     onNavigate(page);
     setIsMobileMenuOpen(false);
@@ -51,14 +50,31 @@ export function Navigation({
         'border-b border-gray-200 dark:border-[#333333]',
         isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
       )}>
-        <div className={cn('flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
-          <div className={cn(isCollapsed && isDesktop ? 'relative h-10 w-10' : 'flex items-center gap-3')}>
+        <div className={cn('relative z-10 flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
+          <div
+            className={cn(isCollapsed && isDesktop ? 'relative h-10 w-10' : 'flex items-center gap-3')}
+            onClick={isCollapsed && isDesktop ? onToggleDesktopSidebar : undefined}
+            role={isCollapsed && isDesktop ? 'button' : undefined}
+            tabIndex={isCollapsed && isDesktop ? 0 : undefined}
+            onKeyDown={isCollapsed && isDesktop ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onToggleDesktopSidebar();
+              }
+            } : undefined}
+            aria-label={isCollapsed && isDesktop ? 'Expand sidebar' : undefined}
+          >
             <button
-              onClick={() => handleNavClick('dashboard')}
+              type="button"
+              onClick={() => {
+                if (!isCollapsed || !isDesktop) {
+                  handleNavClick('dashboard');
+                }
+              }}
               className={cn(
-                'cursor-pointer flex items-center transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
+                'relative z-10 flex cursor-pointer items-center touch-manipulation transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop
-                  ? 'h-10 w-10 justify-center group-hover/sidebar:opacity-0 group-hover/sidebar:pointer-events-none'
+                  ? 'h-10 w-10 justify-center opacity-100 pointer-events-none group-hover/sidebar:opacity-0'
                   : 'gap-3',
               )}
               aria-label="Go to dashboard"
@@ -73,7 +89,7 @@ export function Navigation({
                 variant="ghost"
                 onClick={onToggleDesktopSidebar}
                 className={cn(
-                  'absolute inset-0 hidden h-10 w-10 items-center justify-center p-0 text-gray-600 opacity-0 transition-all duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
+                  'absolute inset-0 z-20 hidden h-10 w-10 items-center justify-center p-0 text-gray-600 opacity-0 transition-all duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
                 )}
                 aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-pressed={isCollapsed}
@@ -99,16 +115,17 @@ export function Navigation({
         </div>
       </div>
 
-      <nav className={cn('flex-1 space-y-1', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')} aria-label="Primary navigation">
+      <nav className={cn('relative z-10 flex-1 space-y-1', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')} aria-label="Primary navigation">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
           const button = (
             <button
               key={item.id}
+              type="button"
               onClick={() => handleNavClick(item.id)}
               className={cn(
-                'group relative cursor-pointer w-full overflow-hidden rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
+                'group relative z-10 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-all duration-200 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
                 isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex items-center gap-3 px-4 py-3 text-left',
                 isActive
                   ? 'bg-[#ec1e24] text-white shadow-[0_10px_24px_rgba(236,30,36,0.22)]'
@@ -128,7 +145,7 @@ export function Navigation({
         })}
       </nav>
 
-      <div className={cn('border-t border-gray-200 dark:border-[#333333]', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')}>
+      <div className={cn('relative z-10 border-t border-gray-200 dark:border-[#333333]', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')}>
         <Button
           type="button"
           onClick={onLogout}
@@ -211,7 +228,7 @@ export function Navigation({
 
       {/* Sidebar - Desktop Only (lg and above) */}
       <aside
-        className="group/sidebar pointer-events-auto fixed top-0 left-0 z-50 hidden h-full flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
+        className="group/sidebar pointer-events-auto fixed top-0 left-0 z-[60] hidden h-full isolate flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
         style={{ width: desktopSidebarWidth }}
       >
         <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
