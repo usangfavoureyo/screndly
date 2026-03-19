@@ -32,6 +32,7 @@ import type { ComposeItem, ComposeMediaAsset, ComposeStatus } from '../../types/
 import { RedSpinner } from '../PageLoader';
 
 interface ComposeActivityPageProps {
+  isCompactLayout?: boolean;
   onNavigate: (page: string, fromPage?: string) => void;
   previousPage?: string | null;
 }
@@ -72,7 +73,7 @@ function toIsoSchedule(date?: Date, time?: string) {
   return scheduled.toISOString();
 }
 
-export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivityPageProps) {
+export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout = false }: ComposeActivityPageProps) {
   const { items, deleteItem, saveItem, setActiveItemId, updateStatus } = useComposeStore();
   const { addNotification } = useNotifications();
   const [filter, setFilter] = useState<'all' | ComposeStatus>('all');
@@ -239,25 +240,25 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-5'}`}>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Items</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Total Items</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.total}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Drafts</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Drafts</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.drafts}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Scheduled</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Scheduled</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.scheduled}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Published</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Published</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.published}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failed</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Failed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.failed}</p>
         </div>
       </div>
@@ -392,7 +393,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                     {!selection.selectionMode ? (
                       item.status === 'draft' ? (
                         <div className="col-start-2">
-                          <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
+                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
                             <Button
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -436,7 +437,7 @@ export function ComposeActivityPage({ onNavigate, previousPage }: ComposeActivit
                         </div>
                       ) : item.status === 'failed' || item.status === 'scheduled' ? (
                         <div className="col-start-2">
-                          <div className="max-w-[9rem]">
+                          <div className={isCompactLayout ? 'w-full' : 'max-w-[9rem]'}>
                             <Button
                               variant="outline"
                               size="sm"

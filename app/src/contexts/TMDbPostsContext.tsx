@@ -1,6 +1,13 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { getSettingsForBackend } from '../lib/tmdb';
 import { apiClient } from '../lib/api/client';
+import {
+  enqueueTMDbMutation,
+  getQueuedTMDbMutations,
+  getTMDbPostsSnapshot,
+  removeQueuedTMDbMutation,
+  saveTMDbPostsSnapshot,
+} from '../utils/tmdbOfflineStore';
 
 interface FetchPostsOptions {
   silent?: boolean;
@@ -68,6 +75,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const isFetchingRef = useRef(false);
+  const isFlushingQueueRef = useRef(false);
 
   // Fetch posts from backend API
   const fetchPosts = useCallback(async (options: FetchPostsOptions = {}) => {
@@ -115,9 +123,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
         setPosts(transformedPosts);
         setLastSyncTime(new Date());
         setError(null);
-
-        // Also cache to localStorage for offline access
-        localStorage.setItem('screndlyTMDbPosts', JSON.stringify(transformedPosts));
+        void saveTMDbPostsSnapshot(transformedPosts);
       } else {
         throw new Error(response.error?.message || 'Failed to fetch posts');
       }
@@ -128,22 +134,76 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
         setError(err.message || 'Failed to fetch posts');
       }
 
-      // Fall back to localStorage if backend fails
+      // Fall back to IndexedDB snapshot if backend fails
       if (!silent) {
-        const saved = localStorage.getItem('screndlyTMDbPosts');
-        if (saved) {
-          try {
-            setPosts(JSON.parse(saved));
-          } catch {
-            setPosts([]);
-          }
-        }
+        const saved = await getTMDbPostsSnapshot<TMDbPost[]>();
+        setPosts(saved ?? []);
       }
     } finally {
       isFetchingRef.current = false;
       if (!silent) {
         setIsLoading(false);
       }
+    }
+  }, []);
+
+  useEffect(() => {
+    void saveTMDbPostsSnapshot(posts);
+  }, [posts]);
+
+  const flushPendingMutations = useCallback(async () => {
+    if (isFlushingQueueRef.current || !navigator.onLine) {
+      return;
+    }
+
+    isFlushingQueueRef.current = true;
+
+    try {
+      const queued = await getQueuedTMDbMutations();
+
+      for (const mutation of queued) {
+        try {
+          switch (mutation.operation) {
+            case 'restore':
+            case 'create-or-update':
+              await apiClient.post('/api/tmdb/posts', mutation.payload);
+              break;
+            case 'reschedule':
+              await apiClient.put(`/api/tmdb/posts/${String(mutation.payload.postId)}`, {
+                scheduledTime: mutation.payload.newScheduledTime,
+              });
+              break;
+            case 'update-status':
+              await apiClient.put(
+                `/api/tmdb/posts/${String(mutation.payload.postId)}`,
+                normalizeTmdbPayload({
+                  status: mutation.payload.status,
+                  publishedTime: mutation.payload.publishedTime,
+                  errorMessage: mutation.payload.errorMessage,
+                }),
+              );
+              break;
+            case 'update-post':
+              await apiClient.put(
+                `/api/tmdb/posts/${String(mutation.payload.postId)}`,
+                normalizeTmdbPayload((mutation.payload.updates as Record<string, unknown>) || {}),
+              );
+              break;
+            case 'delete':
+              await apiClient.delete(`/api/tmdb/posts/${String(mutation.payload.postId)}`);
+              break;
+            default:
+              break;
+          }
+
+          await removeQueuedTMDbMutation(mutation.id);
+        } catch (error) {
+          console.error('Failed to flush TMDb offline mutation:', error);
+          break;
+        }
+      }
+    } finally {
+      isFlushingQueueRef.current = false;
     }
   }, []);
 
@@ -171,6 +231,19 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     fetchPosts();
   }, [fetchPosts]);
 
+  useEffect(() => {
+    void flushPendingMutations();
+
+    const handleOnline = () => {
+      void flushPendingMutations().then(() => fetchPosts({ silent: true }));
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [fetchPosts, flushPendingMutations]);
+
   const schedulePost = async (post: TMDbPost) => {
     // Optimistic update
     setPosts(prev => {
@@ -192,7 +265,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to schedule post');
     } catch (err) {
       console.error('Failed to schedule post:', err);
-      fetchPosts();
+      await enqueueTMDbMutation('create-or-update', normalizeTmdbPayload({ ...post, status: 'scheduled' }));
     }
   };
 
@@ -220,7 +293,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to restore post');
     } catch (err) {
       console.error('Failed to restore post:', err);
-      fetchPosts();
+      await enqueueTMDbMutation('restore', post as unknown as Record<string, unknown>);
     }
   };
 
@@ -238,7 +311,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to reschedule post');
     } catch (err) {
       console.error('Failed to reschedule post:', err);
-      fetchPosts();
+      await enqueueTMDbMutation('reschedule', { postId, newScheduledTime });
     }
   };
 
@@ -269,8 +342,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to update status');
     } catch (err) {
       console.error('Failed to update status:', err);
-      fetchPosts();
-      throw err;
+      await enqueueTMDbMutation('update-status', { postId, status, publishedTime, errorMessage });
     }
   };
 
@@ -288,22 +360,18 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to update post');
     } catch (err) {
       console.error('Failed to update post:', err);
-      fetchPosts();
-      throw err;
+      await enqueueTMDbMutation('update-post', { postId, updates: normalizeTmdbPayload(updates) });
     }
   };
 
   const deletePost = async (postId: string) => {
-    setPosts(prev => {
-      const newPosts = prev.filter(post => post.id !== postId);
-      localStorage.setItem('screndlyTMDbPosts', JSON.stringify(newPosts));
-      return newPosts;
-    });
+    setPosts(prev => prev.filter(post => post.id !== postId));
 
     try {
       await apiClient.delete(`/api/tmdb/posts/${postId}`);
     } catch (err) {
       console.error('Failed to delete from backend:', err);
+      await enqueueTMDbMutation('delete', { postId });
     }
   };
 

@@ -41,6 +41,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   const [previewFeedId, setPreviewFeedId] = useState<string | null>(null);
   const [activityItems, setActivityItems] = useState<RSSActivityItem[]>([]);
   const [isActivityLoading, setIsActivityLoading] = useState(true);
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const { showUndo } = useUndo();
 
   const transformedFeeds: Feed[] = feeds.map((feed) => ({
@@ -255,6 +256,24 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     await loadActivity();
   };
 
+  const handleRefreshAllFeeds = async () => {
+    if (isRefreshingAll) {
+      return;
+    }
+
+    haptics.light();
+    setIsRefreshingAll(true);
+    const loadingToast = toast.loading('Refreshing RSS feeds...');
+
+    try {
+      await refreshAllFeeds();
+      await loadActivity();
+    } finally {
+      toast.dismiss(loadingToast);
+      setIsRefreshingAll(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -360,16 +379,15 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               <h3 className="text-gray-900 dark:text-white">Feeds ({feeds.length})</h3>
               <div className="flex items-center gap-2">
                 <Button
+                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={async () => {
-                    haptics.light();
-                    await refreshAllFeeds();
-                    await loadActivity();
-                  }}
+                  onClick={handleRefreshAllFeeds}
+                  disabled={isRefreshingAll}
+                  aria-label="Refresh all RSS feeds"
                   className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                 >
-                  <RefreshCw className="w-4 h-4" />
+                  <RefreshCw className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
                 </Button>
                 <Button
                   variant="outline"

@@ -16,7 +16,12 @@ import { haptics } from "../utils/haptics";
 import { lazyWithRetry } from "../utils/performance";
 import { useNotifications } from "../contexts/NotificationsContext";
 import { useBackNavigation } from "../contexts/BackNavigationContext";
-import { setupInstallPrompt, registerServiceWorker } from "../utils/pwa";
+import {
+  applyPendingServiceWorkerUpdate,
+  registerServiceWorker,
+  SERVICE_WORKER_UPDATE_EVENT,
+  setupInstallPrompt,
+} from "../utils/pwa";
 import { toast } from "sonner";
 import { logout } from "../lib/auth";
 import { useTMDbModalStore } from "../stores/tmdbModalStore";
@@ -590,6 +595,25 @@ export function AppContent() {
 
     // Register the service worker
     registerServiceWorker();
+  }, []);
+
+  useEffect(() => {
+    const handleServiceWorkerUpdate = () => {
+      toast('A new version of Screndly is ready.', {
+        action: {
+          label: 'Refresh',
+          onClick: () => {
+            applyPendingServiceWorkerUpdate();
+          },
+        },
+        duration: 20000,
+      });
+    };
+
+    window.addEventListener(SERVICE_WORKER_UPDATE_EVENT, handleServiceWorkerUpdate);
+    return () => {
+      window.removeEventListener(SERVICE_WORKER_UPDATE_EVENT, handleServiceWorkerUpdate);
+    };
   }, []);
 
   useEffect(() => {

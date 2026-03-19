@@ -18,13 +18,21 @@ export function migrateLegacyToken(): void {
 
     try {
         const legacyToken = localStorage.getItem(LEGACY_TOKEN_KEY);
-        const currentToken = localStorage.getItem(TOKEN_KEY);
+        const currentToken = sessionStorage.getItem(TOKEN_KEY);
 
         if (legacyToken && !currentToken) {
-            console.log('[Auth] Migrating legacy token to unified key');
-            localStorage.setItem(TOKEN_KEY, legacyToken);
-            // We don't delete the legacy one immediately for safety
+            console.log('[Auth] Migrating legacy token to session-scoped unified key');
+            sessionStorage.setItem(TOKEN_KEY, legacyToken);
         }
+
+        localStorage.removeItem(LEGACY_TOKEN_KEY);
+
+        const persistedToken = localStorage.getItem(TOKEN_KEY);
+        if (persistedToken && !currentToken) {
+            console.log('[Auth] Migrating persisted auth token to session storage');
+            sessionStorage.setItem(TOKEN_KEY, persistedToken);
+        }
+        localStorage.removeItem(TOKEN_KEY);
     } catch (e) {
         console.error('[Auth] Migration failed:', e);
     }
@@ -42,7 +50,7 @@ export function getToken(): string | null {
     migrateLegacyToken();
 
     try {
-        const token = localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY);
+        const token = sessionStorage.getItem(TOKEN_KEY);
 
         // Sanitize: aggressively strip poison strings
         const poisonStrings = ['undefined', 'null', '[object Object]', 'nan', 'false', 'true'];
@@ -83,11 +91,12 @@ export function setToken(token: string | null | undefined, rememberMe: boolean =
         return;
     }
 
-    localStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe));
     sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
 
     // Cleanup legacy
+    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
     sessionStorage.removeItem(LEGACY_TOKEN_KEY);
 }
@@ -98,9 +107,9 @@ export function setToken(token: string | null | undefined, rememberMe: boolean =
 export function clearAuth(): void {
     if (typeof window === 'undefined') return;
 
+    localStorage.removeItem(KEEP_SIGNED_IN_KEY);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
-    localStorage.removeItem(KEEP_SIGNED_IN_KEY);
     sessionStorage.removeItem(SESSION_ACTIVE_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(LEGACY_TOKEN_KEY);

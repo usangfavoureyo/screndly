@@ -4,6 +4,7 @@
  * Stores OAuth tokens securely using Web Crypto API
  * In production, use a secure backend storage (e.g., encrypted database)
  */
+import { getSessionStoredJson, removeSessionStoredValue, setSessionStoredJson } from './secureSessionStorage';
 
 interface StoredToken {
   accessToken: string;
@@ -60,7 +61,7 @@ class MetaTokenStorage {
     const tokens = this.getAllTokensRaw();
     tokens[platform] = encrypted;
     
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
+    setSessionStoredJson(this.STORAGE_KEY, tokens);
   }
 
   /**
@@ -95,14 +96,14 @@ class MetaTokenStorage {
   async deleteToken(platform: string): Promise<void> {
     const tokens = this.getAllTokensRaw();
     delete tokens[platform];
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(tokens));
+    setSessionStoredJson(this.STORAGE_KEY, tokens);
   }
 
   /**
    * Delete all tokens
    */
   async deleteAllTokens(): Promise<void> {
-    localStorage.removeItem(this.STORAGE_KEY);
+    removeSessionStoredValue(this.STORAGE_KEY);
   }
 
   /**
@@ -117,16 +118,7 @@ class MetaTokenStorage {
    * Get all raw (encrypted) tokens
    */
   private getAllTokensRaw(): Record<string, EncryptedData> {
-    const stored = localStorage.getItem(this.STORAGE_KEY);
-    if (!stored) {
-      return {};
-    }
-
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return {};
-    }
+    return getSessionStoredJson<Record<string, EncryptedData>>(this.STORAGE_KEY) ?? {};
   }
 
   /**

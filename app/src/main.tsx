@@ -18,7 +18,7 @@ if (typeof window !== 'undefined') {
 
   const TOKEN_KEY = 'screndly_auth_token';
 
-  const startupToken = localStorage.getItem(TOKEN_KEY);
+  const startupToken = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
   if (startupToken === 'null' || startupToken === 'undefined' || startupToken === '[object Object]') {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
@@ -31,6 +31,15 @@ if (typeof window !== 'undefined') {
       return;
     }
     return originalSetItem.apply(this, args);
+  };
+
+  const originalSessionSetItem = sessionStorage.setItem;
+  sessionStorage.setItem = function (...args: [string, string]) {
+    const [key, value] = args;
+    if (key === TOKEN_KEY && (value === 'null' || value === 'undefined' || value === '[object Object]' || !value)) {
+      return;
+    }
+    return originalSessionSetItem.apply(this, args);
   };
 }
 

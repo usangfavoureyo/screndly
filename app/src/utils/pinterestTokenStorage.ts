@@ -4,6 +4,13 @@
  * Handles secure storage and retrieval of Pinterest OAuth tokens.
  * Similar to other platform token storage utilities.
  */
+import {
+    getSessionStoredJson,
+    getSessionStoredValue,
+    removeSessionStoredValue,
+    setSessionStoredJson,
+    setSessionStoredValue,
+} from './secureSessionStorage';
 
 const STORAGE_KEYS = {
     ACCESS_TOKEN: 'pinterest_access_token',
@@ -17,8 +24,8 @@ const STORAGE_KEYS = {
  */
 export function getPinterestAccessToken(): string | null {
     try {
-        const token = localStorage.getItem(STORAGE_KEYS.ACCESS_TOKEN);
-        const expiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+        const token = getSessionStoredValue(STORAGE_KEYS.ACCESS_TOKEN);
+        const expiry = getSessionStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
 
         // Check if token is expired
         if (token && expiry) {
@@ -44,11 +51,11 @@ export function storePinterestAccessToken(
     refreshToken?: string
 ): void {
     try {
-        localStorage.setItem(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
-        localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000));
+        setSessionStoredValue(STORAGE_KEYS.ACCESS_TOKEN, accessToken);
+        setSessionStoredValue(STORAGE_KEYS.TOKEN_EXPIRY, String(Date.now() + expiresIn * 1000));
 
         if (refreshToken) {
-            localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
+            setSessionStoredValue(STORAGE_KEYS.REFRESH_TOKEN, refreshToken);
         }
     } catch (_e) {
         console.error('[Pinterest] Failed to store token');
@@ -60,7 +67,7 @@ export function storePinterestAccessToken(
  */
 export function getPinterestRefreshToken(): string | null {
     try {
-        return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN);
+        return getSessionStoredValue(STORAGE_KEYS.REFRESH_TOKEN);
     } catch (_e) {
         return null;
     }
@@ -75,7 +82,7 @@ export function storePinterestUserInfo(userInfo: {
     profileImage?: string;
 }): void {
     try {
-        localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userInfo));
+        setSessionStoredJson(STORAGE_KEYS.USER_INFO, userInfo);
     } catch (_e) {
         console.error('[Pinterest] Failed to store user info');
     }
@@ -90,8 +97,7 @@ export function getPinterestUserInfo(): {
     profileImage?: string;
 } | null {
     try {
-        const stored = localStorage.getItem(STORAGE_KEYS.USER_INFO);
-        return stored ? JSON.parse(stored) : null;
+        return getSessionStoredJson(STORAGE_KEYS.USER_INFO);
     } catch (_e) {
         return null;
     }
@@ -102,7 +108,7 @@ export function getPinterestUserInfo(): {
  */
 export function clearPinterestTokens(): void {
     Object.values(STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
+        removeSessionStoredValue(key);
     });
 }
 
@@ -119,7 +125,7 @@ export function isPinterestConnected(): boolean {
  */
 export function getTokenExpiry(): Date | null {
     try {
-        const expiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+        const expiry = getSessionStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
         return expiry ? new Date(parseInt(expiry, 10)) : null;
     } catch (_e) {
         return null;
@@ -131,7 +137,7 @@ export function getTokenExpiry(): Date | null {
  */
 export function getTimeUntilExpiry(): number {
     try {
-        const expiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY);
+        const expiry = getSessionStoredValue(STORAGE_KEYS.TOKEN_EXPIRY);
         if (!expiry) return 0;
 
         const expiryTime = parseInt(expiry, 10);

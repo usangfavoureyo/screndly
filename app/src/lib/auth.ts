@@ -182,10 +182,7 @@ function handleDevLogin(password: string, rememberMe: boolean): {
 
   if (password === configuredPassword) {
     const token = createDevToken(password);
-    localStorage.setItem(TOKEN_KEY, token);
-    localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe));
-    sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
-    sessionStorage.removeItem(TOKEN_KEY);
+    sharedSetToken(token, rememberMe);
     console.log('Login successful (development mode)');
     return { success: true };
   }
@@ -204,7 +201,7 @@ export async function verifyAuth(): Promise<boolean> {
   console.log('[verifyAuth] keepSignedIn:', keepSignedIn, 'sessionActive:', sessionActive);
 
   if (!keepSignedIn && !sessionActive) {
-    if (localStorage.getItem(TOKEN_KEY)) {
+    if (sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY)) {
       console.log('[Auth] Session ended (Keep Me Signed In = false). Logging out.');
       logout();
     }

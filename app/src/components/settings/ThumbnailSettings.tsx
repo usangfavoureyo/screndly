@@ -369,33 +369,42 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     }
   };
 
-  const getLogoPositionStyles = (position: LogoPosition): React.CSSProperties => {
-    const styles: React.CSSProperties = {
-      position: 'absolute',
-      width: `${Math.min(currentConfig.maxLogoSize, 60)}%`,
-      maxWidth: '60%',
-      maxHeight: '40%',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      gap: '0.75rem'
+  const getPreviewLogoBoxMetrics = (config: ThumbnailConfig) => {
+    const boxWidth = Math.min(THUMBNAIL_WIDTH * (config.maxLogoSize / 100), THUMBNAIL_WIDTH * 0.52);
+    const boxHeight = Math.min(THUMBNAIL_HEIGHT * 0.22, Math.max(84, boxWidth * 0.28));
+    const marginX = 48;
+    const marginTop = 48;
+    const marginBottom = 64;
+    const maxLeft = THUMBNAIL_WIDTH - marginX - boxWidth;
+    const maxTop = THUMBNAIL_HEIGHT - marginBottom - boxHeight;
+
+    const rawBoxX = config.logoPosition.includes('left')
+      ? marginX
+      : config.logoPosition.includes('right')
+        ? THUMBNAIL_WIDTH - boxWidth - marginX
+        : (THUMBNAIL_WIDTH - boxWidth) / 2;
+    const rawBoxY = config.logoPosition.startsWith('top')
+      ? marginTop
+      : config.logoPosition.startsWith('center')
+        ? (THUMBNAIL_HEIGHT - boxHeight) / 2
+        : THUMBNAIL_HEIGHT - boxHeight - marginBottom;
+
+    const boxX = Math.max(marginX, Math.min(rawBoxX, maxLeft));
+    const boxY = Math.max(marginTop, Math.min(rawBoxY, maxTop));
+
+    return {
+      boxWidth,
+      boxHeight,
+      left: `${(boxX / THUMBNAIL_WIDTH) * 100}%`,
+      top: `${(boxY / THUMBNAIL_HEIGHT) * 100}%`,
+      width: `${(boxWidth / THUMBNAIL_WIDTH) * 100}%`,
+      height: `${(boxHeight / THUMBNAIL_HEIGHT) * 100}%`,
+      trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
     };
-
-    const margin = 16;
-
-    switch (position) {
-      case 'top-left': return { ...styles, top: margin, left: margin };
-      case 'top-center': return { ...styles, top: margin, left: '50%', transform: 'translateX(-50%)' };
-      case 'top-right': return { ...styles, top: margin, right: margin };
-      case 'center-left': return { ...styles, top: '50%', left: margin, transform: 'translateY(-50%)' };
-      case 'center': return { ...styles, top: '50%', left: '50%', transform: 'translate(-50%, -50%)' };
-      case 'center-right': return { ...styles, top: '50%', right: margin, transform: 'translateY(-50%)' };
-      case 'bottom-left': return { ...styles, bottom: margin, left: margin };
-      case 'bottom-center': return { ...styles, bottom: margin, left: '50%', transform: 'translateX(-50%)' };
-      case 'bottom-right': return { ...styles, bottom: margin, right: margin };
-      default: return styles;
-    }
   };
+
+  const previewLogoBox = getPreviewLogoBoxMetrics(currentConfig);
+  const previewLogoPadding = `${Math.max(10, currentConfig.maxLogoSize * 0.16)}% ${Math.max(8, currentConfig.maxLogoSize * 0.14)}%`;
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -644,60 +653,71 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
               </div>
             </div>
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
-              {currentAssets.backdropUrl ? (
-                <img
-                  src={currentAssets.backdropUrl}
-                  alt="Example backdrop"
-                  className="absolute inset-0 w-full h-full object-cover rounded-lg"
-                />
-              ) : (
+              <div className="absolute inset-0 overflow-hidden rounded-lg">
+                {currentAssets.backdropUrl ? (
+                  <img
+                    src={currentAssets.backdropUrl}
+                    alt="Example backdrop"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background: 'linear-gradient(135deg, #13243b 0%, #294b72 46%, #f18b6d 100%)',
+                    }}
+                  >
+                    <div
+                      className="absolute inset-0"
+                      style={{
+                        background: 'radial-gradient(circle at 72% 24%, rgba(255,238,196,0.78), rgba(255,211,150,0.16) 34%, transparent 62%)',
+                      }}
+                    />
+                    <div
+                      className="absolute inset-x-0 bottom-0 h-[42%]"
+                      style={{
+                        background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 100%)',
+                        clipPath: 'path("M0 78 C180 58 400 118 620 80 C870 34 1100 164 1280 60 L1280 420 L0 420 Z")',
+                      }}
+                    />
+                  </div>
+                )}
+                {currentConfig.autoContrastOverlay && (
+                  <div className="absolute inset-0 bg-black/25" />
+                )}
                 <div
-                  className="absolute inset-0 rounded-lg"
                   style={{
-                    background: 'linear-gradient(135deg, #13243b 0%, #294b72 46%, #f18b6d 100%)',
+                    position: 'absolute',
+                    left: previewLogoBox.left,
+                    top: previewLogoBox.top,
+                    width: previewLogoBox.width,
+                    height: previewLogoBox.height,
                   }}
+                  className="pointer-events-none"
                 >
                   <div
-                    className="absolute inset-0 rounded-lg"
-                    style={{
-                      background: 'radial-gradient(circle at 72% 24%, rgba(255,238,196,0.78), rgba(255,211,150,0.16) 34%, transparent 62%)',
-                    }}
-                  />
-                  <div
-                    className="absolute inset-x-0 bottom-0 h-[42%] rounded-b-lg"
-                    style={{
-                      background: 'linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 100%)',
-                      clipPath: 'path("M0 78 C180 58 400 118 620 80 C870 34 1100 164 1280 60 L1280 420 L0 420 Z")',
-                    }}
-                  />
-                </div>
-              )}
-              {currentConfig.autoContrastOverlay && (
-                <div className="absolute inset-0 rounded-lg bg-black/25" />
-              )}
-              <div
-                style={getLogoPositionStyles(currentConfig.logoPosition)}
-                className="pointer-events-none"
-              >
-                <div className="w-full rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 p-3 shadow-2xl backdrop-blur-sm aspect-[16/5] flex items-center justify-center">
-                  {currentAssets.logoUrl ? (
-                    <img
-                      src={currentAssets.logoUrl}
-                      alt="Uploaded logo preview"
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <div className="text-center px-3">
-                      <div className="text-white text-xl font-semibold tracking-[0.35em]">LOGO</div>
-                      <div className="text-white/70 text-[10px] uppercase mt-2">Transparent PNG</div>
+                    className="flex h-full w-full items-center justify-center rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 shadow-2xl backdrop-blur-sm"
+                    style={{ padding: previewLogoPadding }}
+                  >
+                    {currentAssets.logoUrl ? (
+                      <img
+                        src={currentAssets.logoUrl}
+                        alt="Uploaded logo preview"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : (
+                      <div className="h-full w-full rounded-[inherit] border border-white/10 bg-white/[0.02]" />
+                    )}
+                  </div>
+                  {currentConfig.showTrailerTypeText && (
+                    <div
+                      className="absolute left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold tracking-[0.28em] text-white shadow-lg whitespace-nowrap"
+                      style={{ top: `calc(100% + ${previewLogoBox.trailerOffset})` }}
+                    >
+                      OFFICIAL TRAILER
                     </div>
                   )}
                 </div>
-                {currentConfig.showTrailerTypeText && (
-                  <div className="rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold tracking-[0.28em] text-white shadow-lg">
-                    OFFICIAL TRAILER
-                  </div>
-                )}
               </div>
             </div>
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333333]">

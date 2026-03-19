@@ -31,6 +31,7 @@ import type { ComposeItem, ComposeMediaAsset } from '../../types/compose';
 import { RedSpinner } from '../PageLoader';
 
 interface ComposeOverviewProps {
+  isCompactLayout?: boolean;
   onNavigate: (page: string, fromPage?: string) => void;
 }
 
@@ -75,7 +76,7 @@ function toIsoSchedule(date?: Date, time?: string) {
   return scheduled.toISOString();
 }
 
-export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
+export function ComposeOverview({ onNavigate, isCompactLayout = false }: ComposeOverviewProps) {
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
@@ -250,21 +251,21 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
           Manage drafts, schedules, and publishing from the post flow.
         </p>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'}`}>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Drafts</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Total Drafts</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.drafts}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Scheduled Posts</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Scheduled Posts</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.scheduled}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Published Posts</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Published Posts</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.published}</p>
         </div>
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 transition-all duration-200">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Pending Issues</p>
+          <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Pending Issues</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.pending}</p>
         </div>
       </div>
@@ -412,7 +413,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                     {!selection.selectionMode ? (
                       item.status === 'draft' ? (
                         <div className="col-start-2">
-                          <div className="grid w-full max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)] gap-2">
+                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
                             <Button
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -456,7 +457,7 @@ export function ComposeOverview({ onNavigate }: ComposeOverviewProps) {
                         </div>
                       ) : item.status !== 'published' ? (
                         <div className="col-start-2">
-                          <div className="max-w-[9rem]">
+                          <div className={isCompactLayout ? 'w-full' : 'max-w-[9rem]'}>
                             <Button
                               variant="outline"
                               size="sm"

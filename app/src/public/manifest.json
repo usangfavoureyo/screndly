@@ -71,7 +71,7 @@
       "url": "/?page=dashboard",
       "icons": [
         {
-          "src": "/icons/icon-96x96.png",
+          "src": "/icons/shortcut-dashboard-96x96.png",
           "sizes": "96x96"
         }
       ]
@@ -83,7 +83,7 @@
       "url": "/?page=video-studio",
       "icons": [
         {
-          "src": "/icons/icon-96x96.png",
+          "src": "/icons/shortcut-studio-96x96.png",
           "sizes": "96x96"
         }
       ]
@@ -95,7 +95,7 @@
       "url": "/?page=tmdb-feeds",
       "icons": [
         {
-          "src": "/icons/icon-96x96.png",
+          "src": "/icons/shortcut-feeds-96x96.png",
           "sizes": "96x96"
         }
       ]

@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { PageLoader } from './PageLoader';
 import { getComposeAssetPreviewUrl } from '../lib/create/composeMedia';
+import { BottomSheet, BottomSheetBody, BottomSheetHeader, BottomSheetTitle } from './ui/bottom-sheet';
 
 export interface NotificationAction {
   id: string;
@@ -166,7 +167,7 @@ export function NotificationPanel({
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const [showBulkActionsSheet, setShowBulkActionsSheet] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
   const [detail, setDetail] = useState<NotificationDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -186,7 +187,7 @@ export function NotificationPanel({
   useEffect(() => {
     if (!isOpen) {
       setShowFilters(false);
-      setShowMenu(false);
+      setShowBulkActionsSheet(false);
       setSelectedNotification(null);
       setDetail(null);
       setIsDetailLoading(false);
@@ -359,51 +360,14 @@ export function NotificationPanel({
               <button
                 onClick={() => {
                   haptics.light();
-                  setShowMenu(!showMenu);
+                  setShowBulkActionsSheet(true);
                 }}
                 className="text-[#9CA3AF] hover:text-black dark:hover:text-white p-1"
+                type="button"
+                aria-label="Notification actions"
               >
                 <MoreVertical className="w-5 h-5" />
               </button>
-
-              {showMenu && (
-                <>
-                  <div
-                    className="fixed inset-0 z-10"
-                    onClick={() => {
-                      haptics.light();
-                      setShowMenu(false);
-                    }}
-                  />
-
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-[#000000] rounded-lg shadow-lg dark:shadow-[0_4px_16px_rgba(0,0,0,0.3)] border border-gray-200 dark:border-[#333333] py-1 z-20">
-                    {unreadCount > 0 && (
-                      <button
-                        onClick={() => {
-                          haptics.medium();
-                          onMarkAllAsRead();
-                          setShowMenu(false);
-                        }}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A] flex items-center gap-2"
-                      >
-                        <CheckCheck className="w-4 h-4" />
-                        Mark all as read
-                      </button>
-                    )}
-                    <button
-                      onClick={() => {
-                        haptics.medium();
-                        onClearAll();
-                        setShowMenu(false);
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm text-[#ec1e24] hover:bg-gray-50 dark:hover:bg-[#1A1A1A] flex items-center gap-2"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      Clear all
-                    </button>
-                  </div>
-                </>
-              )}
             </div>
           </div>
         )}
@@ -507,7 +471,7 @@ export function NotificationPanel({
               selectionMode={selection.selectionMode}
               selected={selection.isSelected(notification.id)}
               onEnterSelectionMode={(id) => {
-                setShowMenu(false);
+                setShowBulkActionsSheet(false);
                 setShowFilters(false);
                 selection.enterSelectionMode(id);
               }}
@@ -668,6 +632,47 @@ export function NotificationPanel({
       <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[450px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
         {selectedNotification ? renderDetailView() : renderListView()}
       </div>
+
+      <BottomSheet
+        open={showBulkActionsSheet}
+        onOpenChange={setShowBulkActionsSheet}
+        heightMode="auto"
+        sheetId="notification-bulk-actions"
+      >
+        <BottomSheetHeader>
+          <BottomSheetTitle>Notification actions</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="px-0 py-2">
+          <div className="flex flex-col">
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.medium();
+                  onMarkAllAsRead();
+                  setShowBulkActionsSheet(false);
+                }}
+                className="flex w-full items-center gap-3 px-6 py-4 text-left text-base text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+              >
+                <CheckCheck className="h-5 w-5" />
+                <span>Mark all as read</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                haptics.medium();
+                onClearAll();
+                setShowBulkActionsSheet(false);
+              }}
+              className="flex w-full items-center gap-3 px-6 py-4 text-left text-base text-[#ec1e24] hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+            >
+              <Trash2 className="h-5 w-5" />
+              <span>Clear all</span>
+            </button>
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
     </>
   );
 }

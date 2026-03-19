@@ -19,6 +19,8 @@ interface SerializedPushSubscription {
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 const BUILD_ID_STORAGE_KEY = 'screndly_build_id';
 const SERVICE_WORKER_URL = `/sw.js?build=${encodeURIComponent(__APP_BUILD_ID__)}`;
+export const SERVICE_WORKER_UPDATE_EVENT = 'screndly:service-worker-update-available';
+let pendingServiceWorker: ServiceWorker | null = null;
 
 async function syncInstalledBuildId(): Promise<void> {
   const previousBuildId = localStorage.getItem(BUILD_ID_STORAGE_KEY);
@@ -78,7 +80,6 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         registration.update();
       }, 60 * 60 * 1000);
 
-      // Handle updates - aggressive cache busting
       let refreshing = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
@@ -93,9 +94,9 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              console.log('[PWA] New version available! Updating...');
-              // Automatically claim clients and reload
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
+              console.log('[PWA] New version available');
+              pendingServiceWorker = newWorker;
+              window.dispatchEvent(new CustomEvent(SERVICE_WORKER_UPDATE_EVENT));
             }
           });
         }
@@ -110,6 +111,16 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
     console.log('[PWA] Service Workers are not supported in this browser');
     return null;
   }
+}
+
+export function applyPendingServiceWorkerUpdate(): boolean {
+  if (!pendingServiceWorker) {
+    return false;
+  }
+
+  pendingServiceWorker.postMessage({ type: 'SKIP_WAITING' });
+  pendingServiceWorker = null;
+  return true;
 }
 
 /**

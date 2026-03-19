@@ -96,17 +96,19 @@ export function PostFlowSheet({
 
   const flowContent = currentView === 'activity' ? (
     <ComposeActivityPage
+      isCompactLayout={isDesktopViewport}
       onNavigate={navigateWithinSheet}
       previousPage="create"
     />
   ) : currentView === 'editor' ? (
     <ComposeEditorPage
+      isCompactLayout={isDesktopViewport}
       onNavigate={navigateWithinSheet}
       previousPage={editorPreviousPage}
       registerCloseRequestHandler={setCloseRequestHandler}
     />
   ) : (
-    <ComposeOverview onNavigate={navigateWithinSheet} />
+    <ComposeOverview isCompactLayout={isDesktopViewport} onNavigate={navigateWithinSheet} />
   );
 
   if (isDesktopViewport) {
@@ -125,7 +127,7 @@ export function PostFlowSheet({
         <SheetContent
           side="right"
           className="group/post-flow w-full max-w-[min(100vw,32rem)] border-l border-gray-200 bg-white p-0 dark:border-[#222222] dark:bg-[#050505] sm:max-w-[32rem]"
-          closeButtonClassName="top-5 right-5 z-20 opacity-0 pointer-events-none hover:opacity-100 focus:opacity-100 group-hover/post-flow:pointer-events-auto group-hover/post-flow:opacity-100 group-focus-within/post-flow:pointer-events-auto group-focus-within/post-flow:opacity-100"
+          showCloseButton={false}
         >
           <div className="relative flex h-full min-h-0 flex-col">
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">

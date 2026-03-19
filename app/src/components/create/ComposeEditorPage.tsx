@@ -54,6 +54,7 @@ import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
 
 interface ComposeEditorPageProps {
+  isCompactLayout?: boolean;
   onNavigate: (page: string, fromPage?: string) => void;
   previousPage?: string | null;
   registerCloseRequestHandler?: (handler: (() => boolean) | null) => void;
@@ -157,6 +158,7 @@ function getPlatformCardTone(isSelected: boolean, supported: boolean, connected:
 }
 
 export function ComposeEditorPage({
+  isCompactLayout = false,
   onNavigate,
   previousPage,
   registerCloseRequestHandler,
@@ -676,7 +678,7 @@ export function ComposeEditorPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+      <div className={`grid grid-cols-1 gap-6 ${isCompactLayout ? '' : 'xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]'}`}>
         <div className="space-y-6">
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <div className="mb-4 space-y-3">
@@ -719,7 +721,7 @@ export function ComposeEditorPage({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className={`grid grid-cols-1 gap-3 ${isCompactLayout ? '' : 'md:grid-cols-2'}`}>
                   {formState.mediaAssets.map((asset) => (
                     <div key={asset.id} className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 dark:border-[#333333] dark:bg-[#050505]">
                       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-[#333333]">
@@ -823,7 +825,7 @@ export function ComposeEditorPage({
                 </p>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
                 {[
                   {
                     key: 'sharedThumbnail' as const,
