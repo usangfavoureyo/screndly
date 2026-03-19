@@ -642,7 +642,7 @@ export class YouTubePollerService {
 
         const pubDate = new Date(video.pubDate || Date.now());
         const futureOnlySince = this.getFutureOnlySince(settings);
-        if (!options.force && futureOnlySince && pubDate < futureOnlySince) {
+        if (futureOnlySince && pubDate < futureOnlySince) {
             return {
                 kind: 'continue',
                 reason: `${videoTitle}: uploaded before future-only cutoff`,
@@ -652,7 +652,7 @@ export class YouTubePollerService {
 
         const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
         const ageGateHours = settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS;
-        if (!options.force && ageGateHours !== null && hoursSince > ageGateHours) {
+        if (ageGateHours !== null && hoursSince > ageGateHours) {
             return {
                 kind: 'continue',
                 reason: `${videoTitle}: older than ${ageGateHours} hour${ageGateHours === 1 ? '' : 's'}`,

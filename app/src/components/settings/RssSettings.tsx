@@ -280,7 +280,7 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
               </SelectContent>
             </Select>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              GPT-5 Mini is the recommended balance for high-quality captions at production scale
+              GPT-5.4 Mini is the current recommended mini GPT-5 Responses API model for high-quality captions at production scale
             </p>
           </div>
 

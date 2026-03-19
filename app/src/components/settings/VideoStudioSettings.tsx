@@ -351,7 +351,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
               </SelectContent>
             </Select>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
-              GPT-4.1 is the recommended prompt model here. Use GPT-5 Mini when you want stronger general generation at lower cost.
+              GPT-5.4 Mini is the current recommended mini GPT-5 Responses API model here. Use GPT-5.4 when you want the highest-quality prompt generation.
             </p>
           </div>
         </div>

@@ -24,7 +24,16 @@ export const AI_MODELS: AIModel[] = [
     id: 'gpt-5.4',
     displayName: 'GPT-5.4',
     tier: 'flagship',
-    description: 'Current flagship GPT-5 model for highest quality generation and planning',
+    description: 'Current flagship GPT-5 Responses API model for highest quality generation and planning',
+    contextWindow: 400000,
+    maxOutput: 128000,
+    reasoningTokens: true,
+  },
+  {
+    id: 'gpt-5.4-mini',
+    displayName: 'GPT-5.4 Mini',
+    tier: 'fast',
+    description: 'Current recommended mini GPT-5 Responses API model for high-volume automation and strong reasoning',
     contextWindow: 400000,
     maxOutput: 128000,
     reasoningTokens: true,
@@ -57,7 +66,7 @@ export const AI_MODELS: AIModel[] = [
     id: 'gpt-5-mini',
     displayName: 'GPT-5 Mini',
     tier: 'fast',
-    description: 'Recommended default for captions, replies, and most automation tasks',
+    description: 'Previous smaller GPT-5 option for lower-cost automation tasks',
   },
   {
     id: 'gpt-5-nano',
@@ -163,10 +172,10 @@ export function getTierBadge(tier: AIModel['tier']): string {
  * DO NOT MODIFY - maintains backward compatibility
  */
 export const DEFAULT_MODELS = {
-  video: 'gpt-5-mini',
-  comment: 'gpt-4.1-mini',
-  tmdb: 'gpt-5-mini',
-  rss: 'gpt-5-mini',
-  designStudio: 'gpt-5-mini',
-  videoStudio: 'gpt-4.1',
+  video: 'gpt-5.4-mini',
+  comment: 'gpt-5.4-mini',
+  tmdb: 'gpt-5.4-mini',
+  rss: 'gpt-5.4-mini',
+  designStudio: 'gpt-5.4-mini',
+  videoStudio: 'gpt-5.4-mini',
 } as const;
