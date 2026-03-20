@@ -4,7 +4,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import { useBackNavigation } from "../../contexts/BackNavigationContext";
-import { getTransientHistoryPayload, useTransientHistoryState } from "../../hooks/useTransientHistoryState";
+import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 import { cn } from "./utils";
 
@@ -164,25 +164,6 @@ function DialogContent({
     });
     return () => unregisterModal(id);
   }, [uniqueId, registerModalWithCloseHandler, unregisterModal]);
-
-  React.useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      const activeTransientId = getTransientHistoryPayload(
-        (event.state as Record<string, unknown> | null) ?? null,
-      )?.id;
-
-      if (activeTransientId === uniqueId) {
-        return;
-      }
-
-      closeButtonRef.current?.click();
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [uniqueId]);
 
   return (
     <DialogPortal data-slot="dialog-portal">

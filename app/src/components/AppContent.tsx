@@ -12,7 +12,7 @@ import { PostFlowSheet, type PostFlowView } from "./create/PostFlowSheet";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
-import { useTransientHistoryState } from "../hooks/useTransientHistoryState";
+import { getTransientHistoryPayload, useTransientHistoryState } from "../hooks/useTransientHistoryState";
 import { haptics } from "../utils/haptics";
 import { lazyWithRetry } from "../utils/performance";
 import { useNotifications } from "../contexts/NotificationsContext";
@@ -382,6 +382,13 @@ export function AppContent() {
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
+      const transientPayload = getTransientHistoryPayload(
+        (event.state as Record<string, unknown> | null) ?? null,
+      );
+      if (transientPayload) {
+        return;
+      }
+
       const nextPage = normalizeShellPage(getPageFromURL());
       if (nextPage !== currentPage) {
         setCurrentPageState(nextPage);
