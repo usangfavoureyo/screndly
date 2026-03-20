@@ -7,7 +7,7 @@ interface DisclaimerPageProps {
 }
 
 export function DisclaimerPage({ onNavigate, isAuthenticated = true }: DisclaimerPageProps) {
-  const LEGAL_EMAIL = 'legal@screndly.com';
+  const LEGAL_EMAIL = 'screndlyapp@gmail.com';
 
   const [isDesktop, setIsDesktop] = useState(false);
 

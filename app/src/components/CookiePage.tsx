@@ -7,7 +7,7 @@ interface CookiePageProps {
 }
 
 export function CookiePage({ onNavigate, isAuthenticated = true }: CookiePageProps) {
-  const SUPPORT_EMAIL = 'support@screndly.com';
+  const SUPPORT_EMAIL = 'screndlyapp@gmail.com';
 
   const [isDesktop, setIsDesktop] = useState(false);
 

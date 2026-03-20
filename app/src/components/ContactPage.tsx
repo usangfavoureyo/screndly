@@ -7,8 +7,8 @@ interface ContactPageProps {
 
 export function ContactPage({ onNavigate }: ContactPageProps) {
   const [isDesktop, setIsDesktop] = useState(false);
-  const SUPPORT_EMAIL = 'support@screndly.com';
-  const LEGAL_EMAIL = 'legal@screndly.com';
+  const SUPPORT_EMAIL = 'screndlyapp@gmail.com';
+  const LEGAL_EMAIL = 'screndlyapp@gmail.com';
 
   useEffect(() => {
     const checkDesktop = () => {

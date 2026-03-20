@@ -10,8 +10,8 @@ const EFFECTIVE_DATE = 'March 7, 2026';
 const LAST_UPDATED = 'March 7, 2026';
 const BUSINESS_NAME = 'Screen Render';
 const BUSINESS_ADDRESS = 'Business address available upon verified request.';
-const SUPPORT_EMAIL = 'support@screndly.com';
-const PRIVACY_EMAIL = 'legal@screndly.com';
+const SUPPORT_EMAIL = 'screndlyapp@gmail.com';
+const PRIVACY_EMAIL = 'screndlyapp@gmail.com';
 const WEBSITE_URL = 'https://screndly.vercel.app';
 
 export function PrivacyPage({ onNavigate, isAuthenticated = true }: PrivacyPageProps) {
