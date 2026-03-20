@@ -25,20 +25,23 @@ export function migrateLegacyToken(): void {
         if (legacyToken && !currentSessionToken && !currentPersistedToken) {
             console.log(
                 keepSignedIn
-                    ? '[Auth] Migrating legacy persisted token to session-scoped storage'
+                    ? '[Auth] Migrating legacy persisted token to local storage'
                     : '[Auth] Migrating legacy token to session-scoped storage'
             );
-            sessionStorage.setItem(TOKEN_KEY, legacyToken);
+            if (keepSignedIn) {
+                localStorage.setItem(TOKEN_KEY, legacyToken);
+            } else {
+                sessionStorage.setItem(TOKEN_KEY, legacyToken);
+            }
         }
 
         localStorage.removeItem(LEGACY_TOKEN_KEY);
 
-        if (currentPersistedToken && !currentSessionToken) {
-            console.log('[Auth] Restoring persisted auth token into active session and clearing local copy');
+        if (!keepSignedIn && currentPersistedToken && !currentSessionToken) {
+            console.log('[Auth] Moving persisted auth token into session storage because Keep Me Signed In is disabled');
             sessionStorage.setItem(TOKEN_KEY, currentPersistedToken);
+            localStorage.removeItem(TOKEN_KEY);
         }
-
-        localStorage.removeItem(TOKEN_KEY);
     } catch (e) {
         console.error('[Auth] Migration failed:', e);
     }
@@ -56,7 +59,7 @@ export function getToken(): string | null {
     migrateLegacyToken();
 
     try {
-        const token = sessionStorage.getItem(TOKEN_KEY);
+        const token = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
 
         // Sanitize: aggressively strip poison strings
         const poisonStrings = ['undefined', 'null', '[object Object]', 'nan', 'false', 'true'];
@@ -99,8 +102,14 @@ export function setToken(token: string | null | undefined, rememberMe: boolean =
 
     localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe));
     sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
-    sessionStorage.setItem(TOKEN_KEY, token);
-    localStorage.removeItem(TOKEN_KEY);
+
+    if (rememberMe) {
+        localStorage.setItem(TOKEN_KEY, token);
+        sessionStorage.removeItem(TOKEN_KEY);
+    } else {
+        sessionStorage.setItem(TOKEN_KEY, token);
+        localStorage.removeItem(TOKEN_KEY);
+    }
 
     // Cleanup legacy
     localStorage.removeItem(LEGACY_TOKEN_KEY);

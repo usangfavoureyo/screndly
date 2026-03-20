@@ -26,7 +26,7 @@ import { BackblazeVideoBrowser } from './BackblazeVideoBrowser';
 import { addVideoStudioActivity, addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { analyzeTrailer, TrailerAnalysis, VideoMoment } from '../lib/api/googleVideoIntelligence';
 import { generateShotstackJSON, getRenderStatus, renderVideo } from '../lib/api/shotstack';
-import { analyzeMultipleTrailers, MonthlyTrailerAnalysis, generateMonthlyCompilationJSON, getCompilationStats } from '../lib/api/monthlyCompilation';
+import { analyzeMultipleTrailers, MonthlyTrailerAnalysis, generateMonthlyCompilationJSON } from '../lib/api/monthlyCompilation';
 import { performWebSearch, formatSearchResultsForPrompt, buildSceneSearchQuery } from '../lib/api/webSearch';
 import { uploadVideoStudioAsset } from '../lib/api/backblaze';
 import { generateVideoStudioCaption, type VideoContent, VideoContentType } from '../utils/videoStudioCaptionGenerator';
@@ -37,7 +37,7 @@ import { MonthlyModule } from './video-studio/MonthlyModule';
 import { ScenesModule } from './video-studio/ScenesModule';
 import { AudioDynamicsPanel } from './video-studio/AudioDynamicsPanel';
 import { CaptionEditorPanel } from './video-studio/CaptionEditorPanel';
-import { VideoTitleData, AudioFile, AspectRatio, MusicGenre, DuckingMode } from './video-studio/types';
+import { VideoTitleData, AudioFile, AspectRatio, MusicGenre, DuckingMode, Scene } from './video-studio/types';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 
 interface VideoStudioPageProps {
@@ -46,12 +46,11 @@ interface VideoStudioPageProps {
   onCaptionEditorChange?: (isOpen: boolean) => void;
 }
 
-export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChange }: VideoStudioPageProps) {
+export function VideoStudioPage({ onNavigate, onCaptionEditorChange }: VideoStudioPageProps) {
   const { settings } = useSettings();
   const isMountedRef = useRef(true);
   const reviewMusicInputRef = useRef<HTMLInputElement>(null);
   const monthlyMusicInputRef = useRef<HTMLInputElement>(null);
-  const scenesVideoInputRef = useRef<HTMLInputElement>(null);
   const uploadedAssetCacheRef = useRef(new Map<string, string>());
   const [activeModule, setActiveModule] = useState<'review' | 'monthly' | 'scenes'>('review');
   const [isPromptPanelOpen, setIsPromptPanelOpen] = useState(false);
@@ -90,7 +89,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [reviewIsMuted, setReviewIsMuted] = useState(false);
   const [reviewThumbnail, setReviewThumbnail] = useState<File | null>(null);
   const [reviewVideoTime, setReviewVideoTime] = useState(0);
-  const [reviewVideoDuration, setReviewVideoDuration] = useState(135); // 2:15 in seconds
+  const [reviewVideoDuration] = useState(135); // 2:15 in seconds
   const [reviewIsFullscreen, setReviewIsFullscreen] = useState(false);
   const [reviewRenderOutputUrl, setReviewRenderOutputUrl] = useState('');
 
@@ -112,7 +111,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [monthlyIsMuted, setMonthlyIsMuted] = useState(false);
   const [monthlyThumbnail, setMonthlyThumbnail] = useState<File | null>(null);
   const [monthlyVideoTime, setMonthlyVideoTime] = useState(0);
-  const [monthlyVideoDuration, setMonthlyVideoDuration] = useState(285); // 4:45 in seconds
+  const [monthlyVideoDuration] = useState(285); // 4:45 in seconds
   const [monthlyIsFullscreen, setMonthlyIsFullscreen] = useState(false);
   const [monthlyRenderOutputUrl, setMonthlyRenderOutputUrl] = useState('');
   const [monthlyLowerThirdConfig, setMonthlyLowerThirdConfig] = useState<LowerThirdConfig>({
@@ -120,6 +119,8 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
     aspectRatio: '16:9',
     size: 'medium',
     duration: 3.5,
+    backgroundColor: '#000000',
+    textColor: '#FFFFFF',
   });
   const [monthlyEnableLowerThirds, setMonthlyEnableLowerThirds] = useState(false);
 
@@ -135,7 +136,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [scenesStartTime, setScenesStartTime] = useState('');
   const [scenesEndTime, setScenesEndTime] = useState('');
   const [scenesAspectRatio, setScenesAspectRatio] = useState<AspectRatio>('16:9');
-  const [scenesOriginalRatio, setScenesOriginalRatio] = useState<AspectRatio>('16:9');
+  const [, setScenesOriginalRatio] = useState<AspectRatio>('16:9');
   const [scenesRemoveLetterbox, setScenesRemoveLetterbox] = useState(true);
   const [scenesEnableAutoframing, setScenesEnableAutoframing] = useState(true);
   const [scenesIsProcessing, setScenesIsProcessing] = useState(false);
@@ -179,8 +180,8 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [customEndingHook, setCustomEndingHook] = useState<VideoMoment | null>(null);
 
   // Video Rendering State (Shotstack)
-  const [reviewRenderId, setReviewRenderId] = useState<string | null>(null);
-  const [monthlyRenderId, setMonthlyRenderId] = useState<string | null>(null);
+  const [, setReviewRenderId] = useState<string | null>(null);
+  const [, setMonthlyRenderId] = useState<string | null>(null);
 
   // LLM Prompt State
   const [promptStatus, setPromptStatus] = useState<'empty' | 'ready' | 'outdated' | 'warning'>('empty');
@@ -224,6 +225,9 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [captionBorderRadius, setCaptionBorderRadius] = useState(8);
   const [captionAnimation, setCaptionAnimation] = useState('Fade In');
   const [captionWordsPerLine, setCaptionWordsPerLine] = useState(3);
+  const [, setShowTextColorPicker] = useState(false);
+  const [, setShowBgColorPicker] = useState(false);
+  const [, setShowStrokeColorPicker] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [savedTemplates, setSavedTemplates] = useState<any[]>([]);
   const [showNameDialog, setShowNameDialog] = useState(false);
@@ -248,14 +252,14 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   const [analysisBackend, setAnalysisBackend] = useState<'google-vi' | 'ffmpeg-fallback'>('google-vi');
   const [qualityMode, setQualityMode] = useState<'fast' | 'quality'>('fast');
   const [enableSelectiveSTT, setEnableSelectiveSTT] = useState(false);
-  const [monthlyBudget, setMonthlyBudget] = useState(50.00);
-  const [monthlySpend, setMonthlySpend] = useState(12.40);
+  const [monthlyBudget] = useState(50.00);
+  const [monthlySpend] = useState(12.40);
   const [totalCorrections, setTotalCorrections] = useState(237); // All corrections stored locally
   const [currentAccuracy, setCurrentAccuracy] = useState(72.3); // Current model accuracy
   const [systemRating, setSystemRating] = useState(7.2); // Self-assessed rating (0-10)
   const [accuracyImprovement, setAccuracyImprovement] = useState(4.3); // Gain from corrections
-  const [overrideRate, setOverrideRate] = useState(18.5); // Override rate over last 100 videos
-  const [meanHookConfidence, setMeanHookConfidence] = useState(0.71); // Mean confidence of selected hooks
+  const [overrideRate] = useState(18.5); // Override rate over last 100 videos
+  const [meanHookConfidence] = useState(0.71); // Mean confidence of selected hooks
   const [showAnalysisSettings, setShowAnalysisSettings] = useState(false);
   const [showCorrectionInterface, setShowCorrectionInterface] = useState(false);
   const [showTrainingDashboard, setShowTrainingDashboard] = useState(false);
@@ -267,17 +271,11 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
     transition: 20
   });
 
-  const musicGenres: MusicGenre[] = ['Hip-Hop', 'Trap', 'Rap', 'Pop', 'Electronic', 'R&B', 'House'];
-  const aspectRatios: AspectRatio[] = ['16:9', '9:16', '1:1'];
-  const duckingModes: DuckingMode[] = ['Partial', 'Full Mute', 'Adaptive'];
-
-
   const fontFamilies = ['Inter', 'Roboto', 'Montserrat', 'Poppins', 'Open Sans', 'Lato'];
   const fontWeights = ['Regular', 'Medium', 'Bold', 'Black'];
   const positions = ['Top', 'Center', 'Bottom-Center', 'Bottom'];
   const alignments = ['Left', 'Center', 'Right'];
   const animations = ['None', 'Fade In', 'Slide Up', 'Word Highlight'];
-  const presetColors = ['#FFFFFF', '#000000', '#ec1e24', '#FFFF00', '#00FF00', '#0066FF', '#FF00FF', '#FFA500'];
 
   // Calculate effective hook duration (auto or manual)
   const effectiveHookDuration = React.useMemo(() => {
@@ -314,25 +312,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   };
 
   // Lightweight timestamp helpers (no FFmpeg import needed)
-  const validateTimestampFormat = (timestamp: string): boolean => {
-    const hhmmss = /^([0-9]{1,2}):([0-5][0-9]):([0-5][0-9])$/;
-    const mmss = /^([0-5]?[0-9]):([0-5][0-9])$/;
-    return hhmmss.test(timestamp) || mmss.test(timestamp);
-  };
-
-  const calculateClipDuration = (startTime: string, endTime: string): number => {
-    const toSeconds = (timestamp: string): number => {
-      const parts = timestamp.split(':').map(p => parseInt(p, 10));
-      if (parts.length === 3) {
-        return parts[0] * 3600 + parts[1] * 60 + parts[2];
-      } else if (parts.length === 2) {
-        return parts[0] * 60 + parts[1];
-      }
-      return parseInt(timestamp, 10);
-    };
-    return toSeconds(endTime) - toSeconds(startTime);
-  };
-
   const getUploadedAssetCacheKey = (file: File, folder: 'trailers' | 'voiceovers' | 'music') =>
     `${folder}:${file.name}:${file.size}:${file.lastModified}`;
 
@@ -438,7 +417,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
 
   // Close rename menu when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = () => {
       if (showRenameMenu) {
         setShowRenameMenu(null);
       }
@@ -743,25 +722,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
     }
   };
 
-  // Handle voiceover removal with proper cleanup
-  const handleRemoveVoiceover = (module: 'review' | 'monthly') => {
-    if (module === 'review') {
-      if (reviewVoiceover?.url) {
-        URL.revokeObjectURL(reviewVoiceover.url);
-      }
-      setReviewVoiceover(null);
-      setReviewDetectedTitles([]);
-    } else {
-      if (monthlyVoiceover?.url) {
-        URL.revokeObjectURL(monthlyVoiceover.url);
-      }
-      setMonthlyVoiceover(null);
-      setMonthlyDetectedTitles([]);
-    }
-    haptics.light();
-    toast.success('Voice-over removed');
-  };
-
   // Handle music upload with memory-efficient blob URL approach
   const handleMusicUpload = async (file: File | null, module: 'review' | 'monthly') => {
     try {
@@ -884,23 +844,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         monthlyMusicInputRef.current.value = '';
       }
     }
-  };
-
-  // Handle music removal with proper cleanup
-  const handleRemoveMusic = (module: 'review' | 'monthly') => {
-    if (module === 'review') {
-      if (reviewMusic?.url) {
-        URL.revokeObjectURL(reviewMusic.url);
-      }
-      setReviewMusic(null);
-    } else {
-      if (monthlyMusic?.url) {
-        URL.revokeObjectURL(monthlyMusic.url);
-      }
-      setMonthlyMusic(null);
-    }
-    haptics.light();
-    toast.success('Music removed');
   };
 
   // Handle video download
@@ -1179,7 +1122,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         const analyses = await analyzeMultipleTrailers(videoFiles, movieTitles);
         setMonthlyTrailerAnalyses(analyses);
 
-        const stats = getCompilationStats(analyses);
         haptics.success();
       }
     } catch (error) {
@@ -1334,16 +1276,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         throw new Error('Monthly voice-over upload is required for compilation rendering.');
       }
 
-      const audioSettings = {
-        enableTrailerAudioHooks,
-        hookPlacements,
-        hookDuration,
-        trailerVolume: trailerAudioVolume,
-        crossfadeDuration,
-        audioVariety,
-        backgroundMusicVolume: 85
-      };
-
       const compilationConfig = {
         trailers: monthlyVideoFiles.map((file, i) => ({
           title: movieTitles[i],
@@ -1495,7 +1427,7 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         addLogEntry({
           videoTitle,
           platform: Object.entries(selectedPlatforms).filter(([_, v]) => v).map(([k]) => k).join(', '),
-          status: 'error',
+          status: 'failed',
           type: 'videostudio',
           error: result.error?.message
         });
@@ -1829,24 +1761,17 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
   }, []);
 
   // Video Scenes Handlers
-  const handleSceneImport = (scenes: any[], replace: boolean, movieName?: string) => {
+  const handleSceneImport = (scenes: Scene[], movieName: string) => {
     haptics.success();
 
-    if (replace) {
-      setImportedScenes(scenes);
-    } else {
-      setImportedScenes(prev => [...prev, ...scenes]);
-    }
-
-    if (movieName) {
-      setImportedMovieName(movieName);
-      if (!scenesMovieTitle) {
-        setScenesMovieTitle(movieName);
-      }
+    setImportedScenes(scenes);
+    setImportedMovieName(movieName);
+    if (!scenesMovieTitle) {
+      setScenesMovieTitle(movieName);
     }
 
     toast.success(`Imported ${scenes.length} scenes`, {
-      description: movieName ? `Movie: ${movieName}` : 'Context ready for AI Assist'
+      description: `Movie: ${movieName}`
     });
   };
 
@@ -1860,26 +1785,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
         description: `Size: ${(file.size / (1024 * 1024)).toFixed(0)}MB`
       });
     }
-  };
-
-  // Format timestamp input with automatic colon insertion
-  const formatTimestamp = (value: string): string => {
-    // Remove all non-numeric characters
-    const numbers = value.replace(/\D/g, '');
-
-    // Limit to 6 digits (HHMMSS)
-    const limited = numbers.slice(0, 6);
-
-    // Format with colons
-    let formatted = '';
-    for (let i = 0; i < limited.length; i++) {
-      if (i === 2 || i === 4) {
-        formatted += ':';
-      }
-      formatted += limited[i];
-    }
-
-    return formatted;
   };
 
   const handleAIAssistedQuery = async () => {
@@ -1987,7 +1892,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
 
       // If using Flash 3, switch to Google Gemini API
       if (scenesAIModel === 'flash-3') {
-        const geminiKey = settings.flash3Key;
+        const geminiKey = (settings as typeof settings & { flash3Key?: string }).flash3Key;
         if (!geminiKey) {
           toast.error('Flash 3 API Key Required', {
             description: 'Please add your Flash 3 API key in Settings',
@@ -2325,7 +2230,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
           videoDuration={reviewVideoDuration}
           thumbnail={reviewThumbnail}
           setThumbnail={setReviewThumbnail}
-          onFullscreen={(fullscreen) => setReviewIsFullscreen(fullscreen)}
+          onFullscreen={() => handleFullscreen('review')}
           onDownloadVideo={() => handleDownloadVideo('review')}
           onPublishVideo={() => setIsPublishDialogOpen(true)}
           isCaptionEditorOpen={isCaptionEditorOpen}
@@ -2391,7 +2296,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
           videoDuration={monthlyVideoDuration}
           thumbnail={monthlyThumbnail}
           setThumbnail={setMonthlyThumbnail}
-          onFullscreen={(fullscreen) => setMonthlyIsFullscreen(fullscreen)}
+          onFullscreen={() => handleFullscreen('monthly')}
           onDownloadVideo={() => handleDownloadVideo('monthly')}
           onPublishVideo={() => setIsPublishDialogOpen(true)}
           isCaptionEditorOpen={isCaptionEditorOpen}
@@ -2407,25 +2312,28 @@ Do not include any other text or explanation. Only return the JSON object.`;
         <ScenesModule
           movieTitle={scenesMovieTitle}
           setMovieTitle={setScenesMovieTitle}
+          importedScenes={importedScenes}
+          importDialogParams={{ importedMovieName }}
+          showSceneImportDialog={showSceneImportDialog}
+          setShowSceneImportDialog={setShowSceneImportDialog}
+          onSceneImport={handleSceneImport}
+          videoSource={scenesVideoSource}
+          videoFile={scenesVideoFile}
+          videoUrl={scenesVideoUrl}
+          onVideoUpload={handleScenesVideoUpload}
+          onShowBackblazeBrowser={() => setShowBackblazeBrowser(true)}
+          mode={scenesMode}
+          setMode={setScenesMode}
           startTime={scenesStartTime}
           setStartTime={setScenesStartTime}
           endTime={scenesEndTime}
           setEndTime={setScenesEndTime}
-          videoSource={scenesVideoSource}
-          setVideoSource={setScenesVideoSource}
-          videoUrl={scenesVideoUrl}
-          setVideoUrl={setScenesVideoUrl}
-          videoFile={scenesVideoFile}
-          setVideoFile={setScenesVideoFile}
-          onVideoUpload={handleScenesVideoUpload}
           aspectRatio={scenesAspectRatio}
           setAspectRatio={setScenesAspectRatio}
           removeLetterbox={scenesRemoveLetterbox}
           setRemoveLetterbox={setScenesRemoveLetterbox}
           enableAutoframing={scenesEnableAutoframing}
           setEnableAutoframing={setScenesEnableAutoframing}
-          mode={scenesMode}
-          setMode={setScenesMode}
           aiQuery={scenesAIQuery}
           setAiQuery={setScenesAIQuery}
           onAIAssistedQuery={handleAIAssistedQuery}
@@ -2434,13 +2342,8 @@ Do not include any other text or explanation. Only return the JSON object.`;
           progressMessage={scenesProgressMessage}
           onCutScene={handleCutScene}
           outputUrl={scenesOutputUrl}
-          onDownload={handleDownloadScene}
-          onPublishVideo={() => setIsPublishDialogOpen(true)}
-          importedScenes={importedScenes}
-          importedMovieName={importedMovieName}
-          showSceneImportDialog={showSceneImportDialog}
-          setShowSceneImportDialog={setShowSceneImportDialog}
-          onImport={handleSceneImport}
+          onDownloadScene={handleDownloadScene}
+          onPublish={() => setIsPublishDialogOpen(true)}
           isCaptionEditorOpen={isCaptionEditorOpen}
           setIsCaptionEditorOpen={setIsCaptionEditorOpen}
           onCaptionEditorChange={onCaptionEditorChange}
@@ -2481,7 +2384,11 @@ Do not include any other text or explanation. Only return the JSON object.`;
           monthlyTrailerAnalyses={monthlyTrailerAnalyses}
           reviewIsAnalyzingTrailer={reviewIsAnalyzingTrailer}
           monthlyIsAnalyzingTrailer={monthlyIsAnalyzingTrailer}
-          onAnalyzeTrailer={handleAnalyzeTrailer}
+          onAnalyzeTrailer={(module) => {
+            if (module !== 'scenes') {
+              void handleAnalyzeTrailer(module);
+            }
+          }}
           onShowTrailerScenesDialog={() => setShowTrailerScenesDialog(true)}
           customOpeningHook={customOpeningHook}
           setCustomOpeningHook={setCustomOpeningHook}
@@ -2587,23 +2494,32 @@ Do not include any other text or explanation. Only return the JSON object.`;
                 {showCorrectionInterface && reviewTrailerAnalysis && (
                   <div className="mt-4">
                     <SceneCorrectionInterface
-                      scenes={reviewTrailerAnalysis.moments?.map((moment, idx) => ({
-                        id: `scene-${idx}`,
-                        timestamp: moment.timestamp,
-                        duration: moment.duration,
-                        predictedLabel: (moment.label as any) || 'action',
-                        confidence: moment.confidence || 0.65,
-                        reasoning: {
-                          audioEnergy: moment.audioFeatures?.avgVolume || Math.random() * 0.5 + 0.3,
-                          spectralFlux: moment.audioFeatures?.dynamicRange || Math.random() * 0.4 + 0.2,
-                          zeroCrossingRate: moment.audioFeatures?.speechProbability || Math.random() * 0.3 + 0.1,
-                          tempo: moment.label === 'action' ? Math.random() * 40 + 120 : undefined
-                        }
-                      })) || []}
+                      scenes={reviewTrailerAnalysis.moments?.map((moment, idx) => {
+                        const predictedLabel =
+                          moment.type === 'dialogue' ? 'dialogue'
+                            : moment.type === 'suspense' ? 'suspense'
+                              : moment.type === 'atmosphere' || moment.type === 'establishing' ? 'atmosphere'
+                                : moment.type === 'transition' ? 'transition'
+                                  : 'action';
+
+                        return {
+                          id: `scene-${idx}`,
+                          timestamp: formatTime(Math.floor(moment.startTime)),
+                          duration: moment.duration ?? Math.max(moment.endTime - moment.startTime, 0),
+                          predictedLabel,
+                          confidence: moment.confidence || 0.65,
+                          reasoning: {
+                            audioEnergy: moment.audioFeatures?.avgVolume ?? 0.5,
+                            spectralFlux: moment.audioFeatures?.dynamicRange ?? 0.35,
+                            zeroCrossingRate: moment.audioFeatures?.speechProbability ?? 0.2,
+                            tempo: predictedLabel === 'action' ? 128 : undefined
+                          }
+                        };
+                      }) || []}
                       totalCorrections={totalCorrections}
                       accuracyImprovement={accuracyImprovement}
                       overrideRate={overrideRate}
-                      onCorrection={(sceneId, isCorrect, correctedLabel) => {
+                      onCorrection={(_sceneId, isCorrect, correctedLabel) => {
                         setTotalCorrections(prev => prev + 1);
                         if (!isCorrect && correctedLabel) {
                           // Update stratification needs
@@ -3345,7 +3261,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
       </BottomSheet>
 
       {/* Review Fullscreen Video Player */}
-      <BottomSheet open={reviewIsFullscreen} onOpenChange={setReviewIsFullscreen} snapPoints={[0.95]}>
+      <BottomSheet open={reviewIsFullscreen} onOpenChange={setReviewIsFullscreen}>
         <BottomSheetHeader>
           <VisuallyHidden>
             <BottomSheetTitle>Review Video Fullscreen</BottomSheetTitle>
@@ -3419,7 +3335,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
       </BottomSheet>
 
       {/* Monthly Fullscreen Video Player */}
-      <BottomSheet open={monthlyIsFullscreen} onOpenChange={setMonthlyIsFullscreen} snapPoints={[0.95]}>
+      <BottomSheet open={monthlyIsFullscreen} onOpenChange={setMonthlyIsFullscreen}>
         <BottomSheetHeader>
           <VisuallyHidden>
             <BottomSheetTitle>Monthly Video Fullscreen</BottomSheetTitle>

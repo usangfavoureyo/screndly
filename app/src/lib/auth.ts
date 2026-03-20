@@ -30,7 +30,7 @@ function createDevToken(password: string): string {
     authenticated: true,
     password,
     iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60),
+    exp: Math.floor(Date.now() / 1000) + (365 * 24 * 60 * 60),
   };
 
   return btoa(JSON.stringify(payload));
@@ -133,7 +133,7 @@ export async function login(password: string, rememberMe: boolean = true): Promi
     const response = await fetch(`${backendUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password, rememberMe }),
     });
 
     const contentType = response.headers.get('content-type');

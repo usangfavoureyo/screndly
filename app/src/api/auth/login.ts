@@ -13,7 +13,8 @@ const MAX_ATTEMPTS = 5;
 const LOCKOUT_DURATION = 15 * 60 * 1000; // 15 minutes
 const JWT_SECRET = process.env.JWT_SECRET!;
 const APP_PASSWORD = process.env.APP_PASSWORD!;
-const JWT_EXPIRY = '7d'; // Token expires in 7 days
+const SESSION_JWT_EXPIRY = '7d';
+const PERSISTENT_JWT_EXPIRY = '365d';
 
 /**
  * Rate limiting check
@@ -74,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Validate request body
-  const { password } = req.body;
+  const { password, rememberMe } = req.body;
 
   if (!password || typeof password !== 'string') {
     recordFailedAttempt(ip);
@@ -107,22 +108,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Success - clear attempts and generate JWT
   clearAttempts(ip);
 
+  const tokenExpiry = rememberMe ? PERSISTENT_JWT_EXPIRY : SESSION_JWT_EXPIRY;
+
   const token = sign(
     {
       app: 'screndly',
       authenticated: true,
-      iat: Math.floor(Date.now() / 1000),
+        iat: Math.floor(Date.now() / 1000),
     },
     JWT_SECRET,
     {
-      expiresIn: JWT_EXPIRY,
+      expiresIn: tokenExpiry,
     }
   );
 
   return res.status(200).json({
     success: true,
     token,
-    expiresIn: JWT_EXPIRY,
+    expiresIn: tokenExpiry,
   });
 }
 

@@ -8,15 +8,16 @@ const { JWT_SECRET, APP_PASSWORD } = env;
 // POST /api/auth/login
 router.post('/login', (req, res) => {
     try {
-        const { password } = req.body;
+        const { password, rememberMe } = req.body;
 
         if (password === APP_PASSWORD) {
+            const tokenExpiry = rememberMe ? '365d' : '7d';
             const token = jwt.sign(
                 { authenticated: true, app: 'screndly' },
                 JWT_SECRET,
-                { expiresIn: '7d' }
+                { expiresIn: tokenExpiry }
             );
-            return res.json({ success: true, token });
+            return res.json({ success: true, token, expiresIn: tokenExpiry });
         }
 
         return res.status(401).json({ success: false, error: 'Invalid password' });
