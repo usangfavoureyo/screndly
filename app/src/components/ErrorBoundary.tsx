@@ -1,6 +1,6 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from './ui/button';
-import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -67,7 +67,6 @@ export class ErrorBoundary extends Component<Props, State> {
                             onClick={this.handleReload}
                             className="w-full bg-[#ec1e24] hover:bg-[#d11b20] text-white rounded-lg gap-2"
                         >
-                            <RefreshCw className="w-4 h-4" />
                             Reload Application
                         </Button>
                     </div>

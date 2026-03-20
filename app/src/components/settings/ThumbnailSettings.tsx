@@ -233,6 +233,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const previewLogoBox = getPreviewLogoBoxMetrics(currentConfig);
   const previewLogoPadding = `${Math.max(10, currentConfig.maxLogoSize * 0.16)}% ${Math.max(8, currentConfig.maxLogoSize * 0.14)}%`;
   const shouldShowPreviewBox = currentConfig.logoDisplayMode === 'boxed';
+  const shouldShowPreviewContrastOverlay = currentConfig.autoContrastOverlay && !shouldShowPreviewBox;
+  const previewOverlayHorizontalPadding = Math.max(2.8, currentConfig.maxLogoSize * 0.12);
+  const previewOverlayVerticalPadding = Math.max(2.2, currentConfig.maxLogoSize * 0.08);
+  const previewOverlayTextAllowance = currentConfig.showTrailerTypeText ? 7 : 0;
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -531,8 +535,16 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     />
                   </div>
                 )}
-                {currentConfig.autoContrastOverlay && (
-                  <div className="absolute inset-0 bg-black/25" />
+                {shouldShowPreviewContrastOverlay && (
+                  <div
+                    className="pointer-events-none absolute rounded-[24px] bg-black/20"
+                    style={{
+                      left: `calc(${previewLogoBox.left} - ${previewOverlayHorizontalPadding}%)`,
+                      top: `calc(${previewLogoBox.top} - ${previewOverlayVerticalPadding}%)`,
+                      width: `calc(${previewLogoBox.width} + ${previewOverlayHorizontalPadding * 2}%)`,
+                      height: `calc(${previewLogoBox.height} + ${(previewOverlayVerticalPadding * 2) + previewOverlayTextAllowance}%)`,
+                    }}
+                  />
                 )}
                 <div
                   style={{

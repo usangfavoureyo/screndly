@@ -1,6 +1,6 @@
 import { Button } from './ui/button';
 import { Switch } from './ui/switch';
-import { CheckCircle, AlertCircle, XCircle, Send } from 'lucide-react';
+import { CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 import { InstagramIcon } from './icons/InstagramIcon';
 import { FacebookIcon } from './icons/FacebookIcon';
 import { TikTokIcon } from './icons/TikTokIcon';
@@ -222,7 +222,6 @@ export function PlatformCard({ platform, onUpdate, onConnect, onDisconnect, onTe
               className="w-full rounded-lg gap-2 mt-4 transition-all duration-300 hover:scale-105 active:scale-95 text-white hover:bg-[#d11b20] hover:border-[#d11b20] border-[#ec1e24]"
               onClick={() => onTestPublish?.(platform.id)}
             >
-              <Send className="w-4 h-4 transition-transform duration-200" />
               Test Publish
             </Button>
           </div>

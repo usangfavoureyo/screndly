@@ -85,6 +85,35 @@ function drawRoundedRect(
   ctx.closePath();
 }
 
+function drawContrastOverlay(
+  ctx: CanvasRenderingContext2D,
+  config: ThumbnailConfig,
+  width: number,
+  height: number
+) {
+  if (config.logoDisplayMode === 'boxed') {
+    return;
+  }
+
+  const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
+  const horizontalPadding = Math.max(28, boxWidth * 0.12);
+  const verticalPadding = Math.max(20, boxHeight * 0.24);
+  const textAllowance = config.showTrailerTypeText ? Math.max(42, height * 0.06) : 0;
+  const overlayX = Math.max(0, boxX - horizontalPadding);
+  const overlayY = Math.max(0, boxY - verticalPadding);
+  const overlayWidth = Math.min(width - overlayX, boxWidth + horizontalPadding * 2);
+  const overlayHeight = Math.min(
+    height - overlayY,
+    boxHeight + verticalPadding * 2 + textAllowance
+  );
+  const radius = Math.min(36, Math.max(18, boxHeight * 0.35));
+
+  drawRoundedRect(ctx, overlayX, overlayY, overlayWidth, overlayHeight, radius);
+  ctx.fillStyle =
+    config.platform === 'youtube' ? 'rgba(0, 0, 0, 0.22)' : 'rgba(12, 12, 12, 0.18)';
+  ctx.fill();
+}
+
 function drawCoverImage(
   ctx: CanvasRenderingContext2D,
   image: HTMLImageElement,
@@ -246,13 +275,12 @@ export async function renderThumbnailDataUrl(
     drawDefaultBackdrop(ctx, width, height);
   }
 
-  if (config.autoContrastOverlay) {
-    ctx.fillStyle = config.platform === 'youtube' ? 'rgba(0, 0, 0, 0.35)' : 'rgba(12, 12, 12, 0.28)';
-    ctx.fillRect(0, 0, width, height);
-  }
-
   const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
   const shouldRenderBox = config.logoDisplayMode === 'boxed';
+
+  if (config.autoContrastOverlay) {
+    drawContrastOverlay(ctx, config, width, height);
+  }
 
   if (shouldRenderBox) {
     drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 24);
