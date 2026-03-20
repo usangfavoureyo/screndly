@@ -651,7 +651,9 @@ export class YouTubePollerService {
         }
 
         const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
-        const ageGateHours = settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS;
+        const ageGateHours = settings.videoAgeGateHours === null
+            ? null
+            : (settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS);
         if (ageGateHours !== null && hoursSince > ageGateHours) {
             return {
                 kind: 'continue',
