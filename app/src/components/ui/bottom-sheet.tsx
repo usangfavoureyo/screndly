@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "./utils";
 import { haptics } from "../../utils/haptics";
 import { useBackNavigation } from "../../contexts/BackNavigationContext";
-import { getTransientHistoryPayload, useTransientHistoryState } from "../../hooks/useTransientHistoryState";
+import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 interface BottomSheetProps {
   open: boolean;
@@ -115,31 +115,6 @@ export function BottomSheet({
     unregisterBottomSheet(uniqueId);
     return undefined;
   }, [open, uniqueId, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
-
-  React.useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    const handlePopState = (event: PopStateEvent) => {
-      const activeTransientId = getTransientHistoryPayload(
-        (event.state as Record<string, unknown> | null) ?? null,
-      )?.id;
-
-      if (activeTransientId === uniqueId) {
-        return;
-      }
-
-      if (typeof onOpenChangeRef.current === 'function') {
-        onOpenChangeRef.current(false);
-      }
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-    };
-  }, [open, uniqueId]);
 
   // Reset dismissing state when sheet closes
   React.useEffect(() => {
