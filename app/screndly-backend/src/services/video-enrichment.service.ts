@@ -202,6 +202,8 @@ export interface EnrichedVideoMetadata {
     tmdbMatch?: ResolvedTMDbMatch;
     regionAllowed: boolean;
     regionReason?: string;
+    tmdbMatchStatus?: 'not-requested' | 'matched' | 'no-confident-match' | 'region-mismatch' | 'error';
+    tmdbDebugSummary?: string;
 }
 
 export interface PlatformThumbnailAsset {
@@ -1087,6 +1089,7 @@ export async function enrichYouTubeVideoMetadata(
         trailerType,
         regionAllowed: allowedRegions.length === 0,
         regionReason: allowedRegions.length === 0 ? undefined : 'TMDb metadata not resolved for region filter.',
+        tmdbMatchStatus: shouldUseTMDb(settings) ? 'no-confident-match' : 'not-requested',
     };
 
     if (!shouldUseTMDb(settings)) {
@@ -1175,7 +1178,21 @@ export async function enrichYouTubeVideoMetadata(
             regionReason: allowedRegions.length > 0 && !isRegionMatch(matched, allowedRegions)
                 ? `TMDb regions ${matched?.allowedRegions.join(', ') || 'unknown'} do not match ${allowedRegions.join(', ')}.`
                 : undefined,
+            tmdbMatchStatus: matched
+                ? (isRegionMatch(matched, allowedRegions) ? 'matched' : 'region-mismatch')
+                : 'no-confident-match',
+            tmdbDebugSummary: matched
+                ? `matched ${matched.title} (${matched.mediaType}:${matched.tmdbId}) poster=${matched.posterUrl ? 'yes' : 'no'} backdrop=${matched.backdropUrl ? 'yes' : 'no'} logo=${matched.logoUrl ? 'yes' : 'no'}`
+                : topMatch
+                    ? `top candidate ${topMatch.match.title} (${topMatch.match.mediaType}:${topMatch.match.tmdbId}) score=${topMatch.score} similarity=${topMatch.titleSimilarity.toFixed(3)} regionMatched=${topMatch.regionMatched}`
+                    : 'no TMDb candidates resolved',
         };
+
+        if (matched) {
+            console.log(`[VideoEnrichment] TMDb ${enriched.tmdbDebugSummary} for "${title}"`);
+        } else {
+            console.warn(`[VideoEnrichment] TMDb unresolved for "${title}": ${enriched.tmdbDebugSummary}`);
+        }
 
         if (settings.videoFilterCache) {
             videoMetadataCache.set(cacheKey, {
@@ -1187,7 +1204,11 @@ export async function enrichYouTubeVideoMetadata(
         return enriched;
     } catch (error) {
         console.error('[VideoEnrichment] Failed to resolve TMDb metadata:', error);
-        return defaultResult;
+        return {
+            ...defaultResult,
+            tmdbMatchStatus: 'error',
+            tmdbDebugSummary: error instanceof Error ? error.message : String(error),
+        };
     }
 }
 

@@ -140,6 +140,7 @@ const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
 const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
+const TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES = 180;
 const execFileAsync = promisify(execFile);
 const YT_DLP_ANDROID_SDKLESS_ARGS = ['youtube:player-client=android_sdkless'];
 
@@ -906,6 +907,35 @@ export class YouTubePollerService {
             socialPoster = targetPlatforms.some((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings))
                 ? await generateSocialPosterThumbnail(video.title || '', enrichedMetadata, thumbnailUrl, settings)
                 : null;
+
+            const socialPosterTargets = targetPlatforms.filter((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings));
+            if (socialPosterTargets.length > 0) {
+                const tmdbSummary = enrichedMetadata.tmdbDebugSummary || enrichedMetadata.tmdbMatchStatus || 'unknown';
+                if (socialPoster?.strategy === 'tmdb_poster') {
+                    console.log(`[YouTubePoller] Social poster source for "${videoTitle}": tmdb_poster; ${tmdbSummary}`);
+                } else if (socialPoster) {
+                    console.warn(`[YouTubePoller] Social poster source for "${videoTitle}": ${socialPoster.strategy}; ${tmdbSummary}`);
+                    await notificationService.notifyUserOnceWithinWindow({
+                        title: 'TMDb Poster Fallback',
+                        message: `${videoTitle} used ${socialPoster.strategy} instead of a TMDb poster for ${socialPosterTargets.join(', ')}. ${tmdbSummary}`,
+                        type: 'warning',
+                        source: 'youtube',
+                        actionPage: '/channels'
+                    }, TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES);
+                } else {
+                    const missingReason = enrichedMetadata.tmdbMatch?.posterUrl
+                        ? 'TMDb poster exists but social poster generation returned no asset'
+                        : 'No TMDb poster resolved';
+                    console.warn(`[YouTubePoller] Social poster missing for "${videoTitle}": ${missingReason}; ${tmdbSummary}`);
+                    await notificationService.notifyUserOnceWithinWindow({
+                        title: 'TMDb Poster Missing',
+                        message: `${videoTitle} has no TMDb poster cover for ${socialPosterTargets.join(', ')}. ${missingReason}. ${tmdbSummary}`,
+                        type: 'warning',
+                        source: 'youtube',
+                        actionPage: '/channels'
+                    }, TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES);
+                }
+            }
 
             const publishResult = await this.publishVideo(
                 video,
