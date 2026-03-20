@@ -327,7 +327,7 @@ export function BottomSheet({
       {/* Backdrop */}
       <div
         className={cn(
-          "fixed inset-0 z-50 bg-black/50 backdrop-blur-sm transition-opacity duration-300 cursor-pointer",
+          "fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm transition-opacity duration-300 cursor-pointer",
           open && !isDismissing ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
         onClick={handleBackdropClick}
@@ -342,7 +342,7 @@ export function BottomSheet({
       {/* Bottom Sheet */}
       <div
         ref={sheetRef}
-        className="fixed inset-x-0 bottom-0 z-50 pointer-events-none"
+        className="fixed inset-x-0 bottom-0 z-[81] pointer-events-none"
         role="dialog"
         aria-modal="true"
         aria-labelledby="bottom-sheet-title"
