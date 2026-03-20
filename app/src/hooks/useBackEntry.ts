@@ -18,6 +18,7 @@ export function useBackEntry({
   const backNavigation = useOptionalBackNavigation();
   const entryIdRef = useRef(id ?? `back-entry-${Math.random().toString(36).slice(2)}`);
   const onBackRef = useRef(onBack);
+  const rearmTransientHistoryState = useTransientHistoryState(enabled, entryIdRef.current, 'back-entry');
 
   useEffect(() => {
     onBackRef.current = onBack;
@@ -29,12 +30,16 @@ export function useBackEntry({
     }
 
     const entryId = entryIdRef.current;
-    backNavigation.registerBackEntry(entryId, priority, (source) => onBackRef.current(source));
+    backNavigation.registerBackEntry(entryId, priority, (source) => {
+      const handled = onBackRef.current(source);
+      if (handled && source === 'system') {
+        rearmTransientHistoryState();
+      }
+      return handled;
+    });
 
     return () => {
       backNavigation.unregisterBackEntry(entryId);
     };
-  }, [backNavigation, enabled, priority]);
-
-  useTransientHistoryState(enabled, entryIdRef.current, 'back-entry');
+  }, [backNavigation, enabled, priority, rearmTransientHistoryState]);
 }

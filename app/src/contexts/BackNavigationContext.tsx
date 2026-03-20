@@ -30,9 +30,9 @@ interface BackNavigationContextType {
   currentPage: string;
   rootPageHistory: string[];
   registerBottomSheet: (id: string) => void;
-  registerBottomSheetWithCloseHandler: (id: string, closeHandler: () => void) => void;
+  registerBottomSheetWithCloseHandler: (id: string, closeHandler: (source: BackPressSource) => void) => void;
   unregisterBottomSheet: (id: string) => void;
-  closeTopBottomSheet: () => boolean;
+  closeTopBottomSheet: (source?: BackPressSource) => boolean;
   registerModal: (id: string) => void;
   registerModalWithCloseHandler: (id: string, closeHandler: () => void) => void;
   unregisterModal: (id: string) => void;
@@ -84,7 +84,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
   const [overlaySource, setOverlaySourceState] = useState<string | null>(null);
   const [currentPage, setCurrentPageState] = useState<string>('dashboard');
   const [rootPageHistory] = useState<string[]>([]);
-  const [bottomSheetCloseHandlers, setBottomSheetCloseHandlers] = useState<Map<string, () => void>>(new Map());
+  const [bottomSheetCloseHandlers, setBottomSheetCloseHandlers] = useState<Map<string, (source: BackPressSource) => void>>(new Map());
   const [modalCloseHandlers, setModalCloseHandlers] = useState<Map<string, () => void>>(new Map());
   const [backEntries, setBackEntries] = useState<Map<string, BackEntry>>(new Map());
 
@@ -99,7 +99,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     setActiveBottomSheets((previous) => (previous.includes(id) ? previous : [...previous, id]));
   }, []);
 
-  const registerBottomSheetWithCloseHandler = useCallback((id: string, closeHandler: () => void) => {
+  const registerBottomSheetWithCloseHandler = useCallback((id: string, closeHandler: (source: BackPressSource) => void) => {
     setActiveBottomSheets((previous) => (previous.includes(id) ? previous : [...previous, id]));
     setBottomSheetCloseHandlers((previous) => {
       const next = new Map(previous);
@@ -117,7 +117,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const closeTopBottomSheet = useCallback(() => {
+  const closeTopBottomSheet = useCallback((source: BackPressSource = 'system') => {
     if (activeBottomSheets.length === 0) {
       return false;
     }
@@ -126,7 +126,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     const closeHandler = bottomSheetCloseHandlers.get(topSheet);
 
     if (closeHandler) {
-      closeHandler();
+      closeHandler(source);
       return true;
     }
 
@@ -266,7 +266,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     }
 
     if (activeBottomSheets.length > 0) {
-      return closeTopBottomSheet();
+      return closeTopBottomSheet(source);
     }
 
     if (runBackEntries(source)) {

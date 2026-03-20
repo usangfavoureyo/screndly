@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 const TRANSIENT_HISTORY_KEY = '__screndlyTransient';
 const SUPPRESS_POPSTATE_KEY = '__screndlySuppressTransientPopstate';
@@ -104,6 +104,15 @@ export function useTransientHistoryState(
     return JSON.parse(serializedData) as HistoryStateRecord;
   }, [serializedData]);
 
+  const rearmTransientHistoryState = useCallback(() => {
+    if (!enabled || typeof window === 'undefined') {
+      return;
+    }
+
+    window.history.pushState(buildNextHistoryState(id, kind, stableData), '', window.location.href);
+    pushedRef.current = true;
+  }, [enabled, id, kind, stableData]);
+
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') {
       pushedRef.current = false;
@@ -135,4 +144,6 @@ export function useTransientHistoryState(
       pushedRef.current = false;
     };
   }, [enabled, id]);
+
+  return rearmTransientHistoryState;
 }

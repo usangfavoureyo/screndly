@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "./utils";
 import { haptics } from "../../utils/haptics";
-import { useBackNavigation } from "../../contexts/BackNavigationContext";
+import { type BackPressSource, useBackNavigation } from "../../contexts/BackNavigationContext";
 import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 interface BottomSheetProps {
@@ -105,16 +105,19 @@ export function BottomSheet({
 
   // BackNavigationContext integration
   const { registerBottomSheetWithCloseHandler, unregisterBottomSheet } = useBackNavigation();
-  useTransientHistoryState(open, uniqueId, 'bottom-sheet');
+  const rearmTransientHistoryState = useTransientHistoryState(open, uniqueId, 'bottom-sheet');
 
   // Register with context when open
   React.useEffect(() => {
     if (open) {
       // Register this sheet with the context so the back button closes it
       // The context handles priority (closing top-most sheet first)
-      registerBottomSheetWithCloseHandler(uniqueId, () => {
+      registerBottomSheetWithCloseHandler(uniqueId, (source: BackPressSource) => {
         const handledInternally = onBackRequestRef.current?.() ?? false;
         if (handledInternally) {
+          if (source === 'system') {
+            rearmTransientHistoryState();
+          }
           return;
         }
 
@@ -130,7 +133,7 @@ export function BottomSheet({
 
     unregisterBottomSheet(uniqueId);
     return undefined;
-  }, [open, uniqueId, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
+  }, [open, uniqueId, rearmTransientHistoryState, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
 
   // Reset dismissing state when sheet closes
   React.useEffect(() => {
