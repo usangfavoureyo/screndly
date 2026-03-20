@@ -460,7 +460,7 @@ export function AppContent() {
         setCreateSourcePage(fromPage || currentPage);
       }
 
-      const historyMode = skipHistory || activeOverlayType !== null || isRootDestination(page) ? "replace" : "push";
+      const historyMode = skipHistory || activeOverlayType !== null ? "replace" : "push";
       updateCurrentPage(page, historyMode);
 
       // If navigating to a static page, close settings after setting the page
