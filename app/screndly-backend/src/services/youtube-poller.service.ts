@@ -72,6 +72,12 @@ interface GeneratedCaptions {
     pinterestDescription?: string;
 }
 
+interface VideoValidationDecision {
+    allow: boolean;
+    reason?: string;
+    classification?: string;
+}
+
 interface NormalizedVideoFormat {
     width?: number;
     height?: number;
@@ -143,6 +149,33 @@ const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
 const TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES = 180;
 const execFileAsync = promisify(execFile);
 const YT_DLP_ANDROID_SDKLESS_ARGS = ['youtube:player-client=android_sdkless'];
+const NON_NARRATIVE_COMEDY_PATTERNS = [
+    /\bstand[\s-]?up\b/i,
+    /\bcomedy special\b/i,
+    /\bone[\s-]?hour special\b/i,
+    /\broast special\b/i,
+    /\blive special\b/i,
+];
+const HARD_BLOCKED_VIDEO_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+    { pattern: /\benglish[\s-]?dub(?:bed)?\b/i, reason: 'English-dubbed or dubbed reupload content is out of scope' },
+    { pattern: /\b(?:full movie|full film|movie recap|ending explained)\b/i, reason: 'Unofficial full-movie or recap content is out of scope' },
+    { pattern: /\b(?:wwe|wrestling|pro wrestling)\b/i, reason: 'Wrestling content is out of scope' },
+    { pattern: /\b(?:boxing|weigh[\s-]?in|press conference)\b/i, reason: 'Combat sports content is out of scope' },
+    { pattern: /\b(?:ufc|mma)\b/i, reason: 'MMA content is out of scope' },
+    { pattern: /\b(?:highlights?|matchday|postgame|pregame)\b/i, reason: 'Sports highlights and coverage are out of scope' },
+    { pattern: /\b(?:reality show|reality series|unscripted)\b/i, reason: 'Reality and unscripted content are out of scope' },
+    { pattern: /\b(?:the kardashians|keeping up with the kardashians|real housewives|love island|big brother)\b/i, reason: 'Celebrity/family reality content is out of scope' },
+    { pattern: /\b(?:talk show|late night|podcast|vodcast)\b/i, reason: 'Talk-show and podcast-style content are out of scope' },
+    { pattern: /\b(?:documentary|docuseries|true crime)\b/i, reason: 'Documentary and docuseries content are out of scope' },
+    { pattern: /\b(?:music video|lyric video|official audio|concert film|live performance)\b/i, reason: 'Music/performance content is out of scope' },
+];
+const BLOCKED_TMDB_GENRES = new Set([
+    'documentary',
+    'reality',
+    'talk',
+    'news',
+    'war & politics',
+]);
 
 class YouTubeDownloadBlockedError extends Error {
     constructor(message: string) {
@@ -538,6 +571,55 @@ export class YouTubePollerService {
         };
     }
 
+    private isStandUpComedySpecialContent(title: string, description: string): boolean {
+        const haystack = [title, description].filter(Boolean).join('\n');
+        if (!haystack.trim()) {
+            return false;
+        }
+
+        return NON_NARRATIVE_COMEDY_PATTERNS.some((pattern) => pattern.test(haystack));
+    }
+
+    private getHardRejectedContentReason(title: string, description: string): string | null {
+        const haystack = [title, description].filter(Boolean).join('\n');
+        if (!haystack.trim()) {
+            return null;
+        }
+
+        if (this.isStandUpComedySpecialContent(title, description)) {
+            return 'Stand-up comedy specials are out of scope';
+        }
+
+        for (const rule of HARD_BLOCKED_VIDEO_PATTERNS) {
+            if (rule.pattern.test(haystack)) {
+                return rule.reason;
+            }
+        }
+
+        return null;
+    }
+
+    private getTmdbScopeRejectionReason(metadata: EnrichedVideoMetadata): string | null {
+        const match = metadata.tmdbMatch;
+        if (!match) {
+            return null;
+        }
+
+        const genres = (match.genres || []).map((genre) => genre.trim().toLowerCase()).filter(Boolean);
+        const blockedGenre = genres.find((genre) => BLOCKED_TMDB_GENRES.has(genre));
+        if (blockedGenre) {
+            return `TMDb classified this title as ${blockedGenre}, which is out of scope`;
+        }
+
+        const titleAndOverview = [match.title, match.overview].filter(Boolean).join('\n');
+        const keywordReason = this.getHardRejectedContentReason(titleAndOverview, '');
+        if (keywordReason) {
+            return keywordReason;
+        }
+
+        return null;
+    }
+
     private getFutureOnlySince(settings: LoadedVideoSettings): Date | null {
         if (settings.videoBacklogMode !== 'future-only' || !settings.videoFutureOnlySince) {
             return null;
@@ -734,6 +816,19 @@ export class YouTubePollerService {
             settings
         );
 
+        const hardRejectedReason = this.getHardRejectedContentReason(
+            video.title || '',
+            details.description || video.contentSnippet || ''
+        );
+        if (hardRejectedReason) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: ${hardRejectedReason}`,
+                sawFreshVideo: true,
+            };
+        }
+
         if (settings.regionFilter && !enrichedMetadata.regionAllowed) {
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
             return {
@@ -743,14 +838,24 @@ export class YouTubePollerService {
             };
         }
 
-        const aiValidationDeferred = Boolean(settings.videoFilterPrompt && metadataFetchFailed);
-        if (!aiValidationDeferred && settings.videoFilterPrompt) {
-            const aiPassed = await this.passesAiValidation(video, activeChannel, details, settings);
-            if (!aiPassed) {
+        const tmdbScopeRejectedReason = this.getTmdbScopeRejectionReason(enrichedMetadata);
+        if (tmdbScopeRejectedReason) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: ${tmdbScopeRejectedReason}`,
+                sawFreshVideo: true,
+            };
+        }
+
+        const aiValidationDeferred = Boolean(metadataFetchFailed && !enrichedMetadata.tmdbMatch);
+        if (!aiValidationDeferred) {
+            const aiDecision = await this.passesAiValidation(video, activeChannel, details, settings, enrichedMetadata);
+            if (!aiDecision.allow) {
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                 return {
                     kind: 'continue',
-                    reason: `${videoTitle}: skipped by AI validation filter`,
+                    reason: `${videoTitle}: ${aiDecision.reason || 'skipped by narrative-content validation filter'}`,
                     sawFreshVideo: true,
                 };
             }
@@ -876,12 +981,12 @@ export class YouTubePollerService {
             }
 
             if (aiValidationDeferred) {
-                const aiPassed = await this.passesAiValidation(video, activeChannel, details, settings);
-                if (!aiPassed) {
+                const aiDecision = await this.passesAiValidation(video, activeChannel, details, settings, enrichedMetadata);
+                if (!aiDecision.allow) {
                     await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
                     return {
                         kind: 'continue',
-                        reason: `${videoTitle}: skipped by AI validation filter`,
+                        reason: `${videoTitle}: ${aiDecision.reason || 'skipped by narrative-content validation filter'}`,
                         sawFreshVideo: true,
                     };
                 }
@@ -1156,32 +1261,81 @@ export class YouTubePollerService {
         video: any,
         activeChannel: any,
         details: NormalizedVideoDetails,
-        settings: LoadedVideoSettings
-    ): Promise<boolean> {
-        if (!settings.videoFilterPrompt) {
-            return true;
+        settings: LoadedVideoSettings,
+        metadata: EnrichedVideoMetadata
+    ): Promise<VideoValidationDecision> {
+        const customRules = settings.videoFilterPrompt?.trim();
+        if (!customRules && metadata.tmdbMatch) {
+            return { allow: true, classification: 'tmdb-matched-narrative' };
         }
 
         const aiResult = await aiService.generateCompletion({
             model: settings.videoOpenaiModel,
-            prompt: `Validate this video against rules:
+            prompt: `Validate whether this upload is in scope for Screndly's YouTube polling.
+
+Allow ONLY official promotional content for scripted, narrative entertainment:
+- narrative movies
+- scripted TV/streaming series
+- limited series / miniseries
+- animated or anime films/series when they are real scripted titles
+- official trailers, teasers, clips, first looks, featurettes, TV spots, and title announcements for those titles
+
+Reject ALL of these as out of scope:
+- stand-up comedy, comedy specials, roast specials, live comedy specials
+- sports, WWE, wrestling, boxing, UFC, MMA, match highlights, weigh-ins, press conferences
+- reality TV, unscripted celebrity/family shows, Kardashian-style shows
+- talk shows, late-night clips, podcast/vodcast episodes
+- documentaries, docuseries, true crime
+- music videos, lyric videos, concerts, live performances
+- fan edits, recap/explainer uploads, unofficial reuploads
+- English-dubbed reuploads or dubbed non-original-language releases
+
+Video:
 Title: ${video.title}
 Channel: ${activeChannel.name}
 Duration: ${details.lengthSeconds}s
 Description: ${details.description}
 Keywords: ${details.keywords?.join(', ')}
+TMDb Title: ${metadata.tmdbMatch?.title || 'N/A'}
+TMDb Media Type: ${metadata.tmdbMatch?.mediaType || 'N/A'}
+TMDb Genres: ${metadata.tmdbMatch?.genres?.join(', ') || 'N/A'}
+TMDb Match Status: ${metadata.tmdbMatchStatus || 'N/A'}
 
-Validation Rules:
-${settings.videoFilterPrompt}
+Additional custom rules:
+${customRules || 'None'}
 
 Use web search when needed to verify title origin, original language, dub status, region/country fit, distributor/platform, or whether the content is documentary, sports, fan-made, or otherwise out of scope.
 
-Respond ONLY "YES" or "NO".`,
-            maxTokens: 10,
+Respond ONLY as strict JSON:
+{"allow":true,"classification":"scripted_movie|scripted_series|animation|anime|standup_special|sports|reality|talk_show|documentary|music|dubbed_reupload|fan_edit|other","reason":"short reason"}`,
+            maxTokens: 120,
             enableWebSearch: true,
         });
 
-        return !(aiResult.success && aiResult.content.trim().toUpperCase().includes('NO'));
+        if (!aiResult.success) {
+            return { allow: false, reason: 'AI validation failed', classification: 'other' };
+        }
+
+        const raw = aiResult.content.trim();
+        try {
+            const parsed = JSON.parse(raw) as Partial<VideoValidationDecision>;
+            return {
+                allow: parsed.allow === true,
+                reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+                classification: typeof parsed.classification === 'string' ? parsed.classification : undefined,
+            };
+        } catch {
+            const normalized = raw.toUpperCase();
+            if (normalized.includes('YES')) {
+                return { allow: true };
+            }
+
+            if (normalized.includes('NO')) {
+                return { allow: false, reason: 'Rejected by AI validation' };
+            }
+
+            return { allow: false, reason: 'Unclear AI validation response' };
+        }
     }
 
     private getPlatformAutomationSettings(platform: string, settings: LoadedVideoSettings): PlatformAutomationSettings {
