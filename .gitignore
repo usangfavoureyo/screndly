@@ -10,3 +10,10 @@ temp_*.txt
 *.webp
 *.img
 .vercel
+.playwright-cli/
+app/.playwright-cli/
+tmp-edge-profile-*/
+tmp-edge-profile*/
+tmp-*-profile-*/
+temp_sidebar_probe.js
+.codex/
