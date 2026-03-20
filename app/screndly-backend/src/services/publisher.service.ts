@@ -395,7 +395,8 @@ export class PublisherService {
                                         connection.userId,
                                         platformContent.text,
                                         await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
-                                        instagramAccessToken
+                                        instagramAccessToken,
+                                        remoteCoverImageUrl
                                     )
                                         : primaryImageUrl
                                         ? await metaService.postToInstagram(

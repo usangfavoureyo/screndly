@@ -1058,6 +1058,7 @@ export class YouTubePollerService {
                 },
                 Instagram: {
                     text: this.buildPlatformPostText('Instagram', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
                 },
                 Threads: {
                     text: this.buildPlatformPostText('Threads', captions, video, settings),
