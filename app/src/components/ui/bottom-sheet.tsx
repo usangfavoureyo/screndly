@@ -13,6 +13,11 @@ interface BottomSheetProps {
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
   /**
+   * Optional back handler for system/Escape back before the sheet closes.
+   * Return true to keep the sheet open because the back press was handled internally.
+   */
+  onBackRequest?: () => boolean;
+  /**
    * Height mode: 
    * - 'auto': Content determines height (max 90vh)
    * - 'half': 50vh fixed height
@@ -56,6 +61,7 @@ export function BottomSheet({
   open,
   onOpenChange,
   children,
+  onBackRequest,
   heightMode = 'auto',
   showHandle = true,
   disableSwipe = false,
@@ -86,6 +92,11 @@ export function BottomSheet({
     onOpenChangeRef.current = onOpenChange;
   }, [onOpenChange]);
 
+  const onBackRequestRef = React.useRef(onBackRequest);
+  React.useEffect(() => {
+    onBackRequestRef.current = onBackRequest;
+  }, [onBackRequest]);
+
   // Mount/unmount handling
   React.useEffect(() => {
     setMounted(true);
@@ -102,6 +113,11 @@ export function BottomSheet({
       // Register this sheet with the context so the back button closes it
       // The context handles priority (closing top-most sheet first)
       registerBottomSheetWithCloseHandler(uniqueId, () => {
+        const handledInternally = onBackRequestRef.current?.() ?? false;
+        if (handledInternally) {
+          return;
+        }
+
         if (typeof onOpenChangeRef.current === 'function') {
           onOpenChangeRef.current(false);
         }

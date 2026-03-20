@@ -94,6 +94,22 @@ export function PostFlowSheet({
     }
   }, [onOpenChange]);
 
+  const handleSheetBackRequest = useCallback(() => {
+    if (stack.length <= 1) {
+      return false;
+    }
+
+    const handled = closeRequestHandlerRef.current?.() ?? false;
+    if (handled) {
+      return true;
+    }
+
+    setStack((currentStack) => (
+      currentStack.length > 1 ? currentStack.slice(0, -1) : currentStack
+    ));
+    return true;
+  }, [stack.length]);
+
   const flowContent = currentView === 'activity' ? (
     <ComposeActivityPage
       isCompactLayout={isDesktopViewport}
@@ -151,6 +167,7 @@ export function PostFlowSheet({
         // Swipe-dismiss always fully closes the sheet
         onOpenChange(false);
       }}
+      onBackRequest={handleSheetBackRequest}
       heightMode="full"
       sheetId="post-flow-sheet"
     >
