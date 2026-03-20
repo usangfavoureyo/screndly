@@ -7,6 +7,8 @@ interface CookiePageProps {
 }
 
 export function CookiePage({ onNavigate, isAuthenticated = true }: CookiePageProps) {
+  const SUPPORT_EMAIL = 'support@screndly.com';
+
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -97,7 +99,7 @@ export function CookiePage({ onNavigate, isAuthenticated = true }: CookiePagePro
             <h2 className="text-lg text-gray-900 dark:text-white mb-3">6. Contact</h2>
             <p>
               For questions regarding this Cookie Policy:<br />
-              <strong>Email:</strong> <a href="mailto:screndlyapp@gmail.com" className="text-[#ec1e24] hover:underline">screndlyapp@gmail.com</a>
+              <strong>Email:</strong> <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[#ec1e24] hover:underline">{SUPPORT_EMAIL}</a>
             </p>
           </section>
 

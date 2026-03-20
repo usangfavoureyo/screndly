@@ -7,6 +7,8 @@ interface DisclaimerPageProps {
 }
 
 export function DisclaimerPage({ onNavigate, isAuthenticated = true }: DisclaimerPageProps) {
+  const LEGAL_EMAIL = 'legal@screndly.com';
+
   const [isDesktop, setIsDesktop] = useState(false);
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export function DisclaimerPage({ onNavigate, isAuthenticated = true }: Disclaime
             <h2 className="text-lg text-gray-900 dark:text-white mb-3">Contact</h2>
             <p>
               For questions regarding this Disclaimer:<br />
-              <strong>Email:</strong> <a href="mailto:screndlyapp@gmail.com" className="text-[#ec1e24] hover:underline">screndlyapp@gmail.com</a>
+              <strong>Email:</strong> <a href={`mailto:${LEGAL_EMAIL}`} className="text-[#ec1e24] hover:underline">{LEGAL_EMAIL}</a>
             </p>
           </section>
 

@@ -7,6 +7,8 @@ interface ContactPageProps {
 
 export function ContactPage({ onNavigate }: ContactPageProps) {
   const [isDesktop, setIsDesktop] = useState(false);
+  const SUPPORT_EMAIL = 'support@screndly.com';
+  const LEGAL_EMAIL = 'legal@screndly.com';
 
   useEffect(() => {
     const checkDesktop = () => {
@@ -50,8 +52,8 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
           <div className="bg-gray-100 dark:bg-[#111111] rounded-xl p-6 space-y-3">
             <div>
               <p className="text-gray-900 dark:text-white">Primary support:</p>
-              <a href="mailto:support@screndly.com" className="text-[#ec1e24] hover:underline">
-                support@screndly.com
+              <a href={`mailto:${SUPPORT_EMAIL}`} className="text-[#ec1e24] hover:underline">
+                {SUPPORT_EMAIL}
               </a>
             </div>
             
@@ -59,8 +61,8 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
               <p className="text-gray-900 dark:text-white">
                 Abuse reports, DMCA notices, or platform security concerns should include relevant evidence and be sent to:
               </p>
-              <a href="mailto:legal@screndly.com" className="text-[#ec1e24] hover:underline">
-                legal@screndly.com
+              <a href={`mailto:${LEGAL_EMAIL}`} className="text-[#ec1e24] hover:underline">
+                {LEGAL_EMAIL}
               </a>
             </div>
           </div>
