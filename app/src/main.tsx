@@ -18,7 +18,13 @@ if (typeof window !== 'undefined') {
 
   const TOKEN_KEY = 'screndly_auth_token';
 
-  const startupToken = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
+  const persistedToken = localStorage.getItem(TOKEN_KEY);
+  if (persistedToken && !sessionStorage.getItem(TOKEN_KEY)) {
+    sessionStorage.setItem(TOKEN_KEY, persistedToken);
+  }
+  localStorage.removeItem(TOKEN_KEY);
+
+  const startupToken = sessionStorage.getItem(TOKEN_KEY);
   if (startupToken === 'null' || startupToken === 'undefined' || startupToken === '[object Object]') {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);

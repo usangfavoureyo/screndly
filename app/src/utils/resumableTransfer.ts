@@ -154,39 +154,14 @@ class BackblazeMultipartUpload {
   }
 
   private getBackblazeConfig() {
-    return {
-      keyId: localStorage.getItem('backblazeKeyId') || '',
-      applicationKey: localStorage.getItem('backblazeApplicationKey') || '',
-      bucketName: localStorage.getItem('backblazeBucketName') || '',
-      bucketId: localStorage.getItem('backblazeBucketId') || '',
-      endpoint: localStorage.getItem('backblazeEndpoint') || 's3.us-west-004.backblazeb2.com',
-      apiUrl: localStorage.getItem('backblazeApiUrl') || 'https://api.backblazeb2.com'
-    };
+    return null;
   }
 
   /**
    * Get authorization token from Backblaze
    */
   private async authorize(): Promise<{ authToken: string; apiUrl: string; downloadUrl: string }> {
-    const { keyId, applicationKey, apiUrl } = this.config;
-    const authString = btoa(`${keyId}:${applicationKey}`);
-
-    const response = await fetch(`${apiUrl}/b2api/v2/b2_authorize_account`, {
-      headers: {
-        'Authorization': `Basic ${authString}`
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Authorization failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return {
-      authToken: data.authorizationToken,
-      apiUrl: data.apiUrl,
-      downloadUrl: data.downloadUrl
-    };
+    throw new Error('Client-side resumable Backblaze uploads are disabled. Use authenticated backend upload routes instead.');
   }
 
   /**

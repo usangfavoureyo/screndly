@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
 // GET /api/jobs
 router.get('/', async (req, res) => {

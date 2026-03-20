@@ -33,41 +33,8 @@ export class CommentsService {
      */
     async processUnrepliedComments() {
         console.log('[CommentsService] Starting processing cycle...');
-
-        // 1. Fetch Settings
-        const settings = await this.getSettings();
-        if (!settings) {
-            console.log('[CommentsService] No settings found, skipping.');
-            return;
-        }
-
-        // 2. Fetch Unprocessed Comments
-        const comments = await prisma.comment.findMany({
-            where: { processed: false, blacklisted: false },
-            orderBy: { createdAt: 'asc' },
-            take: 50 // Batch size
-        });
-
-        console.log(`[CommentsService] Found ${comments.length} unprocessed comments.`);
-
-        // 3. Throttle Check (Global or Per Platform)
-        // Strict throttles: Low (5/hr), Medium (20/hr), High (50/hr)
-        const throttleLimit = this.getThrottleLimit(settings.commentThrottle);
-        const repliesLastHour = await this.getRepliesLastHour();
-
-        if (repliesLastHour >= throttleLimit) {
-            console.log(`[CommentsService] Throttle limit reached (${repliesLastHour}/${throttleLimit}). specialized skipping.`);
-            return;
-        }
-
-        // 4. Process Each Comment
-        for (const comment of comments) {
-            // Re-check throttle in loop in case we hit limit mid-batch
-            const currentReplies = await this.getRepliesLastHour();
-            if (currentReplies >= throttleLimit) break;
-
-            await this.processSingleComment(comment, settings);
-        }
+        console.warn('[CommentsService] Automated platform reply publishing is not configured yet. Skipping reply cycle.');
+        return;
     }
 
     private async processSingleComment(comment: any, settings: CommentSettings) {
@@ -176,12 +143,7 @@ export class CommentsService {
      * Poll platforms for new comments (Stub)
      */
     async pollComments() {
-        // This would connect to X/Facebook/etc APIs
-        // Loop through connected accounts -> fetch recent comments -> prisma.comment.upsert()
-        console.log('[CommentsService] Polling external platforms for comments...');
-
-        // Mocking Ingestion for Demo/Verification
-        // In production, this calls specific platform adapters
+        console.warn('[CommentsService] Comment polling is not configured yet. Skipping poll cycle.');
     }
 
     // --- HELPERS ---

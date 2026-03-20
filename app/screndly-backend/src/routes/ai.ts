@@ -4,8 +4,10 @@
 
 import { Router, Request, Response } from 'express';
 import aiService, { AIModel, LEGACY_OPENAI_MODELS, SUPPORTED_OPENAI_MODELS } from '../services/ai.service';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
 // ============================================
 // GENERATE COMPLETION

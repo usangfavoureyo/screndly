@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import ColorPickerPopup from './ColorPickerPopup';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 import type { DesignContentType } from '../utils/designStudioCaptionGenerator';
+import { searchDesignStudioTMDb, type DesignStudioTMDbSearchResult } from '../lib/api/designStudio';
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -75,7 +76,7 @@ export function EditDesignBottomSheet({
   const [imageFocalPoint, setImageFocalPoint] = useState(initialData?.imageFocalPoint || { x: 50, y: 50 });
   const [imageZoom, setImageZoom] = useState(initialData?.imageZoom || 1.0);
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
-  const [tmdbResults, setTmdbResults] = useState<any[]>([]);
+  const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedTmdbImage, setSelectedTmdbImage] = useState<string | null>(null);
   const [isImageExpanded, setIsImageExpanded] = useState(false);
@@ -162,25 +163,22 @@ export function EditDesignBottomSheet({
     haptics.medium();
     setIsSearching(true);
 
-    // Simulate TMDB search
-    setTimeout(() => {
-      const mockResults = [
-        {
-          id: 1,
-          title: tmdbSearchQuery,
-          backdrop: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800',
-          poster: 'https://images.unsplash.com/photo-1594908900066-3f47337549d8?w=400',
-        },
-        {
-          id: 2,
-          title: `${tmdbSearchQuery} 2`,
-          backdrop: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
-          poster: 'https://images.unsplash.com/photo-1598899134739-24c46f58b8c0?w=400',
-        },
-      ];
-      setTmdbResults(mockResults);
+    try {
+      const results = await searchDesignStudioTMDb(tmdbSearchQuery);
+      setTmdbResults(results);
+
+      if (results.length === 0) {
+        toast('No TMDb matches found', {
+          description: 'Try a more exact movie or TV title.',
+        });
+      }
+    } catch (error) {
+      console.error('TMDb search failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search TMDb');
+      setTmdbResults([]);
+    } finally {
       setIsSearching(false);
-    }, 1000);
+    }
   };
 
   const handleSelectTmdbImage = (imageUrl: string) => {
@@ -456,27 +454,41 @@ export function EditDesignBottomSheet({
                       <p className="text-sm text-gray-900 dark:text-white">{result.title}</p>
                       <div className="grid grid-cols-2 gap-2">
                         <button
-                          onClick={() => handleSelectTmdbImage(result.backdrop)}
+                          onClick={() => result.backdrop && handleSelectTmdbImage(result.backdrop)}
+                          disabled={!result.backdrop}
                           className="relative aspect-video rounded-lg overflow-hidden border-2 border-transparent hover:border-[#ec1e24] transition-colors"
                         >
-                          <img
-                            src={result.backdrop}
-                            alt="Backdrop"
-                            className="w-full h-full object-cover"
-                          />
+                          {result.backdrop ? (
+                            <img
+                              src={result.backdrop}
+                              alt="Backdrop"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-500 dark:bg-[#111111] dark:text-[#6B7280]">
+                              No backdrop
+                            </div>
+                          )}
                           <div className="absolute bottom-1 left-1 text-xs bg-black/70 text-white px-1.5 py-0.5 rounded">
                             Backdrop
                           </div>
                         </button>
                         <button
-                          onClick={() => handleSelectTmdbImage(result.poster)}
+                          onClick={() => result.poster && handleSelectTmdbImage(result.poster)}
+                          disabled={!result.poster}
                           className="relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-transparent hover:border-[#ec1e24] transition-colors"
                         >
-                          <img
-                            src={result.poster}
-                            alt="Poster"
-                            className="w-full h-full object-cover"
-                          />
+                          {result.poster ? (
+                            <img
+                              src={result.poster}
+                              alt="Poster"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-500 dark:bg-[#111111] dark:text-[#6B7280]">
+                              No poster
+                            </div>
+                          )}
                           <div className="absolute bottom-1 left-1 text-xs bg-black/70 text-white px-1.5 py-0.5 rounded">
                             Poster
                           </div>

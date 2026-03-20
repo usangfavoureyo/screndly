@@ -83,10 +83,6 @@ export function authenticate(req: Request, res: Response, next: NextFunction) {
                 return next();
             }
 
-            // Check if it's a valid Screndly dev token
-            if (payload.app === 'screndly' && payload.authenticated) {
-                return next();
-            }
         } catch {
             // Failed base64 decode
             if (!isLikelySignedJWT) {

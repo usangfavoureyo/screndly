@@ -3,8 +3,10 @@ import prisma from '../lib/prisma';
 import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { resolveYouTubeChannel } from '../services/youtube-channel-resolver';
 import { youtubePollerService } from '../services/youtube-poller.service';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
 function getStatusFromBody(body: any): string | undefined {
     if (typeof body?.status === 'string') {

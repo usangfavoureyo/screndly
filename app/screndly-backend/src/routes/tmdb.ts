@@ -9,8 +9,10 @@ import {
     clearAllPosts,
     getTmdbApiKey
 } from '../services/tmdb.service';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
 // GET /api/tmdb/status - Check if TMDb is configured
 router.get('/status', async (req, res) => {
@@ -68,6 +70,68 @@ router.get('/upcoming', async (req, res) => {
     } catch (error) {
         console.error('Error fetching upcoming:', error);
         res.status(500).json({ success: false, error: { message: 'Failed to fetch upcoming' } });
+    }
+});
+
+// GET /api/tmdb/search - Search TMDb titles for Design Studio and related pickers
+router.get('/search', async (req, res) => {
+    try {
+        const query = typeof req.query.query === 'string' ? req.query.query.trim() : '';
+        if (!query) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'Search query is required' }
+            });
+        }
+
+        const configured = await isTMDbConfigured();
+        if (!configured) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'TMDb API key not configured' }
+            });
+        }
+
+        const apiKey = await getTmdbApiKey();
+        const response = await fetch(
+            `https://api.themoviedb.org/3/search/multi?api_key=${apiKey}&query=${encodeURIComponent(query)}&include_adult=false`
+        );
+
+        if (!response.ok) {
+            throw new Error('Failed to search TMDb');
+        }
+
+        const data = await response.json() as {
+            results?: Array<{
+                id: number;
+                media_type?: string;
+                title?: string;
+                name?: string;
+                backdrop_path?: string | null;
+                poster_path?: string | null;
+                release_date?: string;
+                first_air_date?: string;
+            }>;
+        };
+
+        const imageBase = 'https://image.tmdb.org/t/p/original';
+        const results = (data.results || [])
+            .filter((item) => item.media_type === 'movie' || item.media_type === 'tv')
+            .filter((item) => item.backdrop_path || item.poster_path)
+            .slice(0, 12)
+            .map((item) => ({
+                id: item.id,
+                mediaType: item.media_type,
+                title: item.title || item.name || 'Untitled',
+                backdrop: item.backdrop_path ? `${imageBase}${item.backdrop_path}` : null,
+                poster: item.poster_path ? `${imageBase}${item.poster_path}` : null,
+                releaseDate: item.release_date || item.first_air_date || null,
+            }));
+
+        res.json({ success: true, data: results });
+    } catch (error) {
+        console.error('Error searching TMDb:', error);
+        res.status(500).json({ success: false, error: { message: 'Failed to search TMDb' } });
     }
 });
 

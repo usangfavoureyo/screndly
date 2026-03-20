@@ -19,8 +19,10 @@ import {
   RSSFeedInput,
 } from '../services/rss.service';
 import prisma from '../lib/prisma';
+import { authenticate } from '../middleware/auth';
 
 const router = Router();
+router.use(authenticate);
 
 router.get('/feeds', async (_req: Request, res: Response) => {
   try {

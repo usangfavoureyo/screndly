@@ -1,12 +1,18 @@
 /**
- * Caption Generation Utility
- * Generates platform-specific captions using Video Settings prompts
- * Integrated with Analytics-Driven Optimization Layer
+ * Caption generation utility backed by the real AI route.
  */
 
-import { captionOptimizer } from '../lib/optimization';
+import { apiClient } from '../lib/api/client';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 
 export type PlatformName = 'YouTube' | 'X' | 'Threads' | 'Instagram' | 'TikTok' | 'Facebook' | 'Pinterest';
+
+interface VideoMetadata {
+  title: string;
+  channelName: string;
+  videoId: string;
+  description?: string;
+}
 
 interface CaptionGenerationResult {
   x: string;
@@ -18,74 +24,77 @@ interface CaptionGenerationResult {
   pinterest: string;
 }
 
-interface VideoMetadata {
-  title: string;
-  channelName: string;
-  videoId: string;
-  description?: string;
+interface VideoCaptionSettings {
+  model: string;
+  prompt: string;
 }
 
-/**
- * Generate captions using optimization layer
- * Uses analytics-derived signals to enhance caption quality
- */
-async function mockGenerateCaptions(video: VideoMetadata): Promise<CaptionGenerationResult> {
-  // Simulate API delay
-  await new Promise(resolve => setTimeout(resolve, 100));
+type PlatformKey = keyof CaptionGenerationResult;
 
-  // Get optimization signals for caption enhancement
-  const basePrompt = `Generate platform-optimized captions for: ${video.title}`;
+const SETTINGS_KEYS = ['screndlySettings', 'screndly_settings'] as const;
 
-  // Use captionOptimizer to enhance the prompt with performance signals
-  const enhancedPrompt = captionOptimizer.enhancePrompt(basePrompt, 'video');
-
-  // Select optimal model based on analytics
-  const optimalModel = captionOptimizer.selectModel('video');
-
-  console.log(`[CaptionGenerator] Using model: ${optimalModel}, enhanced prompt applied`);
-
-  // Mock generated captions based on the video metadata
-  const title = video.title;
-  const cleanTitle = title.replace(/\s*(Official\s+)?(Trailer|Teaser|First Look|Sneak Peek)\s*/gi, '').trim();
-  const hashtag = cleanTitle.replace(/[^a-zA-Z0-9]/g, '');
-
-  const result: CaptionGenerationResult = {
-    x: `#${hashtag} hits theatres soon 🎬 ${cleanTitle} is coming.`,
-    facebook: `🎬 Get ready! ${cleanTitle} is coming soon.\n\nThis looks absolutely incredible! We can't wait to see this one. What do you think?\n\n#${hashtag} #Movies #Trailers #ComingSoon #FilmTwitter`,
-    instagram: `✨ ${cleanTitle} ✨\n\nComing soon to theatres.\n\nThis is the trailer drop we've been waiting for! Who's excited? 🔥\n\n#${hashtag} #Movies #Film #Trailer #ComingSoon #Cinema #MovieNight #Cinephile #FilmCommunity #MovieBuff`,
-    threads: `just watched the ${cleanTitle} trailer and I'm speechless 😭\n\nthis is going to be incredible\n\n#${hashtag} #movies`,
-    tiktok: `the ${cleanTitle} trailer dropped 🔥\n\nthis looks insane omg\n\n#${hashtag} #movies #trailer #fyp #viral`,
-    youtube: `${cleanTitle} | Official Trailer`,
-    pinterest: `${cleanTitle} - Official Trailer 🎬\n\nComing Soon to Theaters\n\n#${hashtag} #Movies #Film #Trailer #ComingSoon`,
-  };
-
-  // Record caption metadata for analytics
-  captionOptimizer.recordCaptionMetadata(video.videoId, 'video', optimalModel, {
-    titleLength: title.length,
-    hasDescription: !!video.description,
-    channelName: video.channelName,
-  });
-
-  return result;
-}
-
-/**
- * Remove hashtags from caption text
- */
 function removeHashtags(caption: string): string {
-  // Remove all hashtags (words starting with #)
   return caption.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
 }
 
-/**
- * Generate captions for auto-publish based on platform settings
- */
+function getStoredSettings(): Record<string, any> {
+  for (const key of SETTINGS_KEYS) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          return parsed;
+        }
+      }
+    } catch (error) {
+      console.error(`Failed to parse ${key}:`, error);
+    }
+  }
+
+  return {};
+}
+
+function getVideoCaptionSettings(): VideoCaptionSettings {
+  const settings = getStoredSettings();
+  return {
+    model: settings.videoOpenaiModel || DEFAULT_MODELS.video,
+    prompt:
+      settings.videoUniversalCaptionPrompt ||
+      [
+        'You are writing social captions for entertainment trailer posts.',
+        'Keep the copy concise, high-energy, and platform-appropriate.',
+        'Avoid filler and generic clickbait.',
+      ].join('\n'),
+  };
+}
+
+async function generateCaptionForPlatform(
+  video: VideoMetadata,
+  platform: PlatformName,
+  settings: VideoCaptionSettings
+): Promise<string> {
+  const response = await apiClient.post<{ content: string }>('/api/ai/generate/youtube-caption', {
+    videoTitle: video.title,
+    channelName: video.channelName,
+    description: video.description || '',
+    platform,
+    model: settings.model,
+    customSystemPrompt: settings.prompt,
+  });
+
+  if (!response.success || !response.data?.content) {
+    throw new Error(response.error?.message || `Failed to generate ${platform} caption`);
+  }
+
+  return response.data.content.trim();
+}
+
 export async function generateCaptionsForPublish(
   video: VideoMetadata,
   platformSettings: Record<string, { autoCaption: boolean; autoHashtag: boolean }>
 ): Promise<Record<PlatformName, string>> {
-  // Map platform IDs to names
-  const platformMap: Record<string, { name: PlatformName; key: keyof CaptionGenerationResult }> = {
+  const platformMap: Record<string, { name: PlatformName; key: PlatformKey }> = {
     youtube: { name: 'YouTube', key: 'youtube' },
     x: { name: 'X', key: 'x' },
     threads: { name: 'Threads', key: 'threads' },
@@ -105,59 +114,50 @@ export async function generateCaptionsForPublish(
     Pinterest: '',
   };
 
-  // Check if any platform needs auto-captions
-  const needsCaptions = Object.values(platformSettings).some(s => s.autoCaption);
+  const settings = getVideoCaptionSettings();
+  const generationPromises = Object.entries(platformMap)
+    .filter(([id]) => platformSettings[id]?.autoCaption)
+    .map(async ([id, { name, key }]) => {
+      const generated = await generateCaptionForPlatform(video, name, settings);
+      return { id, name, key, generated };
+    });
 
-  let generatedCaptions: CaptionGenerationResult | null = null;
+  const settled = await Promise.allSettled(generationPromises);
+  const generatedCaptions: Partial<CaptionGenerationResult> = {};
 
-  // Generate captions once if any platform needs them
-  if (needsCaptions) {
-    try {
-      generatedCaptions = await mockGenerateCaptions(video);
-    } catch (error) {
-      console.error('Failed to generate captions:', error);
-    }
-  }
-
-  // Process each platform
-  Object.entries(platformMap).forEach(([id, { name, key }]) => {
-    const settings = platformSettings[id];
-
-    if (!settings) {
-      // Default to basic caption if no settings
-      result[name] = `${video.title} - From ${video.channelName}`;
+  settled.forEach((item) => {
+    if (item.status === 'fulfilled') {
+      generatedCaptions[item.value.key] = item.value.generated;
       return;
     }
 
-    if (settings.autoCaption && generatedCaptions) {
-      // Use generated caption
-      let caption = generatedCaptions[key] || video.title;
+    console.error('Failed to generate caption:', item.reason);
+  });
 
-      // Remove hashtags if autoHashtag is disabled
-      if (!settings.autoHashtag) {
+  Object.entries(platformMap).forEach(([id, { name, key }]) => {
+    const settingsForPlatform = platformSettings[id];
+    const fallbackCaption = `${video.title} - From ${video.channelName}`;
+
+    if (settingsForPlatform?.autoCaption && generatedCaptions[key]) {
+      let caption = generatedCaptions[key] as string;
+      if (!settingsForPlatform.autoHashtag) {
         caption = removeHashtags(caption);
       }
-
       result[name] = caption;
-    } else {
-      // Use basic caption (just video title + channel)
-      result[name] = `${video.title} - From ${video.channelName}`;
+      return;
     }
+
+    result[name] = fallbackCaption;
   });
 
   return result;
 }
 
-/**
- * Get caption settings from localStorage
- */
 export function getPlatformCaptionSettings(): Record<string, { autoCaption: boolean; autoHashtag: boolean }> {
   try {
     const savedSettings = localStorage.getItem('screndly_platformSettings');
     if (savedSettings) {
       const platformSettings = JSON.parse(savedSettings);
-
-      // Extract only autoCaption and autoHashtag for each platform
       const captionSettings: Record<string, { autoCaption: boolean; autoHashtag: boolean }> = {};
 
       Object.entries(platformSettings).forEach(([id, settings]: [string, any]) => {
@@ -173,7 +173,6 @@ export function getPlatformCaptionSettings(): Record<string, { autoCaption: bool
     console.error('Failed to load platform caption settings:', error);
   }
 
-  // Default settings - all disabled
   return {
     youtube: { autoCaption: false, autoHashtag: false },
     x: { autoCaption: true, autoHashtag: true },

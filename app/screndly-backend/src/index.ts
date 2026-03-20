@@ -169,7 +169,7 @@ app.get('/health', async (req, res) => {
             timestamp: new Date().toISOString(),
             services: {
                 database: 'connected',
-                cron: 'running' // Placeholder until cron service is fully integrated
+                cron: 'enabled'
             }
         });
     } catch (error) {

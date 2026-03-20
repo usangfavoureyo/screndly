@@ -41,6 +41,15 @@ export type DesignStudioActivityType =
   | 'design_published'
   | 'template_deleted';
 
+export interface DesignStudioTMDbSearchResult {
+  id: number;
+  mediaType: 'movie' | 'tv';
+  title: string;
+  backdrop: string | null;
+  poster: string | null;
+  releaseDate: string | null;
+}
+
 export async function fetchDesignStudioState(): Promise<DesignStudioStateResponse> {
   const response = await apiClient.get<DesignStudioStateResponse>('/api/design-studio/state');
   if (!response.success || !response.data) {
@@ -77,4 +86,13 @@ export async function createDesignStudioActivity(type: DesignStudioActivityType,
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to save Design Studio activity');
   }
+}
+
+export async function searchDesignStudioTMDb(query: string): Promise<DesignStudioTMDbSearchResult[]> {
+  const response = await apiClient.get<DesignStudioTMDbSearchResult[]>(`/api/tmdb/search?query=${encodeURIComponent(query)}`);
+  if (!response.success || !Array.isArray(response.data)) {
+    throw new Error(response.error?.message || 'Failed to search TMDb');
+  }
+
+  return response.data;
 }

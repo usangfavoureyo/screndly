@@ -265,7 +265,10 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
       if (!response.success) throw new Error(response.error?.message || 'Failed to schedule post');
     } catch (err) {
       console.error('Failed to schedule post:', err);
-      await enqueueTMDbMutation('create-or-update', normalizeTmdbPayload({ ...post, status: 'scheduled' }));
+      await enqueueTMDbMutation('update-post', {
+        postId: post.id,
+        updates: normalizeTmdbPayload({ ...post, status: 'scheduled' }),
+      });
     }
   };
 

@@ -9,6 +9,12 @@ import { Button } from '../ui/button';
 import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, BottomSheetTitle } from '../ui/bottom-sheet';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
+import {
+  getLogoFrameMetrics,
+  renderThumbnailDataUrl,
+  type ThumbnailConfig,
+  type LogoPosition,
+} from '../../utils/thumbnailRenderer';
 
 interface ThumbnailSettingsProps {
   settings: Record<string, any> | Array<{ key: string; value: unknown }>;
@@ -29,29 +35,7 @@ const findSetting = (settings: ThumbnailSettingsProps['settings'], key: string) 
   return undefined;
 };
 
-type LogoPosition =
-  | 'top-left'
-  | 'top-center'
-  | 'top-right'
-  | 'center-left'
-  | 'center'
-  | 'center-right'
-  | 'bottom-left'
-  | 'bottom-center'
-  | 'bottom-right';
-
 type Platform = 'youtube' | 'x';
-
-interface ThumbnailConfig {
-  platform: Platform;
-  logoPosition: LogoPosition;
-  logoDisplayMode: 'boxed' | 'logo-only';
-  autoScale: boolean;
-  maxLogoSize: number;
-  autoContrastBackdrop: boolean;
-  autoContrastOverlay: boolean;
-  showTrailerTypeText: boolean;
-}
 
 interface ThumbnailAssetOverride {
   backdropUrl?: string;
@@ -74,38 +58,6 @@ const LOGO_POSITIONS: Record<LogoPosition, string> = {
 
 const THUMBNAIL_WIDTH = 1280;
 const THUMBNAIL_HEIGHT = 720;
-
-function getLogoFrameMetrics(config: ThumbnailConfig) {
-  const boxWidth = Math.min(THUMBNAIL_WIDTH * (config.maxLogoSize / 100), THUMBNAIL_WIDTH * 0.52);
-  const boxHeight = Math.min(THUMBNAIL_HEIGHT * 0.22, Math.max(84, boxWidth * 0.28));
-  const marginX = 48;
-  const marginTop = 48;
-  const marginBottom = 64;
-  const maxLeft = THUMBNAIL_WIDTH - marginX - boxWidth;
-  const maxTop = THUMBNAIL_HEIGHT - marginBottom - boxHeight;
-
-  const rawBoxX = config.logoPosition.includes('left')
-    ? marginX
-    : config.logoPosition.includes('right')
-      ? THUMBNAIL_WIDTH - boxWidth - marginX
-      : (THUMBNAIL_WIDTH - boxWidth) / 2;
-  const rawBoxY = config.logoPosition.startsWith('top')
-    ? marginTop
-    : config.logoPosition.startsWith('center')
-      ? (THUMBNAIL_HEIGHT - boxHeight) / 2
-      : THUMBNAIL_HEIGHT - boxHeight - marginBottom;
-
-  const boxX = Math.max(marginX, Math.min(rawBoxX, maxLeft));
-  const boxY = Math.max(marginTop, Math.min(rawBoxY, maxTop));
-
-  return {
-    boxWidth,
-    boxHeight,
-    boxX,
-    boxY,
-    trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
-  };
-}
 
 export function ThumbnailSettings({ settings, updateSetting, onBack }: ThumbnailSettingsProps) {
   const [activePlatform, setActivePlatform] = useState<Platform>('youtube');
@@ -212,163 +164,15 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     reader.readAsDataURL(file);
   };
 
-  const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-    image.src = src;
-  });
-
-  const drawRoundedRect = (
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    radius: number
-  ) => {
-    ctx.beginPath();
-    ctx.moveTo(x + radius, y);
-    ctx.arcTo(x + width, y, x + width, y + height, radius);
-    ctx.arcTo(x + width, y + height, x, y + height, radius);
-    ctx.arcTo(x, y + height, x, y, radius);
-    ctx.arcTo(x, y, x + width, y, radius);
-    ctx.closePath();
-  };
-
-  const drawCoverImage = (
-    ctx: CanvasRenderingContext2D,
-    image: HTMLImageElement,
-    width: number,
-    height: number
-  ) => {
-    const ratio = Math.max(width / image.width, height / image.height);
-    const drawWidth = image.width * ratio;
-    const drawHeight = image.height * ratio;
-    const x = (width - drawWidth) / 2;
-    const y = (height - drawHeight) / 2;
-    ctx.drawImage(image, x, y, drawWidth, drawHeight);
-  };
-
-  const drawContainImage = (
-    ctx: CanvasRenderingContext2D,
-    image: HTMLImageElement,
-    x: number,
-    y: number,
-    width: number,
-    height: number
-  ) => {
-    const ratio = Math.min(width / image.width, height / image.height);
-    const drawWidth = image.width * ratio;
-    const drawHeight = image.height * ratio;
-    const dx = x + (width - drawWidth) / 2;
-    const dy = y + (height - drawHeight) / 2;
-    ctx.drawImage(image, dx, dy, drawWidth, drawHeight);
-  };
-
-  const drawDefaultBackdrop = (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number
-  ) => {
-    const gradient = ctx.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, '#13243b');
-    gradient.addColorStop(0.45, '#294b72');
-    gradient.addColorStop(1, '#f18b6d');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-
-    const glow = ctx.createRadialGradient(width * 0.72, height * 0.25, 40, width * 0.72, height * 0.25, width * 0.5);
-    glow.addColorStop(0, 'rgba(255, 238, 196, 0.78)');
-    glow.addColorStop(0.4, 'rgba(255, 211, 150, 0.34)');
-    glow.addColorStop(1, 'rgba(255, 211, 150, 0)');
-    ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.beginPath();
-    ctx.moveTo(0, height * 0.78);
-    ctx.quadraticCurveTo(width * 0.25, height * 0.68, width * 0.45, height * 0.8);
-    ctx.quadraticCurveTo(width * 0.7, height * 0.94, width, height * 0.7);
-    ctx.lineTo(width, height);
-    ctx.lineTo(0, height);
-    ctx.closePath();
-    ctx.fill();
-  };
-
   const renderThumbnailToCanvas = async (format: 'png' | 'jpeg') => {
-    if (typeof document === 'undefined') {
-      throw new Error('Thumbnail export is only available in the browser');
-    }
-
-    const canvas = document.createElement('canvas');
-    canvas.width = THUMBNAIL_WIDTH;
-    canvas.height = THUMBNAIL_HEIGHT;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) {
-      throw new Error('Canvas rendering is unavailable');
-    }
-
-    if (currentAssets.backdropUrl) {
-      const backdropImage = await loadImage(currentAssets.backdropUrl);
-      drawCoverImage(ctx, backdropImage, canvas.width, canvas.height);
-    } else {
-      drawDefaultBackdrop(ctx, canvas.width, canvas.height);
-    }
-
-    if (currentConfig.autoContrastOverlay) {
-      ctx.fillStyle = activePlatform === 'youtube' ? 'rgba(0, 0, 0, 0.35)' : 'rgba(12, 12, 12, 0.28)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(currentConfig);
-    const shouldRenderBox = currentConfig.logoDisplayMode === 'boxed';
-
-    if (shouldRenderBox) {
-      drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 24);
-      ctx.fillStyle = 'rgba(18, 18, 18, 0.88)';
-      ctx.fill();
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.stroke();
-    }
-
-    if (currentAssets.logoUrl) {
-      const logoImage = await loadImage(currentAssets.logoUrl);
-      if (shouldRenderBox) {
-        drawContainImage(ctx, logoImage, boxX + 20, boxY + 18, boxWidth - 40, boxHeight - 36);
-      } else {
-        drawContainImage(ctx, logoImage, boxX, boxY, boxWidth, boxHeight);
-      }
-    } else if (shouldRenderBox) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(boxX + boxWidth * 0.12, boxY + boxHeight / 2);
-      ctx.lineTo(boxX + boxWidth * 0.88, boxY + boxHeight / 2);
-      ctx.stroke();
-    } else {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 8;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(boxX + boxWidth * 0.16, boxY + boxHeight / 2);
-      ctx.lineTo(boxX + boxWidth * 0.84, boxY + boxHeight / 2);
-      ctx.stroke();
-      ctx.lineCap = 'butt';
-    }
-
-    if (currentConfig.showTrailerTypeText) {
-      ctx.fillStyle = '#ffffff';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.font = 'bold 32px Arial, sans-serif';
-      ctx.fillText('OFFICIAL TRAILER', canvas.width / 2, boxY + boxHeight + 24);
-    }
-
-    return canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? 0.92 : undefined);
+    return renderThumbnailDataUrl(currentConfig, {
+      width: THUMBNAIL_WIDTH,
+      height: THUMBNAIL_HEIGHT,
+      backdropUrl: currentAssets.backdropUrl,
+      logoUrl: currentAssets.logoUrl,
+      trailerLabel: currentConfig.showTrailerTypeText ? 'OFFICIAL TRAILER' : null,
+      format,
+    });
   };
 
   const handleDownload = async () => {
@@ -414,7 +218,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   };
 
   const getPreviewLogoBoxMetrics = (config: ThumbnailConfig) => {
-    const { boxWidth, boxHeight, boxX, boxY, trailerOffset } = getLogoFrameMetrics(config);
+    const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config);
     return {
       boxWidth,
       boxHeight,
@@ -422,7 +226,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       top: `${(boxY / THUMBNAIL_HEIGHT) * 100}%`,
       width: `${(boxWidth / THUMBNAIL_WIDTH) * 100}%`,
       height: `${(boxHeight / THUMBNAIL_HEIGHT) * 100}%`,
-      trailerOffset,
+      trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
     };
   };
 

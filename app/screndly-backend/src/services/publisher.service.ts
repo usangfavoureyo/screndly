@@ -1,6 +1,7 @@
 import axios from 'axios';
 import fs from 'fs/promises';
 import prisma from '../lib/prisma';
+import { findPlatformConnection } from '../lib/platformConnections';
 import path from 'path';
 import sharp from 'sharp';
 import { xService } from './platforms/x';
@@ -303,9 +304,7 @@ export class PublisherService {
             };
 
             // Get platform connection
-            let connection = await prisma.platformConnection.findUnique({
-                where: { platform }
-            });
+            let connection = await findPlatformConnection(platform);
             connection = await ensureFreshPlatformConnection(connection);
 
             let result: PublishResult = {

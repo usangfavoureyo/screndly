@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Upload, CheckCircle2, XCircle } from 'lucide-react';
-import { uploadToBackblaze, generateFileName, isBackblazeConfigured } from '../utils/backblaze';
+import { uploadToBackblaze } from '../utils/backblaze';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { RedSpinner } from './PageLoader';
@@ -20,7 +20,7 @@ export function BackblazeUploader({
   onUploadError,
   acceptedFileTypes = 'video/*',
   maxFileSizeMB = 500,
-  fileNamePrefix = 'screndly',
+  fileNamePrefix: _fileNamePrefix = 'screndly',
   buttonText = 'Upload to Backblaze B2',
   className = ''
 }: BackblazeUploaderProps) {
@@ -29,27 +29,16 @@ export function BackblazeUploader({
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  void _fileNamePrefix;
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Reset state
     setError(null);
     setUploadedUrl(null);
     setProgress(0);
 
-    // Check if Backblaze is configured
-    if (!isBackblazeConfigured('general')) {
-      const errorMsg = 'Backblaze B2 General Storage not configured. Please add your credentials in Settings → API Keys';
-      setError(errorMsg);
-      toast.error('Configuration Required', {
-        description: errorMsg
-      });
-      if (onUploadError) onUploadError(errorMsg);
-      return;
-    }
-
-    // Check file size
     const fileSizeMB = file.size / (1024 * 1024);
     if (fileSizeMB > maxFileSizeMB) {
       const errorMsg = `File size (${fileSizeMB.toFixed(1)}MB) exceeds maximum of ${maxFileSizeMB}MB`;
@@ -61,7 +50,6 @@ export function BackblazeUploader({
       return;
     }
 
-    // Start upload
     setUploading(true);
     haptics.medium();
 
@@ -70,12 +58,9 @@ export function BackblazeUploader({
     });
 
     try {
-      const fileName = generateFileName(file.name, fileNamePrefix);
-      
       const result = await uploadToBackblaze({
         file,
-        fileName,
-        bucketType: 'general', // Use General Storage bucket
+        bucketType: 'general',
         metadata: {
           'original-name': file.name,
           'upload-date': new Date().toISOString(),
@@ -94,7 +79,7 @@ export function BackblazeUploader({
         setUploadedUrl(result.url);
         haptics.success();
         toast.success('Upload Complete!', {
-          description: `File available at Backblaze B2`,
+          description: 'File available at Backblaze B2',
           id: toastId
         });
         if (onUploadComplete && result.fileId) {
@@ -141,8 +126,8 @@ export function BackblazeUploader({
           className={`
             flex items-center justify-center gap-2 px-4 py-3 rounded-xl
             border-2 border-dashed cursor-pointer transition-all
-            ${uploading 
-              ? 'border-gray-300 dark:border-[#333333] bg-gray-50 dark:bg-[#0A0A0A] cursor-not-allowed' 
+            ${uploading
+              ? 'border-gray-300 dark:border-[#333333] bg-gray-50 dark:bg-[#0A0A0A] cursor-not-allowed'
               : 'border-[#ec1e24] hover:bg-[#ec1e24]/5 dark:hover:bg-[#ec1e24]/10'
             }
           `}
@@ -165,17 +150,15 @@ export function BackblazeUploader({
         </label>
       </div>
 
-      {/* Progress Bar */}
       {uploading && (
         <div className="w-full h-2 bg-gray-200 dark:bg-[#1A1A1A] rounded-full overflow-hidden">
-          <div 
+          <div
             className="h-full bg-[#ec1e24] transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
       )}
 
-      {/* Success State */}
       {uploadedUrl && !uploading && (
         <div className="flex items-start gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
           <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-500 flex-shrink-0 mt-0.5" />
@@ -190,7 +173,6 @@ export function BackblazeUploader({
         </div>
       )}
 
-      {/* Error State */}
       {error && !uploading && (
         <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
           <XCircle className="w-5 h-5 text-red-600 dark:text-red-500 flex-shrink-0 mt-0.5" />
@@ -202,7 +184,6 @@ export function BackblazeUploader({
         </div>
       )}
 
-      {/* Info */}
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Maximum file size: {maxFileSizeMB}MB. Files stored on Backblaze B2 Cloud Storage.
       </p>

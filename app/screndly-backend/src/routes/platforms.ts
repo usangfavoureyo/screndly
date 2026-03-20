@@ -3,6 +3,7 @@ import { Router } from 'express';
 import axios from 'axios';
 import prisma from '../lib/prisma';
 import { env } from '../lib/env';
+import { findPlatformConnection, findPlatformConnections, updatePlatformConnection, upsertPlatformConnection } from '../lib/platformConnections';
 import { assertXOAuthConfigured, buildXTokenRequest, getXOAuthClientId } from '../lib/xOAuth';
 import { getTikTokClientKey, getTikTokClientSecret } from '../lib/tiktokOAuth';
 import { getPinterestAppId, getPinterestAppSecret } from '../lib/pinterestOAuth';
@@ -419,16 +420,18 @@ async function prepareHostedImageUrl(options: {
 }
 
 async function updateConnectionMetadata(platform: SupportedPlatform, patch: Prisma.JsonObject): Promise<void> {
-    const connection = await prisma.platformConnection.findUnique({ where: { platform } });
+    const connection = await findPlatformConnection(platform);
     if (!connection) return;
 
-    await prisma.platformConnection.update({
-        where: { platform },
-        data: {
-            metadata: {
-                ...getJsonObject(connection.metadata),
-                ...patch,
-            },
+    await updatePlatformConnection(platform, {
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+        expiresAt: connection.expiresAt,
+        username: connection.username,
+        userId: connection.userId,
+        metadata: {
+            ...getJsonObject(connection.metadata),
+            ...patch,
         },
     });
 }
@@ -567,9 +570,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
         for (const platform of platformList) {
             // Get platform connection
-            let connection = await prisma.platformConnection.findUnique({
-                where: { platform }
-            });
+            let connection = await findPlatformConnection(platform);
             connection = await ensureFreshPlatformConnection(connection);
 
             let result: any = { platform, status: 'failed', error: 'Platform not configured' };
@@ -848,7 +849,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 router.get('/status', authenticate, async (req, res) => {
     // ... existing logic ...
     try {
-        const connections = await prisma.platformConnection.findMany();
+        const connections = await findPlatformConnections();
         const refreshedConnections = await Promise.all(
             connections.map(async (connection) => {
                 try {
@@ -898,9 +899,7 @@ router.get('/status', authenticate, async (req, res) => {
 // GET /api/platforms/pinterest/boards (Protected)
 router.get('/pinterest/boards', authenticate, async (_req, res) => {
     try {
-        const connection = await prisma.platformConnection.findUnique({
-            where: { platform: 'Pinterest' },
-        });
+        const connection = await findPlatformConnection('Pinterest');
         const freshConnection = await ensureFreshPlatformConnection(connection);
 
         if (!freshConnection?.accessToken) {
@@ -925,9 +924,7 @@ router.get('/pinterest/boards', authenticate, async (_req, res) => {
 // GET /api/platforms/youtube/playlists (Protected)
 router.get('/youtube/playlists', authenticate, async (_req, res) => {
     try {
-        const connection = await prisma.platformConnection.findUnique({
-            where: { platform: 'YouTube' },
-        });
+        const connection = await findPlatformConnection('YouTube');
         const freshConnection = await ensureFreshPlatformConnection(connection);
 
         if (!freshConnection || !hasUsablePlatformAccessToken(freshConnection)) {
@@ -969,9 +966,7 @@ router.post('/pinterest/boards', authenticate, async (req, res) => {
             return res.status(400).json({ success: false, error: { message: 'Board name is required' } });
         }
 
-        const connection = await prisma.platformConnection.findUnique({
-            where: { platform: 'Pinterest' },
-        });
+        const connection = await findPlatformConnection('Pinterest');
         const freshConnection = await ensureFreshPlatformConnection(connection);
 
         if (!freshConnection?.accessToken) {
@@ -1001,22 +996,10 @@ router.post('/pinterest/boards', authenticate, async (req, res) => {
 
 // POST /api/platforms/connect (Protected)
 router.post('/connect', authenticate, async (req, res) => {
-    // ... existing logic ...
-    try {
-        const { platform, accessToken, refreshToken, expiresAt, username, userId, metadata } = req.body;
-        const normalizedPlatform = normalizePlatform(platform);
-        if (!normalizedPlatform) {
-            return res.status(400).json({ success: false, error: { message: 'Unsupported platform' } });
-        }
-        const connection = await prisma.platformConnection.upsert({
-            where: { platform: normalizedPlatform },
-            update: { accessToken, refreshToken, expiresAt: expiresAt ? new Date(expiresAt) : null, username, userId, metadata },
-            create: { platform: normalizedPlatform, accessToken, refreshToken, expiresAt: expiresAt ? new Date(expiresAt) : null, username, userId, metadata }
-        });
-        res.json({ success: true, data: { connected: true, platform: normalizedPlatform } });
-    } catch (error) {
-        res.status(500).json({ success: false, error: { message: 'Connect failed' } });
-    }
+    return res.status(410).json({
+        success: false,
+        error: { message: 'Manual platform token ingestion is disabled. Use the signed OAuth flow instead.' },
+    });
 });
 
 // DELETE /api/platforms/:platform (Protected)
@@ -1190,28 +1173,14 @@ router.post('/callback', async (req, res) => {
                     throw new Error('Facebook returned an incomplete Page record. Please reconnect and ensure page permissions are granted.');
                 }
 
-                await prisma.platformConnection.upsert({
-                    where: { platform: 'Facebook' },
-                    update: {
-                        accessToken: page.access_token, // Page Token
-                        userId: page.id,               // Page ID
-                        username: page.name,
-                        expiresAt,
-                        metadata: {
-                            userToken: userAccessToken,
-                            profileUrl: `https://www.facebook.com/${page.id}`
-                        }
-                    },
-                    create: {
-                        platform: 'Facebook',
-                        accessToken: page.access_token,
-                        userId: page.id,
-                        username: page.name,
-                        expiresAt,
-                        metadata: {
-                            userToken: userAccessToken,
-                            profileUrl: `https://www.facebook.com/${page.id}`
-                        }
+                await upsertPlatformConnection('Facebook', {
+                    accessToken: page.access_token,
+                    userId: page.id,
+                    username: page.name,
+                    expiresAt,
+                    metadata: {
+                        userToken: userAccessToken,
+                        profileUrl: `https://www.facebook.com/${page.id}`
                     }
                 });
             } else if (normalizedPlatform === 'Instagram') {
@@ -1232,32 +1201,16 @@ router.post('/callback', async (req, res) => {
 
                 if (igId && matchedPage?.id) {
                     const profile = await fetchInstagramProfile(igId, userAccessToken);
-                    await prisma.platformConnection.upsert({
-                        where: { platform: 'Instagram' },
-                        update: {
-                            accessToken: userAccessToken,
-                            userId: igId,
-                            username: profile.username || igId,
-                            expiresAt,
-                            metadata: {
-                                userToken: userAccessToken,
-                                pageId: matchedPage.id,
-                                pageName: matchedPage.name,
-                                profileUrl: profile.profileUrl
-                            }
-                        },
-                        create: {
-                            platform: 'Instagram',
-                            accessToken: userAccessToken,
-                            userId: igId,
-                            username: profile.username || igId,
-                            expiresAt,
-                            metadata: {
-                                userToken: userAccessToken,
-                                pageId: matchedPage.id,
-                                pageName: matchedPage.name,
-                                profileUrl: profile.profileUrl
-                            }
+                    await upsertPlatformConnection('Instagram', {
+                        accessToken: userAccessToken,
+                        userId: igId,
+                        username: profile.username || igId,
+                        expiresAt,
+                        metadata: {
+                            userToken: userAccessToken,
+                            pageId: matchedPage.id,
+                            pageName: matchedPage.name,
+                            profileUrl: profile.profileUrl
                         }
                     });
                 } else {
@@ -1288,32 +1241,16 @@ router.post('/callback', async (req, res) => {
             const expiresAt = longTokenData.expires_in ? new Date(Date.now() + longTokenData.expires_in * 1000) : null;
 
             const profile = await metaService.getThreadsProfile(userAccessToken);
-            await prisma.platformConnection.upsert({
-                where: { platform: 'Threads' },
-                update: {
-                    accessToken: userAccessToken,
-                    userId: profile.id,
-                    username: profile.username || profile.name || profile.id,
-                    expiresAt,
-                    metadata: {
-                        profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
-                        profileImageUrl: profile.threads_profile_picture_url,
-                        bio: profile.threads_biography,
-                        isVerified: profile.is_verified
-                    }
-                },
-                create: {
-                    platform: 'Threads',
-                    accessToken: userAccessToken,
-                    userId: profile.id,
-                    username: profile.username || profile.name || profile.id,
-                    expiresAt,
-                    metadata: {
-                        profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
-                        profileImageUrl: profile.threads_profile_picture_url,
-                        bio: profile.threads_biography,
-                        isVerified: profile.is_verified
-                    }
+            await upsertPlatformConnection('Threads', {
+                accessToken: userAccessToken,
+                userId: profile.id,
+                username: profile.username || profile.name || profile.id,
+                expiresAt,
+                metadata: {
+                    profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
+                    profileImageUrl: profile.threads_profile_picture_url,
+                    bio: profile.threads_biography,
+                    isVerified: profile.is_verified
                 }
             });
         } else if (normalizedPlatform === 'X') {
@@ -1360,34 +1297,17 @@ router.post('/callback', async (req, res) => {
                 throw new Error('X did not return the authenticated user profile. Check that the app has access to users.read.');
             }
 
-            await prisma.platformConnection.upsert({
-                where: { platform: 'X' },
-                update: {
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: profile.id,
-                    username: profile.username || profile.id,
-                    metadata: {
-                        profileUrl: profile.username ? `https://x.com/${profile.username}` : undefined,
-                        profileImageUrl: profile.profile_image_url,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
-                },
-                create: {
-                    platform: 'X',
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: profile.id,
-                    username: profile.username || profile.id,
-                    metadata: {
-                        profileUrl: profile.username ? `https://x.com/${profile.username}` : undefined,
-                        profileImageUrl: profile.profile_image_url,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
+            await upsertPlatformConnection('X', {
+                accessToken: tokenData.access_token,
+                refreshToken: tokenData.refresh_token || null,
+                expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+                userId: profile.id,
+                username: profile.username || profile.id,
+                metadata: {
+                    profileUrl: profile.username ? `https://x.com/${profile.username}` : undefined,
+                    profileImageUrl: profile.profile_image_url,
+                    scope: tokenData.scope,
+                    tokenType: tokenData.token_type
                 }
             });
         } else if (normalizedPlatform === 'YouTube') {
@@ -1441,34 +1361,17 @@ router.post('/callback', async (req, res) => {
             const customUrl = channel.snippet?.customUrl?.replace(/^@/, '');
             const username = customUrl || channel.snippet?.title || channel.id;
 
-            await prisma.platformConnection.upsert({
-                where: { platform: 'YouTube' },
-                update: {
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: channel.id,
-                    username,
-                    metadata: {
-                        profileUrl: customUrl ? `https://www.youtube.com/@${customUrl}` : `https://www.youtube.com/channel/${channel.id}`,
-                        profileImageUrl: channel.snippet?.thumbnails?.default?.url,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
-                },
-                create: {
-                    platform: 'YouTube',
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: channel.id,
-                    username,
-                    metadata: {
-                        profileUrl: customUrl ? `https://www.youtube.com/@${customUrl}` : `https://www.youtube.com/channel/${channel.id}`,
-                        profileImageUrl: channel.snippet?.thumbnails?.default?.url,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
+            await upsertPlatformConnection('YouTube', {
+                accessToken: tokenData.access_token,
+                refreshToken: tokenData.refresh_token || null,
+                expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+                userId: channel.id,
+                username,
+                metadata: {
+                    profileUrl: customUrl ? `https://www.youtube.com/@${customUrl}` : `https://www.youtube.com/channel/${channel.id}`,
+                    profileImageUrl: channel.snippet?.thumbnails?.default?.url,
+                    scope: tokenData.scope,
+                    tokenType: tokenData.token_type
                 }
             });
         } else if (normalizedPlatform === 'TikTok') {
@@ -1519,36 +1422,18 @@ router.post('/callback', async (req, res) => {
                 throw new Error('TikTok did not return the account identifier required to save the connection.');
             }
 
-            await prisma.platformConnection.upsert({
-                where: { platform: 'TikTok' },
-                update: {
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId,
-                    username,
-                    metadata: {
-                        avatarUrl: userInfo?.avatar_url || userInfo?.avatar_large_url || userInfo?.avatar_url_100,
-                        profileUrl: userInfo?.profile_deep_link,
-                        refreshExpiresAt: tokenData.refresh_expires_in ? new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString() : undefined,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
-                },
-                create: {
-                    platform: 'TikTok',
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId,
-                    username,
-                    metadata: {
-                        avatarUrl: userInfo?.avatar_url || userInfo?.avatar_large_url || userInfo?.avatar_url_100,
-                        profileUrl: userInfo?.profile_deep_link,
-                        refreshExpiresAt: tokenData.refresh_expires_in ? new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString() : undefined,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
+            await upsertPlatformConnection('TikTok', {
+                accessToken: tokenData.access_token,
+                refreshToken: tokenData.refresh_token || null,
+                expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+                userId,
+                username,
+                metadata: {
+                    avatarUrl: userInfo?.avatar_url || userInfo?.avatar_large_url || userInfo?.avatar_url_100,
+                    profileUrl: userInfo?.profile_deep_link,
+                    refreshExpiresAt: tokenData.refresh_expires_in ? new Date(Date.now() + tokenData.refresh_expires_in * 1000).toISOString() : undefined,
+                    scope: tokenData.scope,
+                    tokenType: tokenData.token_type
                 }
             });
         } else if (normalizedPlatform === 'Pinterest') {
@@ -1588,36 +1473,18 @@ router.post('/callback', async (req, res) => {
             const boardName = firstBoard?.name;
             const username = userInfo?.username || userInfo?.id || 'Pinterest User';
 
-            await prisma.platformConnection.upsert({
-                where: { platform: 'Pinterest' },
-                update: {
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: userInfo?.id || null,
-                    username,
-                    metadata: {
-                        boardId: boardId || undefined,
-                        boardName: boardName || undefined,
-                        profileUrl: userInfo?.username ? `https://www.pinterest.com/${userInfo.username}` : undefined,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
-                },
-                create: {
-                    platform: 'Pinterest',
-                    accessToken: tokenData.access_token,
-                    refreshToken: tokenData.refresh_token || null,
-                    expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
-                    userId: userInfo?.id || null,
-                    username,
-                    metadata: {
-                        boardId: boardId || undefined,
-                        boardName: boardName || undefined,
-                        profileUrl: userInfo?.username ? `https://www.pinterest.com/${userInfo.username}` : undefined,
-                        scope: tokenData.scope,
-                        tokenType: tokenData.token_type
-                    }
+            await upsertPlatformConnection('Pinterest', {
+                accessToken: tokenData.access_token,
+                refreshToken: tokenData.refresh_token || null,
+                expiresAt: tokenData.expires_in ? new Date(Date.now() + tokenData.expires_in * 1000) : null,
+                userId: userInfo?.id || null,
+                username,
+                metadata: {
+                    boardId: boardId || undefined,
+                    boardName: boardName || undefined,
+                    profileUrl: userInfo?.username ? `https://www.pinterest.com/${userInfo.username}` : undefined,
+                    scope: tokenData.scope,
+                    tokenType: tokenData.token_type
                 }
             });
         } else {

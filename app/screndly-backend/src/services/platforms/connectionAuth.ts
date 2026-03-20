@@ -1,7 +1,7 @@
 import { PlatformConnection, Prisma } from '@prisma/client';
 import axios from 'axios';
-import prisma from '../../lib/prisma';
 import { env } from '../../lib/env';
+import { findPlatformConnection, updatePlatformConnection } from '../../lib/platformConnections';
 import { getTikTokClientKey, getTikTokClientSecret } from '../../lib/tiktokOAuth';
 import { getPinterestAppId, getPinterestAppSecret } from '../../lib/pinterestOAuth';
 import { buildXTokenRequest, getXOAuthClientId } from '../../lib/xOAuth';
@@ -55,16 +55,15 @@ async function persistConnectionUpdate(
         metadataPatch?: Prisma.JsonObject;
     }
 ): Promise<PlatformConnection> {
-    return prisma.platformConnection.update({
-        where: { platform: connection.platform },
-        data: {
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken === undefined ? connection.refreshToken : data.refreshToken,
-            expiresAt: data.expiresAt === undefined ? connection.expiresAt : data.expiresAt,
-            metadata: {
-                ...getJsonObject(connection.metadata),
-                ...(data.metadataPatch || {}),
-            },
+    return updatePlatformConnection(connection.platform, {
+        accessToken: data.accessToken,
+        refreshToken: data.refreshToken === undefined ? connection.refreshToken : data.refreshToken,
+        expiresAt: data.expiresAt === undefined ? connection.expiresAt : data.expiresAt,
+        username: connection.username,
+        userId: connection.userId,
+        metadata: {
+            ...getJsonObject(connection.metadata),
+            ...(data.metadataPatch || {}),
         },
     });
 }
@@ -250,9 +249,7 @@ async function repairInstagramConnection(connection: PlatformConnection): Promis
         return connection;
     }
 
-    const facebookConnection = await prisma.platformConnection.findUnique({
-        where: { platform: 'Facebook' },
-    });
+    const facebookConnection = await findPlatformConnection('Facebook');
 
     if (!facebookConnection) {
         return connection;
@@ -314,15 +311,13 @@ async function repairInstagramConnection(connection: PlatformConnection): Promis
         profileUrl: profile.profileUrl || getJsonString(metadata, 'profileUrl'),
     };
 
-    return prisma.platformConnection.update({
-        where: { platform: connection.platform },
-        data: {
-            accessToken: facebookUserToken,
-            userId: instagramBusinessId,
-            username: profile.username || connection.username || instagramBusinessId,
-            expiresAt: facebookConnection.expiresAt ?? connection.expiresAt,
-            metadata: nextMetadata,
-        },
+    return updatePlatformConnection(connection.platform, {
+        accessToken: facebookUserToken,
+        refreshToken: connection.refreshToken,
+        userId: instagramBusinessId,
+        username: profile.username || connection.username || instagramBusinessId,
+        expiresAt: facebookConnection.expiresAt ?? connection.expiresAt,
+        metadata: nextMetadata,
     });
 }
 

@@ -865,7 +865,7 @@ export interface YouTubeContext {
     videoTitle: string;
     channelName: string;
     description: string;
-    platform: 'X' | 'Threads' | 'Facebook';
+    platform: 'X' | 'Threads' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest' | 'YouTube';
     trailerType?: string;
     mediaType?: 'movie' | 'tv';
     releaseDate?: string;

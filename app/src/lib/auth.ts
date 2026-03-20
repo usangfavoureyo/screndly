@@ -201,7 +201,7 @@ export async function verifyAuth(): Promise<boolean> {
   console.log('[verifyAuth] keepSignedIn:', keepSignedIn, 'sessionActive:', sessionActive);
 
   if (!keepSignedIn && !sessionActive) {
-    if (sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY)) {
+    if (sessionStorage.getItem(TOKEN_KEY)) {
       console.log('[Auth] Session ended (Keep Me Signed In = false). Logging out.');
       logout();
     }

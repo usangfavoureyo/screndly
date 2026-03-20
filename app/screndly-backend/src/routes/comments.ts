@@ -44,16 +44,7 @@ router.get('/automation/stats', authenticate, async (req, res) => {
         res.json({ success: true, data: platformData });
     } catch (error) {
         console.error('Error fetching comment automation stats:', error);
-        const defaultPlatforms = ['X', 'Instagram', 'TikTok', 'Facebook', 'YouTube', 'Threads', 'Pinterest'];
-        const fallbackData = defaultPlatforms.map(p => ({
-            platform: p,
-            repliesToday: 0,
-            totalReplies: 0,
-            pending: 0,
-            successRate: 0,
-            recentReplies: []
-        }));
-        res.json({ success: true, data: fallbackData });
+        res.status(500).json({ success: false, error: { message: 'Failed to fetch comment automation stats' } });
     }
 });
 
