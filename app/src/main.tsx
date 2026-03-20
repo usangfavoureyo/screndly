@@ -22,7 +22,6 @@ if (typeof window !== 'undefined') {
   if (persistedToken && !sessionStorage.getItem(TOKEN_KEY)) {
     sessionStorage.setItem(TOKEN_KEY, persistedToken);
   }
-  localStorage.removeItem(TOKEN_KEY);
 
   const startupToken = sessionStorage.getItem(TOKEN_KEY);
   if (startupToken === 'null' || startupToken === 'undefined' || startupToken === '[object Object]') {

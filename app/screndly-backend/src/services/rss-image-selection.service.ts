@@ -2067,6 +2067,14 @@ function buildAnalysisForSlot(
   };
 }
 
+function shouldFallbackToFeedImageForSecondary(slot: ImageSlotPlan | null): boolean {
+  if (!slot) {
+    return true;
+  }
+
+  return slot.intent !== 'logo' && slot.intent !== 'brand_backdrop';
+}
+
 function getImageRole(text: string, analysis: RSSSubjectAnalysis): ImageRole {
   if (isLogoResult(text)) {
     return analysis.imageIntent === 'brand_backdrop' ? 'brand_backdrop' : 'logo';
@@ -2967,6 +2975,10 @@ export async function resolveRelevantRSSImages(
     );
 
     if (!secondaryResolved) {
+      if (!shouldFallbackToFeedImageForSecondary(plan.secondary)) {
+        return [primaryResolved.image];
+      }
+
       const fallbackSecondary = buildFeedFallbackImages(
         fallbackImages.filter((url) => url !== primaryResolved.image.url),
         1

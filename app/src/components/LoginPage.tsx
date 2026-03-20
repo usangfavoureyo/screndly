@@ -16,7 +16,7 @@ interface LoginPageProps {
 export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   // Remove email field - we only need password for single-user auth
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
