@@ -101,7 +101,7 @@ export function DisclaimerPage({ onNavigate, isAuthenticated = true }: Disclaime
             <h2 className="text-lg text-gray-900 dark:text-white mb-3">Contact</h2>
             <p>
               For questions regarding this Disclaimer:<br />
-              <strong>Email:</strong> <a href="mailto:screenrender@gmail.com" className="text-[#ec1e24] hover:underline">screenrender@gmail.com</a>
+              <strong>Email:</strong> <a href="mailto:screndlyapp@gmail.com" className="text-[#ec1e24] hover:underline">screndlyapp@gmail.com</a>
             </p>
           </section>
 

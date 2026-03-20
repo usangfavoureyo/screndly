@@ -6,7 +6,7 @@ interface DataDeletionPageProps {
 }
 
 const LAST_UPDATED = 'March 7, 2026';
-const PRIVACY_EMAIL = 'privacy@screndly.com';
+const PRIVACY_EMAIL = 'screndlyapp@gmail.com';
 
 export function DataDeletionPage({
   onNavigate,
