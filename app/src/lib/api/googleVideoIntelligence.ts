@@ -94,7 +94,7 @@ export async function analyzeTrailer(videoFile: File): Promise<TrailerAnalysis> 
   console.log('  🤖 Classifying scenes...');
   const totalDuration = rawShots[rawShots.length - 1]?.endTime || 150;
   
-  const classifiedShots: ClassifiedShot[] = audioFeatures.map((audio, index) => {
+  const classifiedShots: ClassifiedShot[] = audioFeatures.map((audio) => {
     if (musicOnly) {
       return classifyMusicOnlyShot(audio.startTime, audio.endTime, audio, totalDuration);
     } else if (voiceover) {
@@ -273,7 +273,7 @@ function mergeShortShots(
  */
 function selectDiverseHooks(
   moments: VideoMoment[],
-  totalDuration: number
+  _totalDuration: number
 ): {
   opening: VideoMoment;
   midVideo: VideoMoment;
@@ -357,101 +357,4 @@ function getReasonForHook(moment: VideoMoment, position: 'opening' | 'mid' | 'en
   };
   
   return reasons[position][moment.type] || reasons[position].default;
-}
-
-// ============================================================================
-// LEGACY MOCK DATA GENERATION (kept for backwards compatibility)
-// ============================================================================
-
-function generateMockAnalysis(videoFile: File): TrailerAnalysis {
-  // Generate realistic mock moments based on typical trailer structure
-  const moments: VideoMoment[] = [];
-  const duration = 150; // Assume 2.5 minute trailer
-  
-  // Generate moments at various timestamps
-  // Note: 'title_card' moments contain text overlays and will be filtered out
-  const momentTypes = [
-    'establishing_shot',
-    'action_peak',
-    'dramatic_dialogue',
-    'character_moment',
-    'title_card', // Contains text - will be filtered
-    'suspense_moment',
-    'general'
-  ];
-  
-  const labelOptions = [
-    ['explosion', 'action', 'fire'],
-    ['car chase', 'vehicle', 'speed'],
-    ['dramatic scene', 'emotion', 'close-up'],
-    ['character introduction', 'portrait'],
-    ['title reveal', 'text', 'logo'], // Text indicators
-    ['dark scene', 'tension', 'mystery'],
-    ['wide shot', 'landscape', 'environment']
-  ];
-  
-  // Generate 30-50 moments throughout the trailer
-  const numMoments = 35 + Math.floor(Math.random() * 15);
-  
-  for (let i = 0; i < numMoments; i++) {
-    const startTime = (i / numMoments) * duration + Math.random() * 2;
-    const momentDuration = 2 + Math.random() * 4;
-    const typeIndex = Math.floor(Math.random() * momentTypes.length);
-    const momentType = momentTypes[typeIndex];
-    
-    // Detect if this moment contains text overlays
-    const hasText = momentType === 'title_card' || 
-                    (labelOptions[typeIndex] && labelOptions[typeIndex].some(label => 
-                      label.includes('text') || label.includes('title') || label.includes('logo')
-                    ));
-    
-    moments.push({
-      type: momentType,
-      startTime,
-      endTime: startTime + momentDuration,
-      duration: momentDuration,
-      description: `${momentType.replace('_', ' ')} at ${startTime.toFixed(1)}s`,
-      confidence: 0.7 + Math.random() * 0.3,
-      intensityScore: Math.random(),
-      labels: labelOptions[typeIndex] || ['general'],
-      hasDialogue: Math.random() > 0.5,
-      hasText,
-      index: i
-    });
-  }
-  
-  // Sort by start time
-  moments.sort((a, b) => a.startTime - b.startTime);
-  
-  // Filter out moments with text overlays (title cards, cast names, etc.)
-  const momentsWithoutText = moments.filter(m => !m.hasText);
-  
-  // Select suggested hooks (opening, mid, ending) - excluding text-heavy scenes
-  const opening = momentsWithoutText.find(m => m.type === 'action_peak' && m.startTime < 30) || momentsWithoutText[0];
-  const midVideo = momentsWithoutText.find(m => m.type === 'dramatic_dialogue' && m.startTime > 60 && m.startTime < 100) || momentsWithoutText[Math.floor(momentsWithoutText.length / 2)];
-  const ending = momentsWithoutText.find(m => m.type === 'suspense_moment' && m.startTime > 120) || momentsWithoutText[momentsWithoutText.length - 1];
-  
-  // Add reasons for AI suggestions
-  opening.reason = 'High-intensity action sequence perfect for grabbing attention';
-  midVideo.reason = 'Compelling dialogue moment that builds narrative interest';
-  ending.reason = 'Suspenseful scene that creates anticipation for the full movie';
-  
-  // Re-index the filtered moments
-  momentsWithoutText.forEach((moment, index) => {
-    moment.index = index;
-  });
-  
-  return {
-    moments: momentsWithoutText, // Return only moments without text overlays
-    suggestedHooks: {
-      opening,
-      midVideo,
-      ending
-    },
-    metadata: {
-      duration,
-      frameRate: 24,
-      resolution: '1920x1080'
-    }
-  };
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Info } from 'lucide-react';
+import { ChevronDown, Info } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
@@ -7,11 +7,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
 import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, BottomSheetTitle } from '../ui/bottom-sheet';
+import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import {
   getLogoFrameMetrics,
   renderThumbnailDataUrl,
+  shouldUseThumbnailLogoShadow,
   type ThumbnailConfig,
   type LogoPosition,
 } from '../../utils/thumbnailRenderer';
@@ -64,6 +66,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg'>('png');
   const [isDownloadSheetOpen, setIsDownloadSheetOpen] = useState(false);
   const [isLogoStyleSheetOpen, setIsLogoStyleSheetOpen] = useState(false);
+  const [isExpandedPreviewOpen, setIsExpandedPreviewOpen] = useState(false);
+  const [expandedPreviewSrc, setExpandedPreviewSrc] = useState<string | null>(null);
+  const [isGeneratingExpandedPreview, setIsGeneratingExpandedPreview] = useState(false);
+  const [shouldApplyPreviewLogoShadow, setShouldApplyPreviewLogoShadow] = useState(false);
   const [assetOverrides, setAssetOverrides] = useState<Record<Platform, ThumbnailAssetOverride>>({
     youtube: {},
     x: {},
@@ -175,6 +181,21 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     });
   };
 
+  const openExpandedPreview = async () => {
+    try {
+      haptics.light();
+      setIsGeneratingExpandedPreview(true);
+      const previewUrl = await renderThumbnailToCanvas('png');
+      setExpandedPreviewSrc(previewUrl);
+      setIsExpandedPreviewOpen(true);
+    } catch (error) {
+      console.error('Failed to generate expanded thumbnail preview', error);
+      toast.error('Failed to open expanded preview');
+    } finally {
+      setIsGeneratingExpandedPreview(false);
+    }
+  };
+
   const handleDownload = async () => {
     try {
       haptics.medium();
@@ -233,10 +254,40 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const previewLogoBox = getPreviewLogoBoxMetrics(currentConfig);
   const previewLogoPadding = `${Math.max(10, currentConfig.maxLogoSize * 0.16)}% ${Math.max(8, currentConfig.maxLogoSize * 0.14)}%`;
   const shouldShowPreviewBox = currentConfig.logoDisplayMode === 'boxed';
-  const shouldShowPreviewContrastOverlay = currentConfig.autoContrastOverlay && !shouldShowPreviewBox;
-  const previewOverlayHorizontalPadding = Math.max(2.8, currentConfig.maxLogoSize * 0.12);
-  const previewOverlayVerticalPadding = Math.max(2.2, currentConfig.maxLogoSize * 0.08);
-  const previewOverlayTextAllowance = currentConfig.showTrailerTypeText ? 7 : 0;
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!currentConfig.autoContrastOverlay || shouldShowPreviewBox || !currentAssets.logoUrl) {
+      setShouldApplyPreviewLogoShadow(false);
+      return;
+    }
+
+    void shouldUseThumbnailLogoShadow(currentConfig, {
+      width: THUMBNAIL_WIDTH,
+      height: THUMBNAIL_HEIGHT,
+      backdropUrl: currentAssets.backdropUrl,
+      logoUrl: currentAssets.logoUrl,
+    }).then((nextValue) => {
+      if (!isCancelled) {
+        setShouldApplyPreviewLogoShadow(nextValue);
+      }
+    }).catch((error) => {
+      console.warn('Failed to evaluate thumbnail preview contrast helper:', error);
+      if (!isCancelled) {
+        setShouldApplyPreviewLogoShadow(true);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    currentAssets.backdropUrl,
+    currentAssets.logoUrl,
+    currentConfig,
+    shouldShowPreviewBox,
+  ]);
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -352,7 +403,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             className="w-full justify-between border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
           >
             <span>{currentConfig.logoDisplayMode === 'boxed' ? 'Logo inside box' : 'Logo only'}</span>
-            <span className="text-xs text-gray-500 dark:text-[#6B7280]">Change</span>
+            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </div>
 
@@ -505,6 +556,13 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                 )}
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => void openExpandedPreview()}
+              disabled={isGeneratingExpandedPreview}
+              className="relative block w-full text-left disabled:cursor-wait"
+              aria-label="Open expanded thumbnail preview"
+            >
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
               <div className="absolute inset-0 overflow-hidden rounded-lg">
                 {currentAssets.backdropUrl ? (
@@ -535,17 +593,6 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     />
                   </div>
                 )}
-                {shouldShowPreviewContrastOverlay && (
-                  <div
-                    className="pointer-events-none absolute rounded-[24px] bg-black/20"
-                    style={{
-                      left: `calc(${previewLogoBox.left} - ${previewOverlayHorizontalPadding}%)`,
-                      top: `calc(${previewLogoBox.top} - ${previewOverlayVerticalPadding}%)`,
-                      width: `calc(${previewLogoBox.width} + ${previewOverlayHorizontalPadding * 2}%)`,
-                      height: `calc(${previewLogoBox.height} + ${(previewOverlayVerticalPadding * 2) + previewOverlayTextAllowance}%)`,
-                    }}
-                  />
-                )}
                 <div
                   style={{
                     position: 'absolute',
@@ -565,6 +612,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                         src={currentAssets.logoUrl}
                         alt="Uploaded logo preview"
                         className={`object-contain ${shouldShowPreviewBox ? 'max-h-full max-w-full' : 'h-full w-full'}`}
+                        style={shouldApplyPreviewLogoShadow ? { filter: 'drop-shadow(0 8px 18px rgba(0, 0, 0, 0.62))' } : undefined}
                       />
                     ) : (
                       <div className={`bg-white/[0.02] ${shouldShowPreviewBox ? 'h-full w-full rounded-[inherit] border border-white/10' : 'h-1.5 w-[70%] rounded-full border border-white/10'}`} />
@@ -581,6 +629,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                 </div>
               </div>
             </div>
+            </button>
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333333]">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-[#9CA3AF]">
                 <div>
@@ -725,6 +774,20 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           </div>
         </BottomSheetFooter>
       </BottomSheet>
+
+      <MediaPreviewDialog
+        open={isExpandedPreviewOpen}
+        src={expandedPreviewSrc}
+        mediaType="image"
+        title="Thumbnail preview"
+        badgeLabel={activePlatform === 'youtube' ? 'youtube' : 'x'}
+        onOpenChange={(open) => {
+          setIsExpandedPreviewOpen(open);
+          if (!open) {
+            setExpandedPreviewSrc(null);
+          }
+        }}
+      />
     </div>
   );
 }

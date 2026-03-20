@@ -5,6 +5,7 @@
  */
 
 import { YOUTUBE_VIDEO_REQUIREMENTS } from '../adapters/youtubeAdapter';
+import { extractVideoMetadata } from './videoMetadata';
 
 interface ValidationResult {
   valid: boolean;
@@ -20,9 +21,9 @@ interface VideoMetadata {
   aspectRatio: string;
   fileSize: number;
   format: string;
-  codec: string;
-  frameRate: number;
-  bitrate: number;
+  codec: string | null;
+  frameRate: number | null;
+  bitrate: number | null;
 }
 
 class YouTubeVideoProcessor {
@@ -69,11 +70,13 @@ class YouTubeVideoProcessor {
       }
 
       // Check codec
-      if (!req.codecs.includes(metadata.codec)) {
+      if (metadata.codec && !req.codecs.includes(metadata.codec)) {
         warnings.push(
           `Codec ${metadata.codec} may not be optimal. Recommended: ${req.codecs.join(', ')}`
         );
         recommendations.push('Use H.264 codec for best compatibility');
+      } else if (!metadata.codec) {
+        warnings.push(`Codec could not be verified in-browser. Recommended: ${req.codecs.join(', ')}`);
       }
 
       // Check resolution
@@ -84,17 +87,19 @@ class YouTubeVideoProcessor {
       }
 
       // Check frame rate
-      if (metadata.frameRate < req.frameRate.min) {
+      if (metadata.frameRate !== null && metadata.frameRate < req.frameRate.min) {
         warnings.push(
           `Frame rate ${metadata.frameRate} fps is below recommended minimum of ${req.frameRate.min} fps`
         );
       }
 
-      if (metadata.frameRate > req.frameRate.max) {
+      if (metadata.frameRate !== null && metadata.frameRate > req.frameRate.max) {
         warnings.push(
           `Frame rate ${metadata.frameRate} fps exceeds maximum of ${req.frameRate.max} fps`
         );
         recommendations.push(`Reduce frame rate to ${req.frameRate.max} fps or less`);
+      } else if (metadata.frameRate === null) {
+        warnings.push(`Frame rate could not be verified in-browser. Recommended range: ${req.frameRate.min}-${req.frameRate.max} fps`);
       }
 
       // YouTube-specific recommendations
@@ -125,27 +130,18 @@ class YouTubeVideoProcessor {
    * Get video metadata
    */
   private async getVideoMetadata(video: string | File | Blob): Promise<VideoMetadata> {
-    // Mock metadata for testing
-    // In production, use ffprobe or similar
-    
-    let fileSize: number;
-    
-    if (typeof video === 'string') {
-      fileSize = 100 * 1024 * 1024; // 100 MB estimate
-    } else {
-      fileSize = video.size;
-    }
+    const metadata = await extractVideoMetadata(video);
 
     return {
-      duration: 120, // 2 minutes
-      width: 1920,
-      height: 1080,
-      aspectRatio: '16:9',
-      fileSize,
-      format: 'MP4',
-      codec: 'H.264',
-      frameRate: 30,
-      bitrate: 8000000, // 8 Mbps
+      duration: metadata.duration,
+      width: metadata.width,
+      height: metadata.height,
+      aspectRatio: metadata.aspectRatioLabel,
+      fileSize: metadata.fileSize,
+      format: metadata.format,
+      codec: metadata.codec,
+      frameRate: metadata.frameRate,
+      bitrate: metadata.bitrate,
     };
   }
 

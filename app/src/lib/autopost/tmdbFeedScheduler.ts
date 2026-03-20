@@ -14,6 +14,8 @@
 
 import { feedTMDbPostsToQueue } from './tmdbFeedAdapter';
 import { toast } from "sonner";
+import { apiClient } from '../api/client';
+import { TMDbPost } from '../../contexts/TMDbPostsContext';
 
 export interface TMDbFeedSchedulerConfig {
   enabled: boolean;
@@ -37,6 +39,10 @@ export class TMDbFeedScheduler {
     this.config = { ...DEFAULT_SCHEDULER_CONFIG, ...config };
     this.loadConfig();
     this.loadLastRefresh();
+    void this.fetchTodayReleases;
+    void this.fetchWeeklyReleases;
+    void this.fetchMonthlyPreviews;
+    void this.fetchAnniversaries;
   }
   
   /**
@@ -139,48 +145,30 @@ export class TMDbFeedScheduler {
   }
   
   /**
-   * Generate TMDb feeds (mock implementation)
-   * In production, this would call TMDb API
+   * Generate TMDb feeds through the real backend refresh and posts endpoints.
    */
-  private async generateTMDbFeeds(): Promise<any[]> {
+  private async generateTMDbFeeds(): Promise<TMDbPost[]> {
     console.log('[TMDbFeedScheduler] Generating feeds from TMDb API...');
-    
-    // Get settings to check which feeds are enabled
+
     const settings = this.getTMDbSettings();
-    const posts: any[] = [];
-    
-    // Generate Today feed
-    if (settings?.todayEnabled) {
-      const todayPosts = await this.fetchTodayReleases();
-      posts.push(...todayPosts);
+    const refreshResponse = await apiClient.post('/api/tmdb/refresh', { settings });
+    if (!refreshResponse.success) {
+      throw new Error(refreshResponse.error?.message || 'Failed to refresh TMDb feeds');
     }
-    
-    // Generate Weekly feed
-    if (settings?.weeklyEnabled) {
-      const weeklyPosts = await this.fetchWeeklyReleases();
-      posts.push(...weeklyPosts);
+
+    const postsResponse = await apiClient.get<TMDbPost[]>('/api/tmdb/posts');
+    if (!postsResponse.success || !Array.isArray(postsResponse.data)) {
+      throw new Error(postsResponse.error?.message || 'Failed to load TMDb posts');
     }
-    
-    // Generate Monthly feed
-    if (settings?.monthlyEnabled) {
-      const monthlyPosts = await this.fetchMonthlyPreviews();
-      posts.push(...monthlyPosts);
-    }
-    
-    // Generate Anniversary feed
-    if (settings?.anniversaryEnabled) {
-      const anniversaryPosts = await this.fetchAnniversaries();
-      posts.push(...anniversaryPosts);
-    }
-    
-    return posts;
+
+    return postsResponse.data;
   }
   
   /**
    * Fetch today's releases from TMDb
    */
   private async fetchTodayReleases(): Promise<any[]> {
-    // Mock implementation - replace with actual TMDb API call
+    // Legacy helper retained for backward compatibility; the scheduler now uses backend refresh/posts endpoints.
     console.log('[TMDbFeedScheduler] Fetching today releases...');
     
     const today = new Date().toISOString().split('T')[0];
@@ -217,7 +205,6 @@ export class TMDbFeedScheduler {
     
     const today = new Date();
     const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const todayStr = today.toISOString().split('T')[0];
     const nextWeekStr = nextWeek.toISOString().split('T')[0];
     
     // In production, call TMDb API:
@@ -252,7 +239,6 @@ export class TMDbFeedScheduler {
     
     const today = new Date();
     const nextMonth = new Date(today.getTime() + 28 * 24 * 60 * 60 * 1000);
-    const todayStr = today.toISOString().split('T')[0];
     const nextMonthStr = nextMonth.toISOString().split('T')[0];
     
     return [

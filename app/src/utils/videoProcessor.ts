@@ -10,6 +10,7 @@
  */
 
 import { META_VIDEO_REQUIREMENTS } from '../adapters/metaAdapter';
+import { captureVideoFrame, extractVideoMetadata } from './videoMetadata';
 
 export type PlatformType = 'instagram_feed' | 'instagram_reels' | 'facebook';
 
@@ -27,9 +28,9 @@ interface VideoMetadata {
   aspectRatio: number;
   fileSize: number; // bytes
   format: string;
-  codec: string;
-  frameRate: number;
-  bitrate: number;
+  codec: string | null;
+  frameRate: number | null;
+  bitrate: number | null;
 }
 
 class VideoProcessor {
@@ -42,8 +43,6 @@ class VideoProcessor {
     const recommendations: string[] = [];
 
     try {
-      // In production, fetch and analyze the actual video file
-      // For now, return mock validation
       const metadata = await this.getVideoMetadata(videoUrl);
       const requirements = this.getRequirements(platform);
 
@@ -80,17 +79,21 @@ class VideoProcessor {
       }
 
       // Check codec
-      if (!requirements.codecs.includes(metadata.codec)) {
+      if (metadata.codec && !requirements.codecs.includes(metadata.codec)) {
         warnings.push(`Codec ${metadata.codec} may not be optimal. Recommended: ${requirements.codecs.join(', ')}`);
         recommendations.push(`Re-encode with ${requirements.codecs[0]} codec`);
+      } else if (!metadata.codec) {
+        warnings.push(`Codec could not be verified in-browser. Recommended: ${requirements.codecs.join(', ')}`);
       }
 
       // Check frame rate for Reels
-      if (platform === 'instagram_reels' && requirements.frameRate) {
+      if (platform === 'instagram_reels' && requirements.frameRate && metadata.frameRate) {
         const { min, max } = requirements.frameRate;
         if (metadata.frameRate < min || metadata.frameRate > max) {
           warnings.push(`Frame rate ${metadata.frameRate} fps is outside recommended range (${min}-${max} fps)`);
         }
+      } else if (platform === 'instagram_reels' && requirements.frameRate && !metadata.frameRate) {
+        warnings.push(`Frame rate could not be verified in-browser. Recommended range: ${requirements.frameRate.min}-${requirements.frameRate.max} fps`);
       }
 
       return {
@@ -109,22 +112,20 @@ class VideoProcessor {
   }
 
   /**
-   * Get video metadata
-   * In production, use ffprobe or similar tool
+   * Get video metadata from the actual client-side video asset.
    */
   private async getVideoMetadata(videoUrl: string): Promise<VideoMetadata> {
-    // Mock metadata for testing
-    // In production, fetch actual video and extract metadata using ffprobe
+    const metadata = await extractVideoMetadata(videoUrl);
     return {
-      duration: 30,
-      width: 1080,
-      height: 1080,
-      aspectRatio: 1,
-      fileSize: 15 * 1024 * 1024, // 15MB
-      format: 'MP4',
-      codec: 'H.264',
-      frameRate: 30,
-      bitrate: 4000000, // 4 Mbps
+      duration: metadata.duration,
+      width: metadata.width,
+      height: metadata.height,
+      aspectRatio: metadata.aspectRatioValue,
+      fileSize: metadata.fileSize,
+      format: metadata.format,
+      codec: metadata.codec,
+      frameRate: metadata.frameRate,
+      bitrate: metadata.bitrate,
     };
   }
 
@@ -152,9 +153,7 @@ class VideoProcessor {
     videoUrl: string,
     timestampMs: number = 0
   ): Promise<string> {
-    // In production, extract frame from video and process with Sharp
-    // For now, return placeholder
-    return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    return captureVideoFrame(videoUrl, timestampMs);
   }
 
   /**
@@ -163,21 +162,13 @@ class VideoProcessor {
    */
   async createCompositeThumbnail(
     tmdbImageUrl: string,
-    options?: {
+    _options?: {
       width?: number;
       height?: number;
       overlay?: string; // Additional overlay text
       watermark?: string; // Watermark image URL
     }
   ): Promise<string> {
-    // In production, use Sharp to composite images:
-    // 1. Download TMDb image
-    // 2. Resize to target dimensions
-    // 3. Add overlay text if provided
-    // 4. Add watermark if provided
-    // 5. Return as base64 or upload to CDN
-    
-    // For now, return the original TMDb URL
     return tmdbImageUrl;
   }
 
@@ -186,7 +177,7 @@ class VideoProcessor {
    * In production, use ffmpeg
    */
   async transcodeVideo(
-    videoUrl: string,
+    _videoUrl: string,
     platform: PlatformType,
     options?: {
       targetBitrate?: number;
@@ -194,15 +185,8 @@ class VideoProcessor {
       targetResolution?: string; // e.g., "1080x1920"
     }
   ): Promise<string> {
-    // Mock transcoding
-    // In production, use ffmpeg to:
-    // 1. Download source video
-    // 2. Transcode with appropriate settings
-    // 3. Upload to CDN
-    // 4. Return new URL
-    
-    console.log(`[VideoProcessor] Transcoding video for ${platform}`, options);
-    return videoUrl; // Return original for now
+    console.log(`[VideoProcessor] Transcoding requested for ${platform}`, options);
+    throw new Error('Client-side video transcoding is not implemented. Use the backend media pipeline.');
   }
 
   /**

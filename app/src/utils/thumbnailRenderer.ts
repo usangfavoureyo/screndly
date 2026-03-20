@@ -57,6 +57,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
 
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
+const CONTRAST_RATIO_THRESHOLD = 2.6;
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -83,35 +84,6 @@ function drawRoundedRect(
   ctx.arcTo(x, y + height, x, y, radius);
   ctx.arcTo(x, y, x + width, y, radius);
   ctx.closePath();
-}
-
-function drawContrastOverlay(
-  ctx: CanvasRenderingContext2D,
-  config: ThumbnailConfig,
-  width: number,
-  height: number
-) {
-  if (config.logoDisplayMode === 'boxed') {
-    return;
-  }
-
-  const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
-  const horizontalPadding = Math.max(28, boxWidth * 0.12);
-  const verticalPadding = Math.max(20, boxHeight * 0.24);
-  const textAllowance = config.showTrailerTypeText ? Math.max(42, height * 0.06) : 0;
-  const overlayX = Math.max(0, boxX - horizontalPadding);
-  const overlayY = Math.max(0, boxY - verticalPadding);
-  const overlayWidth = Math.min(width - overlayX, boxWidth + horizontalPadding * 2);
-  const overlayHeight = Math.min(
-    height - overlayY,
-    boxHeight + verticalPadding * 2 + textAllowance
-  );
-  const radius = Math.min(36, Math.max(18, boxHeight * 0.35));
-
-  drawRoundedRect(ctx, overlayX, overlayY, overlayWidth, overlayHeight, radius);
-  ctx.fillStyle =
-    config.platform === 'youtube' ? 'rgba(0, 0, 0, 0.22)' : 'rgba(12, 12, 12, 0.18)';
-  ctx.fill();
 }
 
 function drawCoverImage(
@@ -142,6 +114,125 @@ function drawContainImage(
   const dx = x + (width - drawWidth) / 2;
   const dy = y + (height - drawHeight) / 2;
   ctx.drawImage(image, dx, dy, drawWidth, drawHeight);
+}
+
+function getContainImageMetrics(
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number
+) {
+  const ratio = Math.min(width / image.width, height / image.height);
+  const drawWidth = image.width * ratio;
+  const drawHeight = image.height * ratio;
+
+  return {
+    x: x + (width - drawWidth) / 2,
+    y: y + (height - drawHeight) / 2,
+    width: drawWidth,
+    height: drawHeight,
+  };
+}
+
+function srgbToLinear(value: number) {
+  const normalized = value / 255;
+  return normalized <= 0.04045
+    ? normalized / 12.92
+    : ((normalized + 0.055) / 1.055) ** 2.4;
+}
+
+function getRelativeLuminance(r: number, g: number, b: number) {
+  const red = srgbToLinear(r);
+  const green = srgbToLinear(g);
+  const blue = srgbToLinear(b);
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function getContrastRatio(a: number, b: number) {
+  const lighter = Math.max(a, b);
+  const darker = Math.min(a, b);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function shouldApplyLogoContrastShadow(
+  ctx: CanvasRenderingContext2D,
+  config: ThumbnailConfig,
+  options: ThumbnailRenderOptions,
+  width: number,
+  height: number
+) {
+  if (
+    typeof document === 'undefined' ||
+    !options.logoUrl ||
+    !config.autoContrastOverlay ||
+    config.logoDisplayMode === 'boxed'
+  ) {
+    return false;
+  }
+
+  try {
+    const logoImage = await loadImage(options.logoUrl);
+    const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
+    const logoMetrics = getContainImageMetrics(logoImage, boxX, boxY, boxWidth, boxHeight);
+    const sampleWidth = Math.max(1, Math.round(logoMetrics.width));
+    const sampleHeight = Math.max(1, Math.round(logoMetrics.height));
+    const sampleX = Math.max(0, Math.min(width - sampleWidth, Math.round(logoMetrics.x)));
+    const sampleY = Math.max(0, Math.min(height - sampleHeight, Math.round(logoMetrics.y)));
+
+    const backdropPixels = ctx.getImageData(sampleX, sampleY, sampleWidth, sampleHeight).data;
+    const logoCanvas = document.createElement('canvas');
+    logoCanvas.width = sampleWidth;
+    logoCanvas.height = sampleHeight;
+    const logoCtx = logoCanvas.getContext('2d');
+
+    if (!logoCtx) {
+      return false;
+    }
+
+    logoCtx.clearRect(0, 0, sampleWidth, sampleHeight);
+    logoCtx.drawImage(logoImage, 0, 0, sampleWidth, sampleHeight);
+    const logoPixels = logoCtx.getImageData(0, 0, sampleWidth, sampleHeight).data;
+
+    let weightedLogoLuminance = 0;
+    let weightedBackdropLuminance = 0;
+    let alphaWeight = 0;
+
+    for (let index = 0; index < logoPixels.length; index += 4) {
+      const alpha = logoPixels[index + 3] / 255;
+      if (alpha < 0.08) {
+        continue;
+      }
+
+      const logoLuminance = getRelativeLuminance(
+        logoPixels[index],
+        logoPixels[index + 1],
+        logoPixels[index + 2]
+      );
+      const backdropLuminance = getRelativeLuminance(
+        backdropPixels[index],
+        backdropPixels[index + 1],
+        backdropPixels[index + 2]
+      );
+
+      weightedLogoLuminance += logoLuminance * alpha;
+      weightedBackdropLuminance += backdropLuminance * alpha;
+      alphaWeight += alpha;
+    }
+
+    if (alphaWeight === 0) {
+      return false;
+    }
+
+    const averageLogoLuminance = weightedLogoLuminance / alphaWeight;
+    const averageBackdropLuminance = weightedBackdropLuminance / alphaWeight;
+    const contrastRatio = getContrastRatio(averageLogoLuminance, averageBackdropLuminance);
+
+    return contrastRatio < CONTRAST_RATIO_THRESHOLD;
+  } catch (error) {
+    console.warn('Failed to analyze thumbnail contrast, applying fallback behavior:', error);
+    return true;
+  }
 }
 
 function drawDefaultBackdrop(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -242,6 +333,48 @@ export function getStoredThumbnailConfig(platform: ThumbnailPlatformConfig): Thu
   return fallback;
 }
 
+export async function shouldUseThumbnailLogoShadow(
+  config: ThumbnailConfig,
+  options: Pick<ThumbnailRenderOptions, 'backdropUrl' | 'logoUrl'> & {
+    width?: number;
+    height?: number;
+  } = {}
+) {
+  if (
+    typeof document === 'undefined' ||
+    !options.logoUrl ||
+    !config.autoContrastOverlay ||
+    config.logoDisplayMode === 'boxed'
+  ) {
+    return false;
+  }
+
+  const width = options.width || DEFAULT_WIDTH;
+  const height = options.height || DEFAULT_HEIGHT;
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+
+  if (!ctx) {
+    return false;
+  }
+
+  if (options.backdropUrl) {
+    try {
+      const backdropImage = await loadImage(options.backdropUrl);
+      drawCoverImage(ctx, backdropImage, width, height);
+    } catch (error) {
+      console.warn('Failed to load provided backdrop for contrast analysis, using default gradient instead:', error);
+      drawDefaultBackdrop(ctx, width, height);
+    }
+  } else {
+    drawDefaultBackdrop(ctx, width, height);
+  }
+
+  return shouldApplyLogoContrastShadow(ctx, config, options, width, height);
+}
+
 export async function renderThumbnailDataUrl(
   config: ThumbnailConfig,
   options: ThumbnailRenderOptions = {}
@@ -277,10 +410,7 @@ export async function renderThumbnailDataUrl(
 
   const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
   const shouldRenderBox = config.logoDisplayMode === 'boxed';
-
-  if (config.autoContrastOverlay) {
-    drawContrastOverlay(ctx, config, width, height);
-  }
+  const shouldApplyLogoShadow = await shouldApplyLogoContrastShadow(ctx, config, options, width, height);
 
   if (shouldRenderBox) {
     drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 24);
@@ -294,10 +424,21 @@ export async function renderThumbnailDataUrl(
   if (options.logoUrl) {
     try {
       const logoImage = await loadImage(options.logoUrl);
+      if (shouldApplyLogoShadow) {
+        ctx.save();
+        ctx.shadowColor =
+          config.platform === 'youtube' ? 'rgba(0, 0, 0, 0.72)' : 'rgba(12, 12, 12, 0.68)';
+        ctx.shadowBlur = Math.max(18, boxHeight * 0.34);
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = Math.max(6, boxHeight * 0.06);
+      }
       if (shouldRenderBox) {
         drawContainImage(ctx, logoImage, boxX + 20, boxY + 18, boxWidth - 40, boxHeight - 36);
       } else {
         drawContainImage(ctx, logoImage, boxX, boxY, boxWidth, boxHeight);
+      }
+      if (shouldApplyLogoShadow) {
+        ctx.restore();
       }
     } catch (error) {
       console.warn('Failed to load provided logo, using default indicator instead:', error);

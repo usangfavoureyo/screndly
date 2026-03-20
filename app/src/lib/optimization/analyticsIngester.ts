@@ -153,8 +153,7 @@ class AnalyticsIngester {
     ): Promise<void> {
         this.log(`Fetching metrics for ${platform}: ${records.length} records`);
 
-        // In production, these would be actual API calls
-        // For now, we simulate metric collection
+        // This path updates records only when real platform analytics are available.
 
         for (const record of records) {
             try {
@@ -172,37 +171,27 @@ class AnalyticsIngester {
     }
 
     /**
-     * Fetch metrics from platform API
-     * This is a placeholder for actual API integration
+     * Fetch metrics from platform API.
+     * Returns null until a real per-platform analytics integration is available.
      */
     private async fetchMetricsFromAPI(
         platform: Platform,
         postId: string
     ): Promise<Partial<PostAnalyticsRecord['metrics']> | null> {
-        // Check if we have stored access tokens for this platform
         const hasApiAccess = this.checkApiAccess(platform);
 
         if (!hasApiAccess) {
-            // No API access - simulate metrics based on age and existing data
-            return this.simulateMetrics(platform, postId);
+            this.log(`Skipping metrics fetch for ${platform}:${postId} because no API token is configured`);
+            return null;
         }
-
-        // In production, implement actual API calls here:
-        // - Meta Graph API: GET /{post-id}/insights
-        // - X Analytics API: GET /tweets/{id}/metrics
-        // - YouTube API: GET /videos?id={id}&part=statistics
-        // - TikTok: Creator API analytics
-        // - Pinterest: Analytics API
-
-        // For now, simulate metrics
-        return this.simulateMetrics(platform, postId);
+        this.log(`Analytics fetch not implemented for ${platform}:${postId}; leaving stored metrics unchanged`);
+        return null;
     }
 
     /**
      * Check if we have API access for a platform
      */
     private checkApiAccess(platform: Platform): boolean {
-        // Check for stored tokens
         const tokenKeys: Record<Platform, string> = {
             x: 'x_access_token',
             facebook: 'meta_access_token',
@@ -215,43 +204,6 @@ class AnalyticsIngester {
 
         const token = localStorage.getItem(tokenKeys[platform]);
         return !!token;
-    }
-
-    /**
-     * Simulate metrics for development/testing
-     * Replace with actual API calls in production
-     */
-    private async simulateMetrics(
-        _platform: Platform,
-        _postId: string
-    ): Promise<Partial<PostAnalyticsRecord['metrics']> | null> {
-        // Simulate some random metrics for testing signal calculation
-        // In production, remove this and use real API data
-
-        const record = analyticsStore.getAllRecords().find(
-            r => r.postId === _postId && r.platform === _platform
-        );
-
-        if (!record) return null;
-
-        // Base metrics on age (newer posts have fewer but grow)
-        const ageHours = (Date.now() - record.postedAt) / (1000 * 60 * 60);
-        const growthFactor = Math.log10(ageHours + 1) + 1;
-
-        // Create slightly random but realistic metrics
-        const baseImpressions = Math.floor(100 * growthFactor * (0.5 + Math.random()));
-        const engagementRate = 0.02 + Math.random() * 0.08; // 2-10%
-
-        return {
-            impressions: baseImpressions,
-            reach: Math.floor(baseImpressions * 0.8),
-            engagements: Math.floor(baseImpressions * engagementRate),
-            likes: Math.floor(baseImpressions * engagementRate * 0.7),
-            comments: Math.floor(baseImpressions * engagementRate * 0.15),
-            shares: Math.floor(baseImpressions * engagementRate * 0.1),
-            clicks: Math.floor(baseImpressions * 0.02),
-            saves: Math.floor(baseImpressions * 0.01),
-        };
     }
 
     /**

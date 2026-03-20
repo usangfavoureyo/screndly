@@ -5,6 +5,7 @@
  */
 
 import { TIKTOK_VIDEO_REQUIREMENTS } from '../adapters/tiktokAdapter';
+import { extractVideoMetadata } from './videoMetadata';
 
 interface ValidationResult {
   valid: boolean;
@@ -20,9 +21,9 @@ interface VideoMetadata {
   aspectRatio: string;
   fileSize: number;
   format: string;
-  codec: string;
-  frameRate: number;
-  bitrate: number;
+  codec: string | null;
+  frameRate: number | null;
+  bitrate: number | null;
 }
 
 class TikTokVideoProcessor {
@@ -96,33 +97,39 @@ class TikTokVideoProcessor {
       }
 
       // Check codec
-      if (!req.codecs.includes(metadata.codec)) {
+      if (metadata.codec && !req.codecs.includes(metadata.codec)) {
         warnings.push(
           `Codec ${metadata.codec} may not be optimal. Recommended: ${req.codecs.join(', ')}`
         );
         recommendations.push('Re-encode with H.264 codec');
+      } else if (!metadata.codec) {
+        warnings.push(`Codec could not be verified in-browser. Recommended: ${req.codecs.join(', ')}`);
       }
 
       // Check frame rate
-      if (metadata.frameRate < req.frameRate.min) {
+      if (metadata.frameRate !== null && metadata.frameRate < req.frameRate.min) {
         warnings.push(
           `Frame rate ${metadata.frameRate} fps is below minimum of ${req.frameRate.min} fps`
         );
       }
 
-      if (metadata.frameRate > req.frameRate.max) {
+      if (metadata.frameRate !== null && metadata.frameRate > req.frameRate.max) {
         warnings.push(
           `Frame rate ${metadata.frameRate} fps exceeds maximum of ${req.frameRate.max} fps`
         );
         recommendations.push(`Reduce frame rate to ${req.frameRate.max} fps`);
+      } else if (metadata.frameRate === null) {
+        warnings.push(`Frame rate could not be verified in-browser. Recommended range: ${req.frameRate.min}-${req.frameRate.max} fps`);
       }
 
       // Check bitrate
-      if (metadata.bitrate > req.bitrate.max) {
+      if (metadata.bitrate !== null && metadata.bitrate > req.bitrate.max) {
         warnings.push(
           `Bitrate ${this.formatBitrate(metadata.bitrate)} exceeds maximum of ${this.formatBitrate(req.bitrate.max)}`
         );
         recommendations.push(`Reduce bitrate to ${this.formatBitrate(req.bitrate.max)}`);
+      } else if (metadata.bitrate === null) {
+        warnings.push(`Bitrate could not be verified in-browser. Maximum recommended: ${this.formatBitrate(req.bitrate.max)}`);
       }
 
       // TikTok-specific recommendations
@@ -153,27 +160,18 @@ class TikTokVideoProcessor {
    * Get video metadata
    */
   private async getVideoMetadata(video: string | File | Blob): Promise<VideoMetadata> {
-    // Mock metadata for testing
-    // In production, use ffprobe or similar
-    
-    let fileSize: number;
-    
-    if (typeof video === 'string') {
-      fileSize = 50 * 1024 * 1024; // 50 MB estimate
-    } else {
-      fileSize = video.size;
-    }
+    const metadata = await extractVideoMetadata(video);
 
     return {
-      duration: 30, // 30 seconds
-      width: 1080,
-      height: 1920,
-      aspectRatio: '9:16',
-      fileSize,
-      format: 'MP4',
-      codec: 'H.264',
-      frameRate: 30,
-      bitrate: 8000000, // 8 Mbps
+      duration: metadata.duration,
+      width: metadata.width,
+      height: metadata.height,
+      aspectRatio: metadata.aspectRatioLabel,
+      fileSize: metadata.fileSize,
+      format: metadata.format,
+      codec: metadata.codec,
+      frameRate: metadata.frameRate,
+      bitrate: metadata.bitrate,
     };
   }
 
@@ -198,7 +196,6 @@ class TikTokVideoProcessor {
    * Generate transcode command for ffmpeg
    */
   generateTranscodeCommand(targetDuration?: number): string {
-    const req = TIKTOK_VIDEO_REQUIREMENTS;
     const duration = targetDuration || 60;
     
     return [

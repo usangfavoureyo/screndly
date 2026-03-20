@@ -5,6 +5,7 @@
  */
 
 import { X_VIDEO_REQUIREMENTS, AccountTier } from '../adapters/xAdapter';
+import { extractVideoMetadata } from './videoMetadata';
 
 interface ValidationResult {
   valid: boolean;
@@ -20,9 +21,9 @@ interface VideoMetadata {
   aspectRatio: number;
   fileSize: number;
   format: string;
-  codec: string;
-  frameRate: number;
-  bitrate: number;
+  codec: string | null;
+  frameRate: number | null;
+  bitrate: number | null;
 }
 
 class XVideoProcessor {
@@ -95,27 +96,33 @@ class XVideoProcessor {
       }
 
       // Check codec
-      if (!requirements.codecs.includes(metadata.codec)) {
+      if (metadata.codec && !requirements.codecs.includes(metadata.codec)) {
         warnings.push(
           `Codec ${metadata.codec} may not be optimal. Recommended: ${requirements.codecs.join(', ')}`
         );
         recommendations.push(`Re-encode with ${requirements.codecs[0]} codec`);
+      } else if (!metadata.codec) {
+        warnings.push(`Codec could not be verified in-browser. Recommended: ${requirements.codecs.join(', ')}`);
       }
 
       // Check frame rate
-      if (metadata.frameRate > requirements.frameRate.max) {
+      if (metadata.frameRate !== null && metadata.frameRate > requirements.frameRate.max) {
         warnings.push(
           `Frame rate ${metadata.frameRate} fps exceeds maximum of ${requirements.frameRate.max} fps`
         );
         recommendations.push(`Reduce frame rate to ${requirements.frameRate.max} fps`);
+      } else if (metadata.frameRate === null) {
+        warnings.push(`Frame rate could not be verified in-browser. Maximum recommended: ${requirements.frameRate.max} fps`);
       }
 
       // Check bitrate
-      if (metadata.bitrate > requirements.bitrate.max) {
+      if (metadata.bitrate !== null && metadata.bitrate > requirements.bitrate.max) {
         warnings.push(
           `Bitrate ${this.formatBitrate(metadata.bitrate)} exceeds maximum of ${this.formatBitrate(requirements.bitrate.max)}`
         );
         recommendations.push(`Reduce bitrate to ${this.formatBitrate(requirements.bitrate.max)}`);
+      } else if (metadata.bitrate === null) {
+        warnings.push(`Bitrate could not be verified in-browser. Maximum recommended: ${this.formatBitrate(requirements.bitrate.max)}`);
       }
 
       // Tier-specific recommendations
@@ -145,28 +152,18 @@ class XVideoProcessor {
    * In production, use ffprobe
    */
   private async getVideoMetadata(video: string | File | Blob): Promise<VideoMetadata> {
-    // Mock metadata for testing
-    // In production, extract actual metadata using ffprobe
-    
-    let fileSize: number;
-    
-    if (typeof video === 'string') {
-      // For URL, estimate or fetch
-      fileSize = 50 * 1024 * 1024; // 50 MB estimate
-    } else {
-      fileSize = video.size;
-    }
+    const metadata = await extractVideoMetadata(video);
 
     return {
-      duration: 120, // 2 minutes
-      width: 1920,
-      height: 1080,
-      aspectRatio: 1920 / 1080, // 16:9
-      fileSize,
-      format: 'MP4',
-      codec: 'H.264',
-      frameRate: 30,
-      bitrate: 8000000, // 8 Mbps
+      duration: metadata.duration,
+      width: metadata.width,
+      height: metadata.height,
+      aspectRatio: metadata.aspectRatioValue,
+      fileSize: metadata.fileSize,
+      format: metadata.format,
+      codec: metadata.codec,
+      frameRate: metadata.frameRate,
+      bitrate: metadata.bitrate,
     };
   }
 

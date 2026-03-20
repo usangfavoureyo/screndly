@@ -24,6 +24,7 @@
 
 import { postQueue, PostCandidate, calculateUrgencyScore } from './postQueue';
 import { toast } from "sonner";
+import { generateRSSCaption } from '../../utils/rssCaptionGenerator';
 
 export interface RSSFeedConfig {
   id: string;
@@ -94,6 +95,7 @@ export class RSSFeedScheduler {
     this.loadLastPolls();
     this.loadProcessedItems();
     this.loadFeeds();
+    void this.generateCaption;
   }
 
   /**
@@ -230,7 +232,7 @@ export class RSSFeedScheduler {
             const enrichedItem = await this.enrichItem(item, feed);
 
             // Generate caption
-            const caption = await this.generateCaption(enrichedItem, feed);
+            const caption = await this.generateActualCaption(enrichedItem, feed);
 
             // Convert to PostCandidate and add to queue
             const candidate = this.rssItemToCandidate(enrichedItem, caption, feed);
@@ -277,41 +279,71 @@ export class RSSFeedScheduler {
     }
   }
 
+  private getNodeText(parent: Element, names: string[]): string {
+    for (const name of names) {
+      const match = Array.from(parent.children).find((child) => child.localName === name || child.tagName.toLowerCase() === name.toLowerCase());
+      if (match?.textContent?.trim()) {
+        return match.textContent.trim();
+      }
+    }
+
+    return '';
+  }
+
+  private extractImageUrl(entry: Element): string | undefined {
+    const nodes = Array.from(entry.getElementsByTagName('*'));
+    const directMedia = nodes.find((node) =>
+      ['enclosure', 'content', 'thumbnail'].includes(node.localName || '') && node.getAttribute('url')?.trim()
+    );
+
+    if (directMedia?.getAttribute('url')) {
+      return directMedia.getAttribute('url') || undefined;
+    }
+
+    const html = this.getNodeText(entry, ['encoded', 'content']) || this.getNodeText(entry, ['description', 'summary']);
+    const imageMatch = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return imageMatch?.[1];
+  }
+
   /**
-   * Fetch and parse RSS feed (mock implementation)
+   * Fetch and parse RSS feed XML directly.
    */
   private async fetchRSSFeed(url: string, feedId: string, feedName: string): Promise<RSSItem[]> {
     console.log(`[RSSFeedScheduler] Fetching feed from ${url}`);
 
-    // Mock implementation - in production, fetch actual RSS XML and parse
-    // Use a library like 'rss-parser' or 'fast-xml-parser'
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch RSS feed: ${response.status}`);
+    }
 
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    const xml = await response.text();
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(xml, 'application/xml');
 
-    // Return mock items
-    return [
-      {
-        id: `rss-${feedId}-${Date.now()}-1`,
+    if (parsed.querySelector('parsererror')) {
+      throw new Error('Failed to parse RSS feed XML');
+    }
+
+    const entries = Array.from(parsed.querySelectorAll('item, entry'));
+    return entries.map((entry, index) => {
+      const title = this.getNodeText(entry, ['title']) || `Untitled item ${index + 1}`;
+      const link = this.getNodeText(entry, ['link']) || entry.querySelector('link')?.getAttribute('href') || '';
+      const description = this.getNodeText(entry, ['description', 'summary']);
+      const content = this.getNodeText(entry, ['content', 'encoded']) || description;
+      const publishedRaw = this.getNodeText(entry, ['pubDate', 'published', 'updated']);
+
+      return {
+        id: link || `${feedId}-${publishedRaw || title}-${index}`,
         feedId,
         feedName,
-        title: 'New Movie Trailer Released',
-        description: 'Exciting new trailer for upcoming blockbuster film',
-        url: `https://example.com/article-${Date.now()}`,
-        publishedDate: new Date(),
-        content: 'The trailer shows amazing action sequences and stunning visuals...',
-      },
-      {
-        id: `rss-${feedId}-${Date.now()}-2`,
-        feedId,
-        feedName,
-        title: 'Director Announces New Project',
-        description: 'Famous director reveals next big project',
-        url: `https://example.com/article-${Date.now() + 1}`,
-        publishedDate: new Date(Date.now() - 30 * 60 * 1000), // 30 min ago
-        content: 'In an exclusive interview, the director discussed plans...',
-      },
-    ];
+        title,
+        description,
+        url: link,
+        publishedDate: publishedRaw ? new Date(publishedRaw) : new Date(),
+        imageUrl: this.extractImageUrl(entry),
+        content,
+      };
+    }).filter((item) => Boolean(item.title && item.url));
   }
 
   /**
@@ -398,32 +430,50 @@ export class RSSFeedScheduler {
     return false;
   }
 
-  /**
-   * Enrich item with images (mock implementation)
-   */
-  private async enrichItem(item: RSSItem, feed: RSSFeedConfig): Promise<RSSItem> {
+  private async enrichItem(item: RSSItem, _feed: RSSFeedConfig): Promise<RSSItem> {
     console.log(`[RSSFeedScheduler] Enriching item: ${item.title}`);
-
-    // Mock implementation - in production, use Serper API
-    // If serperPriority is true, fetch images via Serper
-    // Otherwise, extract images from RSS content
-
-    await new Promise(resolve => setTimeout(resolve, 200));
 
     return {
       ...item,
-      imageUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=800',
+      imageUrl: item.imageUrl,
     };
   }
 
-  /**
-   * Generate caption for item (mock implementation)
-   */
-  private async generateCaption(item: RSSItem, feed: RSSFeedConfig): Promise<string> {
+  private async generateActualCaption(item: RSSItem, feed: RSSFeedConfig): Promise<string> {
     console.log(`[RSSFeedScheduler] Generating caption for: ${item.title}`);
 
-    // Mock implementation - in production, use GPT API
-    // Load caption settings from localStorage and generate caption
+    let settings: Record<string, any> = {};
+
+    try {
+      const raw = localStorage.getItem('screndlySettings') || localStorage.getItem('screndly_settings');
+      if (raw) {
+        settings = JSON.parse(raw);
+      }
+    } catch (error) {
+      console.error('[RSSFeedScheduler] Failed to parse stored settings:', error);
+    }
+
+    const generated = await generateRSSCaption(
+      {
+        title: item.title,
+        description: item.description,
+        link: item.url,
+        content: item.content,
+        feedName: feed.name,
+      },
+      settings,
+    );
+
+    return generated.caption;
+  }
+
+  /**
+   * Legacy caption helper retained for backward compatibility.
+   */
+  private async generateCaption(item: RSSItem, _feed: RSSFeedConfig): Promise<string> {
+    console.log(`[RSSFeedScheduler] Generating caption for: ${item.title}`);
+
+    // Legacy fallback helper retained for backward compatibility.
 
     await new Promise(resolve => setTimeout(resolve, 300));
 

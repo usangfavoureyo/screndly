@@ -4,6 +4,8 @@ import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
+import { apiClient } from '../lib/api/client';
+import { DEFAULT_MODELS } from '../lib/ai/models';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 
 interface EditMetadataBottomSheetProps {
@@ -24,7 +26,6 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
   const [description, setDescription] = useState(post.description || '');
   const [thumbnailUrl, setThumbnailUrl] = useState(post.thumbnailUrl || '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isRegenerating, setIsRegenerating] = useState(false);
   const [isRegeneratingTitle, setIsRegeneratingTitle] = useState(false);
   const [isRegeneratingDescription, setIsRegeneratingDescription] = useState(false);
 
@@ -34,6 +35,40 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
     setDescription(post.description || '');
     setThumbnailUrl(post.thumbnailUrl || '');
   }, [post]);
+
+  const generateMetadataText = async (target: 'title' | 'description') => {
+    const prompt = target === 'title'
+      ? [
+          `Rewrite this ${post.platform} video title for publication.`,
+          'Keep it concise, natural, and platform-appropriate.',
+          'Return only the title text.',
+          '',
+          `Current title: ${title}`,
+          description.trim() ? `Current description: ${description}` : '',
+        ].filter(Boolean).join('\n')
+      : [
+          `Rewrite this ${post.platform} video description for publication.`,
+          'Keep it useful, natural, and ready to publish.',
+          'Return only the description text.',
+          '',
+          `Title: ${title}`,
+          description.trim() ? `Current description: ${description}` : '',
+        ].filter(Boolean).join('\n');
+
+    const response = await apiClient.post<{ content: string }>('/api/ai/generate', {
+      model: DEFAULT_MODELS.video,
+      prompt,
+      systemPrompt: `You improve ${post.platform} video metadata for publishing. Do not add labels, notes, or explanation.`,
+      temperature: 0.7,
+      maxTokens: target === 'title' ? 120 : 400,
+    });
+
+    if (!response.success || !response.data?.content) {
+      throw new Error(response.error?.message || `Failed to generate ${target}`);
+    }
+
+    return response.data.content.trim();
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -45,9 +80,6 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
 
     setIsSaving(true);
     haptics.medium();
-
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 500));
 
     onSave(post.id, {
       title: title.trim(),
@@ -65,23 +97,8 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
 
   const handleRegenerate = async () => {
     haptics.medium();
-    setIsRegenerating(true);
-
-    toast.info('Regenerating Thumbnail', {
-      description: 'Creating new thumbnail with overlay settings...'
-    });
-
-    // Simulate thumbnail regeneration with overlay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // In a real implementation, this would use the Thumbnail Overlay system
-    // to regenerate the thumbnail with the current logo/template settings
-    const newThumbnailUrl = `https://image.tmdb.org/t/p/original/regenerated-${Date.now()}.jpg`;
-    setThumbnailUrl(newThumbnailUrl);
-
-    setIsRegenerating(false);
-    toast.success('Thumbnail Regenerated', {
-      description: 'New thumbnail created with your overlay settings'
+    toast.error('Thumbnail regeneration is not available here', {
+      description: 'Use Thumbnail Overlay settings or upload a custom thumbnail from this sheet.'
     });
   };
 
@@ -98,19 +115,11 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
 
       haptics.medium();
       
-      toast.info('Uploading Thumbnail', {
-        description: 'Processing your image...'
-      });
-
-      // Simulate upload
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // In a real implementation, this would upload to Backblaze B2
       const uploadedUrl = URL.createObjectURL(file);
       setThumbnailUrl(uploadedUrl);
 
-      toast.success('Thumbnail Uploaded', {
-        description: 'Your custom thumbnail has been uploaded'
+      toast.success('Thumbnail attached', {
+        description: 'The selected image is attached locally to this metadata edit.'
       });
     };
 
@@ -125,25 +134,20 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
       description: 'Using AI to create a new title...'
     });
 
-    // Simulate AI title generation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Generate variations based on current title
-    const titleVariations = [
-      `${post.title.split(' - ')[0]} - Complete Review & Analysis`,
-      `${post.title.split(' - ')[0]} - Everything You Need to Know`,
-      `${post.title.split(' - ')[0]} - Official Breakdown`,
-      `${post.title.split(' - ')[0]} - In-Depth Analysis`,
-    ];
-    
-    const newTitle = titleVariations[Math.floor(Math.random() * titleVariations.length)];
-    setTitle(newTitle);
-
-    setIsRegeneratingTitle(false);
-    haptics.success();
-    toast.success('Title Regenerated', {
-      description: 'New AI-generated title created'
-    });
+    try {
+      const newTitle = await generateMetadataText('title');
+      setTitle(newTitle);
+      haptics.success();
+      toast.success('Title Regenerated', {
+        description: 'New AI-generated title created'
+      });
+    } catch (error) {
+      console.error('Failed to regenerate title:', error);
+      haptics.error();
+      toast.error('Failed to regenerate title');
+    } finally {
+      setIsRegeneratingTitle(false);
+    }
   };
 
   const handleRegenerateDescription = async () => {
@@ -154,25 +158,20 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
       description: 'Using AI to create a new description...'
     });
 
-    // Simulate AI description generation
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
-    // Generate variations based on title
-    const descriptionVariations = [
-      `Check out our comprehensive review and analysis! We break down everything you need to know. Don't forget to like and subscribe! #Movies #Reviews`,
-      `Join us as we dive deep into this incredible content. Full breakdown and insights in this video! Hit that subscribe button! #Entertainment #Analysis`,
-      `Everything you need to know in one place! Watch our complete coverage and let us know your thoughts in the comments. #Video #Content`,
-      `Don't miss this detailed look! We cover all the important details and share our honest thoughts. Subscribe for more! #Review #Breakdown`,
-    ];
-    
-    const newDescription = descriptionVariations[Math.floor(Math.random() * descriptionVariations.length)];
-    setDescription(newDescription);
-
-    setIsRegeneratingDescription(false);
-    haptics.success();
-    toast.success('Description Regenerated', {
-      description: 'New AI-generated description created'
-    });
+    try {
+      const newDescription = await generateMetadataText('description');
+      setDescription(newDescription);
+      haptics.success();
+      toast.success('Description Regenerated', {
+        description: 'New AI-generated description created'
+      });
+    } catch (error) {
+      console.error('Failed to regenerate description:', error);
+      haptics.error();
+      toast.error('Failed to regenerate description');
+    } finally {
+      setIsRegeneratingDescription(false);
+    }
   };
 
   return (
@@ -259,11 +258,10 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
                   {/* Regenerate Button (Icon Only) */}
                   <button
                     onClick={handleRegenerate}
-                    disabled={isRegenerating}
                     className="p-2 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A] disabled:opacity-50 transition-all"
                     title="Regenerate with overlay"
                   >
-                    <RefreshCw className={`w-4 h-4 ${isRegenerating ? 'animate-spin' : ''}`} />
+                    <RefreshCw className="w-4 h-4" />
                   </button>
                   
                   {/* Upload Button */}

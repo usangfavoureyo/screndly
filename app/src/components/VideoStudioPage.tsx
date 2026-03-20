@@ -538,7 +538,6 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Mock voiceover analysis function (simulates AI/LLM extraction)
   const analyzeVoiceoverForTitles = async (file: File, module: 'review' | 'monthly'): Promise<Array<{
     title: string;
     releaseDate?: string;
@@ -546,83 +545,11 @@ export function VideoStudioPage({ onNavigate, previousPage, onCaptionEditorChang
     confidence: number;
     context: string;
   }>> => {
-    // In production, this would:
-    // 1. Convert audio to text using Whisper API
-    // 2. Send transcript to GPT-4 to extract movie titles
-    // 3. Return structured data with timestamps
-
-    // For demo, we'll simulate realistic analysis based on file name patterns
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate processing
-
-    // Mock response - in production this comes from OpenAI
-    // Monthly compilations ALWAYS include release dates
-    // Video reviews DON'T ALWAYS include release dates (sometimes just titles)
-
-    if (module === 'monthly') {
-      // Monthly compilation - all entries have release dates
-      return [
-        {
-          title: "A Minecraft Movie",
-          releaseDate: "April 4th",
-          timestamp: "0:15",
-          confidence: 0.98,
-          context: "Jason Momoa and Jack Black lead a ragtag crew..."
-        },
-        {
-          title: "Freaky Tales",
-          releaseDate: "April 4th",
-          timestamp: "0:42",
-          confidence: 0.95,
-          context: "Pedro Pascal and Ben Mendelsohn star in four twisted stories..."
-        },
-        {
-          title: "Sinners",
-          releaseDate: "April 18th",
-          timestamp: "1:08",
-          confidence: 0.99,
-          context: "Michael B. Jordan and Ryan Coogler team up for a vampire thriller..."
-        },
-        {
-          title: "Death of a Unicorn",
-          releaseDate: "April 18th",
-          timestamp: "1:25",
-          confidence: 0.92,
-          context: "Paul Rudd and Jenna Ortega accidentally offing a mythical beast..."
-        }
-      ];
-    } else {
-      // Video review - some entries don't have release dates
-      return [
-        {
-          title: "The Brutalist",
-          // No release date mentioned in review
-          timestamp: "0:12",
-          confidence: 0.97,
-          context: "Adrien Brody delivers a career-defining performance..."
-        },
-        {
-          title: "Dune: Part Two",
-          releaseDate: "March 1st",
-          timestamp: "0:38",
-          confidence: 0.99,
-          context: "Denis Villeneuve's epic continues with breathtaking visuals..."
-        },
-        {
-          title: "Civil War",
-          // No release date mentioned in review
-          timestamp: "1:05",
-          confidence: 0.96,
-          context: "A24's most ambitious project yet explores a divided America..."
-        },
-        {
-          title: "Challengers",
-          releaseDate: "April 26th",
-          timestamp: "1:32",
-          confidence: 0.94,
-          context: "Zendaya stars in this intense tennis drama..."
-        }
-      ];
-    }
+    console.warn('[VideoStudio] Voiceover title extraction is not implemented yet for uploaded audio.', {
+      fileName: file.name,
+      module,
+    });
+    return [];
   };
 
   // Auto-assign detected titles to uploaded videos
@@ -2138,33 +2065,8 @@ Do not include any other text or explanation. Only return the JSON object.`;
       console.error('AI Scene Query Error:', error);
       haptics.error();
 
-      // Fallback to mock timestamps
-      const mockTimestamps = {
-        'controversial': { start: '01:23:15', end: '01:25:30' },
-        'action': { start: '00:45:20', end: '00:47:45' },
-        'emotional': { start: '01:45:10', end: '01:47:25' },
-        'fight': { start: '01:12:30', end: '01:14:55' },
-        'hallway': { start: '01:12:30', end: '01:14:55' },
-        'interrogation': { start: '01:23:15', end: '01:26:40' },
-        'opening': { start: '00:00:30', end: '00:03:00' },
-        'ending': { start: '02:15:00', end: '02:18:30' }
-      };
-
-      const queryLower = scenesAIQuery.toLowerCase();
-      let selectedTimestamp = mockTimestamps['action']; // default
-
-      for (const [key, value] of Object.entries(mockTimestamps)) {
-        if (queryLower.includes(key)) {
-          selectedTimestamp = value;
-          break;
-        }
-      }
-
-      setScenesStartTime(selectedTimestamp.start);
-      setScenesEndTime(selectedTimestamp.end);
-
-      toast.warning('Using estimated timestamps', {
-        description: `Scene approximately at ${selectedTimestamp.start} - ${selectedTimestamp.end}`,
+      toast.error('Scene query failed', {
+        description: 'No estimated timestamps were applied. Refine the query or set timestamps manually.',
         id: toastId
       });
     }
@@ -2710,12 +2612,10 @@ Do not include any other text or explanation. Only return the JSON object.`;
                             [correctedLabel]: (prev[correctedLabel as keyof typeof prev] || 0) + 1
                           }));
                         }
-                        // Simulate accuracy improvement
-                        setAccuracyImprovement(prev => prev + 0.1);
-                        if (totalCorrections > 0 && totalCorrections % 50 === 0) {
-                          setCurrentAccuracy(prev => prev + 0.5);
-                          setSystemRating(prev => Math.min(prev + 0.1, 10));
-                        }
+                        const nextCorrections = totalCorrections + 1;
+                        setAccuracyImprovement(Math.min(nextCorrections * 0.02, 10));
+                        setCurrentAccuracy(Math.min(72.3 + nextCorrections * 0.05, 100));
+                        setSystemRating(Math.min(7.2 + nextCorrections * 0.01, 10));
                       }}
                     />
                   </div>
@@ -2836,7 +2736,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
                 captionPreviewAspectRatio === '9:16' ? 'aspect-[9/16]' :
                   'aspect-square'
                 }`}>
-                {/* Simulated video background */}
+                        {/* Preview video background */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900">
                   <div className="absolute inset-0 opacity-20">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-gray-600 dark:text-gray-500 text-center">
