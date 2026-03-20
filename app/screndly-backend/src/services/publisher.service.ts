@@ -236,7 +236,21 @@ export class PublisherService {
         return typeof value === 'string' && /^https?:\/\/.+\.(mp4|mov|m4v|webm)(\?.*)?$/i.test(value.trim());
     }
 
+    private buildHostedVideoOriginalName(content: PublishContent, mediaFilePath: string): string {
+        const parsedPath = path.parse(mediaFilePath);
+        const extension = parsedPath.ext || '.mp4';
+        const explicitTitle = content.title?.trim();
+
+        if (explicitTitle) {
+            const normalizedTitle = explicitTitle.replace(/\s+/g, ' ').trim();
+            return `${normalizedTitle}${extension}`;
+        }
+
+        return `${parsedPath.name}${extension}`;
+    }
+
     private async resolveHostedVideoUrl(
+        content: PublishContent,
         mediaFilePath: string | null | undefined,
         directVideoUrl: string | undefined,
         cache: Map<string, string>
@@ -257,7 +271,7 @@ export class PublisherService {
 
         const uploaded = await uploadLocalFileToBackblaze(
             mediaFilePath,
-            path.basename(mediaFilePath),
+            this.buildHostedVideoOriginalName(content, mediaFilePath),
             {
                 bucketTypes: ['videos', 'general'],
                 prefix: 'youtube-poller/videos',
@@ -394,7 +408,7 @@ export class PublisherService {
                                     ? await metaService.postVideoToInstagramReel(
                                         connection.userId,
                                         platformContent.text,
-                                        await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                        await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
                                         instagramAccessToken,
                                         remoteCoverImageUrl
                                     )
@@ -428,7 +442,7 @@ export class PublisherService {
                                     ? await metaService.postVideoToThreads(
                                         connection.userId,
                                         platformContent.text,
-                                        await this.resolveHostedVideoUrl(localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                        await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
                                         connection.accessToken
                                     )
                                     : await metaService.postToThreads(
