@@ -1,5 +1,8 @@
+import { useEffect } from 'react';
 import { X, Command, Keyboard } from 'lucide-react';
 import { haptics } from '../utils/haptics';
+import { useBackNavigation } from '../contexts/BackNavigationContext';
+import { useTransientHistoryState } from '../hooks/useTransientHistoryState';
 
 interface ShortcutsHelpProps {
   isOpen: boolean;
@@ -7,6 +10,23 @@ interface ShortcutsHelpProps {
 }
 
 export function ShortcutsHelp({ isOpen, onClose }: ShortcutsHelpProps) {
+  const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
+
+  useTransientHistoryState(isOpen, 'shortcuts-help', 'shortcuts-help');
+
+  useEffect(() => {
+    if (!isOpen) {
+      unregisterModal('shortcuts-help');
+      return;
+    }
+
+    registerModalWithCloseHandler('shortcuts-help', onClose);
+
+    return () => {
+      unregisterModal('shortcuts-help');
+    };
+  }, [isOpen, onClose, registerModalWithCloseHandler, unregisterModal]);
+
   if (!isOpen) return null;
 
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;

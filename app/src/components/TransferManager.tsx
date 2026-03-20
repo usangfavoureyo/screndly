@@ -11,6 +11,8 @@ import { getPendingTransfers, cancelTransfer } from '../utils/resumableTransfer'
 import { Progress } from './ui/progress';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
+import { useBackNavigation } from '../contexts/BackNavigationContext';
+import { useTransientHistoryState } from '../hooks/useTransientHistoryState';
 
 interface TransferManagerProps {
   isOpen: boolean;
@@ -18,8 +20,24 @@ interface TransferManagerProps {
 }
 
 export function TransferManager({ isOpen, onClose }: TransferManagerProps) {
+  const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
   const [transfers, setTransfers] = useState(getPendingTransfers());
   const [activeManagers, setActiveManagers] = useState<Map<string, any>>(new Map());
+
+  useTransientHistoryState(isOpen, 'transfer-manager', 'transfer-manager');
+
+  useEffect(() => {
+    if (!isOpen) {
+      unregisterModal('transfer-manager');
+      return;
+    }
+
+    registerModalWithCloseHandler('transfer-manager', onClose);
+
+    return () => {
+      unregisterModal('transfer-manager');
+    };
+  }, [isOpen, onClose, registerModalWithCloseHandler, unregisterModal]);
 
   useEffect(() => {
     if (isOpen) {
@@ -99,8 +117,17 @@ export function TransferManager({ isOpen, onClose }: TransferManagerProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center">
-      <div className="bg-white dark:bg-[#000000] w-full lg:w-[600px] lg:max-h-[80vh] lg:rounded-xl border-t lg:border border-gray-200 dark:border-[#333333] overflow-hidden flex flex-col max-h-[90vh]">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-end lg:items-center justify-center"
+      onClick={() => {
+        haptics.light();
+        onClose();
+      }}
+    >
+      <div
+        className="bg-white dark:bg-[#000000] w-full lg:w-[600px] lg:max-h-[80vh] lg:rounded-xl border-t lg:border border-gray-200 dark:border-[#333333] overflow-hidden flex flex-col max-h-[90vh]"
+        onClick={(event) => event.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-[#333333] flex items-center justify-between">
           <div className="flex items-center gap-3">

@@ -10,6 +10,8 @@ import { MetadataConfidence } from './MetadataConfidence';
 import { PipelineStageList } from './PipelineProgress';
 import { OperatorShortcuts } from './OperatorShortcuts';
 import { EmptyMetadata } from './EmptyStates';
+import { useBackNavigation } from '../../contexts/BackNavigationContext';
+import { useTransientHistoryState } from '../../hooks/useTransientHistoryState';
 
 interface TaskInspectorProps {
   jobId: string;
@@ -18,7 +20,23 @@ interface TaskInspectorProps {
 
 export function TaskInspector({ jobId, onClose }: TaskInspectorProps) {
   const { getJob } = useJobsStore();
+  const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
   const job = getJob(jobId);
+
+  useTransientHistoryState(Boolean(job), `task-inspector-${jobId}`, 'task-inspector', { jobId });
+
+  useEffect(() => {
+    if (!job) {
+      unregisterModal(`task-inspector-${jobId}`);
+      return;
+    }
+
+    registerModalWithCloseHandler(`task-inspector-${jobId}`, onClose);
+
+    return () => {
+      unregisterModal(`task-inspector-${jobId}`);
+    };
+  }, [job, jobId, onClose, registerModalWithCloseHandler, unregisterModal]);
 
   if (!job) {
     return null;
@@ -55,7 +73,13 @@ export function TaskInspector({ jobId, onClose }: TaskInspectorProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-start justify-end">
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-start justify-end"
+      onClick={() => {
+        haptics.light();
+        onClose();
+      }}
+    >
       <div 
         className="h-full w-full max-w-3xl bg-white dark:bg-[#000000] border-l border-gray-200 dark:border-[#333333] shadow-2xl"
         onClick={(e) => e.stopPropagation()}
