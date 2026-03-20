@@ -136,6 +136,16 @@ interface TMDbTVDetails {
     };
 }
 
+interface TMDbSeasonDetails {
+    id: number;
+    name?: string;
+    overview?: string;
+    air_date?: string;
+    season_number?: number;
+    poster_path?: string | null;
+    images?: TMDbImageCollection;
+}
+
 interface ThumbnailConfig {
     platform: LandscapePlatform;
     logoPosition: LogoPosition;
@@ -194,6 +204,9 @@ interface ResolvedTMDbMatch {
     backdropUrl?: string;
     posterUrl?: string;
     logoUrl?: string;
+    seasonNumber?: number;
+    seasonTitle?: string;
+    posterSource?: 'series' | 'season';
 }
 
 export interface EnrichedVideoMetadata {
@@ -224,6 +237,28 @@ const LANDSCAPE_DEFAULT_DIMENSIONS = { width: 1280, height: 720 };
 const SOCIAL_DEFAULT_DIMENSIONS = { width: 1080, height: 1920 };
 const METADATA_CACHE_TTL_MS = 60 * 60 * 1000;
 const TITLE_STOPWORDS = new Set(['a', 'an', 'the']);
+const SEASON_NUMBER_WORDS: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+    eleven: 11,
+    twelve: 12,
+    thirteen: 13,
+    fourteen: 14,
+    fifteen: 15,
+    sixteen: 16,
+    seventeen: 17,
+    eighteen: 18,
+    nineteen: 19,
+    twenty: 20,
+};
 const TITLE_SUFFIX_NOISE_PATTERNS = [
     /\b(only in theaters|in theaters|now streaming|streaming now|in cinemas|only on|watch on|coming to|premieres? on|starts? streaming|all episodes? now streaming)\b.*$/i,
     /\b(event|special presentation|imax trailer|official imax trailer|official trailer event|trailer event|teaser event)\b.*$/i,
@@ -455,13 +490,62 @@ function stripKnownTitleNoise(value: string): string {
     return trimDecorativeSeparators(cleaned);
 }
 
+function parseSeasonNumberToken(value?: string): number | undefined {
+    if (!value) return undefined;
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return undefined;
+
+    if (/^\d{1,2}$/.test(trimmed)) {
+        const parsed = Number.parseInt(trimmed, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+    }
+
+    return SEASON_NUMBER_WORDS[trimmed];
+}
+
+function detectSeasonNumber(...sources: Array<string | undefined>): number | undefined {
+    const patterns = [
+        /\bseason\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/i,
+        /\bseries\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/i,
+        /\bs(\d{1,2})\b/i,
+    ];
+
+    for (const source of sources) {
+        if (!source) continue;
+
+        for (const pattern of patterns) {
+            const match = source.match(pattern);
+            const seasonNumber = parseSeasonNumberToken(match?.[1]);
+            if (seasonNumber) {
+                return seasonNumber;
+            }
+        }
+    }
+
+    return undefined;
+}
+
+function stripSeasonMarkers(value: string): string {
+    return trimDecorativeSeparators(
+        value
+            .replace(/\bseason\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/gi, ' ')
+            .replace(/\bseries\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty)\b/gi, ' ')
+            .replace(/\bs(\d{1,2})\b/gi, ' ')
+            .replace(/\s+/g, ' ')
+    );
+}
+
 function buildSearchQueries(cleanedTitle: string, originalTitle?: string): string[] {
     const strippedOriginal = originalTitle ? stripKnownTitleNoise(cleanVideoTitle(originalTitle)) : '';
     const variants = [
         cleanedTitle,
         strippedOriginal,
+        stripSeasonMarkers(cleanedTitle),
+        stripSeasonMarkers(strippedOriginal),
         cleanedTitle.replace(/\s*[:|-]\s+.*$/, '').trim(),
         strippedOriginal.replace(/\s*[:|-]\s+.*$/, '').trim(),
+        stripSeasonMarkers(cleanedTitle.replace(/\s*[:|-]\s+.*$/, '').trim()),
+        stripSeasonMarkers(strippedOriginal.replace(/\s*[:|-]\s+.*$/, '').trim()),
         cleanedTitle.replace(/\(\s*(19|20)\d{2}\s*\)/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' ').replace(/\s+/g, ' ').trim(),
         strippedOriginal.replace(/\(\s*(19|20)\d{2}\s*\)/g, ' ').replace(/\b(19|20)\d{2}\b/g, ' ').replace(/\s+/g, ' ').trim(),
         cleanedTitle.replace(/^['"\u201c\u201d\u2018\u2019]+|['"\u201c\u201d\u2018\u2019]+$/g, '').trim(),
@@ -755,7 +839,7 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {
     return response.json() as Promise<T>;
 }
 
-async function fetchResolvedMatch(candidate: TMDbSearchResult): Promise<ResolvedTMDbMatch | null> {
+async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNumber?: number): Promise<ResolvedTMDbMatch | null> {
     if (candidate.media_type === 'movie') {
         const details = await tmdbFetch<TMDbMovieDetails>(`/movie/${candidate.id}`, {
             append_to_response: 'images,release_dates,credits',
@@ -798,6 +882,26 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult): Promise<Resolved
         include_image_language: 'en,null',
     });
 
+    let seasonTitle: string | undefined;
+    let resolvedSeasonNumber: number | undefined;
+    let seasonPosterUrl: string | undefined;
+    if (detectedSeasonNumber) {
+        try {
+            const seasonDetails = await tmdbFetch<TMDbSeasonDetails>(`/tv/${candidate.id}/season/${detectedSeasonNumber}`, {
+                append_to_response: 'images',
+                include_image_language: 'en,null',
+            });
+            seasonTitle = asString(seasonDetails.name);
+            resolvedSeasonNumber = seasonDetails.season_number || detectedSeasonNumber;
+            seasonPosterUrl = selectBestImageAsset(seasonDetails.poster_path, seasonDetails.images?.posters, ['en', null]);
+        } catch (error) {
+            console.warn(`[VideoEnrichment] Failed to resolve TMDb season ${detectedSeasonNumber} for tv:${candidate.id}:`, error);
+            resolvedSeasonNumber = detectedSeasonNumber;
+        }
+    }
+
+    const seriesPosterUrl = selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]);
+
     return {
         tmdbId: details.id,
         mediaType: 'tv',
@@ -826,8 +930,11 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult): Promise<Resolved
             ...(details.networks || []).map((network) => asString(network.name)),
         ].filter((value): value is string => Boolean(value)),
         backdropUrl: selectBestImageAsset(details.backdrop_path, details.images?.backdrops, [null, 'en']),
-        posterUrl: selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]),
+        posterUrl: seasonPosterUrl || seriesPosterUrl,
         logoUrl: selectLogo(details.images?.logos),
+        seasonNumber: resolvedSeasonNumber,
+        seasonTitle,
+        posterSource: seasonPosterUrl ? 'season' : 'series',
     };
 }
 
@@ -974,6 +1081,7 @@ function buildContextBlock(
         `YouTube Description: ${description.slice(0, 2000) || 'N/A'}`,
         tmdbMatch ? `TMDb Title: ${tmdbMatch.title}` : 'TMDb Title: N/A',
         tmdbMatch?.mediaType ? `TMDb Media Type: ${tmdbMatch.mediaType}` : 'TMDb Media Type: Unknown',
+        tmdbMatch?.seasonNumber ? `TMDb Season: ${tmdbMatch.seasonNumber}` : 'TMDb Season: N/A',
         tmdbMatch?.releaseDate ? `Release Date: ${tmdbMatch.releaseDate}` : 'Release Date: Unknown',
         tmdbMatch?.overview ? `TMDb Overview: ${tmdbMatch.overview.slice(0, 1500)}` : 'TMDb Overview: N/A',
         tmdbMatch?.genres?.length ? `Genres: ${tmdbMatch.genres.join(', ')}` : 'Genres: Unknown',
@@ -1149,6 +1257,7 @@ export async function enrichYouTubeVideoMetadata(
     try {
         const targetYear = extractYear(title) || extractYear(description);
         const mediaTypeHint = detectMediaTypeHint(title, description);
+        const detectedSeasonNumber = detectSeasonNumber(title, description);
         const searchResponses = await Promise.all(
             searchQueries.map((query) => tmdbFetch<{ results?: TMDbSearchResult[] }>('/search/multi', {
                 query,
@@ -1180,7 +1289,7 @@ export async function enrichYouTubeVideoMetadata(
         const haystack = [title, description, channelName].filter(Boolean).join('\n');
         const resolvedCandidates = await Promise.all(
             candidates.map(async (candidate) => {
-                const resolved = await fetchResolvedMatch(candidate);
+                const resolved = await fetchResolvedMatch(candidate, candidate.media_type === 'tv' ? detectedSeasonNumber : undefined);
                 if (!resolved) {
                     return null;
                 }
@@ -1231,10 +1340,10 @@ export async function enrichYouTubeVideoMetadata(
                 ? (isRegionMatch(matched, allowedRegions) ? 'matched' : 'region-mismatch')
                 : 'no-confident-match',
             tmdbDebugSummary: matched
-                ? `matched ${matched.title} (${matched.mediaType}:${matched.tmdbId}) poster=${matched.posterUrl ? 'yes' : 'no'} backdrop=${matched.backdropUrl ? 'yes' : 'no'} logo=${matched.logoUrl ? 'yes' : 'no'} queries=${searchQueries.join(' || ')}`
+                ? `matched ${matched.title} (${matched.mediaType}:${matched.tmdbId}) season=${matched.seasonNumber || 'none'} poster=${matched.posterUrl ? 'yes' : 'no'} posterSource=${matched.posterSource || 'n/a'} backdrop=${matched.backdropUrl ? 'yes' : 'no'} logo=${matched.logoUrl ? 'yes' : 'no'} queries=${searchQueries.join(' || ')}`
                 : topMatch
-                    ? `top candidate ${topMatch.match.title} (${topMatch.match.mediaType}:${topMatch.match.tmdbId}) score=${topMatch.score} similarity=${topMatch.titleSimilarity.toFixed(3)} regionMatched=${topMatch.regionMatched} queries=${searchQueries.join(' || ')}`
-                    : `no TMDb candidates resolved; queries=${searchQueries.join(' || ')}`,
+                    ? `top candidate ${topMatch.match.title} (${topMatch.match.mediaType}:${topMatch.match.tmdbId}) season=${topMatch.match.seasonNumber || detectedSeasonNumber || 'none'} score=${topMatch.score} similarity=${topMatch.titleSimilarity.toFixed(3)} regionMatched=${topMatch.regionMatched} queries=${searchQueries.join(' || ')}`
+                    : `no TMDb candidates resolved; season=${detectedSeasonNumber || 'none'} queries=${searchQueries.join(' || ')}`,
         };
 
         if (matched) {

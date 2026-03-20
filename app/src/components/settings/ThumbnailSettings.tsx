@@ -322,7 +322,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           <Info className="w-5 h-5 flex-shrink-0 mt-0.5" style={{ color: '#ec1e24' }} />
           <div>
             <p className="text-sm text-muted-foreground">
-              YouTube and X use the same thumbnail (backdrop + logo). Settings are saved separately per platform.
+              YouTube and X use the same thumbnail pipeline (TMDb backdrop + logo). For TV trailers, Screndly now detects season markers and prefers the matching TMDb season poster for social covers while keeping the series backdrop/logo for landscape thumbnails. Settings are saved separately per platform.
             </p>
           </div>
         </div>

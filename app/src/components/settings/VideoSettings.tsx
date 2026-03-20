@@ -1135,7 +1135,7 @@ Tone: Binary validation, strict criteria enforcement`}
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24]">2.</span>
-                <span><span className="text-gray-900 dark:text-white">Search TMDb:</span> GET /search/movie or /search/tv with cleaned title + year</span>
+                <span><span className="text-gray-900 dark:text-white">Search TMDb:</span> GET /search/movie or /search/tv with cleaned title variants, year, and season-stripped queries for TV shows</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24]">3.</span>
@@ -1147,7 +1147,7 @@ Tone: Binary validation, strict criteria enforcement`}
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24]">5.</span>
-                <span><span className="text-gray-900 dark:text-white">Fetch Assets:</span> GET /movie/{`{id}`}/images for backdrop, logo, poster</span>
+                <span><span className="text-gray-900 dark:text-white">Fetch Assets:</span> Movies use movie poster/backdrop/logo. TV matches use /tv/{`{id}`}, and if a season is detected Screndly also checks /tv/{`{id}`}/season/{`{season_number}`} and prefers that season poster.</span>
               </div>
             </div>
           </div>
@@ -1190,7 +1190,7 @@ Tone: Binary validation, strict criteria enforcement`}
               </SelectContent>
             </Select>
             <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
-              What to do if TMDb returns no valid backdrop or logo
+              What to do if TMDb returns no valid backdrop, logo, or season-specific poster
             </p>
           </div>
         </div>
@@ -1203,7 +1203,7 @@ Tone: Binary validation, strict criteria enforcement`}
           <div>
             <h3 className="text-gray-900 dark:text-white mb-1">Platform-Specific Thumbnail System</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-              Automated thumbnail generation using TMDb assets (poster for social, backdrop+logo for YouTube/X)
+              Automated thumbnail generation using TMDb assets. Movies use movie posters; TV trailers prefer the detected season poster for social when available, with series backdrop + logo for YouTube/X.
             </p>
           </div>
 
@@ -1212,7 +1212,7 @@ Tone: Binary validation, strict criteria enforcement`}
             <div className="space-y-2 text-xs text-gray-600 dark:text-[#9CA3AF]">
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24]">•</span>
-                <span><span className="text-gray-900 dark:text-white">Portrait (Poster):</span> Instagram, Facebook, Threads, TikTok use TMDb poster directly</span>
+                <span><span className="text-gray-900 dark:text-white">Portrait (Poster):</span> Instagram, Facebook, Threads, TikTok use the TMDb movie poster or the detected TV season poster when available</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24]">•</span>
@@ -1303,7 +1303,7 @@ Processing (using Sharp):
 3. Optional: Resize to 1080x1920 (9:16 for Reels/Stories)
 4. Export as JPG/PNG under 2MB
 
-Note: TMDb posters work perfectly for vertical platforms - no logo overlay needed
+Note: For TV shows with season markers like Season 2 or S2, prefer the TMDb season poster when available; otherwise fall back to the parent series poster. No logo overlay needed.
 
 Output Format (JSON):
 {
@@ -1322,7 +1322,7 @@ Tone: Clean poster presentation`}
               className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
             />
             <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
-              TMDb poster used directly for Instagram, Facebook, Threads, TikTok
+              TMDb movie poster or detected TV season poster used directly for Instagram, Facebook, Threads, TikTok
             </p>
           </div>
         </div>
@@ -1359,11 +1359,11 @@ Tone: Clean poster presentation`}
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24] shrink-0 w-5">5.</span>
-                <span><span className="text-gray-900 dark:text-white">TMDb Match:</span> Search TMDb with cleaned title, filter by language/country/genre</span>
+                <span><span className="text-gray-900 dark:text-white">TMDb Match:</span> Search TMDb with cleaned title variants, filter by language/country/genre, and detect TV season markers</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24] shrink-0 w-5">6.</span>
-                <span><span className="text-gray-900 dark:text-white">Fetch Assets:</span> Get backdrop, logo, poster, cast, release_date from TMDb</span>
+                <span><span className="text-gray-900 dark:text-white">Fetch Assets:</span> Get backdrop, logo, poster, cast, release_date from TMDb, and fetch the season poster when a TV season is detected</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24] shrink-0 w-5">7.</span>
@@ -1375,7 +1375,7 @@ Tone: Clean poster presentation`}
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24] shrink-0 w-5">9.</span>
-                <span><span className="text-gray-900 dark:text-white">Thumbnails:</span> Sharp composites backdrop+logo (YouTube/X), uses poster (Instagram/Facebook/Threads/TikTok)</span>
+                <span><span className="text-gray-900 dark:text-white">Thumbnails:</span> Sharp composites series backdrop+logo for YouTube/X and uses movie poster or detected TV season poster for Instagram/Facebook/Threads/TikTok</span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-[#ec1e24] shrink-0 w-5">10.</span>
