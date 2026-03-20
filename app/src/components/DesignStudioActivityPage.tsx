@@ -9,6 +9,7 @@ import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -212,7 +213,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         <button
           onClick={() => {
             haptics.light();
-            onNavigate(previousPage || 'design-studio');
+            navigateBackWithFallback(() => onNavigate(previousPage || 'design-studio'));
           }}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
         >

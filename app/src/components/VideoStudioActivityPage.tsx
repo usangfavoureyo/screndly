@@ -22,6 +22,7 @@ import { apiClient } from '../lib/api/client';
 import { generateVideoStudioCaption, type VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 
 interface VideoStudioActivityPageProps {
   onNavigate: (page: string) => void;
@@ -297,7 +298,7 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
         <button
           onClick={() => {
             haptics.light();
-            onNavigate(previousPage || 'video-studio');
+            navigateBackWithFallback(() => onNavigate(previousPage || 'video-studio'));
           }}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
         >
