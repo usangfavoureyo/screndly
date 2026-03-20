@@ -6,6 +6,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
+import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, BottomSheetTitle } from '../ui/bottom-sheet';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 
@@ -44,6 +45,7 @@ type Platform = 'youtube' | 'x';
 interface ThumbnailConfig {
   platform: Platform;
   logoPosition: LogoPosition;
+  logoDisplayMode: 'boxed' | 'logo-only';
   autoScale: boolean;
   maxLogoSize: number;
   autoContrastBackdrop: boolean;
@@ -73,9 +75,43 @@ const LOGO_POSITIONS: Record<LogoPosition, string> = {
 const THUMBNAIL_WIDTH = 1280;
 const THUMBNAIL_HEIGHT = 720;
 
+function getLogoFrameMetrics(config: ThumbnailConfig) {
+  const boxWidth = Math.min(THUMBNAIL_WIDTH * (config.maxLogoSize / 100), THUMBNAIL_WIDTH * 0.52);
+  const boxHeight = Math.min(THUMBNAIL_HEIGHT * 0.22, Math.max(84, boxWidth * 0.28));
+  const marginX = 48;
+  const marginTop = 48;
+  const marginBottom = 64;
+  const maxLeft = THUMBNAIL_WIDTH - marginX - boxWidth;
+  const maxTop = THUMBNAIL_HEIGHT - marginBottom - boxHeight;
+
+  const rawBoxX = config.logoPosition.includes('left')
+    ? marginX
+    : config.logoPosition.includes('right')
+      ? THUMBNAIL_WIDTH - boxWidth - marginX
+      : (THUMBNAIL_WIDTH - boxWidth) / 2;
+  const rawBoxY = config.logoPosition.startsWith('top')
+    ? marginTop
+    : config.logoPosition.startsWith('center')
+      ? (THUMBNAIL_HEIGHT - boxHeight) / 2
+      : THUMBNAIL_HEIGHT - boxHeight - marginBottom;
+
+  const boxX = Math.max(marginX, Math.min(rawBoxX, maxLeft));
+  const boxY = Math.max(marginTop, Math.min(rawBoxY, maxTop));
+
+  return {
+    boxWidth,
+    boxHeight,
+    boxX,
+    boxY,
+    trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
+  };
+}
+
 export function ThumbnailSettings({ settings, updateSetting, onBack }: ThumbnailSettingsProps) {
   const [activePlatform, setActivePlatform] = useState<Platform>('youtube');
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg'>('png');
+  const [isDownloadSheetOpen, setIsDownloadSheetOpen] = useState(false);
+  const [isLogoStyleSheetOpen, setIsLogoStyleSheetOpen] = useState(false);
   const [assetOverrides, setAssetOverrides] = useState<Record<Platform, ThumbnailAssetOverride>>({
     youtube: {},
     x: {},
@@ -85,6 +121,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const defaultYoutubeConfig: ThumbnailConfig = {
     platform: 'youtube',
     logoPosition: 'bottom-right',
+    logoDisplayMode: 'boxed',
     autoScale: true,
     maxLogoSize: 40,
     autoContrastBackdrop: true,
@@ -95,6 +132,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const defaultXConfig: ThumbnailConfig = {
     platform: 'x',
     logoPosition: 'bottom-right',
+    logoDisplayMode: 'boxed',
     autoScale: true,
     maxLogoSize: 40,
     autoContrastBackdrop: true,
@@ -285,35 +323,41 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
 
-    const boxWidth = Math.min(canvas.width * (currentConfig.maxLogoSize / 100), canvas.width * 0.6);
-    const boxHeight = Math.min(canvas.height * 0.25, Math.max(90, boxWidth * 0.28));
-    const boxX = currentConfig.logoPosition.includes('left')
-      ? 48
-      : currentConfig.logoPosition.includes('right')
-        ? canvas.width - boxWidth - 48
-        : (canvas.width - boxWidth) / 2;
-    const boxY = currentConfig.logoPosition.startsWith('top')
-      ? 48
-      : currentConfig.logoPosition.startsWith('center')
-        ? (canvas.height - boxHeight) / 2
-        : canvas.height - boxHeight - 64;
+    const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(currentConfig);
+    const shouldRenderBox = currentConfig.logoDisplayMode === 'boxed';
 
-    drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 24);
-    ctx.fillStyle = 'rgba(18, 18, 18, 0.88)';
-    ctx.fill();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.stroke();
+    if (shouldRenderBox) {
+      drawRoundedRect(ctx, boxX, boxY, boxWidth, boxHeight, 24);
+      ctx.fillStyle = 'rgba(18, 18, 18, 0.88)';
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.stroke();
+    }
 
     if (currentAssets.logoUrl) {
       const logoImage = await loadImage(currentAssets.logoUrl);
-      drawContainImage(ctx, logoImage, boxX + 20, boxY + 18, boxWidth - 40, boxHeight - 36);
+      if (shouldRenderBox) {
+        drawContainImage(ctx, logoImage, boxX + 20, boxY + 18, boxWidth - 40, boxHeight - 36);
+      } else {
+        drawContainImage(ctx, logoImage, boxX, boxY, boxWidth, boxHeight);
+      }
+    } else if (shouldRenderBox) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(boxX + boxWidth * 0.12, boxY + boxHeight / 2);
+      ctx.lineTo(boxX + boxWidth * 0.88, boxY + boxHeight / 2);
+      ctx.stroke();
     } else {
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 54px Arial, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('LOGO', boxX + boxWidth / 2, boxY + boxHeight / 2 - 8);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 8;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(boxX + boxWidth * 0.16, boxY + boxHeight / 2);
+      ctx.lineTo(boxX + boxWidth * 0.84, boxY + boxHeight / 2);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
     }
 
     if (currentConfig.showTrailerTypeText) {
@@ -370,28 +414,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   };
 
   const getPreviewLogoBoxMetrics = (config: ThumbnailConfig) => {
-    const boxWidth = Math.min(THUMBNAIL_WIDTH * (config.maxLogoSize / 100), THUMBNAIL_WIDTH * 0.52);
-    const boxHeight = Math.min(THUMBNAIL_HEIGHT * 0.22, Math.max(84, boxWidth * 0.28));
-    const marginX = 48;
-    const marginTop = 48;
-    const marginBottom = 64;
-    const maxLeft = THUMBNAIL_WIDTH - marginX - boxWidth;
-    const maxTop = THUMBNAIL_HEIGHT - marginBottom - boxHeight;
-
-    const rawBoxX = config.logoPosition.includes('left')
-      ? marginX
-      : config.logoPosition.includes('right')
-        ? THUMBNAIL_WIDTH - boxWidth - marginX
-        : (THUMBNAIL_WIDTH - boxWidth) / 2;
-    const rawBoxY = config.logoPosition.startsWith('top')
-      ? marginTop
-      : config.logoPosition.startsWith('center')
-        ? (THUMBNAIL_HEIGHT - boxHeight) / 2
-        : THUMBNAIL_HEIGHT - boxHeight - marginBottom;
-
-    const boxX = Math.max(marginX, Math.min(rawBoxX, maxLeft));
-    const boxY = Math.max(marginTop, Math.min(rawBoxY, maxTop));
-
+    const { boxWidth, boxHeight, boxX, boxY, trailerOffset } = getLogoFrameMetrics(config);
     return {
       boxWidth,
       boxHeight,
@@ -399,12 +422,13 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       top: `${(boxY / THUMBNAIL_HEIGHT) * 100}%`,
       width: `${(boxWidth / THUMBNAIL_WIDTH) * 100}%`,
       height: `${(boxHeight / THUMBNAIL_HEIGHT) * 100}%`,
-      trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
+      trailerOffset,
     };
   };
 
   const previewLogoBox = getPreviewLogoBoxMetrics(currentConfig);
   const previewLogoPadding = `${Math.max(10, currentConfig.maxLogoSize * 0.16)}% ${Math.max(8, currentConfig.maxLogoSize * 0.14)}%`;
+  const shouldShowPreviewBox = currentConfig.logoDisplayMode === 'boxed';
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -501,6 +525,27 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
               ))}
             </SelectContent>
           </Select>
+        </div>
+
+        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+        <div>
+          <Label className="text-gray-900 dark:text-white mb-2 block">Logo Style</Label>
+          <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
+            Choose whether the logo appears by itself or inside the overlay box.
+          </p>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              haptics.light();
+              setIsLogoStyleSheetOpen(true);
+            }}
+            className="w-full justify-between border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
+          >
+            <span>{currentConfig.logoDisplayMode === 'boxed' ? 'Logo inside box' : 'Logo only'}</span>
+            <span className="text-xs text-gray-500 dark:text-[#6B7280]">Change</span>
+          </Button>
         </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
@@ -696,17 +741,17 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                   className="pointer-events-none"
                 >
                   <div
-                    className="flex h-full w-full items-center justify-center rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 shadow-2xl backdrop-blur-sm"
-                    style={{ padding: previewLogoPadding }}
+                    className={`flex h-full w-full items-center justify-center shadow-2xl ${shouldShowPreviewBox ? 'rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 backdrop-blur-sm' : ''}`}
+                    style={shouldShowPreviewBox ? { padding: previewLogoPadding } : undefined}
                   >
                     {currentAssets.logoUrl ? (
                       <img
                         src={currentAssets.logoUrl}
                         alt="Uploaded logo preview"
-                        className="max-h-full max-w-full object-contain"
+                        className={`object-contain ${shouldShowPreviewBox ? 'max-h-full max-w-full' : 'h-full w-full'}`}
                       />
                     ) : (
-                      <div className="h-full w-full rounded-[inherit] border border-white/10 bg-white/[0.02]" />
+                      <div className={`bg-white/[0.02] ${shouldShowPreviewBox ? 'h-full w-full rounded-[inherit] border border-white/10' : 'h-1.5 w-[70%] rounded-full border border-white/10'}`} />
                     )}
                   </div>
                   {currentConfig.showTrailerTypeText && (
@@ -740,18 +785,6 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3">
-            <Label className="text-gray-900 dark:text-white">Export Format</Label>
-            <Select value={downloadFormat} onValueChange={(value) => setDownloadFormat(value as 'png' | 'jpeg')}>
-              <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]">
-                <SelectItem value="png">PNG</SelectItem>
-                <SelectItem value="jpeg">JPEG</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
@@ -765,7 +798,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             </Button>
             <Button
               onClick={() => {
-                void handleDownload();
+                haptics.light();
+                setIsDownloadSheetOpen(true);
               }}
               className="bg-[#ec1e24] text-white hover:bg-[#c81a1f]"
             >
@@ -793,6 +827,88 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           Reset to Defaults
         </Button>
       </div>
+
+      <BottomSheet open={isLogoStyleSheetOpen} onOpenChange={setIsLogoStyleSheetOpen}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Logo Style</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.medium();
+                void handleUpdate({ logoDisplayMode: 'logo-only' });
+                setIsLogoStyleSheetOpen(false);
+              }}
+              className={`rounded-2xl border p-4 text-left transition-all ${currentConfig.logoDisplayMode === 'logo-only' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+            >
+              <p className="mb-1">Logo only</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Render the logo directly without the overlay box.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                haptics.medium();
+                void handleUpdate({ logoDisplayMode: 'boxed' });
+                setIsLogoStyleSheetOpen(false);
+              }}
+              className={`rounded-2xl border p-4 text-left transition-all ${currentConfig.logoDisplayMode === 'boxed' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+            >
+              <p className="mb-1">Logo inside box</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Keep the logo inside the overlay frame.</p>
+            </button>
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
+
+      <BottomSheet open={isDownloadSheetOpen} onOpenChange={setIsDownloadSheetOpen}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Download Thumbnail</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                setDownloadFormat('png');
+              }}
+              className={`rounded-2xl border p-4 text-left transition-all ${downloadFormat === 'png' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+            >
+              <p className="mb-1">PNG</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Higher quality with transparency support.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                setDownloadFormat('jpeg');
+              }}
+              className={`rounded-2xl border p-4 text-left transition-all ${downloadFormat === 'jpeg' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+            >
+              <p className="mb-1">JPEG</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Smaller file size for quick sharing.</p>
+            </button>
+          </div>
+        </BottomSheetBody>
+        <BottomSheetFooter>
+          <div className="flex w-full gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setIsDownloadSheetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-[#ec1e24] text-white hover:bg-[#c81a1f]"
+              onClick={() => {
+                setIsDownloadSheetOpen(false);
+                void handleDownload();
+              }}
+            >
+              Download
+            </Button>
+          </div>
+        </BottomSheetFooter>
+      </BottomSheet>
     </div>
   );
 }

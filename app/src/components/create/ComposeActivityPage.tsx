@@ -257,7 +257,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
           <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Published</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.published}</p>
         </div>
-        <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5">
+        <div className={`bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-5 ${isCompactLayout ? 'col-span-2' : ''}`}>
           <p className="mb-1 text-sm leading-snug text-[#6B7280] dark:text-[#9CA3AF]">Failed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{stats.failed}</p>
         </div>

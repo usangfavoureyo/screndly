@@ -20,6 +20,8 @@ interface ThumbnailConfig {
   platform: 'youtube' | 'x';
   logoPosition: LogoPosition;
   autoScale: boolean;
+  logoDisplayMode: 'boxed' | 'logo-only';
+  maxLogoSize: number;
   autoContrastBackdrop: boolean;
   autoContrastOverlay: boolean;
   showTrailerTypeText: boolean;
@@ -58,6 +60,7 @@ export function getThumbnailConfig(platform: 'youtube' | 'x'): ThumbnailConfig {
     platform,
     logoPosition: 'bottom-right',
     autoScale: true,
+    logoDisplayMode: 'boxed',
     maxLogoSize: 40,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
@@ -126,7 +129,7 @@ async function mockGenerateThumbnail(
         // Since we don't know where the logo is (it's not drawn here yet), 
         // we'll calculate position based on 'config.logoPosition'.
 
-        // Mock Logo Rect (Matches 'getLogoPositionStyles' in Settings essentially)
+        // Mock Logo Rect (Matches thumbnail settings positioning)
         const margin = 32; // Scaled up for 720p
         let logoX = 0;
         let logoY = 0;
@@ -144,6 +147,28 @@ async function mockGenerateThumbnail(
           case 'bottom-left': logoX = margin; logoY = canvas.height - logoH - margin; break;
           case 'bottom-center': logoX = (canvas.width - logoW) / 2; logoY = canvas.height - logoH - margin; break;
           case 'bottom-right': logoX = canvas.width - logoW - margin; logoY = canvas.height - logoH - margin; break;
+        }
+
+        if (config.logoDisplayMode === 'boxed') {
+          const paddingX = 24;
+          const paddingY = 18;
+          ctx.fillStyle = 'rgba(18, 18, 18, 0.88)';
+          ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          const radius = 24;
+          ctx.moveTo(logoX + radius, logoY);
+          ctx.arcTo(logoX + logoW, logoY, logoX + logoW, logoY + logoH, radius);
+          ctx.arcTo(logoX + logoW, logoY + logoH, logoX, logoY + logoH, radius);
+          ctx.arcTo(logoX, logoY + logoH, logoX, logoY, radius);
+          ctx.arcTo(logoX, logoY, logoX + logoW, logoY, radius);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          logoX += paddingX;
+          logoY += paddingY;
+          logoW -= paddingX * 2;
+          logoH -= paddingY * 2;
         }
 
         const textX = logoX + (logoW / 2);

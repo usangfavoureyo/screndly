@@ -17,22 +17,27 @@ export function migrateLegacyToken(): void {
     if (typeof window === 'undefined') return;
 
     try {
+        const keepSignedIn = localStorage.getItem(KEEP_SIGNED_IN_KEY) === 'true';
         const legacyToken = localStorage.getItem(LEGACY_TOKEN_KEY);
-        const currentToken = sessionStorage.getItem(TOKEN_KEY);
+        const currentSessionToken = sessionStorage.getItem(TOKEN_KEY);
+        const currentPersistedToken = localStorage.getItem(TOKEN_KEY);
 
-        if (legacyToken && !currentToken) {
-            console.log('[Auth] Migrating legacy token to session-scoped unified key');
-            sessionStorage.setItem(TOKEN_KEY, legacyToken);
+        if (legacyToken && !currentSessionToken && !currentPersistedToken) {
+            if (keepSignedIn) {
+                console.log('[Auth] Migrating legacy token to persisted unified key');
+                localStorage.setItem(TOKEN_KEY, legacyToken);
+            } else {
+                console.log('[Auth] Migrating legacy token to session-scoped unified key');
+                sessionStorage.setItem(TOKEN_KEY, legacyToken);
+            }
         }
 
         localStorage.removeItem(LEGACY_TOKEN_KEY);
 
-        const persistedToken = localStorage.getItem(TOKEN_KEY);
-        if (persistedToken && !currentToken) {
-            console.log('[Auth] Migrating persisted auth token to session storage');
-            sessionStorage.setItem(TOKEN_KEY, persistedToken);
+        if (keepSignedIn && currentPersistedToken && !currentSessionToken) {
+            console.log('[Auth] Restoring persisted auth token into active session');
+            sessionStorage.setItem(TOKEN_KEY, currentPersistedToken);
         }
-        localStorage.removeItem(TOKEN_KEY);
     } catch (e) {
         console.error('[Auth] Migration failed:', e);
     }
@@ -50,7 +55,7 @@ export function getToken(): string | null {
     migrateLegacyToken();
 
     try {
-        const token = sessionStorage.getItem(TOKEN_KEY);
+        const token = sessionStorage.getItem(TOKEN_KEY) || localStorage.getItem(TOKEN_KEY);
 
         // Sanitize: aggressively strip poison strings
         const poisonStrings = ['undefined', 'null', '[object Object]', 'nan', 'false', 'true'];
@@ -91,12 +96,17 @@ export function setToken(token: string | null | undefined, rememberMe: boolean =
         return;
     }
 
-    sessionStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(KEEP_SIGNED_IN_KEY, String(rememberMe));
     sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
+    sessionStorage.setItem(TOKEN_KEY, token);
+
+    if (rememberMe) {
+        localStorage.setItem(TOKEN_KEY, token);
+    } else {
+        localStorage.removeItem(TOKEN_KEY);
+    }
 
     // Cleanup legacy
-    localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(LEGACY_TOKEN_KEY);
     sessionStorage.removeItem(LEGACY_TOKEN_KEY);
 }
