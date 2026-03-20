@@ -185,7 +185,7 @@ export function VideoDetailsPage({ onNavigate, previousPage }: VideoDetailsPageP
           onClick={() => {
             haptics.light();
             navigateBackWithFallback(() => {
-            navigateBackWithFallback(() => onNavigate(previousPage || 'dashboard'));
+              onNavigate(previousPage || 'dashboard');
             });
           }}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2"
