@@ -14,6 +14,7 @@ import {
 import ytDlp from '../lib/yt-dlp';
 import { publisherService, PublishContent } from './publisher.service';
 import aiService from './ai.service';
+import { shouldEnableReleaseResearch } from './ai.service';
 import { notificationService } from './notification.service';
 import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
 import { resolveYouTubeChannel } from './youtube-channel-resolver';
@@ -2052,6 +2053,15 @@ Respond ONLY as strict JSON:
             cast: metadata.tmdbMatch?.castNames?.slice(0, 3),
             genres: metadata.tmdbMatch?.genres,
             productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
+            tmdbMatchStatus: metadata.tmdbMatchStatus,
+            enableReleaseResearch: shouldEnableReleaseResearch({
+                videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
+                description: details.description || video.contentSnippet || '',
+                releaseDate: metadata.tmdbMatch?.releaseDate,
+                productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
+                tmdbMatchStatus: metadata.tmdbMatchStatus,
+                mediaType: metadata.tmdbMatch?.mediaType,
+            }),
         };
 
         const model = settings.videoOpenaiModel || 'gpt-5-mini';

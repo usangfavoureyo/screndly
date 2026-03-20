@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import prisma from '../lib/prisma';
 import sharp from 'sharp';
-import aiService, { type AIModel, DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
+import aiService, { type AIModel, DEFAULT_OPENAI_MODEL, normalizeAIModel, shouldEnableReleaseResearch } from './ai.service';
 import { uploadBufferToBackblaze } from './backblaze';
 import { getTmdbApiKey } from './tmdb.service';
 
@@ -1274,6 +1274,15 @@ export async function generateYouTubePublishMetadata(
         metadata.trailerType,
         metadata.tmdbMatch
     );
+    const enableReleaseResearch = shouldEnableReleaseResearch({
+        videoTitle: originalTitle,
+        description,
+        releaseDate: metadata.tmdbMatch?.releaseDate,
+        productionNames: metadata.tmdbMatch?.productionNames,
+        tmdbMatchStatus: metadata.tmdbMatchStatus,
+        mediaType: metadata.tmdbMatch?.mediaType,
+    });
+
     const releaseResearchGuidance = `
 
 Release-context research rules:
@@ -1288,18 +1297,18 @@ Release-context research rules:
         aiService.generateCompletion({
             model,
             systemPrompt: settings.videoYoutubeTitlePrompt,
-            prompt: `${context}${releaseResearchGuidance}\n\nGenerate the final YouTube upload title only.`,
+            prompt: `${context}${enableReleaseResearch ? releaseResearchGuidance : '\n\nUse only the supplied metadata. If release date or destination is unclear, omit it instead of guessing.'}\n\nGenerate the final YouTube upload title only.`,
             maxTokens: 120,
             temperature: 0.4,
-            enableWebSearch: true,
+            enableWebSearch: enableReleaseResearch,
         }),
         aiService.generateCompletion({
             model,
             systemPrompt: settings.videoYoutubeDescriptionPrompt,
-            prompt: `${context}${releaseResearchGuidance}\n\nGenerate the final YouTube upload description only.`,
+            prompt: `${context}${enableReleaseResearch ? releaseResearchGuidance : '\n\nUse only the supplied metadata. If release date or destination is unclear, omit it instead of guessing.'}\n\nGenerate the final YouTube upload description only.`,
             maxTokens: 500,
             temperature: 0.6,
-            enableWebSearch: true,
+            enableWebSearch: enableReleaseResearch,
         }),
     ]);
 

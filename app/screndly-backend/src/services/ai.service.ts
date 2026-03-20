@@ -260,6 +260,114 @@ function withReleaseResearchInstructions(systemPrompt?: string): string {
     return [systemPrompt, researchGuidance].filter(Boolean).join('\n\n');
 }
 
+const RELEASE_DESTINATION_PATTERNS: RegExp[] = [
+    /\bin theaters?\b/i,
+    /\bon netflix\b/i,
+    /\bnetflix\b/i,
+    /\bon max\b/i,
+    /\bhbo max\b/i,
+    /\bhbo\b/i,
+    /\bon disney\+\b/i,
+    /\bdisney\+\b/i,
+    /\bon hulu\b/i,
+    /\bhulu\b/i,
+    /\bon prime video\b/i,
+    /\bprime video\b/i,
+    /\bon amazon prime\b/i,
+    /\bon apple tv\+\b/i,
+    /\bapple tv\+\b/i,
+    /\bon paramount\+\b/i,
+    /\bparamount\+\b/i,
+    /\bon peacock\b/i,
+    /\bpeacock\b/i,
+    /\bon crunchyroll\b/i,
+    /\bcrunchyroll\b/i,
+];
+
+const RELEASE_DATE_PATTERNS: RegExp[] = [
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s+\d{4})?\b/i,
+    /\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})\b/i,
+    /\b(?:spring|summer|fall|autumn|winter)\s+\d{4}\b/i,
+    /\b(?:19|20)\d{2}\b/,
+];
+
+function extractMentionedDestinations(text: string): string[] {
+    const normalized = text.toLowerCase();
+    const matches = new Set<string>();
+
+    if (/\bin theaters?\b/.test(normalized)) matches.add('theaters');
+    if (/\bnetflix\b/.test(normalized)) matches.add('netflix');
+    if (/\bhbo max\b|\bon max\b|\bmax\b/.test(normalized)) matches.add('max');
+    if (/\bhbo\b/.test(normalized)) matches.add('hbo');
+    if (/\bdisney\+\b/.test(normalized)) matches.add('disney+');
+    if (/\bhulu\b/.test(normalized)) matches.add('hulu');
+    if (/\bprime video\b|\bamazon prime\b/.test(normalized)) matches.add('prime video');
+    if (/\bapple tv\+\b/.test(normalized)) matches.add('apple tv+');
+    if (/\bparamount\+\b/.test(normalized)) matches.add('paramount+');
+    if (/\bpeacock\b/.test(normalized)) matches.add('peacock');
+    if (/\bcrunchyroll\b/.test(normalized)) matches.add('crunchyroll');
+
+    return [...matches];
+}
+
+function hasExplicitReleaseDateCue(text?: string): boolean {
+    if (!text) {
+        return false;
+    }
+
+    return RELEASE_DATE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function hasExplicitReleaseDestinationCue(text?: string): boolean {
+    if (!text) {
+        return false;
+    }
+
+    return RELEASE_DESTINATION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export interface ReleaseResearchContext {
+    videoTitle?: string;
+    description?: string;
+    releaseDate?: string;
+    productionNames?: string[];
+    tmdbMatchStatus?: 'not-requested' | 'matched' | 'no-confident-match' | 'region-mismatch' | 'error';
+    mediaType?: 'movie' | 'tv';
+}
+
+export function shouldEnableReleaseResearch(context: ReleaseResearchContext): boolean {
+    const description = context.description || '';
+    const videoTitle = context.videoTitle || '';
+    const combinedText = `${videoTitle}\n${description}`;
+    const hasDateCue = hasExplicitReleaseDateCue(combinedText);
+    const hasDestinationCue = hasExplicitReleaseDestinationCue(combinedText);
+    const mentionedDestinations = extractMentionedDestinations(combinedText);
+    const knownDestinations = (context.productionNames || [])
+        .map((name) => name.toLowerCase())
+        .flatMap((name) => extractMentionedDestinations(name));
+
+    if (!context.releaseDate && !hasDateCue) {
+        return true;
+    }
+
+    if (context.tmdbMatchStatus && context.tmdbMatchStatus !== 'matched' && !hasDateCue) {
+        return true;
+    }
+
+    if (mentionedDestinations.length > 0 && knownDestinations.length > 0) {
+        const hasConflict = mentionedDestinations.some((destination) => !knownDestinations.includes(destination));
+        if (hasConflict) {
+            return true;
+        }
+    }
+
+    if (context.mediaType === 'movie' && !context.productionNames?.length && !hasDestinationCue) {
+        return true;
+    }
+
+    return false;
+}
+
 // ============================================
 // OPENAI COMPLETION
 // ============================================
@@ -873,6 +981,8 @@ export interface YouTubeContext {
     cast?: string[];
     genres?: string[];
     productionNames?: string[];
+    tmdbMatchStatus?: 'not-requested' | 'matched' | 'no-confident-match' | 'region-mismatch' | 'error';
+    enableReleaseResearch?: boolean;
 }
 
 export async function generateYouTubeCaption(
@@ -889,7 +999,17 @@ Goal: Drive views to the video with high-energy copy.
 - Length: Under 280 chars.
 `;
 
-    const systemPrompt = withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt);
+    const enableReleaseResearch = context.enableReleaseResearch ?? shouldEnableReleaseResearch({
+        videoTitle: context.videoTitle,
+        description: context.description,
+        releaseDate: context.releaseDate,
+        productionNames: context.productionNames,
+        tmdbMatchStatus: context.tmdbMatchStatus,
+        mediaType: context.mediaType,
+    });
+    const systemPrompt = enableReleaseResearch
+        ? withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt)
+        : customSystemPrompt || defaultSystemPrompt;
 
     const prompt = `Generate a caption for this video:
 Channel: ${context.channelName}
@@ -904,7 +1024,9 @@ Studios / Networks: ${formatPromptList(context.productionNames)}
 Description: ${context.description.slice(0, 500)}...
 Platform: ${context.platform}
 
-Use live search when needed to confirm the release date and whether the title is going to theaters or to a specific network/streaming platform. Mention that destination only if it is confidently verified and helpful to the caption.
+${enableReleaseResearch
+        ? 'Use live search when needed to confirm the release date and whether the title is going to theaters or to a specific network/streaming platform. Mention that destination only if it is confidently verified and helpful to the caption.'
+        : 'Rely on the provided TMDb and YouTube metadata. If the release date or destination is not already clear from the supplied context, omit it instead of guessing.'}
 
 Write ONLY the caption.`;
 
@@ -915,7 +1037,7 @@ Write ONLY the caption.`;
         maxTokens: 150,
         temperature: customTemperature !== undefined ? customTemperature : 0.8,
         jsonMode: false,
-        enableWebSearch: true,
+        enableWebSearch: enableReleaseResearch,
     });
 
     if (!response.success) {
