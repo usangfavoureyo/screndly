@@ -1,6 +1,7 @@
 import { Film } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 
 interface NotFoundPageProps {
   onNavigate: (page: string) => void;
@@ -48,7 +49,7 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
           <Button
             onClick={() => {
               haptics.light();
-              window.history.back();
+              navigateBackWithFallback(() => onNavigate('dashboard'));
             }}
             variant="outline"
             className="bg-white dark:bg-black border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white px-6"

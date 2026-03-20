@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { type BackPressSource, useOptionalBackNavigation } from '../contexts/BackNavigationContext';
+import { useTransientHistoryState } from './useTransientHistoryState';
 
 interface UseBackEntryOptions {
   enabled?: boolean;
@@ -34,4 +35,6 @@ export function useBackEntry({
       backNavigation.unregisterBackEntry(entryId);
     };
   }, [backNavigation, enabled, priority]);
+
+  useTransientHistoryState(enabled, entryIdRef.current, 'back-entry');
 }

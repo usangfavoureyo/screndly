@@ -4,6 +4,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import { useBackNavigation } from "../../contexts/BackNavigationContext";
+import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 import { cn } from "./utils";
 
@@ -154,6 +155,7 @@ function DialogContent({
   const closeButtonRef = React.useRef<HTMLButtonElement>(null);
 
   const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
+  useTransientHistoryState(true, uniqueId, 'dialog');
 
   React.useEffect(() => {
     const id = uniqueId;

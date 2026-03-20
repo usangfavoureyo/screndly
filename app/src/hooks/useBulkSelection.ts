@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useOptionalBackNavigation } from '../contexts/BackNavigationContext';
+import { useTransientHistoryState } from './useTransientHistoryState';
 
 export function useBulkSelection(validIds: string[]) {
   const selectableIds = useMemo(() => Array.from(new Set(validIds)), [validIds]);
@@ -54,13 +55,14 @@ export function useBulkSelection(validIds: string[]) {
 
   const allSelected =
     selectableIds.length > 0 && selectedIds.length === selectableIds.length;
+  const selectionMode = selectedIds.length > 0;
 
   useEffect(() => {
     if (!backNavigation) return;
 
     const selectionModalId = selectionModalIdRef.current;
 
-    if (!allSelected && selectedIds.length === 0) {
+    if (!selectionMode) {
       backNavigation.unregisterModal(selectionModalId);
       return;
     }
@@ -70,12 +72,14 @@ export function useBulkSelection(validIds: string[]) {
     return () => {
       backNavigation.unregisterModal(selectionModalId);
     };
-  }, [allSelected, backNavigation, clearSelection, selectedIds.length]);
+  }, [backNavigation, clearSelection, selectionMode]);
+
+  useTransientHistoryState(selectionMode, selectionModalIdRef.current, 'bulk-selection');
 
   return {
     selectedIds,
     selectedCount: selectedIds.length,
-    selectionMode: selectedIds.length > 0,
+    selectionMode,
     allSelected,
     enterSelectionMode,
     toggleSelection,

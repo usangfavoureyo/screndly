@@ -40,6 +40,16 @@ interface AuthProviderProps {
 }
 
 export default function AuthProvider({ children }: AuthProviderProps) {
+    const enterAppShell = () => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        if (window.location.pathname !== '/') {
+            window.history.replaceState({ page: 'dashboard' }, '', '/');
+        }
+    };
+
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(() => {
         if (typeof window === 'undefined') {
             return null;
@@ -71,8 +81,14 @@ export default function AuthProvider({ children }: AuthProviderProps) {
     const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
     const PublicComponent = PUBLIC_ROUTES[currentPath];
 
+    useEffect(() => {
+        if (isAuthenticated && PublicComponent) {
+            enterAppShell();
+        }
+    }, [isAuthenticated, PublicComponent]);
+
     // If this is a public route, render it directly without auth check
-    if (PublicComponent) {
+    if (PublicComponent && !isAuthenticated) {
         return (
             <Suspense fallback={<PageLoader fullScreen />}>
                 <PublicComponent onNavigate={() => window.location.href = '/'} />
@@ -87,7 +103,10 @@ export default function AuthProvider({ children }: AuthProviderProps) {
 
     // Show login if not authenticated
     if (!isAuthenticated) {
-        return <LoginPage onLogin={() => setIsAuthenticated(true)} />;
+        return <LoginPage onLogin={() => {
+            enterAppShell();
+            setIsAuthenticated(true);
+        }} />;
     }
 
     // Show app if authenticated

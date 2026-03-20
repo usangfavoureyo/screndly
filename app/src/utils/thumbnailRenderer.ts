@@ -17,6 +17,7 @@ export interface ThumbnailConfig {
   autoScale: boolean;
   logoDisplayMode: 'boxed' | 'logo-only';
   maxLogoSize: number;
+  trailerTextSize: number;
   autoContrastBackdrop: boolean;
   autoContrastOverlay: boolean;
   showTrailerTypeText: boolean;
@@ -39,6 +40,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoScale: true,
     logoDisplayMode: 'boxed',
     maxLogoSize: 40,
+    trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
@@ -49,6 +51,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoScale: true,
     logoDisplayMode: 'boxed',
     maxLogoSize: 40,
+    trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
@@ -291,6 +294,28 @@ export function getLogoFrameMetrics(
   return { boxWidth, boxHeight, boxX, boxY };
 }
 
+export function getTrailerLabelMetrics(
+  config: ThumbnailConfig,
+  width: number = DEFAULT_WIDTH,
+  height: number = DEFAULT_HEIGHT
+) {
+  const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
+  const fontSize = Math.max(18, config.trailerTextSize || 32);
+  const gap = Math.max(18, fontSize * 0.6);
+  const bottomSafeMargin = 24;
+  const topSafeMargin = 24;
+  const prefersBelow = boxY + boxHeight + gap + fontSize <= height - bottomSafeMargin;
+  const textTop = prefersBelow
+    ? boxY + boxHeight + gap
+    : Math.max(topSafeMargin, boxY - gap - fontSize);
+
+  return {
+    centerX: boxX + boxWidth / 2,
+    top: textTop,
+    fontSize,
+  };
+}
+
 function inferTrailerLabel(title: string): string {
   const normalized = title.toLowerCase();
   if (normalized.includes('teaser')) {
@@ -467,11 +492,20 @@ export async function renderThumbnailDataUrl(
 
   if (config.showTrailerTypeText) {
     const trailerLabel = options.trailerLabel || inferTrailerLabel('');
+    const trailerLabelMetrics = getTrailerLabelMetrics(config, width, height);
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.font = 'bold 32px Arial, sans-serif';
-    ctx.fillText(trailerLabel, width / 2, boxY + boxHeight + 24);
+    ctx.font = `700 ${trailerLabelMetrics.fontSize}px Arial, sans-serif`;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+    ctx.shadowBlur = Math.max(12, trailerLabelMetrics.fontSize * 0.45);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = Math.max(2, trailerLabelMetrics.fontSize * 0.12);
+    ctx.fillText(trailerLabel, trailerLabelMetrics.centerX, trailerLabelMetrics.top);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
   }
 
   return canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined);

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { PadWorkspacePage } from './create/PadWorkspacePage';
 import { useBackEntry } from '../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../hooks/useUnsavedBackGuard';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 
 interface CreatePageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -25,7 +26,9 @@ export function CreatePage({ onNavigate, previousPage }: CreatePageProps) {
         return false;
       }
       return padGuard.guardAction(() => {
-        onNavigate(previousPage || 'dashboard');
+        navigateBackWithFallback(() => {
+          onNavigate(previousPage || 'dashboard');
+        });
       });
     },
   });

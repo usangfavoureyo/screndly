@@ -3,6 +3,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 import { apiClient } from '../lib/api/client';
 import { useSettings } from '../contexts/SettingsContext';
 
@@ -112,7 +113,9 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
         <button
           onClick={() => {
             haptics.light();
-            onNavigate(previousPage || 'dashboard');
+            navigateBackWithFallback(() => {
+              onNavigate(previousPage || 'dashboard');
+            });
           }}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
         >

@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "./utils";
 import { haptics } from "../../utils/haptics";
 import { useBackNavigation } from "../../contexts/BackNavigationContext";
+import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 interface BottomSheetProps {
   open: boolean;
@@ -93,6 +94,7 @@ export function BottomSheet({
 
   // BackNavigationContext integration
   const { registerBottomSheetWithCloseHandler, unregisterBottomSheet } = useBackNavigation();
+  useTransientHistoryState(open, uniqueId, 'bottom-sheet');
 
   // Register with context when open
   React.useEffect(() => {
@@ -105,11 +107,6 @@ export function BottomSheet({
         }
       });
 
-      // Push history state so back button doesn't exit app immediately
-      // The context's popstate listener will intercept the back press and call our close handler
-      if (!window.history.state?.bottomSheetId) {
-        window.history.pushState({ bottomSheetId: uniqueId }, '');
-      }
       return () => {
         unregisterBottomSheet(uniqueId);
       };

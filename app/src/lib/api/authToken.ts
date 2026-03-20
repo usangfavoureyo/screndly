@@ -37,6 +37,10 @@ export function migrateLegacyToken(): void {
 
         localStorage.removeItem(LEGACY_TOKEN_KEY);
 
+        if (keepSignedIn && currentPersistedToken && !currentSessionToken) {
+            sessionStorage.setItem(TOKEN_KEY, currentPersistedToken);
+        }
+
         if (!keepSignedIn && currentPersistedToken && !currentSessionToken) {
             console.log('[Auth] Moving persisted auth token into session storage because Keep Me Signed In is disabled');
             sessionStorage.setItem(TOKEN_KEY, currentPersistedToken);
@@ -105,7 +109,7 @@ export function setToken(token: string | null | undefined, rememberMe: boolean =
 
     if (rememberMe) {
         localStorage.setItem(TOKEN_KEY, token);
-        sessionStorage.removeItem(TOKEN_KEY);
+        sessionStorage.setItem(TOKEN_KEY, token);
     } else {
         sessionStorage.setItem(TOKEN_KEY, token);
         localStorage.removeItem(TOKEN_KEY);

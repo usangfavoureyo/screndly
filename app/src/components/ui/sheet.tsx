@@ -4,6 +4,7 @@ import * as React from "react";
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { XIcon } from "lucide-react";
 import { useBackNavigation } from "../../contexts/BackNavigationContext";
+import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 import { cn } from "./utils";
 
@@ -65,6 +66,7 @@ function SheetContent({
     [],
   );
   const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
+  useTransientHistoryState(true, uniqueId, 'sheet');
 
   React.useEffect(() => {
     registerModalWithCloseHandler(uniqueId, () => {

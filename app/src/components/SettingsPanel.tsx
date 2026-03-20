@@ -8,6 +8,7 @@ import { Separator } from './ui/separator';
 import { haptics } from '../utils/haptics';
 import { lazyWithRetry } from '../utils/performance';
 import { useBackNavigation } from '../contexts/BackNavigationContext';
+import { useTransientHistoryState } from '../hooks/useTransientHistoryState';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { PageLoader } from './PageLoader';
 
@@ -73,31 +74,19 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   const staticPageScrollRef = useRef<HTMLDivElement>(null);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
 
-  // Track active page in ref for synchronous access in popstate listener
-  const activePageRef = useRef<string | null>(normalizeSettingsPage(initialPage));
-
-  useEffect(() => {
-    activePageRef.current = activeSettingsPage;
-  }, [activeSettingsPage]);
-
   // Unified Navigation Handlers (UI drives History)
   const handleCloseSettings = () => {
     window.history.back();
   };
 
   const handleCloseSubpage = () => {
+    haptics.light();
     window.history.back();
   };
 
   // Integration with BackNavigationContext to resolve conflicts
   useEffect(() => {
     if (activeSettingsPage) {
-      // 1. Push history state so browser back button works
-      window.history.pushState({ panel: 'settings-subpage' }, '');
-
-      // 2. Register as a nested modal in context logic
-      // This ensures that when back is pressed, the Context calls THIS handler
-      // instead of closing the parent 'settings' modal.
       registerModalWithCloseHandler('settings-subpage', () => {
         setActiveSettingsPage(null);
       });
@@ -109,6 +98,13 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
       unregisterModal('settings-subpage');
     };
   }, [activeSettingsPage, registerModalWithCloseHandler, unregisterModal]);
+
+  useTransientHistoryState(
+    activeSettingsPage !== null,
+    'settings-subpage',
+    'settings-subpage',
+    activeSettingsPage ? { page: activeSettingsPage } : undefined,
+  );
 
   // Restore scroll position when SettingsPanel opens
   // Using useEffect instead of useLayoutEffect to avoid blocking paint

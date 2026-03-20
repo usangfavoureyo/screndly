@@ -12,6 +12,7 @@ import { PostFlowSheet, type PostFlowView } from "./create/PostFlowSheet";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
 import { useDesktopShortcuts } from "../hooks/useDesktopShortcuts";
+import { useTransientHistoryState } from "../hooks/useTransientHistoryState";
 import { haptics } from "../utils/haptics";
 import { lazyWithRetry } from "../utils/performance";
 import { useNotifications } from "../contexts/NotificationsContext";
@@ -25,6 +26,7 @@ import {
 import { toast } from "sonner";
 import { logout } from "../lib/auth";
 import { useTMDbModalStore } from "../stores/tmdbModalStore";
+import { navigateBackWithFallback } from "../utils/historyNavigation";
 import { PageLoader, RedSpinner } from "./PageLoader";
 
 const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
@@ -132,6 +134,20 @@ function getPostFlowView(page: string): PostFlowView | null {
 
 function normalizeShellPage(page: string): string {
   return getPostFlowView(page) ? 'create' : page;
+}
+
+const ROOT_DESTINATIONS = new Set([
+  'dashboard',
+  'channels',
+  'platforms',
+  'feeds',
+  'create',
+  'design-studio',
+  'video-studio',
+]);
+
+function isRootDestination(page: string): boolean {
+  return ROOT_DESTINATIONS.has(normalizeShellPage(page));
 }
 
 interface PersistedAppState {
@@ -259,6 +275,7 @@ export function AppContent() {
   );
   const shouldRenderNotificationPanel = shouldMountNotificationPanel || isNotificationsOpen;
   const shouldRenderTMDbModals = shouldMountTMDbModals || hasOpenTMDbModal;
+  const activeOverlayType = isSettingsOpen ? 'settings' : isNotificationsOpen ? 'notifications' : null;
 
   const updateCurrentPage = useCallback((page: string, historyMode: "push" | "replace" = "push") => {
     setCurrentPageState(page);
@@ -291,9 +308,6 @@ export function AppContent() {
     setOverlaySource,
     registerModalWithCloseHandler,
     unregisterModal,
-    setNavigationCallback: setBackNavCallback,
-    pushChildPage,
-    recordRootNavigation,
   } = useBackNavigation();
 
   // Sync current page with BackNavigationContext
@@ -306,19 +320,15 @@ export function AppContent() {
   // Track Settings/Notifications as overlays with source
   // Track Settings/Notifications as overlays with source
   useEffect(() => {
-    if (isSettingsOpen || isNotificationsOpen) {
-      // Store source page when opening overlay
-      setOverlaySource(currentPage);
+    setOverlaySource(activeOverlayType ? currentPage : null);
+  }, [activeOverlayType, currentPage, setOverlaySource]);
 
-      // Push history state so back button closes overlay instead of exiting
-      if (!window.history.state?.overlay) {
-        window.history.pushState({ overlay: true, type: isSettingsOpen ? 'settings' : 'notifications' }, '');
-      }
-    } else {
-      // Clear overlay source when closed
-      setOverlaySource(null);
-    }
-  }, [isSettingsOpen, isNotificationsOpen, currentPage, setOverlaySource]);
+  useTransientHistoryState(
+    activeOverlayType !== null,
+    'app-overlay',
+    activeOverlayType ?? 'overlay',
+    activeOverlayType ? { overlay: activeOverlayType, page: currentPage } : undefined,
+  );
 
   // Register overlay close handlers (Settings/Notifications close on back)
   // Register overlay close handlers (Settings/Notifications close on back)
@@ -370,20 +380,29 @@ export function AppContent() {
     }
   }, [currentPage, previousPage, createSourcePage, pageBeforeSettings]);
 
-  // Create a stable navigation callback for BackNavigationContext
-  const navigationCallback = useCallback((page: string) => {
-    updateCurrentPage(page, "replace");
-    scrollToTop();
-  }, [updateCurrentPage]);
-
-  // Register navigation callback with BackNavigationContext for child page back navigation
-  // Register navigation callback with BackNavigationContext for child page back navigation
   useEffect(() => {
-    setBackNavCallback(navigationCallback);
-    return () => {
-      setBackNavCallback(null);
+    const handlePopState = (event: PopStateEvent) => {
+      const nextPage = normalizeShellPage(getPageFromURL());
+      if (nextPage !== currentPage) {
+        setCurrentPageState(nextPage);
+      }
+
+      const state = (event.state as Record<string, unknown> | null) ?? {};
+      const overlay = typeof state.overlay === "string" ? state.overlay : null;
+
+      setIsSettingsOpen(overlay === "settings");
+      setIsNotificationsOpen(overlay === "notifications");
+
+      if (overlay !== "settings") {
+        setSettingsInitialPage(null);
+      }
     };
-  }, [setBackNavCallback, navigationCallback]);
+
+    window.addEventListener("popstate", handlePopState);
+    return () => {
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [currentPage]);
 
   const openPostFlow = useCallback((view: PostFlowView = 'overview') => {
     setPostFlowInitialView(view);
@@ -404,25 +423,6 @@ export function AppContent() {
     // Child pages that should return to parent on back
     // Dashboard View All pages → return to dashboard
     // Activity pages → return to their parent studio/feeds
-    const childPageMap: Record<string, string> = {
-      // Dashboard View All child pages
-      'logs': 'dashboard',
-      'activity': 'dashboard',
-      'api-usage': 'dashboard',
-      'comment-automation': 'dashboard',
-      'upload-manager': 'dashboard',
-      'video-details': 'dashboard',
-      'video-activity': 'dashboard',
-      // Feeds Activity pages
-      'rss-activity': 'feeds',
-      'tmdb-activity': 'feeds',
-      // Create child pages
-      'pad-workspace': 'create',
-      // Studio Activity pages
-      'design-studio-activity': 'design-studio',
-      'video-studio-activity': 'video-studio',
-    };
-
     // Redirect old RSS and TMDb routes to unified Feeds page
     if (page === 'rss' || page === 'tmdb') {
       page = 'feeds';
@@ -438,10 +438,6 @@ export function AppContent() {
       setSettingsInitialPage(null);
       setIsSettingsOpen(true);
       setIsNotificationsOpen(false);
-      // Push history state for settings
-      if (!skipHistory) {
-        window.history.pushState({ page: currentPage, modal: 'settings' }, '', `/${currentPage}`);
-      }
     } else if (settingsPages.includes(page)) {
       // Extract the settings page name (e.g., 'settings-comment-reply' -> 'comment')
       const settingsPage = page.replace('settings-', '').replace('-reply', '');
@@ -460,24 +456,12 @@ export function AppContent() {
         setPreviousPage(currentPage);
       }
 
-      const resolvedParentPage =
-        page === 'create' && !['create', 'pad-workspace'].includes(currentPage)
-          ? currentPage
-          : childPageMap[page];
-
       if (page === 'create' && !['create', 'pad-workspace'].includes(currentPage)) {
         setCreateSourcePage(fromPage || currentPage);
       }
 
-      // If this is a child page, register it with BackNavigationContext
-      if (resolvedParentPage) {
-        const parentPage = resolvedParentPage;
-        pushChildPage(page, parentPage);
-      }
-
-      recordRootNavigation(getRootPage(currentPage), getRootPage(page) || page, skipHistory ? 'replace' : 'push');
-
-      updateCurrentPage(page, skipHistory ? "replace" : "push");
+      const historyMode = skipHistory || activeOverlayType !== null || isRootDestination(page) ? "replace" : "push";
+      updateCurrentPage(page, historyMode);
 
       // If navigating to a static page, close settings after setting the page
       // NO LONGER NEEDED: Static pages are now handled within SettingsPanel
@@ -748,9 +732,9 @@ export function AppContent() {
             {displayPage === "about" && <Suspense fallback={<PageLoader />}><AboutPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "data-deletion" && <Suspense fallback={<PageLoader />}><DataDeletionPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "app-info" && <Suspense fallback={<PageLoader />}><AppInfoPage onNavigate={handleNavigate} /></Suspense>}
-            {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
-            {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => handleNavigate(previousPage || "dashboard")} previousPage={previousPage} /></Suspense>}
-            {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => handleNavigate(previousPage || "dashboard")} /></Suspense>}
+            {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => navigateBackWithFallback(() => handleNavigate(previousPage || "dashboard"))} previousPage={previousPage} /></Suspense>}
+            {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => navigateBackWithFallback(() => handleNavigate(previousPage || "dashboard"))} previousPage={previousPage} /></Suspense>}
+            {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => navigateBackWithFallback(() => handleNavigate(previousPage || "dashboard"))} /></Suspense>}
             {displayPage === "platforms/callback" && <Suspense fallback={<PageLoader />}><OAuthCallbackPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "not-found" && <NotFoundPage onNavigate={handleNavigate} />}
           </div>

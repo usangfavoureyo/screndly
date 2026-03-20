@@ -12,6 +12,7 @@ import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import {
   getLogoFrameMetrics,
+  getTrailerLabelMetrics,
   renderThumbnailDataUrl,
   shouldUseThumbnailLogoShadow,
   type ThumbnailConfig,
@@ -82,6 +83,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     logoDisplayMode: 'boxed',
     autoScale: true,
     maxLogoSize: 40,
+    trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false
@@ -93,6 +95,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     logoDisplayMode: 'boxed',
     autoScale: true,
     maxLogoSize: 40,
+    trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false
@@ -247,13 +250,15 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       top: `${(boxY / THUMBNAIL_HEIGHT) * 100}%`,
       width: `${(boxWidth / THUMBNAIL_WIDTH) * 100}%`,
       height: `${(boxHeight / THUMBNAIL_HEIGHT) * 100}%`,
-      trailerOffset: `${Math.max(12, (boxHeight / THUMBNAIL_HEIGHT) * 100 * 0.5)}%`,
     };
   };
 
   const previewLogoBox = getPreviewLogoBoxMetrics(currentConfig);
   const previewLogoPadding = `${Math.max(10, currentConfig.maxLogoSize * 0.16)}% ${Math.max(8, currentConfig.maxLogoSize * 0.14)}%`;
   const shouldShowPreviewBox = currentConfig.logoDisplayMode === 'boxed';
+  const previewTrailerLabel = currentConfig.showTrailerTypeText ? 'OFFICIAL TRAILER' : null;
+  const previewTrailerMetrics = getTrailerLabelMetrics(currentConfig);
+  const previewTextSizePx = Math.max(10, Math.round((previewTrailerMetrics.fontSize / THUMBNAIL_WIDTH) * 360));
 
   useEffect(() => {
     let isCancelled = false;
@@ -470,6 +475,33 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           />
         </div>
 
+        {currentConfig.showTrailerTypeText && (
+          <div className="space-y-4 pt-2">
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                  Target Text Size
+                </Label>
+                <span className="text-sm text-gray-900 dark:text-white">
+                  {currentConfig.trailerTextSize}px
+                </span>
+              </div>
+              <input
+                type="range"
+                min="18"
+                max="56"
+                step="2"
+                value={currentConfig.trailerTextSize ?? 32}
+                onChange={(e) => {
+                  handleUpdate({ trailerTextSize: parseInt(e.target.value, 10) });
+                }}
+                onFocus={() => haptics.light()}
+                className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:border-0"
+              />
+            </div>
+          </div>
+        )}
+
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
 
         {/* Auto-Scale Logo */}
@@ -618,15 +650,20 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                       <div className={`bg-white/[0.02] ${shouldShowPreviewBox ? 'h-full w-full rounded-[inherit] border border-white/10' : 'h-1.5 w-[70%] rounded-full border border-white/10'}`} />
                     )}
                   </div>
-                  {currentConfig.showTrailerTypeText && (
-                    <div
-                      className="absolute left-1/2 -translate-x-1/2 rounded-full bg-black/55 px-3 py-1 text-[11px] font-semibold tracking-[0.28em] text-white shadow-lg whitespace-nowrap"
-                      style={{ top: `calc(100% + ${previewLogoBox.trailerOffset})` }}
-                    >
-                      OFFICIAL TRAILER
-                    </div>
-                  )}
                 </div>
+                {previewTrailerLabel && (
+                  <div
+                    className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap font-semibold tracking-[0.28em] text-white"
+                    style={{
+                      left: `${(previewTrailerMetrics.centerX / THUMBNAIL_WIDTH) * 100}%`,
+                      top: `${(previewTrailerMetrics.top / THUMBNAIL_HEIGHT) * 100}%`,
+                      fontSize: `${previewTextSizePx}px`,
+                      textShadow: '0 3px 12px rgba(0, 0, 0, 0.72)',
+                    }}
+                  >
+                    {previewTrailerLabel}
+                  </div>
+                )}
               </div>
             </div>
             </button>
