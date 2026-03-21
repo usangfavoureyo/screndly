@@ -44,7 +44,7 @@ import { RedSpinner } from '../PageLoader';
  * - Re-renders cascading to feed cards
  */
 export function TMDbModals() {
-    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost, fetchPosts } = useTMDbPosts();
+    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
     const { showUndo } = useUndo();
 
     // Modal states from store
@@ -124,7 +124,6 @@ export function TMDbModals() {
 
         try {
             await updatePost(editCaptionModal.feed.id, { caption: editedCaption });
-            await fetchPosts({ silent: true });
             haptics.success();
             toast.success('Caption updated');
             closeEditCaption();

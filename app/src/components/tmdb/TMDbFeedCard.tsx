@@ -162,7 +162,7 @@ function TMDbFeedCardComponent({
     menuActionTimeoutRef.current = window.setTimeout(() => {
       menuActionTimeoutRef.current = null;
       callback();
-    }, 0);
+    }, 350);
   }, []);
 
   useEffect(() => {
