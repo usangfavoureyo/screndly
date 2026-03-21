@@ -37,6 +37,10 @@ interface BottomSheetProps {
    */
   className?: string;
   /**
+   * Disable transform animations for input-heavy sheets where mobile keyboards cause repaint glitches.
+   */
+  disableAnimations?: boolean;
+  /**
    * Disable backdrop click to close
    */
   disableBackdropClose?: boolean;
@@ -66,6 +70,7 @@ export function BottomSheet({
   showHandle = true,
   disableSwipe = false,
   className,
+  disableAnimations = false,
   disableBackdropClose = false,
   sheetId,
 }: BottomSheetProps) {
@@ -350,6 +355,9 @@ export function BottomSheet({
     if (!open) {
       return 'translate3d(0, 100%, 0)';
     }
+    if (disableAnimations) {
+      return 'none';
+    }
     // Keep sheet in dragged position during active drag OR dismissal animation
     if (isDragging || isDismissing) {
       return `translate3d(0, ${dragY}px, 0)`;
@@ -358,6 +366,9 @@ export function BottomSheet({
   };
 
   const getTransition = () => {
+    if (disableAnimations) {
+      return 'none';
+    }
     if (isDragging) {
       return 'none';
     }
@@ -406,7 +417,8 @@ export function BottomSheet({
         <div
           ref={contentRef}
           className={cn(
-            "bg-white dark:bg-[#000000] rounded-t-3xl pointer-events-auto will-change-transform",
+            "bg-white dark:bg-[#000000] rounded-t-3xl pointer-events-auto",
+            !disableAnimations && "will-change-transform",
             "border-t border-l border-r border-gray-200 dark:border-[#333333]",
             getHeightClass(),
             className

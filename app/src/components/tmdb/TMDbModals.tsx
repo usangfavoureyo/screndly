@@ -386,7 +386,8 @@ export function TMDbModals() {
                 onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
                 heightMode="half"
                 className="h-[50svh] max-h-[50svh]"
-                disableSwipe={isSavingCaption}
+                disableSwipe
+                disableAnimations
             >
                 <BottomSheetHeader>
                     <BottomSheetTitle>Edit Caption</BottomSheetTitle>
@@ -414,6 +415,7 @@ export function TMDbModals() {
                                 className="w-full min-h-[120px] px-4 py-3 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#292929] dark:focus:ring-[#292929] resize-none"
                                 maxLength={200}
                                 onFocus={() => haptics.light()}
+                                onTouchStart={(e) => e.stopPropagation()}
                                 autoFocus
                                 autoComplete="off"
                                 autoCorrect="off"
