@@ -9,7 +9,6 @@ import { haptics } from '../../utils/haptics';
 import { useUndo } from '../UndoContext';
 import { useTMDbModalStore } from '../../stores/tmdbModalStore';
 import { useTMDbPosts } from '../../contexts/TMDbPostsContext';
-import { useChatInputKeyHandler } from '../../contexts/KeyboardContext';
 import { XIcon } from '../icons/XIcon';
 import { ThreadsIcon } from '../icons/ThreadsIcon';
 import { FacebookIcon } from '../icons/FacebookIcon';
@@ -368,9 +367,6 @@ export function TMDbModals() {
             : platformSelectModal.mode === 'update-platforms'
                 ? 'Save Platforms'
                 : 'Schedule';
-    const handleEditCaptionKeyDown = useChatInputKeyHandler(() => {
-        void handleSaveCaption();
-    });
 
     return (
         <>
@@ -388,7 +384,7 @@ export function TMDbModals() {
             <BottomSheet
                 open={editCaptionModal.open}
                 onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
-                heightMode="auto"
+                heightMode="half"
                 disableSwipe={isSavingCaption}
             >
                 <BottomSheetHeader>
@@ -412,10 +408,9 @@ export function TMDbModals() {
                                 id="caption"
                                 value={editedCaption}
                                 onChange={(e) => setEditedCaption(e.target.value)}
-                                onKeyDown={handleEditCaptionKeyDown}
-                                rows={6}
-                                enterKeyHint="done"
-                                className="w-full min-h-[160px] px-4 py-3 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#292929] dark:focus:ring-[#292929] resize-none"
+                                rows={5}
+                                enterKeyHint="enter"
+                                className="w-full min-h-[120px] px-4 py-3 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#292929] dark:focus:ring-[#292929] resize-none"
                                 maxLength={200}
                                 onFocus={() => haptics.light()}
                                 autoFocus
