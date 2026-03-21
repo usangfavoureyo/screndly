@@ -1,6 +1,5 @@
 import { Video } from 'lucide-react';
 import { haptics } from '../utils/haptics';
-import { navigateBackWithFallback } from '../utils/historyNavigation';
 import { XIcon } from './icons/XIcon';
 import { ThreadsIcon } from './icons/ThreadsIcon';
 import { FacebookIcon } from './icons/FacebookIcon';
@@ -10,6 +9,7 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { SwipeableVideoPostItem } from './SwipeableVideoPostItem';
 import { useState, useEffect } from 'react';
 import { useUndo } from './UndoContext';
+import { BackIconButton } from './BackIconButton';
 
 interface VideoPost {
   id: string;
@@ -181,19 +181,10 @@ export function VideoDetailsPage({ onNavigate, previousPage }: VideoDetailsPageP
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button
-          onClick={() => {
-            haptics.light();
-            navigateBackWithFallback(() => {
-              onNavigate(previousPage || 'dashboard');
-            });
-          }}
+        <BackIconButton
+          onClick={() => onNavigate(previousPage || 'dashboard')}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12H2M9 19l-7-7 7-7"/>
-          </svg>
-        </button>
+        />
         <div>
           <h1 className="text-gray-900 dark:text-white mb-2">Video Activity</h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">Videos posted across all platforms today</p>

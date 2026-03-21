@@ -35,6 +35,7 @@ import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 import { useTMDbModalStore } from '../stores/tmdbModalStore';
+import { BackIconButton } from './BackIconButton';
 
 interface TMDbActivityItem {
   id: string;
@@ -527,17 +528,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       {/* Header */}
       <div>
         <div className="flex items-start gap-4 mb-4">
-          <button
-            onClick={() => {
-              haptics.light();
-              onNavigate(previousPage || 'tmdb');
-            }}
+          <BackIconButton
+            onClick={() => onNavigate(previousPage || 'tmdb')}
             className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7" />
-            </svg>
-          </button>
+          />
           <div className="flex-1">
             <h1 className="text-gray-900 dark:text-white mb-2">TMDb Feeds Activity</h1>
             <p className="text-gray-600 dark:text-[#9CA3AF]">

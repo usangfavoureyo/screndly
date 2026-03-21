@@ -1,4 +1,5 @@
 import { haptics } from '../utils/haptics';
+import { useOptionalBackNavigation } from '../contexts/BackNavigationContext';
 
 interface BackIconButtonProps {
   onClick: () => void;
@@ -11,10 +12,17 @@ export function BackIconButton({
   className = 'text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2',
   ariaLabel = 'Go back',
 }: BackIconButtonProps) {
+  const backNavigation = useOptionalBackNavigation();
+
   return (
     <button
       onClick={() => {
         haptics.light();
+        if (backNavigation) {
+          backNavigation.handleAppBack(onClick);
+          return;
+        }
+
         onClick();
       }}
       className={className}

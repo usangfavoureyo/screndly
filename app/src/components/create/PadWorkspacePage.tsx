@@ -142,11 +142,7 @@ export function PadWorkspacePage({
   useBackEntry({
     enabled: !embedded && hasPendingInput,
     priority: 100,
-    onBack: (source) => {
-      if (source !== 'system') {
-        return false;
-      }
-
+    onBack: () => {
       return unsavedDraftGuard.guardAction(() => {
         onNavigate(previousPage || 'create');
       });

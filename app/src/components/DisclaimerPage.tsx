@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { haptics } from '../utils/haptics';
+import { BackIconButton } from './BackIconButton';
 
 interface DisclaimerPageProps {
   onNavigate?: (page: string) => void;
@@ -22,7 +22,6 @@ export function DisclaimerPage({ onNavigate, isAuthenticated = true }: Disclaime
   }, []);
 
   const handleBack = () => {
-    haptics.light();
     if (!isAuthenticated || !onNavigate) {
       window.location.href = '/';
     } else if (isDesktop) {
@@ -36,14 +35,10 @@ export function DisclaimerPage({ onNavigate, isAuthenticated = true }: Disclaime
     <div className="min-h-screen bg-white dark:bg-[#000000] flex flex-col">
       <div className="flex-1 max-w-4xl mx-auto px-6 py-12 w-full">
         <div className="flex items-start gap-4 mb-8">
-          <button
+          <BackIconButton
             onClick={handleBack}
             className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7" />
-            </svg>
-          </button>
+          />
           <div>
             <h1 className="text-2xl text-gray-900 dark:text-white">Disclaimer</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Last Updated: January 6, 2026</p>

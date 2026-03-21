@@ -21,10 +21,7 @@ export function CreatePage({ onNavigate, previousPage }: CreatePageProps) {
   useBackEntry({
     enabled: hasPendingPadInput,
     priority: 50,
-    onBack: (source) => {
-      if (source !== 'system') {
-        return false;
-      }
+    onBack: () => {
       return padGuard.guardAction(() => {
         navigateBackWithFallback(() => {
           onNavigate(previousPage || 'dashboard');

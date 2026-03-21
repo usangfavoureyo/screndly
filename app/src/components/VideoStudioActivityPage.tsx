@@ -22,6 +22,7 @@ import { apiClient } from '../lib/api/client';
 import { generateVideoStudioCaption, type VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
+import { BackIconButton } from './BackIconButton';
 
 interface VideoStudioActivityPageProps {
   onNavigate: (page: string) => void;
@@ -294,17 +295,10 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={() => {
-            haptics.light();
-            onNavigate(previousPage || 'video-studio');
-          }}
+        <BackIconButton
+          onClick={() => onNavigate(previousPage || 'video-studio')}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12H2M9 19l-7-7 7-7" />
-          </svg>
-        </button>
+        />
         <div>
           <h1 className="text-gray-900 dark:text-white mb-2">Video Studio Activity</h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">Track video generation, downloads, and publishing status</p>

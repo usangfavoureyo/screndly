@@ -243,11 +243,7 @@ export function ComposeEditorPage({
   useBackEntry({
     enabled: hasUnsavedChanges,
     priority: 100,
-    onBack: (source) => {
-      if (source !== 'system') {
-        return false;
-      }
-
+    onBack: () => {
       return unsavedChangesGuard.guardAction(() => {
         onNavigate(previousPage || 'create');
       });

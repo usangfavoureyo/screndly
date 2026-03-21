@@ -22,7 +22,7 @@ interface BackEntry {
   handler: (source: BackPressSource) => boolean;
 }
 
-interface BackNavigationContextType {
+export interface BackNavigationContextType {
   activeBottomSheets: string[];
   activeModals: string[];
   childPageStack: ChildPage[];
@@ -46,6 +46,7 @@ interface BackNavigationContextType {
   setCurrentPage: (page: string) => void;
   recordRootNavigation: (previousRootPage: string | null, nextRootPage: string, mode?: 'push' | 'replace') => void;
   handleBackPress: (source?: BackPressSource) => boolean;
+  handleAppBack: (fallback?: () => void) => boolean;
   canGoBack: () => boolean;
 }
 
@@ -276,6 +277,24 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     return false;
   }, [activeBottomSheets.length, activeModals.length, closeTopBottomSheet, closeTopModal, dismissFocusedInputOnSystemBack, runBackEntries]);
 
+  const handleAppBack = useCallback((fallback?: () => void) => {
+    if (handleBackPress('system')) {
+      return true;
+    }
+
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      window.history.back();
+      return true;
+    }
+
+    if (fallback) {
+      fallback();
+      return true;
+    }
+
+    return false;
+  }, [handleBackPress]);
+
   useEffect(() => {
     handleBackPressRef.current = handleBackPress;
   }, [handleBackPress]);
@@ -340,6 +359,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     setCurrentPage,
     recordRootNavigation,
     handleBackPress,
+    handleAppBack,
     canGoBack,
   }), [
     activeBottomSheets,
@@ -365,6 +385,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     setCurrentPage,
     recordRootNavigation,
     handleBackPress,
+    handleAppBack,
     canGoBack,
   ]);
 
