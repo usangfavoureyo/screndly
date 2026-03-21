@@ -222,11 +222,15 @@ export class ApiClient {
     endpoint: string,
     file: File,
     onProgress?: (progress: number) => void,
-    additionalData?: Record<string, any>
+    additionalData?: Record<string, any>,
+    options?: {
+      timeout?: number;
+    },
   ): Promise<ApiResponse<T>> {
     return new Promise((resolve) => {
       const formData = new FormData();
       formData.append('mediaFile', file);
+      const uploadTimeout = options?.timeout ?? this.timeout;
 
       if (additionalData) {
         Object.entries(additionalData).forEach(([key, value]) => {
@@ -235,7 +239,7 @@ export class ApiClient {
       }
 
       const xhr = new XMLHttpRequest();
-      xhr.timeout = this.timeout;
+      xhr.timeout = uploadTimeout;
 
       xhr.upload.addEventListener('progress', (e) => {
         if (e.lengthComputable && onProgress) {

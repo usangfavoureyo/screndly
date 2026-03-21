@@ -282,9 +282,7 @@ const HARD_REJECT_KEYWORDS = [
   'temu',
 ];
 const FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [];
-const FEED_FALLBACK_BLOCKED_URL_KEYWORDS = [
-  'exclusive',
-];
+const FEED_FALLBACK_BLOCKED_URL_KEYWORDS: string[] = [];
 const COMIC_ART_KEYWORDS = [
   'comic art',
   'comic book',
@@ -552,13 +550,52 @@ const HEADLINE_PROJECT_GENERIC_TERMS = new Set([
 
 type RSSImageSource = 'tmdb' | 'serper';
 
+type RevealDrivenArticleMode =
+  | 'poster'
+  | 'single_image'
+  | 'multi_image';
+
+function getRevealDrivenArticleMode(article: RSSImageSelectionArticle): RevealDrivenArticleMode | null {
+  const articleText = [article.title, article.description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (!articleText) {
+    return null;
+  }
+
+  if (
+    /\b(poster(?:\s+reveals?|\s+revealed|\s+reveal|\s+review|\s+drop|\s+debut|\s+debuts|\s+debuted)?|official poster|character poster|teaser poster|poster art|key art)\b/i
+      .test(articleText)
+  ) {
+    return 'poster';
+  }
+
+  if (
+    /\b(behind the scenes|behind-the-scenes|exclusive images|new images|gallery|photo gallery|photos)\b/i
+      .test(articleText)
+  ) {
+    return 'multi_image';
+  }
+
+  if (
+    /\b(exclusive image|new image|new still|first look|reveals?|revealed|unveils?|unveiled|debuts?|debuted|check out .*poster|check out .*image)\b/i
+      .test(articleText)
+  ) {
+    return 'single_image';
+  }
+
+  return null;
+}
+
 function isRevealDrivenArticle(article: RSSImageSelectionArticle): boolean {
-  return /\b(reveals?|revealed|unveils?|unveiled|debuts?|debuted|first look|exclusive image|new poster|official poster|character poster|teaser poster|new still|new image|new images|gallery|photos?|check out .*poster|check out .*image)\b/i
-    .test([article.title, article.description].filter(Boolean).join(' '));
+  return getRevealDrivenArticleMode(article) !== null;
 }
 
 function getRevealDrivenFallbackLimit(article: RSSImageSelectionArticle, limit: number): number {
-  if (/\b(poster|first look|exclusive image|new still|new image|new poster|official poster)\b/i.test([article.title, article.description].filter(Boolean).join(' '))) {
+  const mode = getRevealDrivenArticleMode(article);
+  if (mode === 'poster' || mode === 'single_image') {
     return 1;
   }
 
@@ -713,8 +750,8 @@ function filterAllowedFeedFallbackUrls(urls: string[]): string[] {
   return urls.filter((url) => !isBlockedFeedFallbackUrl(url));
 }
 
-function shouldUseFeedFallbackImages(article: RSSImageSelectionArticle): boolean {
-  return !/\[exclusive\]|\bexclusive\b/i.test(article.title || '');
+function shouldUseFeedFallbackImages(_article: RSSImageSelectionArticle): boolean {
+  return true;
 }
 
 function getSerperImageText(image: SerperImageResult): string {
@@ -2911,10 +2948,14 @@ function scoreImage(
   };
 }
 
-function buildFeedFallbackImages(fallbackImages: string[], limit: number): RSSResolvedImage[] {
+function buildFeedFallbackImages(
+  fallbackImages: string[],
+  limit: number,
+  reason: string = 'Article body image'
+): RSSResolvedImage[] {
   return fallbackImages.slice(0, Math.max(limit, 1)).map((url) => ({
     url,
-    reason: 'Feed fallback image',
+    reason,
     source: 'feed',
   }));
 }
@@ -2937,11 +2978,19 @@ export async function resolveRelevantRSSImages(
     : [];
   const limit = Math.max(options.limit, 1);
   const sources = getEnabledImageSources(options);
+  const revealDrivenMode = getRevealDrivenArticleMode(article);
 
-  if (isRevealDrivenArticle(article) && fallbackImages.length > 0) {
+  if (revealDrivenMode && fallbackImages.length > 0) {
+    const fallbackReason = revealDrivenMode === 'poster'
+      ? 'Article poster image'
+      : revealDrivenMode === 'multi_image'
+        ? 'Article gallery image'
+        : 'Article reveal image';
+
     return buildFeedFallbackImages(
       fallbackImages,
-      getRevealDrivenFallbackLimit(article, limit)
+      getRevealDrivenFallbackLimit(article, limit),
+      fallbackReason
     );
   }
 

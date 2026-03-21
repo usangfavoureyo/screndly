@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { Film, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -135,6 +135,24 @@ function readFileAsDataUrl(file: File) {
     reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
     reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
     reader.readAsDataURL(file);
+  });
+}
+
+async function rebuildFileForRetry(asset: ComposeMediaAsset): Promise<File> {
+  const previewUrl = asset.previewUrl;
+  if (!previewUrl) {
+    throw new Error('Retry is unavailable for this media item. Re-upload the file from your device.');
+  }
+
+  const response = await fetch(previewUrl);
+  if (!response.ok) {
+    throw new Error('Retry is unavailable for this media item. Re-upload the file from your device.');
+  }
+
+  const blob = await response.blob();
+  return new File([blob], asset.fileName, {
+    type: asset.mimeType || blob.type || 'application/octet-stream',
+    lastModified: Date.now(),
   });
 }
 
@@ -455,6 +473,36 @@ export function ComposeEditorPage({
     }));
   };
 
+  const retryAssetUpload = async (asset: ComposeMediaAsset) => {
+    updateAsset(asset.id, (currentAsset) => ({
+      ...currentAsset,
+      uploadStatus: 'uploading',
+      uploadError: undefined,
+    }));
+
+    try {
+      const file = await rebuildFileForRetry(asset);
+      const uploaded = await uploadComposeAsset(file);
+      updateAsset(asset.id, (currentAsset) => ({
+        ...currentAsset,
+        previewUrl: uploaded.previewUrl || currentAsset.previewUrl,
+        storageUrl: uploaded.url,
+        storageFileId: uploaded.fileId,
+        uploadStatus: 'uploaded',
+        uploadError: undefined,
+      }));
+      toast.success(`Retried ${asset.fileName}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Upload failed';
+      updateAsset(asset.id, (currentAsset) => ({
+        ...currentAsset,
+        uploadStatus: 'failed',
+        uploadError: message,
+      }));
+      toast.error(message);
+    }
+  };
+
   const handlePreviewAsset = (asset: ComposeMediaAsset) => {
     const previewUrl = getComposeAssetPreviewUrl(asset);
     if (!previewUrl) {
@@ -462,6 +510,7 @@ export function ComposeEditorPage({
     }
 
     haptics.light();
+    setPreviewThumbnail(null);
     setPreviewAsset(asset);
   };
 
@@ -751,14 +800,26 @@ export function ComposeEditorPage({
                                 )}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeAsset(asset.id)}
-                          className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
-                          aria-label={`Remove ${asset.fileName}`}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {asset.uploadStatus === 'failed' ? (
+                            <button
+                              type="button"
+                              onClick={() => void retryAssetUpload(asset)}
+                              className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                              aria-label={`Retry upload for ${asset.fileName}`}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => removeAsset(asset.id)}
+                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                            aria-label={`Remove ${asset.fileName}`}
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                       {getComposeAssetPreviewUrl(asset) ? (
                         <button

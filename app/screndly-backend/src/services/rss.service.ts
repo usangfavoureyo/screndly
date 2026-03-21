@@ -908,14 +908,41 @@ function collectLocalImageContext(image: RSSDomElement): string {
   const fragments = [
     image.getAttribute('alt'),
     image.getAttribute('title'),
+    image.getAttribute('class'),
     image.closest('figure')?.querySelector('figcaption')?.textContent,
+    image.closest('figure')?.getAttribute('class'),
     image.parentElement?.textContent,
+    image.parentElement?.getAttribute('class'),
     image.previousElementSibling?.textContent,
     image.nextElementSibling?.textContent,
     image.closest('article')?.querySelector('h2, h3')?.textContent,
   ];
 
   return stripHtml(fragments.filter(Boolean).join(' '));
+}
+
+function isComicBookBrandedExclusiveHero(
+  articleText: string,
+  localContext: string,
+  sourceUrl: string,
+  width: number,
+  height: number
+): boolean {
+  if (!/comicbook\.com/i.test(sourceUrl)) {
+    return false;
+  }
+
+  const combinedText = `${articleText} ${localContext} ${sourceUrl}`;
+  const isExclusiveStory = /\bexclusive images?\b/i.test(articleText);
+  const brandedHeroHints = /\b(comicbook|logo|watermark|header|hero|featured|feature|cover|masthead|banner)\b/i.test(combinedText);
+  const featuredStructureHints =
+    /\b(entry-header--hero|wp-block-post-featured-image|post-featured-image|featured-image|featured-media|article-hero|hero-image)\b/i.test(localContext) ||
+    /\/wp-content\/themes\/comicbook-2024\/assets\/images\/comicbook-logo/i.test(sourceUrl) ||
+    /\/wp-content\/uploads\/sites\/4\/\d{4}\/\d{2}\/ComicBook-logo[_-]/i.test(sourceUrl);
+  const gallerySignals = /\b(gallery|photo|photos|still|stills|scene|set photo|cast photo|behind-the-scenes|bts|figcaption)\b/i.test(localContext);
+  const isWideHero = width >= 600 && width > height;
+
+  return isExclusiveStory && brandedHeroHints && featuredStructureHints && isWideHero && !gallerySignals;
 }
 
 function scoreArticleBodyImageCandidate(
@@ -967,6 +994,10 @@ function scoreArticleBodyImageCandidate(
 
   if (/\b(related|recommended|newsletter|subscribe)\b/i.test(localContext)) {
     score -= 30;
+  }
+
+  if (isComicBookBrandedExclusiveHero(articleText, localContext, sourceUrl, width, height)) {
+    score -= 80;
   }
 
   return score;

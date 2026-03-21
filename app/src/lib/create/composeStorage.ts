@@ -10,12 +10,20 @@ interface UploadComposeAssetResponse {
   size: number;
 }
 
+const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {
   if (!apiClient.isBackendAvailable()) {
     throw new Error('Backend is not available for post uploads.');
   }
 
-  const response = await apiClient.uploadFile<UploadComposeAssetResponse>('/api/create/upload-asset', file);
+  const response = await apiClient.uploadFile<UploadComposeAssetResponse>(
+    '/api/create/upload-asset',
+    file,
+    undefined,
+    undefined,
+    { timeout: COMPOSE_UPLOAD_TIMEOUT_MS },
+  );
   if (!response.success || !response.data?.url) {
     throw new Error(response.error?.message || 'Failed to upload post asset to Backblaze.');
   }
