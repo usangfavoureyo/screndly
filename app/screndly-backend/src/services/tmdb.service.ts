@@ -101,12 +101,32 @@ function getCandidatePoolSize(targetCount: number): number {
     return Math.max(TMDB_DISCOVER_MIN_POOL_SIZE, targetCount * TMDB_DISCOVER_POOL_MULTIPLIER);
 }
 
-function filterPopularResults(results: TMDbMovie[], config: RefreshSettings): TMDbMovie[] {
+function filterPopularResults(results: TMDbMovie[], _config: RefreshSettings): TMDbMovie[] {
+    return results;
+}
+
+function getPopularityThreshold(
+    config: RefreshSettings,
+    source: string,
+    mediaType: MediaType
+): number | null {
     if (!config.onlyPopular) {
-        return results;
+        return null;
     }
 
-    return results.filter((item) => item.popularity >= 50);
+    if (source.includes('anniversary')) {
+        return null;
+    }
+
+    if (source === 'tmdb_today') {
+        return 1;
+    }
+
+    if (mediaType === 'tv') {
+        return 1;
+    }
+
+    return 5;
 }
 
 function appendUniqueCandidates(target: TMDbMovie[], candidates: TMDbMovie[], limit?: number) {
@@ -1022,11 +1042,10 @@ async function validateCandidate(
     // 2. HARD FILTER: Popularity (Deterministic)
     // Threshold: Popularity > 50
     // EXCEPTION: Anniversaries (Classics might not be trending globally right now, so we skip/lower this)
-    const POPULARITY_THRESHOLD = 50;
-    const isAnniversary = source.includes('anniversary');
+    const popularityThreshold = getPopularityThreshold(config, source, type);
 
-    if (!isAnniversary && candidate.popularity < POPULARITY_THRESHOLD) {
-        return { valid: false, reason: `REJECT_POPULARITY (${candidate.popularity.toFixed(1)} < ${POPULARITY_THRESHOLD})` };
+    if (popularityThreshold !== null && candidate.popularity < popularityThreshold) {
+        return { valid: false, reason: `REJECT_POPULARITY (${candidate.popularity.toFixed(1)} < ${popularityThreshold})` };
     }
 
     // 3. DEEP CHECK: Production Country (Source of Truth)
