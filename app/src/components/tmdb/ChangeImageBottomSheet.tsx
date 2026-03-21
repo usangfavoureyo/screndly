@@ -3,6 +3,7 @@ import { Image as ImageIcon, Upload } from 'lucide-react';
 import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
+import { apiClient } from '../../lib/api/client';
 import {
     BottomSheet,
     BottomSheetHeader,
@@ -20,6 +21,7 @@ interface ChangeImageBottomSheetProps {
     title: string;
     mediaType: 'movie' | 'tv' | 'person';
     tmdbId: number;
+    currentImageUrl?: string;
     currentImageType?: 'poster' | 'backdrop' | 'custom';
     onSave: (imageUrl: string, imageType: 'poster' | 'backdrop' | 'custom') => Promise<void> | void;
 }
@@ -30,6 +32,7 @@ export function ChangeImageBottomSheet({
     title,
     mediaType,
     tmdbId,
+    currentImageUrl,
     currentImageType = 'poster',
     onSave
 }: ChangeImageBottomSheetProps) {
@@ -122,21 +125,27 @@ export function ChangeImageBottomSheet({
 
     const handleFetchImage = async (type: 'poster' | 'backdrop') => {
         haptics.selection();
-        setSelectedImageType(type);
         setIsLoadingImage(true);
 
         try {
-            const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? 'https://screndly-production.up.railway.app' : 'http://localhost:3001');
-            const response = await fetch(
-                `${backendUrl}/api/tmdb/images/${mediaType}/${tmdbId}?type=${type}&random=${Date.now()}`
-            );
+            const excludeImageUrl = previewImageUrl || currentImageUrl;
+            const query = new URLSearchParams({
+                type,
+                random: String(Date.now()),
+            });
 
-            if (!response.ok) throw new Error('Failed to fetch image');
+            if (excludeImageUrl) {
+                query.set('exclude', excludeImageUrl);
+            }
 
-            const result = await response.json();
+            const result = await apiClient.get<{
+                imageUrl?: string;
+                imageType?: 'poster' | 'backdrop';
+            }>(`/api/tmdb/images/${mediaType}/${tmdbId}?${query.toString()}`);
 
             if (result.success && result.data?.imageUrl) {
                 setPreviewImageUrl(result.data.imageUrl);
+                setSelectedImageType(result.data.imageType || type);
                 haptics.light();
                 toast.success(`${type} loaded - tap Save to apply`);
             } else {

@@ -415,6 +415,7 @@ export function TMDbModals() {
                     title={changeImageModal.feed.title}
                     mediaType={changeImageModal.feed.mediaType}
                     tmdbId={changeImageModal.feed.tmdbId}
+                    currentImageUrl={changeImageModal.feed.imageUrl}
                     currentImageType={changeImageModal.feed.imageType}
                     onSave={(imageUrl, imageType) => {
                         if (changeImageModal.feed) {

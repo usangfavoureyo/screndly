@@ -280,6 +280,7 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
     try {
         const { mediaType, tmdbId } = req.params;
         const { type } = req.query; // 'poster' or 'backdrop'
+        const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : '';
 
         if (!type || !['poster', 'backdrop'].includes(type as string)) {
             return res.status(400).json({
@@ -321,15 +322,24 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
         const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
 
         let imageUrl = '';
+        const selectImageUrl = (images: TMDbImage[] | undefined) => {
+            if (!images || images.length === 0) {
+                return '';
+            }
 
-        if (type === 'poster' && data.posters && data.posters.length > 0) {
-            // Randomize selection to get a different image each tap
-            const randomIndex = Math.floor(Math.random() * data.posters.length);
-            imageUrl = `${TMDB_IMAGE_BASE}${data.posters[randomIndex].file_path}`;
-        } else if (type === 'backdrop' && data.backdrops && data.backdrops.length > 0) {
-            // Randomize selection to get a different image each tap
-            const randomIndex = Math.floor(Math.random() * data.backdrops.length);
-            imageUrl = `${TMDB_IMAGE_BASE}${data.backdrops[randomIndex].file_path}`;
+            const imageUrls = images.map((image) => `${TMDB_IMAGE_BASE}${image.file_path}`);
+            const filteredImageUrls = exclude
+                ? imageUrls.filter((candidate) => candidate !== exclude)
+                : imageUrls;
+            const candidates = filteredImageUrls.length > 0 ? filteredImageUrls : imageUrls;
+            const randomIndex = Math.floor(Math.random() * candidates.length);
+            return candidates[randomIndex];
+        };
+
+        if (type === 'poster') {
+            imageUrl = selectImageUrl(data.posters);
+        } else if (type === 'backdrop') {
+            imageUrl = selectImageUrl(data.backdrops);
         }
 
         if (!imageUrl) {
