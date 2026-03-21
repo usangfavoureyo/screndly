@@ -8,6 +8,7 @@ import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { ComposeScheduler } from "./create/ComposeScheduler";
+import { ComposeSync } from "./create/ComposeSync";
 import { PostFlowSheet, type PostFlowView } from "./create/PostFlowSheet";
 import { PullToRefresh } from "./PullToRefresh";
 import { CreateFab } from "./CreateFab";
@@ -205,16 +206,12 @@ function getInitialNavigationState(): PersistedAppState {
     };
   }
 
-  if (persistedState) {
-    return persistedState;
-  }
-
   return {
     currentPage: "dashboard",
     previousPage: null,
-    createSourcePage: "dashboard",
-    pageBeforeSettings: "dashboard",
-    updatedAt: Date.now(),
+    createSourcePage: persistedState?.createSourcePage ?? "dashboard",
+    pageBeforeSettings: persistedState?.pageBeforeSettings ?? "dashboard",
+    updatedAt: persistedState?.updatedAt ?? Date.now(),
   };
 }
 
@@ -450,7 +447,9 @@ export function AppContent() {
       setIsShortcutsHelpOpen(true);
     } else {
       // Track where we came from (if provided)
-      if (fromPage) {
+      if (page === 'dashboard') {
+        setPreviousPage(null);
+      } else if (fromPage) {
         setPreviousPage(fromPage);
       } else {
         // Otherwise, set current page as previous
@@ -804,6 +803,7 @@ export function AppContent() {
           <TMDbModals />
         </Suspense>
       )}
+      <ComposeSync />
       <ComposeScheduler />
     </div>
   );

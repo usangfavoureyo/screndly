@@ -2,13 +2,83 @@ import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
+import prisma from '../lib/prisma';
 
 const router = Router();
+const COMPOSE_STATE_KEY = 'composeState.v1';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 128 * 1024 * 1024,
   },
+});
+
+router.get('/state', authenticate, async (_req, res) => {
+  try {
+    const savedState = await prisma.setting.findUnique({
+      where: { key: COMPOSE_STATE_KEY },
+    });
+
+    const rawValue = savedState?.value as { items?: unknown } | null | undefined;
+    const items = Array.isArray(rawValue?.items) ? rawValue.items : [];
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        updatedAt: savedState?.updatedAt?.toISOString() ?? null,
+      },
+    });
+  } catch (error) {
+    console.error('Error loading compose state:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to load compose state' },
+    });
+  }
+});
+
+router.put('/state', authenticate, async (req, res) => {
+  try {
+    const items = Array.isArray(req.body?.items) ? req.body.items : null;
+    if (!items) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Compose state items must be an array' },
+      });
+    }
+
+    const savedState = await prisma.setting.upsert({
+      where: { key: COMPOSE_STATE_KEY },
+      update: {
+        value: {
+          version: 1,
+          items,
+        },
+      },
+      create: {
+        key: COMPOSE_STATE_KEY,
+        value: {
+          version: 1,
+          items,
+        },
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        items,
+        updatedAt: savedState.updatedAt.toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error('Error saving compose state:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to save compose state' },
+    });
+  }
 });
 
 router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (req, res) => {

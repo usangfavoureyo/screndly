@@ -7,6 +7,7 @@ interface ComposeStoreState {
   items: ComposeItem[];
   activeItemId: string | null;
   setActiveItemId: (itemId: string | null) => void;
+  replaceItems: (items: ComposeItem[]) => void;
   saveItem: (item: ComposeItem) => void;
   deleteItem: (itemId: string) => void;
   getItemById: (itemId: string | null) => ComposeItem | undefined;
@@ -19,6 +20,10 @@ export const useComposeStore = create<ComposeStoreState>()(
       items: [],
       activeItemId: null,
       setActiveItemId: (itemId) => set({ activeItemId: itemId }),
+      replaceItems: (items) =>
+        set(() => ({
+          items: items.map(normalizeComposeItem),
+        })),
       saveItem: (item) =>
         set((state) => {
           const normalizedItem = normalizeComposeItem(item);
