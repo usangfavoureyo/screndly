@@ -180,6 +180,7 @@ const TMDB_BACKEND_KEYS = [
   'tvGenres',
   'selectedGenres',
   'minPopularityThreshold',
+  'tmdbRegion',
   'onlyPopular',
   'languageFilter',
   'todayAutoPost',

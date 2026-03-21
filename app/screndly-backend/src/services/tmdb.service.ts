@@ -405,8 +405,7 @@ export async function fetchAnniversaryTV(settings?: RefreshSettings): Promise<TM
             const params: Record<string, string> = {
                 'first_air_date.gte': premiereDate,
                 'first_air_date.lte': premiereDate,
-                'sort_by': 'popularity.desc',
-                'watch_region': 'US'
+                'sort_by': 'popularity.desc'
             };
             applyCommonDiscoverFilters(params, 'tv', config);
 
@@ -647,8 +646,7 @@ export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TM
     const params: Record<string, string> = {
         'primary_release_date.gte': dateStr,
         'primary_release_date.lte': dateStr,
-        'sort_by': 'popularity.desc',
-        'region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
@@ -670,8 +668,7 @@ export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<T
     const params: Record<string, string> = {
         'primary_release_date.gte': tomorrow.toISOString().split('T')[0],
         'primary_release_date.lte': nextWeek.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc',
-        'region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
@@ -693,8 +690,7 @@ export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<
     const params: Record<string, string> = {
         'primary_release_date.gte': nextEightDays.toISOString().split('T')[0],
         'primary_release_date.lte': thirtyDaysLater.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc',
-        'region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'movie', config);
 
@@ -715,8 +711,7 @@ export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TM
     const params: Record<string, string> = {
         'first_air_date.gte': dateStr,
         'first_air_date.lte': dateStr,
-        'sort_by': 'popularity.desc',
-        'watch_region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
@@ -738,8 +733,7 @@ export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<T
     const params: Record<string, string> = {
         'first_air_date.gte': tomorrow.toISOString().split('T')[0],
         'first_air_date.lte': nextWeek.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc',
-        'watch_region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
@@ -761,8 +755,7 @@ export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<
     const params: Record<string, string> = {
         'first_air_date.gte': nextEightDays.toISOString().split('T')[0],
         'first_air_date.lte': thirtyDaysLater.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc',
-        'watch_region': 'US'
+        'sort_by': 'popularity.desc'
     };
     applyCommonDiscoverFilters(params, 'tv', config);
 
@@ -790,6 +783,7 @@ interface RefreshSettings {
     movieGenres?: number[];
     tvGenres?: number[];
     languageFilter?: string;
+    tmdbRegion?: string;
     minPopularityThreshold?: number;
     onlyPopular?: boolean;
     dedupeWindow?: number;
@@ -873,6 +867,7 @@ const defaultRefreshSettings: RefreshSettings = {
     movieGenres: [],
     tvGenres: [],
     languageFilter: 'en',
+    tmdbRegion: 'US',
     minPopularityThreshold: 1,
     onlyPopular: true,
     dedupeWindow: 30,
@@ -923,6 +918,15 @@ function getLanguageFilter(config: RefreshSettings): string | undefined {
     return value;
 }
 
+function getRegionFilter(config: RefreshSettings): string | undefined {
+    const value = config.tmdbRegion?.trim().toUpperCase();
+    if (!value || value === 'ALL') {
+        return undefined;
+    }
+
+    return value;
+}
+
 function getGenreIdsForMedia(config: RefreshSettings, mediaType: MediaType): number[] {
     const explicitGenres = mediaType === 'movie'
         ? (config.movieGenres || [])
@@ -945,6 +949,15 @@ function applyCommonDiscoverFilters(
     mediaType: MediaType,
     config: RefreshSettings
 ) {
+    const region = getRegionFilter(config);
+    if (region) {
+        if (mediaType === 'movie') {
+            params.region = region;
+        } else {
+            params.watch_region = region;
+        }
+    }
+
     const language = getLanguageFilter(config);
     if (language) {
         params['with_original_language'] = language;
@@ -1067,9 +1080,12 @@ async function validateCandidate(
         }
     });
 
-    const isUS = countryCodes.has('US');
-    if (!isUS) {
-        return { valid: false, reason: `REJECT_COUNTRY (Countries: ${Array.from(countryCodes).join(', ') || 'unknown'})` };
+    const requiredRegion = getRegionFilter(config);
+    if (requiredRegion && !countryCodes.has(requiredRegion)) {
+        return {
+            valid: false,
+            reason: `REJECT_COUNTRY (${requiredRegion}; Countries: ${Array.from(countryCodes).join(', ') || 'unknown'})`
+        };
     }
 
     const genreIds = new Set((details.genres || []).map((genre) => genre.id));
@@ -1267,7 +1283,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-        'preferredImage', 'languageFilter', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
+        'preferredImage', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
         'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
         'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL',

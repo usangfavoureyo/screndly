@@ -30,6 +30,18 @@ const TMDB_SHARED_SETTING_KEYS = new Set([
   'timezone',
 ]);
 
+const TMDB_REGION_OPTIONS = [
+  { value: 'US', label: 'United States' },
+  { value: 'GB', label: 'United Kingdom' },
+  { value: 'CA', label: 'Canada' },
+  { value: 'AU', label: 'Australia' },
+  { value: 'NG', label: 'Nigeria' },
+  { value: 'IN', label: 'India' },
+  { value: 'JP', label: 'Japan' },
+  { value: 'KR', label: 'South Korea' },
+  { value: 'ALL', label: 'All Regions' },
+];
+
 const DEFAULT_ANNIVERSARY_YEARS = ['1', '2', '3', '5', '10', '15', '20', '25'];
 
 function normalizeAnniversaryYear(value: unknown): string | null {
@@ -164,6 +176,7 @@ const defaultSettings = {
   tvGenres: [] as number[],
   selectedGenres: [] as number[], // Unified genre selection
   minPopularityThreshold: 1,
+  tmdbRegion: 'US',
   languageFilter: 'en', // English only by default
   // Auto-post settings
   todayAutoPost: false,
@@ -572,6 +585,11 @@ export function TMDbSettings() {
       }
       if (typeof merged.minPopularityThreshold !== 'number') {
         merged.minPopularityThreshold = merged.onlyPopular === false ? 0 : 1;
+      }
+      if (typeof merged.tmdbRegion !== 'string' || !merged.tmdbRegion.trim()) {
+        merged.tmdbRegion = 'US';
+      } else {
+        merged.tmdbRegion = merged.tmdbRegion.toUpperCase();
       }
       const normalizedAnniversaryYears = getNormalizedUniqueAnniversaryYears(merged.anniversaryYears);
       merged.anniversaryYears = normalizedAnniversaryYears.length > 0
@@ -1312,7 +1330,32 @@ export function TMDbSettings() {
         <div>
           <h3 className="text-gray-900 dark:text-white mb-1">Content Filters</h3>
           <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-            Filter content by genre, popularity, and language for all feed types. Documentary, reality, news, talk, WWE-style events, and similar non-narrative titles are always excluded.
+            Filter content by region, genre, popularity, and language for all feed types. Documentary, reality, news, talk, WWE-style events, and similar non-narrative titles are always excluded.
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="tmdb-region" className="text-[#9CA3AF]">Region</Label>
+          <Select
+            value={tmdbSettings.tmdbRegion}
+            onValueChange={(value) => {
+              haptics.light();
+              updateSetting('tmdbRegion', value);
+              const regionLabel = TMDB_REGION_OPTIONS.find((option) => option.value === value)?.label || value;
+              toast.success(`TMDb region set to ${regionLabel}`);
+            }}
+          >
+            <SelectTrigger id="tmdb-region" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TMDB_REGION_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+            TMDb discovery and country validation will only keep titles from this region. Use United States for US movies and TV shows.
           </p>
         </div>
 

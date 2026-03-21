@@ -17,6 +17,7 @@ export {
     getCaptionMaxLength,
     getSelectedGenres,
     getLanguageFilter,
+    getTMDbRegion,
     getMinPopularityThreshold,
     getDedupeWindow,
     getTimezone,
