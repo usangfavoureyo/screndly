@@ -1003,6 +1003,21 @@ interface TMDbDetails {
     vote_count?: number;
     popularity?: number;
     genres?: Array<{ id: number; name: string }>;
+    release_date?: string;
+    first_air_date?: string;
+}
+
+interface TMDbMovieReleaseDatesResponse {
+    results?: Array<{
+        iso_3166_1: string;
+        release_dates?: Array<{
+            certification?: string;
+            iso_639_1?: string;
+            note?: string;
+            release_date: string;
+            type?: number;
+        }>;
+    }>;
 }
 
 /**
@@ -1027,6 +1042,76 @@ async function fetchTVDetails(id: number): Promise<TMDbDetails | null> {
         console.warn(`[TMDb] Failed to fetch details for TV ${id}`);
         return null;
     }
+}
+
+async function fetchMovieReleaseDates(id: number): Promise<TMDbMovieReleaseDatesResponse | null> {
+    try {
+        return await tmdbFetch<TMDbMovieReleaseDatesResponse>(`/movie/${id}/release_dates`);
+    } catch (e) {
+        console.warn(`[TMDb] Failed to fetch release dates for movie ${id}`);
+        return null;
+    }
+}
+
+function getMovieReleaseDateForRegion(
+    payload: TMDbMovieReleaseDatesResponse | null,
+    region: string
+): string | null {
+    if (!payload?.results) {
+        return null;
+    }
+
+    const match = payload.results.find((entry) => entry.iso_3166_1 === region);
+    if (!match?.release_dates?.length) {
+        return null;
+    }
+
+    const datedEntries = match.release_dates
+        .map((entry) => entry.release_date)
+        .filter((value): value is string => Boolean(value))
+        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+    return datedEntries[0] || null;
+}
+
+function startOfDay(value: Date): Date {
+    const result = new Date(value);
+    result.setHours(0, 0, 0, 0);
+    return result;
+}
+
+function addDays(value: Date, days: number): Date {
+    const result = new Date(value);
+    result.setDate(result.getDate() + days);
+    return result;
+}
+
+function getExpectedReleaseWindow(source: string, now: Date): { start: Date; end: Date } | null {
+    const base = startOfDay(now);
+
+    switch (source) {
+        case 'tmdb_today':
+            return { start: base, end: base };
+        case 'tmdb_weekly':
+            return { start: addDays(base, 1), end: addDays(base, 7) };
+        case 'tmdb_monthly':
+            return { start: addDays(base, 8), end: addDays(base, 30) };
+        default:
+            return null;
+    }
+}
+
+function isDateWithinWindow(dateValue: string | undefined, window: { start: Date; end: Date } | null): boolean {
+    if (!dateValue || !window) {
+        return Boolean(dateValue);
+    }
+
+    const candidateDate = startOfDay(new Date(dateValue));
+    if (Number.isNaN(candidateDate.getTime())) {
+        return false;
+    }
+
+    return candidateDate.getTime() >= window.start.getTime() && candidateDate.getTime() <= window.end.getTime();
 }
 
 /**
@@ -1068,6 +1153,46 @@ async function validateCandidate(
         return { valid: false, reason: `REJECT_FETCH_ERROR` };
     }
 
+    const requiredRegion = getRegionFilter(config);
+    const releaseWindow = getExpectedReleaseWindow(source, new Date());
+
+    if (type === 'movie') {
+        let verifiedReleaseDate = details.release_date || candidate.release_date;
+
+        if (requiredRegion) {
+            const releaseDates = await fetchMovieReleaseDates(candidate.id);
+            const regionalReleaseDate = getMovieReleaseDateForRegion(releaseDates, requiredRegion);
+            if (!regionalReleaseDate) {
+                return { valid: false, reason: `REJECT_REGION_RELEASE_DATE (${requiredRegion})` };
+            }
+
+            verifiedReleaseDate = regionalReleaseDate;
+        }
+
+        if (!isDateWithinWindow(verifiedReleaseDate, releaseWindow)) {
+            return {
+                valid: false,
+                reason: `REJECT_RELEASE_WINDOW (${verifiedReleaseDate || 'unknown'})`
+            };
+        }
+
+        if (verifiedReleaseDate) {
+            candidate.release_date = verifiedReleaseDate.slice(0, 10);
+        }
+    } else {
+        const verifiedFirstAirDate = details.first_air_date || candidate.first_air_date;
+        if (!isDateWithinWindow(verifiedFirstAirDate, releaseWindow)) {
+            return {
+                valid: false,
+                reason: `REJECT_RELEASE_WINDOW (${verifiedFirstAirDate || 'unknown'})`
+            };
+        }
+
+        if (verifiedFirstAirDate) {
+            candidate.first_air_date = verifiedFirstAirDate.slice(0, 10);
+        }
+    }
+
     const countryCodes = new Set<string>();
     (details.production_countries || []).forEach(country => {
         if (country.iso_3166_1) {
@@ -1080,7 +1205,6 @@ async function validateCandidate(
         }
     });
 
-    const requiredRegion = getRegionFilter(config);
     if (requiredRegion && !countryCodes.has(requiredRegion)) {
         return {
             valid: false,
