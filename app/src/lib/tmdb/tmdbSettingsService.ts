@@ -61,7 +61,7 @@ export interface TMDbSettings {
     selectedGenres: number[];
     movieGenres: number[];
     tvGenres: number[];
-    onlyPopular: boolean;
+    minPopularityThreshold: number;
     languageFilter: string;
 
     // Cache settings
@@ -130,7 +130,7 @@ const defaultSettings: TMDbSettings = {
     selectedGenres: [],
     movieGenres: [],
     tvGenres: [],
-    onlyPopular: true,
+    minPopularityThreshold: 1,
     languageFilter: 'en',
     dedupeWindow: '30',
     tmdbQueuedRetentionHours: '168',
@@ -302,8 +302,9 @@ export function getLanguageFilter(): string {
 /**
  * Check if only popular content should be shown
  */
-export function isOnlyPopularEnabled(): boolean {
-    return getTMDbSettings().onlyPopular !== false;
+export function getMinPopularityThreshold(): number {
+    const threshold = Number(getTMDbSettings().minPopularityThreshold);
+    return Number.isFinite(threshold) && threshold > 0 ? threshold : 0;
 }
 
 /**
@@ -367,7 +368,7 @@ export function getSettingsForBackend(): Record<string, any> {
         movieGenres: settings.movieGenres,
         tvGenres: settings.tvGenres,
         languageFilter: settings.languageFilter,
-        onlyPopular: settings.onlyPopular,
+        minPopularityThreshold: getMinPopularityThreshold(),
         dedupeWindow: parseInt(settings.dedupeWindow) || 30,
         tmdbQueuedRetentionHours: parseInt(settings.tmdbQueuedRetentionHours) || 168,
         todayPlatforms: settings.todayPlatforms,

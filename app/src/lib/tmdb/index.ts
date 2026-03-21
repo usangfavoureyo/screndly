@@ -17,7 +17,7 @@ export {
     getCaptionMaxLength,
     getSelectedGenres,
     getLanguageFilter,
-    isOnlyPopularEnabled,
+    getMinPopularityThreshold,
     getDedupeWindow,
     getTimezone,
     getAnniversaryYears,

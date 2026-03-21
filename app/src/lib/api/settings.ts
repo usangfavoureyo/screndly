@@ -179,6 +179,7 @@ const TMDB_BACKEND_KEYS = [
   'movieGenres',
   'tvGenres',
   'selectedGenres',
+  'minPopularityThreshold',
   'onlyPopular',
   'languageFilter',
   'todayAutoPost',

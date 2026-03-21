@@ -15,6 +15,8 @@ const TMDB_SCHEDULE_SPACING_HOURS = 4;
 const TMDB_DISCOVER_MAX_PAGES = 3;
 const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
 const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
+const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
+const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
 type SaveTMDbPostAction = 'created' | 'skipped';
 
 interface SaveTMDbPostResult {
@@ -107,26 +109,18 @@ function filterPopularResults(results: TMDbMovie[], _config: RefreshSettings): T
 
 function getPopularityThreshold(
     config: RefreshSettings,
-    source: string,
-    mediaType: MediaType
+    _source: string,
+    _mediaType: MediaType
 ): number | null {
-    if (!config.onlyPopular) {
+    if (typeof config.minPopularityThreshold === 'number' && Number.isFinite(config.minPopularityThreshold)) {
+        return config.minPopularityThreshold > 0 ? config.minPopularityThreshold : null;
+    }
+
+    if (config.onlyPopular === false) {
         return null;
     }
 
-    if (source.includes('anniversary')) {
-        return null;
-    }
-
-    if (source === 'tmdb_today') {
-        return 1;
-    }
-
-    if (mediaType === 'tv') {
-        return 1;
-    }
-
-    return 5;
+    return 1;
 }
 
 function appendUniqueCandidates(target: TMDbMovie[], candidates: TMDbMovie[], limit?: number) {
@@ -796,6 +790,7 @@ interface RefreshSettings {
     movieGenres?: number[];
     tvGenres?: number[];
     languageFilter?: string;
+    minPopularityThreshold?: number;
     onlyPopular?: boolean;
     dedupeWindow?: number;
     tmdbQueuedRetentionHours?: number;
@@ -878,6 +873,7 @@ const defaultRefreshSettings: RefreshSettings = {
     movieGenres: [],
     tvGenres: [],
     languageFilter: 'en',
+    minPopularityThreshold: 1,
     onlyPopular: true,
     dedupeWindow: 30,
     tmdbQueuedRetentionHours: 168,
@@ -993,6 +989,7 @@ interface TMDbDetails {
     original_language?: string;
     vote_count?: number;
     popularity?: number;
+    genres?: Array<{ id: number; name: string }>;
 }
 
 /**
@@ -1073,6 +1070,17 @@ async function validateCandidate(
     const isUS = countryCodes.has('US');
     if (!isUS) {
         return { valid: false, reason: `REJECT_COUNTRY (Countries: ${Array.from(countryCodes).join(', ') || 'unknown'})` };
+    }
+
+    const genreIds = new Set((details.genres || []).map((genre) => genre.id));
+    const blockedGenres = Array.from(genreIds).filter((genreId) => NON_NARRATIVE_GENRE_IDS.has(genreId));
+    if (blockedGenres.length > 0) {
+        return { valid: false, reason: `REJECT_NON_NARRATIVE_GENRE (${blockedGenres.join(', ')})` };
+    }
+
+    const narrativeText = `${title}\n${candidate.overview || ''}`;
+    if (NON_NARRATIVE_TITLE_PATTERN.test(narrativeText)) {
+        return { valid: false, reason: 'REJECT_NON_NARRATIVE_TITLE' };
     }
 
     // 4. AI VETO (Flash 3)
@@ -1259,7 +1267,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-        'preferredImage', 'languageFilter', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
+        'preferredImage', 'languageFilter', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
         'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
         'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL',

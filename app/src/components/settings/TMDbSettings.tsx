@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
+import { Slider } from '../ui/slider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { FacebookIcon } from '../icons/FacebookIcon';
@@ -75,7 +76,6 @@ const MOVIE_GENRES = [
   { id: 16, name: 'Animation' },
   { id: 35, name: 'Comedy' },
   { id: 80, name: 'Crime' },
-  { id: 99, name: 'Documentary' },
   { id: 18, name: 'Drama' },
   { id: 10751, name: 'Family' },
   { id: 14, name: 'Fantasy' },
@@ -96,16 +96,12 @@ const TV_GENRES = [
   { id: 16, name: 'Animation' },
   { id: 35, name: 'Comedy' },
   { id: 80, name: 'Crime' },
-  { id: 99, name: 'Documentary' },
   { id: 18, name: 'Drama' },
   { id: 10751, name: 'Family' },
   { id: 10762, name: 'Kids' },
   { id: 9648, name: 'Mystery' },
-  { id: 10763, name: 'News' },
-  { id: 10764, name: 'Reality' },
   { id: 10765, name: 'Sci-Fi & Fantasy' },
   { id: 10766, name: 'Soap' },
-  { id: 10767, name: 'Talk' },
   { id: 10768, name: 'War & Politics' },
   { id: 37, name: 'Western' },
 ];
@@ -117,7 +113,6 @@ const UNIFIED_GENRES = [
   { id: 16, name: 'Animation', movieId: 16, tvId: 16 },
   { id: 35, name: 'Comedy', movieId: 35, tvId: 35 },
   { id: 80, name: 'Crime', movieId: 80, tvId: 80 },
-  { id: 99, name: 'Documentary', movieId: 99, tvId: 99 },
   { id: 18, name: 'Drama', movieId: 18, tvId: 18 },
   { id: 10751, name: 'Family', movieId: 10751, tvId: 10751 },
   { id: 14, name: 'Fantasy', movieId: 14, tvId: 10765 }, // Fantasy & Sci-Fi & Fantasy
@@ -126,12 +121,9 @@ const UNIFIED_GENRES = [
   { id: 10762, name: 'Kids', movieId: null, tvId: 10762 },
   { id: 10402, name: 'Music', movieId: 10402, tvId: null },
   { id: 9648, name: 'Mystery', movieId: 9648, tvId: 9648 },
-  { id: 10763, name: 'News', movieId: null, tvId: 10763 },
-  { id: 10764, name: 'Reality', movieId: null, tvId: 10764 },
   { id: 10749, name: 'Romance', movieId: 10749, tvId: null },
   { id: 878, name: 'Sci-Fi', movieId: 878, tvId: 10765 }, // Sci-Fi & Sci-Fi & Fantasy
   { id: 10766, name: 'Soap', movieId: null, tvId: 10766 },
-  { id: 10767, name: 'Talk', movieId: null, tvId: 10767 },
   { id: 53, name: 'Thriller', movieId: 53, tvId: null },
   { id: 10770, name: 'TV Movie', movieId: 10770, tvId: null },
   { id: 10752, name: 'War', movieId: 10752, tvId: 10768 }, // War & War & Politics
@@ -171,7 +163,7 @@ const defaultSettings = {
   movieGenres: [] as number[],
   tvGenres: [] as number[],
   selectedGenres: [] as number[], // Unified genre selection
-  onlyPopular: true, // Only show popular titles
+  minPopularityThreshold: 1,
   languageFilter: 'en', // English only by default
   // Auto-post settings
   todayAutoPost: false,
@@ -577,6 +569,9 @@ export function TMDbSettings() {
       if (shouldInjectCultureCravePrompts) {
         merged = { ...merged, ...tmdbPromptDefaults };
         localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
+      }
+      if (typeof merged.minPopularityThreshold !== 'number') {
+        merged.minPopularityThreshold = merged.onlyPopular === false ? 0 : 1;
       }
       const normalizedAnniversaryYears = getNormalizedUniqueAnniversaryYears(merged.anniversaryYears);
       merged.anniversaryYears = normalizedAnniversaryYears.length > 0
@@ -1317,26 +1312,37 @@ export function TMDbSettings() {
         <div>
           <h3 className="text-gray-900 dark:text-white mb-1">Content Filters</h3>
           <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-            Filter content by genre, popularity, and language for all feed types
+            Filter content by genre, popularity, and language for all feed types. Documentary, reality, news, talk, WWE-style events, and similar non-narrative titles are always excluded.
           </p>
         </div>
 
-        {/* Only Popular Titles */}
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-[#9CA3AF]">Only Popular Titles</span>
-            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-              Filter to only show popular movies and TV shows
-            </p>
+        {/* Popularity Threshold */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <span className="text-[#9CA3AF]">Minimum Popularity</span>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                TMDb popularity is not a 0-100 score. `0` disables filtering, and `1.0` is a practical default for release feeds.
+              </p>
+            </div>
+            <span className="text-sm text-gray-600 dark:text-white">
+              {Number(tmdbSettings.minPopularityThreshold || 0).toFixed(1)}
+            </span>
           </div>
-          <Switch
-            checked={tmdbSettings.onlyPopular}
-            onCheckedChange={(checked) => {
+          <Slider
+            value={[Number(tmdbSettings.minPopularityThreshold || 0)]}
+            onValueChange={(value) => {
               haptics.light();
-              updateSetting('onlyPopular', checked);
-              toast.success(checked ? 'Showing only popular titles' : 'Showing all titles');
+              updateSetting('minPopularityThreshold', value[0]);
             }}
+            min={0}
+            max={20}
+            step={0.5}
+            className="mt-2"
           />
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
+            TMDb popularity is not a 0 to 100 rating. New releases often sit between 0 and 15, so this range is more practical.
+          </p>
         </div>
 
         {/* Language Filter */}
