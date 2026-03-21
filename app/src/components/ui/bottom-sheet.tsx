@@ -44,6 +44,10 @@ interface BottomSheetProps {
    * Unique ID for back navigation tracking
    */
   sheetId?: string;
+  /**
+   * Entrance animation style
+   */
+  entranceAnimation?: 'bounce' | 'slide';
 }
 
 // Physics constants
@@ -68,6 +72,7 @@ export function BottomSheet({
   className,
   disableBackdropClose = false,
   sheetId,
+  entranceAnimation = 'bounce',
 }: BottomSheetProps) {
   const [mounted, setMounted] = React.useState(false);
   const sheetRef = React.useRef<HTMLDivElement>(null);
@@ -362,6 +367,9 @@ export function BottomSheet({
     if (!open || isDismissing) {
       // Smooth slide-down on exit/dismissal
       return 'transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)';
+    }
+    if (entranceAnimation === 'slide') {
+      return 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)';
     }
     // Bounce entrance animation
     return 'transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1)';

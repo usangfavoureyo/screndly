@@ -175,6 +175,7 @@ export function PostFlowSheet({
       onBackRequest={handleSheetBackRequest}
       heightMode="full"
       sheetId="post-flow-sheet"
+      entranceAnimation="slide"
     >
       <div className="min-h-full px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] sm:px-6">
         {flowContent}
