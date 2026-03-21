@@ -105,7 +105,7 @@ router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
             customTemperature
         } = req.body;
 
-        if (!title || !mediaType || !temporalTag || typeof daysUntil !== 'number' || !platform) {
+        if (!title || !mediaType || !temporalTag || typeof daysUntil !== 'number') {
             return res.status(400).json({ success: false, error: { message: 'TMDb caption context is incomplete' } });
         }
 

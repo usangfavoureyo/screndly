@@ -854,7 +854,7 @@ export interface CaptionContext {
     anniversaryYears?: number;
     cast: string[];
     genres: string[];
-    platform: 'X' | 'Threads' | 'Facebook' | 'Instagram';
+    platform?: 'X' | 'Threads' | 'Facebook' | 'Instagram';
     tone?: string;
 }
 
@@ -879,6 +879,8 @@ Your goal is to write a single, punchy, engaging caption based STRICTLY on the p
 
     const systemPrompt = withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt);
 
+    const platformLine = context.platform ? `Platform: ${context.platform}` : 'Platform: Unknown';
+
     const prompt = `Generate a caption for this content:
 Title: ${context.title}
 Type: ${context.mediaType}
@@ -889,9 +891,11 @@ Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
 Anniversary Years: ${typeof context.anniversaryYears === 'number' ? context.anniversaryYears : 'N/A'}
 Cast: ${formatPromptList(context.cast)}
 Genres: ${formatPromptList(context.genres)}
-Platform: ${context.platform}
+${platformLine}
 
-If the caption benefits from release context, verify whether it is theatrical or tied to a specific network/streaming platform before mentioning it. If that context is unnecessary or uncertain, leave it out.
+If the caption benefits from release context, verify whether it is theatrical or tied to a specific network/streaming platform before mentioning it.
+If platform/network context is unknown, uncertain, or not provided, do not name any platform, network, streamer, or social app in the caption.
+Use neutral phrasing like "releases this week" or "premieres this month" instead.
 
 Write ONLY the caption text. No preamble.`;
 

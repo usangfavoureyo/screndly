@@ -36,10 +36,10 @@ const DEFAULT_PROMPTS: Record<FeedType, string> = {
   anniversary: tmdbPromptDefaults.anniversaryPrompt,
 };
 
-function resolveCaptionPlatform(platforms?: string[]): 'X' | 'Threads' | 'Facebook' | 'Instagram' {
+function resolveCaptionPlatform(platforms?: string[]): 'X' | 'Threads' | 'Facebook' | 'Instagram' | undefined {
   const supportedPlatforms = ['X', 'Threads', 'Facebook', 'Instagram'] as const;
   const match = supportedPlatforms.find((platform) => platforms?.includes(platform));
-  return match || 'X';
+  return match;
 }
 
 function getTemporalTag(feedType: FeedType) {
@@ -108,6 +108,7 @@ export async function generateTMDbCaption(
   const options = getTMDbCaptionSettings(feedType);
 
   try {
+    const captionPlatform = resolveCaptionPlatform(item.platforms);
     const response = await apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', {
       title: item.title,
       mediaType: item.mediaType,
@@ -119,7 +120,7 @@ export async function generateTMDbCaption(
         (feedType === 'anniversary' && item.year ? new Date().getFullYear() - item.year : undefined),
       cast: options.includeCast ? item.cast || [] : [],
       genres: [],
-      platform: resolveCaptionPlatform(item.platforms),
+      platform: captionPlatform,
       model: options.model,
       customSystemPrompt: buildSystemPrompt(options),
     });

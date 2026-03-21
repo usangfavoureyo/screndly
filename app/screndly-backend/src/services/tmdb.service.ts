@@ -536,7 +536,6 @@ export async function saveTMDbPost(
             anniversaryYears,
             cast: captionCast,
             genres: [], // TODO: Pass genres if available in movie object
-            platform: 'X', // Default to generic short form. TODO: Generate variants for Threads?
             tone: 'mainstream_hype'
         };
 
