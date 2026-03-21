@@ -14,7 +14,7 @@ import { useUndo } from './UndoContext';
 import { PageLoader } from './PageLoader';
 
 interface RSSPageProps {
-  onNavigate?: (page: string) => void;
+  onNavigate?: (page: string, fromPage?: string | null) => void;
 }
 
 export function RSSPage({ onNavigate }: RSSPageProps) {
@@ -394,7 +394,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
                   onClick={() => {
                     haptics.light();
                     if (onNavigate) {
-                      onNavigate('rss-activity');
+                      onNavigate('rss-activity', 'rss');
                     }
                   }}
                   className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"

@@ -151,6 +151,19 @@ function isRootDestination(page: string): boolean {
   return ROOT_DESTINATIONS.has(normalizeShellPage(page));
 }
 
+function getBackSourcePage(currentPage: string, fromPage?: string): string {
+  if (fromPage) {
+    return fromPage;
+  }
+
+  const normalizedCurrentPage = normalizeShellPage(currentPage);
+  if (normalizedCurrentPage !== 'dashboard' && isRootDestination(normalizedCurrentPage)) {
+    return 'dashboard';
+  }
+
+  return currentPage;
+}
+
 interface PersistedAppState {
   currentPage: ValidPage;
   previousPage: string | null;
@@ -446,22 +459,26 @@ export function AppContent() {
       // Open shortcuts help modal
       setIsShortcutsHelpOpen(true);
     } else {
+      const backSourcePage = getBackSourcePage(currentPage, fromPage);
+
       // Track where we came from (if provided)
       if (page === 'dashboard') {
         setPreviousPage(null);
-      } else if (fromPage) {
-        setPreviousPage(fromPage);
       } else {
-        // Otherwise, set current page as previous
-        setPreviousPage(currentPage);
+        setPreviousPage(backSourcePage);
       }
 
       if (page === 'create' && !['create', 'pad-workspace'].includes(currentPage)) {
-        setCreateSourcePage(fromPage || currentPage);
+        setCreateSourcePage(backSourcePage);
       }
 
       const navigatingToRootDestination = isRootDestination(page);
-      const historyMode = skipHistory || activeOverlayType !== null || navigatingToRootDestination ? "replace" : "push";
+      const shouldReplaceRootNavigation =
+        navigatingToRootDestination &&
+        normalizeShellPage(currentPage) !== 'dashboard' &&
+        normalizeShellPage(page) !== 'dashboard';
+      const historyMode =
+        skipHistory || activeOverlayType !== null || shouldReplaceRootNavigation ? "replace" : "push";
       updateCurrentPage(page, historyMode);
 
       // If navigating to a static page, close settings after setting the page

@@ -22,7 +22,7 @@ import {
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 
 interface DesignStudioPageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, fromPage?: string | null) => void;
   previousPage?: string | null;
 }
 
@@ -520,7 +520,7 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
         <Button
           onClick={() => {
             haptics.light();
-            onNavigate('design-studio-activity');
+            onNavigate('design-studio-activity', 'design-studio');
           }}
           variant="outline"
           className="text-gray-900 dark:text-white border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#000000]"

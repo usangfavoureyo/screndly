@@ -12,7 +12,7 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 
 interface TMDbFeedsPageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, fromPage?: string | null) => void;
   previousPage?: string | null;
 }
 
@@ -208,7 +208,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
               size="sm"
               onClick={() => {
                 haptics.light();
-                onNavigate('tmdb-activity');
+                onNavigate('tmdb-activity', 'tmdb');
               }}
               className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
             >

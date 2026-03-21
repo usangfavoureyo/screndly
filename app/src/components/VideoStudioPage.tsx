@@ -41,7 +41,7 @@ import { VideoTitleData, AudioFile, AspectRatio, MusicGenre, DuckingMode, Scene 
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 
 interface VideoStudioPageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, fromPage?: string | null) => void;
   previousPage?: string | null;
   onCaptionEditorChange?: (isOpen: boolean) => void;
 }
@@ -2453,7 +2453,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
                   }}
                   className="w-full flex items-center justify-between p-4 bg-white dark:bg-[#000000] rounded-lg hover:bg-gray-100 dark:hover:bg-[#0A0A0A] transition-colors"
                 >
-                  <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onNavigate('video-studio-activity')}>
+                  <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onNavigate('video-studio-activity', 'video-studio')}>
                     <span className="text-gray-900 dark:text-white">View Training Progress</span>
                   </div>
                   {showTrainingDashboard ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
