@@ -34,16 +34,21 @@ export function PostFlowSheet({
 }: PostFlowSheetProps) {
   const [stack, setStack] = useState<PostFlowView[]>(() => buildInitialStack(initialView));
   const closeRequestHandlerRef = useRef<(() => boolean) | null>(null);
+  const wasOpenRef = useRef(open);
 
   useLayoutEffect(() => {
     closeRequestHandlerRef.current = null;
 
     if (!open) {
       setStack(['overview']);
+      wasOpenRef.current = false;
       return;
     }
 
-    setStack(buildInitialStack(initialView));
+    if (!wasOpenRef.current) {
+      setStack(buildInitialStack(initialView));
+      wasOpenRef.current = true;
+    }
   }, [initialView, open]);
 
   const currentView = stack[stack.length - 1] ?? 'overview';
