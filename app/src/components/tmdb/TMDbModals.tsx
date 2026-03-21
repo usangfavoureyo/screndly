@@ -3,7 +3,6 @@ import { RefreshCw, Clock } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { Textarea } from '../ui/textarea';
 import { DatePicker } from '../ui/date-picker';
 import { TimePicker } from '../ui/time-picker';
 import { haptics } from '../../utils/haptics';
@@ -46,7 +45,7 @@ import { RedSpinner } from '../PageLoader';
  * - Re-renders cascading to feed cards
  */
 export function TMDbModals() {
-    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
+    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost, fetchPosts } = useTMDbPosts();
     const { showUndo } = useUndo();
 
     // Modal states from store
@@ -126,6 +125,7 @@ export function TMDbModals() {
 
         try {
             await updatePost(editCaptionModal.feed.id, { caption: editedCaption });
+            await fetchPosts({ silent: true });
             haptics.success();
             toast.success('Caption updated');
             closeEditCaption();
@@ -388,7 +388,7 @@ export function TMDbModals() {
             <BottomSheet
                 open={editCaptionModal.open}
                 onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
-                heightMode="half"
+                heightMode="full"
                 disableSwipe={isSavingCaption}
             >
                 <BottomSheetHeader>
@@ -408,17 +408,20 @@ export function TMDbModals() {
                                     <RefreshCw className={`w-4 h-4 text-black dark:text-white ${isRegenerating ? 'animate-spin' : ''}`} />
                                 </button>
                             </div>
-                            <Textarea
+                            <textarea
                                 id="caption"
                                 value={editedCaption}
                                 onChange={(e) => setEditedCaption(e.target.value)}
                                 onKeyDown={handleEditCaptionKeyDown}
-                                className="min-h-[100px] bg-white dark:bg-black border-gray-200 dark:border-[#333333]"
+                                rows={6}
+                                enterKeyHint="done"
+                                className="w-full min-h-[160px] px-4 py-3 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#292929] dark:focus:ring-[#292929] resize-none"
                                 maxLength={200}
                                 onFocus={() => haptics.light()}
                                 autoFocus
                                 autoComplete="off"
                                 autoCorrect="off"
+                                autoCapitalize="sentences"
                                 spellCheck={false}
                                 disabled={isSavingCaption || isRegenerating}
                             />
