@@ -385,6 +385,7 @@ export function TMDbModals() {
                 open={editCaptionModal.open}
                 onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
                 heightMode="half"
+                className="h-[50svh] max-h-[50svh]"
                 disableSwipe={isSavingCaption}
             >
                 <BottomSheetHeader>
