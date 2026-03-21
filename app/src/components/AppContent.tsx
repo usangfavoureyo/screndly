@@ -461,7 +461,8 @@ export function AppContent() {
         setCreateSourcePage(fromPage || currentPage);
       }
 
-      const historyMode = skipHistory || activeOverlayType !== null ? "replace" : "push";
+      const navigatingToRootDestination = isRootDestination(page);
+      const historyMode = skipHistory || activeOverlayType !== null || navigatingToRootDestination ? "replace" : "push";
       updateCurrentPage(page, historyMode);
 
       // If navigating to a static page, close settings after setting the page
