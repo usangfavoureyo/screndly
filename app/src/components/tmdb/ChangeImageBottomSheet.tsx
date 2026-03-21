@@ -38,7 +38,9 @@ export function ChangeImageBottomSheet({
 }: ChangeImageBottomSheetProps) {
     const [selectedImageType, setSelectedImageType] = useState<'poster' | 'backdrop' | 'custom'>(currentImageType);
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-    const [isLoadingImage, setIsLoadingImage] = useState(false);
+    const [isFetchingImage, setIsFetchingImage] = useState(false);
+    const [fetchingImageType, setFetchingImageType] = useState<'poster' | 'backdrop' | 'custom' | null>(null);
+    const [isSavingImage, setIsSavingImage] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -47,6 +49,9 @@ export function ChangeImageBottomSheet({
         if (open) {
             setSelectedImageType(currentImageType);
             setPreviewImageUrl(null);
+            setIsFetchingImage(false);
+            setFetchingImageType(null);
+            setIsSavingImage(false);
             setIsPreviewOpen(false);
         }
     }, [open, currentImageType]);
@@ -86,7 +91,8 @@ export function ChangeImageBottomSheet({
             return;
         }
 
-        setIsLoadingImage(true);
+        setIsFetchingImage(true);
+        setFetchingImageType('custom');
         const reader = new FileReader();
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
@@ -113,11 +119,13 @@ export function ChangeImageBottomSheet({
                 haptics.light();
                 toast.success('Image loaded - tap Save to apply');
             }
-            setIsLoadingImage(false);
+            setIsFetchingImage(false);
+            setFetchingImageType(null);
         };
         reader.onerror = () => {
             toast.error('Failed to read image file');
-            setIsLoadingImage(false);
+            setIsFetchingImage(false);
+            setFetchingImageType(null);
         };
         reader.readAsDataURL(file);
         event.target.value = '';
@@ -125,7 +133,8 @@ export function ChangeImageBottomSheet({
 
     const handleFetchImage = async (type: 'poster' | 'backdrop') => {
         haptics.selection();
-        setIsLoadingImage(true);
+        setIsFetchingImage(true);
+        setFetchingImageType(type);
 
         try {
             const excludeImageUrl = previewImageUrl || currentImageUrl;
@@ -155,13 +164,14 @@ export function ChangeImageBottomSheet({
             console.error('Error fetching image:', error);
             toast.error('Failed to fetch image');
         } finally {
-            setIsLoadingImage(false);
+            setIsFetchingImage(false);
+            setFetchingImageType(null);
         }
     };
 
     const handleSaveImage = async () => {
         // Prevent double saves
-        if (isLoadingImage) return;
+        if (isFetchingImage || isSavingImage) return;
 
         if (!previewImageUrl) {
             toast.error('Please select an image first');
@@ -169,7 +179,7 @@ export function ChangeImageBottomSheet({
         }
 
         haptics.medium(); // Feedback immediately on click
-        setIsLoadingImage(true);
+        setIsSavingImage(true);
 
         try {
             // Note: onSave might be void or return a Promise. We handle both.
@@ -194,7 +204,7 @@ export function ChangeImageBottomSheet({
         } finally {
             // Check if open to avoid state update on unmounted component
             if (open) {
-                setIsLoadingImage(false);
+                setIsSavingImage(false);
             }
         }
     };
@@ -225,16 +235,16 @@ export function ChangeImageBottomSheet({
                         {/* Poster Button */}
                         <button
                             onClick={() => handleFetchImage('poster')}
-                            disabled={isLoadingImage}
+                            disabled={isFetchingImage || isSavingImage}
                             className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'poster' && (previewImageUrl || isLoadingImage)
+                                ${selectedImageType === 'poster' && (previewImageUrl || isFetchingImage)
                                     ? 'border-[#ec1e24]'
                                     : 'border-gray-200 dark:border-[#333333]'
                                 } 
                                 active:border-[#ec1e24] 
                                 disabled:opacity-50`}
                         >
-                            {isLoadingImage && selectedImageType === 'poster' ? (
+                            {isFetchingImage && fetchingImageType === 'poster' ? (
                                 <RedSpinner size="md" className="mx-auto mb-2" label="Loading poster image..." />
                             ) : (
                                 <ImageIcon className="w-6 h-6 mx-auto mb-2" />
@@ -245,16 +255,16 @@ export function ChangeImageBottomSheet({
                         {/* Backdrop Button */}
                         <button
                             onClick={() => handleFetchImage('backdrop')}
-                            disabled={isLoadingImage}
+                            disabled={isFetchingImage || isSavingImage}
                             className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'backdrop' && (previewImageUrl || isLoadingImage)
+                                ${selectedImageType === 'backdrop' && (previewImageUrl || isFetchingImage)
                                     ? 'border-[#ec1e24]'
                                     : 'border-gray-200 dark:border-[#333333]'
                                 } 
                                 active:border-[#ec1e24] 
                                 disabled:opacity-50`}
                         >
-                            {isLoadingImage && selectedImageType === 'backdrop' ? (
+                            {isFetchingImage && fetchingImageType === 'backdrop' ? (
                                 <RedSpinner size="md" className="mx-auto mb-2" label="Loading backdrop image..." />
                             ) : (
                                 <ImageIcon className="w-6 h-6 mx-auto mb-2" />
@@ -265,16 +275,20 @@ export function ChangeImageBottomSheet({
                         {/* Upload Button */}
                         <button
                             onClick={handleSelectFile}
-                            disabled={isLoadingImage}
+                            disabled={isFetchingImage || isSavingImage}
                             className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'custom' && (previewImageUrl || isLoadingImage)
+                                ${selectedImageType === 'custom' && (previewImageUrl || isFetchingImage)
                                     ? 'border-[#ec1e24]'
                                     : 'border-gray-200 dark:border-[#333333]'
                                 } 
                                 active:border-[#ec1e24] 
                                 disabled:opacity-50`}
                         >
-                            <Upload className="w-6 h-6 mx-auto mb-2" />
+                            {isFetchingImage && fetchingImageType === 'custom' ? (
+                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading uploaded image preview..." />
+                            ) : (
+                                <Upload className="w-6 h-6 mx-auto mb-2" />
+                            )}
                             <p className="text-sm">Upload</p>
                         </button>
 
@@ -315,9 +329,9 @@ export function ChangeImageBottomSheet({
 
                     <Button
                         onClick={handleSaveImage}
-                        disabled={!previewImageUrl || isLoadingImage}
+                        disabled={!previewImageUrl || isFetchingImage || isSavingImage}
                     >
-                        {isLoadingImage ? (
+                        {isSavingImage ? (
                             <>
                                 <RedSpinner size="sm" className="mr-2" label="Saving selected image..." />
                                 Save
