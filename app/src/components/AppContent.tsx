@@ -734,7 +734,7 @@ export function AppContent() {
             {displayPage === "data-deletion" && <Suspense fallback={<PageLoader />}><DataDeletionPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "app-info" && <Suspense fallback={<PageLoader />}><AppInfoPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => navigateBackWithFallback({ handleAppBack }, () => handleNavigate(previousPage || "dashboard"))} previousPage={previousPage} /></Suspense>}
-            {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => navigateBackWithFallback({ handleAppBack }, () => handleNavigate(previousPage || "dashboard"))} previousPage={previousPage} /></Suspense>}
+            {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => handleNavigate(previousPage || "dashboard", undefined, true)} previousPage={previousPage} /></Suspense>}
             {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => navigateBackWithFallback({ handleAppBack }, () => handleNavigate(previousPage || "dashboard"))} /></Suspense>}
             {displayPage === "platforms/callback" && <Suspense fallback={<PageLoader />}><OAuthCallbackPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "not-found" && <NotFoundPage onNavigate={handleNavigate} />}

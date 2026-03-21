@@ -109,6 +109,12 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     onNavigate('compose-editor', 'create');
   };
 
+  const queueCreateNavigation = () => {
+    window.setTimeout(() => {
+      handleCreate();
+    }, 0);
+  };
+
   const handleEdit = (itemId: string) => {
     setActiveItemId(itemId);
     onNavigate('compose-editor', 'create');
@@ -272,13 +278,14 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       </div>
 
       <Button
+        type="button"
         className="w-full"
         onTouchEnd={(event) => {
           ignoreNextAddPostClickRef.current = true;
           event.preventDefault();
           event.stopPropagation();
           haptics.medium();
-          handleCreate();
+          queueCreateNavigation();
         }}
         onClick={() => {
           if (ignoreNextAddPostClickRef.current) {
@@ -287,7 +294,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
           }
 
           haptics.medium();
-          handleCreate();
+          queueCreateNavigation();
         }}
       >
         Add Post
