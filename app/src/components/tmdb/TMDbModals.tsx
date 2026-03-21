@@ -72,7 +72,6 @@ export function TMDbModals() {
     const [isSaving, setIsSaving] = useState(false); // New saving state for schedule/publish
     const [isSavingCaption, setIsSavingCaption] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
-    const [isEditCaptionFocused, setIsEditCaptionFocused] = useState(false);
     const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
     const [scheduledTime, setScheduledTime] = useState('');
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
@@ -81,7 +80,6 @@ export function TMDbModals() {
     useEffect(() => {
         if (editCaptionModal.open && editCaptionModal.feed) {
             setEditedCaption(editCaptionModal.feed.caption);
-            setIsEditCaptionFocused(false);
         }
     }, [editCaptionModal.open, editCaptionModal.feed]);
 
@@ -390,7 +388,7 @@ export function TMDbModals() {
             <BottomSheet
                 open={editCaptionModal.open}
                 onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
-                heightMode={isEditCaptionFocused ? 'full' : 'half'}
+                heightMode="auto"
                 disableSwipe={isSavingCaption}
             >
                 <BottomSheetHeader>
@@ -419,11 +417,7 @@ export function TMDbModals() {
                                 enterKeyHint="done"
                                 className="w-full min-h-[160px] px-4 py-3 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-[#292929] dark:focus:ring-[#292929] resize-none"
                                 maxLength={200}
-                                onFocus={() => {
-                                    setIsEditCaptionFocused(true);
-                                    haptics.light();
-                                }}
-                                onBlur={() => setIsEditCaptionFocused(false)}
+                                onFocus={() => haptics.light()}
                                 autoFocus
                                 autoComplete="off"
                                 autoCorrect="off"
