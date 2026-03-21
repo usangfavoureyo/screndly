@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { BottomSheet } from '../ui/bottom-sheet';
 import { Sheet, SheetContent } from '../ui/sheet';
 import { ComposeOverview } from './ComposeOverview';
@@ -35,7 +35,7 @@ export function PostFlowSheet({
   const [stack, setStack] = useState<PostFlowView[]>(() => buildInitialStack(initialView));
   const closeRequestHandlerRef = useRef<(() => boolean) | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     closeRequestHandlerRef.current = null;
 
     if (!open) {
