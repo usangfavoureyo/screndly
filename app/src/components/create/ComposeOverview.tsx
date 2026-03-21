@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CalendarDays, CheckCircle2, Film, Image as ImageIcon, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
@@ -79,6 +79,7 @@ function toIsoSchedule(date?: Date, time?: string) {
 export function ComposeOverview({ onNavigate, isCompactLayout = false }: ComposeOverviewProps) {
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
+  const ignoreNextAddPostClickRef = useRef(false);
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -272,7 +273,21 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
       <Button
         className="w-full"
+        onPointerDown={(event) => {
+          if (event.pointerType !== 'touch') {
+            return;
+          }
+
+          ignoreNextAddPostClickRef.current = true;
+          haptics.medium();
+          handleCreate();
+        }}
         onClick={() => {
+          if (ignoreNextAddPostClickRef.current) {
+            ignoreNextAddPostClickRef.current = false;
+            return;
+          }
+
           haptics.medium();
           handleCreate();
         }}
