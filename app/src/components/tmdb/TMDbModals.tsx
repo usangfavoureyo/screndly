@@ -10,6 +10,7 @@ import { haptics } from '../../utils/haptics';
 import { useUndo } from '../UndoContext';
 import { useTMDbModalStore } from '../../stores/tmdbModalStore';
 import { useTMDbPosts } from '../../contexts/TMDbPostsContext';
+import { useChatInputKeyHandler } from '../../contexts/KeyboardContext';
 import { XIcon } from '../icons/XIcon';
 import { ThreadsIcon } from '../icons/ThreadsIcon';
 import { FacebookIcon } from '../icons/FacebookIcon';
@@ -70,6 +71,7 @@ export function TMDbModals() {
     const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
     const [isLoadingImage, setIsLoadingImage] = useState(false);
     const [isSaving, setIsSaving] = useState(false); // New saving state for schedule/publish
+    const [isSavingCaption, setIsSavingCaption] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
     const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
     const [scheduledTime, setScheduledTime] = useState('');
@@ -108,8 +110,8 @@ export function TMDbModals() {
     };
 
     // === EDIT CAPTION HANDLERS ===
-    const handleSaveCaption = () => {
-        haptics.success(); // Haptic on save
+    const handleSaveCaption = async () => {
+        if (isSavingCaption) return;
         if (!editCaptionModal.feed) return;
         if (editedCaption.trim().length === 0) {
             toast.error('Caption cannot be empty');
@@ -120,9 +122,19 @@ export function TMDbModals() {
             return;
         }
 
-        updatePost(editCaptionModal.feed.id, { caption: editedCaption });
-        toast.success('Caption updated');
-        closeEditCaption();
+        setIsSavingCaption(true);
+
+        try {
+            await updatePost(editCaptionModal.feed.id, { caption: editedCaption });
+            haptics.success();
+            toast.success('Caption updated');
+            closeEditCaption();
+        } catch (error) {
+            console.error('Failed to save caption', error);
+            toast.error('Failed to save caption');
+        } finally {
+            setIsSavingCaption(false);
+        }
     };
 
     const handleRegenerateCaption = async () => {
@@ -356,6 +368,9 @@ export function TMDbModals() {
             : platformSelectModal.mode === 'update-platforms'
                 ? 'Save Platforms'
                 : 'Schedule';
+    const handleEditCaptionKeyDown = useChatInputKeyHandler(() => {
+        void handleSaveCaption();
+    });
 
     return (
         <>
@@ -370,7 +385,12 @@ export function TMDbModals() {
             />
 
             {/* Edit Caption Modal */}
-            <BottomSheet open={editCaptionModal.open} onOpenChange={(open) => !open && closeEditCaption()}>
+            <BottomSheet
+                open={editCaptionModal.open}
+                onOpenChange={(open) => !open && !isSavingCaption && closeEditCaption()}
+                heightMode="half"
+                disableSwipe={isSavingCaption}
+            >
                 <BottomSheetHeader>
                     <BottomSheetTitle>Edit Caption</BottomSheetTitle>
                     <BottomSheetDescription>Customize the caption for this post</BottomSheetDescription>
@@ -392,18 +412,32 @@ export function TMDbModals() {
                                 id="caption"
                                 value={editedCaption}
                                 onChange={(e) => setEditedCaption(e.target.value)}
+                                onKeyDown={handleEditCaptionKeyDown}
                                 className="min-h-[100px] bg-white dark:bg-black border-gray-200 dark:border-[#333333]"
                                 maxLength={200}
-                                onTouchStart={() => haptics.light()} // Tap to type haptic
-                                onKeyDown={() => haptics.light()} // Typing haptic
+                                onFocus={() => haptics.light()}
+                                autoFocus
+                                autoComplete="off"
+                                autoCorrect="off"
+                                spellCheck={false}
+                                disabled={isSavingCaption || isRegenerating}
                             />
                             <p className="text-xs text-gray-500 mt-1">{editedCaption.length}/200</p>
                         </div>
                     </div>
                 </BottomSheetBody>
                 <BottomSheetFooter>
-                    <Button variant="outline" onClick={() => { haptics.light(); closeEditCaption(); }}>Cancel</Button>
-                    <Button onClick={handleSaveCaption}>Save</Button>
+                    <Button variant="outline" onClick={() => { haptics.light(); closeEditCaption(); }} disabled={isSavingCaption}>
+                        Cancel
+                    </Button>
+                    <Button onClick={() => void handleSaveCaption()} disabled={isSavingCaption || isRegenerating}>
+                        {isSavingCaption ? (
+                            <>
+                                <RedSpinner size="sm" className="mr-2" label="Saving caption..." />
+                                Save
+                            </>
+                        ) : 'Save'}
+                    </Button>
                 </BottomSheetFooter>
             </BottomSheet>
 
