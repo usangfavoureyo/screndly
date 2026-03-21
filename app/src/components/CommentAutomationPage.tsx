@@ -8,6 +8,7 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { useCommentAutomation } from '../contexts/CommentAutomationContext';
+import { BackIconButton } from './BackIconButton';
 
 interface CommentAutomationPageProps {
   onBack: () => void;
@@ -54,17 +55,7 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
     <div className="min-h-screen bg-white dark:bg-[#000000]">
       <div className="space-y-6">
         <div className="flex items-start gap-4">
-          <button
-            onClick={() => {
-              haptics.light();
-              onBack();
-            }}
-            className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7" />
-            </svg>
-          </button>
+          <BackIconButton onClick={onBack} className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1" ariaLabel="Back to previous page" />
           <div>
             <h1 className="text-gray-900 dark:text-white mb-2">Comment Activity</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">AI-powered comment replies</p>

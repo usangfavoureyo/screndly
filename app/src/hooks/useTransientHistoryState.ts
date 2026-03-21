@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 const TRANSIENT_HISTORY_KEY = '__screndlyTransient';
 const SUPPRESS_POPSTATE_KEY = '__screndlySuppressTransientPopstate';
+const SUPPRESS_POPSTATE_AT_KEY = '__screndlySuppressTransientPopstateAt';
+const SUPPRESS_POPSTATE_MAX_AGE_MS = 1500;
 
 type HistoryStateRecord = Record<string, unknown>;
 
@@ -71,6 +73,7 @@ export function markNextPopStateAsHandled() {
 
   const transientWindow = window as Window & Record<string, number | undefined>;
   transientWindow[SUPPRESS_POPSTATE_KEY] = (transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0) + 1;
+  transientWindow[SUPPRESS_POPSTATE_AT_KEY] = Date.now();
 }
 
 export function consumeHandledPopState() {
@@ -80,11 +83,22 @@ export function consumeHandledPopState() {
 
   const transientWindow = window as Window & Record<string, number | undefined>;
   const pendingCount = transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0;
+  const pendingAt = transientWindow[SUPPRESS_POPSTATE_AT_KEY] ?? 0;
+
+  if (pendingCount > 0 && pendingAt > 0 && Date.now() - pendingAt > SUPPRESS_POPSTATE_MAX_AGE_MS) {
+    transientWindow[SUPPRESS_POPSTATE_KEY] = 0;
+    transientWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
+    return false;
+  }
+
   if (pendingCount <= 0) {
     return false;
   }
 
   transientWindow[SUPPRESS_POPSTATE_KEY] = pendingCount - 1;
+  if (pendingCount - 1 <= 0) {
+    transientWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
+  }
   return true;
 }
 

@@ -273,12 +273,10 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
       <Button
         className="w-full"
-        onPointerDown={(event) => {
-          if (event.pointerType !== 'touch') {
-            return;
-          }
-
+        onTouchEnd={(event) => {
           ignoreNextAddPostClickRef.current = true;
+          event.preventDefault();
+          event.stopPropagation();
           haptics.medium();
           handleCreate();
         }}
@@ -329,6 +327,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                 onClear={selection.clearSelection}
                 onDelete={handleDeleteSelected}
                 itemLabel="content items"
+                mobilePortalClassName="z-[90]"
               />
             )}
 
