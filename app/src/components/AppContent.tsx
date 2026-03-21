@@ -751,7 +751,7 @@ export function AppContent() {
         isPostFlowOpen={isPostFlowOpen}
         isSettingsOpen={isSettingsOpen}
         isNotificationsOpen={isNotificationsOpen}
-        onOpenPostFlow={() => openPostFlow('editor')}
+        onOpenPostFlow={() => openPostFlow('overview')}
       />
       <PostFlowSheet
         open={isPostFlowOpen}
