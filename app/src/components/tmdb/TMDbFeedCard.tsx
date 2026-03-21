@@ -448,7 +448,9 @@ function TMDbFeedCardComponent({
                     variant="outline"
                     size="icon"
                     className="h-9 w-9 bg-transparent border border-gray-200 dark:border-[#333333]"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       haptics.selection();
                       setIsMenuOpen(true);
                     }}
@@ -466,7 +468,9 @@ function TMDbFeedCardComponent({
                 <BottomSheetBody>
                   <div className="flex flex-col gap-2">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         setIsMenuOpen(false);
                         handleEditCaption();
                       }}
@@ -475,7 +479,9 @@ function TMDbFeedCardComponent({
                       Edit Caption
                     </button>
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
                         setIsMenuOpen(false);
                         handleChangeImage();
                       }}
@@ -488,7 +494,9 @@ function TMDbFeedCardComponent({
                   <div className="my-4 -mx-6 border-t border-gray-200 dark:border-[#333333]" />
                   {/* Cancel Button */}
                   <button
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
                       haptics.light();
                       setIsMenuOpen(false);
                     }}

@@ -197,6 +197,8 @@ export function BottomSheet({
 
   // Backdrop click
   const handleBackdropClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (disableBackdropClose) return;
     if (e.target === e.currentTarget) {
       handleClose();
@@ -375,10 +377,19 @@ export function BottomSheet({
           "fixed inset-0 z-[80] bg-black/50 backdrop-blur-sm transition-opacity duration-300 cursor-pointer",
           open && !isDismissing ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
         onClick={handleBackdropClick}
         onTouchEnd={(e) => {
-          if (disableBackdropClose) return;
           e.preventDefault();
+          e.stopPropagation();
+          if (disableBackdropClose) return;
           handleClose();
         }}
         aria-hidden="true"

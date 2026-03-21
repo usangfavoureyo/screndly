@@ -502,10 +502,26 @@ export function TMDbModals() {
                 </BottomSheetHeader>
                 <BottomSheetBody>
                     <div className="flex gap-3">
-                        <Button variant="outline" onClick={() => { haptics.light(); closeDelete(); }} className="flex-1">
+                        <Button
+                            variant="outline"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                haptics.light();
+                                closeDelete();
+                            }}
+                            className="flex-1"
+                        >
                             Cancel
                         </Button>
-                        <Button onClick={handleConfirmDelete} className="flex-1 bg-red-500 hover:bg-red-600">
+                        <Button
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleConfirmDelete();
+                            }}
+                            className="flex-1 bg-red-500 hover:bg-red-600"
+                        >
                             Delete
                         </Button>
                     </div>
