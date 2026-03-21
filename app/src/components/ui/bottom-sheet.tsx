@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "./utils";
 import { haptics } from "../../utils/haptics";
 import { type BackPressSource, useBackNavigation } from "../../contexts/BackNavigationContext";
-import { useTransientHistoryState } from "../../hooks/useTransientHistoryState";
+import { getTransientHistoryPayload, useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 interface BottomSheetProps {
   open: boolean;
@@ -134,6 +134,35 @@ export function BottomSheet({
     unregisterBottomSheet(uniqueId);
     return undefined;
   }, [open, uniqueId, rearmTransientHistoryState, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const handlePopState = (event: PopStateEvent) => {
+      const activeTransientId = getTransientHistoryPayload(
+        (event.state as Record<string, unknown> | null) ?? null,
+      )?.id;
+
+      if (activeTransientId === uniqueId) {
+        return;
+      }
+
+      const handledInternally = onBackRequestRef.current?.() ?? false;
+      if (handledInternally) {
+        rearmTransientHistoryState();
+        return;
+      }
+
+      onOpenChangeRef.current(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [open, rearmTransientHistoryState, uniqueId]);
 
   // Reset dismissing state when sheet closes
   React.useEffect(() => {
@@ -295,9 +324,9 @@ export function BottomSheet({
     };
   }, [isDragging, startY]);
 
-  // NOTE: Android back button and desktop Escape are handled by BackNavigationContext.
-  // The sheet registers itself via registerBottomSheetWithCloseHandler when open,
-  // so do not add local popstate or keydown listeners here.
+  // Android/system back is handled both by BackNavigationContext priority ordering
+  // and this local popstate listener so the sheet can close itself directly when
+  // browser history pops its transient state.
 
   if (!mounted) return null;
 
