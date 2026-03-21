@@ -68,6 +68,7 @@ function TMDbFeedCardComponent({
   const swipeDirectionRef = useRef<'none' | 'horizontal' | 'vertical'>('none');
   const isSwipingRef = useRef(false);
   const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const menuActionTimeoutRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
   const pressOriginRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -150,6 +151,27 @@ function TMDbFeedCardComponent({
     haptics.light();
     openDelete(feed);
   }, [feed, openDelete, selectionMode]);
+
+  const closeMenuThen = useCallback((callback: () => void) => {
+    setIsMenuOpen(false);
+
+    if (menuActionTimeoutRef.current !== null) {
+      window.clearTimeout(menuActionTimeoutRef.current);
+    }
+
+    menuActionTimeoutRef.current = window.setTimeout(() => {
+      menuActionTimeoutRef.current = null;
+      callback();
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (menuActionTimeoutRef.current !== null) {
+        window.clearTimeout(menuActionTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!touchSwipeEnabled) {
@@ -471,8 +493,7 @@ function TMDbFeedCardComponent({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setIsMenuOpen(false);
-                        handleEditCaption();
+                        closeMenuThen(handleEditCaption);
                       }}
                       className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                     >
@@ -482,8 +503,7 @@ function TMDbFeedCardComponent({
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setIsMenuOpen(false);
-                        handleChangeImage();
+                        closeMenuThen(handleChangeImage);
                       }}
                       className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                     >
