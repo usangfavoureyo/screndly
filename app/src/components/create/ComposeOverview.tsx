@@ -80,6 +80,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
   const ignoreNextAddPostClickRef = useRef(false);
+  const addPostNavigationLockRef = useRef(0);
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -109,10 +110,15 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     onNavigate('compose-editor', 'create');
   };
 
-  const queueCreateNavigation = () => {
-    window.setTimeout(() => {
-      handleCreate();
-    }, 0);
+  const triggerCreateNavigation = () => {
+    const now = Date.now();
+    if (now < addPostNavigationLockRef.current) {
+      return;
+    }
+
+    addPostNavigationLockRef.current = now + 400;
+    haptics.medium();
+    handleCreate();
   };
 
   const handleEdit = (itemId: string) => {
@@ -279,13 +285,16 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
       <Button
         type="button"
-        className="w-full"
-        onTouchEnd={(event) => {
+        className="w-full touch-manipulation"
+        onPointerUp={(event) => {
+          if (event.pointerType === 'mouse') {
+            return;
+          }
+
           ignoreNextAddPostClickRef.current = true;
           event.preventDefault();
           event.stopPropagation();
-          haptics.medium();
-          queueCreateNavigation();
+          triggerCreateNavigation();
         }}
         onClick={() => {
           if (ignoreNextAddPostClickRef.current) {
@@ -293,8 +302,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
             return;
           }
 
-          haptics.medium();
-          queueCreateNavigation();
+          triggerCreateNavigation();
         }}
       >
         Add Post

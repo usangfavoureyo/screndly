@@ -13,6 +13,7 @@ export function BackIconButton({
 }: BackIconButtonProps) {
   return (
     <button
+      type="button"
       onClick={() => {
         haptics.light();
         onClick();
