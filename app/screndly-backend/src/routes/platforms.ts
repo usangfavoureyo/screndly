@@ -150,6 +150,23 @@ function getPublishPlatformLabel(platform: SupportedPlatform): string {
     }
 }
 
+function createDisconnectedStatus(): Record<SupportedPlatform, BackendPlatformStatus> {
+    return {
+        X: { connected: false },
+        Facebook: { connected: false },
+        FacebookFeed: { connected: false },
+        FacebookStories: { connected: false },
+        Instagram: { connected: false },
+        InstagramFeed: { connected: false },
+        InstagramReels: { connected: false },
+        InstagramStories: { connected: false },
+        Threads: { connected: false },
+        YouTube: { connected: false },
+        TikTok: { connected: false },
+        Pinterest: { connected: false },
+    };
+}
+
 function getRedirectUri(override?: string): string {
     if (override) {
         return override.replace(/\/+$/, '');
@@ -995,21 +1012,13 @@ router.get('/status', authenticate, async (req, res) => {
                 }
             })
         );
-        const status: Record<SupportedPlatform, BackendPlatformStatus> = {
-            X: { connected: false },
-            Facebook: { connected: false },
-            Instagram: { connected: false },
-            Threads: { connected: false },
-            YouTube: { connected: false },
-            TikTok: { connected: false },
-            Pinterest: { connected: false }
-        };
+        const status: Record<SupportedPlatform, BackendPlatformStatus> = createDisconnectedStatus();
         refreshedConnections.forEach(({ connection: conn, error }) => {
             const platform = normalizePlatform(conn.platform);
             if (!platform) return;
 
             const metadata = getJsonObject(conn.metadata);
-            status[platform] = {
+            const nextStatus: BackendPlatformStatus = {
                 connected: hasUsablePlatformAccessToken(conn),
                 username: conn.username || undefined,
                 lastPost: getJsonString(metadata, 'lastPostAt'),
@@ -1017,6 +1026,19 @@ router.get('/status', authenticate, async (req, res) => {
                 expiresAt: conn.expiresAt?.toISOString(),
                 error,
             };
+
+            status[platform] = nextStatus;
+
+            if (platform === 'Instagram') {
+                status.InstagramFeed = nextStatus;
+                status.InstagramReels = nextStatus;
+                status.InstagramStories = nextStatus;
+            }
+
+            if (platform === 'Facebook') {
+                status.FacebookFeed = nextStatus;
+                status.FacebookStories = nextStatus;
+            }
         });
         res.json({ success: true, data: status });
     } catch (error) {
