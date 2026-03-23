@@ -1205,7 +1205,7 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 const xClientId = getXOAuthClientId();
                 const codeVerifier = createCodeVerifier();
                 const codeChallenge = createCodeChallenge(codeVerifier);
-                const scopes = ['tweet.read', 'tweet.write', 'users.read', 'offline.access'];
+                const scopes = ['tweet.read', 'tweet.write', 'users.read', 'media.write', 'offline.access'];
 
                 oauthUrl = `https://x.com/i/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(xClientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(' '))}&state=${encodeURIComponent(stateFor(codeVerifier))}&code_challenge=${encodeURIComponent(codeChallenge)}&code_challenge_method=S256`;
                 break;
