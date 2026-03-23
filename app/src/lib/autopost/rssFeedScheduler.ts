@@ -69,6 +69,10 @@ export interface RSSItem {
   content?: string;
 }
 
+function stripHtml(value?: string): string {
+  return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 export interface RSSFeedSchedulerConfig {
   enabled: boolean;
   globalPollingInterval: number; // Minutes (default: 5)
@@ -350,22 +354,24 @@ export class RSSFeedScheduler {
    * Apply filters to RSS item
    */
   private applyFilters(item: RSSItem, filters: RSSFeedConfig['filters']): boolean {
-    const searchText = this.getSearchText(item, filters.scope);
+    const scopeTexts = this.getScopeTexts(item, filters.scope);
 
-    // Check required filters (all active filters must match)
     const requiredFilters = filters.required.filter(f => f.active);
     if (requiredFilters.length > 0) {
-      const allMatch = requiredFilters.every(filter =>
-        this.matchesFilter(searchText, filter)
-      );
+      const allMatch = requiredFilters.every((filter) => {
+        if (filters.scope === 'title_and_body') {
+          return scopeTexts.every((scopeText) => this.matchesFilter(scopeText, filter));
+        }
+
+        return scopeTexts.some((scopeText) => this.matchesFilter(scopeText, filter));
+      });
       if (!allMatch) return false;
     }
 
-    // Check blocked filters (no active filters should match)
     const blockedFilters = filters.blocked.filter(f => f.active);
     if (blockedFilters.length > 0) {
-      const anyMatch = blockedFilters.some(filter =>
-        this.matchesFilter(searchText, filter)
+      const anyMatch = blockedFilters.some((filter) =>
+        scopeTexts.some((scopeText) => this.matchesFilter(scopeText, filter))
       );
       if (anyMatch) return false;
     }
@@ -374,20 +380,23 @@ export class RSSFeedScheduler {
   }
 
   /**
-   * Get search text based on filter scope
+   * Get scope texts based on filter scope
    */
-  private getSearchText(item: RSSItem, scope: RSSFeedConfig['filters']['scope']): string {
+  private getScopeTexts(item: RSSItem, scope: RSSFeedConfig['filters']['scope']): string[] {
+    const title = item.title || '';
+    const body = stripHtml(item.content || item.description || '');
+
     switch (scope) {
       case 'title':
-        return item.title;
+        return [title];
       case 'body':
-        return item.content || item.description;
+        return [body];
       case 'title_or_body':
-        return `${item.title} ${item.content || item.description}`;
+        return [`${title}\n${body}`, title, body];
       case 'title_and_body':
-        return `${item.title} ${item.content || item.description}`;
+        return [title, body];
       default:
-        return item.title;
+        return [title];
     }
   }
 

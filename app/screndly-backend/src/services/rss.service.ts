@@ -383,6 +383,12 @@ function stripHtml(value?: string): string {
   return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function buildFilterBodyText(item: RSSItem): string {
+  const rawContentText = stripHtml(item.contentHtml || '');
+  const segments = [item.description || '', rawContentText].filter((segment) => segment.trim().length > 0);
+  return Array.from(new Set(segments)).join('\n').trim();
+}
+
 function extractLeadParagraphText(item: Record<string, any>): string {
   const htmlContent = item['content:encoded'] || item.contentEncoded || item.content;
   if (typeof htmlContent === 'string' && htmlContent.trim()) {
@@ -717,7 +723,7 @@ async function clearQuietHoursPendingFeedItems(feedId: string): Promise<void> {
 
 function getFilterScopeText(item: RSSItem, scope: RSSFeedFilters['scope']): string[] {
   const title = item.title || '';
-  const body = item.description || '';
+  const body = buildFilterBodyText(item);
 
   switch (scope) {
     case 'title':
