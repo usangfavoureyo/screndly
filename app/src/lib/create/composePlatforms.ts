@@ -27,18 +27,28 @@ export function normalizeComposePlatforms(platforms: readonly string[] | null | 
     return [];
   }
 
-  const normalized = platforms
+  const trimmedPlatforms = platforms
+    .map((platform) => platform.trim())
+    .filter((platform) => platform.length > 0);
+
+  const hasExplicitInstagramDestination = trimmedPlatforms.some((platform) => platform.startsWith('instagram_'));
+  const hasExplicitFacebookDestination = trimmedPlatforms.some((platform) => platform.startsWith('facebook_'));
+
+  const normalized = trimmedPlatforms
     .map((platform) => {
-      const trimmed = platform.trim();
-      if (!trimmed) {
+      if (platform === 'instagram' && hasExplicitInstagramDestination) {
         return undefined;
       }
 
-      if (isComposePlatformKey(trimmed)) {
-        return trimmed;
+      if (platform === 'facebook' && hasExplicitFacebookDestination) {
+        return undefined;
       }
 
-      return LEGACY_COMPOSE_PLATFORM_MAP[trimmed];
+      if (isComposePlatformKey(platform)) {
+        return platform;
+      }
+
+      return LEGACY_COMPOSE_PLATFORM_MAP[platform];
     })
     .filter((platform): platform is ComposePlatformKey => Boolean(platform));
 

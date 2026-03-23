@@ -49,7 +49,10 @@ export interface PublishResult {
 export async function publishContent(
     platforms: PlatformSelection,
     content: PublishContent,
-    mediaFile?: File
+    mediaFile?: File,
+    options?: {
+        timeout?: number;
+    },
 ): Promise<PublishResult> {
     const selectedPlatforms = Object.entries(platforms)
         .filter(([, selected]) => selected)
@@ -91,7 +94,10 @@ export async function publishContent(
                 {
                     platforms: JSON.stringify(selectedPlatforms),
                     content: JSON.stringify(content)
-                }
+                },
+                {
+                    timeout: options?.timeout,
+                },
             );
 
             return response;
@@ -100,6 +106,8 @@ export async function publishContent(
             const response = await apiClient.post<any>('/api/platforms/post', {
                 platforms: selectedPlatforms,
                 content
+            }, {
+                timeout: options?.timeout,
             });
 
             return response;

@@ -329,6 +329,7 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
 
   return {
     ...feed,
+    filters: 'filters' in feed ? ensureFeedFilters(feed.filters as RSSFeedFilters | undefined) : undefined,
     platformImageCounts: 'platformImageCounts' in feed ? feed.platformImageCounts : null,
     trickle: normalizeTrickle(typeof feed.trickle === 'string' ? feed.trickle : undefined),
     serperEnabled: typeof feed.serperEnabled === 'boolean'
@@ -428,11 +429,54 @@ function normalizeMaxItemAgeMinutes(value: Prisma.JsonValue | undefined): number
   return Math.min(normalized, 12 * 60);
 }
 
+function normalizeFilterRule(
+  rule: RSSFeedFilters['required'][number] | Prisma.JsonValue | string | null | undefined
+): RSSFeedFilters['required'][number] | null {
+  if (typeof rule === 'string') {
+    const text = rule.trim();
+    if (!text) {
+      return null;
+    }
+
+    return {
+      text,
+      matchType: 'contains',
+      caseSensitive: false,
+      active: true,
+    };
+  }
+
+  if (!rule || typeof rule !== 'object' || Array.isArray(rule)) {
+    return null;
+  }
+
+  const rawRule = rule as Record<string, Prisma.JsonValue | undefined>;
+  const text = asString(rawRule.text)?.trim() ?? '';
+  if (!text) {
+    return null;
+  }
+
+  return {
+    text,
+    matchType: rawRule.matchType === 'exact' ? 'exact' : 'contains',
+    caseSensitive: asBoolean(rawRule.caseSensitive, false),
+    active: asBoolean(rawRule.active, true),
+  };
+}
+
 function ensureFeedFilters(filters?: RSSFeedFilters): RSSFeedFilters {
   return {
     scope: filters?.scope ?? 'title_or_body',
-    required: Array.isArray(filters?.required) ? filters!.required : [],
-    blocked: Array.isArray(filters?.blocked) ? filters!.blocked : [],
+    required: Array.isArray(filters?.required)
+      ? filters.required
+          .map((rule) => normalizeFilterRule(rule))
+          .filter((rule): rule is RSSFeedFilters['required'][number] => Boolean(rule))
+      : [],
+    blocked: Array.isArray(filters?.blocked)
+      ? filters.blocked
+          .map((rule) => normalizeFilterRule(rule))
+          .filter((rule): rule is RSSFeedFilters['blocked'][number] => Boolean(rule))
+      : [],
     onlyFetchNewItems: filters?.onlyFetchNewItems ?? false,
     startFromNowAt:
       typeof filters?.startFromNowAt === 'string' ? filters.startFromNowAt : null,
@@ -783,23 +827,24 @@ function evaluateFeedRules(item: RSSItem, filters: RSSFeedFilters): { allowed: b
     }
   }
 
-  for (const rule of activeRequired) {
-    let matched = false;
+  if (activeRequired.length > 0) {
+    const matchedRequiredRules = activeRequired.filter((rule) => {
+      if (filters.scope === 'title_and_body') {
+        return scopeTexts.every((scopeText) =>
+          matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
+        );
+      }
 
-    if (filters.scope === 'title_and_body') {
-      matched = scopeTexts.every((scopeText) =>
+      return scopeTexts.some((scopeText) =>
         matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
       );
-    } else {
-      matched = scopeTexts.some((scopeText) =>
-        matchesRule(scopeText, rule.text, rule.matchType, rule.caseSensitive)
-      );
-    }
+    });
 
-    if (!matched) {
+    if (matchedRequiredRules.length === 0) {
+      const requiredSummary = activeRequired.map((rule) => `"${rule.text}"`).join(', ');
       return {
         allowed: false,
-        reason: `Required keyword missing: "${rule.text}"`,
+        reason: `No required keyword matched. Checked: ${requiredSummary}`,
       };
     }
   }

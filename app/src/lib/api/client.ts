@@ -41,35 +41,35 @@ export class ApiClient {
   /**
    * Make a GET request
    */
-  async get<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+  async get<T>(endpoint: string, options?: RequestInit & { timeout?: number }): Promise<ApiResponse<T>> {
     return this.request<T>('GET', endpoint, undefined, options);
   }
 
   /**
    * Make a POST request
    */
-  async post<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
+  async post<T>(endpoint: string, data?: any, options?: RequestInit & { timeout?: number }): Promise<ApiResponse<T>> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
   /**
    * Make a PUT request
    */
-  async put<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
+  async put<T>(endpoint: string, data?: any, options?: RequestInit & { timeout?: number }): Promise<ApiResponse<T>> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
   /**
    * Make a DELETE request
    */
-  async delete<T>(endpoint: string, options?: RequestInit): Promise<ApiResponse<T>> {
+  async delete<T>(endpoint: string, options?: RequestInit & { timeout?: number }): Promise<ApiResponse<T>> {
     return this.request<T>('DELETE', endpoint, undefined, options);
   }
 
   /**
    * Make a PATCH request
    */
-  async patch<T>(endpoint: string, data?: any, options?: RequestInit): Promise<ApiResponse<T>> {
+  async patch<T>(endpoint: string, data?: any, options?: RequestInit & { timeout?: number }): Promise<ApiResponse<T>> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 
@@ -80,16 +80,17 @@ export class ApiClient {
     method: string,
     endpoint: string,
     data?: any,
-    options?: RequestInit,
+    options?: (RequestInit & { timeout?: number }),
     attempt: number = 1
   ): Promise<ApiResponse<T>> {
     const url = `${this.baseUrl}${endpoint}`;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const requestTimeout = options?.timeout ?? this.timeout;
 
     try {
       // Create abort controller for timeout
       const controller = new AbortController();
-      timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      timeoutId = setTimeout(() => controller.abort(), requestTimeout);
 
       // Build request options
       const requestOptions: RequestInit = {
@@ -139,10 +140,14 @@ export class ApiClient {
       return { success: true, data: result };
 
     } catch (error: any) {
+      const isAbortError =
+        error?.name === 'AbortError' ||
+        typeof error?.message === 'string' && error.message.toLowerCase().includes('aborted');
+
       // Handle network errors
       const apiError: ApiError = {
-        code: 'NETWORK_ERROR',
-        message: error.message || 'Network request failed',
+        code: isAbortError ? 'TIMEOUT_ERROR' : 'NETWORK_ERROR',
+        message: isAbortError ? 'Request timed out' : error.message || 'Network request failed',
         statusCode: 0,
       };
 

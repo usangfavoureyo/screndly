@@ -91,7 +91,9 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
     videoUrl: primaryAsset.kind === 'video' ? mediaUrl : undefined,
   };
 
-  const response = await publishContent(toPlatformSelection(platformKeys), content);
+  const response = await publishContent(toPlatformSelection(platformKeys), content, undefined, {
+    timeout: 180000,
+  });
 
   if (!response.success) {
     throw new Error(response.error?.message || 'Failed to publish post');
