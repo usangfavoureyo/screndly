@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
@@ -24,11 +24,16 @@ function formatActivityTimestamp(value: string): string {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
+function stripHtml(value?: string): string {
+  if (!value) return '';
+  return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
   const { getActivity, refreshFeed } = useRSSFeeds();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
-  const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
+  const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'filtered'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
@@ -68,6 +73,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     if (filter === 'failures') return item.status === 'failed';
     if (filter === 'published') return item.status === 'published';
     if (filter === 'pending') return item.status === 'pending';
+    if (filter === 'filtered') return item.status === 'filtered';
     return true;
   });
   const selection = useBulkSelection(filteredItems.map((item) => item.id));
@@ -77,6 +83,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     published: logLevelItems.filter((item) => item.status === 'published').length,
     pending: logLevelItems.filter((item) => item.status === 'pending').length,
     failed: logLevelItems.filter((item) => item.status === 'failed').length,
+    filtered: logLevelItems.filter((item) => item.status === 'filtered').length,
   };
 
   const getStatusConfig = (status: RSSActivityItem['status']) => {
@@ -101,6 +108,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           color: 'text-[#EF4444]',
           bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]',
           label: 'Failed',
+        };
+      case 'filtered':
+        return {
+          icon: AlertTriangle,
+          color: 'text-[#D97706]',
+          bg: 'bg-[#FEF3C7] dark:bg-[#78350F]',
+          label: 'Filtered',
         };
     }
   };
@@ -223,7 +237,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Processed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{summary.total}</p>
@@ -239,6 +253,10 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{summary.failed}</p>
+        </div>
+        <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
+          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Filtered</p>
+          <p className="text-gray-900 dark:text-white text-2xl">{summary.filtered}</p>
         </div>
       </div>
 
@@ -260,6 +278,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             { value: 'published', label: 'Published' },
             { value: 'pending', label: 'Pending' },
             { value: 'failures', label: 'Failures' },
+            { value: 'filtered', label: 'Filtered' },
           ].map((option) => (
             <button
               key={option.value}
@@ -307,6 +326,15 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                         <span>&bull;</span>
                         <span>{formatActivityTimestamp(item.timestamp)}</span>
                       </div>
+                      {item.description ? (
+                        <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
+                          <p className="line-clamp-3">{item.description}</p>
+                        </div>
+                      ) : item.contentHtml ? (
+                        <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
+                          <p className="line-clamp-3">{stripHtml(item.contentHtml)}</p>
+                        </div>
+                      ) : null}
                       {item.platforms.length > 0 && (
                         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
                           {item.platforms.map((platform) => (
@@ -320,7 +348,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                         </div>
                       )}
                       {item.error && (
-                        <p className="text-sm text-[#EF4444] mt-1">{item.error}</p>
+                        <div className={`mt-1 rounded-lg px-3 py-2 text-sm ${
+                          item.status === 'filtered'
+                            ? 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#78350F]/40 dark:text-[#FCD34D]'
+                            : 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
+                        }`}>
+                          {item.error}
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
