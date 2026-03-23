@@ -792,7 +792,12 @@ export function AppContent() {
         <Suspense fallback={<OverlayLoader />}>
           <NotificationPanel
             isOpen={isNotificationsOpen}
-            onClose={() => setIsNotificationsOpen(false)}
+            onClose={() => {
+              const handled = handleAppBack(() => setIsNotificationsOpen(false));
+              if (!handled) {
+                setIsNotificationsOpen(false);
+              }
+            }}
             notifications={notifications}
             onMarkAsRead={markAsRead}
             onMarkAllAsRead={markAllAsRead}
