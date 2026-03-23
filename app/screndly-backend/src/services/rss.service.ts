@@ -2297,6 +2297,22 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       const item = pendingEntry.item;
       latestHandledItem = item;
 
+      const pendingRuleEvaluation = evaluateFeedRules(item, feedFilters);
+      if (!pendingRuleEvaluation.allowed) {
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'filtered',
+              lastAttemptedAt: new Date(),
+              errorMessage: pendingRuleEvaluation.reason ?? 'Filtered by current feed rules.',
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
+        continue;
+      }
+
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
         continue;
