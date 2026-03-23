@@ -20,6 +20,7 @@ import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
+import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import {
   buildComposePublishFailureNotification,
@@ -421,7 +422,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               key={platform}
                               className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF] uppercase"
                             >
-                              {platform}
+                              {getComposePlatformLabel(platform)}
                             </span>
                           ))}
                         </div>

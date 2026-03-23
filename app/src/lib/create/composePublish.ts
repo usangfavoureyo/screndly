@@ -1,5 +1,6 @@
 import { publishContent, type PlatformSelection } from '../api/platforms';
 import { getComposeAssetPublishUrl, getComposeThumbnailPublishUrl } from './composeMedia';
+import { getComposePlatformLabel } from './composePlatforms';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
 
 export interface ComposePublishOutcome {
@@ -11,8 +12,11 @@ export interface ComposePublishOutcome {
 }
 
 const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
-  instagram: 'Instagram',
-  facebook: 'Facebook',
+  instagram_feed: 'Instagram Feed',
+  instagram_reels: 'Instagram Reels',
+  instagram_stories: 'Instagram Stories',
+  facebook_feed: 'Facebook Feed',
+  facebook_stories: 'Facebook Stories',
   tiktok: 'TikTok',
   threads: 'Threads',
   x: 'X',
@@ -23,8 +27,11 @@ const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
 function toPlatformSelection(platforms: ComposePlatformKey[]): PlatformSelection {
   return {
     x: platforms.includes('x'),
-    facebook: platforms.includes('facebook'),
-    instagram: platforms.includes('instagram'),
+    facebookFeed: platforms.includes('facebook_feed'),
+    facebookStories: platforms.includes('facebook_stories'),
+    instagramFeed: platforms.includes('instagram_feed'),
+    instagramReels: platforms.includes('instagram_reels'),
+    instagramStories: platforms.includes('instagram_stories'),
     threads: platforms.includes('threads'),
     youtube: platforms.includes('youtube'),
     tiktok: platforms.includes('tiktok'),
@@ -102,7 +109,7 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
 
   return {
     platformKeys,
-    platformNames: platformKeys.map((platform) => PLATFORM_NAME_BY_KEY[platform]),
+    platformNames: platformKeys.map((platform) => PLATFORM_NAME_BY_KEY[platform] ?? getComposePlatformLabel(platform)),
     postedPlatforms,
     failedResults,
     errorMessage,

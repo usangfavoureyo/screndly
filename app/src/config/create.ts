@@ -13,17 +13,39 @@ export type CreateTabId = (typeof CREATE_TABS)[number]['id'];
 export const COMPOSE_PLATFORM_OPTIONS: Array<{
   id: ComposePlatformKey;
   label: string;
-  connectionKey: 'Instagram' | 'Facebook' | 'TikTok' | 'Threads' | 'X' | 'YouTube' | 'Pinterest';
+  connectionKey: 'TikTok' | 'Threads' | 'X' | 'YouTube' | 'Pinterest';
   helper: string;
 }> = [
-  { id: 'instagram', label: 'Instagram', connectionKey: 'Instagram', helper: 'Photo and carousel publishing' },
-  { id: 'facebook', label: 'Facebook', connectionKey: 'Facebook', helper: 'Feed post and page publishing' },
   { id: 'tiktok', label: 'TikTok', connectionKey: 'TikTok', helper: 'Video-first publishing' },
   { id: 'threads', label: 'Threads', connectionKey: 'Threads', helper: 'Short-form text publishing' },
   { id: 'x', label: 'X', connectionKey: 'X', helper: 'Short updates and links' },
   { id: 'youtube', label: 'YouTube', connectionKey: 'YouTube', helper: 'Video publishing with playlist metadata' },
   { id: 'pinterest', label: 'Pinterest', connectionKey: 'Pinterest', helper: 'Pin publishing with board selection' },
 ];
+
+export const COMPOSE_META_PLATFORM_GROUPS = [
+  {
+    id: 'instagram',
+    label: 'Instagram',
+    connectionKey: 'Instagram' as const,
+    helper: 'Choose feed, reels, stories, or any combination.',
+    options: [
+      { id: 'instagram_feed' as const, label: 'Feed' },
+      { id: 'instagram_reels' as const, label: 'Reels' },
+      { id: 'instagram_stories' as const, label: 'Stories' },
+    ],
+  },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    connectionKey: 'Facebook' as const,
+    helper: 'Choose feed, stories, or both.',
+    options: [
+      { id: 'facebook_feed' as const, label: 'Feed' },
+      { id: 'facebook_stories' as const, label: 'Stories' },
+    ],
+  },
+] as const;
 
 export const PAD_TEMPLATES: PadTemplate[] = [
   {

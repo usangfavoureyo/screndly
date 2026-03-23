@@ -1,6 +1,7 @@
 import type { NotificationSource } from '../../contexts/NotificationsContext';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
 import type { ComposePublishOutcome } from './composePublish';
+import { getComposePlatformLabel } from './composePlatforms';
 
 type CreateStudioNotification = {
   title: string;
@@ -8,16 +9,6 @@ type CreateStudioNotification = {
   type: 'success' | 'error' | 'info' | 'warning';
   source: NotificationSource;
   actionPage: string;
-};
-
-const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  tiktok: 'TikTok',
-  threads: 'Threads',
-  x: 'X',
-  youtube: 'YouTube',
-  pinterest: 'Pinterest',
 };
 
 function formatList(values: string[]): string {
@@ -28,7 +19,7 @@ function formatList(values: string[]): string {
 }
 
 function describePlatforms(platforms: ComposePlatformKey[]): string {
-  const unique = Array.from(new Set(platforms)).map((platform) => PLATFORM_NAME_BY_KEY[platform]);
+  const unique = Array.from(new Set(platforms)).map((platform) => getComposePlatformLabel(platform));
   return formatList(unique);
 }
 

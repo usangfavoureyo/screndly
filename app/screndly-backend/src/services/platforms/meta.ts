@@ -608,6 +608,110 @@ export const metaService = {
         }
     },
 
+    async postToInstagramStory(
+        igUserId: string,
+        mediaUrl: string,
+        accessToken: string,
+        mediaKind: 'image' | 'video'
+    ): Promise<MetaPostResult> {
+        try {
+            const containerParams = new URLSearchParams({
+                media_type: 'STORIES',
+                access_token: accessToken,
+            });
+
+            if (mediaKind === 'video') {
+                containerParams.append('video_url', mediaUrl);
+            } else {
+                containerParams.append('image_url', mediaUrl);
+            }
+
+            const containerRes = await axios.post(
+                `${BASE_URL}/${igUserId}/media`,
+                containerParams.toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            if (!containerRes.data.id) {
+                throw new Error('Failed to create Instagram story media container');
+            }
+
+            const creationId = containerRes.data.id;
+            if (mediaKind === 'video') {
+                await waitForInstagramMediaReady(creationId, accessToken);
+            }
+
+            const publishRes = await axios.post(
+                `${BASE_URL}/${igUserId}/media_publish`,
+                new URLSearchParams({
+                    creation_id: creationId,
+                    access_token: accessToken,
+                }).toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: publishRes.data.id,
+                    platform: 'Instagram',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Instagram Story Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
+    async postToFacebookStory(
+        pageId: string,
+        mediaUrl: string,
+        accessToken: string,
+        mediaKind: 'image' | 'video'
+    ): Promise<MetaPostResult> {
+        try {
+            const endpoint = mediaKind === 'video' ? 'video_stories' : 'photo_stories';
+            const payload = new URLSearchParams({
+                access_token: accessToken,
+            });
+
+            if (mediaKind === 'video') {
+                payload.append('video_url', mediaUrl);
+            } else {
+                payload.append('photo_url', mediaUrl);
+            }
+
+            const response = await axios.post(
+                `${BASE_URL}/${pageId}/${endpoint}`,
+                payload.toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: response.data.id,
+                    platform: 'Facebook',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Facebook Story Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
     /**
      * Post to Threads
      */

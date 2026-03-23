@@ -60,6 +60,26 @@ export class XService {
         return token ? token : null;
     }
 
+    private extractApiErrorMessage(data: any, fallback: string): string {
+        const detail =
+            data?.detail
+            || data?.error
+            || data?.errors?.[0]?.detail
+            || data?.errors?.[0]?.message
+            || data?.title
+            || fallback;
+
+        if (typeof detail !== 'string') {
+            return fallback;
+        }
+
+        if (/forbidden|not authorized|unauthorized|insufficient/i.test(detail)) {
+            return `${detail}. Reconnect X from Platforms so Screndly gets a fresh user token for media upload.`;
+        }
+
+        return detail;
+    }
+
     async postTweet(text: string, imageSources?: string | string[], connection?: PlatformConnection): Promise<XPostResult> {
         const authToken = this.getUserAccessToken(connection);
         if (!authToken) {
@@ -423,6 +443,39 @@ export class XService {
                 rawPayload.fileName,
                 rawPayload.mimeType
             );
+            const formData = new FormData();
+            formData.append('media', new Blob([payload.buffer], { type: payload.mimeType }), payload.fileName);
+            formData.append('media_category', this.getMediaCategory(payload.mimeType));
+            formData.append('media_type', payload.mimeType);
+            formData.append('shared', 'false');
+
+            const uploadResponse = await fetch('https://api.x.com/2/media/upload', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                },
+                body: formData,
+            });
+
+            const uploadData = await this.getJsonResponse(uploadResponse);
+            if (uploadResponse.ok) {
+                const mediaId =
+                    uploadData?.data?.id
+                    || uploadData?.media_id_string
+                    || uploadData?.media_id;
+
+                if (mediaId) {
+                    return mediaId;
+                }
+            } else if (uploadResponse.status === 403) {
+                throw new Error(
+                    this.extractApiErrorMessage(
+                        uploadData,
+                        `Failed to upload X image media (${uploadResponse.status})`
+                    )
+                );
+            }
+
             const initializeResponse = await fetch('https://api.x.com/2/media/upload/initialize', {
                 method: 'POST',
                 headers: {
@@ -440,9 +493,10 @@ export class XService {
             const initializeData = await this.getJsonResponse(initializeResponse);
             if (!initializeResponse.ok) {
                 throw new Error(
-                    initializeData?.detail
-                    || initializeData?.error
-                    || `Failed to initialize X image upload (${initializeResponse.status})`
+                    this.extractApiErrorMessage(
+                        initializeData,
+                        `Failed to initialize X image upload (${initializeResponse.status})`
+                    )
                 );
             }
 

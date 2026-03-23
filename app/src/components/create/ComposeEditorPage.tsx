@@ -25,7 +25,7 @@ import { ThreadsIcon } from '../icons/ThreadsIcon';
 import { XIcon } from '../icons/XIcon';
 import { YouTubeIcon } from '../icons/YouTubeIcon';
 import { PinterestIcon } from '../icons/PinterestIcon';
-import { COMPOSE_PLATFORM_OPTIONS } from '../../config/create';
+import { COMPOSE_META_PLATFORM_GROUPS, COMPOSE_PLATFORM_OPTIONS } from '../../config/create';
 import {
   buildComposeItemTitleFromAssets,
   buildComposeMediaAsset,
@@ -35,6 +35,7 @@ import {
   normalizeComposeItem,
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
+import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import {
   buildComposeDraftNotification,
@@ -76,8 +77,11 @@ type FormState = {
 };
 
 const PLATFORM_ICONS = {
-  instagram: InstagramIcon,
-  facebook: FacebookIcon,
+  instagram_feed: InstagramIcon,
+  instagram_reels: InstagramIcon,
+  instagram_stories: InstagramIcon,
+  facebook_feed: FacebookIcon,
+  facebook_stories: FacebookIcon,
   tiktok: TikTokIcon,
   threads: ThreadsIcon,
   x: XIcon,
@@ -86,8 +90,11 @@ const PLATFORM_ICONS = {
 } as const;
 
 const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
-  instagram: 'w-5.5 h-5.5',
-  facebook: 'w-5.5 h-5.5',
+  instagram_feed: 'w-5.5 h-5.5',
+  instagram_reels: 'w-5.5 h-5.5',
+  instagram_stories: 'w-5.5 h-5.5',
+  facebook_feed: 'w-5.5 h-5.5',
+  facebook_stories: 'w-5.5 h-5.5',
   tiktok: 'w-6.5 h-6.5',
   threads: 'w-5 h-5',
   x: 'w-4 h-4',
@@ -96,7 +103,14 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
 };
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
-const SHARED_CAPTION_PLATFORMS: ComposePlatformKey[] = ['instagram', 'facebook', 'threads', 'x', 'tiktok'];
+const SHARED_CAPTION_PLATFORMS: ComposePlatformKey[] = [
+  'instagram_feed',
+  'instagram_reels',
+  'facebook_feed',
+  'threads',
+  'x',
+  'tiktok',
+];
 
 function createInitialForm(item?: ComposeItem): FormState {
   const normalized = item ? normalizeComposeItem(item) : undefined;
@@ -217,6 +231,7 @@ export function ComposeEditorPage({
   const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'failed');
   const isYouTubeSelected = formState.platforms.includes('youtube');
+  const isPinterestSelected = formState.platforms.includes('pinterest');
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
   const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
@@ -581,14 +596,14 @@ export function ComposeEditorPage({
       return false;
     }
     if (
-      formState.platforms.includes('pinterest') &&
+      isPinterestSelected &&
       (!formState.pinterestTitle.trim() || !formState.pinterestDescription.trim() || !formState.pinterestBoard)
     ) {
       toast.error('Complete the Pinterest fields before saving');
       return false;
     }
     if (
-      formState.platforms.includes('youtube') &&
+      isYouTubeSelected &&
       (!formState.youtubeTitle.trim() || !formState.youtubeDescription.trim() || !formState.youtubePlaylist)
     ) {
       toast.error('Complete the YouTube fields before saving');
@@ -611,14 +626,14 @@ export function ComposeEditorPage({
       platforms: formState.platforms,
       sharedCaption: formState.sharedCaption,
       platformFields: {
-        pinterest: formState.platforms.includes('pinterest')
+        pinterest: isPinterestSelected
           ? {
               title: formState.pinterestTitle,
               description: formState.pinterestDescription,
               board: formState.pinterestBoard,
             }
           : undefined,
-        youtube: formState.platforms.includes('youtube')
+        youtube: isYouTubeSelected
           ? {
               title: formState.youtubeTitle,
               description: formState.youtubeDescription,
@@ -990,7 +1005,63 @@ export function ComposeEditorPage({
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
-            <div className="mt-4 grid grid-cols-3 gap-3">
+            <div className="mt-4 space-y-4">
+              {COMPOSE_META_PLATFORM_GROUPS.map((group) => {
+                const GroupIcon = group.id === 'instagram' ? InstagramIcon : FacebookIcon;
+                const connected = connectedPlatforms.has(group.connectionKey.toLowerCase());
+                const selectedCount = group.options.filter((option) => formState.platforms.includes(option.id)).length;
+
+                return (
+                  <div
+                    key={group.id}
+                    className={`rounded-2xl border p-4 transition-all ${
+                      connected
+                        ? 'border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]'
+                        : 'border-gray-200 bg-white/60 opacity-45 dark:border-[#333333] dark:bg-[#000000]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-900 dark:bg-[#111111] dark:text-white">
+                          <GroupIcon className="h-5.5 w-5.5" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-900 dark:text-white">{group.label}</p>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{group.helper}</p>
+                        </div>
+                      </div>
+                      {selectedCount > 0 ? (
+                        <span className="rounded-full bg-[#ec1e24]/10 px-2.5 py-1 text-xs text-[#ec1e24]">
+                          {selectedCount} selected
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {group.options.map((option) => {
+                        const compatibility = compatibilityMap[option.id];
+                        const isSelected = formState.platforms.includes(option.id);
+
+                        return (
+                          <Button
+                            key={option.id}
+                            type="button"
+                            variant="outline"
+                            disabled={!connected}
+                            onClick={() => togglePlatform(option.id, connected)}
+                            className={`h-11 rounded-xl px-4 ${
+                              getPlatformCardTone(isSelected, compatibility.supported, connected)
+                            }`}
+                          >
+                            {option.label}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="grid grid-cols-3 gap-3">
               {COMPOSE_PLATFORM_OPTIONS.map((platform) => {
                 const Icon = PLATFORM_ICONS[platform.id];
                 const iconSizeClass = PLATFORM_ICON_SIZES[platform.id];
@@ -1022,6 +1093,7 @@ export function ComposeEditorPage({
                   </button>
                 );
               })}
+              </div>
             </div>
           </div>
 
@@ -1044,7 +1116,7 @@ export function ComposeEditorPage({
             />
           </div>
 
-          {formState.platforms.includes('pinterest') ? (
+          {isPinterestSelected ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
               <h3 className="mb-4 text-gray-900 dark:text-white">Pinterest Fields</h3>
               <div className="space-y-4">
@@ -1075,7 +1147,7 @@ export function ComposeEditorPage({
             </div>
           ) : null}
 
-          {formState.platforms.includes('youtube') ? (
+          {isYouTubeSelected ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
               <h3 className="mb-4 text-gray-900 dark:text-white">YouTube Fields</h3>
               <div className="space-y-4">
@@ -1171,10 +1243,11 @@ export function ComposeEditorPage({
                     return (
                       <span
                         key={platform}
-                        title={COMPOSE_PLATFORM_OPTIONS.find((option) => option.id === platform)?.label ?? platform}
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[#ec1e24]/30 bg-[#ec1e24]/8 text-[#ec1e24]"
+                        title={getComposePlatformLabel(platform)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-[#ec1e24]/30 bg-[#ec1e24]/8 px-3 py-2 text-[#ec1e24]"
                       >
                         <Icon className={iconSizeClass} />
+                        <span className="text-xs">{getComposePlatformLabel(platform)}</span>
                       </span>
                     );
                   })

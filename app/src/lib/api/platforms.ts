@@ -2,8 +2,13 @@ import { apiClient } from './client';
 
 export interface PlatformSelection {
     x: boolean;
-    facebook: boolean;
-    instagram: boolean;
+    facebook?: boolean;
+    facebookFeed?: boolean;
+    facebookStories?: boolean;
+    instagram?: boolean;
+    instagramFeed?: boolean;
+    instagramReels?: boolean;
+    instagramStories?: boolean;
     threads: boolean;
     youtube: boolean;
     tiktok?: boolean;
@@ -47,20 +52,25 @@ export async function publishContent(
     mediaFile?: File
 ): Promise<PublishResult> {
     const selectedPlatforms = Object.entries(platforms)
-        .filter(([_, selected]) => selected)
+        .filter(([, selected]) => selected)
         .map(([platform]) => {
-            // Map frontend keys to backend platform names
             const map: Record<string, string> = {
                 x: 'X',
                 facebook: 'Facebook',
+                facebookFeed: 'FacebookFeed',
+                facebookStories: 'FacebookStories',
                 instagram: 'Instagram',
+                instagramFeed: 'InstagramFeed',
+                instagramReels: 'InstagramReels',
+                instagramStories: 'InstagramStories',
                 threads: 'Threads',
                 youtube: 'YouTube',
                 tiktok: 'TikTok',
                 pinterest: 'Pinterest'
             };
             return map[platform];
-        });
+        })
+        .filter((platform): platform is string => Boolean(platform));
 
     if (selectedPlatforms.length === 0) {
         return { success: false, error: { message: 'No platforms selected' } };

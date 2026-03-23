@@ -1,8 +1,11 @@
 export type ComposeStatus = 'draft' | 'scheduled' | 'published' | 'failed';
 
 export type ComposePlatformKey =
-  | 'instagram'
-  | 'facebook'
+  | 'instagram_feed'
+  | 'instagram_reels'
+  | 'instagram_stories'
+  | 'facebook_feed'
+  | 'facebook_stories'
   | 'tiktok'
   | 'threads'
   | 'x'

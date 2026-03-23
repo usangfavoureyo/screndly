@@ -28,7 +28,19 @@ import sharp from 'sharp';
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
 
-type SupportedPlatform = 'Instagram' | 'Facebook' | 'Threads' | 'TikTok' | 'X' | 'YouTube' | 'Pinterest';
+type SupportedPlatform =
+    | 'Instagram'
+    | 'InstagramFeed'
+    | 'InstagramReels'
+    | 'InstagramStories'
+    | 'Facebook'
+    | 'FacebookFeed'
+    | 'FacebookStories'
+    | 'Threads'
+    | 'TikTok'
+    | 'X'
+    | 'YouTube'
+    | 'Pinterest';
 
 interface BackendPlatformStatus {
     connected: boolean;
@@ -69,8 +81,28 @@ function normalizePlatform(value?: string | null): SupportedPlatform | null {
     switch (value.trim().toLowerCase()) {
         case 'instagram':
             return 'Instagram';
+        case 'instagramfeed':
+        case 'instagram_feed':
+        case 'instagram feed':
+            return 'InstagramFeed';
+        case 'instagramreels':
+        case 'instagram_reels':
+        case 'instagram reels':
+            return 'InstagramReels';
+        case 'instagramstories':
+        case 'instagram_stories':
+        case 'instagram stories':
+            return 'InstagramStories';
         case 'facebook':
             return 'Facebook';
+        case 'facebookfeed':
+        case 'facebook_feed':
+        case 'facebook feed':
+            return 'FacebookFeed';
+        case 'facebookstories':
+        case 'facebook_stories':
+        case 'facebook stories':
+            return 'FacebookStories';
         case 'threads':
             return 'Threads';
         case 'tiktok':
@@ -84,6 +116,37 @@ function normalizePlatform(value?: string | null): SupportedPlatform | null {
             return 'Pinterest';
         default:
             return null;
+    }
+}
+
+function getConnectionPlatform(platform: SupportedPlatform): Exclude<SupportedPlatform, 'InstagramFeed' | 'InstagramReels' | 'InstagramStories' | 'FacebookFeed' | 'FacebookStories'> {
+    switch (platform) {
+        case 'InstagramFeed':
+        case 'InstagramReels':
+        case 'InstagramStories':
+            return 'Instagram';
+        case 'FacebookFeed':
+        case 'FacebookStories':
+            return 'Facebook';
+        default:
+            return platform;
+    }
+}
+
+function getPublishPlatformLabel(platform: SupportedPlatform): string {
+    switch (platform) {
+        case 'InstagramFeed':
+            return 'Instagram Feed';
+        case 'InstagramReels':
+            return 'Instagram Reels';
+        case 'InstagramStories':
+            return 'Instagram Stories';
+        case 'FacebookFeed':
+            return 'Facebook Feed';
+        case 'FacebookStories':
+            return 'Facebook Stories';
+        default:
+            return platform;
     }
 }
 
@@ -569,11 +632,13 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
             .filter((value: SupportedPlatform | null): value is SupportedPlatform => value !== null);
 
         for (const platform of platformList) {
+            const connectionPlatform = getConnectionPlatform(platform);
+            const platformLabel = getPublishPlatformLabel(platform);
             // Get platform connection
-            let connection = await findPlatformConnection(platform);
+            let connection = await findPlatformConnection(connectionPlatform);
             connection = await ensureFreshPlatformConnection(connection);
 
-            let result: any = { platform, status: 'failed', error: 'Platform not configured' };
+            let result: any = { platform: platformLabel, status: 'failed', error: 'Platform not configured' };
 
             try {
                 switch (platform) {
@@ -590,11 +655,12 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     imageUrl || (hasUploadedImage && localFilePath ? localFilePath : undefined),
                                     connection
                                 );
-                            result = { platform, ...xResult, status: xResult.success ? 'posted' : 'failed' };
+                            result = { platform: platformLabel, ...xResult, status: xResult.success ? 'posted' : 'failed' };
                         }
                         break;
 
                     case 'Facebook':
+                    case 'FacebookFeed':
                         if (connection?.accessToken && connection.userId) {
                             const fbResult = (hasUploadedVideo || videoUrl)
                                 ? await metaService.postVideoToFacebook(
@@ -627,7 +693,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                             }
 
                             result = {
-                                platform,
+                                platform: platformLabel,
                                 ...fbResult,
                                 status: fbResult.success ? 'posted' : 'failed',
                                 ...(warning ? { warning } : {}),
@@ -635,33 +701,95 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         }
                         break;
 
-                    case 'Instagram':
+                    case 'FacebookStories':
                         if (!hasUploadedVideo && !videoUrl && !hasUploadedImage && !imageUrl) {
                             result = {
-                                platform,
+                                platform: platformLabel,
+                                status: 'failed',
+                                error: 'Facebook Stories requires an image or video URL, or an uploaded image/video file.',
+                            };
+                        } else if (connection?.accessToken && connection.userId) {
+                            const fbStoryResult = await metaService.postToFacebookStory(
+                                connection.userId,
+                                (hasUploadedVideo || videoUrl)
+                                    ? await getHostedVideoUrl()
+                                    : await getPreparedImageUrl() || '',
+                                connection.accessToken,
+                                (hasUploadedVideo || videoUrl) ? 'video' : 'image'
+                            );
+                            result = {
+                                platform: platformLabel,
+                                ...fbStoryResult,
+                                status: fbStoryResult.success ? 'posted' : 'failed',
+                            };
+                        }
+                        break;
+
+                    case 'Instagram':
+                    case 'InstagramFeed':
+                    case 'InstagramReels':
+                    case 'InstagramStories':
+                        if (!hasUploadedVideo && !videoUrl && !hasUploadedImage && !imageUrl) {
+                            result = {
+                                platform: platformLabel,
                                 status: 'failed',
                                 error: 'Instagram requires an image or video URL, or an uploaded image/video file.',
                             };
                         } else if (hasUsablePlatformAccessToken(connection) && connection?.userId) {
                             const instagramAccessToken = connection.accessToken as string;
-                            const igResult = (hasUploadedVideo || videoUrl)
-                                ? await metaService.postVideoToInstagramReel(
-                                    connection.userId,
-                                    text,
-                                    await getHostedVideoUrl(),
-                                    instagramAccessToken,
-                                    await getPreparedImageUrl()
-                                )
-                                : await metaService.postToInstagram(
-                                    connection.userId,
-                                    text,
-                                    await getPreparedImageUrl() || '',
-                                    instagramAccessToken
-                                );
-                            result = { platform, ...igResult, status: igResult.success ? 'posted' : 'failed' };
+                            const mediaKind = (hasUploadedVideo || videoUrl) ? 'video' : 'image';
+
+                            if (platform === 'InstagramFeed' && mediaKind !== 'image') {
+                                result = {
+                                    platform: platformLabel,
+                                    status: 'failed',
+                                    error: 'Instagram Feed publishing currently requires a single image.',
+                                };
+                                break;
+                            }
+
+                            if (platform === 'InstagramReels' && mediaKind !== 'video') {
+                                result = {
+                                    platform: platformLabel,
+                                    status: 'failed',
+                                    error: 'Instagram Reels publishing requires a video.',
+                                };
+                                break;
+                            }
+
+                            const igResult =
+                                platform === 'InstagramStories'
+                                    ? await metaService.postToInstagramStory(
+                                        connection.userId,
+                                        mediaKind === 'video' ? await getHostedVideoUrl() : await getPreparedImageUrl() || '',
+                                        instagramAccessToken,
+                                        mediaKind
+                                    )
+                                    : platform === 'InstagramFeed'
+                                        ? await metaService.postToInstagram(
+                                            connection.userId,
+                                            text,
+                                            await getPreparedImageUrl() || '',
+                                            instagramAccessToken
+                                        )
+                                        : (hasUploadedVideo || videoUrl)
+                                            ? await metaService.postVideoToInstagramReel(
+                                                connection.userId,
+                                                text,
+                                                await getHostedVideoUrl(),
+                                                instagramAccessToken,
+                                                await getPreparedImageUrl()
+                                            )
+                                            : await metaService.postToInstagram(
+                                                connection.userId,
+                                                text,
+                                                await getPreparedImageUrl() || '',
+                                                instagramAccessToken
+                                            );
+                            result = { platform: platformLabel, ...igResult, status: igResult.success ? 'posted' : 'failed' };
                         } else {
                             result = {
-                                platform,
+                                platform: platformLabel,
                                 status: 'failed',
                                 error: 'Instagram connection is invalid or incomplete. Reconnect Instagram from Platforms.',
                             };
@@ -683,7 +811,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     (await getPreparedImageUrl()) ?? null,
                                     connection.accessToken
                                 );
-                            result = { platform, ...threadsResult, status: threadsResult.success ? 'posted' : 'failed' };
+                            result = { platform: platformLabel, ...threadsResult, status: threadsResult.success ? 'posted' : 'failed' };
                         }
                         break;
 
@@ -700,9 +828,9 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     title || text,
                                     connection.accessToken
                                 );
-                                result = { platform, ...ttResult, status: ttResult.success ? 'posted' : 'failed' };
-                            } else {
-                                result = { platform, status: 'failed', error: 'TikTok requires a video file upload or public video URL' };
+                            result = { platform: platformLabel, ...ttResult, status: ttResult.success ? 'posted' : 'failed' };
+                        } else {
+                                result = { platform: platformLabel, status: 'failed', error: 'TikTok requires a video file upload or public video URL' };
                             }
                         }
                         break;
@@ -727,15 +855,15 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 },
                                 connection.refreshToken || undefined
                             );
-                            result = { platform, ...ytResult, status: ytResult.success ? 'posted' : 'failed' };
+                            result = { platform: platformLabel, ...ytResult, status: ytResult.success ? 'posted' : 'failed' };
                         } else {
-                            result = { platform, status: 'failed', error: 'YouTube requires a video file upload or public video URL' };
+                            result = { platform: platformLabel, status: 'failed', error: 'YouTube requires a video file upload or public video URL' };
                         }
                         break;
 
                     case 'Pinterest':
                         if (!hasUploadedVideo && !videoUrl && !hasUploadedImage && !imageUrl) {
-                            result = { platform, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
+                            result = { platform: platformLabel, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
                         } else if (connection?.accessToken) {
                             const metadata = getJsonObject(connection.metadata);
                             let boardId = getJsonString(metadata, 'boardId');
@@ -769,7 +897,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                             }
 
                             if (!boardId) {
-                                result = { platform, status: 'failed', error: 'Pinterest board not available for posting' };
+                                result = { platform: platformLabel, status: 'failed', error: 'Pinterest board not available for posting' };
                                 break;
                             }
 
@@ -797,24 +925,24 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                         altText: title || text.slice(0, 100) || 'Screndly Pin'
                                     }
                                 );
-                            result = { platform, ...pinResult, status: pinResult.success ? 'posted' : 'failed' };
+                            result = { platform: platformLabel, ...pinResult, status: pinResult.success ? 'posted' : 'failed' };
                         } else {
-                            result = { platform, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
+                            result = { platform: platformLabel, status: 'failed', error: 'Pinterest requires an image or video URL, or an uploaded image/video file.' };
                         }
                         break;
 
                     default:
-                        result = { platform, status: 'failed', error: 'Unknown platform' };
+                        result = { platform: platformLabel, status: 'failed', error: 'Unknown platform' };
                 }
             } catch (err: any) {
-                result = { platform, status: 'failed', error: err.message };
+                result = { platform: platformLabel, status: 'failed', error: err.message };
             }
 
             result.postedAt = new Date().toISOString();
             results.push(result);
 
             if (result.status === 'posted') {
-                await updateConnectionMetadata(platform, { lastPostAt: result.postedAt as string });
+                await updateConnectionMetadata(connectionPlatform, { lastPostAt: result.postedAt as string });
             }
         }
 

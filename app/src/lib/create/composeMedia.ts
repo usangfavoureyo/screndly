@@ -8,6 +8,7 @@ import type {
   ComposePlatformKey,
   ComposeThumbnailAsset,
 } from '../../types/compose';
+import { normalizeComposePlatforms } from './composePlatforms';
 
 type PlatformCapability = {
   supportsSingleImage: boolean;
@@ -19,21 +20,45 @@ type PlatformCapability = {
 };
 
 const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
-  instagram: {
+  instagram_feed: {
     supportsSingleImage: true,
-    supportsSingleVideo: true,
-    supportsMultiImage: true,
-    supportsMultiVideo: true,
-    supportsMixedMedia: true,
-    maxItems: 10,
-  },
-  facebook: {
-    supportsSingleImage: true,
-    supportsSingleVideo: true,
-    supportsMultiImage: true,
+    supportsSingleVideo: false,
+    supportsMultiImage: false,
     supportsMultiVideo: false,
     supportsMixedMedia: false,
-    maxItems: 10,
+    maxItems: 1,
+  },
+  instagram_reels: {
+    supportsSingleImage: false,
+    supportsSingleVideo: true,
+    supportsMultiImage: false,
+    supportsMultiVideo: false,
+    supportsMixedMedia: false,
+    maxItems: 1,
+  },
+  instagram_stories: {
+    supportsSingleImage: true,
+    supportsSingleVideo: true,
+    supportsMultiImage: false,
+    supportsMultiVideo: false,
+    supportsMixedMedia: false,
+    maxItems: 1,
+  },
+  facebook_feed: {
+    supportsSingleImage: true,
+    supportsSingleVideo: true,
+    supportsMultiImage: false,
+    supportsMultiVideo: false,
+    supportsMixedMedia: false,
+    maxItems: 1,
+  },
+  facebook_stories: {
+    supportsSingleImage: true,
+    supportsSingleVideo: true,
+    supportsMultiImage: false,
+    supportsMultiVideo: false,
+    supportsMixedMedia: false,
+    maxItems: 1,
   },
   tiktok: {
     supportsSingleImage: true,
@@ -125,6 +150,7 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
   return {
     ...item,
     mediaAssets,
+    platforms: normalizeComposePlatforms(item.platforms as string[] | undefined),
     media: undefined,
     platformFields: {
       ...item.platformFields,
@@ -315,8 +341,11 @@ export function getComposeCompatibilityMap(
   assets: ComposeMediaAsset[],
 ): Record<ComposePlatformKey, ComposePlatformCompatibility> {
   return {
-    instagram: getComposePlatformCompatibility('instagram', assets),
-    facebook: getComposePlatformCompatibility('facebook', assets),
+    instagram_feed: getComposePlatformCompatibility('instagram_feed', assets),
+    instagram_reels: getComposePlatformCompatibility('instagram_reels', assets),
+    instagram_stories: getComposePlatformCompatibility('instagram_stories', assets),
+    facebook_feed: getComposePlatformCompatibility('facebook_feed', assets),
+    facebook_stories: getComposePlatformCompatibility('facebook_stories', assets),
     tiktok: getComposePlatformCompatibility('tiktok', assets),
     threads: getComposePlatformCompatibility('threads', assets),
     x: getComposePlatformCompatibility('x', assets),
