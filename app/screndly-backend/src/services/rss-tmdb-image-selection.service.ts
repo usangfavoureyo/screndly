@@ -44,6 +44,7 @@ export interface StructuredRSSTMDbSelectionInput {
   };
   visualSubject: string;
   imageIntent: RSSImageIntent;
+  targetFormat?: 'movie' | 'series' | 'general';
   contextProject?: string | null;
   requiredContextTerms: string[];
   relevantStudios: string[];
@@ -319,6 +320,25 @@ function scoreContextTerms(text: string, requiredContextTerms: string[], yearTok
   return Math.min(score, 120);
 }
 
+function scoreTargetFormatMatch(
+  targetFormat: 'movie' | 'series' | 'general',
+  mediaType: 'movie' | 'tv' | undefined
+): number {
+  if (targetFormat === 'general' || !mediaType) {
+    return 0;
+  }
+
+  if (targetFormat === 'movie') {
+    return mediaType === 'movie' ? 95 : -140;
+  }
+
+  if (targetFormat === 'series') {
+    return mediaType === 'tv' ? 95 : -120;
+  }
+
+  return 0;
+}
+
 function collectCrewNames(crew: Array<{ name?: string; job?: string; department?: string }> | undefined): string[] {
   return (crew || [])
     .filter((member) => member.department === 'Directing' || member.department === 'Production' || member.job === 'Director' || member.job === 'Producer')
@@ -360,6 +380,8 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
   if (!anchor) {
     return null;
   }
+
+  const preferredFormat = input.targetFormat ?? 'general';
 
   const queries = uniqueStrings([
     anchor,
@@ -412,6 +434,7 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
           candidate.original_title,
           candidate.original_name,
         ])
+          + scoreTargetFormatMatch(preferredFormat, candidate.media_type)
           + scoreContextTerms(
             [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
             input.requiredContextTerms,

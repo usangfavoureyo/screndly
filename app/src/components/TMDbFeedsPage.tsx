@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { useState, useCallback, useMemo } from 'react';
+import { ArrowDownWideNarrow, Check, RefreshCw } from 'lucide-react';
 import { TMDbStatsPanel } from './tmdb/TMDbStatsPanel';
 import { TMDbFeedCard } from './tmdb/TMDbFeedCard';
 import { Button } from './ui/button';
@@ -10,16 +10,38 @@ import { useUndo } from './UndoContext';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
+import {
+  BottomSheet,
+  BottomSheetBody,
+  BottomSheetHeader,
+  BottomSheetTitle,
+} from './ui/bottom-sheet';
 
 interface TMDbFeedsPageProps {
   onNavigate: (page: string, fromPage?: string | null) => void;
   previousPage?: string | null;
 }
 
+type TMDbFeedFilterType = 'all' | 'today' | 'weekly' | 'monthly' | 'anniversary';
+type SortOption = 'popular' | 'recent';
+
+const SORT_OPTION_LABELS: Record<SortOption, string> = {
+  popular: 'Most Popular',
+  recent: 'Recently Added',
+};
+
 export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   const { posts, fetchPosts, refreshFromTMDb, updatePost, deletePost, restorePost } = useTMDbPosts();
   const { showUndo } = useUndo();
-  const [filterType, setFilterType] = useState<'all' | 'today' | 'weekly' | 'monthly' | 'anniversary'>('all');
+  const [filterType, setFilterType] = useState<TMDbFeedFilterType>('all');
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [sortByTab, setSortByTab] = useState<Record<TMDbFeedFilterType, SortOption>>({
+    all: 'recent',
+    today: 'recent',
+    weekly: 'recent',
+    monthly: 'recent',
+    anniversary: 'recent',
+  });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
 
@@ -28,16 +50,45 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   // Show only queued items here. Scheduled, published, and failed items live in Activity.
   const feeds = posts.filter(post => post.status === 'queued');
 
-  const filteredFeeds = feeds.filter(feed => {
-    if (filterType === 'all') return true;
-    return feed.source === `tmdb_${filterType}`;
-  });
+  const currentSort = sortByTab[filterType];
+  const filteredFeeds = useMemo(() => {
+    const byTab = feeds.filter((feed) => {
+      if (filterType === 'all') return true;
+      return feed.source === `tmdb_${filterType}`;
+    });
+
+    return [...byTab].sort((left, right) => {
+      if (currentSort === 'popular') {
+        const popularityDelta = (right.popularity || 0) - (left.popularity || 0);
+        if (popularityDelta !== 0) {
+          return popularityDelta;
+        }
+      }
+
+      const rightDate = new Date(right.createdAt || right.updatedAt || right.releaseDate || 0).getTime();
+      const leftDate = new Date(left.createdAt || left.updatedAt || left.releaseDate || 0).getTime();
+      if (rightDate !== leftDate) {
+        return rightDate - leftDate;
+      }
+
+      return (right.popularity || 0) - (left.popularity || 0);
+    });
+  }, [currentSort, feeds, filterType]);
   const selection = useBulkSelection(filteredFeeds.map((feed) => feed.id));
 
-  const handleFilterChange = useCallback((filter: 'all' | 'today' | 'weekly' | 'monthly' | 'anniversary') => {
+  const handleFilterChange = useCallback((filter: TMDbFeedFilterType) => {
     haptics.light();
     setFilterType(filter);
   }, []);
+
+  const handleSortChange = useCallback((sort: SortOption) => {
+    haptics.light();
+    setSortByTab((current) => ({
+      ...current,
+      [filterType]: sort,
+    }));
+    setSortSheetOpen(false);
+  }, [filterType]);
 
   // Stable callback - identity doesn't change between renders
   const handleUpdateFeed = useCallback((feedId: string, updates: any) => {
@@ -121,6 +172,47 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
 
   return (
     <div className="space-y-6">
+      <BottomSheet
+        open={sortSheetOpen}
+        onOpenChange={setSortSheetOpen}
+        heightMode="auto"
+        showHandle
+      >
+        <BottomSheetHeader>
+          <BottomSheetTitle>Sort Queued Posts</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="px-4 pb-6">
+          <div className="space-y-2">
+            {(['popular', 'recent'] as const).map((option) => {
+              const selected = currentSort === option;
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => handleSortChange(option)}
+                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left transition-colors ${
+                    selected
+                      ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white'
+                      : 'border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white'
+                  }`}
+                >
+                  <div>
+                    <div>{SORT_OPTION_LABELS[option]}</div>
+                    <div className="mt-1 text-sm text-gray-500 dark:text-[#9CA3AF]">
+                      {option === 'popular'
+                        ? 'Show the highest-popularity titles first in this tab.'
+                        : 'Show the newest queued additions first in this tab.'}
+                    </div>
+                  </div>
+                  {selected ? <Check className="h-5 w-5 text-[#ec1e24]" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
+
       {/* Stats Panel */}
       <TMDbStatsPanel feeds={feeds} onFilterChange={handleFilterChange} />
 
@@ -193,6 +285,18 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
             Queued Posts ({filteredFeeds.length})
           </h3>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                haptics.light();
+                setSortSheetOpen(true);
+              }}
+              className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+              aria-label={`Sort queued posts. Current: ${SORT_OPTION_LABELS[currentSort]}`}
+            >
+              <ArrowDownWideNarrow className="w-4 h-4" />
+            </Button>
             {/* Manual Refresh Button - Icon Only, same height as View Activity */}
             <Button
               variant="outline"

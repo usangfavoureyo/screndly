@@ -2344,6 +2344,7 @@ async function collectStructuredTMDbImages(
     primarySubject: analysis.primarySubject,
     visualSubject: analysis.visualSubject,
     imageIntent: analysis.imageIntent,
+    targetFormat: analysis.targetFormat,
     contextProject: analysis.contextProject,
     requiredContextTerms: analysis.requiredContextTerms,
     relevantStudios: analysis.relevantStudios,

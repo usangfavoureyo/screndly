@@ -150,7 +150,9 @@ interface ThumbnailConfig {
     platform: LandscapePlatform;
     logoPosition: LogoPosition;
     autoScale: boolean;
+    logoDisplayMode: 'boxed' | 'logo-only';
     maxLogoSize: number;
+    trailerTextSize: number;
     autoContrastBackdrop: boolean;
     autoContrastOverlay: boolean;
     showTrailerTypeText: boolean;
@@ -315,7 +317,9 @@ const DEFAULT_THUMBNAIL_CONFIG: Record<LandscapePlatform, ThumbnailConfig> = {
         platform: 'youtube',
         logoPosition: 'bottom-right',
         autoScale: true,
+        logoDisplayMode: 'boxed',
         maxLogoSize: 40,
+        trailerTextSize: 32,
         autoContrastBackdrop: true,
         autoContrastOverlay: true,
         showTrailerTypeText: false,
@@ -324,7 +328,9 @@ const DEFAULT_THUMBNAIL_CONFIG: Record<LandscapePlatform, ThumbnailConfig> = {
         platform: 'x',
         logoPosition: 'bottom-right',
         autoScale: true,
+        logoDisplayMode: 'boxed',
         maxLogoSize: 40,
+        trailerTextSize: 32,
         autoContrastBackdrop: true,
         autoContrastOverlay: true,
         showTrailerTypeText: false,
@@ -1143,8 +1149,15 @@ function buildOverlayBackdrop(
     top: number,
     left: number,
     boxWidth: number,
-    boxHeight: number
+    boxHeight: number,
+    visible: boolean
 ): Buffer {
+    if (!visible) {
+        return Buffer.from(`
+        <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg"></svg>
+    `);
+    }
+
     const svg = `
         <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
           <rect x="${left}" y="${top}" rx="24" ry="24" width="${boxWidth}" height="${boxHeight}" fill="rgba(0,0,0,0.45)" />
@@ -1440,6 +1453,7 @@ export async function generateLandscapeThumbnail(
         const dimensions = parseDimensionOverride(settings.videoYoutubeXThumbnailPrompt, LANDSCAPE_DEFAULT_DIMENSIONS);
         const config = platform === 'youtube' ? settings.thumbnailConfigYoutube : settings.thumbnailConfigX;
         const match = metadata.tmdbMatch;
+        const shouldRenderLogoBox = config.logoDisplayMode !== 'logo-only';
 
         let baseUrl = match?.backdropUrl;
         let logoUrl = match?.logoUrl;
@@ -1523,14 +1537,16 @@ export async function generateLandscapeThumbnail(
                     );
 
                     if (config.autoContrastOverlay) {
+                        const backdropPadding = shouldRenderLogoBox ? 18 : 0;
                         composites.push({
                             input: buildOverlayBackdrop(
                                 dimensions.width,
                                 dimensions.height,
-                                Math.max(0, placement.top - 18),
-                                Math.max(0, placement.left - 18),
-                                overlayWidth + 36,
-                                overlayHeight + 36
+                                Math.max(0, placement.top - backdropPadding),
+                                Math.max(0, placement.left - backdropPadding),
+                                overlayWidth + backdropPadding * 2,
+                                overlayHeight + backdropPadding * 2,
+                                shouldRenderLogoBox
                             ),
                             top: 0,
                             left: 0,
