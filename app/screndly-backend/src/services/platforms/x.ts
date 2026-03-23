@@ -4,6 +4,7 @@
 import { PlatformConnection } from '@prisma/client';
 import fs from 'fs/promises';
 import path from 'path';
+import sharp from 'sharp';
 import { validateVideoForX } from '../platform-video-validation.service';
 
 interface XPostResult {
@@ -14,6 +15,7 @@ interface XPostResult {
 }
 
 export class XService {
+    private static readonly MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
     private apiKey: string;
     private apiSecret: string;
     private bearerToken: string;
@@ -207,6 +209,57 @@ export class XService {
         return 'tweet_image';
     }
 
+    private async normalizeImagePayload(
+        buffer: Buffer,
+        fileName: string,
+        mimeType: string
+    ): Promise<{ buffer: Buffer; fileName: string; mimeType: string }> {
+        if (!mimeType.startsWith('image/') || mimeType === 'image/gif') {
+            return { buffer, fileName, mimeType };
+        }
+
+        let width = 4096;
+        let quality = 88;
+        let normalizedBuffer = await sharp(buffer, { animated: false })
+            .rotate()
+            .resize({
+                width,
+                height: 4096,
+                fit: 'inside',
+                withoutEnlargement: true,
+            })
+            .flatten({ background: '#ffffff' })
+            .jpeg({ quality, mozjpeg: true })
+            .toBuffer();
+
+        while (normalizedBuffer.length > XService.MAX_IMAGE_UPLOAD_BYTES && (width > 1280 || quality > 60)) {
+            width = Math.max(1280, Math.round(width * 0.82));
+            quality = Math.max(60, quality - 8);
+            normalizedBuffer = await sharp(buffer, { animated: false })
+                .rotate()
+                .resize({
+                    width,
+                    height: 4096,
+                    fit: 'inside',
+                    withoutEnlargement: true,
+                })
+                .flatten({ background: '#ffffff' })
+                .jpeg({ quality, mozjpeg: true })
+                .toBuffer();
+        }
+
+        if (normalizedBuffer.length > XService.MAX_IMAGE_UPLOAD_BYTES) {
+            throw new Error('Image exceeds X 5MB upload limit after optimization');
+        }
+
+        const parsedName = path.parse(fileName);
+        return {
+            buffer: normalizedBuffer,
+            fileName: `${parsedName.name || 'image'}.jpg`,
+            mimeType: 'image/jpeg',
+        };
+    }
+
     private async uploadVideo(source: string, connection?: PlatformConnection): Promise<string | null> {
         const authToken = connection?.accessToken || this.bearerToken;
         if (!authToken) {
@@ -352,7 +405,12 @@ export class XService {
         }
 
         try {
-            const payload = await this.getUploadPayload(imageUrl);
+            const rawPayload = await this.getUploadPayload(imageUrl);
+            const payload = await this.normalizeImagePayload(
+                rawPayload.buffer,
+                rawPayload.fileName,
+                rawPayload.mimeType
+            );
             const formData = new FormData();
             formData.append('media', new Blob([payload.buffer], { type: payload.mimeType }), payload.fileName);
             formData.append('media_category', this.getMediaCategory(payload.mimeType));
