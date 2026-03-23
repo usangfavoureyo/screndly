@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
-import { Check, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
+import { Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -1009,7 +1009,6 @@ export function ComposeEditorPage({
               {COMPOSE_META_PLATFORM_GROUPS.map((group) => {
                 const GroupIcon = group.id === 'instagram' ? InstagramIcon : FacebookIcon;
                 const connected = connectedPlatforms.has(group.connectionKey.toLowerCase());
-                const selectedOptions = group.options.filter((option) => formState.platforms.includes(option.id));
 
                 return (
                   <div
@@ -1043,33 +1042,17 @@ export function ComposeEditorPage({
                             variant="outline"
                             disabled={!connected}
                             onClick={() => togglePlatform(option.id, connected)}
-                            className={`h-11 rounded-xl px-4 ${
-                              isSelected
-                                ? 'border-[#ec1e24] bg-[#ec1e24] text-white hover:bg-[#d91b21] hover:text-white dark:border-[#ec1e24] dark:bg-[#ec1e24] dark:text-white dark:hover:bg-[#d91b21]'
-                                : getPlatformCardTone(false, compatibility.supported, connected)
-                            }`}
+                            className={`h-11 rounded-xl px-4 ${getPlatformCardTone(
+                              isSelected,
+                              compatibility.supported,
+                              connected,
+                            )}`}
                           >
-                            <span className="inline-flex items-center gap-2">
-                              {isSelected ? <Check className="h-4 w-4" /> : null}
-                              <span>{option.label}</span>
-                            </span>
+                            {option.label}
                           </Button>
                         );
                       })}
                     </div>
-                    {selectedOptions.length > 0 ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {selectedOptions.map((option) => (
-                          <span
-                            key={option.id}
-                            className="inline-flex items-center gap-1 rounded-full border border-[#ec1e24]/30 bg-[#ec1e24]/10 px-2.5 py-1 text-xs text-[#ec1e24]"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            {option.label}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
                   </div>
                 );
               })}

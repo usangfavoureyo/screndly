@@ -117,9 +117,10 @@ export interface RSSActivityItem {
   title: string;
   link?: string;
   description?: string;
+  contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
-  status: 'pending' | 'published' | 'failed';
+  status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;
   platforms: string[];
@@ -133,6 +134,7 @@ export interface RSSActivitySummary {
   published: number;
   pending: number;
   failed: number;
+  filtered?: number;
 }
 
 export interface RSSPipelinePreview {
@@ -155,6 +157,7 @@ interface RSSActivityMetadata {
   itemTitle: string;
   itemLink?: string;
   description?: string;
+  contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
   publishedAt?: string;
@@ -1344,7 +1347,7 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
   }
 
   const status = metadata.status;
-  if (status !== 'pending' && status !== 'published' && status !== 'failed') {
+  if (status !== 'pending' && status !== 'published' && status !== 'failed' && status !== 'filtered') {
     return null;
   }
 
@@ -1359,6 +1362,7 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
     title: typeof metadata.itemTitle === 'string' ? metadata.itemTitle : 'Untitled item',
     link: typeof metadata.itemLink === 'string' ? metadata.itemLink : undefined,
     description: typeof metadata.description === 'string' ? metadata.description : undefined,
+    contentHtml: typeof metadata.contentHtml === 'string' ? metadata.contentHtml : undefined,
     imageUrl: typeof metadata.imageUrl === 'string' ? metadata.imageUrl : undefined,
     imageUrls: parseRSSActivityImageUrls(metadata.imageUrls),
     status,
@@ -1377,6 +1381,48 @@ function buildActivitySummary(items: RSSActivityItem[]): RSSActivitySummary {
     published: items.filter((item) => item.status === 'published').length,
     pending: items.filter((item) => item.status === 'pending').length,
     failed: items.filter((item) => item.status === 'failed').length,
+    filtered: items.filter((item) => item.status === 'filtered').length,
+  };
+}
+
+function buildRSSActivityItemFromFeedRecord(record: {
+  id: string;
+  feedId: string;
+  title: string;
+  link: string;
+  status: string;
+  itemData: Prisma.JsonValue | null;
+  firstSeenAt: Date;
+  publishedAt: Date | null;
+  errorMessage: string | null;
+  feed: {
+    id: string;
+    name: string;
+    platformsEnabled: Prisma.JsonValue;
+  };
+}): RSSActivityItem {
+  const item = deserializeRSSItem(record.itemData);
+  const platforms = getEnabledPlatforms(record.feed.platformsEnabled as Record<string, boolean> | null);
+  const normalizedStatus: RSSActivityItem['status'] =
+    record.status === 'published' || record.status === 'pending' || record.status === 'failed' || record.status === 'filtered'
+      ? record.status
+      : 'failed';
+
+  return {
+    id: record.id,
+    feedId: record.feedId,
+    feedName: record.feed.name,
+    title: item?.title || record.title || 'Untitled item',
+    link: item?.link || record.link || undefined,
+    description: item?.description || undefined,
+    contentHtml: item?.contentHtml || undefined,
+    imageUrl: item?.imageUrl || undefined,
+    imageUrls: item?.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : undefined,
+    status: normalizedStatus,
+    timestamp: (record.publishedAt || record.firstSeenAt).toISOString(),
+    publishedAt: record.publishedAt?.toISOString(),
+    platforms,
+    error: record.errorMessage || undefined,
   };
 }
 
@@ -1417,6 +1463,7 @@ function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMeta
     title: metadata.itemTitle,
     link: metadata.itemLink,
     description: metadata.description,
+    contentHtml: metadata.contentHtml,
     imageUrl: metadata.imageUrl,
     imageUrls: metadata.imageUrls,
     status: metadata.status,
@@ -2600,6 +2647,33 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
 }
 
 async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivityItem[]; summary: RSSActivitySummary }> {
+  const support = await getRSSFeedColumnSupport();
+  if (support.feedItemsTable) {
+    const records = await prisma.rSSFeedItem.findMany({
+      orderBy: [
+        { publishedAt: 'desc' },
+        { firstSeenAt: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      take: limit,
+      include: {
+        feed: {
+          select: {
+            id: true,
+            name: true,
+            platformsEnabled: true,
+          },
+        },
+      },
+    });
+
+    const items = records.map((record) => buildRSSActivityItemFromFeedRecord(record));
+    return {
+      items,
+      summary: buildActivitySummary(items),
+    };
+  }
+
   const logs = await prisma.log.findMany({
     where: { service: 'rss' },
     orderBy: { timestamp: 'desc' },
@@ -2618,6 +2692,18 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
 }
 
 async function deleteRSSActivity(id: string): Promise<void> {
+  const support = await getRSSFeedColumnSupport();
+  if (support.feedItemsTable) {
+    try {
+      await prisma.rSSFeedItem.delete({
+        where: { id },
+      });
+      return;
+    } catch (error) {
+      // Fall through to legacy log deletion for old activity rows.
+    }
+  }
+
   await prisma.log.delete({
     where: { id },
   });

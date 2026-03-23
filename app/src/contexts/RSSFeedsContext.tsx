@@ -95,8 +95,10 @@ export interface RSSActivityItem {
   title: string;
   link?: string;
   description?: string;
+  contentHtml?: string;
   imageUrl?: string;
-  status: 'pending' | 'published' | 'failed';
+  imageUrls?: string[];
+  status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;
   platforms: string[];
@@ -108,6 +110,7 @@ export interface RSSActivitySummary {
   published: number;
   pending: number;
   failed: number;
+  filtered?: number;
 }
 
 export interface RSSActivityResponse {
