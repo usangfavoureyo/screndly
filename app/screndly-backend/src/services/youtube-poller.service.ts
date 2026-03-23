@@ -148,6 +148,8 @@ const YOUTUBE_INFO_OPTIONS = {
 };
 const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
 const TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES = 180;
+const RECENT_MOVIE_RELEASE_WINDOW_DAYS = 540;
+const RECENT_SERIES_DEBUT_WINDOW_DAYS = 730;
 const execFileAsync = promisify(execFile);
 const YT_DLP_ANDROID_SDKLESS_ARGS = ['youtube:player-client=android_sdkless'];
 const NON_NARRATIVE_COMEDY_PATTERNS = [
@@ -191,6 +193,24 @@ function escapeRegexValue(value: string): string {
 
 export class YouTubePollerService {
     private isPolling = false;
+
+    private parseISODate(value?: string): Date | null {
+        if (!value) {
+            return null;
+        }
+
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    private getDaysSinceDate(value?: string): number | null {
+        const parsed = this.parseISODate(value);
+        if (!parsed) {
+            return null;
+        }
+
+        return (Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24);
+    }
 
     async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
         const startedAt = new Date();
@@ -616,6 +636,17 @@ export class YouTubePollerService {
         const keywordReason = this.getHardRejectedContentReason(titleAndOverview, '');
         if (keywordReason) {
             return keywordReason;
+        }
+
+        const daysSinceRelease = this.getDaysSinceDate(match.releaseDate);
+        if (typeof daysSinceRelease === 'number' && daysSinceRelease > 0) {
+            if (match.mediaType === 'movie' && daysSinceRelease > RECENT_MOVIE_RELEASE_WINDOW_DAYS) {
+                return `TMDb matched an older catalog movie release (${match.releaseDate}), not a recent or upcoming film`;
+            }
+
+            if (match.mediaType === 'tv' && !match.seasonNumber && daysSinceRelease > RECENT_SERIES_DEBUT_WINDOW_DAYS) {
+                return `TMDb matched an older series debut (${match.releaseDate}) without a current season signal`;
+            }
         }
 
         return null;
@@ -1398,8 +1429,7 @@ Respond ONLY as strict JSON:
         }
 
         const normalizedCaption = this.buildPlatformCaptionBase(platform, captions, settings);
-
-        return [normalizedCaption, video.link].filter(Boolean).join('\n\n');
+        return normalizedCaption;
     }
 
     private buildPlatformTitle(

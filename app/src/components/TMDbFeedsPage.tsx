@@ -23,11 +23,13 @@ interface TMDbFeedsPageProps {
 }
 
 type TMDbFeedFilterType = 'all' | 'today' | 'weekly' | 'monthly' | 'anniversary';
-type SortOption = 'popular' | 'recent';
+type SortOption = 'popular-desc' | 'popular-asc' | 'recent-desc' | 'recent-asc';
 
 const SORT_OPTION_LABELS: Record<SortOption, string> = {
-  popular: 'Most Popular',
-  recent: 'Recently Added',
+  'popular-desc': 'Most Popular',
+  'popular-asc': 'Least Popular',
+  'recent-desc': 'Recently Added',
+  'recent-asc': 'Oldest Added',
 };
 
 export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
@@ -36,11 +38,11 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   const [filterType, setFilterType] = useState<TMDbFeedFilterType>('all');
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [sortByTab, setSortByTab] = useState<Record<TMDbFeedFilterType, SortOption>>({
-    all: 'recent',
-    today: 'recent',
-    weekly: 'recent',
-    monthly: 'recent',
-    anniversary: 'recent',
+    all: 'recent-desc',
+    today: 'recent-desc',
+    weekly: 'recent-desc',
+    monthly: 'recent-desc',
+    anniversary: 'recent-desc',
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
@@ -58,8 +60,10 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
     });
 
     return [...byTab].sort((left, right) => {
-      if (currentSort === 'popular') {
-        const popularityDelta = (right.popularity || 0) - (left.popularity || 0);
+      if (currentSort === 'popular-desc' || currentSort === 'popular-asc') {
+        const popularityDelta = currentSort === 'popular-desc'
+          ? (right.popularity || 0) - (left.popularity || 0)
+          : (left.popularity || 0) - (right.popularity || 0);
         if (popularityDelta !== 0) {
           return popularityDelta;
         }
@@ -68,7 +72,11 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
       const rightDate = new Date(right.createdAt || right.updatedAt || right.releaseDate || 0).getTime();
       const leftDate = new Date(left.createdAt || left.updatedAt || left.releaseDate || 0).getTime();
       if (rightDate !== leftDate) {
-        return rightDate - leftDate;
+        return currentSort === 'recent-asc' ? leftDate - rightDate : rightDate - leftDate;
+      }
+
+      if (currentSort === 'popular-asc') {
+        return (left.popularity || 0) - (right.popularity || 0);
       }
 
       return (right.popularity || 0) - (left.popularity || 0);
@@ -182,8 +190,8 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
           <BottomSheetTitle>Sort Queued Posts</BottomSheetTitle>
         </BottomSheetHeader>
         <BottomSheetBody className="px-4 pb-6">
-          <div className="space-y-2">
-            {(['popular', 'recent'] as const).map((option) => {
+          <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+            {(['popular-desc', 'popular-asc', 'recent-desc', 'recent-asc'] as const).map((option) => {
               const selected = currentSort === option;
 
               return (
@@ -191,21 +199,14 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
                   key={option}
                   type="button"
                   onClick={() => handleSortChange(option)}
-                  className={`flex w-full items-center justify-between rounded-2xl border px-4 py-4 text-left transition-colors ${
+                  className={`relative flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
                     selected
-                      ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white'
-                      : 'border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white'
+                      ? 'font-medium text-gray-900 dark:text-white'
+                      : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
                   }`}
                 >
-                  <div>
-                    <div>{SORT_OPTION_LABELS[option]}</div>
-                    <div className="mt-1 text-sm text-gray-500 dark:text-[#9CA3AF]">
-                      {option === 'popular'
-                        ? 'Show the highest-popularity titles first in this tab.'
-                        : 'Show the newest queued additions first in this tab.'}
-                    </div>
-                  </div>
-                  {selected ? <Check className="h-5 w-5 text-[#ec1e24]" /> : null}
+                  <span className="flex-1 truncate">{SORT_OPTION_LABELS[option]}</span>
+                  {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
                 </button>
               );
             })}
