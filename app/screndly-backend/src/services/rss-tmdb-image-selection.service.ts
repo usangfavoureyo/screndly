@@ -426,22 +426,29 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
     }
 
     const ranked = [...candidates.values()]
-      .map((candidate) => ({
-        candidate,
-        score: scoreAliasMatch(anchor, [
-          candidate.title,
-          candidate.name,
-          candidate.original_title,
-          candidate.original_name,
-        ])
-          + scoreTargetFormatMatch(preferredFormat, candidate.media_type)
-          + scoreContextTerms(
-            [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
-            input.requiredContextTerms,
-            yearTokens
-          )
-          + Math.min(candidate.popularity || 0, 80) / 2,
-      }))
+      .map((candidate) => {
+        const candidateMediaType =
+          candidate.media_type === 'movie' || candidate.media_type === 'tv'
+            ? candidate.media_type
+            : undefined;
+
+        return {
+          candidate,
+          score: scoreAliasMatch(anchor, [
+            candidate.title,
+            candidate.name,
+            candidate.original_title,
+            candidate.original_name,
+          ])
+            + scoreTargetFormatMatch(preferredFormat, candidateMediaType)
+            + scoreContextTerms(
+              [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
+              input.requiredContextTerms,
+              yearTokens
+            )
+            + Math.min(candidate.popularity || 0, 80) / 2,
+        };
+      })
       .sort((left, right) => right.score - left.score)
       .slice(0, 4);
 
