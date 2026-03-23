@@ -1034,22 +1034,24 @@ export function ComposeEditorPage({
                       {group.options.map((option) => {
                         const compatibility = compatibilityMap[option.id];
                         const isSelected = formState.platforms.includes(option.id);
+                        const optionTone = !connected
+                          ? 'border-gray-200 bg-white text-gray-700 opacity-45 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]'
+                          : isSelected
+                            ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]'
+                            : compatibility.supported
+                              ? 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]'
+                              : 'border-[#ec1e24]/35 bg-[#ec1e24]/5 text-[#ec1e24] dark:border-[#ec1e24]/35 dark:bg-[#ec1e24]/5';
 
                         return (
-                          <Button
+                          <button
                             key={option.id}
                             type="button"
-                            variant="outline"
                             disabled={!connected}
                             onClick={() => togglePlatform(option.id, connected)}
-                            className={`h-11 rounded-xl px-4 ${getPlatformCardTone(
-                              isSelected,
-                              compatibility.supported,
-                              connected,
-                            )}`}
+                            className={`h-11 rounded-xl border px-4 text-sm transition-all ${optionTone}`}
                           >
                             {option.label}
-                          </Button>
+                          </button>
                         );
                       })}
                     </div>

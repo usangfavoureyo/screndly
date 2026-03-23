@@ -1444,6 +1444,24 @@ function getRSSActivityDedupeKey(activity: RSSActivityItem): string {
   return `title:${normalizeRSSDedupeValue(activity.title)}`;
 }
 
+function mergeRSSActivityItems(primary: RSSActivityItem[], fallback: RSSActivityItem[], limit: number): RSSActivityItem[] {
+  const merged: RSSActivityItem[] = [];
+  const seen = new Set<string>();
+
+  for (const item of [...primary, ...fallback]) {
+    const dedupeKey = `${item.feedId || 'unknown'}:${getRSSActivityDedupeKey(item)}:${item.status}`;
+    if (seen.has(dedupeKey)) {
+      continue;
+    }
+    seen.add(dedupeKey);
+    merged.push(item);
+  }
+
+  return merged
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, limit);
+}
+
 function hasRecentRSSActivity(
   items: RSSActivityItem[],
   feedId: string,
@@ -2647,6 +2665,16 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
 }
 
 async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivityItem[]; summary: RSSActivitySummary }> {
+  const logs = await prisma.log.findMany({
+    where: { service: 'rss' },
+    orderBy: { timestamp: 'desc' },
+    take: Math.max(limit * 5, 200),
+  });
+
+  const logItems = logs
+    .map((log) => parseRSSActivityLog(log))
+    .filter((item): item is RSSActivityItem => Boolean(item));
+
   const support = await getRSSFeedColumnSupport();
   if (support.feedItemsTable) {
     const records = await prisma.rSSFeedItem.findMany({
@@ -2667,27 +2695,17 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
       },
     });
 
-    const items = records.map((record) => buildRSSActivityItemFromFeedRecord(record));
+    const recordItems = records.map((record) => buildRSSActivityItemFromFeedRecord(record));
+    const items = mergeRSSActivityItems(recordItems, logItems, limit);
     return {
       items,
       summary: buildActivitySummary(items),
     };
   }
 
-  const logs = await prisma.log.findMany({
-    where: { service: 'rss' },
-    orderBy: { timestamp: 'desc' },
-    take: Math.max(limit * 5, 200),
-  });
-
-  const items = logs
-    .map((log) => parseRSSActivityLog(log))
-    .filter((item): item is RSSActivityItem => Boolean(item))
-    .slice(0, limit);
-
   return {
-    items,
-    summary: buildActivitySummary(items),
+    items: logItems.slice(0, limit),
+    summary: buildActivitySummary(logItems.slice(0, limit)),
   };
 }
 
