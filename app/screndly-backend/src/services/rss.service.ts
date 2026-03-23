@@ -2108,7 +2108,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         ? a.pubDate.getTime() - b.pubDate.getTime()
         : b.pubDate.getTime() - a.pubDate.getTime()
     );
-    const manualLatestSelection = options.manualRun && feedFilters.onlyFetchNewItems;
+    const manualLatestSelection = options.manualRun;
     const activityLookbackDays = Math.max(feed.dedupeDays, 1);
     const recentActivityLogs = await prisma.log.findMany({
       where: {
@@ -2177,7 +2177,9 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     const feedRecentActivities = recentActivities
       .filter((activity) => activity.feedId === feed.id);
     const manualSelectionCandidates = manualLatestSelection
-      ? [...newItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      ? [...parsed.items]
+          .filter((item) => !maxItemAgeCutoffDate || item.pubDate >= maxItemAgeCutoffDate)
+          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
       : [];
     const incomingDedupeKeys = Array.from(new Set(
       (manualLatestSelection ? manualSelectionCandidates : orderedNewItems).map((item) => getRSSItemDedupeKey(item))
