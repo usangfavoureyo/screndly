@@ -60,12 +60,17 @@ export class XService {
         }
 
         try {
+            const normalizedImageSources = this.normalizeImageSources(imageSources);
             const mediaIds: string[] = [];
-            for (const imageSource of this.normalizeImageSources(imageSources)) {
+            for (const imageSource of normalizedImageSources) {
                 const mediaId = await this.uploadMedia(imageSource, connection);
                 if (mediaId) {
                     mediaIds.push(mediaId);
                 }
+            }
+
+            if (normalizedImageSources.length > 0 && mediaIds.length === 0) {
+                return { success: false, error: 'Failed to upload image media to X' };
             }
 
             const response = await fetch('https://api.x.com/2/tweets', {
@@ -350,6 +355,9 @@ export class XService {
             const payload = await this.getUploadPayload(imageUrl);
             const formData = new FormData();
             formData.append('media', new Blob([payload.buffer], { type: payload.mimeType }), payload.fileName);
+            formData.append('media_category', this.getMediaCategory(payload.mimeType));
+            formData.append('media_type', payload.mimeType);
+            formData.append('shared', 'false');
 
             const response = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',
