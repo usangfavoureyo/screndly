@@ -215,8 +215,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
       );
     }
     setScheduleItemId(null);
-    toast.success('Post scheduled');
+    toast.success(scheduleItem?.status === 'scheduled' ? 'Schedule updated' : 'Post scheduled');
   };
+
+  const isRescheduleMode = scheduleItem?.status === 'scheduled';
 
   const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
     const previewUrl = getComposeAssetPreviewUrl(asset);
@@ -435,7 +437,51 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             </Button>
                           </div>
                         </div>
-                      ) : item.status === 'failed' || item.status === 'scheduled' ? (
+                      ) : item.status === 'scheduled' ? (
+                        <div className="col-start-2">
+                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
+                            <Button
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              disabled={publishingIds.includes(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handlePublish(item.id);
+                              }}
+                            >
+                              {publishingIds.includes(item.id) ? (
+                                <>
+                                  <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
+                                  Publish
+                                </>
+                              ) : 'Publish'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleOpenSchedule(item);
+                              }}
+                            >
+                              Schedule
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      ) : item.status === 'failed' ? (
                         <div className="col-start-2">
                           <div className={isCompactLayout ? 'w-full' : 'max-w-[9rem]'}>
                             <Button
@@ -464,9 +510,13 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
 
       <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
         <BottomSheetHeader>
-          <BottomSheetTitle>Schedule Post</BottomSheetTitle>
+          <BottomSheetTitle>{isRescheduleMode ? 'Update Schedule' : 'Schedule Post'}</BottomSheetTitle>
           <BottomSheetDescription>
-            {scheduleItem ? `Choose when "${scheduleItem.title}" should move into the scheduled queue.` : 'Choose a schedule.'}
+            {scheduleItem
+              ? isRescheduleMode
+                ? `Choose a new scheduled time for "${scheduleItem.title}".`
+                : `Choose when "${scheduleItem.title}" should move into the scheduled queue.`
+              : 'Choose a schedule.'}
           </BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetBody>
@@ -491,7 +541,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
               Cancel
             </Button>
             <Button className="flex-1" onClick={handleConfirmSchedule}>
-              Schedule
+              {isRescheduleMode ? 'Update Schedule' : 'Schedule'}
             </Button>
           </div>
         </BottomSheetFooter>

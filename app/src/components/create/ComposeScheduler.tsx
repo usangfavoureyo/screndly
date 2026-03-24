@@ -3,6 +3,11 @@ import { toast } from 'sonner';
 import { useComposeStore } from '../../store/useComposeStore';
 import { publishComposeItem } from '../../lib/create/composePublish';
 
+function isRetryablePublishError(message: string | undefined): boolean {
+  if (!message) return false;
+  return /failed to fetch|network|timed out|timeout|load failed|connection/i.test(message);
+}
+
 export function ComposeScheduler() {
   const { items, saveItem } = useComposeStore();
   const processingIdsRef = useRef<Set<string>>(new Set());
@@ -51,13 +56,27 @@ export function ComposeScheduler() {
         } catch (error) {
           if (cancelled) return;
 
+          const message = error instanceof Error ? error.message : 'Failed to publish scheduled post';
+          if (isRetryablePublishError(message)) {
+            const retryAt = new Date(Date.now() + 60_000).toISOString();
+            saveItem({
+              ...item,
+              status: 'scheduled',
+              scheduledAt: retryAt,
+              updatedAt: new Date().toISOString(),
+              error: 'Temporary connection issue. Retrying automatically.',
+            });
+            toast.error('Scheduled publish hit a temporary network issue. Retrying shortly.');
+            continue;
+          }
+
           saveItem({
             ...item,
             status: 'failed',
             updatedAt: new Date().toISOString(),
-            error: error instanceof Error ? error.message : 'Failed to publish scheduled post',
+            error: message,
           });
-          toast.error(error instanceof Error ? error.message : 'Failed to publish scheduled post');
+          toast.error(message);
         } finally {
           processingIdsRef.current.delete(item.id);
         }

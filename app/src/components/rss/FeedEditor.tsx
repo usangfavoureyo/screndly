@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '../ui/sheet';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -6,7 +6,7 @@ import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Separator } from '../ui/separator';
-import { Plus, Trash2 } from 'lucide-react';
+import { Globe, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Feed } from './FeedCard';
 import { haptics } from '../../utils/haptics';
 import { Checkbox } from '../ui/checkbox';
@@ -69,9 +69,9 @@ function createDefaultFormData(): Partial<Feed> {
 
 export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEditorProps) {
   const [formData, setFormData] = useState<Partial<Feed>>(createDefaultFormData());
-
   const [perPlatformImageCount, setPerPlatformImageCount] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement | null>(null);
   const formFilters: Feed['filters'] = {
     ...DEFAULT_FILTERS,
     ...formData.filters,
@@ -124,6 +124,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
         status: formData.status || 'active',
         platformImageCounts: perPlatformImageCount ? formData.platformImageCounts : undefined,
         trickle: formData.trickle || 'newest_first',
+        favicon: formData.favicon,
       };
       await onSave(feedToSave);
       onClose();
@@ -193,6 +194,26 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     });
   };
 
+  const handleLogoUpload = async (file?: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    try {
+      const reader = new FileReader();
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+
+      haptics.light();
+      setFormData((current) => ({ ...current, favicon: dataUrl }));
+    } catch {
+      haptics.light();
+    }
+  };
+
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
       if (!open) {
@@ -243,6 +264,69 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                   placeholder="https://example.com/feed"
                   className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
                 />
+              </div>
+
+              <div>
+                <Label className="text-gray-600 dark:text-[#9CA3AF]">Feed Logo / Avatar</Label>
+                <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                  Uses the website favicon by default. Upload a custom logo or avatar to override it.
+                </p>
+                <div className="mt-3 flex items-center gap-3">
+                  {formData.favicon ? (
+                    <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-[#050505]">
+                      <img
+                        src={formData.favicon}
+                        alt="Feed logo preview"
+                        className="h-10 w-10 object-contain"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 dark:border-[#333333] dark:bg-[#111111]">
+                      <Globe className="h-4 w-4 text-gray-500 dark:text-[#6B7280]" />
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleLogoUpload(event.target.files?.[0]);
+                        event.currentTarget.value = '';
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        haptics.light();
+                        logoInputRef.current?.click();
+                      }}
+                      className="border-gray-300 dark:border-[#333333]"
+                    >
+                      <Upload className="mr-2 h-3.5 w-3.5" />
+                      Upload
+                    </Button>
+                    {formData.favicon ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          haptics.light();
+                          setFormData((current) => ({ ...current, favicon: undefined }));
+                        }}
+                        className="border-gray-300 dark:border-[#333333]"
+                      >
+                        <X className="mr-2 h-3.5 w-3.5" />
+                        Remove
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
               </div>
               <div>
                 <Label className="text-gray-600 dark:text-[#9CA3AF]">Polling Interval (minutes)</Label>

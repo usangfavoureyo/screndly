@@ -297,25 +297,27 @@ export class XService {
                 throw new Error('X native video upload requires a video file');
             }
 
-            const initializeResponse = await fetch('https://api.x.com/2/media/upload/initialize', {
+            const initializePayload = new FormData();
+            initializePayload.append('command', 'INIT');
+            initializePayload.append('media_type', payload.mimeType);
+            initializePayload.append('media_category', this.getMediaCategory(payload.mimeType));
+            initializePayload.append('total_bytes', String(payload.buffer.length));
+
+            const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${authToken}`,
-                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    media_type: payload.mimeType,
-                    media_category: this.getMediaCategory(payload.mimeType),
-                    total_bytes: payload.buffer.length,
-                }),
+                body: initializePayload,
             });
 
             const initializeData = await this.getJsonResponse(initializeResponse);
             if (!initializeResponse.ok) {
                 throw new Error(
-                    initializeData?.detail
-                    || initializeData?.error
-                    || `Failed to initialize X video upload (${initializeResponse.status})`
+                    this.extractApiErrorMessage(
+                        initializeData,
+                        `Failed to initialize X video upload (${initializeResponse.status})`
+                    )
                 );
             }
 
@@ -348,10 +350,12 @@ export class XService {
         for (let offset = 0; offset < payload.buffer.length; offset += chunkSize) {
             const chunk = payload.buffer.subarray(offset, Math.min(offset + chunkSize, payload.buffer.length));
             const formData = new FormData();
+            formData.append('command', 'APPEND');
+            formData.append('media_id', mediaId);
             formData.append('segment_index', String(segmentIndex));
             formData.append('media', new Blob([chunk], { type: payload.mimeType }), payload.fileName);
 
-            const appendResponse = await fetch(`https://api.x.com/2/media/upload/${mediaId}/append`, {
+            const appendResponse = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${authToken}`,
@@ -362,28 +366,35 @@ export class XService {
             if (!appendResponse.ok) {
                 const appendData = await this.getJsonResponse(appendResponse);
                 throw new Error(
-                    appendData?.detail
-                    || appendData?.error
-                    || `Failed to append X media upload segment ${segmentIndex}`
+                    this.extractApiErrorMessage(
+                        appendData,
+                        `Failed to append X video upload segment ${segmentIndex} (${appendResponse.status})`
+                    )
                 );
             }
 
             segmentIndex += 1;
         }
 
-        const finalizeResponse = await fetch(`https://api.x.com/2/media/upload/${mediaId}/finalize`, {
+        const finalizePayload = new FormData();
+        finalizePayload.append('command', 'FINALIZE');
+        finalizePayload.append('media_id', mediaId);
+
+        const finalizeResponse = await fetch('https://api.x.com/2/media/upload', {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${authToken}`,
             },
+            body: finalizePayload,
         });
 
         const finalizeData = await this.getJsonResponse(finalizeResponse);
         if (!finalizeResponse.ok) {
             throw new Error(
-                finalizeData?.detail
-                || finalizeData?.error
-                || `Failed to finalize X media upload (${finalizeResponse.status})`
+                this.extractApiErrorMessage(
+                    finalizeData,
+                    `Failed to finalize X video upload (${finalizeResponse.status})`
+                )
             );
         }
 
@@ -401,18 +412,22 @@ export class XService {
         while (state === 'pending' || state === 'in_progress') {
             await this.sleep(Math.max(checkAfterSeconds, 1) * 1000);
 
-            const response = await fetch(`https://api.x.com/2/media/upload?media_id=${encodeURIComponent(mediaId)}`, {
-                headers: {
-                    Authorization: `Bearer ${authToken}`,
-                },
-            });
+            const response = await fetch(
+                `https://api.x.com/2/media/upload?command=STATUS&media_id=${encodeURIComponent(mediaId)}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${authToken}`,
+                    },
+                }
+            );
 
             const data = await this.getJsonResponse(response);
             if (!response.ok) {
                 throw new Error(
-                    data?.detail
-                    || data?.error
-                    || `Failed to check X media processing status (${response.status})`
+                    this.extractApiErrorMessage(
+                        data,
+                        `Failed to check X media processing status (${response.status})`
+                    )
                 );
             }
 
@@ -426,6 +441,10 @@ export class XService {
                     || nextInfo?.error?.name
                     || 'X reported that video processing failed';
                 throw new Error(errorMessage);
+            }
+
+            if (!state || state === 'succeeded') {
+                return;
             }
         }
     }

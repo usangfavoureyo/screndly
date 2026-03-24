@@ -668,9 +668,11 @@ export function ComposeEditorPage({
     saveItem(nextItem);
     addNotification(buildComposeScheduledNotification(nextItem, scheduledAt));
     setIsScheduleOpen(false);
-    toast.success('Post scheduled');
+    toast.success(existingItem?.status === 'scheduled' ? 'Schedule updated' : 'Post scheduled');
     onNavigate('create', previousPage || 'create');
   };
+
+  const isEditingScheduledItem = existingItem?.status === 'scheduled';
 
   const handlePublish = async () => {
     if (!validate('published')) return;
@@ -1225,7 +1227,9 @@ export function ComposeEditorPage({
                   </>
                 ) : 'Publish'}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails}>Schedule</Button>
+              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails}>
+                {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
+              </Button>
             </div>
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
@@ -1267,8 +1271,12 @@ export function ComposeEditorPage({
 
       <BottomSheet open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
         <BottomSheetHeader>
-          <BottomSheetTitle>Schedule Post</BottomSheetTitle>
-          <BottomSheetDescription>Choose when this post should move into the scheduled queue.</BottomSheetDescription>
+          <BottomSheetTitle>{isEditingScheduledItem ? 'Update Schedule' : 'Schedule Post'}</BottomSheetTitle>
+          <BottomSheetDescription>
+            {isEditingScheduledItem
+              ? 'Change the scheduled date or time for this post.'
+              : 'Choose when this post should move into the scheduled queue.'}
+          </BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetBody>
           <div className="space-y-4">
@@ -1289,7 +1297,7 @@ export function ComposeEditorPage({
         <BottomSheetFooter>
           <div className="flex w-full gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setIsScheduleOpen(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={handleSchedule}>Schedule</Button>
+            <Button className="flex-1" onClick={handleSchedule}>{isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}</Button>
           </div>
         </BottomSheetFooter>
       </BottomSheet>

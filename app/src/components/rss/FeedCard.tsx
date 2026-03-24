@@ -283,17 +283,17 @@ export function FeedCard({
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-start gap-3 flex-1 min-w-0">
             {feed.favicon && !faviconError ? (
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-[#050505]">
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-[#050505]">
                 <img
                   src={feed.favicon}
                   alt=""
-                  className="h-8 w-8 rounded-lg object-contain"
+                  className="h-7 w-7 rounded-lg object-contain"
                   onError={() => setFaviconError(true)}
                 />
               </div>
             ) : (
-              <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 dark:border-[#333333] dark:bg-[#111111]">
-                <Globe className="h-5 w-5 text-gray-500 dark:text-[#6B7280]" />
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 dark:border-[#333333] dark:bg-[#111111]">
+                <Globe className="h-4 w-4 text-gray-500 dark:text-[#6B7280]" />
               </div>
             )}
             <div className="flex-1 min-w-0">
