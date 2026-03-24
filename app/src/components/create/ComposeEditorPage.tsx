@@ -1040,7 +1040,7 @@ export function ComposeEditorPage({
                             ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]'
                             : compatibility.supported
                               ? 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]'
-                              : 'border-gray-200 bg-gray-50 text-[#9CA3AF] dark:border-[#333333] dark:bg-[#050505] dark:text-[#6B7280]';
+                              : 'border-gray-200 bg-white text-white/90 dark:border-[#333333] dark:bg-[#000000] dark:text-white';
 
                         return (
                           <button

@@ -6,6 +6,7 @@
 import prisma from '../lib/prisma';
 import { readSecretSettingValue } from '../lib/settings';
 import { trackApiUsage } from './api-usage.service';
+import { createHash } from 'crypto';
 
 // ============================================
 // TYPES
@@ -69,6 +70,9 @@ export interface AIRequest {
     jsonMode?: boolean;
     reasoningEffort?: AIReasoningEffort;
     enableWebSearch?: boolean;
+    cacheKey?: string;
+    cacheTTLms?: number;
+    useCache?: boolean;
 }
 
 export interface AIResponse {
@@ -81,6 +85,78 @@ export interface AIResponse {
         total: number;
     };
     error?: string;
+}
+
+interface CachedAIResponse {
+    expiresAt: number;
+    value: AIResponse;
+}
+
+const aiResponseCache = new Map<string, CachedAIResponse>();
+const pendingAIRequests = new Map<string, Promise<AIResponse>>();
+const DEFAULT_AI_CACHE_TTL_MS = 30 * 60 * 1000;
+const WEB_SEARCH_AI_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function getEffectiveAICacheTTLms(request: AIRequest): number {
+    if (typeof request.cacheTTLms === 'number' && request.cacheTTLms > 0) {
+        return request.cacheTTLms;
+    }
+
+    return request.enableWebSearch ? WEB_SEARCH_AI_CACHE_TTL_MS : DEFAULT_AI_CACHE_TTL_MS;
+}
+
+function shouldUseAICache(request: AIRequest): boolean {
+    if (request.useCache === false) {
+        return false;
+    }
+
+    const ttl = getEffectiveAICacheTTLms(request);
+    return ttl > 0;
+}
+
+function buildAICacheKey(request: AIRequest): string {
+    if (request.cacheKey && request.cacheKey.trim()) {
+        return request.cacheKey.trim();
+    }
+
+    const hash = createHash('sha256');
+    hash.update(JSON.stringify({
+        model: request.model,
+        prompt: request.prompt,
+        systemPrompt: request.systemPrompt || '',
+        maxTokens: request.maxTokens || null,
+        temperature: typeof request.temperature === 'number' ? request.temperature : null,
+        jsonMode: request.jsonMode === true,
+        reasoningEffort: request.reasoningEffort || null,
+        enableWebSearch: request.enableWebSearch === true,
+    }));
+
+    return `ai:${hash.digest('hex')}`;
+}
+
+function readCachedAIResponse(cacheKey: string): AIResponse | null {
+    const cached = aiResponseCache.get(cacheKey);
+    if (!cached) {
+        return null;
+    }
+
+    if (cached.expiresAt <= Date.now()) {
+        aiResponseCache.delete(cacheKey);
+        return null;
+    }
+
+    return cached.value;
+}
+
+function writeCachedAIResponse(cacheKey: string, response: AIResponse, ttlMs: number): void {
+    if (!response.success) {
+        return;
+    }
+
+    aiResponseCache.set(cacheKey, {
+        expiresAt: Date.now() + ttlMs,
+        value: response,
+    });
 }
 
 function resolveReasoningEffort(request: AIRequest): AIReasoningEffort | undefined {
@@ -686,9 +762,40 @@ export async function generateCompletion(request: AIRequest): Promise<AIResponse
         model: normalizeAIModel(request.model),
     };
 
+    if (shouldUseAICache(normalizedRequest)) {
+        const cacheKey = buildAICacheKey(normalizedRequest);
+        const cached = readCachedAIResponse(cacheKey);
+        if (cached) {
+            return cached;
+        }
+
+        const pending = pendingAIRequests.get(cacheKey);
+        if (pending) {
+            return pending;
+        }
+
+        const runRequest = (async () => {
+            const response = normalizedRequest.model === 'flash-3'
+                ? await callFlash3(normalizedRequest)
+                : await callOpenAI(normalizedRequest);
+
+            writeCachedAIResponse(cacheKey, response, getEffectiveAICacheTTLms(normalizedRequest));
+            return response;
+        })();
+
+        pendingAIRequests.set(cacheKey, runRequest);
+
+        try {
+            return await runRequest;
+        } finally {
+            pendingAIRequests.delete(cacheKey);
+        }
+    }
+
     if (normalizedRequest.model === 'flash-3') {
         return callFlash3(normalizedRequest);
     }
+
     return callOpenAI(normalizedRequest);
 }
 

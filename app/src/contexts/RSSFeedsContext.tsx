@@ -1,6 +1,12 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
+import {
+  getRSSActivitySnapshot,
+  getRSSFeedsSnapshot,
+  saveRSSActivitySnapshot,
+  saveRSSFeedsSnapshot,
+} from '../utils/rssOfflineStore';
 
 export interface FilterItem {
   text: string;
@@ -201,11 +207,16 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to fetch RSS feeds');
       }
 
-      setFeeds(Array.isArray(response.data) ? response.data.map((feed) => normalizeFeed(feed)) : []);
+      const normalizedFeeds = Array.isArray(response.data) ? response.data.map((feed) => normalizeFeed(feed)) : [];
+      setFeeds(normalizedFeeds);
+      void saveRSSFeedsSnapshot(normalizedFeeds);
     } catch (err) {
       console.error('Error fetching RSS feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch feeds');
-      if (!silent) {
+      const savedFeeds = await getRSSFeedsSnapshot<RSSFeed[]>();
+      if (savedFeeds) {
+        setFeeds(savedFeeds.map((feed) => normalizeFeed(feed)));
+      } else if (!silent) {
         setFeeds([]);
       }
     } finally {
@@ -216,8 +227,27 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
+    void getRSSFeedsSnapshot<RSSFeed[]>().then((savedFeeds) => {
+      if (!isActive || !savedFeeds || savedFeeds.length === 0) {
+        return;
+      }
+
+      setFeeds(savedFeeds.map((feed) => normalizeFeed(feed)));
+      setIsLoading(false);
+    });
+
     fetchFeeds();
+
+    return () => {
+      isActive = false;
+    };
   }, [fetchFeeds]);
+
+  useEffect(() => {
+    void saveRSSFeedsSnapshot(feeds);
+  }, [feeds]);
 
   const addFeed = async (feedData: Partial<RSSFeed> & { url: string }): Promise<RSSFeed | null> => {
     try {
@@ -382,9 +412,16 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         throw new Error(response.error?.message || 'Failed to fetch activity');
       }
 
+      void saveRSSActivitySnapshot(response.data);
       return response.data;
     } catch (err) {
       console.error('Error fetching RSS activity:', err);
+      const savedActivity = await getRSSActivitySnapshot<RSSActivityResponse>();
+      if (savedActivity) {
+        toast.info('Showing cached RSS activity while offline.');
+        return savedActivity;
+      }
+
       toast.error(err instanceof Error ? err.message : 'Failed to fetch RSS activity');
       return null;
     }
