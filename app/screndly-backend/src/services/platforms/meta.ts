@@ -677,24 +677,36 @@ export const metaService = {
         mediaKind: 'image' | 'video'
     ): Promise<MetaPostResult> {
         try {
-            const endpoint = mediaKind === 'video' ? 'video_stories' : 'photo_stories';
-            const payload = new URLSearchParams({
-                access_token: accessToken,
-            });
+            let response;
 
             if (mediaKind === 'video') {
-                payload.append('video_url', mediaUrl);
-            } else {
-                payload.append('photo_url', mediaUrl);
-            }
+                const payload = new URLSearchParams({
+                    access_token: accessToken,
+                    upload_phase: 'finish',
+                    video_url: mediaUrl,
+                });
 
-            const response = await axios.post(
-                `${BASE_URL}/${pageId}/${endpoint}`,
-                payload.toString(),
-                {
-                    headers: FORM_URL_ENCODED_HEADERS,
-                }
-            );
+                response = await axios.post(
+                    `${GRAPH_VIDEO_BASE_URL}/${pageId}/video_stories`,
+                    payload.toString(),
+                    {
+                        headers: FORM_URL_ENCODED_HEADERS,
+                    }
+                );
+            } else {
+                const payload = new URLSearchParams({
+                    access_token: accessToken,
+                    photo_url: mediaUrl,
+                });
+
+                response = await axios.post(
+                    `${BASE_URL}/${pageId}/photo_stories`,
+                    payload.toString(),
+                    {
+                        headers: FORM_URL_ENCODED_HEADERS,
+                    }
+                );
+            }
 
             return {
                 success: true,

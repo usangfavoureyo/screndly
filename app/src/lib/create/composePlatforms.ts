@@ -9,13 +9,15 @@ export const COMPOSE_PLATFORM_LABELS: Record<ComposePlatformKey, string> = {
   tiktok: 'TikTok',
   threads: 'Threads',
   x: 'X',
-  youtube: 'YouTube',
+  youtube_longform: 'YouTube Long-form',
+  youtube_shorts: 'YouTube Shorts',
   pinterest: 'Pinterest',
 };
 
 const LEGACY_COMPOSE_PLATFORM_MAP: Record<string, ComposePlatformKey | undefined> = {
   instagram: 'instagram_feed',
   facebook: 'facebook_feed',
+  youtube: 'youtube_longform',
 };
 
 function isComposePlatformKey(value: string): value is ComposePlatformKey {
@@ -33,6 +35,7 @@ export function normalizeComposePlatforms(platforms: readonly string[] | null | 
 
   const hasExplicitInstagramDestination = trimmedPlatforms.some((platform) => platform.startsWith('instagram_'));
   const hasExplicitFacebookDestination = trimmedPlatforms.some((platform) => platform.startsWith('facebook_'));
+  const hasExplicitYouTubeDestination = trimmedPlatforms.some((platform) => platform.startsWith('youtube_'));
 
   const normalized = trimmedPlatforms
     .map((platform) => {
@@ -41,6 +44,10 @@ export function normalizeComposePlatforms(platforms: readonly string[] | null | 
       }
 
       if (platform === 'facebook' && hasExplicitFacebookDestination) {
+        return undefined;
+      }
+
+      if (platform === 'youtube' && hasExplicitYouTubeDestination) {
         return undefined;
       }
 

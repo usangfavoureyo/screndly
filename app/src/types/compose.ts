@@ -9,7 +9,8 @@ export type ComposePlatformKey =
   | 'tiktok'
   | 'threads'
   | 'x'
-  | 'youtube'
+  | 'youtube_longform'
+  | 'youtube_shorts'
   | 'pinterest';
 
 export type ComposeMediaKind = 'image' | 'video';

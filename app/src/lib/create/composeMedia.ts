@@ -84,7 +84,15 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
     supportsMixedMedia: false,
     maxItems: 4,
   },
-  youtube: {
+  youtube_longform: {
+    supportsSingleImage: false,
+    supportsSingleVideo: true,
+    supportsMultiImage: false,
+    supportsMultiVideo: false,
+    supportsMixedMedia: false,
+    maxItems: 1,
+  },
+  youtube_shorts: {
     supportsSingleImage: false,
     supportsSingleVideo: true,
     supportsMultiImage: false,
@@ -349,7 +357,8 @@ export function getComposeCompatibilityMap(
     tiktok: getComposePlatformCompatibility('tiktok', assets),
     threads: getComposePlatformCompatibility('threads', assets),
     x: getComposePlatformCompatibility('x', assets),
-    youtube: getComposePlatformCompatibility('youtube', assets),
+    youtube_longform: getComposePlatformCompatibility('youtube_longform', assets),
+    youtube_shorts: getComposePlatformCompatibility('youtube_shorts', assets),
     pinterest: getComposePlatformCompatibility('pinterest', assets),
   };
 }

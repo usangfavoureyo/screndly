@@ -10,7 +10,9 @@ export interface PlatformSelection {
     instagramReels?: boolean;
     instagramStories?: boolean;
     threads: boolean;
-    youtube: boolean;
+    youtube?: boolean;
+    youtubeLongform?: boolean;
+    youtubeShorts?: boolean;
     tiktok?: boolean;
     pinterest: boolean;
 }
@@ -68,6 +70,8 @@ export async function publishContent(
                 instagramStories: 'InstagramStories',
                 threads: 'Threads',
                 youtube: 'YouTube',
+                youtubeLongform: 'YouTubeLongform',
+                youtubeShorts: 'YouTubeShorts',
                 tiktok: 'TikTok',
                 pinterest: 'Pinterest'
             };

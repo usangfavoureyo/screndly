@@ -13,13 +13,12 @@ export type CreateTabId = (typeof CREATE_TABS)[number]['id'];
 export const COMPOSE_PLATFORM_OPTIONS: Array<{
   id: ComposePlatformKey;
   label: string;
-  connectionKey: 'TikTok' | 'Threads' | 'X' | 'YouTube' | 'Pinterest';
+  connectionKey: 'TikTok' | 'Threads' | 'X' | 'Pinterest';
   helper: string;
 }> = [
   { id: 'tiktok', label: 'TikTok', connectionKey: 'TikTok', helper: 'Video-first publishing' },
   { id: 'threads', label: 'Threads', connectionKey: 'Threads', helper: 'Short-form text publishing' },
   { id: 'x', label: 'X', connectionKey: 'X', helper: 'Short updates and links' },
-  { id: 'youtube', label: 'YouTube', connectionKey: 'YouTube', helper: 'Video publishing with playlist metadata' },
   { id: 'pinterest', label: 'Pinterest', connectionKey: 'Pinterest', helper: 'Pin publishing with board selection' },
 ];
 
@@ -43,6 +42,16 @@ export const COMPOSE_META_PLATFORM_GROUPS = [
     options: [
       { id: 'facebook_feed' as const, label: 'Feed' },
       { id: 'facebook_stories' as const, label: 'Stories' },
+    ],
+  },
+  {
+    id: 'youtube',
+    label: 'YouTube',
+    connectionKey: 'YouTube' as const,
+    helper: 'Choose long-form, shorts, or both.',
+    options: [
+      { id: 'youtube_longform' as const, label: 'Long-form' },
+      { id: 'youtube_shorts' as const, label: 'Shorts' },
     ],
   },
 ] as const;

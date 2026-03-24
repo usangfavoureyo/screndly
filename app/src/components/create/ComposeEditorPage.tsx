@@ -85,7 +85,8 @@ const PLATFORM_ICONS = {
   tiktok: TikTokIcon,
   threads: ThreadsIcon,
   x: XIcon,
-  youtube: YouTubeIcon,
+  youtube_longform: YouTubeIcon,
+  youtube_shorts: YouTubeIcon,
   pinterest: PinterestIcon,
 } as const;
 
@@ -98,20 +99,12 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
   tiktok: 'w-6.5 h-6.5',
   threads: 'w-5 h-5',
   x: 'w-4 h-4',
-  youtube: 'w-6 h-6',
+  youtube_longform: 'w-6 h-6',
+  youtube_shorts: 'w-6 h-6',
   pinterest: 'w-5.5 h-5.5',
 };
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
-const SHARED_CAPTION_PLATFORMS: ComposePlatformKey[] = [
-  'instagram_feed',
-  'instagram_reels',
-  'facebook_feed',
-  'threads',
-  'x',
-  'tiktok',
-];
-
 function createInitialForm(item?: ComposeItem): FormState {
   const normalized = item ? normalizeComposeItem(item) : undefined;
 
@@ -221,7 +214,6 @@ export function ComposeEditorPage({
   );
   const mediaSummary = useMemo(() => summarizeComposeMedia(formState.mediaAssets), [formState.mediaAssets]);
   const compatibilityMap = useMemo(() => getComposeCompatibilityMap(formState.mediaAssets), [formState.mediaAssets]);
-  const hasSharedCaptionPlatform = formState.platforms.some((platform) => SHARED_CAPTION_PLATFORMS.includes(platform));
   const selectedPlatformIssues = formState.platforms.map((platform) => compatibilityMap[platform]).filter((entry) => !entry.supported);
   const hasUploadingAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'uploading');
   const hasFailedAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'failed');
@@ -230,7 +222,9 @@ export function ComposeEditorPage({
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
   const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'failed');
-  const isYouTubeSelected = formState.platforms.includes('youtube');
+  const isYouTubeLongformSelected = formState.platforms.includes('youtube_longform');
+  const isYouTubeShortsSelected = formState.platforms.includes('youtube_shorts');
+  const isYouTubeSelected = isYouTubeLongformSelected || isYouTubeShortsSelected;
   const isPinterestSelected = formState.platforms.includes('pinterest');
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
@@ -591,10 +585,6 @@ export function ComposeEditorPage({
       toast.error(selectedPlatformIssues[0].reason || 'One or more selected platforms do not support this media set.');
       return false;
     }
-    if (hasSharedCaptionPlatform && !formState.sharedCaption.trim()) {
-      toast.error('Add a shared caption for the selected platforms');
-      return false;
-    }
     if (
       isPinterestSelected &&
       (!formState.pinterestTitle.trim() || !formState.pinterestDescription.trim() || !formState.pinterestBoard)
@@ -604,7 +594,11 @@ export function ComposeEditorPage({
     }
     if (
       isYouTubeSelected &&
-      (!formState.youtubeTitle.trim() || !formState.youtubeDescription.trim() || !formState.youtubePlaylist)
+      (
+        !formState.youtubeTitle.trim()
+        || (isYouTubeLongformSelected && !formState.youtubeDescription.trim())
+        || (isYouTubeLongformSelected && !formState.youtubePlaylist)
+      )
     ) {
       toast.error('Complete the YouTube fields before saving');
       return false;
@@ -1007,7 +1001,12 @@ export function ComposeEditorPage({
             <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
             <div className="mt-4 space-y-4">
               {COMPOSE_META_PLATFORM_GROUPS.map((group) => {
-                const GroupIcon = group.id === 'instagram' ? InstagramIcon : FacebookIcon;
+                const GroupIcon =
+                  group.id === 'instagram'
+                    ? InstagramIcon
+                    : group.id === 'facebook'
+                      ? FacebookIcon
+                      : YouTubeIcon;
                 const connected = connectedPlatforms.has(group.connectionKey.toLowerCase());
 
                 return (
@@ -1099,7 +1098,7 @@ export function ComposeEditorPage({
             <div className="mb-4">
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Shared Caption</h3>
-                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Write the caption manually for Instagram, Facebook, Threads, X, and TikTok in this flow.</p>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Used for Instagram feed/reels, Facebook feed, Threads, X, and TikTok. Stories and YouTube uploads ignore this caption.</p>
               </div>
             </div>
             <Textarea
@@ -1153,53 +1152,61 @@ export function ComposeEditorPage({
                   <Label className="text-gray-600 dark:text-[#9CA3AF]">Title</Label>
                   <Input value={formState.youtubeTitle} onChange={(event) => setFormState((current) => ({ ...current, youtubeTitle: event.target.value }))} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
                 </div>
-                <div>
-                  <Label className="text-gray-600 dark:text-[#9CA3AF]">Description</Label>
-                  <Textarea value={formState.youtubeDescription} onChange={(event) => setFormState((current) => ({ ...current, youtubeDescription: event.target.value }))} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
-                </div>
-                <div>
-                  <Label className="text-gray-600 dark:text-[#9CA3AF]">Playlist</Label>
-                  <Select value={formState.youtubePlaylist} onValueChange={(value) => setFormState((current) => ({ ...current, youtubePlaylist: value }))}>
-                    <SelectTrigger className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]">
-                      <SelectValue placeholder="Select a playlist" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {formState.youtubePlaylist && !hasMatchingYouTubePlaylist && (
-                        <SelectItem value={formState.youtubePlaylist}>
-                          {formState.youtubePlaylist}
-                        </SelectItem>
+                {isYouTubeLongformSelected ? (
+                  <>
+                    <div>
+                      <Label className="text-gray-600 dark:text-[#9CA3AF]">Description</Label>
+                      <Textarea value={formState.youtubeDescription} onChange={(event) => setFormState((current) => ({ ...current, youtubeDescription: event.target.value }))} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
+                    </div>
+                    <div>
+                      <Label className="text-gray-600 dark:text-[#9CA3AF]">Playlist</Label>
+                      <Select value={formState.youtubePlaylist} onValueChange={(value) => setFormState((current) => ({ ...current, youtubePlaylist: value }))}>
+                        <SelectTrigger className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]">
+                          <SelectValue placeholder="Select a playlist" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {formState.youtubePlaylist && !hasMatchingYouTubePlaylist && (
+                            <SelectItem value={formState.youtubePlaylist}>
+                              {formState.youtubePlaylist}
+                            </SelectItem>
+                          )}
+                          {isLoadingYouTubePlaylists && (
+                            <SelectItem value="__youtube-playlists-loading" disabled>
+                              <div className="flex w-full items-center justify-center py-1">
+                                <RedSpinner size="sm" label="Loading YouTube playlists..." />
+                              </div>
+                            </SelectItem>
+                          )}
+                          {!isLoadingYouTubePlaylists && youtubePlaylists.length === 0 && (
+                            <SelectItem value="__youtube-playlists-empty" disabled>
+                              No channel playlists found
+                            </SelectItem>
+                          )}
+                          {youtubePlaylists.map((playlist) => (
+                            <SelectItem key={playlist.id} value={playlist.title}>
+                              {playlist.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {youtubePlaylistError ? (
+                        <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">{youtubePlaylistError}</p>
+                      ) : isLoadingYouTubePlaylists ? (
+                        <PageLoader size="sm" className="mt-2 h-auto justify-start py-1" label="Loading YouTube playlists..." />
+                      ) : (
+                        <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                          {youtubePlaylists.length > 0
+                            ? 'Showing playlists from your connected YouTube channel.'
+                            : 'Connect YouTube and create channel playlists to choose from them here.'}
+                        </p>
                       )}
-                      {isLoadingYouTubePlaylists && (
-                        <SelectItem value="__youtube-playlists-loading" disabled>
-                          <div className="flex w-full items-center justify-center py-1">
-                            <RedSpinner size="sm" label="Loading YouTube playlists..." />
-                          </div>
-                        </SelectItem>
-                      )}
-                      {!isLoadingYouTubePlaylists && youtubePlaylists.length === 0 && (
-                        <SelectItem value="__youtube-playlists-empty" disabled>
-                          No channel playlists found
-                        </SelectItem>
-                      )}
-                      {youtubePlaylists.map((playlist) => (
-                        <SelectItem key={playlist.id} value={playlist.title}>
-                          {playlist.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {youtubePlaylistError ? (
-                    <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">{youtubePlaylistError}</p>
-                  ) : isLoadingYouTubePlaylists ? (
-                    <PageLoader size="sm" className="mt-2 h-auto justify-start py-1" label="Loading YouTube playlists..." />
-                  ) : (
-                    <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                      {youtubePlaylists.length > 0
-                        ? 'Showing playlists from your connected YouTube channel.'
-                        : 'Connect YouTube and create channel playlists to choose from them here.'}
-                    </p>
-                  )}
-                </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                    Shorts use the video only. Shared captions are ignored here.
+                  </p>
+                )}
               </div>
             </div>
           ) : null}

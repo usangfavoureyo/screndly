@@ -20,7 +20,8 @@ const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
   tiktok: 'TikTok',
   threads: 'Threads',
   x: 'X',
-  youtube: 'YouTube',
+  youtube_longform: 'YouTube Long-form',
+  youtube_shorts: 'YouTube Shorts',
   pinterest: 'Pinterest',
 };
 
@@ -33,7 +34,8 @@ function toPlatformSelection(platforms: ComposePlatformKey[]): PlatformSelection
     instagramReels: platforms.includes('instagram_reels'),
     instagramStories: platforms.includes('instagram_stories'),
     threads: platforms.includes('threads'),
-    youtube: platforms.includes('youtube'),
+    youtubeLongform: platforms.includes('youtube_longform'),
+    youtubeShorts: platforms.includes('youtube_shorts'),
     tiktok: platforms.includes('tiktok'),
     pinterest: platforms.includes('pinterest'),
   };

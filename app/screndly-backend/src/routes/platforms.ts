@@ -40,6 +40,8 @@ type SupportedPlatform =
     | 'TikTok'
     | 'X'
     | 'YouTube'
+    | 'YouTubeLongform'
+    | 'YouTubeShorts'
     | 'Pinterest';
 
 interface BackendPlatformStatus {
@@ -112,6 +114,15 @@ function normalizePlatform(value?: string | null): SupportedPlatform | null {
             return 'X';
         case 'youtube':
             return 'YouTube';
+        case 'youtubelongform':
+        case 'youtube_longform':
+        case 'youtube longform':
+        case 'youtube long-form':
+            return 'YouTubeLongform';
+        case 'youtubeshorts':
+        case 'youtube_shorts':
+        case 'youtube shorts':
+            return 'YouTubeShorts';
         case 'pinterest':
             return 'Pinterest';
         default:
@@ -128,6 +139,9 @@ function getConnectionPlatform(platform: SupportedPlatform): Exclude<SupportedPl
         case 'FacebookFeed':
         case 'FacebookStories':
             return 'Facebook';
+        case 'YouTubeLongform':
+        case 'YouTubeShorts':
+            return 'YouTube';
         default:
             return platform;
     }
@@ -145,6 +159,10 @@ function getPublishPlatformLabel(platform: SupportedPlatform): string {
             return 'Facebook Feed';
         case 'FacebookStories':
             return 'Facebook Stories';
+        case 'YouTubeLongform':
+            return 'YouTube Long-form';
+        case 'YouTubeShorts':
+            return 'YouTube Shorts';
         default:
             return platform;
     }
@@ -162,6 +180,8 @@ function createDisconnectedStatus(): Record<SupportedPlatform, BackendPlatformSt
         InstagramStories: { connected: false },
         Threads: { connected: false },
         YouTube: { connected: false },
+        YouTubeLongform: { connected: false },
+        YouTubeShorts: { connected: false },
         TikTok: { connected: false },
         Pinterest: { connected: false },
     };
@@ -853,22 +873,25 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                         break;
 
                     case 'YouTube':
+                    case 'YouTubeLongform':
+                    case 'YouTubeShorts':
                         if (!localFilePath && videoUrl) {
                             downloadedVideoPath = downloadedVideoPath || await downloadRemoteFile(videoUrl, 'screndly-youtube');
                         }
 
                         if (connection?.accessToken && (localFilePath || downloadedVideoPath)) {
                             const youtubeThumbnailPath = await getDownloadedThumbnailPath(youtubeThumbnailUrl);
+                            const isYouTubeShorts = platform === 'YouTubeShorts';
                             // Refresh token logic should be handled here or in service
                             const ytResult = await youtubeService.uploadVideo(
                                 connection.accessToken,
                                 localFilePath || downloadedVideoPath!,
                                 {
                                     title: youtubeTitle || title || text.slice(0, 100),
-                                    description: youtubeDescription || text,
+                                    description: isYouTubeShorts ? (youtubeDescription || '') : (youtubeDescription || text),
                                     privacyStatus: 'public',
                                     thumbnailPath: youtubeThumbnailPath || undefined,
-                                    playlistIds: youtubePlaylists,
+                                    playlistIds: isYouTubeShorts ? [] : youtubePlaylists,
                                 },
                                 connection.refreshToken || undefined
                             );
@@ -1038,6 +1061,11 @@ router.get('/status', authenticate, async (req, res) => {
             if (platform === 'Facebook') {
                 status.FacebookFeed = nextStatus;
                 status.FacebookStories = nextStatus;
+            }
+
+            if (platform === 'YouTube') {
+                status.YouTubeLongform = nextStatus;
+                status.YouTubeShorts = nextStatus;
             }
         });
         res.json({ success: true, data: status });
