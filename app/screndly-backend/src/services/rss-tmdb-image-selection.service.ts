@@ -192,6 +192,15 @@ function buildImageUrl(path?: string | null): string | undefined {
   return path ? `${TMDB_IMAGE_BASE_URL}${path}` : undefined;
 }
 
+function getImageIdentity(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname.toLowerCase()}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
 function selectBestImageAsset(
   primaryPath: string | null | undefined,
   assets: TMDbImageAsset[] | undefined,
@@ -621,15 +630,16 @@ async function resolveCompanyLogo(input: StructuredRSSTMDbSelectionInput): Promi
 }
 
 function dedupeResolvedImages(images: ResolvedStructuredTMDbImage[], excludeUrls: string[]): ResolvedStructuredTMDbImage[] {
-  const excluded = new Set(excludeUrls);
+  const excluded = new Set(excludeUrls.map((url) => getImageIdentity(url)));
   const seen = new Set<string>();
 
   return images.filter((image) => {
-    if (excluded.has(image.url) || seen.has(image.url)) {
+    const identity = getImageIdentity(image.url);
+    if (excluded.has(identity) || seen.has(identity)) {
       return false;
     }
 
-    seen.add(image.url);
+    seen.add(identity);
     return true;
   });
 }

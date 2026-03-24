@@ -724,6 +724,15 @@ function dedupeUrls(values: Array<string | null | undefined>): string[] {
   return urls;
 }
 
+function getImageIdentity(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.hostname.toLowerCase()}${parsed.pathname}`.toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
+}
+
 function isBlockedFeedFallbackUrl(url: string): boolean {
   const normalizedUrl = normalizeText(url);
   if (!normalizedUrl) {
@@ -2286,16 +2295,17 @@ function mergeResolvedImages(
   nextImages: RSSResolvedImage[],
   limit: number
 ): RSSResolvedImage[] {
-  const seen = new Set(baseImages.map((image) => image.url));
+  const seen = new Set(baseImages.map((image) => getImageIdentity(image.url)));
   const merged = [...baseImages];
 
   for (const image of nextImages) {
-    if (seen.has(image.url)) {
+    const identity = getImageIdentity(image.url);
+    if (seen.has(identity)) {
       continue;
     }
 
     merged.push(image);
-    seen.add(image.url);
+    seen.add(identity);
 
     if (merged.length >= limit) {
       break;
@@ -2489,11 +2499,13 @@ async function resolveSmartSecondaryCandidate(
   primaryRole: ImageRole,
   sources: RSSImageSource[]
 ): Promise<RSSResolvedImage | null> {
+  const primaryIdentity = getImageIdentity(primaryImage.url);
+
   for (const source of sources) {
     if (source === 'tmdb') {
       const tmdbResolved = await collectStructuredTMDbImages(analysis, 4, [primaryImage.url]);
       const candidate = tmdbResolved.find((item) =>
-        item.url !== primaryImage.url &&
+        getImageIdentity(item.url) !== primaryIdentity &&
         areImageRolesComplementary(primaryRole, item.role)
       );
       if (candidate) {
@@ -2504,7 +2516,7 @@ async function resolveSmartSecondaryCandidate(
 
     const secondaryScored = await collectScoredImages(analysis, 6);
     const candidate = secondaryScored.find((item) => {
-      if (!item.image.imageUrl || item.image.imageUrl === primaryImage.url) {
+      if (!item.image.imageUrl || getImageIdentity(item.image.imageUrl) === primaryIdentity) {
         return false;
       }
 
