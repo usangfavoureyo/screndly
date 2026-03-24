@@ -1098,7 +1098,7 @@ export function ComposeEditorPage({
             <div className="mb-4">
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Shared Caption</h3>
-                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Used for Instagram feed/reels, Facebook feed, Threads, X, and TikTok. Stories and YouTube uploads ignore this caption.</p>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Used for Instagram feed/reels, Facebook feed, Threads, X, TikTok, and YouTube. Stories ignore this caption.</p>
               </div>
             </div>
             <Textarea
@@ -1204,7 +1204,7 @@ export function ComposeEditorPage({
                   </>
                 ) : (
                   <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                    Shorts use the video only. Shared captions are ignored here.
+                    Shorts use the video and can fall back to the shared caption if no YouTube description is provided.
                   </p>
                 )}
               </div>

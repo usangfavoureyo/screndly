@@ -677,44 +677,89 @@ export const metaService = {
         mediaKind: 'image' | 'video'
     ): Promise<MetaPostResult> {
         try {
-            let response;
-
             if (mediaKind === 'video') {
-                const payload = new URLSearchParams({
+                const startPayload = new URLSearchParams({
                     access_token: accessToken,
-                    upload_phase: 'finish',
-                    video_url: mediaUrl,
+                    upload_phase: 'start',
                 });
 
-                response = await axios.post(
-                    `${GRAPH_VIDEO_BASE_URL}/${pageId}/video_stories`,
-                    payload.toString(),
+                const startResponse = await axios.post(
+                    `${BASE_URL}/${pageId}/video_stories`,
+                    startPayload.toString(),
                     {
                         headers: FORM_URL_ENCODED_HEADERS,
                     }
                 );
-            } else {
-                const payload = new URLSearchParams({
-                    access_token: accessToken,
-                    photo_url: mediaUrl,
+
+                const videoId = String(startResponse.data?.video_id || '');
+                const uploadUrl = String(startResponse.data?.upload_url || '');
+
+                if (!videoId || !uploadUrl) {
+                    throw new Error('Failed to initialize Facebook Story video upload');
+                }
+
+                const uploadResponse = await fetch(uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `OAuth ${accessToken}`,
+                        file_url: mediaUrl,
+                    },
                 });
 
-                response = await axios.post(
+                const uploadData: any = await uploadResponse.json().catch(() => ({}));
+                if (!uploadResponse.ok) {
+                    throw new Error(
+                        uploadData?.error?.message
+                        || uploadData?.message
+                        || `Facebook Story video upload failed (${uploadResponse.status})`
+                    );
+                }
+
+                const finishPayload = new URLSearchParams({
+                    access_token: accessToken,
+                    upload_phase: 'finish',
+                    video_id: videoId,
+                });
+
+                const finishResponse = await axios.post(
+                    `${BASE_URL}/${pageId}/video_stories`,
+                    finishPayload.toString(),
+                    {
+                        headers: FORM_URL_ENCODED_HEADERS,
+                    }
+                );
+
+                return {
+                    success: true,
+                    data: {
+                        id: finishResponse.data.post_id || finishResponse.data.id || videoId,
+                        platform: 'Facebook',
+                    },
+                };
+            } else {
+                const photoId = await uploadUnpublishedFacebookPhoto(pageId, mediaUrl, accessToken);
+
+                const payload = new URLSearchParams({
+                    access_token: accessToken,
+                    photo_id: photoId,
+                });
+
+                const response = await axios.post(
                     `${BASE_URL}/${pageId}/photo_stories`,
                     payload.toString(),
                     {
                         headers: FORM_URL_ENCODED_HEADERS,
                     }
                 );
-            }
 
-            return {
-                success: true,
-                data: {
-                    id: response.data.id,
-                    platform: 'Facebook',
-                },
-            };
+                return {
+                    success: true,
+                    data: {
+                        id: response.data.post_id || response.data.id || photoId,
+                        platform: 'Facebook',
+                    },
+                };
+            }
         } catch (error: any) {
             console.error('[Meta] Facebook Story Post Error:', error?.response?.data || error);
             return {

@@ -881,17 +881,16 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
                         if (connection?.accessToken && (localFilePath || downloadedVideoPath)) {
                             const youtubeThumbnailPath = await getDownloadedThumbnailPath(youtubeThumbnailUrl);
-                            const isYouTubeShorts = platform === 'YouTubeShorts';
                             // Refresh token logic should be handled here or in service
                             const ytResult = await youtubeService.uploadVideo(
                                 connection.accessToken,
                                 localFilePath || downloadedVideoPath!,
                                 {
                                     title: youtubeTitle || title || text.slice(0, 100),
-                                    description: isYouTubeShorts ? (youtubeDescription || '') : (youtubeDescription || text),
+                                    description: youtubeDescription || text,
                                     privacyStatus: 'public',
                                     thumbnailPath: youtubeThumbnailPath || undefined,
-                                    playlistIds: isYouTubeShorts ? [] : youtubePlaylists,
+                                    playlistIds: platform === 'YouTubeShorts' ? [] : youtubePlaylists,
                                 },
                                 connection.refreshToken || undefined
                             );
