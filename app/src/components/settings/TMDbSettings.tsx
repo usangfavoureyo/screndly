@@ -13,7 +13,7 @@ import { PinterestIcon } from '../icons/PinterestIcon';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { Plus } from 'lucide-react';
-import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } from '../../lib/ai/models';
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
 import { tmdbPromptDefaults } from '../../config/cultureCravePromptDefaults';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -43,6 +43,14 @@ const TMDB_REGION_OPTIONS = [
 ];
 
 const DEFAULT_ANNIVERSARY_YEARS = ['1', '2', '3', '5', '10', '15', '20', '25'];
+
+function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
+  return {
+    ...settings,
+    openaiModel: normalizeAIModelId(settings.openaiModel, DEFAULT_MODELS.tmdb),
+    tmdbCaptionModel: normalizeAIModelId(settings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+  };
+}
 
 function normalizeAnniversaryYear(value: unknown): string | null {
   if (value === null || value === undefined) {
@@ -171,6 +179,21 @@ const defaultSettings = {
   creditsCacheTTL: '30',
   captionCacheTTL: '30',
   timezone: 'Africa/Lagos',
+  tmdbDailyRefreshTime: '07:00',
+  postingWindowStart: '09:00',
+  postingWindowEnd: '21:00',
+  minGapBetweenPostsMinutes: '60',
+  preferredGapBetweenSameModuleMinutes: '120',
+  maxPostsPerDayOverall: '12',
+  maxPostsPerModulePerDay: '4',
+  reserveUrgentSlots: '2',
+  weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+  monthlyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+  weeklyRescheduleValidityDays: '2',
+  monthlyRescheduleValidityDays: '7',
+  todayAnniversaryUrgentPriority: true,
+  interleaveModules: true,
+  captionRegenOnScheduleChange: true,
   // Genre filters (empty array = all genres allowed)
   movieGenres: [] as number[],
   tvGenres: [] as number[],
@@ -534,11 +557,11 @@ export function TMDbSettings() {
       const sharedSettings = initialSharedSettingsRef.current || {};
 
       // 1. Load Local (Fastest)
-      let merged = { ...defaultSettings, ...sharedSettings };
+      let merged = normalizeTMDbSettings({ ...defaultSettings, ...sharedSettings });
       const local = localStorage.getItem('screndly_tmdb_settings');
       if (local) {
         try {
-          merged = { ...merged, ...JSON.parse(local) };
+          merged = normalizeTMDbSettings({ ...merged, ...JSON.parse(local) });
         } catch (e) {
           console.error('Local settings parse error', e);
         }
@@ -567,7 +590,7 @@ export function TMDbSettings() {
         const response = await fetchSettings();
         if (response.success && response.data) {
           // Merge backend data
-          merged = { ...merged, ...response.data };
+          merged = normalizeTMDbSettings({ ...merged, ...response.data });
           if (
             localCustomAnniversaryYears.length > 0 &&
             (!Array.isArray(response.data.customAnniversaryYears) || response.data.customAnniversaryYears.length === 0)
@@ -580,7 +603,7 @@ export function TMDbSettings() {
       }
 
       if (shouldInjectCultureCravePrompts) {
-        merged = { ...merged, ...tmdbPromptDefaults };
+        merged = normalizeTMDbSettings({ ...merged, ...tmdbPromptDefaults });
         localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
       }
       if (typeof merged.minPopularityThreshold !== 'number') {
@@ -600,7 +623,7 @@ export function TMDbSettings() {
         merged.customAnniversaryYears,
       );
 
-      setTMDbSettings(merged as typeof defaultSettings);
+      setTMDbSettings(normalizeTMDbSettings(merged as typeof defaultSettings));
       setIsLoaded(true);
     }
     load();
@@ -611,7 +634,7 @@ export function TMDbSettings() {
     if (!isLoaded) return;
 
     // 1. LocalStorage (Instant)
-    localStorage.setItem('screndly_tmdb_settings', JSON.stringify(tmdbSettings));
+    localStorage.setItem('screndly_tmdb_settings', JSON.stringify(normalizeTMDbSettings(tmdbSettings)));
     localStorage.setItem(
       'screndly_custom_anniversary_years',
       JSON.stringify(tmdbSettings.customAnniversaryYears || [])
@@ -644,7 +667,7 @@ export function TMDbSettings() {
   };
 
   const updateSetting = (key: string, value: any) => {
-    setTMDbSettings(prev => ({ ...prev, [key]: value }));
+    setTMDbSettings(prev => normalizeTMDbSettings({ ...prev, [key]: value }));
 
     if (TMDB_SHARED_SETTING_KEYS.has(key)) {
       void updateGlobalSetting(key, value);

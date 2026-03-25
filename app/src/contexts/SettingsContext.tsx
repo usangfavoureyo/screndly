@@ -9,7 +9,12 @@ import {
 } from '../lib/api/settings';
 import { toast } from "sonner";
 import { analyticsIngester } from '../lib/optimization/analyticsIngester';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import {
+  DEFAULT_MODELS,
+  DefaultModelFeature,
+  normalizeAIModelId,
+  normalizeModelSettingRecord,
+} from '../lib/ai/models';
 import {
   dispatchThemeChange,
   persistThemePreference,
@@ -310,6 +315,19 @@ const SECRET_STORAGE_KEYS = new Set([
   'photopeaApiKey',
 ]);
 
+const SETTINGS_MODEL_KEYS: Partial<Record<keyof Settings, DefaultModelFeature>> = {
+  videoOpenaiModel: 'video',
+  commentReplyModel: 'comment',
+  rssCaptionModel: 'rss',
+  tmdbCaptionModel: 'tmdb',
+  captionOpenaiModel: 'videoStudio',
+  padChatModel: 'pad',
+};
+
+function normalizeSettingsModels(settings: Partial<Settings>): Partial<Settings> {
+  return normalizeModelSettingRecord(settings, SETTINGS_MODEL_KEYS);
+}
+
 function getDefaultSettings(): Settings {
   const hapticsEnabled = localStorage.getItem('hapticsEnabled');
   return {
@@ -530,7 +548,7 @@ Guidelines:
     videoStudioPinterestBoardPrompt: '',
 
     // PAD
-    padChatModel: DEFAULT_MODELS.video,
+    padChatModel: DEFAULT_MODELS.pad,
     padChatSystemPrompt: 'You are Screndly Post. Stay aligned to the chat context, write like a sharp entertainment and social publishing copilot, and keep replies useful and editable.',
 
     // Compose
@@ -600,10 +618,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
           if (response.success && response.data) {
             // Merge backend settings (API keys) with local settings (preferences)
-            const mergedSettings = {
+            const mergedSettings = normalizeSettingsModels({
               ...getDefaultSettings(),
               ...mergeSettings(response.data, localSettings),
-            };
+            });
             const merged = shouldInjectCultureCravePrompts
               ? { ...mergedSettings, ...settingsPromptDefaults }
               : mergedSettings;
@@ -612,25 +630,31 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           } else {
             // Backend failed, use local only
             console.warn('[Settings] Failed to fetch settings, using defaults');
-            const fallbackSettings = shouldInjectCultureCravePrompts
-              ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-              : { ...getDefaultSettings(), ...localSettings };
+            const fallbackSettings = normalizeSettingsModels(
+              shouldInjectCultureCravePrompts
+                ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+                : { ...getDefaultSettings(), ...localSettings },
+            );
             setSettings(fallbackSettings);
             syncThemeSetting(fallbackSettings.darkMode);
           }
         } catch (err) {
           console.error('[Settings] Unexpected error fetching settings', err);
-          const fallbackSettings = shouldInjectCultureCravePrompts
-            ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-            : { ...getDefaultSettings(), ...localSettings };
+          const fallbackSettings = normalizeSettingsModels(
+            shouldInjectCultureCravePrompts
+              ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+              : { ...getDefaultSettings(), ...localSettings },
+          );
           setSettings(fallbackSettings);
           syncThemeSetting(fallbackSettings.darkMode);
         }
       } else {
         // Backend offline, use local only (this is normal for frontend-only PWA)
-        const fallbackSettings = shouldInjectCultureCravePrompts
-          ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-          : { ...getDefaultSettings(), ...localSettings };
+        const fallbackSettings = normalizeSettingsModels(
+          shouldInjectCultureCravePrompts
+            ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
+            : { ...getDefaultSettings(), ...localSettings },
+        );
         setSettings(fallbackSettings);
         syncThemeSetting(fallbackSettings.darkMode);
       }
@@ -650,7 +674,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     const timer = setTimeout(async () => {
       // Always save non-sensitive settings to localStorage
-      const nonSensitiveSettings = extractNonSensitiveSettings(settings);
+      const nonSensitiveSettings = extractNonSensitiveSettings(normalizeSettingsModels(settings));
       const serialized = JSON.stringify(nonSensitiveSettings);
       localStorage.setItem(LOCAL_SETTINGS_KEY, serialized);
       localStorage.setItem(LEGACY_LOCAL_SETTINGS_KEY, serialized);
@@ -678,11 +702,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       syncThemeSetting(value);
     }
 
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setSettings(prev => normalizeSettingsModels({ ...prev, [key]: normalizeSettingValue(key, value) }) as Settings);
 
     // If it's a sensitive setting, try to save immediately to backend
     if (isSensitiveSetting(key) && backendAvailable) {
-      const result = await saveSettingsToBackend({ [key]: value } as Partial<Settings>);
+      const result = await saveSettingsToBackend({ [key]: normalizeSettingValue(key, value) } as Partial<Settings>);
       if (result.success) {
         toast.success(result.meta?.notificationTitle || 'Setting saved', result.meta?.notificationMessage ? {
           description: result.meta.notificationMessage,
@@ -704,13 +728,16 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       syncThemeSetting(updates.darkMode);
     }
 
-    setSettings(prev => ({ ...prev, ...updates }));
+    const normalizedUpdates = Object.fromEntries(
+      Object.entries(updates).map(([key, value]) => [key, normalizeSettingValue(key, value)]),
+    ) as Partial<Settings>;
+    setSettings(prev => normalizeSettingsModels({ ...prev, ...normalizedUpdates }) as Settings);
 
     // Check if any sensitive settings are being updated
     const hasSensitiveUpdates = Object.keys(updates).some(key => isSensitiveSetting(key));
 
     if (hasSensitiveUpdates && backendAvailable) {
-      const result = await saveSettingsToBackend(updates);
+      const result = await saveSettingsToBackend(normalizedUpdates);
       if (result.success) {
         toast.success(result.meta?.notificationTitle || 'Settings saved securely', result.meta?.notificationMessage ? {
           description: result.meta.notificationMessage,
@@ -722,7 +749,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   };
 
   const resetSettings = async () => {
-    const defaults = getDefaultSettings();
+    const defaults = normalizeSettingsModels(getDefaultSettings()) as Settings;
     setSettings(defaults);
 
     // Clear from backend and localStorage
@@ -757,10 +784,19 @@ function getLocalSettings(): Partial<Settings> {
     const saved =
       localStorage.getItem(LOCAL_SETTINGS_KEY) ??
       localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
-    return saved ? JSON.parse(saved) : {};
+    return saved ? normalizeSettingsModels(JSON.parse(saved)) : {};
   } catch {
     return {};
   }
+}
+
+function normalizeSettingValue(key: string, value: any): any {
+  const feature = SETTINGS_MODEL_KEYS[key as keyof Settings];
+  if (!feature) {
+    return value;
+  }
+
+  return normalizeAIModelId(value, DEFAULT_MODELS[feature]);
 }
 
 /**

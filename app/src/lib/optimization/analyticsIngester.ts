@@ -14,6 +14,7 @@ import {
     ContentSource,
     CaptionModel,
 } from './types';
+import { DEFAULT_MODELS } from '../ai/models';
 
 // Polling intervals (in milliseconds)
 const POLL_INTERVAL_MS = 4 * 60 * 60 * 1000; // 4 hours
@@ -214,7 +215,7 @@ class AnalyticsIngester {
         platform: Platform,
         contentSource: ContentSource,
         caption: string,
-        captionModel: CaptionModel = 'gpt-4o-mini',
+        captionModel: CaptionModel = DEFAULT_MODELS.comment,
         mediaType: 'video' | 'image' | 'text' = 'video',
         additionalData?: {
             tmdbId?: number;

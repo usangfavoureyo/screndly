@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import fs from 'fs/promises';
 import path from 'path';
 import prisma from '../lib/prisma';
-import { refreshTMDbContent, isTMDbConfigured, getTMDbSettings, cleanupQueuedTMDbPosts } from './tmdb.service';
+import { refreshTMDbContent, isTMDbConfigured, getTMDbSettings, cleanupQueuedTMDbPosts, updateTMDbPost } from './tmdb.service';
 import { youtubePollerService } from './youtube-poller.service';
 import { publisherService } from './publisher.service';
 import { refreshAllFeeds } from './rss.service';
@@ -291,9 +291,9 @@ export async function initCronJobs() {
         timezone
     };
 
-    // TMDb Today Refresh - Daily at 06:00
-    cron.schedule('0 6 * * *', async () => {
-        await logCron('info', 'Starting TMDb Today refresh...');
+    // TMDb Master Daily Refresh - Daily at 07:00
+    cron.schedule('0 7 * * *', async () => {
+        await logCron('info', 'Starting TMDb master refresh...');
         try {
             const configured = await isTMDbConfigured();
             if (!configured) {
@@ -302,25 +302,12 @@ export async function initCronJobs() {
             }
 
             const settings = await getTMDbSettings();
-            if (!settings.enableToday) {
-                await logCron('info', 'TMDb Today refresh is disabled in settings, skipping.');
-                return;
-            }
+            const result = await refreshTMDbContent(settings);
 
-            // Run ONLY Today refresh
-            const result = await refreshTMDbContent({
-                ...settings,
-                enableToday: true,
-                enableWeekly: false,
-                enableMonthly: false,
-                enableAnniversaries: false
-            });
+            await logCron('info', `TMDb master refresh completed: ${result.added} posts added (run ${result.runId})`);
 
-            await logCron('info', `TMDb Today refresh completed: ${result.added} posts added`);
-
-            // NOTIFY: Success
             if (result.added > 0) {
-                const notification = buildTmdbRefreshNotification('TMDb Today Refresh', result);
+                const notification = buildTmdbRefreshNotification('TMDb Daily Refresh', result);
                 await notificationService.notifyUser({
                     title: notification.title,
                     message: notification.message,
@@ -332,138 +319,23 @@ export async function initCronJobs() {
 
             if (result.errors.length > 0) {
                 await logCron('warn', `TMDb refresh had errors: ${result.errors.join(', ')}`);
-                // NOTIFY: Error
                 await notificationService.notifyUser({
-                    title: 'TMDb Today Errors',
-                    message: `Encountered ${result.errors.length} errors during refresh.`,
+                    title: 'TMDb Refresh Errors',
+                    message: `Encountered ${result.errors.length} errors during the daily TMDb run.`,
                     type: 'warning',
                     source: 'tmdb',
                     actionPage: '/logs'
                 });
             }
         } catch (error) {
-            await logCron('error', `TMDb Today refresh failed: ${error}`);
+            await logCron('error', `TMDb master refresh failed: ${error}`);
             await notificationService.notifyUser({
                 title: 'TMDb Refresh Failed',
-                message: 'Daily refresh cycle failed to execute.',
+                message: 'Daily TMDb refresh failed to execute.',
                 type: 'error',
                 source: 'tmdb',
                 actionPage: '/settings'
             });
-        }
-    }, cronOptions);
-
-    // TMDb Weekly Refresh - Daily at 08:00
-    cron.schedule('0 8 * * *', async () => {
-        await logCron('info', 'Starting TMDb Weekly refresh...');
-        try {
-            const configured = await isTMDbConfigured();
-            if (!configured) return;
-
-            const settings = await getTMDbSettings();
-            if (!settings.enableWeekly) {
-                await logCron('info', 'TMDb Weekly refresh is disabled in settings, skipping.');
-                return;
-            }
-
-            const result = await refreshTMDbContent({
-                ...settings,
-                enableToday: false,
-                enableWeekly: true,
-                enableMonthly: false,
-                enableAnniversaries: false
-            });
-
-            await logCron('info', `TMDb Weekly refresh completed: ${result.added} posts added`);
-
-            if (result.added > 0) {
-                const notification = buildTmdbRefreshNotification('TMDb Weekly Refresh', result);
-                await notificationService.notifyUser({
-                    title: notification.title,
-                    message: notification.message,
-                    type: 'success',
-                    source: 'tmdb',
-                    actionPage: '/tmdb-feeds'
-                });
-            }
-        } catch (error) {
-            await logCron('error', `TMDb Weekly refresh failed: ${error}`);
-        }
-    }, cronOptions);
-
-    // TMDb Monthly Refresh - Daily at 09:00
-    cron.schedule('0 9 * * *', async () => {
-        await logCron('info', 'Starting TMDb Monthly refresh...');
-        try {
-            const configured = await isTMDbConfigured();
-            if (!configured) return;
-
-            const settings = await getTMDbSettings();
-            if (!settings.enableMonthly) {
-                await logCron('info', 'TMDb Monthly refresh is disabled in settings, skipping.');
-                return;
-            }
-
-            const result = await refreshTMDbContent({
-                ...settings,
-                enableToday: false,
-                enableWeekly: false,
-                enableMonthly: true,
-                enableAnniversaries: false
-            });
-
-            await logCron('info', `TMDb Monthly refresh completed: ${result.added} posts added`);
-
-            if (result.added > 0) {
-                const notification = buildTmdbRefreshNotification('TMDb Monthly Refresh', result);
-                await notificationService.notifyUser({
-                    title: notification.title,
-                    message: notification.message,
-                    type: 'success',
-                    source: 'tmdb',
-                    actionPage: '/tmdb-feeds'
-                });
-            }
-        } catch (error) {
-            await logCron('error', `TMDb Monthly refresh failed: ${error}`);
-        }
-    }, cronOptions);
-
-    // TMDb Anniversary Refresh - Daily at 07:00
-    cron.schedule('0 7 * * *', async () => {
-        await logCron('info', 'Starting TMDb Anniversary refresh...');
-        try {
-            const configured = await isTMDbConfigured();
-            if (!configured) return;
-
-            const settings = await getTMDbSettings();
-            if (!settings.enableAnniversaries) {
-                await logCron('info', 'TMDb Anniversary refresh is disabled in settings, skipping.');
-                return;
-            }
-
-            const result = await refreshTMDbContent({
-                ...settings,
-                enableToday: false,
-                enableWeekly: false,
-                enableMonthly: false,
-                enableAnniversaries: true
-            });
-
-            await logCron('info', `TMDb Anniversary refresh completed: ${result.added} posts added`);
-
-            if (result.added > 0) {
-                const notification = buildTmdbRefreshNotification('TMDb Anniversary Refresh', result);
-                await notificationService.notifyUser({
-                    title: notification.title,
-                    message: notification.message,
-                    type: 'success',
-                    source: 'tmdb',
-                    actionPage: '/tmdb-feeds'
-                });
-            }
-        } catch (error) {
-            await logCron('error', `TMDb Anniversary refresh failed: ${error}`);
         }
     }, cronOptions);
 
@@ -564,13 +436,11 @@ export async function initCronJobs() {
                         .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
                         .join(', ');
 
-                    await prisma.tMDbPost.update({
-                        where: { id: post.id },
-                        data: {
-                            status: success ? 'published' : 'failed',
-                            publishedTime: now,
-                            errorMessage: success ? null : (failureMessage || 'Failed to publish TMDb post'),
-                        }
+                    await updateTMDbPost(post.id, {
+                        status: success ? 'published' : 'failed',
+                        publishedTime: now,
+                        dispatchedAt: now,
+                        errorMessage: success ? null : (failureMessage || 'Failed to publish TMDb post'),
                     });
 
                     if (success) {
@@ -590,12 +460,9 @@ export async function initCronJobs() {
 
                 } catch (postError) {
                     console.error(`Failed to process post ${post.id}`, postError);
-                    await prisma.tMDbPost.update({
-                        where: { id: post.id },
-                        data: {
-                            status: 'failed',
-                            errorMessage: postError instanceof Error ? postError.message : 'Failed to process TMDb post'
-                        }
+                    await updateTMDbPost(post.id, {
+                        status: 'failed',
+                        errorMessage: postError instanceof Error ? postError.message : 'Failed to process TMDb post'
                     });
                     await logCron('error', `Error processing post ${post.title}: ${postError}`);
                 }

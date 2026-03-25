@@ -14,6 +14,7 @@ import {
     CaptionModel,
     OptimizationDecision,
 } from './types';
+import { DEFAULT_MODELS } from '../ai/models';
 
 // Hash function for captions (for pattern matching)
 function hashCaption(caption: string): string {
@@ -84,7 +85,7 @@ class CaptionOptimizer {
         // Get optimal model
         const model = this.config.modelSelection
             ? signalEngine.getOptimalModel(contentSource)
-            : 'gpt-4o-mini';
+            : DEFAULT_MODELS.comment;
 
         // Get platform-specific optimization
         const platformSignals = signals.platforms[platform];
@@ -170,7 +171,7 @@ class CaptionOptimizer {
         };
 
         return {
-            model: 'gpt-4o-mini',
+            model: DEFAULT_MODELS.comment,
             tone: 'Engaging',
             maxLength: lengthDefaults[platform] || 280,
             keywordGuidance: [],
@@ -221,12 +222,12 @@ class CaptionOptimizer {
      */
     selectModel(contentSource: ContentSource): CaptionModel {
         if (!this.config.enabled || !this.config.modelSelection) {
-            return 'gpt-4o-mini';
+            return DEFAULT_MODELS.comment;
         }
 
         if (signalEngine.shouldExplore()) {
             // Random model selection for exploration
-            const models: CaptionModel[] = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'];
+            const models: CaptionModel[] = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano'];
             const randomModel = models[Math.floor(Math.random() * models.length)];
 
             this.logDecision({

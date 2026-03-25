@@ -18,6 +18,7 @@ import {
     ContentSource,
     CaptionModel,
 } from './types';
+import { DEFAULT_MODELS } from '../ai/models';
 
 // Platforms to analyze
 const ALL_PLATFORMS: Platform[] = ['x', 'facebook', 'instagram', 'threads', 'tiktok', 'youtube', 'pinterest'];
@@ -26,7 +27,7 @@ const ALL_PLATFORMS: Platform[] = ['x', 'facebook', 'instagram', 'threads', 'tik
 const ALL_SOURCES: ContentSource[] = ['rss', 'tmdb_today', 'tmdb_weekly', 'tmdb_monthly', 'tmdb_anniversary', 'youtube', 'design_studio', 'video_studio', 'manual'];
 
 // Caption models
-const ALL_MODELS: CaptionModel[] = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+const ALL_MODELS: CaptionModel[] = ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano', 'flash-3', 'gpt-5.2', 'gpt-5', 'gpt-5-mini', 'gpt-5-nano'];
 
 /**
  * Signal Engine Class
@@ -552,7 +553,7 @@ class SignalEngine {
     getOptimalModel(source: ContentSource): CaptionModel {
         const signals = analyticsStore.getSignals();
         if (!signals) {
-            return 'gpt-4o-mini'; // Default
+            return DEFAULT_MODELS.comment;
         }
 
         // Find model where this source is in bestFor
@@ -569,7 +570,7 @@ class SignalEngine {
 
         return sortedModels.length > 0
             ? sortedModels[0][0] as CaptionModel
-            : 'gpt-4o-mini';
+            : DEFAULT_MODELS.comment;
     }
 
     /**

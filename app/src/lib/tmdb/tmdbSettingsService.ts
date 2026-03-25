@@ -3,7 +3,7 @@
  * Single source of truth for all TMDb configuration
  * All components must read settings through this service
  */
-import { DEFAULT_MODELS } from '../ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../ai/models';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 export type ImagePreference = 'poster' | 'backdrop' | 'random';
@@ -74,6 +74,21 @@ export interface TMDbSettings {
 
     // Scheduling
     timezone: string;
+    tmdbDailyRefreshTime: string;
+    postingWindowStart: string;
+    postingWindowEnd: string;
+    minGapBetweenPostsMinutes: string;
+    preferredGapBetweenSameModuleMinutes: string;
+    maxPostsPerDayOverall: string;
+    maxPostsPerModulePerDay: string;
+    reserveUrgentSlots: string;
+    weeklyOverflowPolicy: 'DROP' | 'HOLD_FOR_REVIEW' | 'RESCHEDULE_WITH_REGEN';
+    monthlyOverflowPolicy: 'DROP' | 'HOLD_FOR_REVIEW' | 'RESCHEDULE_WITH_REGEN';
+    weeklyRescheduleValidityDays: string;
+    monthlyRescheduleValidityDays: string;
+    todayAnniversaryUrgentPriority: boolean;
+    interleaveModules: boolean;
+    captionRegenOnScheduleChange: boolean;
 
     // Caption prompts
     todayPrompt: string;
@@ -140,6 +155,21 @@ const defaultSettings: TMDbSettings = {
     creditsCacheTTL: '30',
     captionCacheTTL: '30',
     timezone: 'Africa/Lagos',
+    tmdbDailyRefreshTime: '07:00',
+    postingWindowStart: '09:00',
+    postingWindowEnd: '21:00',
+    minGapBetweenPostsMinutes: '60',
+    preferredGapBetweenSameModuleMinutes: '120',
+    maxPostsPerDayOverall: '12',
+    maxPostsPerModulePerDay: '4',
+    reserveUrgentSlots: '2',
+    weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+    monthlyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+    weeklyRescheduleValidityDays: '2',
+    monthlyRescheduleValidityDays: '7',
+    todayAnniversaryUrgentPriority: true,
+    interleaveModules: true,
+    captionRegenOnScheduleChange: true,
     todayPrompt: '',
     weeklyPrompt: '',
     monthlyPrompt: '',
@@ -173,12 +203,19 @@ export function getTMDbSettings(): TMDbSettings {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            return { ...defaultSettings, ...parsed };
+            return {
+                ...defaultSettings,
+                ...parsed,
+                tmdbCaptionModel: normalizeAIModelId(parsed.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+            };
         }
     } catch (error) {
         console.error('[TMDbSettingsService] Error loading settings:', error);
     }
-    return defaultSettings;
+    return {
+        ...defaultSettings,
+        tmdbCaptionModel: normalizeAIModelId(defaultSettings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+    };
 }
 
 /**
@@ -398,6 +435,21 @@ export function getSettingsForBackend(): Record<string, any> {
         discoveryCacheTTL: parseInt(settings.discoveryCacheTTL) || 12,
         creditsCacheTTL: parseInt(settings.creditsCacheTTL) || 30,
         captionCacheTTL: parseInt(settings.captionCacheTTL) || 30,
+        tmdbDailyRefreshTime: settings.tmdbDailyRefreshTime,
+        postingWindowStart: settings.postingWindowStart,
+        postingWindowEnd: settings.postingWindowEnd,
+        minGapBetweenPostsMinutes: parseInt(settings.minGapBetweenPostsMinutes) || 60,
+        preferredGapBetweenSameModuleMinutes: parseInt(settings.preferredGapBetweenSameModuleMinutes) || 120,
+        maxPostsPerDayOverall: parseInt(settings.maxPostsPerDayOverall) || 12,
+        maxPostsPerModulePerDay: parseInt(settings.maxPostsPerModulePerDay) || 4,
+        reserveUrgentSlots: parseInt(settings.reserveUrgentSlots) || 2,
+        weeklyOverflowPolicy: settings.weeklyOverflowPolicy,
+        monthlyOverflowPolicy: settings.monthlyOverflowPolicy,
+        weeklyRescheduleValidityDays: parseInt(settings.weeklyRescheduleValidityDays) || 2,
+        monthlyRescheduleValidityDays: parseInt(settings.monthlyRescheduleValidityDays) || 7,
+        todayAnniversaryUrgentPriority: settings.todayAnniversaryUrgentPriority,
+        interleaveModules: settings.interleaveModules,
+        captionRegenOnScheduleChange: settings.captionRegenOnScheduleChange,
         todayPinterestBoard: settings.todayPinterestBoard,
         todayPinterestLinkStrategy: settings.todayPinterestLinkStrategy,
         todayPinterestTitlePrompt: settings.todayPinterestTitlePrompt,

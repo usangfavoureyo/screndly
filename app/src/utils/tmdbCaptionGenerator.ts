@@ -4,7 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { captionOptimizer } from '../lib/optimization';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 import { getDaysUntilCalendarDate } from './calendarDate';
 import { tmdbPromptDefaults } from '../config/cultureCravePromptDefaults';
 
@@ -92,7 +92,7 @@ export function getTMDbCaptionSettings(feedType: FeedType): CaptionGenerationOpt
   }
 
   return {
-    model: settings.tmdbCaptionModel || DEFAULT_MODELS.tmdb,
+    model: normalizeAIModelId(settings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
     prompt: settings[`${feedType}Prompt`] || DEFAULT_PROMPTS[feedType],
     maxLength: parseInt(settings.captionMaxLength, 10) || 100,
     includeCast: settings.includeCast !== false,

@@ -1,30 +1,49 @@
 /**
- * Centralized OpenAI Model Configuration
- * Single source of truth for all AI model selections across the app
+ * Centralized AI model configuration, migration, and selector defaults.
  */
 
+export const AI_MODEL_IDS = [
+  'gpt-5.4',
+  'gpt-5.4-mini',
+  'gpt-5.4-nano',
+  'flash-3',
+  'gpt-5.2',
+  'gpt-5',
+  'gpt-5-mini',
+  'gpt-5-nano',
+] as const;
+
+export type AIModelId = typeof AI_MODEL_IDS[number];
+
+export type AIModelTier = 'flagship' | 'standard' | 'fast' | 'fastest';
+
 export interface AIModel {
-  id: string;
+  id: AIModelId;
   displayName: string;
-  tier: 'flagship' | 'standard' | 'fast' | 'fastest' | 'legacy';
+  tier: AIModelTier;
   description: string;
   contextWindow?: number;
   maxOutput?: number;
   reasoningTokens?: boolean;
 }
 
-/**
- * Curated registry of models exposed in settings selectors.
- * Legacy models remain available for backward compatibility, but are no
- * longer used as defaults anywhere in the app.
- */
+export type DefaultModelFeature =
+  | 'video'
+  | 'comment'
+  | 'tmdb'
+  | 'rss'
+  | 'designStudio'
+  | 'videoStudio'
+  | 'pad';
+
+export type ModelSelectionSource = 'manual' | 'router-default' | 'migrated';
+
 export const AI_MODELS: AIModel[] = [
-  // GPT-5 Series
   {
     id: 'gpt-5.4',
     displayName: 'GPT-5.4',
     tier: 'flagship',
-    description: 'Current flagship GPT-5 Responses API model for highest quality generation and planning',
+    description: 'Highest-end GPT-5.4 model for the most demanding reasoning and generation work.',
     contextWindow: 400000,
     maxOutput: 128000,
     reasoningTokens: true,
@@ -33,25 +52,32 @@ export const AI_MODELS: AIModel[] = [
     id: 'gpt-5.4-mini',
     displayName: 'GPT-5.4 Mini',
     tier: 'fast',
-    description: 'Current recommended mini GPT-5 Responses API model for high-volume automation and strong reasoning',
+    description: 'Stronger production model for nuanced generation and fallback arbitration.',
     contextWindow: 400000,
     maxOutput: 128000,
     reasoningTokens: true,
+  },
+  {
+    id: 'gpt-5.4-nano',
+    displayName: 'GPT-5.4 Nano',
+    tier: 'fastest',
+    description: 'Lowest-cost GPT-5.4 model for high-volume classification, extraction, and captioning.',
+    contextWindow: 400000,
+    maxOutput: 128000,
+    reasoningTokens: true,
+  },
+  {
+    id: 'flash-3',
+    displayName: 'Flash 3',
+    tier: 'fast',
+    description: 'Gemini Flash 3 provider path preserved for fast validation and alternate routing.',
+    contextWindow: 128000,
   },
   {
     id: 'gpt-5.2',
     displayName: 'GPT-5.2',
     tier: 'flagship',
-    description: 'Flagship quality for complex prompt generation and high-stakes creative tasks',
-    contextWindow: 400000,
-    maxOutput: 128000,
-    reasoningTokens: true,
-  },
-  {
-    id: 'gpt-5.1',
-    displayName: 'GPT-5.1',
-    tier: 'flagship',
-    description: 'High-end reasoning and generation for premium workflows',
+    description: 'Alternative stronger GPT-5-series model for premium workflows.',
     contextWindow: 400000,
     maxOutput: 128000,
     reasoningTokens: true,
@@ -60,122 +86,142 @@ export const AI_MODELS: AIModel[] = [
     id: 'gpt-5',
     displayName: 'GPT-5',
     tier: 'standard',
-    description: 'Balanced flagship model for advanced generation and planning',
+    description: 'Balanced GPT-5 model for general generation and planning.',
   },
   {
     id: 'gpt-5-mini',
     displayName: 'GPT-5 Mini',
     tier: 'fast',
-    description: 'Previous smaller GPT-5 option for lower-cost automation tasks',
+    description: 'Smaller GPT-5 model for lower-cost general automation.',
   },
   {
     id: 'gpt-5-nano',
     displayName: 'GPT-5 Nano',
     tier: 'fastest',
-    description: 'Fastest and cheapest GPT-5 variant for lightweight classification and short-form automation',
+    description: 'Cheaper GPT-5-family option for lightweight tasks outside the 5.4 router defaults.',
   },
-
-  // GPT-4.1 Series
-  {
-    id: 'gpt-4.1',
-    displayName: 'GPT-4.1',
-    tier: 'standard',
-    description: 'Strong non-reasoning model for precise generation and structured output',
-  },
-  {
-    id: 'gpt-4.1-mini',
-    displayName: 'GPT-4.1 Mini',
-    tier: 'fast',
-    description: 'Fast, lower-cost GPT-4.1 variant for captions and comment replies',
-  },
-  {
-    id: 'gpt-4.1-nano',
-    displayName: 'GPT-4.1 Nano',
-    tier: 'fastest',
-    description: 'Ultra-fast GPT-4.1 variant for simple filtering and short responses',
-  },
-
-  // GPT-4o Series
-  {
-    id: 'gpt-4o',
-    displayName: 'GPT-4o',
-    tier: 'legacy',
-    description: 'Previous default all-round model, still useful for compatibility',
-  },
-  {
-    id: 'gpt-4o-mini',
-    displayName: 'GPT-4o Mini',
-    tier: 'legacy',
-    description: 'Legacy low-cost fallback model',
-  },
-
-  // Flash 3 Series (Gemini)
-  {
-    id: 'flash-3',
-    displayName: 'Flash 3',
-    tier: 'fast',
-    description: 'Gemini Flash 3 - Frontier intelligence, fast validation',
-    contextWindow: 128000,
-  },
-  {
-    id: 'gpt-4-turbo',
-    displayName: 'GPT-4 Turbo',
-    tier: 'legacy',
-    description: 'Legacy GPT-4 option retained for older workflows',
-  },
-  {
-    id: 'gpt-3.5-turbo',
-    displayName: 'GPT-3.5 Turbo',
-    tier: 'legacy',
-    description: 'Legacy low-cost option retained for backward compatibility',
-  },
-
 ];
 
-const LEGACY_MODEL_LABELS: Record<string, string> = {
-  'gpt-4-turbo': 'GPT-4 Turbo (Legacy)',
-  'gpt-4': 'GPT-4 (Legacy)',
-  'gpt-3.5-turbo': 'GPT-3.5 Turbo (Legacy)',
+export const DEPRECATED_MODEL_MIGRATIONS: Record<string, AIModelId> = {
+  'gpt-4': 'gpt-5.4-mini',
+  'gpt-4.1': 'gpt-5.4-mini',
+  'gpt-4.1-mini': 'gpt-5.4-mini',
+  'gpt-4.1-nano': 'gpt-5.4-mini',
+  'gpt-4o': 'gpt-5.4-mini',
+  'gpt-4o-mini': 'gpt-5.4-mini',
+  'gpt-4-turbo': 'gpt-5.4-mini',
+  'gpt-3.5-turbo': 'gpt-5.4-nano',
+  'gpt-5.1': 'gpt-5.4-mini',
 };
 
-/**
- * Get model display name by ID
- */
+const LEGACY_MODEL_LABELS: Record<string, string> = {
+  'gpt-4': 'GPT-4 (Migrated)',
+  'gpt-4.1': 'GPT-4.1 (Migrated)',
+  'gpt-4.1-mini': 'GPT-4.1 Mini (Migrated)',
+  'gpt-4.1-nano': 'GPT-4.1 Nano (Migrated)',
+  'gpt-4o': 'GPT-4o (Migrated)',
+  'gpt-4o-mini': 'GPT-4o Mini (Migrated)',
+  'gpt-4-turbo': 'GPT-4 Turbo (Migrated)',
+  'gpt-3.5-turbo': 'GPT-3.5 Turbo (Migrated)',
+  'gpt-5.1': 'GPT-5.1 (Migrated)',
+};
+
+const AI_MODEL_SET = new Set<string>(AI_MODEL_IDS);
+
+export const DEFAULT_MODELS: Record<DefaultModelFeature, AIModelId> = {
+  video: 'gpt-5.4-mini',
+  comment: 'gpt-5.4-nano',
+  tmdb: 'gpt-5.4-nano',
+  rss: 'gpt-5.4-nano',
+  designStudio: 'gpt-5.4-mini',
+  videoStudio: 'gpt-5.4-mini',
+  pad: 'gpt-5.4-nano',
+};
+
+export function isValidAIModelId(modelId: unknown): modelId is AIModelId {
+  return typeof modelId === 'string' && AI_MODEL_SET.has(modelId);
+}
+
+export function migrateDeprecatedModelId(modelId: unknown): AIModelId | null {
+  if (typeof modelId !== 'string' || !modelId.trim()) {
+    return null;
+  }
+
+  if (isValidAIModelId(modelId)) {
+    return modelId;
+  }
+
+  return DEPRECATED_MODEL_MIGRATIONS[modelId] || null;
+}
+
+export function normalizeAIModelId(
+  modelId: unknown,
+  fallback: AIModelId = DEFAULT_MODELS.video,
+): AIModelId {
+  return migrateDeprecatedModelId(modelId) || fallback;
+}
+
 export function getModelDisplayName(modelId: string): string {
-  const model = AI_MODELS.find(m => m.id === modelId);
+  const model = AI_MODELS.find((entry) => entry.id === modelId);
   return model?.displayName || LEGACY_MODEL_LABELS[modelId] || modelId;
 }
 
-/**
- * Get model by ID
- */
 export function getModel(modelId: string): AIModel | undefined {
-  return AI_MODELS.find(m => m.id === modelId);
+  return AI_MODELS.find((entry) => entry.id === modelId);
 }
 
-/**
- * Get tier badge text
- */
-export function getTierBadge(tier: AIModel['tier']): string {
-  const badges: Record<AIModel['tier'], string> = {
+export function getTierBadge(tier: AIModelTier): string {
+  const badges: Record<AIModelTier, string> = {
     flagship: 'Flagship',
     standard: 'Recommended',
     fast: 'Fast / Low Cost',
     fastest: 'Fastest / Cheapest',
-    legacy: 'Legacy',
   };
   return badges[tier];
 }
 
-/**
- * Default models for each use case
- * DO NOT MODIFY - maintains backward compatibility
- */
-export const DEFAULT_MODELS = {
-  video: 'gpt-5.4-mini',
-  comment: 'gpt-5.4-mini',
-  tmdb: 'gpt-5.4-mini',
-  rss: 'gpt-5.4-mini',
-  designStudio: 'gpt-5.4-mini',
-  videoStudio: 'gpt-5.4-mini',
-} as const;
+export function getDefaultModelForFeature(feature: DefaultModelFeature): AIModelId {
+  return DEFAULT_MODELS[feature];
+}
+
+export function resolveSelectedModel(
+  selectedModel: unknown,
+  fallbackFeature: DefaultModelFeature,
+): { modelId: AIModelId; source: ModelSelectionSource } {
+  const fallback = getDefaultModelForFeature(fallbackFeature);
+
+  if (isValidAIModelId(selectedModel)) {
+    return {
+      modelId: selectedModel,
+      source: 'manual',
+    };
+  }
+
+  const migrated = migrateDeprecatedModelId(selectedModel);
+  if (migrated) {
+    return {
+      modelId: migrated,
+      source: 'migrated',
+    };
+  }
+
+  return {
+    modelId: fallback,
+    source: 'router-default',
+  };
+}
+
+export function normalizeModelSettingRecord<
+  T extends Record<string, any>,
+>(
+  record: T,
+  modelKeys: Partial<Record<keyof T, DefaultModelFeature>>,
+): T {
+  const nextRecord = { ...record };
+
+  for (const [key, feature] of Object.entries(modelKeys) as Array<[keyof T, DefaultModelFeature]>) {
+    nextRecord[key] = normalizeAIModelId(nextRecord[key], getDefaultModelForFeature(feature));
+  }
+
+  return nextRecord;
+}

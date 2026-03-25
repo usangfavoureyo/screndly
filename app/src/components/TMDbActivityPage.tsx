@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle,
   XCircle,
@@ -42,7 +42,7 @@ interface TMDbActivityItem {
   title: string;
   mediaType: 'movie' | 'tv';
   source: 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary';
-  status: 'queued' | 'published' | 'failed' | 'scheduled';
+  status: 'queued' | 'published' | 'failed' | 'scheduled' | 'dispatched' | 'unscheduled' | 'skipped';
   timestamp: string;
   platforms?: string[];
   error?: string;
@@ -73,6 +73,10 @@ function getActivityTimestamp(post: TMDbPost): string {
 
   if (post.status === 'scheduled') {
     return post.scheduledTime || post.updatedAt || post.createdAt || new Date().toISOString();
+  }
+
+  if (post.status === 'dispatched') {
+    return post.dispatchedAt || post.updatedAt || post.createdAt || post.scheduledTime || new Date().toISOString();
   }
 
   return post.updatedAt || post.createdAt || post.scheduledTime || post.publishedTime || new Date().toISOString();
@@ -106,6 +110,8 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangeDateOpen, setIsChangeDateOpen] = useState(false);
   const [isChangeTimeOpen, setIsChangeTimeOpen] = useState(false);
+  const [isChangeDatePickerOpen, setIsChangeDatePickerOpen] = useState(false);
+  const [isChangeTimePickerOpen, setIsChangeTimePickerOpen] = useState(false);
   const [isEditCaptionOpen, setIsEditCaptionOpen] = useState(false);
   const [isChangeImageOpen, setIsChangeImageOpen] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -115,6 +121,15 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [selectedTime, setSelectedTime] = useState('');
   const [editedCaption, setEditedCaption] = useState('');
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
+  const pendingMenuActionRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pendingMenuActionRef.current !== null) {
+        window.clearTimeout(pendingMenuActionRef.current);
+      }
+    };
+  }, []);
 
   useTMDbAutoSync(fetchPosts);
 
@@ -228,6 +243,12 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
         return { icon: XCircle, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]', label: 'Failed' };
       case 'scheduled':
         return { icon: Calendar, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Scheduled' };
+      case 'dispatched':
+        return { icon: RefreshCw, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Dispatched' };
+      case 'unscheduled':
+        return { icon: XCircle, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]', label: 'Unscheduled' };
+      case 'skipped':
+        return { icon: XCircle, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Skipped' };
     }
   };
 
@@ -411,6 +432,19 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
   const handleTimeChange = (time: string) => {
     setSelectedTime(time);
+  };
+
+  const closeMenuThen = (action: () => void) => {
+    setOpenMenuItemId(null);
+
+    if (pendingMenuActionRef.current !== null) {
+      window.clearTimeout(pendingMenuActionRef.current);
+    }
+
+    pendingMenuActionRef.current = window.setTimeout(() => {
+      pendingMenuActionRef.current = null;
+      action();
+    }, 220);
   };
 
   const handleSaveSchedule = () => {
@@ -778,7 +812,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                           className="h-8 w-8 p-0 border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#111111]"
                           onClick={() => {
                             haptics.light();
-                            setOpenMenuItemId(item.id);
+                            setOpenMenuItemId((current) => (current === item.id ? null : item.id));
                           }}
                         >
                           <MoreVertical className="w-4 h-4 text-gray-600 dark:text-[#9CA3AF]" />
@@ -793,9 +827,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                             <div className="flex flex-col gap-2">
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.medium();
-                                  handlePostImmediately(item.id, item.title);
+                                  closeMenuThen(() => {
+                                    haptics.medium();
+                                    handlePostImmediately(item.id, item.title);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -803,9 +838,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                               </button>
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.light();
-                                  handleEditCaption(item.id, item.title);
+                                  closeMenuThen(() => {
+                                    haptics.light();
+                                    handleEditCaption(item.id, item.title);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -813,9 +849,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                               </button>
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.light();
-                                  handleChangeImage(item.id, item.title);
+                                  closeMenuThen(() => {
+                                    haptics.light();
+                                    handleChangeImage(item.id, item.title);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -823,9 +860,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                               </button>
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.light();
-                                  handleEditPlatforms(item.id);
+                                  closeMenuThen(() => {
+                                    haptics.light();
+                                    handleEditPlatforms(item.id);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -833,9 +871,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                               </button>
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.light();
-                                  handleChangeScheduleDate(item.id, item.title);
+                                  closeMenuThen(() => {
+                                    haptics.light();
+                                    handleChangeScheduleDate(item.id, item.title);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -843,9 +882,10 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                               </button>
                               <button
                                 onClick={() => {
-                                  setOpenMenuItemId(null);
-                                  haptics.light();
-                                  handleChangeScheduleTime(item.id, item.title);
+                                  closeMenuThen(() => {
+                                    haptics.light();
+                                    handleChangeScheduleTime(item.id, item.title);
+                                  });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
                               >
@@ -885,7 +925,11 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       </div>
 
       {/* Change Date Dialog */}
-      <BottomSheet open={isChangeDateOpen} onOpenChange={setIsChangeDateOpen}>
+      <BottomSheet
+        open={isChangeDateOpen}
+        onOpenChange={setIsChangeDateOpen}
+        onBackRequest={() => isChangeDatePickerOpen}
+      >
         <BottomSheetHeader>
           <BottomSheetTitle>Change Schedule Date</BottomSheetTitle>
           <BottomSheetDescription>
@@ -900,6 +944,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 <DatePicker
                   date={selectedDate}
                   onDateChange={setSelectedDate}
+                  onOpenChange={setIsChangeDatePickerOpen}
                   placeholder="Select a date"
                   className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
                 />
@@ -933,7 +978,11 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       </BottomSheet>
 
       {/* Change Time Dialog */}
-      <BottomSheet open={isChangeTimeOpen} onOpenChange={setIsChangeTimeOpen}>
+      <BottomSheet
+        open={isChangeTimeOpen}
+        onOpenChange={setIsChangeTimeOpen}
+        onBackRequest={() => isChangeTimePickerOpen}
+      >
         <BottomSheetHeader>
           <BottomSheetTitle>Change Schedule Time</BottomSheetTitle>
           <BottomSheetDescription>
@@ -948,6 +997,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 <TimePicker
                   value={selectedTime}
                   onChange={setSelectedTime}
+                  onOpenChange={setIsChangeTimePickerOpen}
                   className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
                 />
               </div>

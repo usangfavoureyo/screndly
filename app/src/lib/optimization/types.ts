@@ -13,7 +13,7 @@ export type Platform = 'x' | 'facebook' | 'instagram' | 'threads' | 'tiktok' | '
 
 export type ContentSource = 'rss' | 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary' | 'youtube' | 'design_studio' | 'video_studio' | 'manual';
 
-export type CaptionModel = 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo' | 'flash-3';
+export type CaptionModel = AIModelId;
 
 // =============================================================================
 // POST ANALYTICS RECORD
@@ -282,3 +282,4 @@ export interface SettingChangeEvent {
     timestamp: number;
     userId?: string; // Optional if available
 }
+import type { AIModelId } from '../ai/models';

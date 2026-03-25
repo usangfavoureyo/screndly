@@ -1,35 +1,52 @@
+import { randomUUID } from 'crypto';
 import { env } from '../lib/env';
-/**
- * TMDb API Service
- * Fetches real movie/TV data from The Movie Database API
- */
-
 import prisma from '../lib/prisma';
 import { getSecretSetting } from '../lib/settings';
 import { trackApiUsage } from './api-usage.service';
+import aiService, { generateTMDbCaption, type CaptionContext as AICaptionContext } from './ai.service';
+import {
+    addCalendarDays,
+    addCalendarMonths,
+    endOfLocalDay,
+    getLocalDateIso,
+    parseReleaseDate,
+    startOfLocalDay,
+} from '../lib/tmdb-date';
+import {
+    buildCaptionContext,
+    evaluateCandidateEligibility,
+    getCanonicalKey,
+    getCycleKey,
+    getLocalAnniversaryMilestone,
+    getModuleSource,
+    hashCaptionContext,
+    mapModuleToTemporalTag,
+    scheduleCandidates,
+    type CaptionContext,
+    type SchedulerSettings,
+    type ScheduledCandidate,
+    type TMDbCandidate,
+    type TMDbModuleType,
+    type TMDbOverflowPolicy,
+    type TMDbPostStatus,
+} from './tmdb-feed.domain';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
-const TMDB_SCHEDULE_BUFFER_HOURS = 1;
-const TMDB_SCHEDULE_SPACING_HOURS = 4;
 const TMDB_DISCOVER_MAX_PAGES = 3;
 const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
 const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
 const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
-type SaveTMDbPostAction = 'created' | 'skipped';
 
-interface SaveTMDbPostResult {
-    action: SaveTMDbPostAction;
-    effectiveScheduledTime?: Date;
-}
+type MediaType = 'movie' | 'tv';
 
 interface TMDbMovie {
     id: number;
     title?: string;
-    name?: string; // For TV shows
+    name?: string;
     release_date?: string;
-    first_air_date?: string; // For TV shows
+    first_air_date?: string;
     poster_path: string | null;
     backdrop_path: string | null;
     overview: string;
@@ -39,8 +56,6 @@ interface TMDbMovie {
     original_language: string;
     media_type?: string;
 }
-
-type MediaType = 'movie' | 'tv';
 
 interface TMDbCredits {
     cast: Array<{ name: string; character: string; order: number }>;
@@ -52,719 +67,44 @@ interface TMDbDiscoverResponse {
     total_pages?: number;
 }
 
-function reserveTMDbScheduleTime(reservedTimes: number[], scheduledTime: Date) {
-    const timestamp = scheduledTime.getTime();
-    if (!reservedTimes.includes(timestamp)) {
-        reservedTimes.push(timestamp);
-        reservedTimes.sort((a, b) => a - b);
-    }
+interface TMDbDetails {
+    production_countries?: Array<{ iso_3166_1: string; name: string }>;
+    origin_country?: string[];
+    original_language?: string;
+    vote_count?: number;
+    popularity?: number;
+    genres?: Array<{ id: number; name: string }>;
+    release_date?: string;
+    first_air_date?: string;
 }
 
-function findNextAvailableTMDbScheduleTime(reservedTimes: number[], startTime: Date): Date {
-    const spacingMs = TMDB_SCHEDULE_SPACING_HOURS * 60 * 60 * 1000;
-    let candidateMs = startTime.getTime();
-
-    while (true) {
-        const conflictingTime = reservedTimes.find((reservedTime) => Math.abs(reservedTime - candidateMs) < spacingMs);
-        if (!conflictingTime) {
-            return new Date(candidateMs);
-        }
-
-        candidateMs = conflictingTime + spacingMs;
-    }
+interface TMDbMovieReleaseDatesResponse {
+    results?: Array<{
+        iso_3166_1: string;
+        release_dates?: Array<{
+            certification?: string;
+            iso_639_1?: string;
+            note?: string;
+            release_date: string;
+            type?: number;
+        }>;
+    }>;
 }
 
-async function getReservedTMDbScheduleTimes(now: Date): Promise<number[]> {
-    const scheduledPosts = await prisma.tMDbPost.findMany({
-        where: {
-            status: 'scheduled',
-            scheduledTime: { gte: now },
-        },
-        select: {
-            scheduledTime: true,
-        },
-        orderBy: {
-            scheduledTime: 'asc',
-        },
-    });
-
-    return scheduledPosts.map((post) => post.scheduledTime.getTime());
+interface SaveTMDbPostResult {
+    action: 'created' | 'updated' | 'skipped';
+    postId?: string;
 }
 
-function getRequestedItemCount(value: number | undefined, fallback: number): number {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return fallback;
-    }
-
-    return Math.max(1, Math.floor(value));
+interface PlatformFlags {
+    x?: boolean;
+    threads?: boolean;
+    facebook?: boolean;
+    youtube?: boolean;
+    pinterest?: boolean;
 }
 
-function getCandidatePoolSize(targetCount: number): number {
-    return Math.max(TMDB_DISCOVER_MIN_POOL_SIZE, targetCount * TMDB_DISCOVER_POOL_MULTIPLIER);
-}
-
-function filterPopularResults(results: TMDbMovie[], _config: RefreshSettings): TMDbMovie[] {
-    return results;
-}
-
-function getPopularityThreshold(
-    config: RefreshSettings,
-    _source: string,
-    _mediaType: MediaType
-): number | null {
-    if (typeof config.minPopularityThreshold === 'number' && Number.isFinite(config.minPopularityThreshold)) {
-        return config.minPopularityThreshold > 0 ? config.minPopularityThreshold : null;
-    }
-
-    if (config.onlyPopular === false) {
-        return null;
-    }
-
-    return 1;
-}
-
-function appendUniqueCandidates(target: TMDbMovie[], candidates: TMDbMovie[], limit?: number) {
-    const seenIds = new Set(target.map((item) => item.id));
-
-    for (const candidate of candidates) {
-        if (seenIds.has(candidate.id)) {
-            continue;
-        }
-
-        target.push(candidate);
-        seenIds.add(candidate.id);
-
-        if (limit && target.length >= limit) {
-            break;
-        }
-    }
-}
-
-async function fetchDiscoverCandidatePool(
-    endpoint: string,
-    params: Record<string, string>,
-    config: RefreshSettings,
-    desiredCount: number
-): Promise<TMDbMovie[]> {
-    const candidates: TMDbMovie[] = [];
-    const poolSize = getCandidatePoolSize(desiredCount);
-    let page = 1;
-    let totalPages = 1;
-
-    while (page <= totalPages && page <= TMDB_DISCOVER_MAX_PAGES && candidates.length < poolSize) {
-        const data = await tmdbFetch<TMDbDiscoverResponse>(endpoint, {
-            ...params,
-            page: String(page)
-        });
-
-        totalPages = Math.max(1, data.total_pages || 1);
-        appendUniqueCandidates(candidates, filterPopularResults(data.results || [], config), poolSize);
-        page += 1;
-    }
-
-    return candidates;
-}
-
-function getAnniversaryBucketKey(candidate: TMDbMovie): string | null {
-    const releaseValue = candidate.release_date || candidate.first_air_date;
-    if (!releaseValue) {
-        return null;
-    }
-
-    const releaseYear = new Date(releaseValue).getFullYear();
-    if (Number.isNaN(releaseYear)) {
-        return null;
-    }
-
-    return String(new Date().getFullYear() - releaseYear);
-}
-
-function getTargetCountForBatch(sourceLabel: string, config: RefreshSettings): number {
-    switch (sourceLabel) {
-        case 'tmdb_today':
-            return getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
-        case 'tmdb_weekly':
-            return getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
-        case 'tmdb_monthly':
-            return getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
-        case 'tmdb_anniversary':
-            return getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5);
-        default:
-            return 1;
-    }
-}
-
-/**
- * Get TMDb API key from database settings or environment
- */
-export async function getTmdbApiKey(): Promise<string | null> {
-    // First try environment variable
-    if (env.TMDB_API_KEY) {
-        return env.TMDB_API_KEY;
-    }
-
-    const modernKey = await getSecretSetting('tmdbKey');
-    if (modernKey) {
-        return modernKey;
-    }
-
-    return getSecretSetting('tmdbApiKey');
-}
-
-/**
- * Make authenticated request to TMDb API
- */
-async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-    const apiKey = await getTmdbApiKey();
-    if (!apiKey) {
-        throw new Error('TMDb API key not configured');
-    }
-
-    const url = new URL(`${TMDB_BASE_URL}${endpoint}`);
-    url.searchParams.set('api_key', apiKey);
-    Object.entries(params).forEach(([key, value]) => {
-        url.searchParams.set(key, value);
-    });
-
-    let tracked = false;
-
-    try {
-        const response = await fetch(url.toString());
-        if (!response.ok) {
-            await trackApiUsage({
-                service: 'tmdb',
-                endpoint,
-                success: false,
-            });
-            tracked = true;
-            throw new Error(`TMDb API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json() as T;
-        await trackApiUsage({
-            service: 'tmdb',
-            endpoint,
-            success: true,
-        });
-        tracked = true;
-        return data;
-    } catch (error) {
-        if (!tracked) {
-            await trackApiUsage({
-                service: 'tmdb',
-                endpoint,
-                success: false,
-            });
-        }
-
-        throw error;
-    }
-}
-
-/**
- * Fetch trending movies for the day
- */
-export async function fetchTrendingMovies(timeWindow: 'day' | 'week' = 'day'): Promise<TMDbMovie[]> {
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>(`/trending/movie/${timeWindow}`);
-    return data.results.slice(0, 10); // Top 10
-}
-
-/**
- * Fetch trending TV shows
- */
-export async function fetchTrendingTV(timeWindow: 'day' | 'week' = 'day'): Promise<TMDbMovie[]> {
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>(`/trending/tv/${timeWindow}`);
-    return data.results.slice(0, 10);
-}
-
-/**
- * Fetch movies releasing soon
- */
-export async function fetchUpcomingMovies(): Promise<TMDbMovie[]> {
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/movie/upcoming', {
-        region: 'US'
-    });
-    return data.results.slice(0, 10);
-}
-
-/**
- * Fetch now playing movies
- */
-export async function fetchNowPlayingMovies(): Promise<TMDbMovie[]> {
-    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/movie/now_playing', {
-        region: 'US'
-    });
-    return data.results.slice(0, 10);
-}
-
-/**
- * Fetch movie credits (cast)
- */
-export async function fetchMovieCredits(movieId: number): Promise<string[]> {
-    try {
-        const data = await tmdbFetch<TMDbCredits>(`/movie/${movieId}/credits`);
-        return data.cast.slice(0, 5).map(c => c.name);
-    } catch {
-        return [];
-    }
-}
-
-/**
- * Fetch TV credits
- */
-export async function fetchTVCredits(tvId: number): Promise<string[]> {
-    try {
-        const data = await tmdbFetch<TMDbCredits>(`/tv/${tvId}/credits`);
-        return data.cast.slice(0, 5).map(c => c.name);
-    } catch {
-        return [];
-    }
-}
-
-/**
- * Fetch anniversary movies (released X years ago today)
- */
-export async function fetchAnniversaryMovies(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-    const currentDay = String(today.getDate()).padStart(2, '0');
-    const anniversaryMovies: TMDbMovie[] = [];
-    const config = { ...defaultRefreshSettings, ...settings };
-
-    // Use settings or defaults
-    // Default milestones: 10, 20, 25, 30, 40, 50
-    const defaultMilestones = [10, 20, 25, 30, 40, 50];
-    let milestones = defaultMilestones;
-
-    if (config.anniversaryYears && Array.isArray(config.anniversaryYears)) {
-        // Convert string array ["10", "20"] to numbers [10, 20]
-        milestones = config.anniversaryYears.map(y => parseInt(y.toString())).filter(n => !isNaN(n));
-    }
-
-    // Fallback if settings empty
-    if (milestones.length === 0) milestones = defaultMilestones;
-
-    console.log(`[TMDb] Checking anniversaries for years: ${milestones.join(', ')}`);
-    const overallPoolLimit = getCandidatePoolSize(getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5));
-    const perYearTarget = getRequestedItemCount(config.maxPerAnniversary, 2);
-
-    for (const years of milestones) {
-        const targetYear = today.getFullYear() - years;
-        const releaseDate = `${targetYear}-${currentMonth}-${currentDay}`;
-
-        try {
-            const params: Record<string, string> = {
-                'primary_release_date.gte': releaseDate,
-                'primary_release_date.lte': releaseDate,
-                'sort_by': 'popularity.desc'
-            };
-            applyCommonDiscoverFilters(params, 'movie', config);
-
-            const candidates = await fetchDiscoverCandidatePool('/discover/movie', params, config, perYearTarget);
-            appendUniqueCandidates(anniversaryMovies, candidates, overallPoolLimit);
-        } catch (error) {
-            console.error(`Failed to fetch ${years}yr anniversaries:`, error);
-        }
-
-        if (anniversaryMovies.length >= overallPoolLimit) {
-            break;
-        }
-    }
-
-    return anniversaryMovies;
-}
-
-/**
- * Fetch anniversary TV shows (premiered X years ago today)
- */
-export async function fetchAnniversaryTV(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const currentMonth = String(today.getMonth() + 1).padStart(2, '0');
-    const currentDay = String(today.getDate()).padStart(2, '0');
-    const anniversaryShows: TMDbMovie[] = [];
-    const config = { ...defaultRefreshSettings, ...settings };
-
-    const defaultMilestones = [10, 20, 25, 30, 40, 50];
-    let milestones = defaultMilestones;
-
-    if (config.anniversaryYears && Array.isArray(config.anniversaryYears)) {
-        milestones = config.anniversaryYears.map(y => parseInt(y.toString())).filter(n => !isNaN(n));
-    }
-
-    if (milestones.length === 0) milestones = defaultMilestones;
-
-    console.log(`[TMDb] Checking TV anniversaries for years: ${milestones.join(', ')}`);
-    const overallPoolLimit = getCandidatePoolSize(getRequestedItemCount(config.anniversaryMaxItems, defaultRefreshSettings.anniversaryMaxItems || 5));
-    const perYearTarget = getRequestedItemCount(config.maxPerAnniversary, 2);
-
-    for (const years of milestones) {
-        const targetYear = today.getFullYear() - years;
-        const premiereDate = `${targetYear}-${currentMonth}-${currentDay}`;
-
-        try {
-            const params: Record<string, string> = {
-                'first_air_date.gte': premiereDate,
-                'first_air_date.lte': premiereDate,
-                'sort_by': 'popularity.desc'
-            };
-            applyCommonDiscoverFilters(params, 'tv', config);
-
-            const candidates = await fetchDiscoverCandidatePool('/discover/tv', params, config, perYearTarget);
-            appendUniqueCandidates(anniversaryShows, candidates, overallPoolLimit);
-        } catch (error) {
-            console.error(`Failed to fetch TV ${years}yr anniversaries:`, error);
-        }
-
-        if (anniversaryShows.length >= overallPoolLimit) {
-            break;
-        }
-    }
-
-    return anniversaryShows;
-}
-
-/**
- * Generate social media caption for a movie/TV show
- */
-export function generateDefaultCaption(
-    title: string,
-    year: number,
-    mediaType: 'movie' | 'tv',
-    cast: string[],
-    source: string
-): string {
-    const castStr = cast.length > 0 ? `Starring ${cast.slice(0, 3).join(', ')}` : '';
-    const emoji = mediaType === 'movie' ? '🎬' : '📺';
-
-    if (source === 'tmdb_anniversary') {
-        const years = new Date().getFullYear() - year;
-        return `${emoji} ${years} years ago today, "${title}" (${year}) was released!\n\n${castStr}\n\n#Movie #Anniversary #${title.replace(/\s+/g, '')}`;
-    }
-
-    if (source === 'tmdb_upcoming') {
-        return `${emoji} Coming Soon: "${title}"\n\n${castStr}\n\n#NewMovie #ComingSoon #${title.replace(/\s+/g, '')}`;
-    }
-
-    return `${emoji} "${title}" (${year})\n\n${castStr}\n\n#Trending #${mediaType === 'movie' ? 'Movie' : 'TVShow'}`;
-}
-
-function buildTMDbCaptionSystemPrompt(
-    basePrompt: string | undefined,
-    options: {
-        maxLength?: number;
-        includeCast?: boolean;
-        includeDate?: boolean;
-    }
-): string | undefined {
-    const constraints = [
-        options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
-        options.includeCast === false
-            ? '- Do not mention cast members.'
-            : '- Mention cast only when it strengthens the caption.',
-        options.includeDate === false
-            ? '- Do not mention the exact release date or year unless absolutely necessary.'
-            : '- You may mention the release date or year when it improves clarity.',
-    ].filter(Boolean).join('\n');
-
-    if (!basePrompt && !constraints) {
-        return undefined;
-    }
-
-    return [basePrompt, constraints].filter(Boolean).join('\n\nAdditional Constraints:\n');
-}
-
-/**
- * Save TMDb content to database for scheduling
- */
-export async function saveTMDbPost(
-    movie: TMDbMovie,
-    mediaType: MediaType,
-    source: string,
-    scheduledTime: Date,
-    preferredImage: 'poster' | 'backdrop' | 'random' = 'poster',
-    platforms: string[] = [],
-    config?: RefreshSettings & { autoPost?: boolean }
-): Promise<SaveTMDbPostResult> {
-    const title = movie.title || movie.name || 'Unknown';
-    const releaseDate = movie.release_date || movie.first_air_date || new Date().toISOString();
-    const year = new Date(releaseDate).getFullYear();
-
-    // Get cast
-    const cast = mediaType === 'movie'
-        ? await fetchMovieCredits(movie.id)
-        : await fetchTVCredits(movie.id);
-
-    // Generate caption (AI or Template)
-    const daysUntil = Math.ceil((new Date(releaseDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
-    const anniversaryYears = source === 'tmdb_anniversary' ? new Date().getFullYear() - year : undefined;
-
-    // Determine temporal tag
-    let temporalTag: CaptionContext['temporalTag'] = 'already_released';
-    if (daysUntil === 0) temporalTag = 'releasing_today';
-    else if (daysUntil > 0 && daysUntil <= 7) temporalTag = 'releasing_this_week';
-    else if (daysUntil > 7 && daysUntil <= 31) temporalTag = 'releasing_this_month';
-    else if (source === 'tmdb_anniversary') temporalTag = 'anniversary';
-    const captionCast = config?.includeCast === false ? [] : cast.slice(0, 3);
-
-    let caption = '';
-
-    // Determine appropriate custom prompt
-    let customPrompt: string | undefined;
-    if (temporalTag === 'releasing_today') customPrompt = config?.todayPrompt;
-    else if (temporalTag === 'releasing_this_week') customPrompt = config?.weeklyPrompt;
-    else if (temporalTag === 'releasing_this_month') customPrompt = config?.monthlyPrompt;
-    else if (source === 'tmdb_anniversary') customPrompt = config?.anniversaryPrompt;
-
-    // Try AI Generation first
-    try {
-        // Fetch model from settings (passed in config if available, or default)
-        const model = (config as any)?.tmdbCaptionModel || 'gpt-5-mini';
-        const systemPrompt = buildTMDbCaptionSystemPrompt(customPrompt, {
-            maxLength: config?.captionMaxLength,
-            includeCast: config?.includeCast,
-            includeDate: config?.includeDate,
-        });
-
-        // Construct Director Payload
-        const context: CaptionContext = {
-            title,
-            mediaType,
-            temporalTag,
-            daysUntil,
-            releaseDate: config?.includeDate === false ? undefined : releaseDate,
-            year,
-            anniversaryYears,
-            cast: captionCast,
-            genres: [], // TODO: Pass genres if available in movie object
-            tone: 'mainstream_hype'
-        };
-
-        // Pass custom prompt if available
-        caption = await generateTMDbCaption(context, model as any, systemPrompt);
-    } catch (error) {
-        console.error(`[TMDb] AI Caption failed for ${title}, falling back to template.`, error);
-        caption = generateDefaultCaption(title, year, mediaType, captionCast, source);
-    }
-
-
-    // Select image based on preferredImage setting
-    let imageUrl = '';
-    let imageType: 'poster' | 'backdrop' = 'poster';
-
-    switch (preferredImage) {
-        case 'poster':
-            // Only use poster, never fallback to backdrop
-            if (movie.poster_path) {
-                imageUrl = `${TMDB_IMAGE_BASE}${movie.poster_path}`;
-                imageType = 'poster';
-            }
-            break;
-        case 'backdrop':
-            // Only use backdrop, never fallback to poster
-            if (movie.backdrop_path) {
-                imageUrl = `${TMDB_IMAGE_BASE}${movie.backdrop_path}`;
-                imageType = 'backdrop';
-            }
-            break;
-        case 'random':
-        default:
-            {
-                const availableImages: Array<{ url: string; type: 'poster' | 'backdrop' }> = [];
-
-                if (movie.poster_path) {
-                    availableImages.push({
-                        url: `${TMDB_IMAGE_BASE}${movie.poster_path}`,
-                        type: 'poster'
-                    });
-                }
-
-                if (movie.backdrop_path) {
-                    availableImages.push({
-                        url: `${TMDB_IMAGE_BASE}${movie.backdrop_path}`,
-                        type: 'backdrop'
-                    });
-                }
-
-                if (availableImages.length > 0) {
-                    const selectedImage = availableImages[Math.floor(Math.random() * availableImages.length)];
-                    imageUrl = selectedImage.url;
-                    imageType = selectedImage.type;
-                }
-            }
-            break;
-    }
-
-    // Check for duplicates within the same reminder stage only.
-    // This allows the same title to appear once in monthly, later in weekly, and finally in today.
-    const existing = await prisma.tMDbPost.findFirst({
-        where: { tmdbId: movie.id, source, mediaType }
-    });
-
-    if (existing) {
-        console.log(`Skipping duplicate: ${title}`);
-        return { action: 'skipped' };
-    }
-
-    // Save to database
-    // IMPORTANT: Fetch creates QUEUED feeds, not SCHEDULED
-    // Scheduling only happens when user explicitly schedules
-    await prisma.tMDbPost.create({
-        data: {
-            tmdbId: movie.id,
-            mediaType,
-            title,
-            year,
-            releaseDate: new Date(releaseDate),
-            caption,
-            imageUrl,
-            imageType,
-            scheduledTime,
-            source,
-            cast,
-            popularity: movie.popularity || 0,
-            platforms,
-            status: config?.autoPost ? 'scheduled' : 'queued'
-        }
-    });
-
-    const statusMsg = config?.autoPost ? 'SCHEDULED' : 'QUEUED';
-    console.log(`Saved TMDb post: ${title} [${statusMsg}] for ${scheduledTime}`);
-    return { action: 'created', effectiveScheduledTime: scheduledTime };
-}
-
-/**
- * Fetch movies released TODAY - uses settings for filtering
- */
-export async function fetchReleasedToday(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
-
-    // Build query params from settings
-    const params: Record<string, string> = {
-        'primary_release_date.gte': dateStr,
-        'primary_release_date.lte': dateStr,
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'movie', config);
-
-    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
-}
-
-/**
- * Fetch movies releasing in 1-7 days - uses settings for filtering
- */
-export async function fetchUpcomingWeekly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
-
-    const params: Record<string, string> = {
-        'primary_release_date.gte': tomorrow.toISOString().split('T')[0],
-        'primary_release_date.lte': nextWeek.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'movie', config);
-
-    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
-}
-
-/**
- * Fetch movies releasing in 8-30 days - uses settings for filtering
- */
-export async function fetchUpcomingMonthly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const nextEightDays = new Date(today);
-    nextEightDays.setDate(today.getDate() + 8);
-    const thirtyDaysLater = new Date(today);
-    thirtyDaysLater.setDate(today.getDate() + 30);
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
-
-    const params: Record<string, string> = {
-        'primary_release_date.gte': nextEightDays.toISOString().split('T')[0],
-        'primary_release_date.lte': thirtyDaysLater.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'movie', config);
-
-    return fetchDiscoverCandidatePool('/discover/movie', params, config, targetCount);
-}
-
-// ===== TV SHOW FETCH FUNCTIONS =====
-
-/**
- * Fetch TV shows airing TODAY - uses settings for filtering
- */
-export async function fetchTVAiringToday(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.todayMaxItems, defaultRefreshSettings.todayMaxItems || 5);
-
-    const params: Record<string, string> = {
-        'first_air_date.gte': dateStr,
-        'first_air_date.lte': dateStr,
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'tv', config);
-
-    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
-}
-
-/**
- * Fetch TV shows airing in 1-7 days - uses settings for filtering
- */
-export async function fetchTVAiringWeekly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const nextWeek = new Date(today);
-    nextWeek.setDate(today.getDate() + 7);
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.weeklyMaxItems, defaultRefreshSettings.weeklyMaxItems || 10);
-
-    const params: Record<string, string> = {
-        'first_air_date.gte': tomorrow.toISOString().split('T')[0],
-        'first_air_date.lte': nextWeek.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'tv', config);
-
-    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
-}
-
-/**
- * Fetch TV shows airing in 8-30 days - uses settings for filtering
- */
-export async function fetchTVAiringMonthly(settings?: RefreshSettings): Promise<TMDbMovie[]> {
-    const today = new Date();
-    const nextEightDays = new Date(today);
-    nextEightDays.setDate(today.getDate() + 8);
-    const thirtyDaysLater = new Date(today);
-    thirtyDaysLater.setDate(today.getDate() + 30);
-    const config = { ...defaultRefreshSettings, ...settings };
-    const targetCount = getRequestedItemCount(config.monthlyMaxItems, defaultRefreshSettings.monthlyMaxItems || 30);
-
-    const params: Record<string, string> = {
-        'first_air_date.gte': nextEightDays.toISOString().split('T')[0],
-        'first_air_date.lte': thirtyDaysLater.toISOString().split('T')[0],
-        'sort_by': 'popularity.desc'
-    };
-    applyCommonDiscoverFilters(params, 'tv', config);
-
-    return fetchDiscoverCandidatePool('/discover/tv', params, config, targetCount);
-}
-
-/**
- * Settings interface from frontend
- */
-interface RefreshSettings {
+export interface RefreshSettings {
     enableToday?: boolean;
     enableWeekly?: boolean;
     enableMonthly?: boolean;
@@ -787,8 +127,7 @@ interface RefreshSettings {
     onlyPopular?: boolean;
     dedupeWindow?: number;
     tmdbQueuedRetentionHours?: number;
-    anniversaryYears?: string[] | number[];
-    customAnniversaryYears?: string[] | number[];
+    anniversaryYears?: Array<string | number>;
     maxPerAnniversary?: number;
     anniversaryStartYear?: string | number;
     captionMaxLength?: number;
@@ -798,36 +137,13 @@ interface RefreshSettings {
     discoveryCacheTTL?: number;
     creditsCacheTTL?: number;
     captionCacheTTL?: number;
-    todayPlatforms?: {
-        x?: boolean;
-        threads?: boolean;
-        facebook?: boolean;
-        youtube?: boolean;
-        pinterest?: boolean;
-    };
-    weeklyPlatforms?: {
-        x?: boolean;
-        threads?: boolean;
-        facebook?: boolean;
-        youtube?: boolean;
-        pinterest?: boolean;
-    };
-    monthlyPlatforms?: {
-        x?: boolean;
-        threads?: boolean;
-        facebook?: boolean;
-        youtube?: boolean;
-        pinterest?: boolean;
-    };
-    anniversaryPlatforms?: {
-        x?: boolean;
-        threads?: boolean;
-        facebook?: boolean;
-        youtube?: boolean;
-        pinterest?: boolean;
-    };
-    tmdbCaptionModel?: string; // AI Model
-    todayPrompt?: string; // Custom prompts
+    timezone?: string;
+    todayPlatforms?: PlatformFlags;
+    weeklyPlatforms?: PlatformFlags;
+    monthlyPlatforms?: PlatformFlags;
+    anniversaryPlatforms?: PlatformFlags;
+    tmdbCaptionModel?: string;
+    todayPrompt?: string;
     weeklyPrompt?: string;
     monthlyPrompt?: string;
     anniversaryPrompt?: string;
@@ -847,16 +163,32 @@ interface RefreshSettings {
     anniversaryPinterestDescriptionPrompt?: string;
     anniversaryPinterestBoard?: string;
     anniversaryPinterestLinkStrategy?: string;
+    tmdbDailyRefreshTime?: string;
+    postingWindowStart?: string;
+    postingWindowEnd?: string;
+    minGapBetweenPostsMinutes?: number;
+    preferredGapBetweenSameModuleMinutes?: number;
+    maxPostsPerDayOverall?: number;
+    maxPostsPerModulePerDay?: number;
+    reserveUrgentSlots?: number;
+    weeklyOverflowPolicy?: TMDbOverflowPolicy;
+    monthlyOverflowPolicy?: TMDbOverflowPolicy;
+    weeklyRescheduleValidityDays?: number;
+    monthlyRescheduleValidityDays?: number;
+    todayAnniversaryUrgentPriority?: boolean;
+    interleaveModules?: boolean;
+    captionRegenOnScheduleChange?: boolean;
 }
 
-/**
- * Default settings if none provided
- */
 const defaultRefreshSettings: RefreshSettings = {
     enableToday: true,
     enableWeekly: true,
     enableMonthly: true,
     enableAnniversaries: true,
+    todayAutoPost: false,
+    weeklyAutoPost: false,
+    monthlyAutoPost: false,
+    anniversaryAutoPost: false,
     todayMaxItems: 5,
     weeklyMaxItems: 10,
     monthlyMaxItems: 30,
@@ -871,10 +203,26 @@ const defaultRefreshSettings: RefreshSettings = {
     onlyPopular: true,
     dedupeWindow: 30,
     tmdbQueuedRetentionHours: 168,
+    timezone: 'Africa/Lagos',
     todayPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
     weeklyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
     monthlyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
-    anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false }
+    anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false },
+    tmdbDailyRefreshTime: '07:00',
+    postingWindowStart: '09:00',
+    postingWindowEnd: '21:00',
+    minGapBetweenPostsMinutes: 60,
+    preferredGapBetweenSameModuleMinutes: 120,
+    maxPostsPerDayOverall: 12,
+    maxPostsPerModulePerDay: 4,
+    reserveUrgentSlots: 2,
+    weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+    monthlyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
+    weeklyRescheduleValidityDays: 2,
+    monthlyRescheduleValidityDays: 7,
+    todayAnniversaryUrgentPriority: true,
+    interleaveModules: true,
+    captionRegenOnScheduleChange: true,
 };
 
 const UNIFIED_GENRE_MAP: Record<number, { movieId: number | null; tvId: number | null }> = {
@@ -901,11 +249,27 @@ const UNIFIED_GENRE_MAP: Record<number, { movieId: number | null; tvId: number |
     53: { movieId: 53, tvId: null },
     10770: { movieId: 10770, tvId: null },
     10752: { movieId: 10752, tvId: 10768 },
-    37: { movieId: 37, tvId: 37 }
+    37: { movieId: 37, tvId: 37 },
 };
 
 function uniqueNumbers(values: Array<number | null | undefined>): number[] {
     return [...new Set(values.filter((value): value is number => typeof value === 'number' && !Number.isNaN(value)))];
+}
+
+function getTimezone(config: RefreshSettings): string {
+    return config.timezone || defaultRefreshSettings.timezone || 'Africa/Lagos';
+}
+
+function getRequestedItemCount(value: number | undefined, fallback: number): number {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return fallback;
+    }
+
+    return Math.max(1, Math.floor(value));
+}
+
+function getCandidatePoolSize(targetCount: number): number {
+    return Math.max(TMDB_DISCOVER_MIN_POOL_SIZE, targetCount * TMDB_DISCOVER_POOL_MULTIPLIER);
 }
 
 function getLanguageFilter(config: RefreshSettings): string | undefined {
@@ -927,11 +291,8 @@ function getRegionFilter(config: RefreshSettings): string | undefined {
 }
 
 function getGenreIdsForMedia(config: RefreshSettings, mediaType: MediaType): number[] {
-    const explicitGenres = mediaType === 'movie'
-        ? (config.movieGenres || [])
-        : (config.tvGenres || []);
-
-    const mappedUnifiedGenres = (config.selectedGenres || []).map(genreId => {
+    const explicitGenres = mediaType === 'movie' ? (config.movieGenres || []) : (config.tvGenres || []);
+    const mappedUnifiedGenres = (config.selectedGenres || []).map((genreId) => {
         const mapping = UNIFIED_GENRE_MAP[genreId];
         if (!mapping) {
             return genreId;
@@ -943,37 +304,391 @@ function getGenreIdsForMedia(config: RefreshSettings, mediaType: MediaType): num
     return uniqueNumbers([...explicitGenres, ...mappedUnifiedGenres]);
 }
 
-function applyCommonDiscoverFilters(
-    params: Record<string, string>,
-    mediaType: MediaType,
-    config: RefreshSettings
-) {
-    const region = getRegionFilter(config);
-    if (region) {
-        if (mediaType === 'movie') {
-            params.region = region;
-        } else {
-            params.watch_region = region;
-        }
-    }
-
+function applyCommonDiscoverFilters(params: Record<string, string>, mediaType: MediaType, config: RefreshSettings) {
     const language = getLanguageFilter(config);
     if (language) {
-        params['with_original_language'] = language;
+        params.with_original_language = language;
     }
 
-    const genres = getGenreIdsForMedia(config, mediaType);
-    if (genres.length > 0) {
-        params['with_genres'] = genres.join(',');
+    const genreIds = getGenreIdsForMedia(config, mediaType);
+    if (genreIds.length > 0) {
+        params.with_genres = genreIds.join(',');
+    }
+
+    if (config.onlyPopular !== false) {
+        params['vote_count.gte'] = '10';
     }
 }
 
-function getPlatformsForSource(sourceLabel: string, config: RefreshSettings): string[] {
-    const platformConfig = sourceLabel === 'tmdb_today'
+export async function getTmdbApiKey(): Promise<string | null> {
+    if (env.TMDB_API_KEY) {
+        return env.TMDB_API_KEY;
+    }
+
+    const modernKey = await getSecretSetting('tmdbKey');
+    if (modernKey) {
+        return modernKey;
+    }
+
+    return getSecretSetting('tmdbApiKey');
+}
+
+async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
+    const apiKey = await getTmdbApiKey();
+    if (!apiKey) {
+        throw new Error('TMDb API key not configured');
+    }
+
+    const url = new URL(`${TMDB_BASE_URL}${endpoint}`);
+    url.searchParams.set('api_key', apiKey);
+    Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.set(key, value);
+    });
+
+    let tracked = false;
+
+    try {
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+            await trackApiUsage({ service: 'tmdb', endpoint, success: false });
+            tracked = true;
+            throw new Error(`TMDb API error: ${response.status} ${response.statusText}`);
+        }
+
+        const data = await response.json() as T;
+        await trackApiUsage({ service: 'tmdb', endpoint, success: true });
+        tracked = true;
+        return data;
+    } catch (error) {
+        if (!tracked) {
+            await trackApiUsage({ service: 'tmdb', endpoint, success: false });
+        }
+
+        throw error;
+    }
+}
+
+export async function fetchTrendingMovies(timeWindow: 'day' | 'week' = 'day'): Promise<TMDbMovie[]> {
+    const data = await tmdbFetch<{ results: TMDbMovie[] }>(`/trending/movie/${timeWindow}`);
+    return data.results.slice(0, 10);
+}
+
+export async function fetchTrendingTV(timeWindow: 'day' | 'week' = 'day'): Promise<TMDbMovie[]> {
+    const data = await tmdbFetch<{ results: TMDbMovie[] }>(`/trending/tv/${timeWindow}`);
+    return data.results.slice(0, 10);
+}
+
+export async function fetchUpcomingMovies(): Promise<TMDbMovie[]> {
+    const data = await tmdbFetch<{ results: TMDbMovie[] }>('/movie/upcoming', { region: 'US' });
+    return data.results.slice(0, 10);
+}
+
+async function fetchMovieCredits(movieId: number): Promise<string[]> {
+    try {
+        const data = await tmdbFetch<TMDbCredits>(`/movie/${movieId}/credits`);
+        return data.cast.slice(0, 5).map((castMember) => castMember.name);
+    } catch {
+        return [];
+    }
+}
+
+async function fetchTVCredits(tvId: number): Promise<string[]> {
+    try {
+        const data = await tmdbFetch<TMDbCredits>(`/tv/${tvId}/credits`);
+        return data.cast.slice(0, 5).map((castMember) => castMember.name);
+    } catch {
+        return [];
+    }
+}
+
+async function fetchMovieDetails(id: number): Promise<TMDbDetails | null> {
+    try {
+        return await tmdbFetch<TMDbDetails>(`/movie/${id}`);
+    } catch {
+        return null;
+    }
+}
+
+async function fetchTVDetails(id: number): Promise<TMDbDetails | null> {
+    try {
+        return await tmdbFetch<TMDbDetails>(`/tv/${id}`);
+    } catch {
+        return null;
+    }
+}
+
+async function fetchMovieReleaseDates(id: number): Promise<TMDbMovieReleaseDatesResponse | null> {
+    try {
+        return await tmdbFetch<TMDbMovieReleaseDatesResponse>(`/movie/${id}/release_dates`);
+    } catch {
+        return null;
+    }
+}
+
+function getMovieReleaseDateForRegion(payload: TMDbMovieReleaseDatesResponse | null, region: string): string | null {
+    if (!payload?.results) {
+        return null;
+    }
+
+    const match = payload.results.find((entry) => entry.iso_3166_1 === region);
+    if (!match?.release_dates?.length) {
+        return null;
+    }
+
+    const datedEntries = match.release_dates
+        .map((entry) => entry.release_date)
+        .filter((value): value is string => Boolean(value))
+        .sort((left, right) => new Date(left).getTime() - new Date(right).getTime());
+
+    return datedEntries[0] || null;
+}
+
+function appendUniqueCandidates(target: TMDbMovie[], candidates: TMDbMovie[], limit?: number) {
+    const seenIds = new Set(target.map((item) => item.id));
+
+    for (const candidate of candidates) {
+        if (seenIds.has(candidate.id)) {
+            continue;
+        }
+
+        target.push(candidate);
+        seenIds.add(candidate.id);
+
+        if (limit && target.length >= limit) {
+            break;
+        }
+    }
+}
+
+async function fetchDiscoverCandidatePool(
+    endpoint: string,
+    params: Record<string, string>,
+    targetCount: number,
+): Promise<TMDbMovie[]> {
+    const candidates: TMDbMovie[] = [];
+    const poolSize = getCandidatePoolSize(targetCount);
+    let page = 1;
+    let totalPages = 1;
+
+    while (page <= totalPages && page <= TMDB_DISCOVER_MAX_PAGES && candidates.length < poolSize) {
+        const data = await tmdbFetch<TMDbDiscoverResponse>(endpoint, {
+            ...params,
+            page: String(page),
+        });
+
+        totalPages = Math.max(1, data.total_pages || 1);
+        appendUniqueCandidates(candidates, data.results || [], poolSize);
+        page += 1;
+    }
+
+    return candidates;
+}
+
+function buildExactDateParams(dateIso: string, mediaType: MediaType, config: RefreshSettings): Record<string, string> {
+    const params: Record<string, string> = mediaType === 'movie'
+        ? {
+            'primary_release_date.gte': dateIso,
+            'primary_release_date.lte': dateIso,
+            sort_by: 'popularity.desc',
+        }
+        : {
+            'first_air_date.gte': dateIso,
+            'first_air_date.lte': dateIso,
+            sort_by: 'popularity.desc',
+        };
+
+    applyCommonDiscoverFilters(params, mediaType, config);
+    return params;
+}
+
+async function fetchModuleCandidates(moduleType: TMDbModuleType, mediaType: MediaType, config: RefreshSettings, now: Date): Promise<TMDbMovie[]> {
+    const timezone = getTimezone(config);
+    const targetDate = moduleType === 'today'
+        ? now
+        : moduleType === 'weekly'
+            ? addCalendarDays(now, 7, timezone)
+            : addCalendarMonths(now, 1, timezone);
+
+    const targetDateIso = getLocalDateIso(targetDate, timezone);
+    const targetCount = getRequestedItemCount(
+        moduleType === 'today'
+            ? config.todayMaxItems
+            : moduleType === 'weekly'
+                ? config.weeklyMaxItems
+                : config.monthlyMaxItems,
+        moduleType === 'today' ? 5 : moduleType === 'weekly' ? 10 : 30,
+    );
+
+    return fetchDiscoverCandidatePool(
+        mediaType === 'movie' ? '/discover/movie' : '/discover/tv',
+        buildExactDateParams(targetDateIso, mediaType, config),
+        targetCount,
+    );
+}
+
+async function fetchAnniversaryCandidates(mediaType: MediaType, config: RefreshSettings, now: Date): Promise<TMDbMovie[]> {
+    const timezone = getTimezone(config);
+    const todayIso = getLocalDateIso(now, timezone);
+    const [, currentMonth, currentDay] = todayIso.split('-');
+    const milestones = (config.anniversaryYears || [10, 20, 25, 30, 40, 50])
+        .map((value) => Number.parseInt(String(value), 10))
+        .filter((value) => Number.isFinite(value) && value > 0);
+    const targetCount = getRequestedItemCount(config.anniversaryMaxItems, 5);
+    const perYearTarget = getRequestedItemCount(config.maxPerAnniversary, 2);
+    const overallPoolLimit = getCandidatePoolSize(targetCount);
+    const candidates: TMDbMovie[] = [];
+
+    for (const years of milestones) {
+        const targetYear = Number(todayIso.slice(0, 4)) - years;
+        const exactDate = `${targetYear}-${currentMonth}-${currentDay}`;
+        const params: Record<string, string> = mediaType === 'movie'
+            ? {
+                'primary_release_date.gte': exactDate,
+                'primary_release_date.lte': exactDate,
+                sort_by: 'popularity.desc',
+            }
+            : {
+                'first_air_date.gte': exactDate,
+                'first_air_date.lte': exactDate,
+                sort_by: 'popularity.desc',
+            };
+
+        applyCommonDiscoverFilters(params, mediaType, config);
+        const yearCandidates = await fetchDiscoverCandidatePool(
+            mediaType === 'movie' ? '/discover/movie' : '/discover/tv',
+            params,
+            perYearTarget,
+        );
+
+        appendUniqueCandidates(candidates, yearCandidates, overallPoolLimit);
+        if (candidates.length >= overallPoolLimit) {
+            break;
+        }
+    }
+
+    return candidates;
+}
+
+function getPopularityThreshold(config: RefreshSettings): number | null {
+    if (typeof config.minPopularityThreshold === 'number' && Number.isFinite(config.minPopularityThreshold)) {
+        return config.minPopularityThreshold > 0 ? config.minPopularityThreshold : null;
+    }
+
+    if (config.onlyPopular === false) {
+        return null;
+    }
+
+    return 1;
+}
+
+async function validateCandidate(
+    candidate: TMDbMovie,
+    mediaType: MediaType,
+    moduleType: TMDbModuleType,
+    config: RefreshSettings,
+    now: Date,
+): Promise<{ valid: boolean; reason?: string; releaseDate?: Date; originalReleaseDate?: Date | null; details?: TMDbDetails; genres?: string[] }> {
+    const title = candidate.title || candidate.name || 'Unknown';
+    const requiredLanguage = getLanguageFilter(config);
+    if (requiredLanguage && candidate.original_language !== requiredLanguage) {
+        return { valid: false, reason: `REJECT_LANGUAGE (${candidate.original_language})` };
+    }
+
+    const popularityThreshold = getPopularityThreshold(config);
+    if (popularityThreshold !== null && candidate.popularity < popularityThreshold) {
+        return { valid: false, reason: `REJECT_POPULARITY (${candidate.popularity.toFixed(1)} < ${popularityThreshold})` };
+    }
+
+    const details = mediaType === 'movie' ? await fetchMovieDetails(candidate.id) : await fetchTVDetails(candidate.id);
+    if (!details) {
+        return { valid: false, reason: 'REJECT_FETCH_ERROR' };
+    }
+
+    const region = getRegionFilter(config);
+    let releaseDateValue = details.release_date || candidate.release_date || details.first_air_date || candidate.first_air_date;
+    if (mediaType === 'movie' && region) {
+        const releaseDates = await fetchMovieReleaseDates(candidate.id);
+        const regionalReleaseDate = getMovieReleaseDateForRegion(releaseDates, region);
+        if (!regionalReleaseDate) {
+            return { valid: false, reason: `REJECT_REGION_RELEASE_DATE (${region})` };
+        }
+
+        releaseDateValue = regionalReleaseDate;
+    }
+
+    const releaseDate = parseReleaseDate(releaseDateValue);
+    if (!releaseDate) {
+        return { valid: false, reason: 'REJECT_RELEASE_DATE' };
+    }
+
+    const eligibility = evaluateCandidateEligibility(
+        moduleType,
+        releaseDate,
+        now,
+        getTimezone(config),
+        (config.anniversaryYears || []).map((value) => Number.parseInt(String(value), 10)).filter((value) => Number.isFinite(value)),
+    );
+
+    if (!eligibility.eligible) {
+        return { valid: false, reason: eligibility.reason };
+    }
+
+    const countryCodes = new Set<string>();
+    (details.production_countries || []).forEach((country) => {
+        if (country.iso_3166_1) countryCodes.add(country.iso_3166_1);
+    });
+    (details.origin_country || []).forEach((country) => {
+        if (country) countryCodes.add(country);
+    });
+
+    if (region && countryCodes.size > 0 && !countryCodes.has(region)) {
+        return { valid: false, reason: `REJECT_COUNTRY (${region})` };
+    }
+
+    const genres = (details.genres || []).map((genre) => genre.name);
+    const genreIds = new Set((details.genres || []).map((genre) => genre.id));
+    const blockedGenres = Array.from(genreIds).filter((genreId) => NON_NARRATIVE_GENRE_IDS.has(genreId));
+    if (blockedGenres.length > 0) {
+        return { valid: false, reason: `REJECT_NON_NARRATIVE_GENRE (${blockedGenres.join(', ')})` };
+    }
+
+    const narrativeText = `${title}\n${candidate.overview || ''}`;
+    if (NON_NARRATIVE_TITLE_PATTERN.test(narrativeText)) {
+        return { valid: false, reason: 'REJECT_NON_NARRATIVE_TITLE' };
+    }
+
+    try {
+        const aiResult = await aiService.validateTMDbContent(
+            title,
+            candidate.overview,
+            genres,
+            details.original_language || candidate.original_language,
+            (details.production_countries || []).map((country) => country.name),
+            'flash-3',
+        );
+
+        if (!aiResult.isValid) {
+            return { valid: false, reason: `REJECT_AI_VETO (${aiResult.reasoning})` };
+        }
+    } catch {
+        // Fail open if AI validation is unavailable.
+    }
+
+    return {
+        valid: true,
+        releaseDate,
+        originalReleaseDate: releaseDate,
+        details,
+        genres,
+    };
+}
+
+function getPlatformsForModule(moduleType: TMDbModuleType, config: RefreshSettings): string[] {
+    const platformConfig = moduleType === 'today'
         ? config.todayPlatforms
-        : sourceLabel === 'tmdb_weekly'
+        : moduleType === 'weekly'
             ? config.weeklyPlatforms
-            : sourceLabel === 'tmdb_monthly'
+            : moduleType === 'monthly'
                 ? config.monthlyPlatforms
                 : config.anniversaryPlatforms;
 
@@ -990,417 +705,536 @@ function getPlatformsForSource(sourceLabel: string, config: RefreshSettings): st
     return platforms;
 }
 
-/**
- * Refresh TMDb content - fetch and save new posts with proper source labels
- * Enforces settings from frontend (enabled feeds, max items, etc.)
- */
-// Helper types for details
-interface TMDbDetails {
-    production_countries?: Array<{ iso_3166_1: string; name: string }>;
-    origin_country?: string[];
-    original_language?: string;
-    vote_count?: number;
-    popularity?: number;
-    genres?: Array<{ id: number; name: string }>;
-    release_date?: string;
-    first_air_date?: string;
+function selectImage(candidate: TMDbCandidate, preferred: RefreshSettings['preferredImage']) {
+    const poster = candidate.posterPath ? `${TMDB_IMAGE_BASE}${candidate.posterPath}` : '';
+    const backdrop = candidate.backdropPath ? `${TMDB_IMAGE_BASE}${candidate.backdropPath}` : '';
+
+    if (preferred === 'backdrop') {
+        return { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' as const : 'poster' as const };
+    }
+
+    if (preferred === 'random') {
+        const available = [
+            ...(poster ? [{ imageUrl: poster, imageType: 'poster' as const }] : []),
+            ...(backdrop ? [{ imageUrl: backdrop, imageType: 'backdrop' as const }] : []),
+        ];
+
+        return available[Math.floor(Math.random() * Math.max(1, available.length))] || { imageUrl: '', imageType: 'poster' as const };
+    }
+
+    return { imageUrl: poster || backdrop, imageType: poster ? 'poster' as const : 'backdrop' as const };
 }
 
-interface TMDbMovieReleaseDatesResponse {
-    results?: Array<{
-        iso_3166_1: string;
-        release_dates?: Array<{
-            certification?: string;
-            iso_639_1?: string;
-            note?: string;
-            release_date: string;
-            type?: number;
-        }>;
-    }>;
+function buildAICaptionContext(candidate: TMDbCandidate, context: CaptionContext, config: RefreshSettings): AICaptionContext {
+    return {
+        title: candidate.title,
+        mediaType: candidate.mediaType,
+        temporalTag: mapModuleToTemporalTag(context),
+        daysUntil: context.exactDayDelta,
+        releaseDate: config.includeDate === false ? undefined : context.releaseDate,
+        year: candidate.releaseDate.getUTCFullYear(),
+        anniversaryYears: candidate.anniversaryMilestone || undefined,
+        cast: config.includeCast === false ? [] : candidate.cast.slice(0, 3),
+        genres: candidate.genres,
+        tone: 'mainstream_hype',
+    };
 }
 
-/**
- * Fetch full details for a movie to verify production countries
- */
-async function fetchMovieDetails(id: number): Promise<TMDbDetails | null> {
+function buildPromptForModule(moduleType: TMDbModuleType, config: RefreshSettings): string | undefined {
+    switch (moduleType) {
+        case 'today':
+            return config.todayPrompt;
+        case 'weekly':
+            return config.weeklyPrompt;
+        case 'monthly':
+            return config.monthlyPrompt;
+        case 'anniversary':
+            return config.anniversaryPrompt;
+    }
+}
+
+async function generateCaptionForCandidate(
+    candidate: TMDbCandidate,
+    context: CaptionContext,
+    config: RefreshSettings,
+): Promise<string> {
     try {
-        return await tmdbFetch<TMDbDetails>(`/movie/${id}`);
-    } catch (e) {
-        console.warn(`[TMDb] Failed to fetch details for movie ${id}`);
-        return null;
-    }
-}
-
-/**
- * Fetch full details for a TV show
- */
-async function fetchTVDetails(id: number): Promise<TMDbDetails | null> {
-    try {
-        return await tmdbFetch<TMDbDetails>(`/tv/${id}`);
-    } catch (e) {
-        console.warn(`[TMDb] Failed to fetch details for TV ${id}`);
-        return null;
-    }
-}
-
-async function fetchMovieReleaseDates(id: number): Promise<TMDbMovieReleaseDatesResponse | null> {
-    try {
-        return await tmdbFetch<TMDbMovieReleaseDatesResponse>(`/movie/${id}/release_dates`);
-    } catch (e) {
-        console.warn(`[TMDb] Failed to fetch release dates for movie ${id}`);
-        return null;
-    }
-}
-
-function getMovieReleaseDateForRegion(
-    payload: TMDbMovieReleaseDatesResponse | null,
-    region: string
-): string | null {
-    if (!payload?.results) {
-        return null;
-    }
-
-    const match = payload.results.find((entry) => entry.iso_3166_1 === region);
-    if (!match?.release_dates?.length) {
-        return null;
-    }
-
-    const datedEntries = match.release_dates
-        .map((entry) => entry.release_date)
-        .filter((value): value is string => Boolean(value))
-        .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-
-    return datedEntries[0] || null;
-}
-
-function startOfDay(value: Date): Date {
-    const result = new Date(value);
-    result.setHours(0, 0, 0, 0);
-    return result;
-}
-
-function addDays(value: Date, days: number): Date {
-    const result = new Date(value);
-    result.setDate(result.getDate() + days);
-    return result;
-}
-
-function getExpectedReleaseWindow(source: string, now: Date): { start: Date; end: Date } | null {
-    const base = startOfDay(now);
-
-    switch (source) {
-        case 'tmdb_today':
-            return { start: base, end: base };
-        case 'tmdb_weekly':
-            return { start: addDays(base, 1), end: addDays(base, 7) };
-        case 'tmdb_monthly':
-            return { start: addDays(base, 8), end: addDays(base, 30) };
-        default:
-            return null;
-    }
-}
-
-function isDateWithinWindow(dateValue: string | undefined, window: { start: Date; end: Date } | null): boolean {
-    if (!dateValue || !window) {
-        return Boolean(dateValue);
-    }
-
-    const candidateDate = startOfDay(new Date(dateValue));
-    if (Number.isNaN(candidateDate.getTime())) {
-        return false;
-    }
-
-    return candidateDate.getTime() >= window.start.getTime() && candidateDate.getTime() <= window.end.getTime();
-}
-
-/**
- * STRICT VALIDATION PIPELINE
- * Returns true if candidate passes ALL checks (Hard Filters + Deep Check + AI Veto)
- */
-import aiService, { generateTMDbCaption, CaptionContext } from './ai.service';
-
-async function validateCandidate(
-    candidate: TMDbMovie,
-    type: MediaType,
-    source: string,
-    config: RefreshSettings
-): Promise<{ valid: boolean; reason?: string }> {
-    const title = candidate.title || candidate.name || 'Unknown';
-
-    // 1. HARD FILTER: Language (Deterministic)
-    const requiredLanguage = getLanguageFilter(config);
-    if (requiredLanguage && candidate.original_language !== requiredLanguage) {
-        return { valid: false, reason: `REJECT_LANGUAGE (Original: ${candidate.original_language})` };
-    }
-
-    // 2. HARD FILTER: Popularity (Deterministic)
-    // Threshold: Popularity > 50
-    // EXCEPTION: Anniversaries (Classics might not be trending globally right now, so we skip/lower this)
-    const popularityThreshold = getPopularityThreshold(config, source, type);
-
-    if (popularityThreshold !== null && candidate.popularity < popularityThreshold) {
-        return { valid: false, reason: `REJECT_POPULARITY (${candidate.popularity.toFixed(1)} < ${popularityThreshold})` };
-    }
-
-    // 3. DEEP CHECK: Production Country (Source of Truth)
-    // We must fetch details because 'list' endpoints often lack full country data or are unreliable.
-    const details = type === 'movie'
-        ? await fetchMovieDetails(candidate.id)
-        : await fetchTVDetails(candidate.id);
-
-    if (!details) {
-        return { valid: false, reason: `REJECT_FETCH_ERROR` };
-    }
-
-    const requiredRegion = getRegionFilter(config);
-    const releaseWindow = getExpectedReleaseWindow(source, new Date());
-
-    if (type === 'movie') {
-        let verifiedReleaseDate = details.release_date || candidate.release_date;
-
-        if (requiredRegion) {
-            const releaseDates = await fetchMovieReleaseDates(candidate.id);
-            const regionalReleaseDate = getMovieReleaseDateForRegion(releaseDates, requiredRegion);
-            if (!regionalReleaseDate) {
-                return { valid: false, reason: `REJECT_REGION_RELEASE_DATE (${requiredRegion})` };
-            }
-
-            verifiedReleaseDate = regionalReleaseDate;
-        }
-
-        if (!isDateWithinWindow(verifiedReleaseDate, releaseWindow)) {
-            return {
-                valid: false,
-                reason: `REJECT_RELEASE_WINDOW (${verifiedReleaseDate || 'unknown'})`
-            };
-        }
-
-        if (verifiedReleaseDate) {
-            candidate.release_date = verifiedReleaseDate.slice(0, 10);
-        }
-    } else {
-        const verifiedFirstAirDate = details.first_air_date || candidate.first_air_date;
-        if (!isDateWithinWindow(verifiedFirstAirDate, releaseWindow)) {
-            return {
-                valid: false,
-                reason: `REJECT_RELEASE_WINDOW (${verifiedFirstAirDate || 'unknown'})`
-            };
-        }
-
-        if (verifiedFirstAirDate) {
-            candidate.first_air_date = verifiedFirstAirDate.slice(0, 10);
-        }
-    }
-
-    const countryCodes = new Set<string>();
-    (details.production_countries || []).forEach(country => {
-        if (country.iso_3166_1) {
-            countryCodes.add(country.iso_3166_1);
-        }
-    });
-    (details.origin_country || []).forEach(code => {
-        if (code) {
-            countryCodes.add(code);
-        }
-    });
-
-    if (requiredRegion && !countryCodes.has(requiredRegion)) {
-        return {
-            valid: false,
-            reason: `REJECT_COUNTRY (${requiredRegion}; Countries: ${Array.from(countryCodes).join(', ') || 'unknown'})`
-        };
-    }
-
-    const genreIds = new Set((details.genres || []).map((genre) => genre.id));
-    const blockedGenres = Array.from(genreIds).filter((genreId) => NON_NARRATIVE_GENRE_IDS.has(genreId));
-    if (blockedGenres.length > 0) {
-        return { valid: false, reason: `REJECT_NON_NARRATIVE_GENRE (${blockedGenres.join(', ')})` };
-    }
-
-    const narrativeText = `${title}\n${candidate.overview || ''}`;
-    if (NON_NARRATIVE_TITLE_PATTERN.test(narrativeText)) {
-        return { valid: false, reason: 'REJECT_NON_NARRATIVE_TITLE' };
-    }
-
-    // 4. AI VETO (Flash 3)
-    // Only verify if we are considering valid candidates so far
-    try {
-        // Prepare metadata for AI
-        const cast = type === 'movie'
-            ? await fetchMovieCredits(candidate.id)
-            : await fetchTVCredits(candidate.id);
-
-        // Use the AI Service to validate
-        const aiResult = await aiService.validateTMDbContent(
-            title,
-            candidate.overview,
-            [], // Genres hard to get from list id mapping, skipping for now as country/lang is key
-            details.original_language || candidate.original_language,
-            (details.production_countries || []).map(c => c.name),
-            'flash-3'
+        return await generateTMDbCaption(
+            buildAICaptionContext(candidate, context, config),
+            (config.tmdbCaptionModel || 'gpt-5-mini') as any,
+            buildPromptForModule(candidate.moduleType, config),
         );
-
-        if (!aiResult.isValid) {
-            return { valid: false, reason: `REJECT_AI_VETO (${aiResult.reasoning})` };
+    } catch {
+        if (context.timingMode === 'release_today') {
+            return `${candidate.title} releases today.`;
         }
 
-    } catch (error) {
-        console.error(`[TMDb] AI Verification failed for ${title}`, error);
-        // Fail open or closed? Request said "Strict". 
-        // If AI fails, we can't verify. Reject? 
-        // Let's Reject to be safe and avoid garbage.
-        return { valid: true }; // Bypass AI Veto if AI fails
-    }
+        if (context.timingMode === 'exact_d_plus_7') {
+            return `${candidate.title} releases in one week.`;
+        }
 
-    return { valid: true };
+        if (context.timingMode === 'exact_calendar_month_plus_1') {
+            return `${candidate.title} arrives ${context.formattedReleaseDate}.`;
+        }
+
+        if (context.timingMode === 'anniversary_today' && candidate.anniversaryMilestone) {
+            return `${candidate.title} celebrates its ${candidate.anniversaryMilestone}th anniversary today.`;
+        }
+
+        if (context.exactDayDelta > 0) {
+            return `${candidate.title} arrives in ${context.exactDayDelta} days.`;
+        }
+
+        return `${candidate.title} arrives ${context.formattedReleaseDate}.`;
+    }
 }
 
-/**
- * Refresh TMDb content - Strict Enforcement Pipeline
- */
-export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[]; addedTitles: string[] }> {
-    const errors: string[] = [];
-    let added = 0;
-    let rejected = 0;
-    const addedTitles: string[] = [];
+async function upsertFeedHistory(
+    candidate: TMDbCandidate,
+    runId: string,
+    status: 'fetched' | 'scheduled' | 'dispatched' | 'published' | 'skipped' | 'unscheduled',
+    reason: string | null,
+    timezone: string,
+    scheduledAt?: Date | null,
+    dispatchedAt?: Date | null,
+    publishedAt?: Date | null,
+) {
+    const canonicalKey = getCanonicalKey(candidate.mediaType, candidate.tmdbId);
+    const cycleKey = getCycleKey(candidate, timezone);
 
-    // Merge with defaults
-    const config = { ...defaultRefreshSettings, ...settings };
+    return prisma.releaseFeedHistory.upsert({
+        where: { cycleKey },
+        create: {
+            provider: 'tmdb',
+            moduleType: candidate.moduleType,
+            mediaType: candidate.mediaType,
+            tmdbId: candidate.tmdbId,
+            canonicalKey,
+            cycleKey,
+            title: candidate.title,
+            releaseDate: candidate.releaseDate,
+            originalReleaseDate: candidate.originalReleaseDate || null,
+            anniversaryMilestone: candidate.anniversaryMilestone || null,
+            firstFetchedAt: new Date(),
+            lastSeenAt: new Date(),
+            scheduledAt: scheduledAt || null,
+            dispatchedAt: dispatchedAt || null,
+            publishedAt: publishedAt || null,
+            status,
+            skipReason: reason,
+            runId,
+        },
+        update: {
+            title: candidate.title,
+            lastSeenAt: new Date(),
+            scheduledAt: scheduledAt || undefined,
+            dispatchedAt: dispatchedAt || undefined,
+            publishedAt: publishedAt || undefined,
+            status,
+            skipReason: reason,
+            runId,
+        },
+    });
+}
 
-    // Log intent
-    console.log('[TMDb] Starting Strict Refresh Cycle', { config });
+async function loadConsumedCycleKeys(candidates: TMDbCandidate[], timezone: string) {
+    const cycleKeys = candidates.map((candidate) => getCycleKey(candidate, timezone));
+    const existing = await prisma.releaseFeedHistory.findMany({
+        where: {
+            cycleKey: { in: cycleKeys },
+            status: { in: ['fetched', 'scheduled', 'dispatched', 'published', 'skipped', 'unscheduled'] },
+        },
+        select: { cycleKey: true },
+    });
 
-    const now = new Date();
-    let scheduleTime = new Date(now);
-    scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_BUFFER_HOURS);
-    const reservedScheduleTimes = await getReservedTMDbScheduleTimes(now);
+    return new Set(existing.map((item) => item.cycleKey));
+}
 
-    // Generic Processor Function
-    const processBatch = async (
-        fetcher: () => Promise<TMDbMovie[]>,
-        sourceLabel: string,
-        type: 'movie' | 'tv'
-    ) => {
-        try {
-            console.log(`[TMDb] Fetching candidates for ${sourceLabel}...`);
-            const candidates = await fetcher();
-            console.log(`[TMDb] ${sourceLabel}: Found ${candidates.length} candidates. Starting validation...`);
-            const targetCount = getTargetCountForBatch(sourceLabel, config);
-            const anniversaryBucketLimit = sourceLabel === 'tmdb_anniversary'
-                ? getRequestedItemCount(config.maxPerAnniversary, 2)
-                : null;
-            const acceptedBuckets = new Map<string, number>();
-            let acceptedForBatch = 0;
+async function getExistingScheduledTimes(dayStart: Date, dayEnd: Date) {
+    const scheduledPosts = await prisma.tMDbPost.findMany({
+        where: {
+            status: { in: ['scheduled', 'dispatched'] },
+            scheduledTime: {
+                gte: dayStart,
+                lte: dayEnd,
+            },
+        },
+        select: { scheduledTime: true },
+        orderBy: { scheduledTime: 'asc' },
+    });
 
-            for (const candidate of candidates) {
-                if (acceptedForBatch >= targetCount) {
-                    break;
-                }
+    return scheduledPosts.map((post) => post.scheduledTime);
+}
 
-                const anniversaryBucketKey = anniversaryBucketLimit
-                    ? getAnniversaryBucketKey(candidate)
-                    : null;
+async function saveTMDbPost(
+    scheduled: ScheduledCandidate,
+    config: RefreshSettings,
+    runId: string,
+    timezone: string,
+    autoPost: boolean,
+): Promise<SaveTMDbPostResult> {
+    const { candidate, captionContext } = scheduled;
+    const { imageUrl, imageType } = selectImage(candidate, config.preferredImage);
+    const existing = await prisma.tMDbPost.findFirst({
+        where: {
+            tmdbId: candidate.tmdbId,
+            mediaType: candidate.mediaType,
+            moduleType: candidate.moduleType,
+            releaseDate: candidate.releaseDate,
+        },
+        orderBy: { createdAt: 'desc' },
+    });
 
-                if (
-                    anniversaryBucketLimit &&
-                    anniversaryBucketKey &&
-                    (acceptedBuckets.get(anniversaryBucketKey) || 0) >= anniversaryBucketLimit
-                ) {
-                    continue;
-                }
-
-                // RUN THE PIPELINE
-                const validation = await validateCandidate(candidate, type, sourceLabel, config);
-
-                if (!validation.valid) {
-                    console.log(`[TMDb] ❌ REJECTED [${sourceLabel}] "${candidate.title || candidate.name}": ${validation.reason}`);
-                    rejected++;
-                    continue;
-                }
-
-                // If we get here, it passed ALL gates.
-                console.log(`[TMDb] ✅ ACCEPTED [${sourceLabel}] "${candidate.title || candidate.name}"`);
-
-                // Determine if auto-post is enabled for this source
-                let shouldAutoPost = false;
-                if (sourceLabel === 'tmdb_today') shouldAutoPost = !!config.todayAutoPost;
-                else if (sourceLabel === 'tmdb_weekly') shouldAutoPost = !!config.weeklyAutoPost;
-                else if (sourceLabel === 'tmdb_monthly') shouldAutoPost = !!config.monthlyAutoPost;
-                else if (sourceLabel === 'tmdb_anniversary') shouldAutoPost = !!config.anniversaryAutoPost;
-
-                const nextScheduledTime = findNextAvailableTMDbScheduleTime(reservedScheduleTimes, scheduleTime);
-                const result = await saveTMDbPost(
-                    candidate,
-                    type,
-                    sourceLabel,
-                    nextScheduledTime,
-                    config.preferredImage,
-                    getPlatformsForSource(sourceLabel, config),
-                    { ...config, autoPost: shouldAutoPost }
-                );
-
-                if (result.action !== 'skipped') {
-                    reserveTMDbScheduleTime(reservedScheduleTimes, result.effectiveScheduledTime || nextScheduledTime);
-                    scheduleTime = new Date((result.effectiveScheduledTime || nextScheduledTime).getTime());
-                    scheduleTime.setHours(scheduleTime.getHours() + TMDB_SCHEDULE_SPACING_HOURS);
-                    added++;
-                    acceptedForBatch++;
-                    addedTitles.push(candidate.title || candidate.name || 'Untitled');
-
-                    if (anniversaryBucketLimit && anniversaryBucketKey) {
-                        acceptedBuckets.set(anniversaryBucketKey, (acceptedBuckets.get(anniversaryBucketKey) || 0) + 1);
-                    }
-                }
-            }
-
-            console.log(`[TMDb] ${sourceLabel}: Added ${acceptedForBatch}/${targetCount} ${type} posts after validation.`);
-        } catch (error) {
-            const msg = `Failed processing ${sourceLabel}: ${error}`;
-            errors.push(msg);
-            console.error(`[TMDb] ${msg}`);
-        }
+    const scheduledTime = scheduled.scheduledAt || new Date();
+    const caption = captionContext ? await generateCaptionForCandidate(candidate, captionContext, config) : `${candidate.title} arrives soon.`;
+    const payload = {
+        tmdbId: candidate.tmdbId,
+        mediaType: candidate.mediaType,
+        moduleType: candidate.moduleType,
+        title: candidate.title,
+        year: candidate.releaseDate.getUTCFullYear(),
+        releaseDate: candidate.releaseDate,
+        caption,
+        imageUrl,
+        imageType,
+        scheduledTime,
+        source: candidate.source,
+        cast: candidate.cast,
+        popularity: candidate.popularity || 0,
+        platforms: candidate.platforms,
+        status: (scheduled.status === 'scheduled' && !autoPost ? 'queued' : scheduled.status) as TMDbPostStatus,
+        runId,
+        captionContextHash: scheduled.captionContextHash || null,
+        overflowPolicy: scheduled.overflowPolicy || null,
+        overflowExpiresAt: scheduled.overflowExpiresAt || null,
+        unscheduledReason: scheduled.status === 'unscheduled' ? scheduled.reason : null,
+        errorMessage: scheduled.status === 'unscheduled' ? scheduled.reason : null,
     };
 
-    // 1. Movies Today
-    if (config.enableToday) await processBatch(() => fetchReleasedToday(config), 'tmdb_today', 'movie');
+    if (existing) {
+        await prisma.tMDbPost.update({
+            where: { id: existing.id },
+            data: payload,
+        });
+        return { action: 'updated', postId: existing.id };
+    }
 
-    // 2. Movies Weekly
-    if (config.enableWeekly) await processBatch(() => fetchUpcomingWeekly(config), 'tmdb_weekly', 'movie');
-
-    // 3. Movies Monthly
-    if (config.enableMonthly) await processBatch(() => fetchUpcomingMonthly(config), 'tmdb_monthly', 'movie');
-
-    // 4. Anniversary
-    if (config.enableAnniversaries) await processBatch(() => fetchAnniversaryMovies(config), 'tmdb_anniversary', 'movie');
-
-    // 5. TV Today
-    if (config.enableToday) await processBatch(() => fetchTVAiringToday(config), 'tmdb_today', 'tv');
-
-    // 6. TV Weekly
-    if (config.enableWeekly) await processBatch(() => fetchTVAiringWeekly(config), 'tmdb_weekly', 'tv');
-
-    // 7. TV Monthly
-    if (config.enableMonthly) await processBatch(() => fetchTVAiringMonthly(config), 'tmdb_monthly', 'tv');
-
-    // 8. TV Anniversary
-    if (config.enableAnniversaries) await processBatch(() => fetchAnniversaryTV(config), 'tmdb_anniversary', 'tv');
-
-    console.log(`[TMDb] Refresh complete. Added: ${added}, Rejected: ${rejected}, Errors: ${errors.length}`);
-    return { added, errors, addedTitles };
+    const created = await prisma.tMDbPost.create({ data: payload });
+    return { action: 'created', postId: created.id };
 }
 
+function getSchedulerSettings(config: RefreshSettings): SchedulerSettings {
+    return {
+        postingWindowStart: config.postingWindowStart || defaultRefreshSettings.postingWindowStart || '09:00',
+        postingWindowEnd: config.postingWindowEnd || defaultRefreshSettings.postingWindowEnd || '21:00',
+        minGapBetweenPostsMinutes: config.minGapBetweenPostsMinutes || defaultRefreshSettings.minGapBetweenPostsMinutes || 60,
+        preferredGapBetweenSameModuleMinutes: config.preferredGapBetweenSameModuleMinutes || defaultRefreshSettings.preferredGapBetweenSameModuleMinutes || 120,
+        maxPostsPerDayOverall: config.maxPostsPerDayOverall || defaultRefreshSettings.maxPostsPerDayOverall || 12,
+        maxPostsPerModulePerDay: config.maxPostsPerModulePerDay || defaultRefreshSettings.maxPostsPerModulePerDay || 4,
+        reserveUrgentSlots: config.reserveUrgentSlots || defaultRefreshSettings.reserveUrgentSlots || 2,
+        weeklyOverflowPolicy: config.weeklyOverflowPolicy || defaultRefreshSettings.weeklyOverflowPolicy || 'RESCHEDULE_WITH_REGEN',
+        monthlyOverflowPolicy: config.monthlyOverflowPolicy || defaultRefreshSettings.monthlyOverflowPolicy || 'RESCHEDULE_WITH_REGEN',
+        weeklyRescheduleValidityDays: config.weeklyRescheduleValidityDays || defaultRefreshSettings.weeklyRescheduleValidityDays || 2,
+        monthlyRescheduleValidityDays: config.monthlyRescheduleValidityDays || defaultRefreshSettings.monthlyRescheduleValidityDays || 7,
+        interleaveModules: config.interleaveModules ?? defaultRefreshSettings.interleaveModules ?? true,
+    };
+}
 
-/**
- * Check if TMDb API is configured
- */
+async function collectCandidates(config: RefreshSettings, now: Date): Promise<TMDbCandidate[]> {
+    const candidates: TMDbCandidate[] = [];
+    const modules: TMDbModuleType[] = [];
+    if (config.enableToday) modules.push('today');
+    if (config.enableWeekly) modules.push('weekly');
+    if (config.enableMonthly) modules.push('monthly');
+    if (config.enableAnniversaries) modules.push('anniversary');
+
+    for (const moduleType of modules) {
+        for (const mediaType of ['movie', 'tv'] as const) {
+            const rawCandidates = moduleType === 'anniversary'
+                ? await fetchAnniversaryCandidates(mediaType, config, now)
+                : await fetchModuleCandidates(moduleType, mediaType, config, now);
+
+            for (const raw of rawCandidates) {
+                const validation = await validateCandidate(raw, mediaType, moduleType, config, now);
+                if (!validation.valid || !validation.releaseDate) {
+                    continue;
+                }
+
+                const cast = mediaType === 'movie'
+                    ? await fetchMovieCredits(raw.id)
+                    : await fetchTVCredits(raw.id);
+
+                candidates.push({
+                    provider: 'tmdb',
+                    moduleType,
+                    mediaType,
+                    tmdbId: raw.id,
+                    title: raw.title || raw.name || 'Unknown',
+                    releaseDate: validation.releaseDate,
+                    originalReleaseDate: validation.originalReleaseDate || validation.releaseDate,
+                    anniversaryMilestone: moduleType === 'anniversary'
+                        ? getLocalAnniversaryMilestone(validation.releaseDate, now, getTimezone(config))
+                        : null,
+                    source: getModuleSource(moduleType),
+                    overview: raw.overview,
+                    originalLanguage: raw.original_language,
+                    popularity: raw.popularity,
+                    posterPath: raw.poster_path,
+                    backdropPath: raw.backdrop_path,
+                    cast,
+                    genres: validation.genres || [],
+                    platforms: getPlatformsForModule(moduleType, config),
+                });
+            }
+        }
+    }
+
+    return candidates;
+}
+
+export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[]; addedTitles: string[]; runId: string }> {
+    const config = { ...defaultRefreshSettings, ...settings };
+    const errors: string[] = [];
+    const addedTitles: string[] = [];
+    const timezone = getTimezone(config);
+    const now = new Date();
+    const runId = randomUUID();
+
+    await prisma.log.create({
+        data: {
+            level: 'info',
+            service: 'tmdb',
+            message: 'Starting TMDb master refresh run',
+            metadata: { runId, timezone },
+        },
+    });
+
+    const allCandidates = await collectCandidates(config, now);
+    const consumedCycleKeys = await loadConsumedCycleKeys(allCandidates, timezone);
+    const dedupedCandidates: TMDbCandidate[] = [];
+
+    for (const candidate of allCandidates) {
+        const cycleKey = getCycleKey(candidate, timezone);
+        if (consumedCycleKeys.has(cycleKey)) {
+            await upsertFeedHistory(candidate, runId, 'skipped', 'already_consumed_in_module_cycle', timezone);
+            await prisma.log.create({
+                data: {
+                    level: 'info',
+                    service: 'tmdb',
+                    message: 'TMDb candidate skipped by module-cycle dedupe',
+                    metadata: {
+                        runId,
+                        title: candidate.title,
+                        tmdbId: candidate.tmdbId,
+                        mediaType: candidate.mediaType,
+                        moduleType: candidate.moduleType,
+                        reason: 'already_consumed_in_module_cycle',
+                    },
+                },
+            });
+            continue;
+        }
+
+        dedupedCandidates.push(candidate);
+        await upsertFeedHistory(candidate, runId, 'fetched', null, timezone);
+    }
+
+    const dayStart = startOfLocalDay(now, timezone);
+    const dayEnd = endOfLocalDay(now, timezone);
+    const existingScheduledTimes = await getExistingScheduledTimes(dayStart, dayEnd);
+    const scheduledResults = scheduleCandidates(
+        dedupedCandidates,
+        existingScheduledTimes,
+        now,
+        timezone,
+        getSchedulerSettings(config),
+    );
+
+    let added = 0;
+    for (const result of scheduledResults) {
+        const autoPost = result.candidate.moduleType === 'today'
+            ? !!config.todayAutoPost
+            : result.candidate.moduleType === 'weekly'
+                ? !!config.weeklyAutoPost
+                : result.candidate.moduleType === 'monthly'
+                    ? !!config.monthlyAutoPost
+                    : !!config.anniversaryAutoPost;
+
+        try {
+            await upsertFeedHistory(
+                result.candidate,
+                runId,
+                result.status === 'scheduled' && autoPost ? 'scheduled' : result.status === 'scheduled' ? 'fetched' : result.status === 'unscheduled' ? 'unscheduled' : 'skipped',
+                result.reason,
+                timezone,
+                result.scheduledAt,
+            );
+
+            const saveResult = await saveTMDbPost(result, config, runId, timezone, autoPost);
+            if (saveResult.action !== 'skipped') {
+                added += 1;
+                addedTitles.push(result.candidate.title);
+            }
+
+            await prisma.log.create({
+                data: {
+                    level: 'info',
+                    service: 'tmdb',
+                    message: 'TMDb candidate processed',
+                    metadata: {
+                        runId,
+                        title: result.candidate.title,
+                        tmdbId: result.candidate.tmdbId,
+                        mediaType: result.candidate.mediaType,
+                        moduleType: result.candidate.moduleType,
+                        releaseDate: result.candidate.releaseDate.toISOString(),
+                        scheduled: !!result.scheduledAt,
+                        scheduledTime: result.scheduledAt?.toISOString() || null,
+                        status: result.status,
+                        reason: result.reason,
+                    },
+                },
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            errors.push(message);
+        }
+    }
+
+    await prisma.log.create({
+        data: {
+            level: 'info',
+            service: 'tmdb',
+            message: 'TMDb master refresh run complete',
+            metadata: {
+                runId,
+                totalCandidates: allCandidates.length,
+                dedupedCandidates: dedupedCandidates.length,
+                processed: scheduledResults.length,
+                added,
+                errors: errors.length,
+                countsByModule: scheduledResults.reduce<Record<string, number>>((acc, item) => {
+                    acc[item.candidate.moduleType] = (acc[item.candidate.moduleType] || 0) + 1;
+                    return acc;
+                }, {}),
+                countsByStatus: scheduledResults.reduce<Record<string, number>>((acc, item) => {
+                    acc[item.status] = (acc[item.status] || 0) + 1;
+                    return acc;
+                }, {}),
+            },
+        },
+    });
+
+    return { added, errors, addedTitles, runId };
+}
+
+export async function regenerateCaptionForTMDbPost(postId: string, scheduledTime?: Date): Promise<{ caption: string; captionContextHash: string }> {
+    const post = await prisma.tMDbPost.findUnique({ where: { id: postId } });
+    if (!post) {
+        throw new Error('TMDb post not found');
+    }
+
+    const timezone = getTimezone(defaultRefreshSettings);
+    const moduleType = (post.moduleType || post.source.replace('tmdb_', '')) as TMDbModuleType;
+    const candidate: TMDbCandidate = {
+        provider: 'tmdb',
+        moduleType,
+        mediaType: post.mediaType as MediaType,
+        tmdbId: post.tmdbId,
+        title: post.title,
+        releaseDate: post.releaseDate,
+        originalReleaseDate: post.releaseDate,
+        anniversaryMilestone: moduleType === 'anniversary' ? getLocalAnniversaryMilestone(post.releaseDate, new Date(), timezone) : null,
+        source: post.source as TMDbCandidate['source'],
+        overview: '',
+        originalLanguage: 'en',
+        popularity: post.popularity,
+        posterPath: post.imageType === 'poster' ? post.imageUrl.replace(TMDB_IMAGE_BASE, '') : null,
+        backdropPath: post.imageType === 'backdrop' ? post.imageUrl.replace(TMDB_IMAGE_BASE, '') : null,
+        cast: post.cast,
+        genres: [],
+        platforms: post.platforms,
+    };
+
+    const config = await getTMDbSettings();
+    const context = buildCaptionContext(candidate, scheduledTime || post.scheduledTime, new Date(), getTimezone(config));
+    const caption = await generateCaptionForCandidate(candidate, context, config);
+    return {
+        caption,
+        captionContextHash: hashCaptionContext(context),
+    };
+}
+
+export async function updateTMDbPost(postId: string, updates: Record<string, any>) {
+    const current = await prisma.tMDbPost.findUnique({ where: { id: postId } });
+    if (!current) {
+        throw new Error('TMDb post not found');
+    }
+
+    const data: Record<string, any> = { ...updates };
+    const scheduleChanged = data.scheduledTime && new Date(data.scheduledTime).toISOString() !== current.scheduledTime.toISOString();
+    const releaseChanged = data.releaseDate && new Date(data.releaseDate).toISOString() !== current.releaseDate.toISOString();
+    const moduleChanged = data.moduleType && data.moduleType !== current.moduleType;
+    const overflowChanged = Object.prototype.hasOwnProperty.call(data, 'overflowPolicy') && data.overflowPolicy !== current.overflowPolicy;
+
+    if (scheduleChanged || releaseChanged || moduleChanged || overflowChanged) {
+        const captionResult = await regenerateCaptionForTMDbPost(
+            postId,
+            data.scheduledTime ? new Date(data.scheduledTime) : current.scheduledTime,
+        );
+        data.caption = captionResult.caption;
+        data.captionContextHash = captionResult.captionContextHash;
+    }
+
+    const updated = await prisma.tMDbPost.update({
+        where: { id: postId },
+        data,
+    });
+
+    if (updated.moduleType) {
+        const timezone = getTimezone(defaultRefreshSettings);
+        const statusMap: Record<string, 'fetched' | 'scheduled' | 'dispatched' | 'published' | 'skipped' | 'unscheduled'> = {
+            queued: 'fetched',
+            scheduled: 'scheduled',
+            dispatched: 'dispatched',
+            published: 'published',
+            skipped: 'skipped',
+            unscheduled: 'unscheduled',
+            failed: 'unscheduled',
+        };
+
+        await prisma.releaseFeedHistory.updateMany({
+            where: {
+                cycleKey: getCycleKey({
+                    provider: 'tmdb',
+                    moduleType: updated.moduleType as TMDbModuleType,
+                    mediaType: updated.mediaType as MediaType,
+                    tmdbId: updated.tmdbId,
+                    releaseDate: updated.releaseDate,
+                    originalReleaseDate: updated.releaseDate,
+                    anniversaryMilestone: updated.moduleType === 'anniversary'
+                        ? getLocalAnniversaryMilestone(updated.releaseDate, new Date(), timezone)
+                        : null,
+                } as TMDbCandidate, timezone),
+            },
+            data: {
+                scheduledAt: updated.scheduledTime,
+                dispatchedAt: updated.dispatchedAt,
+                publishedAt: updated.publishedTime,
+                status: statusMap[updated.status] || 'fetched',
+                skipReason: updated.unscheduledReason || updated.errorMessage || null,
+            },
+        });
+    }
+
+    return updated;
+}
+
 export async function isTMDbConfigured(): Promise<boolean> {
     const apiKey = await getTmdbApiKey();
     return !!apiKey;
 }
 
-/**
- * Get TMDb refresh settings from database
- */
 export async function getTMDbSettings(): Promise<RefreshSettings> {
     const keys = [
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
@@ -1409,52 +1243,42 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'preferredImage', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
         'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
-        'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL',
+        'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL', 'timezone',
         'todayPlatforms', 'weeklyPlatforms', 'monthlyPlatforms', 'anniversaryPlatforms',
         'tmdbCaptionModel', 'todayPrompt', 'weeklyPrompt', 'monthlyPrompt', 'anniversaryPrompt',
         'todayPinterestTitlePrompt', 'todayPinterestDescriptionPrompt', 'todayPinterestBoard', 'todayPinterestLinkStrategy',
         'weeklyPinterestTitlePrompt', 'weeklyPinterestDescriptionPrompt', 'weeklyPinterestBoard', 'weeklyPinterestLinkStrategy',
         'monthlyPinterestTitlePrompt', 'monthlyPinterestDescriptionPrompt', 'monthlyPinterestBoard', 'monthlyPinterestLinkStrategy',
-        'anniversaryPinterestTitlePrompt', 'anniversaryPinterestDescriptionPrompt', 'anniversaryPinterestBoard', 'anniversaryPinterestLinkStrategy'
-    ];      // Note: Time settings (e.g. tmdbRefreshTimeToday) would be fetched here if supported by Cron
+        'anniversaryPinterestTitlePrompt', 'anniversaryPinterestDescriptionPrompt', 'anniversaryPinterestBoard', 'anniversaryPinterestLinkStrategy',
+        'tmdbDailyRefreshTime', 'postingWindowStart', 'postingWindowEnd', 'minGapBetweenPostsMinutes', 'preferredGapBetweenSameModuleMinutes',
+        'maxPostsPerDayOverall', 'maxPostsPerModulePerDay', 'reserveUrgentSlots', 'weeklyOverflowPolicy', 'monthlyOverflowPolicy',
+        'weeklyRescheduleValidityDays', 'monthlyRescheduleValidityDays', 'todayAnniversaryUrgentPriority', 'interleaveModules', 'captionRegenOnScheduleChange',
+    ];
 
-    const settings = await prisma.setting.findMany({
-        where: { key: { in: keys } }
-    });
-
-    const result: any = {};
+    const settings = await prisma.setting.findMany({ where: { key: { in: keys } } });
+    const result: Record<string, any> = {};
     const structuredKeys = new Set([
-        'selectedGenres',
-        'movieGenres',
-        'tvGenres',
-        'anniversaryYears',
-        'todayPlatforms',
-        'weeklyPlatforms',
-        'monthlyPlatforms',
-        'anniversaryPlatforms'
+        'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears',
+        'todayPlatforms', 'weeklyPlatforms', 'monthlyPlatforms', 'anniversaryPlatforms',
     ]);
 
-    settings.forEach(s => {
-        // Parse boolean/number values if stored as strings/json
-        if (s.value === 'true' || s.value === true) result[s.key] = true;
-        else if (s.value === 'false' || s.value === false) result[s.key] = false;
-        else if (typeof s.value === 'string' && structuredKeys.has(s.key)) {
-            // Safe parse for arrays
+    settings.forEach((setting) => {
+        if (setting.value === 'true' || setting.value === true) result[setting.key] = true;
+        else if (setting.value === 'false' || setting.value === false) result[setting.key] = false;
+        else if (typeof setting.value === 'string' && structuredKeys.has(setting.key)) {
             try {
-                result[s.key] = JSON.parse(s.value);
-            } catch (e) {
-                console.error(`Failed to parse ${s.key}`, e);
-                result[s.key] = s.key.endsWith('Platforms') ? {} : [];
+                result[setting.key] = JSON.parse(setting.value);
+            } catch {
+                result[setting.key] = setting.key.endsWith('Platforms') ? {} : [];
             }
+        } else if (typeof setting.value === 'string' && !Number.isNaN(Number(setting.value))) {
+            result[setting.key] = Number(setting.value);
+        } else {
+            result[setting.key] = setting.value;
         }
-        else if (typeof s.value === 'string' && !isNaN(Number(s.value))) result[s.key] = Number(s.value);
-        else result[s.key] = s.value;
     });
 
-    // Normalize types
-    if (result.tmdbCaptionTemperature) result.tmdbCaptionTemperature = Number(result.tmdbCaptionTemperature);
-
-    return result;
+    return { ...defaultRefreshSettings, ...result };
 }
 
 export async function cleanupQueuedTMDbPosts(retentionHours: number): Promise<number> {
@@ -1463,27 +1287,17 @@ export async function cleanupQueuedTMDbPosts(retentionHours: number): Promise<nu
         : defaultRefreshSettings.tmdbQueuedRetentionHours || 168;
 
     const cutoff = new Date(Date.now() - safeRetentionHours * 60 * 60 * 1000);
-
     const result = await prisma.tMDbPost.deleteMany({
         where: {
-            status: 'queued',
-            createdAt: { lt: cutoff }
-        }
+            status: { in: ['queued', 'unscheduled', 'skipped'] },
+            createdAt: { lt: cutoff },
+        },
     });
-
-    if (result.count > 0) {
-        console.log(`[TMDb] Deleted ${result.count} queued posts older than ${safeRetentionHours} hours`);
-    }
 
     return result.count;
 }
 
-/**
- * Clear all TMDb posts from database
- * Use this to regenerate feeds with new settings
- */
 export async function clearAllPosts(): Promise<{ deleted: number }> {
     const result = await prisma.tMDbPost.deleteMany({});
-    console.log(`[TMDb] Cleared ${result.count} posts from database`);
     return { deleted: result.count };
 }

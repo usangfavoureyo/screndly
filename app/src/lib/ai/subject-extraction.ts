@@ -8,6 +8,7 @@
 
 import { openaiApi } from '../api/openai';
 import { apiClient } from '../api/client';
+import { AIRouterMetadata } from './router';
 
 export interface SubjectEntity {
   name: string;
@@ -24,6 +25,11 @@ export interface SubjectMatterAnalysis {
   secondarySubjects: SubjectEntity[];
   contextType: 'trailer' | 'announcement' | 'interview' | 'review' | 'boxoffice' | 'bts' | 'casting' | 'quote' | 'general';
   imagePreferences: string[];
+}
+
+export interface SubjectMatterResult {
+  analysis: SubjectMatterAnalysis;
+  metadata: AIRouterMetadata | null;
 }
 
 const EXTRACTION_PROMPT = `You are an expert at analyzing entertainment news articles and extracting key entities for image search.
@@ -68,16 +74,31 @@ Respond in JSON format:
 /**
  * Extract subject matter from article using GPT-4 (Backend Proxy)
  */
+function scoreSubjectMatterConfidence(analysis: SubjectMatterAnalysis): number {
+  let score = 0.4;
+
+  if (analysis.primarySubject?.name?.trim()) score += 0.2;
+  if (analysis.primarySubject?.type) score += 0.1;
+  if (analysis.imagePreferences?.length >= 2) score += 0.15;
+  if (analysis.secondarySubjects?.length > 0) score += 0.05;
+  if (analysis.contextType && analysis.contextType !== 'general') score += 0.1;
+
+  return Math.min(score, 0.99);
+}
+
 export async function extractSubjectMatter(
   article: {
     title: string;
     description?: string;
   }
-): Promise<SubjectMatterAnalysis> {
+): Promise<SubjectMatterResult> {
   // Check if backend is available
   if (!apiClient.isBackendAvailable()) {
     // Silently use fallback when backend is not configured
-    return getFallbackAnalysis(article);
+    return {
+      analysis: getFallbackAnalysis(article),
+      metadata: null,
+    };
   }
 
   const userMessage = `Article Title: "${article.title}"${article.description ? `\nArticle Description: "${article.description}"` : ''
@@ -85,8 +106,11 @@ export async function extractSubjectMatter(
 
   try {
     // Call backend proxy (backend handles OpenAI key from database)
-    const response = await openaiApi.createChatCompletion({
-      model: 'gpt-4o-mini',
+    const response = await openaiApi.createRoutedChatCompletion(
+      {
+        taskType: 'rss-entity-extraction',
+      },
+      {
       messages: [
         {
           role: 'system',
@@ -100,13 +124,14 @@ export async function extractSubjectMatter(
       temperature: 0.2,
       max_tokens: 800,
       response_format: { type: 'json_object' }
-    });
+      },
+    );
 
     if (!response.success || !response.data) {
       throw new Error(response.error?.message || 'Failed to extract subject matter');
     }
 
-    const analysisText = response.data.choices[0].message.content;
+    const analysisText = response.data.data.choices[0].message.content;
     const analysis: SubjectMatterAnalysis = JSON.parse(analysisText);
 
     // Validate response
@@ -114,10 +139,60 @@ export async function extractSubjectMatter(
       throw new Error('Invalid analysis response from AI');
     }
 
-    return analysis;
+    const confidence = scoreSubjectMatterConfidence(analysis);
+    if (confidence < 0.75 && !response.data.metadata.escalated) {
+      const fallbackResponse = await openaiApi.createRoutedChatCompletion(
+        {
+          taskType: 'rss-entity-extraction',
+          confidence,
+          escalationReason: 'subject extraction confidence below threshold',
+          retryCount: 1,
+        },
+        {
+          messages: [
+            {
+              role: 'system',
+              content: EXTRACTION_PROMPT,
+            },
+            {
+              role: 'user',
+              content: userMessage,
+            },
+          ],
+          temperature: 0.2,
+          max_tokens: 800,
+          response_format: { type: 'json_object' },
+        },
+      );
+
+      if (fallbackResponse.success && fallbackResponse.data) {
+        const fallbackText = fallbackResponse.data.data.choices[0].message.content;
+        const fallbackAnalysis: SubjectMatterAnalysis = JSON.parse(fallbackText);
+        if (fallbackAnalysis.primarySubject && fallbackAnalysis.imagePreferences?.length) {
+          return {
+            analysis: fallbackAnalysis,
+            metadata: {
+              ...fallbackResponse.data.metadata,
+              confidence,
+            },
+          };
+        }
+      }
+    }
+
+    return {
+      analysis,
+      metadata: {
+        ...response.data.metadata,
+        confidence,
+      },
+    };
   } catch (_error) {
     // Use fallback silently
-    return getFallbackAnalysis(article);
+    return {
+      analysis: getFallbackAnalysis(article),
+      metadata: null,
+    };
   }
 }
 

@@ -129,7 +129,7 @@ describe('useAppStore', () => {
       updateVideoStudioSetting('openaiModel', 'gpt-4o-mini');
       
       const state = useAppStore.getState();
-      expect(state.videoStudioSettings.openaiModel).toBe('gpt-4o-mini');
+      expect(state.videoStudioSettings.openaiModel).toBe('gpt-5.4-mini');
     });
   });
 

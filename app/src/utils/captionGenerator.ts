@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from '../lib/api/client';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 
 export type PlatformName = 'YouTube' | 'X' | 'Threads' | 'Instagram' | 'TikTok' | 'Facebook' | 'Pinterest';
 
@@ -58,7 +58,7 @@ function getStoredSettings(): Record<string, any> {
 function getVideoCaptionSettings(): VideoCaptionSettings {
   const settings = getStoredSettings();
   return {
-    model: settings.videoOpenaiModel || DEFAULT_MODELS.video,
+    model: normalizeAIModelId(settings.videoOpenaiModel, DEFAULT_MODELS.video),
     prompt:
       settings.videoUniversalCaptionPrompt ||
       [

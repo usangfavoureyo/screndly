@@ -293,6 +293,45 @@ export class XService {
         };
     }
 
+    private async initializeMediaUpload(
+        authToken: string,
+        payload: { buffer: Buffer; mimeType: string }
+    ): Promise<string> {
+        const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                command: 'INIT',
+                media_type: payload.mimeType,
+                media_category: this.getMediaCategory(payload.mimeType),
+                total_bytes: payload.buffer.length,
+            }),
+        });
+
+        const initializeData = await this.getJsonResponse(initializeResponse);
+        if (!initializeResponse.ok) {
+            throw new Error(
+                this.extractApiErrorMessage(
+                    initializeData,
+                    `Failed to initialize X media upload (${initializeResponse.status})`
+                )
+            );
+        }
+
+        const mediaId =
+            initializeData?.data?.id
+            || initializeData?.media_id
+            || initializeData?.media_id_string;
+        if (!mediaId) {
+            throw new Error('X media upload initialization did not return a media id');
+        }
+
+        return String(mediaId);
+    }
+
     private async uploadVideo(source: string, connection?: PlatformConnection): Promise<XUploadResult> {
         const authToken = this.getUserAccessToken(connection);
         if (!authToken) {
@@ -304,38 +343,7 @@ export class XService {
             if (!payload.mimeType.startsWith('video/')) {
                 throw new Error('X native video upload requires a video file');
             }
-
-            const initializePayload = new FormData();
-            initializePayload.append('command', 'INIT');
-            initializePayload.append('media_type', payload.mimeType);
-            initializePayload.append('media_category', this.getMediaCategory(payload.mimeType));
-            initializePayload.append('total_bytes', String(payload.buffer.length));
-
-            const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${authToken}`,
-                },
-                body: initializePayload,
-            });
-
-            const initializeData = await this.getJsonResponse(initializeResponse);
-            if (!initializeResponse.ok) {
-                throw new Error(
-                    this.extractApiErrorMessage(
-                        initializeData,
-                        `Failed to initialize X video upload (${initializeResponse.status})`
-                    )
-                );
-            }
-
-            const mediaId =
-                initializeData?.data?.id
-                || initializeData?.media_id
-                || initializeData?.media_id_string;
-            if (!mediaId) {
-                throw new Error('X video upload initialization did not return a media id');
-            }
+            const mediaId = await this.initializeMediaUpload(authToken, payload);
 
             const processingInfo = await this.appendAndFinalizeUpload(mediaId, payload, authToken);
             await this.waitForVideoProcessing(mediaId, authToken, processingInfo);
@@ -387,16 +395,16 @@ export class XService {
             segmentIndex += 1;
         }
 
-        const finalizePayload = new FormData();
-        finalizePayload.append('command', 'FINALIZE');
-        finalizePayload.append('media_id', mediaId);
-
         const finalizeResponse = await fetch('https://api.x.com/2/media/upload', {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
             },
-            body: finalizePayload,
+            body: JSON.stringify({
+                command: 'FINALIZE',
+                media_id: mediaId,
+            }),
         });
 
         const finalizeData = await this.getJsonResponse(finalizeResponse);
@@ -483,7 +491,6 @@ export class XService {
                     media: payload.buffer.toString('base64'),
                     media_type: payload.mimeType,
                     media_category: this.getMediaCategory(payload.mimeType),
-                    shared: false,
                 }),
             });
 
@@ -510,7 +517,6 @@ export class XService {
             formData.append('media', new Blob([payload.buffer], { type: payload.mimeType }), payload.fileName);
             formData.append('media_category', this.getMediaCategory(payload.mimeType));
             formData.append('media_type', payload.mimeType);
-            formData.append('shared', 'false');
 
             const uploadResponse = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',
@@ -532,39 +538,7 @@ export class XService {
                 }
             }
 
-            const initializePayload = new FormData();
-            initializePayload.append('command', 'INIT');
-            initializePayload.append('media_type', payload.mimeType);
-            initializePayload.append('media_category', this.getMediaCategory(payload.mimeType));
-            initializePayload.append('total_bytes', String(payload.buffer.length));
-            initializePayload.append('shared', 'false');
-
-            const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${authToken}`,
-                },
-                body: initializePayload,
-            });
-
-            const initializeData = await this.getJsonResponse(initializeResponse);
-            if (!initializeResponse.ok) {
-                throw new Error(
-                    this.extractApiErrorMessage(
-                        initializeData,
-                        `Failed to initialize X image upload (${initializeResponse.status})`
-                    )
-                );
-            }
-
-            const mediaId =
-                initializeData?.data?.id
-                || initializeData?.media_id_string
-                || initializeData?.media_id;
-
-            if (!mediaId) {
-                throw new Error('X image upload initialization did not return a media id');
-            }
+            const mediaId = await this.initializeMediaUpload(authToken, payload);
 
             const processingInfo = await this.appendAndFinalizeUpload(mediaId, payload, authToken);
             if (processingInfo?.state === 'failed') {

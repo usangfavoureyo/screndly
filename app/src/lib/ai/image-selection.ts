@@ -38,6 +38,7 @@ export interface SmartImageResult {
   queries: string[];
   confidence: number;
   confidenceLevel: 'high' | 'medium' | 'low';
+  analysisMetadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -61,12 +62,13 @@ export async function selectSmartImages(
   
   // Step 1: Extract subject matter with AI (backend handles OpenAI key)
   console.log('🧠 Extracting subject matter...');
-  const analysis = await extractSubjectMatter(
+  const analysisResult = await extractSubjectMatter(
     {
       title: article.title,
       description: article.description
     }
   );
+  const analysis = analysisResult.analysis;
   
   console.log('✅ Subject matter:', {
     primary: analysis.primarySubject.name,
@@ -213,7 +215,8 @@ export async function selectSmartImages(
     analysis,
     queries: [usedQuery, ...queries.filter(q => q !== usedQuery)],
     confidence,
-    confidenceLevel
+    confidenceLevel,
+    analysisMetadata: analysisResult.metadata,
   };
 }
 
@@ -238,7 +241,8 @@ function createFallbackResult(
     analysis,
     queries,
     confidence: 50,
-    confidenceLevel: 'low'
+    confidenceLevel: 'low',
+    analysisMetadata: null,
   };
 }
 

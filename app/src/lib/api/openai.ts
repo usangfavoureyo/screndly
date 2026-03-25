@@ -5,6 +5,19 @@
 
 import { apiClient } from './client';
 import { OpenAICompletionRequest, OpenAICompletionResponse, ApiResponse } from './types';
+import {
+  AIRouterMetadata,
+  AIRouterRequest,
+  attachUsageToMetadata,
+  createRouterMetadata,
+  resolveAIRouterDecision,
+} from '../ai/router';
+import { DEFAULT_MODELS } from '../ai/models';
+
+export interface RoutedOpenAIResult<T> {
+  data: T;
+  metadata: AIRouterMetadata;
+}
 
 export class OpenAIApi {
   /**
@@ -16,12 +29,44 @@ export class OpenAIApi {
     return apiClient.post<OpenAICompletionResponse>('/openai/chat/completions', request);
   }
 
+  async createRoutedChatCompletion(
+    routerRequest: AIRouterRequest,
+    request: Omit<OpenAICompletionRequest, 'model'>,
+  ): Promise<ApiResponse<RoutedOpenAIResult<OpenAICompletionResponse>>> {
+    const decision = resolveAIRouterDecision(routerRequest);
+    const response = await this.createChatCompletion({
+      ...request,
+      model: decision.modelUsed,
+    });
+
+    if (!response.success || !response.data) {
+      console.error('[AIRouter] request failed', {
+        taskType: decision.taskType,
+        modelUsed: decision.modelUsed,
+        escalated: decision.escalated,
+        reason: response.error?.message || 'unknown failure',
+      });
+      return response as ApiResponse<RoutedOpenAIResult<OpenAICompletionResponse>>;
+    }
+
+    const metadata = attachUsageToMetadata(createRouterMetadata(decision), response.data.usage);
+    console.log('[AIRouter] request complete', metadata);
+
+    return {
+      success: true,
+      data: {
+        data: response.data,
+        metadata,
+      },
+    };
+  }
+
   /**
    * Generate Visla prompt from Video Studio job JSON
    */
   async generateVislaPrompt(
     jobData: any,
-    model: string = 'gpt-4o',
+    model: string = DEFAULT_MODELS.videoStudio,
     temperature: number = 0,
     systemPrompt?: string
   ): Promise<ApiResponse<{ visla_prompt_text: string; validation: any }>> {
@@ -75,28 +120,31 @@ export class OpenAIApi {
     videoContext: string,
     tone: 'professional' | 'casual' | 'enthusiastic' = 'professional'
   ): Promise<ApiResponse<string>> {
-    const request: OpenAICompletionRequest = {
-      model: 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a social media manager for Screen Render, responding to YouTube comments. Be ${tone}, helpful, and engaging. Keep responses under 200 characters.`,
-        },
-        {
-          role: 'user',
-          content: `Video context: ${videoContext}\n\nComment: ${commentText}\n\nGenerate a reply:`,
-        },
-      ],
-      temperature: 0.7,
-      max_tokens: 100,
-    };
-
-    const response = await this.createChatCompletion(request);
+    const response = await this.createRoutedChatCompletion(
+      {
+        taskType: 'comment-automation',
+        defaultFeature: 'comment',
+      },
+      {
+        messages: [
+          {
+            role: 'system',
+            content: `You are a social media manager for Screen Render, responding to YouTube comments. Be ${tone}, helpful, and engaging. Keep responses under 200 characters.`,
+          },
+          {
+            role: 'user',
+            content: `Video context: ${videoContext}\n\nComment: ${commentText}\n\nGenerate a reply:`,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 100,
+      },
+    );
     
     if (response.success && response.data) {
       return {
         success: true,
-        data: response.data.choices[0].message.content,
+        data: response.data.data.choices[0].message.content,
       };
     }
 
@@ -140,7 +188,7 @@ export class OpenAIApi {
    */
   async generateVislaPromptWithRetry(
     jobData: any,
-    model: string = 'gpt-4o',
+    model: string = DEFAULT_MODELS.videoStudio,
     maxRetries: number = 1
   ): Promise<ApiResponse<{ visla_prompt_text: string; validation: any }>> {
     let attempt = 0;

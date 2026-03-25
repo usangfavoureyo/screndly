@@ -17,6 +17,7 @@ export interface TMDbPost {
   id: string;
   tmdbId: number;
   mediaType: 'movie' | 'tv';
+  moduleType?: 'today' | 'weekly' | 'monthly' | 'anniversary';
   title: string;
   year: number;
   releaseDate: string;
@@ -28,8 +29,14 @@ export interface TMDbPost {
   cast: string[];
   popularity: number;
   cacheHit: boolean;
-  status: 'queued' | 'scheduled' | 'published' | 'failed';
+  status: 'queued' | 'scheduled' | 'dispatched' | 'published' | 'failed' | 'unscheduled' | 'skipped';
   platforms?: string[];
+  runId?: string;
+  captionContextHash?: string;
+  overflowPolicy?: string;
+  overflowExpiresAt?: string;
+  unscheduledReason?: string;
+  dispatchedAt?: string;
   publishedTime?: string;
   errorMessage?: string;
   createdAt?: string;
@@ -101,6 +108,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           id: post.id,
           tmdbId: post.tmdbId,
           mediaType: post.mediaType,
+          moduleType: post.moduleType,
           title: post.title,
           year: post.year,
           releaseDate: post.releaseDate,
@@ -114,6 +122,12 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           cacheHit: post.cacheHit || false,
           status: post.status,
           platforms: post.platforms || [],
+          runId: post.runId,
+          captionContextHash: post.captionContextHash,
+          overflowPolicy: post.overflowPolicy,
+          overflowExpiresAt: post.overflowExpiresAt,
+          unscheduledReason: post.unscheduledReason,
+          dispatchedAt: post.dispatchedAt,
           publishedTime: post.publishedTime,
           errorMessage: post.errorMessage,
           createdAt: post.createdAt,

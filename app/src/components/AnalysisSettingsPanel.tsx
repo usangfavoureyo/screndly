@@ -1,10 +1,11 @@
 import { AlertCircle } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { Switch } from './ui/switch';
+import type { AIModelId } from '../lib/ai/models';
 
 type AnalysisBackend = 'google-vi' | 'ffmpeg-fallback';
 type QualityMode = 'fast' | 'quality';
-type AIModel = 'gpt-4' | 'gpt-4-turbo' | 'gpt-3.5-turbo' | 'flash-3';
+type AIModel = Extract<AIModelId, 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-nano' | 'flash-3'>;
 
 interface AnalysisSettingsPanelProps {
   backend: AnalysisBackend;
@@ -99,15 +100,15 @@ export function AnalysisSettingsPanel({
             <button
               onClick={() => {
                 haptics.light();
-                onAIModelChange('gpt-4');
+                onAIModelChange('gpt-5.4');
               }}
-              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-4'
+              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-5.4'
                 ? 'border-[#ec1e24] bg-[#ec1e24]/5'
                 : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
                 }`}
             >
               <div className="mb-1">
-                <span className="text-sm text-gray-900 dark:text-white">GPT-4</span>
+                <span className="text-sm text-gray-900 dark:text-white">GPT-5.4</span>
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400 text-left">Most accurate</p>
             </button>
@@ -115,15 +116,15 @@ export function AnalysisSettingsPanel({
             <button
               onClick={() => {
                 haptics.light();
-                onAIModelChange('gpt-4-turbo');
+                onAIModelChange('gpt-5.4-mini');
               }}
-              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-4-turbo'
+              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-5.4-mini'
                 ? 'border-[#ec1e24] bg-[#ec1e24]/5'
                 : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
                 }`}
             >
               <div className="mb-1">
-                <span className="text-sm text-gray-900 dark:text-white">GPT-4 Turbo</span>
+                <span className="text-sm text-gray-900 dark:text-white">GPT-5.4 Mini</span>
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400 text-left">Faster & cheaper</p>
             </button>
@@ -131,15 +132,15 @@ export function AnalysisSettingsPanel({
             <button
               onClick={() => {
                 haptics.light();
-                onAIModelChange('gpt-3.5-turbo');
+                onAIModelChange('gpt-5.4-nano');
               }}
-              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-3.5-turbo'
+              className={`p-3 rounded-lg border-2 transition-all text-left ${aiModel === 'gpt-5.4-nano'
                 ? 'border-[#ec1e24] bg-[#ec1e24]/5'
                 : 'border-gray-200 dark:border-gray-800 hover:border-gray-300'
                 }`}
             >
               <div className="mb-1">
-                <span className="text-sm text-gray-900 dark:text-white">GPT-3.5 Turbo</span>
+                <span className="text-sm text-gray-900 dark:text-white">GPT-5.4 Nano</span>
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400 text-left">Budget-friendly</p>
             </button>

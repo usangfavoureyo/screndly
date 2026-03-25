@@ -9,7 +9,7 @@ import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
-import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { designStudioPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
@@ -30,6 +30,13 @@ const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'designStudioPinterestDescriptionPrompt',
   'designStudioPinterestBoardPrompt',
 ]);
+
+function normalizeDesignStudioSettings<T extends Record<string, any>>(settings: T): T {
+  return {
+    ...settings,
+    captionOpenaiModel: normalizeAIModelId(settings.captionOpenaiModel, DEFAULT_MODELS.designStudio),
+  };
+}
 
 // Default prompt system settings
 const defaultSettings = {
@@ -259,17 +266,17 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     const shouldInjectCultureCravePrompts = !localStorage.getItem(DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
     if (savedSettings) {
       try {
-        const parsed = JSON.parse(savedSettings);
+        const parsed = normalizeDesignStudioSettings(JSON.parse(savedSettings));
         const nextSettings = shouldInjectCultureCravePrompts
           ? { ...defaultSettings, ...sharedSettings, ...parsed, ...designStudioPromptDefaults }
           : { ...defaultSettings, ...sharedSettings, ...parsed };
-        setSettings(nextSettings);
+        setSettings(normalizeDesignStudioSettings(nextSettings));
       } catch (error) {
         console.error('Error loading Design Studio settings:', error);
-        setSettings({ ...defaultSettings, ...sharedSettings });
+        setSettings(normalizeDesignStudioSettings({ ...defaultSettings, ...sharedSettings }));
       }
     } else {
-      setSettings({ ...defaultSettings, ...sharedSettings });
+      setSettings(normalizeDesignStudioSettings({ ...defaultSettings, ...sharedSettings }));
     }
     if (shouldInjectCultureCravePrompts) {
       localStorage.setItem(DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
@@ -280,13 +287,13 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
   // Save settings to localStorage whenever they change
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem('screndly_design_studio_settings', JSON.stringify(settings));
+      localStorage.setItem('screndly_design_studio_settings', JSON.stringify(normalizeDesignStudioSettings(settings)));
     }
   }, [settings, isLoaded]);
 
   const updateSetting = (key: string, value: any) => {
     setSettings(prev => {
-      const next = { ...prev, [key]: value };
+      const next = normalizeDesignStudioSettings({ ...prev, [key]: value });
       localStorage.setItem('screndly_design_studio_settings', JSON.stringify(next));
       return next;
     });
@@ -326,7 +333,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
   };
 
   const resetToDefaults = () => {
-    setSettings(defaultSettings);
+    setSettings(normalizeDesignStudioSettings(defaultSettings));
     toast.success('Reset to recommended settings');
   };
 

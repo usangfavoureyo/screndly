@@ -28,6 +28,7 @@ model TMDbPost {
   id            String   @id @default(uuid())
   tmdbId        Int
   mediaType     String   // "movie" or "tv"
+  moduleType    String?  // "today", "weekly", "monthly", "anniversary"
   title         String
   year          Int
   releaseDate   DateTime
@@ -39,8 +40,14 @@ model TMDbPost {
   cast          String[] // Array of cast members
   popularity    Float
   cacheHit      Boolean  @default(false)
-  status        String   // "queued", "scheduled", "published", "failed"
+  status        String   // "queued", "scheduled", "dispatched", "published", "failed", "unscheduled", "skipped"
   platforms     String[] // ["X", "Threads", "Facebook"]
+  runId         String?
+  captionContextHash String?
+  overflowPolicy String?
+  overflowExpiresAt DateTime?
+  unscheduledReason String? @db.Text
+  dispatchedAt  DateTime?
   publishedTime DateTime?
   errorMessage  String?  @db.Text
   createdAt     DateTime @default(now())
@@ -50,6 +57,40 @@ model TMDbPost {
   @@index([scheduledTime])
   @@index([source])
   @@index([tmdbId])
+  @@index([moduleType])
+  @@index([runId])
+}
+
+model ReleaseFeedHistory {
+  id                     String   @id @default(uuid())
+  provider               String
+  moduleType             String   // "today", "weekly", "monthly", "anniversary"
+  mediaType              String   // "movie" or "tv"
+  tmdbId                 Int
+  imdbId                 String?
+  canonicalKey           String
+  cycleKey               String
+  title                  String
+  releaseDate            DateTime
+  originalReleaseDate    DateTime?
+  anniversaryMilestone   Int?
+  firstFetchedAt         DateTime @default(now())
+  lastSeenAt             DateTime @default(now())
+  scheduledAt            DateTime?
+  dispatchedAt           DateTime?
+  publishedAt            DateTime?
+  status                 String   // "fetched", "scheduled", "dispatched", "published", "skipped", "unscheduled"
+  skipReason             String?  @db.Text
+  runId                  String
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([cycleKey])
+  @@index([canonicalKey])
+  @@index([moduleType, status])
+  @@index([releaseDate])
+  @@index([tmdbId])
+  @@index([runId])
 }
 
 // ============================================

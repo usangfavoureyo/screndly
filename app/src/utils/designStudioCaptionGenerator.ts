@@ -4,7 +4,7 @@
  */
 
 import { apiClient } from '../lib/api/client';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 import { designStudioPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type DesignContentType = 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
@@ -55,7 +55,7 @@ export function getDesignStudioCaptionSettings(contentType: DesignContentType): 
   const promptKey = promptKeys[contentType];
 
   return {
-    model: settings.captionOpenaiModel || DEFAULT_MODELS.designStudio,
+    model: normalizeAIModelId(settings.captionOpenaiModel, DEFAULT_MODELS.designStudio),
     prompt: settings[promptKey] || getDefaultPrompt(contentType),
     temperature: settings.captionTemperature || 0.7,
     maxTokens: settings.captionMaxTokens || 500,

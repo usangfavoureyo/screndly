@@ -88,7 +88,7 @@ export interface YouTubeCommentReplyRequest {
 // ----------------------------------------------------------------------------
 
 export interface OpenAICompletionRequest {
-  model: 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-4' | 'gpt-3.5-turbo';
+  model: string;
   messages: Array<{
     role: 'system' | 'user' | 'assistant';
     content: string;

@@ -15,6 +15,7 @@ import {
   BottomSheetTitle,
 } from '../ui/bottom-sheet';
 import { useSettings } from '../../contexts/SettingsContext';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../../lib/ai/models';
 import { generatePadReply } from '../../lib/create/generation';
 import { usePadStore } from '../../store/usePadStore';
 import type { PadAttachment, PadMessage, PadSession } from '../../types/pad';
@@ -193,7 +194,7 @@ export function PadWorkspacePage({
 
     try {
       const reply = await generatePadReply({
-        model: settings.padChatModel || 'gpt-5-mini',
+        model: normalizeAIModelId(settings.padChatModel, DEFAULT_MODELS.pad),
         systemPrompt: session.systemPrompt,
         history: session.messages.map((message) => ({ role: message.role, content: message.content })),
         message: userMessage.content,

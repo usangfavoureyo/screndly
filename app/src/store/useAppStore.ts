@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 
 // Types
 export interface Notification {
@@ -249,8 +249,11 @@ export const useAppStore = create<AppState>()(
       // Video Studio Settings
       videoStudioSettings: defaultVideoStudioSettings,
       updateVideoStudioSetting: (key, value) => {
+        const normalizedValue = key === 'openaiModel'
+          ? normalizeAIModelId(value, DEFAULT_MODELS.videoStudio)
+          : value;
         set(state => ({
-          videoStudioSettings: { ...state.videoStudioSettings, [key]: value },
+          videoStudioSettings: { ...state.videoStudioSettings, [key]: normalizedValue },
         }));
       },
       

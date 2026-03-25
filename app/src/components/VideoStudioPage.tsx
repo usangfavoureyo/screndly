@@ -31,6 +31,7 @@ import { performWebSearch, formatSearchResultsForPrompt, buildSceneSearchQuery }
 import { uploadVideoStudioAsset } from '../lib/api/backblaze';
 import { generateVideoStudioCaption, type VideoContent, VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { publishContent } from '../lib/api/platforms';
+import type { AIModelId } from '../lib/ai/models';
 import { VideoStudioHeader } from './video-studio/VideoStudioHeader';
 import { ReviewModule } from './video-studio/ReviewModule';
 import { MonthlyModule } from './video-studio/MonthlyModule';
@@ -144,7 +145,7 @@ export function VideoStudioPage({ onNavigate, onCaptionEditorChange }: VideoStud
   const [scenesProgressMessage, setScenesProgressMessage] = useState('');
   const [scenesOutputUrl, setScenesOutputUrl] = useState('');
   const [scenesOutputBlob, setScenesOutputBlob] = useState<Blob | null>(null);
-  const [scenesAIModel, setScenesAIModel] = useState<'gpt-4' | 'gpt-4-turbo' | 'gpt-3.5-turbo' | 'flash-3'>('gpt-4');
+  const [scenesAIModel, setScenesAIModel] = useState<Extract<AIModelId, 'gpt-5.4' | 'gpt-5.4-mini' | 'gpt-5.4-nano' | 'flash-3'>>('gpt-5.4-mini');
 
   // Spreadsheet Import State
   const [showSceneImportDialog, setShowSceneImportDialog] = useState(false);

@@ -9,7 +9,7 @@ import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
-import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
+import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { videoStudioPromptDefaults } from '../../config/cultureCravePromptDefaults';
 
@@ -29,6 +29,14 @@ const VIDEO_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'videoStudioPinterestDescriptionPrompt',
   'videoStudioPinterestBoardPrompt',
 ]);
+
+function normalizeVideoStudioSettings<T extends Record<string, any>>(settings: T): T {
+  return {
+    ...settings,
+    openaiModel: normalizeAIModelId(settings.openaiModel, DEFAULT_MODELS.videoStudio),
+    captionOpenaiModel: normalizeAIModelId(settings.captionOpenaiModel, DEFAULT_MODELS.videoStudio),
+  };
+}
 
 // Default prompt system settings
 const defaultSettings = {
@@ -227,17 +235,17 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
     const shouldInjectCultureCravePrompts = !localStorage.getItem(VIDEO_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
     if (savedSettings) {
       try {
-        const parsed = JSON.parse(savedSettings);
+        const parsed = normalizeVideoStudioSettings(JSON.parse(savedSettings));
         const nextSettings = shouldInjectCultureCravePrompts
           ? { ...defaultSettings, ...sharedSettings, ...parsed, ...videoStudioPromptDefaults }
           : { ...defaultSettings, ...sharedSettings, ...parsed };
-        setSettings(nextSettings);
+        setSettings(normalizeVideoStudioSettings(nextSettings));
       } catch (error) {
         console.error('Error loading Video Studio settings:', error);
-        setSettings({ ...defaultSettings, ...sharedSettings });
+        setSettings(normalizeVideoStudioSettings({ ...defaultSettings, ...sharedSettings }));
       }
     } else {
-      setSettings({ ...defaultSettings, ...sharedSettings });
+      setSettings(normalizeVideoStudioSettings({ ...defaultSettings, ...sharedSettings }));
     }
     if (shouldInjectCultureCravePrompts) {
       localStorage.setItem(VIDEO_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
@@ -248,13 +256,13 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   // Save settings to localStorage whenever they change
   useEffect(() => {
     if (isLoaded) {
-      localStorage.setItem('screndly_video_studio_settings', JSON.stringify(settings));
+      localStorage.setItem('screndly_video_studio_settings', JSON.stringify(normalizeVideoStudioSettings(settings)));
     }
   }, [settings, isLoaded]);
 
   const updateSetting = (key: string, value: any) => {
     setSettings(prev => {
-      const next = { ...prev, [key]: value };
+      const next = normalizeVideoStudioSettings({ ...prev, [key]: value });
       localStorage.setItem('screndly_video_studio_settings', JSON.stringify(next));
       return next;
     });
@@ -292,7 +300,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
   };
 
   const resetToDefaults = () => {
-    setSettings(defaultSettings);
+    setSettings(normalizeVideoStudioSettings(defaultSettings));
     Object.entries(defaultSettings).forEach(([key, value]) => {
       updateGlobalSetting(key, value);
     });

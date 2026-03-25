@@ -3,7 +3,7 @@
  */
 
 import { apiClient } from '../lib/api/client';
-import { DEFAULT_MODELS } from '../lib/ai/models';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 import { captionOptimizer } from '../lib/optimization';
 import { rssPromptDefaults } from '../config/cultureCravePromptDefaults';
 
@@ -34,7 +34,7 @@ function buildSystemPrompt(options: CaptionGenerationOptions): string {
 
 export function getRSSCaptionSettings(settings: any): CaptionGenerationOptions {
   return {
-    model: settings.rssCaptionModel || DEFAULT_MODELS.rss,
+    model: normalizeAIModelId(settings.rssCaptionModel, DEFAULT_MODELS.rss),
     temperature: settings.rssCaptionTemperature || 0.7,
     tone: settings.rssCaptionTone || 'Engaging',
     maxLength: settings.rssCaptionMaxLength || 280,

@@ -1,4 +1,5 @@
 import { openaiApi } from '../api/openai';
+import { DEFAULT_MODELS, normalizeAIModelId } from '../ai/models';
 
 interface ComposeCaptionInput {
   platforms: string[];
@@ -20,21 +21,26 @@ interface PadReplyInput {
 }
 
 async function runTextGeneration(systemPrompt: string, userPrompt: string): Promise<string> {
-  const response = await openaiApi.createChatCompletion({
-    model: 'gpt-4o-mini',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ],
-    temperature: 0.7,
-    max_tokens: 700,
-  });
+  const response = await openaiApi.createRoutedChatCompletion(
+    {
+      taskType: 'caption-generation',
+      defaultFeature: 'pad',
+    },
+    {
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.7,
+      max_tokens: 700,
+    },
+  );
 
-  if (!response.success || !response.data?.choices?.[0]?.message?.content) {
+  if (!response.success || !response.data?.data?.choices?.[0]?.message?.content) {
     throw new Error(response.error?.message || 'Generation failed');
   }
 
-  return response.data.choices[0].message.content.trim();
+  return response.data.data.choices[0].message.content.trim();
 }
 
 export async function generateComposeCaption(input: ComposeCaptionInput): Promise<string> {
@@ -57,7 +63,7 @@ export async function generatePadReply(input: PadReplyInput): Promise<string> {
     : '';
 
   const response = await openaiApi.createChatCompletion({
-    model: input.model,
+    model: normalizeAIModelId(input.model, DEFAULT_MODELS.pad),
     messages: [
       {
         role: 'system',

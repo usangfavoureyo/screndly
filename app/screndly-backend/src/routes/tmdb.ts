@@ -7,7 +7,8 @@ import {
     refreshTMDbContent,
     isTMDbConfigured,
     clearAllPosts,
-    getTmdbApiKey
+    getTmdbApiKey,
+    updateTMDbPost,
 } from '../services/tmdb.service';
 import { authenticate } from '../middleware/auth';
 
@@ -158,6 +159,7 @@ router.post('/refresh', async (req, res) => {
             data: {
                 added: result.added,
                 errors: result.errors,
+                runId: result.runId,
                 message: `Added ${result.added} new posts`
             }
         });
@@ -253,10 +255,7 @@ router.put('/posts/:id', async (req, res) => {
             updateData.errorMessage = data.errorMessage ?? null;
         }
 
-        const post = await prisma.tMDbPost.update({
-            where: { id },
-            data: updateData
-        });
+        const post = await updateTMDbPost(id, updateData);
 
         res.json({ success: true, data: post });
     } catch (error) {
