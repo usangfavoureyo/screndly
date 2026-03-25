@@ -98,5 +98,8 @@ export interface ComposeItem {
   createdAt: string;
   updatedAt: string;
   scheduledAt?: string;
+  publishLockExpiresAt?: string;
+  publishRetryCount?: number;
+  lastPublishAttemptAt?: string;
   error?: string;
 }

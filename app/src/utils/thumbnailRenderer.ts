@@ -269,11 +269,16 @@ export function getLogoFrameMetrics(
   width: number = DEFAULT_WIDTH,
   height: number = DEFAULT_HEIGHT
 ) {
-  const boxWidth = Math.min(width * (config.maxLogoSize / 100), width * 0.52);
-  const boxHeight = Math.min(height * 0.22, Math.max(84, boxWidth * 0.28));
+  const isLogoOnly = config.logoDisplayMode === 'logo-only';
+  const maxWidthRatio = isLogoOnly ? 0.74 : 0.52;
+  const maxHeightRatio = isLogoOnly ? 0.34 : 0.22;
+  const minHeight = isLogoOnly ? 96 : 84;
+  const heightScale = isLogoOnly ? 0.36 : 0.28;
+  const boxWidth = Math.min(width * (config.maxLogoSize / 100), width * maxWidthRatio);
+  const boxHeight = Math.min(height * maxHeightRatio, Math.max(minHeight, boxWidth * heightScale));
   const marginX = 48;
   const marginTop = 48;
-  const marginBottom = 64;
+  const marginBottom = isLogoOnly ? 48 : 64;
   const maxLeft = width - marginX - boxWidth;
   const maxTop = height - marginBottom - boxHeight;
 

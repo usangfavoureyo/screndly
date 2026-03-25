@@ -16,12 +16,14 @@ import { haptics } from "../../utils/haptics";
 interface TimePickerProps {
   value?: string;
   onChange?: (value: string) => void;
+  onOpenChange?: (open: boolean) => void;
   className?: string;
 }
 
 export function TimePicker({
   value = "09:00",
   onChange,
+  onOpenChange,
   className,
 }: TimePickerProps) {
   const [isOpen, setIsOpen] = React.useState(false);
@@ -63,6 +65,10 @@ export function TimePicker({
   const [selectedHours, setSelectedHours] = React.useState(hours12);
   const [selectedMinutes, setSelectedMinutes] = React.useState(minutes24);
   const [selectedPeriod, setSelectedPeriod] = React.useState<'AM' | 'PM'>(period);
+
+  React.useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   // Sync state when value prop changes
   React.useEffect(() => {

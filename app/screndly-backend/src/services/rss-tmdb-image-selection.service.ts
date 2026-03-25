@@ -1,12 +1,16 @@
 import { getTmdbApiKey } from './tmdb.service';
 import { trackApiUsage } from './api-usage.service';
 import { renderTMDbLogoCard } from './rss-logo-render.service';
+import { uploadBufferToBackblaze } from './backblaze';
+import sharp from 'sharp';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
 const MIN_TMDB_TITLE_SCORE = 180;
 const MIN_TMDB_PERSON_SCORE = 170;
 const MIN_TMDB_COMPANY_SCORE = 150;
+const PERSON_CROP_WIDTH = 1080;
+const PERSON_CROP_HEIGHT = 1350;
 
 type RSSImageIntent =
   | 'poster'
@@ -190,6 +194,15 @@ function extractYearTokens(value: string): string[] {
 
 function buildImageUrl(path?: string | null): string | undefined {
   return path ? `${TMDB_IMAGE_BASE_URL}${path}` : undefined;
+}
+
+function slugifyTmdbImageName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'tmdb-person';
 }
 
 function getImageIdentity(url: string): string {
@@ -645,6 +658,48 @@ function dedupeResolvedImages(images: ResolvedStructuredTMDbImage[], excludeUrls
 }
 
 async function finalizeResolvedImage(image: ResolvedStructuredTMDbImage): Promise<ResolvedStructuredTMDbImage> {
+  if (image.role === 'person') {
+    try {
+      const response = await fetch(image.url);
+      if (!response.ok) {
+        throw new Error(`TMDb person image download failed with status ${response.status}`);
+      }
+
+      const sourceBuffer = Buffer.from(await response.arrayBuffer());
+      const croppedBuffer = await sharp(sourceBuffer)
+        .rotate()
+        .resize(PERSON_CROP_WIDTH, PERSON_CROP_HEIGHT, {
+          fit: 'cover',
+          position: sharp.strategy.attention,
+          withoutEnlargement: false,
+        })
+        .jpeg({
+          quality: 92,
+          mozjpeg: true,
+        })
+        .toBuffer();
+
+      const uploadResult = await uploadBufferToBackblaze(
+        croppedBuffer,
+        `${slugifyTmdbImageName(image.reason)}-portrait-4x5.jpg`,
+        {
+          prefix: 'rss/tmdb-people',
+          contentType: 'image/jpeg',
+        },
+      );
+
+      return {
+        ...image,
+        url: uploadResult.url,
+        reason: `${image.reason} cropped to 4:5 portrait`,
+        score: image.score + 3,
+      };
+    } catch (error) {
+      console.warn('[RSS][TMDb] Failed to crop TMDb person image, using raw portrait.', error);
+      return image;
+    }
+  }
+
   if (image.role !== 'logo' && image.role !== 'brand_backdrop') {
     return image;
   }

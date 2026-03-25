@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Send } from 'lucide-react';
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
 import {
   BottomSheet,
   BottomSheetBody,
@@ -241,7 +241,9 @@ export function PlatformTestPublishModal({
       imageUrl: imageUrl.trim() || undefined,
       videoUrl: videoUrl.trim() || undefined,
       link: link.trim() || undefined,
-    }, mediaFile || undefined);
+    }, mediaFile || undefined, {
+      timeout: 180000,
+    });
 
     setIsPublishing(false);
 
@@ -311,7 +313,7 @@ export function PlatformTestPublishModal({
               value={text}
               onChange={(event) => setText(event.target.value)}
               placeholder={`Enter ${config.textLabel.toLowerCase()}`}
-              className="min-h-[120px]"
+              className="min-h-[120px] bg-black text-white placeholder:text-[#9CA3AF] border-gray-200 dark:border-[#333333] focus-visible:ring-[#ec1e24]"
             />
           </div>
         )}
@@ -427,12 +429,7 @@ export function PlatformTestPublishModal({
               <RedSpinner size="sm" className="mr-2" label={`Publishing ${platform} live test...`} />
               Publish Live Test
             </>
-          ) : (
-            <>
-              <Send className="mr-2 h-4 w-4" />
-              Publish Live Test
-            </>
-          )}
+          ) : 'Publish Live Test'}
         </Button>
       </BottomSheetFooter>
     </BottomSheet>

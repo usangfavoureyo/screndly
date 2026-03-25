@@ -195,6 +195,8 @@ export function ComposeEditorPage({
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isScheduleDatePickerOpen, setIsScheduleDatePickerOpen] = useState(false);
+  const [isScheduleTimePickerOpen, setIsScheduleTimePickerOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [previewThumbnail, setPreviewThumbnail] = useState<ComposeThumbnailAsset | null>(null);
   const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
@@ -233,6 +235,7 @@ export function ComposeEditorPage({
     () => JSON.stringify(formState) !== initialFormSnapshot,
     [formState, initialFormSnapshot],
   );
+  const isScheduleInteractionActive = isScheduleOpen || isScheduleDatePickerOpen || isScheduleTimePickerOpen;
   const unsavedChangesGuard = useUnsavedBackGuard({
     isDirty: hasUnsavedChanges,
     title: 'Discard post changes?',
@@ -245,6 +248,15 @@ export function ComposeEditorPage({
     }
 
     registerCloseRequestHandler(() => {
+      if (isScheduleDatePickerOpen || isScheduleTimePickerOpen) {
+        return true;
+      }
+
+      if (isScheduleOpen) {
+        setIsScheduleOpen(false);
+        return true;
+      }
+
       if (!hasUnsavedChanges) {
         return false;
       }
@@ -257,7 +269,16 @@ export function ComposeEditorPage({
     return () => {
       registerCloseRequestHandler(null);
     };
-  }, [hasUnsavedChanges, onNavigate, previousPage, registerCloseRequestHandler, unsavedChangesGuard]);
+  }, [
+    hasUnsavedChanges,
+    isScheduleDatePickerOpen,
+    isScheduleOpen,
+    isScheduleTimePickerOpen,
+    onNavigate,
+    previousPage,
+    registerCloseRequestHandler,
+    unsavedChangesGuard,
+  ]);
 
   useEffect(() => {
     setFormState(createInitialForm(existingItem));
@@ -268,7 +289,7 @@ export function ComposeEditorPage({
   }, [activeItemId, existingItem]);
 
   useBackEntry({
-    enabled: hasUnsavedChanges,
+    enabled: hasUnsavedChanges && !isScheduleInteractionActive && !unsavedChangesGuard.isPromptOpen,
     priority: 100,
     onBack: () => {
       return unsavedChangesGuard.guardAction(() => {
@@ -1283,13 +1304,21 @@ export function ComposeEditorPage({
             <div>
               <Label className="text-gray-600 dark:text-[#9CA3AF]">Date</Label>
               <div className="mt-2">
-                <DatePicker date={scheduleDate} onDateChange={setScheduleDate} />
+                <DatePicker
+                  date={scheduleDate}
+                  onDateChange={setScheduleDate}
+                  onOpenChange={setIsScheduleDatePickerOpen}
+                />
               </div>
             </div>
             <div>
               <Label className="text-gray-600 dark:text-[#9CA3AF]">Time</Label>
               <div className="mt-2">
-                <TimePicker value={scheduleTime} onChange={setScheduleTime} />
+                <TimePicker
+                  value={scheduleTime}
+                  onChange={setScheduleTime}
+                  onOpenChange={setIsScheduleTimePickerOpen}
+                />
               </div>
             </div>
           </div>

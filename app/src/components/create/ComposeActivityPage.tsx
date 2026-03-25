@@ -122,26 +122,24 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
       const result = await publishComposeItem(item);
       const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
       const nextError =
-        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
-
-      saveItem({
+        nextStatus === 'published'
+          ? undefined
+          : result.failedResults.length > 0
+            ? result.errorMessage || 'Some platforms failed to publish.'
+            : undefined;
+      const updatedAt = new Date().toISOString();
+      const savedItem: ComposeItem = {
         ...item,
         status: nextStatus,
-        updatedAt: new Date().toISOString(),
+        updatedAt,
         error: nextError,
-      });
+      };
+
+      saveItem(savedItem);
 
       if (result.postedPlatforms.length > 0) {
         addNotification(
-          buildComposePublishSuccessNotification(
-            {
-              ...item,
-              status: nextStatus,
-              updatedAt: new Date().toISOString(),
-              error: nextError,
-            },
-            result,
-          ),
+          buildComposePublishSuccessNotification(savedItem, result),
         );
         toast.success(`Published to ${result.postedPlatforms.join(', ')}.`);
         return;

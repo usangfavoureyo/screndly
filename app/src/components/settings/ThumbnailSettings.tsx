@@ -536,7 +536,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                 <input
                   type="range"
                   min="10"
-                  max="80"
+                  max="100"
                   step="5"
                   value={currentConfig.maxLogoSize}
                   onChange={(e) => {

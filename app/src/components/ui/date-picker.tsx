@@ -19,6 +19,7 @@ import { haptics } from "../../utils/haptics";
 interface DatePickerProps {
   date?: Date;
   onDateChange?: (date: Date | undefined) => void;
+  onOpenChange?: (open: boolean) => void;
   placeholder?: string;
   className?: string;
 }
@@ -26,11 +27,16 @@ interface DatePickerProps {
 export function DatePicker({
   date,
   onDateChange,
+  onOpenChange,
   placeholder = "Pick a date",
   className,
 }: DatePickerProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const [tempDate, setTempDate] = React.useState<Date | undefined>(date);
+
+  React.useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
 
   React.useEffect(() => {
     setTempDate(date);

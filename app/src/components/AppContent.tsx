@@ -507,6 +507,10 @@ export function AppContent() {
     setIsSettingsOpen(false);
   };
 
+  const handleCloseNotifications = useCallback(() => {
+    setIsNotificationsOpen(false);
+  }, []);
+
   const handleToggleNotifications = () => {
     setIsNotificationsOpen(!isNotificationsOpen);
     setIsSettingsOpen(false);
@@ -583,7 +587,7 @@ export function AppContent() {
     isSettingsOpen,
     isNotificationsOpen,
     onCloseSettings: handleCloseSettings,
-    onCloseNotifications: () => setIsNotificationsOpen(false),
+    onCloseNotifications: handleCloseNotifications,
   });
 
   // Initialize PWA functionality
@@ -792,12 +796,7 @@ export function AppContent() {
         <Suspense fallback={<OverlayLoader />}>
           <NotificationPanel
             isOpen={isNotificationsOpen}
-            onClose={() => {
-              const handled = handleAppBack(() => setIsNotificationsOpen(false));
-              if (!handled) {
-                setIsNotificationsOpen(false);
-              }
-            }}
+            onClose={handleCloseNotifications}
             notifications={notifications}
             onMarkAsRead={markAsRead}
             onMarkAllAsRead={markAllAsRead}

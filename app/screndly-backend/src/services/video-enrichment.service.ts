@@ -1513,12 +1513,16 @@ export async function generateLandscapeThumbnail(
                 const logoMetadata = await logoImage.metadata();
 
                 if (logoMetadata.width && logoMetadata.height) {
-                    const maxWidth = Math.round(dimensions.width * (Math.max(10, config.maxLogoSize) / 100));
-                    const maxHeight = Math.round(dimensions.height * 0.25);
+                    const isLogoOnly = config.logoDisplayMode === 'logo-only';
+                    const maxWidthRatio = isLogoOnly ? 0.74 : 0.52;
+                    const maxHeightRatio = isLogoOnly ? 0.34 : 0.22;
+                    const requestedWidth = dimensions.width * (Math.max(10, config.maxLogoSize) / 100);
+                    const maxWidth = Math.round(Math.min(requestedWidth, dimensions.width * maxWidthRatio));
+                    const maxHeight = Math.round(dimensions.height * maxHeightRatio);
                     const resizedLogo = await logoImage
                         .resize({
                             width: Math.max(120, maxWidth),
-                            height: Math.max(80, maxHeight),
+                            height: Math.max(isLogoOnly ? 96 : 80, maxHeight),
                             fit: config.autoScale ? 'inside' : 'contain',
                             withoutEnlargement: !config.autoScale,
                         })

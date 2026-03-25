@@ -3,9 +3,11 @@ import { toast } from 'sonner';
 import { useComposeStore } from '../../store/useComposeStore';
 import { publishComposeItem } from '../../lib/create/composePublish';
 
-function isRetryablePublishError(message: string | undefined): boolean {
+const PUBLISH_LOCK_MS = 10 * 60 * 1000;
+
+function isInterruptedPublishError(message: string | undefined): boolean {
   if (!message) return false;
-  return /failed to fetch|network|timed out|timeout|load failed|connection/i.test(message);
+  return /failed to fetch|network|timed out|timeout|load failed|connection|aborted/i.test(message);
 }
 
 export function ComposeScheduler() {
@@ -16,17 +18,31 @@ export function ComposeScheduler() {
     let cancelled = false;
 
     const processDueItems = async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        return;
+      }
+
       const now = Date.now();
       const dueItems = items.filter(
         (item) =>
           item.status === 'scheduled' &&
           item.scheduledAt &&
           new Date(item.scheduledAt).getTime() <= now &&
+          (!item.publishLockExpiresAt || new Date(item.publishLockExpiresAt).getTime() <= now) &&
           !processingIdsRef.current.has(item.id),
       );
 
       for (const item of dueItems) {
         processingIdsRef.current.add(item.id);
+        const attemptStartedAt = new Date().toISOString();
+        const publishLockExpiresAt = new Date(Date.now() + PUBLISH_LOCK_MS).toISOString();
+
+        saveItem({
+          ...item,
+          publishLockExpiresAt,
+          lastPublishAttemptAt: attemptStartedAt,
+          error: undefined,
+        });
 
         try {
           const result = await publishComposeItem(item);
@@ -35,12 +51,19 @@ export function ComposeScheduler() {
           const updatedAt = new Date().toISOString();
           const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
           const nextError =
-            result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+            nextStatus === 'published'
+              ? undefined
+              : result.failedResults.length > 0
+                ? result.errorMessage || 'Some platforms failed to publish.'
+                : undefined;
 
           saveItem({
             ...item,
             status: nextStatus,
             updatedAt,
+            publishLockExpiresAt: undefined,
+            lastPublishAttemptAt: attemptStartedAt,
+            publishRetryCount: nextStatus === 'failed' ? (item.publishRetryCount ?? 0) + 1 : 0,
             error: nextError,
           });
 
@@ -57,26 +80,19 @@ export function ComposeScheduler() {
           if (cancelled) return;
 
           const message = error instanceof Error ? error.message : 'Failed to publish scheduled post';
-          if (isRetryablePublishError(message)) {
-            const retryAt = new Date(Date.now() + 60_000).toISOString();
-            saveItem({
-              ...item,
-              status: 'scheduled',
-              scheduledAt: retryAt,
-              updatedAt: new Date().toISOString(),
-              error: 'Temporary connection issue. Retrying automatically.',
-            });
-            toast.error('Scheduled publish hit a temporary network issue. Retrying shortly.');
-            continue;
-          }
-
+          const safeMessage = isInterruptedPublishError(message)
+            ? 'Scheduled publish request was interrupted. Check whether the post already published before retrying.'
+            : message;
           saveItem({
             ...item,
             status: 'failed',
             updatedAt: new Date().toISOString(),
-            error: message,
+            publishLockExpiresAt: undefined,
+            lastPublishAttemptAt: attemptStartedAt,
+            publishRetryCount: (item.publishRetryCount ?? 0) + 1,
+            error: safeMessage,
           });
-          toast.error(message);
+          toast.error(safeMessage);
         } finally {
           processingIdsRef.current.delete(item.id);
         }
@@ -85,10 +101,24 @@ export function ComposeScheduler() {
 
     processDueItems();
     const intervalId = window.setInterval(processDueItems, 30000);
+    const handleResume = () => {
+      void processDueItems();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void processDueItems();
+      }
+    };
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('online', handleResume);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleResume);
+      window.removeEventListener('online', handleResume);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [items, saveItem]);
 
