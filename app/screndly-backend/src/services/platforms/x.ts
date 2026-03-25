@@ -14,6 +14,11 @@ interface XPostResult {
     error?: string;
 }
 
+interface XUploadResult {
+    mediaId: string | null;
+    error?: string;
+}
+
 export class XService {
     private static readonly MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
     private apiKey: string;
@@ -89,15 +94,18 @@ export class XService {
         try {
             const normalizedImageSources = this.normalizeImageSources(imageSources);
             const mediaIds: string[] = [];
+            const uploadErrors: string[] = [];
             for (const imageSource of normalizedImageSources) {
-                const mediaId = await this.uploadMedia(imageSource, connection);
-                if (mediaId) {
-                    mediaIds.push(mediaId);
+                const uploadResult = await this.uploadMedia(imageSource, connection);
+                if (uploadResult.mediaId) {
+                    mediaIds.push(uploadResult.mediaId);
+                } else if (uploadResult.error) {
+                    uploadErrors.push(uploadResult.error);
                 }
             }
 
             if (normalizedImageSources.length > 0 && mediaIds.length === 0) {
-                return { success: false, error: 'Failed to upload image media to X' };
+                return { success: false, error: uploadErrors[0] || 'Failed to upload image media to X' };
             }
 
             const response = await fetch('https://api.x.com/2/tweets', {
@@ -142,9 +150,9 @@ export class XService {
                 }
             }
 
-            const mediaId = await this.uploadVideo(videoSource, connection);
-            if (!mediaId) {
-                return { success: false, error: 'Failed to upload video to X' };
+            const uploadResult = await this.uploadVideo(videoSource, connection);
+            if (!uploadResult.mediaId) {
+                return { success: false, error: uploadResult.error || 'Failed to upload video to X' };
             }
 
             const response = await fetch('https://api.x.com/2/tweets', {
@@ -155,7 +163,7 @@ export class XService {
                 },
                 body: JSON.stringify({
                     text: text.slice(0, 280),
-                    media: { media_ids: [mediaId] },
+                    media: { media_ids: [uploadResult.mediaId] },
                 }),
             });
 
@@ -285,10 +293,10 @@ export class XService {
         };
     }
 
-    private async uploadVideo(source: string, connection?: PlatformConnection): Promise<string | null> {
+    private async uploadVideo(source: string, connection?: PlatformConnection): Promise<XUploadResult> {
         const authToken = this.getUserAccessToken(connection);
         if (!authToken) {
-            return null;
+            return { mediaId: null, error: 'X user access token not configured. Reconnect X from Platforms.' };
         }
 
         try {
@@ -332,10 +340,13 @@ export class XService {
             const processingInfo = await this.appendAndFinalizeUpload(mediaId, payload, authToken);
             await this.waitForVideoProcessing(mediaId, authToken, processingInfo);
 
-            return mediaId;
+            return { mediaId };
         } catch (error) {
             console.error('[X] Video upload failed:', error);
-            return null;
+            return {
+                mediaId: null,
+                error: error instanceof Error ? error.message : 'Failed to upload video to X',
+            };
         }
     }
 
@@ -449,10 +460,10 @@ export class XService {
         }
     }
 
-    async uploadMedia(imageUrl: string, connection?: PlatformConnection): Promise<string | null> {
+    async uploadMedia(imageUrl: string, connection?: PlatformConnection): Promise<XUploadResult> {
         const authToken = this.getUserAccessToken(connection);
         if (!authToken) {
-            return null;
+            return { mediaId: null, error: 'X user access token not configured. Reconnect X from Platforms.' };
         }
 
         try {
@@ -462,6 +473,39 @@ export class XService {
                 rawPayload.fileName,
                 rawPayload.mimeType
             );
+            const jsonUploadResponse = await fetch('https://api.x.com/2/media/upload', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    media: payload.buffer.toString('base64'),
+                    media_type: payload.mimeType,
+                    media_category: this.getMediaCategory(payload.mimeType),
+                    shared: false,
+                }),
+            });
+
+            const jsonUploadData = await this.getJsonResponse(jsonUploadResponse);
+            if (jsonUploadResponse.ok) {
+                const mediaId =
+                    jsonUploadData?.data?.id
+                    || jsonUploadData?.media_id_string
+                    || jsonUploadData?.media_id;
+
+                if (mediaId) {
+                    return { mediaId };
+                }
+            } else if (jsonUploadResponse.status === 403) {
+                throw new Error(
+                    this.extractApiErrorMessage(
+                        jsonUploadData,
+                        `Failed to upload X image media (${jsonUploadResponse.status})`
+                    )
+                );
+            }
+
             const formData = new FormData();
             formData.append('media', new Blob([payload.buffer], { type: payload.mimeType }), payload.fileName);
             formData.append('media_category', this.getMediaCategory(payload.mimeType));
@@ -484,29 +528,23 @@ export class XService {
                     || uploadData?.media_id;
 
                 if (mediaId) {
-                    return mediaId;
+                    return { mediaId };
                 }
-            } else if (uploadResponse.status === 403) {
-                throw new Error(
-                    this.extractApiErrorMessage(
-                        uploadData,
-                        `Failed to upload X image media (${uploadResponse.status})`
-                    )
-                );
             }
 
-            const initializeResponse = await fetch('https://api.x.com/2/media/upload/initialize', {
+            const initializePayload = new FormData();
+            initializePayload.append('command', 'INIT');
+            initializePayload.append('media_type', payload.mimeType);
+            initializePayload.append('media_category', this.getMediaCategory(payload.mimeType));
+            initializePayload.append('total_bytes', String(payload.buffer.length));
+            initializePayload.append('shared', 'false');
+
+            const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${authToken}`,
-                    'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    media_type: payload.mimeType,
-                    media_category: this.getMediaCategory(payload.mimeType),
-                    total_bytes: payload.buffer.length,
-                    shared: false,
-                }),
+                body: initializePayload,
             });
 
             const initializeData = await this.getJsonResponse(initializeResponse);
@@ -533,10 +571,13 @@ export class XService {
                 throw new Error('X reported that image processing failed');
             }
 
-            return mediaId;
+            return { mediaId };
         } catch (error) {
             console.error('[X] Media upload failed:', error);
-            return null;
+            return {
+                mediaId: null,
+                error: error instanceof Error ? error.message : 'Failed to upload image media to X',
+            };
         }
     }
 }
