@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2, Shield, Key, AlertCircle } from 'lucide-react';
 import { PlatformType } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
-import { toast } from "sonner";
 import { InstagramIcon } from './icons/InstagramIcon';
 import { FacebookIcon } from './icons/FacebookIcon';
 import { ThreadsIcon } from './icons/ThreadsIcon';
@@ -29,7 +28,7 @@ export function PlatformConnectionModal({
 }: PlatformConnectionModalProps) {
   const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
   const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -115,6 +114,11 @@ export function PlatformConnectionModal({
   };
 
   const info = platformInfo[platform];
+  const redirectUri = getOAuthRedirectUri(platform);
+  const oauthStartUrl = useMemo(
+    () => `${getApiUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`,
+    [platform, redirectUri]
+  );
 
   useEffect(() => {
     if (!isOpen) {
@@ -124,37 +128,20 @@ export function PlatformConnectionModal({
     }
   }, [isOpen]);
 
-  const handleConnect = async () => {
-    setIsConnecting(true);
-    setStep('connecting');
+  const prepareOAuthStart = () => {
     setErrorMessage('');
     haptics.medium();
 
-    try {
-      const redirectUri = getOAuthRedirectUri(platform);
-      const authToken = getToken();
-      localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-      sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-      localStorage.removeItem('screndly_oauth_state');
-      sessionStorage.removeItem('screndly_oauth_state');
-      localStorage.removeItem('screndly_oauth_code_verifier');
-      sessionStorage.removeItem('screndly_oauth_code_verifier');
+    const authToken = getToken();
+    localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+    sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+    localStorage.removeItem('screndly_oauth_state');
+    sessionStorage.removeItem('screndly_oauth_state');
+    localStorage.removeItem('screndly_oauth_code_verifier');
+    sessionStorage.removeItem('screndly_oauth_code_verifier');
 
-      if (authToken) {
-        localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
-      }
-
-      const oauthStartUrl = `${getApiUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`;
-      window.location.assign(oauthStartUrl);
-    } catch (error) {
-      console.error('Connection error:', error);
-      haptics.error();
-      const errorMessage = error instanceof Error ? error.message : `Failed to connect to ${info.name}`;
-      setErrorMessage(errorMessage);
-      toast.error(errorMessage);
-      setStep('info');
-    } finally {
-      setIsConnecting(false);
+    if (authToken) {
+      localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
     }
   };
 
@@ -267,10 +254,16 @@ export function PlatformConnectionModal({
             Cancel
           </Button>
           <Button
-            onClick={handleConnect}
+            asChild
             className="flex-1 bg-[#ec1e24] hover:bg-[#d11b20] text-white"
           >
-            Connect {info.name}
+            <a
+              href={oauthStartUrl}
+              onPointerDown={prepareOAuthStart}
+              onClick={prepareOAuthStart}
+            >
+              Connect {info.name}
+            </a>
           </Button>
         </BottomSheetFooter>
       )}

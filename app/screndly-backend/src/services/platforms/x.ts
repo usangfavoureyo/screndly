@@ -46,6 +46,8 @@ export interface XPostContext {
 
 export class XService {
     private static readonly MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
+    // Keep video chunks below 5MB so multipart form overhead does not trigger 413s on APPEND.
+    private static readonly VIDEO_UPLOAD_CHUNK_BYTES = 4 * 1024 * 1024;
     private apiKey: string;
     private apiSecret: string;
     private bearerToken: string;
@@ -699,7 +701,7 @@ export class XService {
         payload: { buffer: Buffer; fileName: string; mimeType: string },
         authToken: string
     ): Promise<{ state?: string; check_after_secs?: number } | undefined> {
-        const chunkSize = 5 * 1024 * 1024;
+        const chunkSize = XService.VIDEO_UPLOAD_CHUNK_BYTES;
         let segmentIndex = 0;
 
         for (let offset = 0; offset < payload.buffer.length; offset += chunkSize) {
