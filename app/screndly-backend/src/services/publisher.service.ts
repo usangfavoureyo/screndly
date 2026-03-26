@@ -91,6 +91,26 @@ export class PublisherService {
         }
     }
 
+    private isBackblazeHostedUrl(value: string): boolean {
+        try {
+            const host = new URL(value).hostname.toLowerCase();
+            return host.includes('backblazeb2.com');
+        } catch {
+            return false;
+        }
+    }
+
+    private isMetaRiskyGeneratedImageUrl(value: string): boolean {
+        if (!this.isBackblazeHostedUrl(value)) {
+            return false;
+        }
+
+        const normalized = value.toLowerCase();
+        return normalized.includes('/rss/logo-cards/')
+            || normalized.includes('/social-publish/meta-images/')
+            || normalized.includes('/generated-thumbnails/');
+    }
+
     private getInvalidConnectionMessage(platform: string): string {
         switch (platform) {
             case 'Facebook':
@@ -225,7 +245,12 @@ export class PublisherService {
             }
         }
 
-        return resolved;
+        const safeUrls = resolved.filter((value) => !this.isMetaRiskyGeneratedImageUrl(value));
+        if (safeUrls.length > 0) {
+            return safeUrls;
+        }
+
+        return resolved.some((value) => this.isMetaRiskyGeneratedImageUrl(value)) ? [] : resolved;
     }
 
     private getPlatformImageLimit(platform: string): number {
