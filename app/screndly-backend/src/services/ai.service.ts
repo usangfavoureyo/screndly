@@ -15,6 +15,7 @@ import { createHash } from 'crypto';
 export const SUPPORTED_OPENAI_MODELS = [
     'gpt-5.4',
     'gpt-5.4-mini',
+    'gpt-5.4-nano',
     'gpt-5.2',
     'gpt-5.1',
     'gpt-5',
@@ -42,6 +43,7 @@ export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFA
     switch (value) {
         case 'gpt-5.4':
         case 'gpt-5.4-mini':
+        case 'gpt-5.4-nano':
         case 'gpt-5.2':
         case 'gpt-5.1':
         case 'gpt-5':

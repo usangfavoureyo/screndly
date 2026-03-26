@@ -119,6 +119,10 @@ function isNavigationRequest(request, url) {
   );
 }
 
+function isOAuthCallbackRequest(url) {
+  return url.pathname === '/platforms/callback';
+}
+
 function isStaticAssetRequest(request, url) {
   return (
     request.destination === 'script' ||
@@ -267,6 +271,18 @@ self.addEventListener('fetch', (event) => {
     } else {
       event.respondWith(fetch(event.request));
     }
+    return;
+  }
+
+  // Strategy 2.5: Always use the network for OAuth callback navigations.
+  // The installed PWA must not boot a stale cached shell on the callback route,
+  // or it can run old callback logic and appear to spin forever.
+  if (isOAuthCallbackRequest(url)) {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return getNavigationFallback();
+      })
+    );
     return;
   }
 
