@@ -13,6 +13,7 @@ import {
   resolveAIRouterDecision,
 } from '../ai/router';
 import { DEFAULT_MODELS } from '../ai/models';
+import { getCachedAIResponse, getDefaultTaskCacheTtl } from '../ai/cache';
 
 export interface RoutedOpenAIResult<T> {
   data: T;
@@ -34,10 +35,20 @@ export class OpenAIApi {
     request: Omit<OpenAICompletionRequest, 'model'>,
   ): Promise<ApiResponse<RoutedOpenAIResult<OpenAICompletionResponse>>> {
     const decision = resolveAIRouterDecision(routerRequest);
-    const response = await this.createChatCompletion({
-      ...request,
-      model: decision.modelUsed,
-    });
+    const { data: response, cacheHit } = await getCachedAIResponse(
+      `openai:${decision.taskType}`,
+      {
+        model: decision.modelUsed,
+        request,
+      },
+      () => this.createChatCompletion({
+        ...request,
+        model: decision.modelUsed,
+      }),
+      {
+        ttlMs: getDefaultTaskCacheTtl(decision.taskType),
+      },
+    );
 
     if (!response.success || !response.data) {
       console.error('[AIRouter] request failed', {
@@ -50,7 +61,10 @@ export class OpenAIApi {
     }
 
     const metadata = attachUsageToMetadata(createRouterMetadata(decision), response.data.usage);
-    console.log('[AIRouter] request complete', metadata);
+    console.log('[AIRouter] request complete', {
+      ...metadata,
+      cacheHit,
+    });
 
     return {
       success: true,

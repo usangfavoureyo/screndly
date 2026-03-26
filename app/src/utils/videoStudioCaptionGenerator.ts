@@ -4,6 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
+import { getCachedAIResponse } from '../lib/ai/cache';
 import { videoStudioPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type VideoContentType = 'review' | 'releases' | 'scenes';
@@ -167,7 +168,7 @@ export async function generateVideoStudioCaption(
   const options = getVideoStudioCaptionSettings(content.contentType);
 
   try {
-    const response = await apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', {
+    const requestPayload = {
       fileName: buildFileName(content),
       fileDescription: buildFileDescription(content),
       detectedObjects: buildDetectedObjects(content),
@@ -177,7 +178,15 @@ export async function generateVideoStudioCaption(
       customSystemPrompt: buildSystemPrompt(options),
       customTemperature: options.temperature,
       customMaxTokens: options.maxTokens,
-    });
+    };
+    const { data: response } = await getCachedAIResponse(
+      'caption:video-studio',
+      requestPayload,
+      () => apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', requestPayload),
+      {
+        ttlMs: 24 * 60 * 60 * 1000,
+      },
+    );
 
     if (!response.success || !response.data?.content) {
       throw new Error(response.error?.message || 'Failed to generate Video Studio caption');

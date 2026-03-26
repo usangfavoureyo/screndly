@@ -287,11 +287,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       <Button
         type="button"
         className="w-full touch-manipulation"
-        onPointerUp={(event) => {
-          if (event.pointerType === 'mouse') {
-            return;
-          }
-
+        onTouchStart={(event) => {
           ignoreNextAddPostClickRef.current = true;
           event.preventDefault();
           event.stopPropagation();

@@ -105,11 +105,16 @@ interface TMDbMovieDetails {
     id: number;
     title?: string;
     original_title?: string;
+    original_language?: string;
     overview?: string;
     release_date?: string;
+    status?: string;
+    popularity?: number;
+    vote_count?: number;
     backdrop_path?: string | null;
     poster_path?: string | null;
     genres?: Array<{ id: number; name: string }>;
+    spoken_languages?: Array<{ iso_639_1?: string; english_name?: string; name?: string }>;
     production_companies?: TMDbProductionEntity[];
     production_countries?: Array<{ iso_3166_1: string; name?: string }>;
     release_dates?: {
@@ -128,11 +133,16 @@ interface TMDbTVDetails {
     id: number;
     name?: string;
     original_name?: string;
+    original_language?: string;
     overview?: string;
     first_air_date?: string;
+    status?: string;
+    popularity?: number;
+    vote_count?: number;
     backdrop_path?: string | null;
     poster_path?: string | null;
     genres?: Array<{ id: number; name: string }>;
+    spoken_languages?: Array<{ iso_639_1?: string; english_name?: string; name?: string }>;
     production_companies?: TMDbProductionEntity[];
     networks?: TMDbProductionEntity[];
     origin_country?: string[];
@@ -177,6 +187,11 @@ export interface LoadedVideoSettings {
     postInterval: number;
     advancedFilters?: string;
     regionFilter?: string;
+    allowedRegions?: string;
+    strictRegionMode: boolean;
+    allowPremiumGlobalExceptions: boolean;
+    excludeDubOnlyImports: boolean;
+    trustedSupportingChannels: string[];
     videoAgeGateHours: number | null;
     videoBacklogMode: VideoBacklogMode;
     videoFutureOnlySince?: string;
@@ -211,12 +226,21 @@ interface ResolvedTMDbMatch {
     title: string;
     aliases: string[];
     overview: string;
+    originalLanguage?: string;
+    spokenLanguages: string[];
+    productionCountries: string[];
+    originCountries: string[];
     releaseDate?: string;
     year?: number;
     genres: string[];
     allowedRegions: string[];
     castNames: string[];
     productionNames: string[];
+    distributors: string[];
+    networks: string[];
+    popularity?: number;
+    voteCount?: number;
+    releaseStatus?: string;
     backdropUrl?: string;
     posterUrl?: string;
     logoUrl?: string;
@@ -304,6 +328,11 @@ const VIDEO_SETTINGS_KEYS = [
     'postInterval',
     'advancedFilters',
     'regionFilter',
+    'allowedRegions',
+    'strictRegionMode',
+    'allowPremiumGlobalExceptions',
+    'excludeDubOnlyImports',
+    'trustedSupportingChannels',
     'videoAgeGateHours',
     'videoBacklogMode',
     'videoFutureOnlySince',
@@ -385,6 +414,23 @@ function asNumber(value: unknown, fallback: number): number {
         if (Number.isFinite(parsed)) return parsed;
     }
     return fallback;
+}
+
+function asStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value
+            .map((entry) => asString(entry))
+            .filter((entry): entry is string => Boolean(entry));
+    }
+
+    if (typeof value === 'string') {
+        return value
+            .split(',')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }
+
+    return [];
 }
 
 function parseVideoAgeGateHours(value: unknown): number | null | undefined {
@@ -967,6 +1013,12 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
                 candidate.original_title,
             ].filter((value): value is string => Boolean(asString(value))),
             overview: details.overview || candidate.overview || '',
+            originalLanguage: asString(details.original_language),
+            spokenLanguages: (details.spoken_languages || [])
+                .map((language) => asString(language.iso_639_1) || asString(language.english_name) || asString(language.name))
+                .filter((value): value is string => Boolean(value)),
+            productionCountries: (details.production_countries || []).map((country) => country.iso_3166_1).filter(Boolean),
+            originCountries: (details.production_countries || []).map((country) => country.iso_3166_1).filter(Boolean),
             releaseDate: details.release_date || candidate.release_date,
             year: extractYear(details.release_date || candidate.release_date),
             genres: (details.genres || []).map((genre) => genre.name),
@@ -981,6 +1033,13 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
             productionNames: (details.production_companies || [])
                 .map((company) => asString(company.name))
                 .filter((value): value is string => Boolean(value)),
+            distributors: (details.production_companies || [])
+                .map((company) => asString(company.name))
+                .filter((value): value is string => Boolean(value)),
+            networks: [],
+            popularity: typeof details.popularity === 'number' ? details.popularity : candidate.popularity,
+            voteCount: typeof details.vote_count === 'number' ? details.vote_count : undefined,
+            releaseStatus: asString(details.status),
             backdropUrl: selectBestImageAsset(details.backdrop_path, details.images?.backdrops, [null, 'en']),
             posterUrl: selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]),
             logoUrl: selectLogo(details.images?.logos),
@@ -1023,6 +1082,12 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
             candidate.original_name,
         ].filter((value): value is string => Boolean(asString(value))),
         overview: details.overview || candidate.overview || '',
+        originalLanguage: asString(details.original_language),
+        spokenLanguages: (details.spoken_languages || [])
+            .map((language) => asString(language.iso_639_1) || asString(language.english_name) || asString(language.name))
+            .filter((value): value is string => Boolean(value)),
+        productionCountries: (details.production_countries || []).map((country) => country.iso_3166_1).filter(Boolean),
+        originCountries: (details.origin_country || []).filter(Boolean),
         releaseDate: details.first_air_date || candidate.first_air_date,
         year: extractYear(details.first_air_date || candidate.first_air_date),
         genres: (details.genres || []).map((genre) => genre.name),
@@ -1039,6 +1104,15 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
             ...(details.production_companies || []).map((company) => asString(company.name)),
             ...(details.networks || []).map((network) => asString(network.name)),
         ].filter((value): value is string => Boolean(value)),
+        distributors: (details.production_companies || [])
+            .map((company) => asString(company.name))
+            .filter((value): value is string => Boolean(value)),
+        networks: (details.networks || [])
+            .map((network) => asString(network.name))
+            .filter((value): value is string => Boolean(value)),
+        popularity: typeof details.popularity === 'number' ? details.popularity : candidate.popularity,
+        voteCount: typeof details.vote_count === 'number' ? details.vote_count : undefined,
+        releaseStatus: asString(details.status),
         backdropUrl: selectBestImageAsset(details.backdrop_path, details.images?.backdrops, [null, 'en']),
         posterUrl: seasonPosterUrl || seriesPosterUrl,
         logoUrl: selectLogo(details.images?.logos),
@@ -1074,7 +1148,7 @@ function buildMetadataCacheKey(videoId: string, title: string, settings: LoadedV
     return [
         videoId,
         normalizeText(title),
-        settings.regionFilter || '',
+        settings.allowedRegions || settings.regionFilter || '',
         settings.videoTitleCleaningRegex || '',
         settings.videoFilterTmdbValidation ? 'tmdb-on' : 'tmdb-off',
     ].join('::');
@@ -1287,7 +1361,8 @@ async function uploadGeneratedAsset(buffer: Buffer, name: string, prefix: string
 
 function shouldUseTMDb(settings: LoadedVideoSettings): boolean {
     return Boolean(
-        settings.regionFilter
+        settings.allowedRegions
+        || settings.regionFilter
         || settings.videoFilterTmdbValidation
         || settings.videoYoutubeTitlePrompt
         || settings.videoYoutubeDescriptionPrompt
@@ -1310,6 +1385,11 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
         postInterval: Math.max(1, asNumber(map.get('postInterval'), 10)),
         advancedFilters: asString(map.get('advancedFilters')),
         regionFilter: asString(map.get('regionFilter')),
+        allowedRegions: asString(map.get('allowedRegions')) || asString(map.get('regionFilter')),
+        strictRegionMode: asBoolean(map.get('strictRegionMode'), false),
+        allowPremiumGlobalExceptions: asBoolean(map.get('allowPremiumGlobalExceptions'), false),
+        excludeDubOnlyImports: asBoolean(map.get('excludeDubOnlyImports'), true),
+        trustedSupportingChannels: asStringArray(map.get('trustedSupportingChannels')),
         videoAgeGateHours: parsedVideoAgeGateHours === undefined ? 24 : parsedVideoAgeGateHours,
         videoBacklogMode: parseVideoBacklogMode(map.get('videoBacklogMode')),
         videoFutureOnlySince: asString(map.get('videoFutureOnlySince')),
@@ -1349,7 +1429,7 @@ export async function enrichYouTubeVideoMetadata(
     const cleanedTitle = cleanVideoTitle(title, settings.videoTitleCleaningRegex);
     const searchQueries = buildSearchQueries(cleanedTitle, title);
     const trailerType = detectTrailerType(title);
-    const allowedRegions = parseRegionFilter(settings.regionFilter);
+    const allowedRegions = parseRegionFilter(settings.allowedRegions || settings.regionFilter);
     const cacheKey = buildMetadataCacheKey(videoId, title, settings);
 
     if (settings.videoFilterCache) {

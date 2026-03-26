@@ -29,6 +29,10 @@ import {
     type PlatformThumbnailAsset,
 } from './video-enrichment.service';
 import { youtubePoTokenService } from './youtube-po-token.service';
+import { decideYouTubeCandidate } from './youtube-detection/decisionEngine';
+import { checkPromoDuplicate, recordAcceptedPromoFingerprint, recordDuplicateRelationship } from './youtube-detection/deduplicationEngine';
+import { parsePromoAssetType } from './youtube-detection/promoAssetParsing';
+import type { PollingCandidate } from './youtube-detection/types';
 
 const parser = new Parser();
 
@@ -666,6 +670,46 @@ export class YouTubePollerService {
         return ageGate === null ? 'off' : `${ageGate} hour${ageGate === 1 ? '' : 's'}`;
     }
 
+    private extractYearFromText(value: string): number | undefined {
+        const match = /\b(19|20)\d{2}\b/.exec(value);
+        return match ? Number(match[0]) : undefined;
+    }
+
+    private extractSeasonNumber(value: string): number | undefined {
+        const match = /\bseason\s+(\d{1,2})\b/i.exec(value);
+        return match ? Number(match[1]) : undefined;
+    }
+
+    private guessMediaType(value: string): 'movie' | 'tv' | 'unknown' {
+        if (/\b(season|series|episode|tv)\b/i.test(value)) {
+            return 'tv';
+        }
+
+        if (/\b(movie|film|in theaters|in cinemas)\b/i.test(value)) {
+            return 'movie';
+        }
+
+        return 'unknown';
+    }
+
+    private buildDecisionCandidate(videoId: string, videoTitle: string, description: string, activeChannel: any, pubDate: Date): PollingCandidate {
+        const combinedText = `${videoTitle}\n${description}`;
+        return {
+            youtubeVideoId: videoId,
+            rawTitle: videoTitle,
+            normalizedTitle: videoTitle,
+            description,
+            channelId: activeChannel.channelId,
+            channelName: activeChannel.name,
+            publishedAt: pubDate,
+            mediaTypeGuess: this.guessMediaType(combinedText),
+            extractedYear: this.extractYearFromText(combinedText),
+            seasonNumber: this.extractSeasonNumber(combinedText),
+            trailerType: undefined,
+            promoAssetType: parsePromoAssetType(videoTitle),
+        };
+    }
+
     private getYouTubeErrorText(error: unknown): string {
         if (error instanceof Error) {
             const maybeRichError = error as Error & {
@@ -847,6 +891,20 @@ export class YouTubePollerService {
             details.description || video.contentSnippet || '',
             settings
         );
+        const decisionCandidate = this.buildDecisionCandidate(
+            videoId,
+            video.title || '',
+            details.description || video.contentSnippet || '',
+            activeChannel,
+            pubDate
+        );
+        decisionCandidate.normalizedTitle = enrichedMetadata.cleanedTitle || decisionCandidate.normalizedTitle;
+        if (enrichedMetadata.tmdbMatch) {
+            decisionCandidate.mediaTypeGuess = enrichedMetadata.tmdbMatch.mediaType;
+            decisionCandidate.extractedYear = enrichedMetadata.tmdbMatch.year;
+            decisionCandidate.seasonNumber = enrichedMetadata.tmdbMatch.seasonNumber;
+            decisionCandidate.trailerType = enrichedMetadata.trailerType;
+        }
 
         const hardRejectedReason = this.getHardRejectedContentReason(
             video.title || '',
@@ -880,21 +938,92 @@ export class YouTubePollerService {
             };
         }
 
-        const aiValidationDeferred = Boolean(metadataFetchFailed && !enrichedMetadata.tmdbMatch);
-        if (!aiValidationDeferred) {
+        const decisionResult = await decideYouTubeCandidate(decisionCandidate, enrichedMetadata, settings);
+        console.log('[YouTubePoller] decision', JSON.stringify({
+            videoId,
+            channelName: activeChannel.name,
+            rawTitle: videoTitle,
+            normalizedTitle: decisionCandidate.normalizedTitle,
+            finalDecision: decisionResult.allow ? 'allow' : 'reject',
+            decisionPath: decisionResult.decisionPath,
+            reasonSummary: decisionResult.reasonSummary,
+            decisionLog: decisionResult.decisionLog,
+        }));
+        if (!decisionResult.allow) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored', {
+                decisionPath: decisionResult.decisionPath,
+                decisionLog: decisionResult.decisionLog,
+            });
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: ${decisionResult.reasonSummary}`,
+                sawFreshVideo: true,
+            };
+        }
+
+        if (settings.videoFilterPrompt?.trim()) {
             const aiDecision = await this.passesAiValidation(video, activeChannel, details, settings, enrichedMetadata);
             if (!aiDecision.allow) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored', {
+                    decisionPath: decisionResult.decisionPath,
+                    decisionLog: {
+                        ...decisionResult.decisionLog,
+                        legacyCustomFilterDecision: aiDecision,
+                    },
+                });
                 return {
                     kind: 'continue',
-                    reason: `${videoTitle}: ${aiDecision.reason || 'skipped by narrative-content validation filter'}`,
+                    reason: `${videoTitle}: ${aiDecision.reason || 'rejected by custom AI filter prompt'}`,
                     sawFreshVideo: true,
                 };
             }
         }
 
+        const dedupResult = await checkPromoDuplicate(
+            decisionCandidate,
+            settings.trustedSupportingChannels?.includes(activeChannel.channelId) === true,
+            enrichedMetadata.tmdbMatch ? `${enrichedMetadata.tmdbMatch.mediaType}:${enrichedMetadata.tmdbMatch.tmdbId}` : undefined
+        );
+        console.log('[YouTubePoller] dedup', JSON.stringify({
+            videoId,
+            duplicateStatus: dedupResult.duplicateStatus,
+            dedupFingerprint: dedupResult.dedupFingerprint,
+            matchedCanonicalVideoId: dedupResult.matchedCanonicalVideoId,
+            reasonSummary: dedupResult.reasonSummary,
+        }));
+        if (dedupResult.duplicateStatus === 'DUPLICATE_SKIP') {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored', {
+                decisionPath: decisionResult.decisionPath,
+                promoFingerprint: dedupResult.dedupFingerprint,
+                duplicateOfVideoId: dedupResult.matchedCanonicalVideoId,
+                decisionLog: {
+                    ...decisionResult.decisionLog,
+                    dedup: dedupResult,
+                },
+            });
+            await recordDuplicateRelationship(dedupResult.dedupFingerprint, videoId);
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: skipped as duplicate of ${dedupResult.matchedCanonicalVideoId}`,
+                sawFreshVideo: true,
+            };
+        }
+
         if (targetPlatforms.length === 0) {
-            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted');
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted', {
+                decisionPath: decisionResult.decisionPath,
+                promoFingerprint: dedupResult.dedupFingerprint,
+                decisionLog: {
+                    ...decisionResult.decisionLog,
+                    dedup: dedupResult,
+                },
+            });
+            await recordAcceptedPromoFingerprint(
+                decisionCandidate,
+                dedupResult.dedupFingerprint,
+                dedupResult.sourcePriorityScore,
+                enrichedMetadata.tmdbMatch ? `${enrichedMetadata.tmdbMatch.mediaType}:${enrichedMetadata.tmdbMatch.tmdbId}` : undefined
+            );
             return {
                 kind: 'return',
                 sawFreshVideo: true,
@@ -1012,18 +1141,6 @@ export class YouTubePollerService {
                 }
             }
 
-            if (aiValidationDeferred) {
-                const aiDecision = await this.passesAiValidation(video, activeChannel, details, settings, enrichedMetadata);
-                if (!aiDecision.allow) {
-                    await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
-                    return {
-                        kind: 'continue',
-                        reason: `${videoTitle}: ${aiDecision.reason || 'skipped by narrative-content validation filter'}`,
-                        sawFreshVideo: true,
-                    };
-                }
-            }
-
             const captions = await this.generateCaptions(video, details, settings, enrichedMetadata, targetPlatforms);
             const playlists = await this.detectPlaylists(video, details, settings, enrichedMetadata, activeChannel);
             const youtubeMetadata =
@@ -1098,7 +1215,20 @@ export class YouTubePollerService {
             );
 
             if (publishResult.publishedPlatforms.length > 0) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted');
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted', {
+                    decisionPath: decisionResult.decisionPath,
+                    promoFingerprint: dedupResult.dedupFingerprint,
+                    decisionLog: {
+                        ...decisionResult.decisionLog,
+                        dedup: dedupResult,
+                    },
+                });
+                await recordAcceptedPromoFingerprint(
+                    decisionCandidate,
+                    dedupResult.dedupFingerprint,
+                    dedupResult.sourcePriorityScore,
+                    enrichedMetadata.tmdbMatch ? `${enrichedMetadata.tmdbMatch.mediaType}:${enrichedMetadata.tmdbMatch.tmdbId}` : undefined
+                );
                 await notificationService.notifyUser({
                     title: 'New Trailer Published',
                     message: `${video.title} was posted to ${publishResult.publishedPlatforms.join(', ')}.`,
@@ -1125,7 +1255,14 @@ export class YouTubePollerService {
             }
 
             if (publishResult.failedPlatforms.length > 0) {
-                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
+                await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed', {
+                    decisionPath: decisionResult.decisionPath,
+                    promoFingerprint: dedupResult.dedupFingerprint,
+                    decisionLog: {
+                        ...decisionResult.decisionLog,
+                        dedup: dedupResult,
+                    },
+                });
                 return {
                     kind: 'return',
                     sawFreshVideo: true,
@@ -1142,7 +1279,14 @@ export class YouTubePollerService {
                 };
             }
 
-            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed');
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed', {
+                decisionPath: decisionResult.decisionPath,
+                promoFingerprint: dedupResult.dedupFingerprint,
+                decisionLog: {
+                    ...decisionResult.decisionLog,
+                    dedup: dedupResult,
+                },
+            });
             return {
                 kind: 'return',
                 sawFreshVideo: true,
@@ -2025,12 +2169,22 @@ Respond ONLY as strict JSON:
         channelId: string,
         title: string,
         publishedAt: Date,
-        status: FeedItemStatus
+        status: FeedItemStatus,
+        extras?: {
+            decisionPath?: string;
+            promoFingerprint?: string;
+            duplicateOfVideoId?: string;
+            decisionLog?: Record<string, unknown>;
+        }
     ) {
         const supportsStatus = await hasFeedItemStatusColumn();
         const baseData = {
             title,
             publishedAt,
+            ...(extras?.decisionPath ? { decisionPath: extras.decisionPath } : {}),
+            ...(extras?.promoFingerprint ? { promoFingerprint: extras.promoFingerprint } : {}),
+            ...(extras?.duplicateOfVideoId ? { duplicateOfVideoId: extras.duplicateOfVideoId } : {}),
+            ...(extras?.decisionLog ? { decisionLog: extras.decisionLog as any } : {}),
         };
 
         await prisma.feedItem.upsert({

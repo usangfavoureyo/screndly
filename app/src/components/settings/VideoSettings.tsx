@@ -10,6 +10,7 @@ import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/mod
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { PageLoader, RedSpinner } from '../PageLoader';
+import { apiClient } from '../../lib/api/client';
 
 const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
 const DEFAULT_VIDEO_AGE_GATE = '24';
@@ -24,12 +25,20 @@ interface VideoSettingsProps {
   onBack: () => void;
 }
 
+interface TrustedChannelOption {
+  id: string;
+  channelId: string;
+  name: string;
+  status: string;
+}
+
 export function VideoSettings({ settings, updateSetting, updateSettings, onBack }: VideoSettingsProps) {
   const [pollInterval, setPollInterval] = useState(2);
   const [isPolling, setIsPolling] = useState(false);
   const [youtubePlaylists, setYouTubePlaylists] = useState<YouTubePlaylist[]>([]);
   const [isLoadingYouTubePlaylists, setIsLoadingYouTubePlaylists] = useState(false);
   const [youtubePlaylistsError, setYouTubePlaylistsError] = useState('');
+  const [availableChannels, setAvailableChannels] = useState<TrustedChannelOption[]>([]);
   const migratedLegacyPlaylistsRef = useRef(false);
 
   const selectedYouTubePlaylists = Array.isArray(settings.videoYoutubeSelectedPlaylists)
@@ -79,6 +88,22 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
 
   useEffect(() => {
     void loadYouTubePlaylists();
+  }, []);
+
+  useEffect(() => {
+    const loadChannels = async () => {
+      try {
+        const response = await apiClient.get<TrustedChannelOption[]>('/api/channels');
+        if (response.success && Array.isArray(response.data)) {
+          setAvailableChannels(response.data);
+        }
+      } catch (error) {
+        console.error('Failed to load channels for trusted support settings', error);
+        setAvailableChannels([]);
+      }
+    };
+
+    void loadChannels();
   }, []);
 
   useEffect(() => {
@@ -225,6 +250,22 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
     futureOnlySinceDate && !Number.isNaN(futureOnlySinceDate.getTime())
       ? futureOnlySinceDate.toLocaleString()
       : '';
+  const trustedSupportingChannels = Array.isArray(settings.trustedSupportingChannels)
+    ? settings.trustedSupportingChannels
+    : [];
+
+  const toggleTrustedChannel = (channelId: string, checked: boolean) => {
+    const nextTrusted = checked
+      ? Array.from(new Set([...trustedSupportingChannels, channelId]))
+      : trustedSupportingChannels.filter((value: string) => value !== channelId);
+
+    updateSetting('trustedSupportingChannels', nextTrusted);
+    toast.success(
+      checked
+        ? 'Trusted supporting channel added'
+        : 'Trusted supporting channel removed'
+    );
+  };
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -318,6 +359,113 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
                 placeholder="US,UK,CA"
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
               />
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Allowed Regions</Label>
+              <Input
+                value={settings.allowedRegions ?? settings.regionFilter ?? ''}
+                onFocus={() => haptics.light()}
+                onChange={(e) => {
+                  haptics.light();
+                  updateSettings({
+                    allowedRegions: e.target.value,
+                    regionFilter: e.target.value,
+                  });
+                }}
+                placeholder="US, UK, Korea, Hong Kong"
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+              />
+            </div>
+
+            <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <Input
+                  type="checkbox"
+                  id="strict-region-mode"
+                  checked={settings.strictRegionMode === true}
+                  onChange={(e) => {
+                    haptics.light();
+                    updateSetting('strictRegionMode', e.target.checked);
+                  }}
+                  className="w-4 h-4 border-gray-300 dark:border-[#333333] accent-black dark:accent-white mt-0.5"
+                />
+                <div>
+                  <Label htmlFor="strict-region-mode" className="text-gray-900 dark:text-white cursor-pointer">Strict Region Mode</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                    Only allow titles that directly match your selected regions. Disables premium and global exception logic.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Input
+                  type="checkbox"
+                  id="allow-premium-exceptions"
+                  checked={settings.allowPremiumGlobalExceptions === true}
+                  onChange={(e) => {
+                    haptics.light();
+                    updateSetting('allowPremiumGlobalExceptions', e.target.checked);
+                  }}
+                  className="w-4 h-4 border-gray-300 dark:border-[#333333] accent-black dark:accent-white mt-0.5"
+                />
+                <div>
+                  <Label htmlFor="allow-premium-exceptions" className="text-gray-900 dark:text-white cursor-pointer">Allow Premium Global Exceptions</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                    Allows selected premium distributor and platform-backed titles outside your standard region filter.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <Input
+                  type="checkbox"
+                  id="exclude-dub-imports"
+                  checked={settings.excludeDubOnlyImports !== false}
+                  onChange={(e) => {
+                    haptics.light();
+                    updateSetting('excludeDubOnlyImports', e.target.checked);
+                  }}
+                  className="w-4 h-4 border-gray-300 dark:border-[#333333] accent-black dark:accent-white mt-0.5"
+                />
+                <div>
+                  <Label htmlFor="exclude-dub-imports" className="text-gray-900 dark:text-white cursor-pointer">Exclude Dub-only Imports</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                    Blocks titles that only appear English because of dubbing rather than original or genuine English-speaking release intent.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Trusted Supporting Channels</Label>
+              <div className="mt-2 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 space-y-2">
+                {availableChannels.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-[#9CA3AF]">
+                    No channels available yet. Add channels on the Channels page to manage trusted support signals here.
+                  </p>
+                ) : availableChannels.map((channel) => (
+                  <label key={channel.id} className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-[#333333] px-3 py-3 cursor-pointer">
+                    <Checkbox
+                      checked={trustedSupportingChannels.includes(channel.channelId)}
+                      onCheckedChange={(checked) => toggleTrustedChannel(channel.channelId, checked === true)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm text-gray-900 dark:text-white">{channel.name}</span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF] uppercase">
+                          {channel.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1 break-all">{channel.channelId}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-2">
+                Trusted channels add confidence to detection and dedup source preference, but never bypass filtering.
+              </p>
             </div>
 
             <div>

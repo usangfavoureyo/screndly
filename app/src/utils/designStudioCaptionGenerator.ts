@@ -5,6 +5,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
+import { getCachedAIResponse } from '../lib/ai/cache';
 import { designStudioPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type DesignContentType = 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
@@ -95,7 +96,7 @@ export async function generateDesignStudioCaption(
     content.context,
   ].filter(Boolean);
 
-  const response = await apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', {
+  const requestPayload = {
     fileName: content.title || `${content.contentType} design`,
     fileDescription: descriptionParts.join(' | ') || 'No extra context provided',
     tone: options.tone,
@@ -103,7 +104,15 @@ export async function generateDesignStudioCaption(
     customSystemPrompt: options.prompt,
     customTemperature: options.temperature,
     customMaxTokens: options.maxTokens,
-  });
+  };
+  const { data: response } = await getCachedAIResponse(
+    'caption:design-studio',
+    requestPayload,
+    () => apiClient.post<{ content: string }>('/api/ai/generate/studio-caption', requestPayload),
+    {
+      ttlMs: 24 * 60 * 60 * 1000,
+    },
+  );
 
   if (!response.success || !response.data?.content) {
     console.error('Failed to generate Design Studio caption:', response.error);

@@ -58,6 +58,11 @@ export interface Settings {
   fetchInterval: string;
   postInterval?: string;
   regionFilter: string;
+  allowedRegions?: string;
+  strictRegionMode?: boolean;
+  allowPremiumGlobalExceptions?: boolean;
+  excludeDubOnlyImports?: boolean;
+  trustedSupportingChannels?: string[];
   advancedFilters: string;
   videoAgeGateHours?: string;
   videoBacklogMode?: string;
@@ -358,6 +363,11 @@ function getDefaultSettings(): Settings {
     fetchInterval: '10',
     postInterval: '10',
     regionFilter: 'US,UK',
+    allowedRegions: 'US,UK',
+    strictRegionMode: false,
+    allowPremiumGlobalExceptions: false,
+    excludeDubOnlyImports: true,
+    trustedSupportingChannels: [],
     advancedFilters: 'trailer, official, teaser',
     videoAgeGateHours: '24',
     videoBacklogMode: 'process-backlog',

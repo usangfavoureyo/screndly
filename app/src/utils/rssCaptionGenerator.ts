@@ -4,6 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
+import { getCachedAIResponse } from '../lib/ai/cache';
 import { captionOptimizer } from '../lib/optimization';
 import { rssPromptDefaults } from '../config/cultureCravePromptDefaults';
 
@@ -51,7 +52,7 @@ export async function generateRSSCaption(
   const options = getRSSCaptionSettings(settings);
 
   try {
-    const response = await apiClient.post<{ content: string }>('/api/ai/generate/rss-caption', {
+    const requestPayload = {
       articleTitle: article.title,
       feedName: article.feedName || 'RSS Feed',
       summary: article.content || article.description,
@@ -59,7 +60,15 @@ export async function generateRSSCaption(
       model: options.model,
       customSystemPrompt: buildSystemPrompt(options),
       customTemperature: options.temperature,
-    });
+    };
+    const { data: response } = await getCachedAIResponse(
+      'caption:rss',
+      requestPayload,
+      () => apiClient.post<{ content: string }>('/api/ai/generate/rss-caption', requestPayload),
+      {
+        ttlMs: 24 * 60 * 60 * 1000,
+      },
+    );
 
     if (!response.success || !response.data?.content) {
       throw new Error(response.error?.message || 'Failed to generate RSS caption');

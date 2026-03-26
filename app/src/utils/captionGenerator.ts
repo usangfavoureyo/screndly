@@ -4,6 +4,7 @@
 
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
+import { getCachedAIResponse } from '../lib/ai/cache';
 
 export type PlatformName = 'YouTube' | 'X' | 'Threads' | 'Instagram' | 'TikTok' | 'Facebook' | 'Pinterest';
 
@@ -74,14 +75,22 @@ async function generateCaptionForPlatform(
   platform: PlatformName,
   settings: VideoCaptionSettings
 ): Promise<string> {
-  const response = await apiClient.post<{ content: string }>('/api/ai/generate/youtube-caption', {
+  const requestPayload = {
     videoTitle: video.title,
     channelName: video.channelName,
     description: video.description || '',
     platform,
     model: settings.model,
     customSystemPrompt: settings.prompt,
-  });
+  };
+  const { data: response } = await getCachedAIResponse(
+    'caption:youtube',
+    requestPayload,
+    () => apiClient.post<{ content: string }>('/api/ai/generate/youtube-caption', requestPayload),
+    {
+      ttlMs: 24 * 60 * 60 * 1000,
+    },
+  );
 
   if (!response.success || !response.data?.content) {
     throw new Error(response.error?.message || `Failed to generate ${platform} caption`);

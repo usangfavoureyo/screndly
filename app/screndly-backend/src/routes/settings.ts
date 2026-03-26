@@ -34,6 +34,11 @@ const SETTING_LABEL_OVERRIDES: Record<string, string> = {
     postInterval: 'Post interval',
     advancedFilters: 'Trailer keywords',
     regionFilter: 'Region filter',
+    allowedRegions: 'Allowed regions',
+    strictRegionMode: 'Strict region mode',
+    allowPremiumGlobalExceptions: 'Premium global exceptions',
+    excludeDubOnlyImports: 'Exclude dub-only imports',
+    trustedSupportingChannels: 'Trusted supporting channels',
     videoAgeGateHours: 'Upload age gate',
     videoBacklogMode: 'Backlog mode',
     videoFutureOnlySince: 'Future-only cutoff',
@@ -152,6 +157,11 @@ function getSettingsSectionLabel(key: string): string {
         || key === 'postInterval'
         || key === 'advancedFilters'
         || key === 'regionFilter'
+        || key === 'allowedRegions'
+        || key === 'strictRegionMode'
+        || key === 'allowPremiumGlobalExceptions'
+        || key === 'excludeDubOnlyImports'
+        || key === 'trustedSupportingChannels'
         || key === 'excludeShorts'
         || key.startsWith('thumbnailConfig_')
     ) {

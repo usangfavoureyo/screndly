@@ -5,6 +5,7 @@
 import { apiClient } from '../lib/api/client';
 import { captionOptimizer } from '../lib/optimization';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
+import { getCachedAIResponse } from '../lib/ai/cache';
 import { getDaysUntilCalendarDate } from './calendarDate';
 import { tmdbPromptDefaults } from '../config/cultureCravePromptDefaults';
 
@@ -79,6 +80,25 @@ function buildSystemPrompt(options: CaptionGenerationOptions): string {
   ].join('\n');
 }
 
+function getTMDbCaptionCacheTtlMs(): number {
+  try {
+    const saved = localStorage.getItem('screndly_tmdb_settings');
+    if (!saved) {
+      return 24 * 60 * 60 * 1000;
+    }
+
+    const parsed = JSON.parse(saved);
+    const days = Number(parsed.captionCacheTTL);
+    if (!Number.isFinite(days) || days <= 0) {
+      return 24 * 60 * 60 * 1000;
+    }
+
+    return days * 24 * 60 * 60 * 1000;
+  } catch {
+    return 24 * 60 * 60 * 1000;
+  }
+}
+
 export function getTMDbCaptionSettings(feedType: FeedType): CaptionGenerationOptions {
   let settings: Record<string, any> = {};
 
@@ -109,7 +129,7 @@ export async function generateTMDbCaption(
 
   try {
     const captionPlatform = resolveCaptionPlatform(item.platforms);
-    const response = await apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', {
+    const requestPayload = {
       title: item.title,
       mediaType: item.mediaType,
       temporalTag: getTemporalTag(feedType),
@@ -123,7 +143,15 @@ export async function generateTMDbCaption(
       platform: captionPlatform,
       model: options.model,
       customSystemPrompt: buildSystemPrompt(options),
-    });
+    };
+    const { data: response } = await getCachedAIResponse(
+      'caption:tmdb',
+      requestPayload,
+      () => apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', requestPayload),
+      {
+        ttlMs: getTMDbCaptionCacheTtlMs(),
+      },
+    );
 
     if (!response.success || !response.data?.content) {
       throw new Error(response.error?.message || 'Failed to generate TMDb caption');
