@@ -65,14 +65,30 @@
   ],
   "shortcuts": [
     {
-      "name": "Dashboard",
-      "short_name": "Dashboard",
-      "description": "View main dashboard",
-      "url": "/?page=dashboard",
+      "name": "Post",
+      "short_name": "Post",
+      "description": "Open post creation",
+      "url": "/create",
       "icons": [
         {
           "src": "/icons/shortcut-dashboard-96x96.png",
-          "sizes": "96x96"
+          "sizes": "96x96",
+          "type": "image/png",
+          "purpose": "any"
+        }
+      ]
+    },
+    {
+      "name": "Feeds",
+      "short_name": "Feeds",
+      "description": "Open feeds hub",
+      "url": "/feeds",
+      "icons": [
+        {
+          "src": "/icons/shortcut-feeds-96x96.png",
+          "sizes": "96x96",
+          "type": "image/png",
+          "purpose": "any"
         }
       ]
     },
@@ -80,23 +96,13 @@
       "name": "Video Studio",
       "short_name": "Studio",
       "description": "Open Video Studio",
-      "url": "/?page=video-studio",
+      "url": "/video-studio",
       "icons": [
         {
           "src": "/icons/shortcut-studio-96x96.png",
-          "sizes": "96x96"
-        }
-      ]
-    },
-    {
-      "name": "TMDb Feeds",
-      "short_name": "Feeds",
-      "description": "View TMDb Feeds",
-      "url": "/?page=tmdb-feeds",
-      "icons": [
-        {
-          "src": "/icons/shortcut-feeds-96x96.png",
-          "sizes": "96x96"
+          "sizes": "96x96",
+          "type": "image/png",
+          "purpose": "any"
         }
       ]
     }

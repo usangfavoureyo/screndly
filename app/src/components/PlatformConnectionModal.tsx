@@ -14,6 +14,7 @@ import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 import { apiClient } from '../lib/api/client';
+import { getToken } from '../lib/api/authToken';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
@@ -29,6 +30,7 @@ export function PlatformConnectionModal({
   const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
   const STATE_STORAGE_KEY = 'screndly_oauth_state';
   const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
+  const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
   const [errorMessage, setErrorMessage] = useState('');
@@ -151,10 +153,14 @@ export function PlatformConnectionModal({
       );
 
       if (response.success && response.data?.url) {
+        const authToken = getToken();
         const oauthUrl = new URL(response.data.url);
         const oauthState = oauthUrl.searchParams.get('state');
         localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
         sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+        if (authToken) {
+          localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
+        }
         if (oauthState) {
           localStorage.setItem(STATE_STORAGE_KEY, oauthState);
           sessionStorage.setItem(STATE_STORAGE_KEY, oauthState);

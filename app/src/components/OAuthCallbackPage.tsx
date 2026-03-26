@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { getAuthHeaders } from '../lib/api/authToken';
+import { getAuthHeaders, SESSION_ACTIVE_KEY, TOKEN_KEY } from '../lib/api/authToken';
 import { getApiUrl } from '../lib/api/config';
 import { CheckCircle, XCircle } from 'lucide-react';
 import { Button } from './ui/button';
@@ -13,6 +13,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
     const STATE_STORAGE_KEY = 'screndly_oauth_state';
     const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
+    const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
     const CALLBACK_TIMEOUT_MS = 60000;
@@ -37,6 +38,21 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             sessionStorage.removeItem(STATE_STORAGE_KEY);
             localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+            localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
+        };
+
+        const restoreAuthSessionForMobileReturn = () => {
+            if (sessionStorage.getItem(TOKEN_KEY)) {
+                return;
+            }
+
+            const pendingToken = localStorage.getItem(OAUTH_RETURN_TOKEN_KEY);
+            if (!pendingToken) {
+                return;
+            }
+
+            sessionStorage.setItem(TOKEN_KEY, pendingToken);
+            sessionStorage.setItem(SESSION_ACTIVE_KEY, 'true');
         };
 
         const decodeJwtPayload = (value: string): string | null => {
@@ -98,10 +114,8 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             const code = urlParams.get('code') || hashParams.get('code');
             const rawState = urlParams.get('state') || hashParams.get('state');
             const storedState = getStoredState();
-            // Use the exact signed state captured before redirect when available.
-            // Some providers can round-trip state in a way that breaks signature
-            // verification even though the original value is still available locally.
-            const effectiveState = storedState || rawState;
+            const effectiveState = rawState || storedState;
+            restoreAuthSessionForMobileReturn();
             const platform = getStoredPlatform() || decodePlatformFromState(effectiveState) || decodePlatformFromState(rawState);
             const codeVerifier = getStoredCodeVerifier();
 
@@ -131,6 +145,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                         'Content-Type': 'application/json',
                         ...getAuthHeaders(),
                     },
+                    cache: 'no-store',
                     signal: controller.signal,
                     body: JSON.stringify({
                         platform,
