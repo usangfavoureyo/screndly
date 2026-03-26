@@ -274,42 +274,41 @@ export function ComposeEditorPage({
     description: 'You have unsaved changes in this post editor. Leaving now will lose them.',
   });
 
-  useEffect(() => {
-    if (!registerCloseRequestHandler) {
-      return;
+  const handleEditorCloseRequest = useCallback(() => {
+    if (isScheduleDatePickerOpen || isScheduleTimePickerOpen) {
+      return true;
     }
 
-    registerCloseRequestHandler(() => {
-      if (isScheduleDatePickerOpen || isScheduleTimePickerOpen) {
-        return true;
-      }
+    if (isScheduleOpen) {
+      setIsScheduleOpen(false);
+      return true;
+    }
 
-      if (isScheduleOpen) {
-        setIsScheduleOpen(false);
-        return true;
-      }
-
-      if (!hasUnsavedChanges) {
-        return false;
-      }
-
-      return unsavedChangesGuard.guardAction(() => {
-        onNavigate(previousPage || 'create');
-      });
+    return unsavedChangesGuard.guardAction(() => {
+      onNavigate(previousPage || 'create');
     });
-
-    return () => {
-      registerCloseRequestHandler(null);
-    };
   }, [
-    hasUnsavedChanges,
     isScheduleDatePickerOpen,
     isScheduleOpen,
     isScheduleTimePickerOpen,
     onNavigate,
     previousPage,
-    registerCloseRequestHandler,
     unsavedChangesGuard,
+  ]);
+
+  useEffect(() => {
+    if (!registerCloseRequestHandler) {
+      return;
+    }
+
+    registerCloseRequestHandler(handleEditorCloseRequest);
+
+    return () => {
+      registerCloseRequestHandler(null);
+    };
+  }, [
+    handleEditorCloseRequest,
+    registerCloseRequestHandler,
   ]);
 
   useEffect(() => {
@@ -387,11 +386,7 @@ export function ComposeEditorPage({
   useBackEntry({
     enabled: hasUnsavedChanges && !isScheduleInteractionActive && !unsavedChangesGuard.isPromptOpen,
     priority: 100,
-    onBack: () => {
-      return unsavedChangesGuard.guardAction(() => {
-        onNavigate(previousPage || 'create');
-      });
-    },
+    onBack: () => handleEditorCloseRequest(),
   });
 
   useEffect(() => {
@@ -923,11 +918,7 @@ export function ComposeEditorPage({
     <div className="space-y-6">
       <div className="mb-4 flex items-start gap-4">
         <BackIconButton
-          onClick={() => {
-            unsavedChangesGuard.guardAction(() => {
-              onNavigate(previousPage || 'create');
-            });
-          }}
+          onClick={handleEditorCloseRequest}
           className="mt-1 -ml-2 p-2 text-gray-900 hover:text-[#ec1e24] dark:text-white"
         />
         <div className="flex-1">

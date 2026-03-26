@@ -13,6 +13,8 @@ import type {
 const APPROVED_PLATFORMS = ['Netflix', 'Prime Video', 'Amazon MGM', 'Apple TV+', 'Disney+', 'Hulu', 'Max', 'HBO'];
 const APPROVED_DISTRIBUTORS = ['Lionsgate', 'A24', 'Neon', 'Sony Pictures', 'Universal Pictures', 'Warner Bros.', 'Paramount', '20th Century Studios', 'Well Go USA', 'Amazon MGM Studios', 'Apple Studios', 'Netflix', 'Disney', 'Focus Features', 'Bleecker Street', 'Roadside Attractions'];
 const BLOCKED_GENRES = new Set(['documentary', 'reality', 'talk', 'news', 'war & politics']);
+const MOVIE_POST_RELEASE_CATALOG_WINDOW_DAYS = 90;
+const TV_POST_RELEASE_CATALOG_WINDOW_DAYS = 180;
 
 export function buildDetectionSettings(settings: LoadedVideoSettings): DetectionSettings {
     const allowedRegionsList = (settings.allowedRegions || settings.regionFilter || '')
@@ -189,6 +191,64 @@ function buildCandidate(base: PollingCandidate, metadata: EnrichedVideoMetadata,
     };
 }
 
+function parseIsoDate(value?: string): Date | undefined {
+    if (!value) {
+        return undefined;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+}
+
+function daysBetween(later: Date, earlier: Date): number {
+    return (later.getTime() - earlier.getTime()) / (1000 * 60 * 60 * 24);
+}
+
+function hasPlatformAvailabilityMarketing(candidate: PollingCandidate, metadata: EnrichedVideoMetadata): boolean {
+    const haystack = [
+        candidate.rawTitle,
+        candidate.description,
+        candidate.channelName,
+        ...(metadata.tmdbMatch?.networks || []),
+        ...(metadata.tmdbMatch?.productionNames || []),
+    ].join('\n');
+
+    return /\b(now streaming|streaming now|now on|only on|on hulu|on netflix|on disney\+|on max|on prime video|on apple tv\+|watch now)\b/i.test(haystack);
+}
+
+export function getPostReleaseCatalogRejectionReason(candidate: EnrichedCandidate): string | undefined {
+    const match = candidate.metadata.tmdbMatch;
+    if (!match?.releaseDate) {
+        return undefined;
+    }
+
+    const releaseDate = parseIsoDate(match.releaseDate);
+    if (!releaseDate) {
+        return undefined;
+    }
+
+    const ageInDays = daysBetween(candidate.publishedAt, releaseDate);
+    if (ageInDays <= 0) {
+        return undefined;
+    }
+
+    const hasPlatformSupport = candidate.platformSignals.length > 0 || hasPlatformAvailabilityMarketing(candidate, candidate.metadata);
+    const strongCatalogSignal = candidate.catalogImportLikelihood >= 0.45 || /\breleased\b/i.test(match.releaseStatus || '');
+    if (!hasPlatformSupport || !strongCatalogSignal) {
+        return undefined;
+    }
+
+    if (match.mediaType === 'movie' && ageInDays > MOVIE_POST_RELEASE_CATALOG_WINDOW_DAYS) {
+        return `Post-release catalog/platform trailer for an older movie (${Math.floor(ageInDays)} days after release)`;
+    }
+
+    if (match.mediaType === 'tv' && !match.seasonNumber && ageInDays > TV_POST_RELEASE_CATALOG_WINDOW_DAYS) {
+        return `Post-release platform promo for an older TV title (${Math.floor(ageInDays)} days after release)`;
+    }
+
+    return undefined;
+}
+
 export async function decideYouTubeCandidate(
     base: PollingCandidate,
     metadata: EnrichedVideoMetadata,
@@ -227,9 +287,11 @@ export async function decideYouTubeCandidate(
         && candidate.metadata.regionAllowed
         && candidate.metadataConfidence >= 0.45;
     const needsGlobalException = !englishEligible;
+    const postReleaseCatalogReason = getPostReleaseCatalogRejectionReason(candidate);
     const clearReject = (!englishEligible && !detectionSettings.allowPremiumGlobalExceptions)
         || candidate.metadataConfidence < 0.25
-        || (detectionSettings.excludeDubOnlyImports && candidate.dubOnlyLikelihood >= 0.7);
+        || (detectionSettings.excludeDubOnlyImports && candidate.dubOnlyLikelihood >= 0.7)
+        || Boolean(postReleaseCatalogReason);
 
     if (clearReject) {
         const score = buildScoreResult(candidate, detectionSettings);
@@ -239,11 +301,12 @@ export async function decideYouTubeCandidate(
             decisionPath: 'rejected',
             score,
             hardExclusionReasons: [],
-            reasonSummary: 'Rejected by deterministic language, dub-only, or metadata-confidence rules',
+            reasonSummary: postReleaseCatalogReason || 'Rejected by deterministic language, dub-only, or metadata-confidence rules',
             decisionLog: {
                 metadataConfidence: candidate.metadataConfidence,
                 dubOnlyLikelihood: candidate.dubOnlyLikelihood,
                 catalogImportLikelihood: candidate.catalogImportLikelihood,
+                postReleaseCatalogReason,
             },
         };
     }

@@ -158,6 +158,57 @@ test('allows global exception only for strong non-English global title', async (
     assert.equal(result.preLLMDecision, 'SEND_TO_LLM');
 });
 
+test('rejects older platform-drop movie trailer after release window', async () => {
+    const result = await decideYouTubeCandidate(
+        buildCandidate('The Testament of Ann Lee | Trailer | Hulu', 'UC_HULU', 'Hulu'),
+        buildMetadata({
+            tmdbMatch: {
+                ...buildMetadata().tmdbMatch,
+                title: 'The Testament of Ann Lee',
+                releaseDate: '2025-12-15',
+                year: 2025,
+                productionNames: ['Hulu'],
+                distributors: [],
+                networks: ['Hulu'],
+                popularity: 18,
+                voteCount: 210,
+                releaseStatus: 'Released',
+            },
+        }),
+        buildSettings()
+    );
+
+    assert.equal(result.allow, false);
+    assert.equal(result.preLLMDecision, 'REJECT_PRELLM');
+    assert.match(result.reasonSummary, /post-release catalog\/platform trailer/i);
+});
+
+test('keeps new season trailer eligible when season context is present', async () => {
+    const result = await decideYouTubeCandidate(
+        {
+            ...buildCandidate('Running Point | Season 2 Official Trailer | Netflix', 'UC_NETFLIX', 'Netflix'),
+            mediaTypeGuess: 'tv',
+            seasonNumber: 2,
+        },
+        buildMetadata({
+            tmdbMatch: {
+                ...buildMetadata().tmdbMatch,
+                mediaType: 'tv',
+                title: 'Running Point',
+                releaseDate: '2026-05-15',
+                year: 2026,
+                seasonNumber: 2,
+                productionNames: ['Netflix'],
+                distributors: ['Netflix'],
+                networks: ['Netflix'],
+            },
+        }),
+        buildSettings()
+    );
+
+    assert.equal(result.allow, true);
+});
+
 test('promo fingerprint keeps teaser and trailer distinct', () => {
     const teaser = buildPromoFingerprint(buildCandidate('Example Title | Official Teaser'));
     const trailer = buildPromoFingerprint(buildCandidate('Example Title | Official Trailer'));
