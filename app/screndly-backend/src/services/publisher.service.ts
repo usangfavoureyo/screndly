@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { findPlatformConnection } from '../lib/platformConnections';
 import path from 'path';
 import sharp from 'sharp';
+import { createHash } from 'crypto';
 import { xService } from './platforms/x';
 import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
@@ -79,6 +80,11 @@ function describePublishItem(content: PublishContent, localVideoFile?: string | 
 
     return 'Untitled item';
 }
+
+const ACTIVE_X_PUBLISHES = new Map<string, Promise<PublishResult>>();
+const X_PUBLISH_LEDGER_SERVICE = 'publisher';
+const X_PUBLISH_LEDGER_CATEGORY = 'x_publish_success';
+const X_PUBLISH_LEDGER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export class PublisherService {
     private normalizeRemoteMediaUrl(value: string): string {
@@ -170,6 +176,97 @@ export class PublisherService {
             .slice(0, this.getPlatformImageLimit(platform));
 
         return Promise.all(rawUrls.map((value) => getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(value))));
+    }
+
+    private async buildMediaFingerprintParts(
+        resolvedImageUrls: string[],
+        videoSource?: string | null
+    ): Promise<string[]> {
+        const parts = [...resolvedImageUrls];
+
+        if (videoSource) {
+            if (/^https?:\/\//i.test(videoSource)) {
+                parts.push(this.normalizeRemoteMediaUrl(videoSource));
+            } else {
+                try {
+                    const stats = await fs.stat(videoSource);
+                    parts.push(`${path.resolve(videoSource)}:${stats.size}:${Math.trunc(stats.mtimeMs)}`);
+                } catch {
+                    parts.push(path.resolve(videoSource));
+                }
+            }
+        }
+
+        return parts;
+    }
+
+    private async buildXPublishFingerprint(
+        content: PublishContent,
+        resolvedImageUrls: string[],
+        videoSource?: string | null
+    ): Promise<string> {
+        const mediaParts = await this.buildMediaFingerprintParts(resolvedImageUrls, videoSource);
+        const payload = JSON.stringify({
+            platform: 'X',
+            text: content.text.trim(),
+            title: content.title?.trim() || '',
+            description: content.description?.trim() || '',
+            link: content.link?.trim() || '',
+            media: mediaParts,
+        });
+
+        return createHash('sha1').update(payload).digest('hex');
+    }
+
+    private async findRecentXPublish(fingerprint: string): Promise<PublishResult | null> {
+        const logs = await prisma.log.findMany({
+            where: {
+                service: X_PUBLISH_LEDGER_SERVICE,
+                timestamp: { gte: new Date(Date.now() - X_PUBLISH_LEDGER_WINDOW_MS) },
+            },
+            orderBy: { timestamp: 'desc' },
+            take: 100,
+        });
+
+        for (const log of logs) {
+            const metadata = log.metadata as Record<string, unknown> | null;
+            if (!metadata || metadata.category !== X_PUBLISH_LEDGER_CATEGORY || metadata.fingerprint !== fingerprint) {
+                continue;
+            }
+
+            const postId = typeof metadata.postId === 'string' ? metadata.postId : undefined;
+            const postUrl = typeof metadata.postUrl === 'string' ? metadata.postUrl : undefined;
+
+            return {
+                platform: 'X',
+                status: 'posted',
+                id: postId,
+                url: postUrl,
+                postedAt: log.timestamp.toISOString(),
+            };
+        }
+
+        return null;
+    }
+
+    private async recordXPublishSuccess(
+        fingerprint: string,
+        content: PublishContent,
+        result: { postId?: string; postUrl?: string }
+    ): Promise<void> {
+        await prisma.log.create({
+            data: {
+                level: 'info',
+                service: X_PUBLISH_LEDGER_SERVICE,
+                message: `X publish succeeded: ${describePublishItem(content)}`,
+                metadata: {
+                    category: X_PUBLISH_LEDGER_CATEGORY,
+                    fingerprint,
+                    postId: result.postId || null,
+                    postUrl: result.postUrl || null,
+                } as any,
+            },
+        });
     }
 
     private async getResolvedRemoteCoverImageUrl(content: PublishContent): Promise<string | undefined> {
@@ -395,21 +492,66 @@ export class PublisherService {
                         case 'X':
                             if (connection.accessToken) {
                                 const xVideoSource = localVideoFile || (this.isDirectVideoUrl(directVideoUrl) ? directVideoUrl : null);
-                                const xResult = xVideoSource
-                                    ? await xService.postVideoTweet(platformContent.text, xVideoSource, connection)
-                                    : await xService.postTweet(
-                                        platformContent.text,
-                                        resolvedImageUrls.length > 0
-                                            ? resolvedImageUrls
-                                            : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : undefined),
-                                        connection
-                                    );
-                                result = {
-                                    platform,
-                                    ...xResult,
-                                    status: xResult.success ? 'posted' : 'failed',
-                                    postedAt: new Date().toISOString()
-                                };
+                                const xFingerprint = await this.buildXPublishFingerprint(
+                                    platformContent,
+                                    resolvedImageUrls.length > 0
+                                        ? resolvedImageUrls
+                                        : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : []),
+                                    xVideoSource
+                                );
+                                const recentXPublish = await this.findRecentXPublish(xFingerprint);
+                                const activeXPublish = ACTIVE_X_PUBLISHES.get(xFingerprint);
+
+                                if (recentXPublish) {
+                                    console.log('[Publisher] Reusing recent successful X publish', {
+                                        fingerprint: xFingerprint,
+                                        postId: recentXPublish.id,
+                                    });
+                                    result = recentXPublish;
+                                    success = true;
+                                    break;
+                                }
+
+                                if (activeXPublish) {
+                                    console.log('[Publisher] Waiting for in-flight X publish', {
+                                        fingerprint: xFingerprint,
+                                    });
+                                    result = await activeXPublish;
+                                    success = result.status === 'posted';
+                                    break;
+                                }
+
+                                const xPublishPromise = (async (): Promise<PublishResult> => {
+                                    const publishResult = xVideoSource
+                                        ? await xService.postVideoTweet(platformContent.text, xVideoSource, connection)
+                                        : await xService.postTweet(
+                                            platformContent.text,
+                                            resolvedImageUrls.length > 0
+                                                ? resolvedImageUrls
+                                                : (mediaFilePath && this.isImage(mediaFilePath) ? [mediaFilePath] : undefined),
+                                            connection
+                                        );
+
+                                    const nextResult: PublishResult = {
+                                        platform,
+                                        ...publishResult,
+                                        status: publishResult.success ? 'posted' : 'failed',
+                                        postedAt: new Date().toISOString()
+                                    };
+
+                                    if (publishResult.success) {
+                                        await this.recordXPublishSuccess(xFingerprint, platformContent, publishResult);
+                                    }
+
+                                    return nextResult;
+                                })();
+
+                                ACTIVE_X_PUBLISHES.set(xFingerprint, xPublishPromise);
+                                try {
+                                    result = await xPublishPromise;
+                                } finally {
+                                    ACTIVE_X_PUBLISHES.delete(xFingerprint);
+                                }
                             }
                             break;
 

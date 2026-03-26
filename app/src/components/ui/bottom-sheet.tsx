@@ -84,6 +84,7 @@ export function BottomSheet({
   const [startY, setStartY] = React.useState(0);
   const [startTime, setStartTime] = React.useState(0);
   const [velocity, setVelocity] = React.useState(0);
+  const backdropTouchStartedRef = React.useRef(false);
   const lastYRef = React.useRef(0);
   const lastTimeRef = React.useRef(0);
   const animationFrameRef = React.useRef<number>();
@@ -393,14 +394,20 @@ export function BottomSheet({
           e.stopPropagation();
         }}
         onTouchStart={(e) => {
+          backdropTouchStartedRef.current = e.target === e.currentTarget;
           e.preventDefault();
           e.stopPropagation();
         }}
+        onTouchCancel={() => {
+          backdropTouchStartedRef.current = false;
+        }}
         onClick={handleBackdropClick}
         onTouchEnd={(e) => {
+          const shouldCloseFromTouch = backdropTouchStartedRef.current && e.target === e.currentTarget;
+          backdropTouchStartedRef.current = false;
           e.preventDefault();
           e.stopPropagation();
-          if (disableBackdropClose) return;
+          if (disableBackdropClose || !shouldCloseFromTouch) return;
           handleClose();
         }}
         aria-hidden="true"
