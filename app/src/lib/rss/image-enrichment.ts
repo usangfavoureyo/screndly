@@ -115,6 +115,34 @@ const STUDIO_NETWORK_MARKERS = [
 ];
 
 const MIN_TITLE_LED_CONFIDENCE_FOR_ARTICLE_HERO = 78;
+const GENERIC_TITLE_TOKENS = new Set([
+  'time',
+  'out',
+  'inside',
+  'after',
+  'before',
+  'home',
+  'away',
+  'next',
+  'last',
+  'first',
+  'second',
+  'one',
+  'day',
+  'night',
+  'summer',
+  'winter',
+  'fall',
+  'spring',
+  'life',
+  'love',
+  'dark',
+  'light',
+  'run',
+  'ride',
+  'dead',
+  'alive',
+]);
 
 function normalizeCandidate(value: string): string {
   return value.replace(/[“”"'`‘’]/g, '').replace(/\s+/g, ' ').trim();
@@ -131,6 +159,69 @@ function normalizeForComparison(value: string): string {
 
 function tokenizeName(value: string): string[] {
   return normalizeForComparison(value).split(' ').filter((part) => part.length >= 2);
+}
+
+function getTitleSpecificity(tokens: string[]): 'generic' | 'medium' | 'specific' {
+  if (tokens.length === 0) return 'generic';
+  const genericTokenCount = tokens.filter((token) => GENERIC_TITLE_TOKENS.has(token) || token.length <= 3).length;
+
+  if (tokens.length === 1) {
+    return tokens[0].length <= 5 ? 'generic' : 'medium';
+  }
+
+  if (tokens.length <= 2 && genericTokenCount >= 1) {
+    return 'generic';
+  }
+
+  if (tokens.length >= 3 || genericTokenCount === 0) {
+    return 'specific';
+  }
+
+  return 'medium';
+}
+
+function hasExactTitleMatch(candidate: string, resultTitle: string): boolean {
+  return normalizeForComparison(candidate) === normalizeForComparison(resultTitle);
+}
+
+function countSharedTokens(left: string, right: string): number {
+  const leftTokens = tokenizeName(left);
+  const rightTokens = new Set(tokenizeName(right));
+  return leftTokens.filter((token) => rightTokens.has(token)).length;
+}
+
+function hasDisqualifyingExtraTokens(candidate: string, resultTitle: string): boolean {
+  const candidateTokens = tokenizeName(candidate);
+  const resultTokens = tokenizeName(resultTitle);
+  if (candidateTokens.length === 0 || resultTokens.length === 0) {
+    return false;
+  }
+
+  const candidateSet = new Set(candidateTokens);
+  const extraTokens = resultTokens.filter((token) => !candidateSet.has(token));
+  const candidateSpecificity = getTitleSpecificity(candidateTokens);
+
+  if (candidateSpecificity === 'generic') {
+    return extraTokens.length > 0;
+  }
+
+  if (candidateTokens.length <= 2) {
+    return extraTokens.length >= 1;
+  }
+
+  return extraTokens.length >= 2;
+}
+
+function shouldRequireStrictExactMatch(candidate: ProjectCandidate): boolean {
+  return getTitleSpecificity(tokenizeName(candidate.name)) === 'generic';
+}
+
+function shouldBlockProjectArtForAmbiguousTitle(
+  candidate: ProjectCandidate,
+  analysis: SubjectMatterAnalysis,
+): boolean {
+  const specificity = getTitleSpecificity(tokenizeName(candidate.name));
+  return specificity === 'generic' && ['announcement', 'casting', 'general', 'quote'].includes(analysis.contextType);
 }
 
 interface CastingContext {
@@ -349,9 +440,13 @@ function scoreProjectLogoImage(result: SerperImageResult, projectTitle: string):
   const title = normalizeForComparison(result.title);
   const url = normalizeForComparison(result.imageUrl);
   const projectTokens = tokenizeName(projectTitle);
+  const exactMatch = hasExactTitleMatch(projectTitle, result.title);
+  const hasBadExtraTokens = hasDisqualifyingExtraTokens(projectTitle, result.title);
 
   let score = 0;
-  if (projectTokens.some((token) => title.includes(token) || url.includes(token))) {
+  if (exactMatch) {
+    score += 95;
+  } else if (projectTokens.some((token) => title.includes(token) || url.includes(token))) {
     score += 60;
   }
 
@@ -363,11 +458,20 @@ function scoreProjectLogoImage(result: SerperImageResult, projectTitle: string):
     score -= 20;
   }
 
+  if (hasBadExtraTokens) {
+    score -= 120;
+  }
+
   score += Math.max(0, 10 - result.position);
   return score;
 }
 
-async function searchProjectLogoImage(projectTitle: string): Promise<EnrichmentResult['images'][number] | null> {
+async function searchProjectLogoImage(
+  projectTitle: string,
+  options?: {
+    requireExactTitle?: boolean;
+  },
+): Promise<EnrichmentResult['images'][number] | null> {
   const queries = [
     `${projectTitle} official logo`,
     `${projectTitle} title logo`,
@@ -383,6 +487,7 @@ async function searchProjectLogoImage(projectTitle: string): Promise<EnrichmentR
           result,
           score: scoreProjectLogoImage(result, projectTitle),
         }))
+        .filter((entry) => !options?.requireExactTitle || hasExactTitleMatch(projectTitle, entry.result.title))
         .filter((entry) => entry.score >= 70)
         .sort((a, b) => b.score - a.score);
 
@@ -468,6 +573,9 @@ function expandCandidateVariants(candidate: string): string[] {
 function scoreTMDbMatch(candidate: ProjectCandidate, result: TMDbSearchImageResult, imageCount: number): number {
   const candidateVariants = expandCandidateVariants(candidate.name).map(normalizeForComparison);
   const normalizedTitle = normalizeForComparison(result.title);
+  const exactMatch = hasExactTitleMatch(candidate.name, result.title);
+  const sharedTokenCount = countSharedTokens(candidate.name, result.title);
+  const hasBadExtraTokens = hasDisqualifyingExtraTokens(candidate.name, result.title);
 
   let score = 0;
   if (candidate.source === 'quoted') score += 30;
@@ -489,6 +597,16 @@ function scoreTMDbMatch(candidate: ProjectCandidate, result: TMDbSearchImageResu
   if (result.poster) score += 15;
   if (result.releaseDate) score += 5;
   if (imageCount === 1 && result.backdrop) score += 25;
+  if (exactMatch) score += 180;
+  if (sharedTokenCount === 1 && tokenizeName(candidate.name).length === 1 && !exactMatch) {
+    score -= 90;
+  }
+  if (hasBadExtraTokens) {
+    score -= 120;
+  }
+  if (shouldRequireStrictExactMatch(candidate) && !exactMatch) {
+    score -= 160;
+  }
   return score;
 }
 
@@ -517,6 +635,10 @@ async function resolveTMDbImages(
       try {
         const results = await searchTMDbProjectImages(variant);
         for (const result of results) {
+          if (shouldBlockProjectArtForAmbiguousTitle(candidate, analysis) && !hasExactTitleMatch(candidate.name, result.title)) {
+            continue;
+          }
+
           const score = scoreTMDbMatch(candidate, result, imageCount);
           if (!bestMatch || score > bestMatch.score) {
             bestMatch = { candidate, result, score };
@@ -554,6 +676,10 @@ async function resolveTMDbImages(
   }
 
   if (!bestMatch || bestMatch.score < 70) {
+    return null;
+  }
+
+  if (shouldBlockProjectArtForAmbiguousTitle(bestMatch.candidate, analysis)) {
     return null;
   }
 
@@ -633,6 +759,13 @@ async function resolveCastingImageSet(
 
   const logoImage = await searchProjectLogoImage(
     projectResult.analysis?.primarySubject || castingContext.projectTitle || analysis.primarySubject.name,
+    {
+      requireExactTitle: shouldRequireStrictExactMatch({
+        name: projectResult.analysis?.primarySubject || castingContext.projectTitle || analysis.primarySubject.name,
+        source: 'analysis_primary',
+        order: 0,
+      }),
+    },
   );
   const projectImage =
     logoImage ||
@@ -677,7 +810,13 @@ async function resolveProjectLogoPair(
   }
 
   const projectTitle = projectResult.analysis?.primarySubject || analysis.primarySubject.name;
-  const logoImage = await searchProjectLogoImage(projectTitle);
+  const logoImage = await searchProjectLogoImage(projectTitle, {
+    requireExactTitle: shouldRequireStrictExactMatch({
+      name: projectTitle,
+      source: 'analysis_primary',
+      order: 0,
+    }),
+  });
   if (!logoImage) {
     return null;
   }
@@ -776,7 +915,17 @@ async function resolveSafeTitleFallback(
     return null;
   }
 
-  const logoImage = await searchProjectLogoImage(primaryProject);
+  if (shouldBlockProjectArtForAmbiguousTitle({ name: primaryProject, source: 'analysis_primary', order: 0 }, analysis)) {
+    return null;
+  }
+
+  const logoImage = await searchProjectLogoImage(primaryProject, {
+    requireExactTitle: shouldRequireStrictExactMatch({
+      name: primaryProject,
+      source: 'analysis_primary',
+      order: 0,
+    }),
+  });
   if (!logoImage) {
     return null;
   }

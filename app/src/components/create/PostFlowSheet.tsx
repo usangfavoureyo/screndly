@@ -34,6 +34,7 @@ export function PostFlowSheet({
 }: PostFlowSheetProps) {
   const [stack, setStack] = useState<PostFlowView[]>(() => buildInitialStack(initialView));
   const closeRequestHandlerRef = useRef<(() => boolean) | null>(null);
+  const internalNavigationLockUntilRef = useRef(0);
   const wasOpenRef = useRef(open);
 
   useLayoutEffect(() => {
@@ -58,8 +59,13 @@ export function PostFlowSheet({
     closeRequestHandlerRef.current = handler;
   }, []);
 
+  const armInternalNavigationLock = useCallback(() => {
+    internalNavigationLockUntilRef.current = Date.now() + 450;
+  }, []);
+
   const navigateWithinSheet = useCallback((page: string) => {
     if (page === 'compose-editor') {
+      armInternalNavigationLock();
       setStack((currentStack) => (
         currentStack[currentStack.length - 1] === 'editor'
           ? currentStack
@@ -69,6 +75,7 @@ export function PostFlowSheet({
     }
 
     if (page === 'compose-activity') {
+      armInternalNavigationLock();
       setStack((currentStack) => {
         const existingIndex = currentStack.lastIndexOf('activity');
         if (existingIndex >= 0) {
@@ -83,7 +90,7 @@ export function PostFlowSheet({
     if (page === 'create') {
       setStack(['overview']);
     }
-  }, []);
+  }, [armInternalNavigationLock]);
 
 
 
@@ -100,6 +107,10 @@ export function PostFlowSheet({
   }, [onOpenChange]);
 
   const handleSheetBackRequest = useCallback(() => {
+    if (Date.now() < internalNavigationLockUntilRef.current) {
+      return true;
+    }
+
     if (stack.length <= 1) {
       return false;
     }

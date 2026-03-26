@@ -7,14 +7,26 @@ import { PostFlowSheet } from '../../components/create/PostFlowSheet';
 vi.mock('../../components/ui/bottom-sheet', () => ({
   BottomSheet: ({
     children,
+    onBackRequest,
     onOpenChange,
     open,
   }: {
     children: ReactNode;
+    onBackRequest?: () => boolean;
     onOpenChange: (open: boolean) => void;
     open: boolean;
   }) => (open ? (
     <div>
+      <button
+        type="button"
+        onClick={() => {
+          if (!onBackRequest?.()) {
+            onOpenChange(false);
+          }
+        }}
+      >
+        Back Request
+      </button>
       <button type="button" onClick={() => onOpenChange(false)}>
         Close Sheet
       </button>
@@ -116,5 +128,24 @@ describe('PostFlowSheet', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Sheet' }));
     expect(handleOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('ignores a stale back request immediately after opening the editor', () => {
+    const handleOpenChange = vi.fn();
+
+    render(
+      <PostFlowSheet
+        open
+        initialView="overview"
+        onOpenChange={handleOpenChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Editor' }));
+    expect(screen.getByText('Editor')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back Request' }));
+    expect(screen.getByText('Editor')).toBeInTheDocument();
+    expect(handleOpenChange).not.toHaveBeenCalled();
   });
 });

@@ -160,4 +160,182 @@ describe('rss image enrichment', () => {
     expect(result.images[0]?.url).toBe('https://serper.example/project-hail-mary-logo.png');
     expect(result.images[0]?.url).not.toBe('https://rss.example/hero.jpg');
   });
+
+  it('rejects partial-title matches like Apex -> Apex Predator', async () => {
+    mockExtractSubjectMatter.mockResolvedValue({
+      analysis: {
+        primarySubject: {
+          name: 'Apex',
+          type: 'movie',
+          status: 'released',
+        },
+        secondarySubjects: [
+          { name: 'Netflix', type: 'studio', relevance: 'high' },
+        ],
+        contextType: 'trailer',
+        imagePreferences: [],
+      },
+    });
+    mockApiGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 7,
+          mediaType: 'movie',
+          title: 'Apex Predator',
+          backdrop: 'https://tmdb.example/apex-predator-backdrop.jpg',
+          poster: 'https://tmdb.example/apex-predator-poster.jpg',
+          releaseDate: '2025-05-01',
+        },
+      ],
+    });
+    mockSelectSmartImages.mockResolvedValue({
+      images: [],
+      confidence: 0,
+      confidenceLevel: 'low',
+      analysis: {
+        primarySubject: { name: 'Apex' },
+        contextType: 'trailer',
+      },
+      queries: [],
+    });
+    mockSearchSerperImagesWithRetry.mockResolvedValue([
+      {
+        title: 'Apex Predator official logo',
+        imageUrl: 'https://serper.example/apex-predator-logo.png',
+        imageWidth: 1400,
+        imageHeight: 800,
+        domain: 'example.com',
+        position: 1,
+      },
+    ]);
+
+    const { enrichArticleWithImages } = await import('../../lib/rss/image-enrichment');
+    const result = await enrichArticleWithImages(
+      {
+        title: "Netflix has released the trailer for 'Apex'",
+        description: '',
+      },
+      null,
+      2,
+    );
+
+    expect(result.strategy).toBe('no-safe-fallback');
+    expect(result.images).toHaveLength(0);
+  });
+
+  it('prefers an exact Apex TMDb match over Apex Predator', async () => {
+    mockExtractSubjectMatter.mockResolvedValue({
+      analysis: {
+        primarySubject: {
+          name: 'Apex',
+          type: 'movie',
+          status: 'released',
+        },
+        secondarySubjects: [
+          { name: 'Netflix', type: 'studio', relevance: 'high' },
+        ],
+        contextType: 'trailer',
+        imagePreferences: [],
+      },
+    });
+    mockApiGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 7,
+          mediaType: 'movie',
+          title: 'Apex Predator',
+          backdrop: 'https://tmdb.example/apex-predator-backdrop.jpg',
+          poster: 'https://tmdb.example/apex-predator-poster.jpg',
+          releaseDate: '2025-05-01',
+        },
+        {
+          id: 8,
+          mediaType: 'movie',
+          title: 'Apex',
+          backdrop: 'https://tmdb.example/apex-2026-backdrop.jpg',
+          poster: 'https://tmdb.example/apex-2026-poster.jpg',
+          releaseDate: '2026-01-01',
+        },
+      ],
+    });
+
+    const { enrichArticleWithImages } = await import('../../lib/rss/image-enrichment');
+    const result = await enrichArticleWithImages(
+      {
+        title: "Netflix has released the trailer for 'Apex'",
+        description: '',
+      },
+      null,
+      2,
+    );
+
+    expect(result.strategy).toBe('project-led');
+    expect(result.images[0]?.url).toBe('https://tmdb.example/apex-2026-backdrop.jpg');
+  });
+
+  it('blocks ambiguous generic-title project art for announcement stories like Time Out', async () => {
+    mockExtractSubjectMatter.mockResolvedValue({
+      analysis: {
+        primarySubject: {
+          name: 'Time Out',
+          type: 'movie',
+          status: 'development',
+        },
+        secondarySubjects: [
+          { name: 'Adam Sandler', type: 'actor', relevance: 'high' },
+          { name: 'Netflix', type: 'studio', relevance: 'high' },
+        ],
+        contextType: 'announcement',
+        imagePreferences: [],
+      },
+    });
+    mockApiGet.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          id: 9,
+          mediaType: 'movie',
+          title: 'Time Out',
+          backdrop: 'https://tmdb.example/time-out-backdrop.jpg',
+          poster: 'https://tmdb.example/time-out-poster.jpg',
+          releaseDate: '2004-01-01',
+        },
+      ],
+    });
+    mockSelectSmartImages.mockResolvedValue({
+      images: [],
+      confidence: 0,
+      confidenceLevel: 'low',
+      analysis: {
+        primarySubject: { name: 'Time Out' },
+        contextType: 'announcement',
+      },
+      queries: [],
+    });
+    mockSearchSerperImagesWithRetry.mockResolvedValue([
+      {
+        title: 'Time Out official logo',
+        imageUrl: 'https://serper.example/time-out-logo.png',
+        imageWidth: 1400,
+        imageHeight: 800,
+        domain: 'example.com',
+        position: 1,
+      },
+    ]);
+
+    const { enrichArticleWithImages } = await import('../../lib/rss/image-enrichment');
+    const result = await enrichArticleWithImages(
+      {
+        title: "Adam Sandler has set Scott Cooper's 'Time Out' as his next Netflix film.",
+        description: '',
+      },
+      null,
+      2,
+    );
+
+    expect(result.strategy).toBe('no-safe-fallback');
+    expect(result.images).toHaveLength(0);
+  });
 });

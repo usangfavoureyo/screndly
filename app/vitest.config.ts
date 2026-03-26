@@ -16,6 +16,10 @@ export default defineConfig({
     globals: true,
     include: ['src/**/*.{test,spec}.{ts,tsx,js,jsx}'],
     exclude: ['**/node_modules/**', '**/dist/**'],
+    pool: 'forks',
+    fileParallelism: false,
+    maxWorkers: 1,
+    minWorkers: 1,
     environment: 'jsdom',
     environmentOptions: {
       jsdom: {
@@ -23,6 +27,13 @@ export default defineConfig({
       },
     },
     setupFiles: './src/tests/setup.ts',
+    clearMocks: true,
+    restoreMocks: true,
+    unstubGlobals: true,
+    unstubEnvs: true,
+    testTimeout: 15000,
+    hookTimeout: 15000,
+    teardownTimeout: 15000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
