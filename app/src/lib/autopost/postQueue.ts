@@ -24,6 +24,11 @@ export interface PostCandidate {
   caption: string;
   mediaUrl?: string;
   thumbnailUrl?: string;
+  imageUrls?: string[];
+  linkUrl?: string;
+  imageSelectionStrategy?: string;
+  imageSelectionReasons?: string[];
+  imageSelectionConfidence?: number;
   
   // Temporal constraints
   earliestPostTime: Date;
@@ -380,7 +385,7 @@ export class PostQueue {
     if (!nextEligible) {
       // Find earliest platform that can post next
       let minWaitMinutes = Infinity;
-      this.lastPostTime.forEach((lastPost, platform) => {
+      this.lastPostTime.forEach((lastPost) => {
         const minutesSince = (now.getTime() - lastPost.getTime()) / (1000 * 60);
         const waitMinutes = Math.max(0, this.rateConfig.minGapBetweenPosts - minutesSince);
         minWaitMinutes = Math.min(minWaitMinutes, waitMinutes);

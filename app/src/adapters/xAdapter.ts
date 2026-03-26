@@ -100,6 +100,7 @@ interface PostOptions {
   text: string;
   videoUrl?: string;
   videoFile?: File | Blob;
+  imageUrls?: Array<string | File | Blob>;
   mediaIds?: string[];
   replyTo?: string;
   quoteTweet?: string;
@@ -210,6 +211,14 @@ export class XAdapter {
         logs.push(`[X] Video uploaded: ${uploadResult.mediaId}`);
       }
 
+      if (!options.videoUrl && !options.videoFile && options.imageUrls?.length) {
+        logs.push(`[X] Uploading ${Math.min(options.imageUrls.length, 4)} image(s)`);
+        const uploadedImageIds = await Promise.all(
+          options.imageUrls.slice(0, 4).map((image) => this.uploadImage(image, logs)),
+        );
+        mediaIds.push(...uploadedImageIds);
+      }
+
       if (this.shouldUseMockResponses()) {
         await xRateLimiter.incrementCount(this.accountTier);
         logs.push('[X] TEST_MODE: Returning mock response');
@@ -245,6 +254,58 @@ export class XAdapter {
       logs.push(`[X] Error: ${error.message}`);
       return this.handleError(error, logs);
     }
+  }
+
+  private async uploadImage(
+    image: string | File | Blob,
+    logs: string[]
+  ): Promise<string> {
+    const token = await xTokenStorage.getToken('x');
+    if (!token) {
+      throw new Error('No X access token');
+    }
+
+    let imageBlob: Blob;
+    if (typeof image === 'string') {
+      logs.push(`[X] Downloading image from URL: ${image}`);
+      if (this.shouldUseMockResponses()) {
+        imageBlob = new Blob(['test-image'], { type: 'image/jpeg' });
+      } else {
+        const response = await fetch(image);
+        if (!response.ok) {
+          throw new Error(`Failed to download image: ${response.status}`);
+        }
+        imageBlob = await response.blob();
+      }
+    } else {
+      imageBlob = image;
+    }
+
+    if (this.shouldUseMockResponses()) {
+      return `test_image_${Math.random().toString(36).slice(2, 10)}`;
+    }
+
+    const url = `${X_UPLOAD_BASE}/media/upload.json`;
+    const formData = new FormData();
+    formData.append('media', imageBlob, 'image.jpg');
+    formData.append('media_category', 'tweet_image');
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token.accessToken}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.errors?.[0]?.message || 'Image upload failed');
+    }
+
+    const data = await response.json();
+    logs.push(`[X] Image uploaded: ${data.media_id_string}`);
+    return data.media_id_string;
   }
 
   /**

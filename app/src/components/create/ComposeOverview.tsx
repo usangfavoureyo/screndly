@@ -82,6 +82,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
   const addPostNavigationLockRef = useRef(0);
+  const addPostPointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -287,6 +288,35 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       <Button
         type="button"
         className="w-full touch-manipulation"
+        onPointerDown={(event) => {
+          if (event.button !== 0) {
+            return;
+          }
+
+          addPostPointerStartRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+          };
+        }}
+        onPointerCancel={() => {
+          addPostPointerStartRef.current = null;
+        }}
+        onPointerUp={(event) => {
+          const pointerStart = addPostPointerStartRef.current;
+          addPostPointerStartRef.current = null;
+
+          if (!pointerStart || pointerStart.pointerId !== event.pointerId || event.pointerType === 'mouse') {
+            return;
+          }
+
+          const pointerTravel = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
+          if (pointerTravel > 10) {
+            return;
+          }
+
+          triggerCreateNavigation();
+        }}
         onClick={triggerCreateNavigation}
       >
         Add Post

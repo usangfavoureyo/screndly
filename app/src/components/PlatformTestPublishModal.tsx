@@ -174,6 +174,9 @@ export function PlatformTestPublishModal({
         : 'None';
   const shouldDisableImageUrl = Boolean(mediaFile || normalizedVideoUrl);
   const shouldDisableVideoUrl = Boolean(mediaFile);
+  const isXVideoPublishAttempt =
+    platform === 'X' && (mediaFileKind === 'video' || Boolean(normalizedVideoUrl));
+  const publishTimeoutMs = isXVideoPublishAttempt ? 600000 : 180000;
 
   useEffect(() => {
     if (!isOpen) {
@@ -253,13 +256,23 @@ export function PlatformTestPublishModal({
       videoUrl: mediaFile ? undefined : normalizedVideoUrl || undefined,
       link: link.trim() || undefined,
     }, mediaFile || undefined, {
-      timeout: 180000,
+      timeout: publishTimeoutMs,
     });
 
     setIsPublishing(false);
 
     if (!response.success) {
       const message = response.error?.message || 'Publish failed.';
+      if (
+        isXVideoPublishAttempt &&
+        /timed out|network request failed|upload failed|upload timed out|request timed out/i.test(message)
+      ) {
+        const notice = 'X video upload may still complete in the background. Check X before retrying.';
+        setLastSuccess(notice);
+        haptics.medium();
+        toast.message(notice);
+        return;
+      }
       setLastError(message);
       haptics.error();
       return;

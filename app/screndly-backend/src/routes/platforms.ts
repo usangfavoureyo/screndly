@@ -1280,7 +1280,12 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 assertConfigured('Threads', {
                     THREADS_APP_ID: env.THREADS_APP_ID,
                 });
-                const scopes = ['threads_basic', 'threads_content_publish'];
+                const scopes = [
+                    'threads_basic',
+                    'threads_content_publish',
+                    'threads_read_replies',
+                    'threads_manage_replies',
+                ];
                 oauthUrl = `https://threads.net/oauth/authorize?client_id=${encodeURIComponent(env.THREADS_APP_ID || '')}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scopes.join(','))}&response_type=code&state=${encodeURIComponent(stateFor())}`;
                 break;
             }
@@ -1482,6 +1487,8 @@ router.post('/callback', async (req, res) => {
                 username: profile.username || profile.name || profile.id,
                 expiresAt,
                 metadata: {
+                    automationReplyScopesGranted: true,
+                    requiredAutomationScopes: ['threads_read_replies', 'threads_manage_replies'],
                     profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : undefined,
                     profileImageUrl: profile.threads_profile_picture_url,
                     bio: profile.threads_biography,

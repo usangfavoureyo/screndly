@@ -109,6 +109,10 @@ function humanizeSettingKey(key: string): string {
 }
 
 function getSettingsSectionLabel(key: string): string {
+    if (key.endsWith('CommentBlacklist')) {
+        return 'Comment Reply';
+    }
+
     if (
         key.startsWith('rss')
         || key.startsWith('dailyQuota')

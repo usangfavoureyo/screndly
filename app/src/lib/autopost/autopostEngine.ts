@@ -20,6 +20,7 @@ import { postQueue, PostCandidate } from './postQueue';
 import { toast } from "sonner";
 import { xAdapter } from '../../adapters/xAdapter';
 import { metaAdapter } from '../../adapters/metaAdapter';
+import { pinterestAdapter } from '../../adapters/pinterestAdapter';
 import { youtubeAdapter } from '../../adapters/youtubeAdapter';
 import { postTimeOptimizer, optimizationGuardrails } from '../optimization';
 
@@ -226,43 +227,94 @@ export class AutopostEngine {
       caption: candidate.caption,
       mediaUrl: candidate.mediaUrl,
       thumbnailUrl: candidate.thumbnailUrl,
+      imageUrls: candidate.imageUrls,
+      imageSelectionStrategy: candidate.imageSelectionStrategy,
+      imageSelectionReasons: candidate.imageSelectionReasons,
+      imageSelectionConfidence: candidate.imageSelectionConfidence,
     });
 
     try {
+      const imageUrls = (candidate.imageUrls || []).filter(Boolean);
+      const primaryImageUrl = imageUrls[0] || candidate.thumbnailUrl;
+      const publishCaption = this.getPublishCaption(candidate);
+
+      if (candidate.imageSelectionStrategy) {
+        console.log('[AutopostEngine] RSS image selection', {
+          strategy: candidate.imageSelectionStrategy,
+          reasons: candidate.imageSelectionReasons,
+          confidence: candidate.imageSelectionConfidence,
+        });
+      }
+
+      if (publishCaption !== candidate.caption) {
+        console.warn('[AutopostEngine] Caption was empty; using fallback publish caption', {
+          title: candidate.title,
+          source: candidate.source,
+          platform,
+          fallbackLength: publishCaption.length,
+        });
+      }
+
       // Route to appropriate platform adapter
       switch (platform) {
         case 'x':
           // X (Twitter) posting
           const xResult = await xAdapter.post({
-            caption: candidate.caption,
+            text: publishCaption,
             videoUrl: candidate.mediaUrl,
-            thumbnailUrl: candidate.thumbnailUrl,
+            imageUrls: candidate.mediaUrl ? undefined : imageUrls,
           });
           return xResult.success;
 
         case 'threads':
           // Threads posting via Meta adapter
+          if (!candidate.mediaUrl && primaryImageUrl) {
+            console.warn('[AutopostEngine] Threads RSS image publishing is not supported by the current adapter.');
+            return false;
+          }
           const threadsResult = await metaAdapter.publishToThreads({
-            caption: candidate.caption,
-            videoUrl: candidate.mediaUrl,
-            thumbnailUrl: candidate.thumbnailUrl,
+            caption: publishCaption,
+            videoUrl: candidate.mediaUrl!,
+            thumbnailUrl: primaryImageUrl,
           });
           return threadsResult.success;
 
         case 'facebook':
           // Facebook posting via Meta adapter
+          if (!candidate.mediaUrl && primaryImageUrl) {
+            console.warn('[AutopostEngine] Facebook RSS image publishing is not supported by the current adapter.');
+            return false;
+          }
           const fbResult = await metaAdapter.publishToFacebook({
-            caption: candidate.caption,
-            videoUrl: candidate.mediaUrl,
-            thumbnailUrl: candidate.thumbnailUrl,
+            caption: publishCaption,
+            videoUrl: candidate.mediaUrl!,
+            thumbnailUrl: primaryImageUrl,
           });
           return fbResult.success;
+
+        case 'pinterest': {
+          if (!primaryImageUrl) {
+            throw new Error('No RSS image available for Pinterest publishing');
+          }
+
+          const pinterestBoardId = this.getPinterestBoardId(platformSettings);
+          const pinResult = await pinterestAdapter.createPin({
+            title: candidate.title,
+            description: publishCaption,
+            boardId: pinterestBoardId,
+            mediaUrl: primaryImageUrl,
+            mediaType: candidate.mediaUrl ? 'video' : 'image',
+            link: candidate.linkUrl,
+            thumbnailUrl: primaryImageUrl,
+          });
+          return pinResult.success;
+        }
 
         case 'youtube':
           // YouTube community post
           const ytResult = await youtubeAdapter.createCommunityPost({
-            text: candidate.caption,
-            imageUrl: candidate.thumbnailUrl,
+            text: publishCaption,
+            imageUrl: primaryImageUrl,
           });
           return ytResult.success;
 
@@ -290,6 +342,39 @@ export class AutopostEngine {
       console.error('[AutopostEngine] Failed to load platform settings:', e);
     }
     return null;
+  }
+
+  private getPinterestBoardId(platformSettings: any): string {
+    if (platformSettings?.boardId) {
+      return platformSettings.boardId;
+    }
+
+    try {
+      const settings = localStorage.getItem('screndlySettings') || localStorage.getItem('screndly_settings');
+      if (settings) {
+        const parsed = JSON.parse(settings);
+        if (parsed.rssPinterestBoard) {
+          return parsed.rssPinterestBoard;
+        }
+      }
+    } catch (e) {
+      console.error('[AutopostEngine] Failed to load Pinterest board setting:', e);
+    }
+
+    return 'Entertainment News';
+  }
+
+  private getPublishCaption(candidate: PostCandidate): string {
+    const caption = String(candidate.caption || '').trim();
+    if (caption) {
+      return caption;
+    }
+
+    const title = String(candidate.title || '').trim();
+    const link = String(candidate.linkUrl || candidate.mediaUrl || '').trim();
+    const fallback = [title, link].filter(Boolean).join('\n\n').trim();
+
+    return fallback || 'Latest update';
   }
 
   /**

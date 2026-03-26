@@ -8,6 +8,7 @@ const LOCAL_BINARY_PATH = path.join(process.cwd(), 'bin', process.platform === '
 const LOCAL_COOKIE_FILE_PATH = path.join(process.cwd(), 'temp', 'yt-dlp-cookies.txt');
 const DEFAULT_BINARY_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const DEFAULT_TIMEOUT_MS = 90 * 1000;
 
 type YtDlpArrayValue = Array<string | number>;
 export type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
@@ -140,12 +141,18 @@ function buildArgs(url: string, options: YtDlpOptions): string[] {
     return args;
 }
 
+function resolveTimeoutMs(): number {
+    const configured = Number.parseInt(String(process.env.YT_DLP_TIMEOUT_MS || ''), 10);
+    return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS;
+}
+
 export default async function ytDlp(url: string, options: YtDlpOptions = {}): Promise<any> {
     const args = buildArgs(url, options);
 
     try {
         const { stdout, stderr } = await execFileAsync(resolveBinaryPath(), args, {
             maxBuffer: MAX_BUFFER_BYTES,
+            timeout: resolveTimeoutMs(),
             windowsHide: true,
         });
 

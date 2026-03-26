@@ -6,6 +6,7 @@ import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Separator } from '../ui/separator';
 import { Button } from '../ui/button';
+import { BackIconButton } from '../BackIconButton';
 import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, BottomSheetTitle } from '../ui/bottom-sheet';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { haptics } from '../../utils/haptics';
@@ -50,6 +51,7 @@ interface ThumbnailAssetOverride {
   logoName?: string;
   manualOverlayUrl?: string;
   manualOverlayName?: string;
+  manualSavedOverlayKey?: BrandedOverlayAssetKey;
 }
 
 const BRANDED_ASSET_GROUPS: Array<{
@@ -157,6 +159,12 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const currentConfig = activePlatform === 'youtube' ? youtubeConfig : xConfig;
   const currentAssets = assetOverrides[activePlatform];
   const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
+  const brandedAssetEntries = Object.entries(currentConfig.brandedOverlayAssets || {}) as Array<[BrandedOverlayAssetKey, string]>;
+  const resolvedManualOverlayUrl = currentAssets.manualOverlayUrl
+    || (currentAssets.manualSavedOverlayKey ? currentConfig.brandedOverlayAssets?.[currentAssets.manualSavedOverlayKey] : undefined);
+  const resolvedManualOverlayLabel = currentAssets.manualOverlayName
+    || currentAssets.manualSavedOverlayKey
+    || null;
 
   const clearActiveAssets = () => {
     setAssetOverrides((prev) => ({
@@ -220,6 +228,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           ...prev[platform],
           manualOverlayUrl: result,
           manualOverlayName: file.name,
+          manualSavedOverlayKey: undefined,
         },
       }));
       haptics.light();
@@ -229,6 +238,21 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       toast.error('Failed to read overlay file');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleManualSavedOverlaySelect = (value: string) => {
+    const platform = activePlatform;
+    const nextKey = value === 'none' ? undefined : value as BrandedOverlayAssetKey;
+    setAssetOverrides((prev) => ({
+      ...prev,
+      [platform]: {
+        ...prev[platform],
+        manualSavedOverlayKey: nextKey,
+        manualOverlayUrl: undefined,
+        manualOverlayName: undefined,
+      },
+    }));
+    haptics.light();
   };
 
   const handleBrandedAssetUpload = async (assetKey: BrandedOverlayAssetKey, file?: File | null) => {
@@ -282,7 +306,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       title: previewTitle,
       trailerLabel: null,
       brandedOverlayAssets: currentConfig.brandedOverlayAssets,
-      manualOverlayUrl: currentAssets.manualOverlayUrl,
+      manualOverlayUrl: resolvedManualOverlayUrl,
       format,
     });
 
@@ -432,6 +456,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     currentAssets.backdropUrl,
     currentAssets.logoUrl,
     currentAssets.manualOverlayUrl,
+    currentAssets.manualSavedOverlayKey,
     currentConfig,
     previewTitle,
   ]);
@@ -440,18 +465,11 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
       {/* Header */}
       <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center gap-3 z-10">
-        <button
-          className="text-gray-900 dark:text-white p-1"
-          onClick={() => {
-            haptics.light();
-            setAssetOverrides({ youtube: {}, x: {} });
-            onBack();
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12H2M9 19l-7-7 7-7" />
-          </svg>
-        </button>
+        <BackIconButton
+          onClick={onBack}
+          className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-1"
+          ariaLabel="Back to settings"
+        />
         <div>
           <h2 className="text-gray-900 dark:text-white text-xl">Thumbnail Overlay</h2>
         </div>
@@ -825,11 +843,27 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     onChange={(e) => handleManualOverlayUpload(e.target.files?.[0])}
                     className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
                   />
+                  <Select
+                    value={currentAssets.manualSavedOverlayKey || 'none'}
+                    onValueChange={handleManualSavedOverlaySelect}
+                  >
+                    <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
+                      <SelectValue placeholder="Choose saved branded overlay" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {brandedAssetEntries.map(([assetKey]) => (
+                        <SelectItem key={assetKey} value={assetKey}>
+                          {assetKey}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-gray-500 dark:text-[#6B7280]">
-                    Overrides automatic asset selection for preview only.
+                    Choose a device file or one of the saved branded overlays. This overrides automatic selection for preview only.
                   </p>
-                  {currentAssets.manualOverlayName && (
-                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{currentAssets.manualOverlayName}</p>
+                  {resolvedManualOverlayLabel && (
+                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{resolvedManualOverlayLabel}</p>
                   )}
                 </div>
               )}
@@ -945,7 +979,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     </div>
                     <div>
                       <span className="text-gray-500 dark:text-[#6B7280]">Resolved asset:</span>{' '}
-                      <span className="text-gray-900 dark:text-white">{previewResolvedAssetKey || (currentAssets.manualOverlayName ? 'manual_overlay' : 'none')}</span>
+                      <span className="text-gray-900 dark:text-white">{previewResolvedAssetKey || (resolvedManualOverlayLabel ? 'manual_overlay' : 'none')}</span>
                     </div>
                   </>
                 )}

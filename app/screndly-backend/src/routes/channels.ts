@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import prisma from '../lib/prisma';
 import { hasFeedItemStatusColumn } from '../lib/feedItemStatus';
+import { env } from '../lib/env';
 import { resolveYouTubeChannel } from '../services/youtube-channel-resolver';
+import { getYouTubePollingPauseStatus, pauseYouTubePolling, resumeYouTubePolling } from '../services/cron';
 import { youtubePollerService } from '../services/youtube-poller.service';
 import { authenticate } from '../middleware/auth';
 
@@ -18,6 +20,16 @@ function getStatusFromBody(body: any): string | undefined {
     }
 
     return undefined;
+}
+
+function hasAdminSecret(req: Parameters<typeof authenticate>[0]): boolean {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !env.ADMIN_SECRET) {
+        return false;
+    }
+
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : authHeader.trim();
+    return token === env.ADMIN_SECRET;
 }
 
 // GET /api/channels
@@ -61,6 +73,22 @@ router.get('/activity', async (_req, res) => {
     }
 });
 
+// GET /api/channels/poll-status
+router.get('/poll-status', async (_req, res) => {
+    try {
+        res.json({
+            success: true,
+            data: {
+                ...youtubePollerService.getPollStatus(),
+                pause: getYouTubePollingPauseStatus(),
+            }
+        });
+    } catch (error) {
+        console.error('Failed to fetch poll status:', error);
+        res.status(500).json({ success: false, error: { message: 'Failed to fetch poll status' } });
+    }
+});
+
 // POST /api/channels/poll
 router.post('/poll', async (req, res) => {
     try {
@@ -73,6 +101,59 @@ router.post('/poll', async (req, res) => {
     } catch (error: any) {
         console.error('Failed to poll channels:', error);
         res.status(500).json({ success: false, error: { message: error.message || 'Failed to poll channels' } });
+    }
+});
+
+// POST /api/channels/poll/targeted
+router.post('/poll/targeted', async (req, res) => {
+    if (!hasAdminSecret(req)) {
+        return res.status(403).json({ success: false, error: { message: 'Admin secret required for targeted polling' } });
+    }
+
+    const channelId = typeof req.body?.channelId === 'string' ? req.body.channelId.trim() : '';
+    if (!channelId) {
+        return res.status(400).json({ success: false, error: { message: 'channelId is required' } });
+    }
+
+    const currentStatus = youtubePollerService.getPollStatus();
+    if (currentStatus.isPolling) {
+        return res.status(409).json({
+            success: false,
+            error: { message: 'Polling already in progress' },
+            data: {
+                ...currentStatus,
+                pause: getYouTubePollingPauseStatus(),
+            }
+        });
+    }
+
+    const requestedPauseMinutes = Number.parseInt(String(req.body?.pauseMinutes || '10'), 10);
+    const pauseMinutes = Number.isFinite(requestedPauseMinutes) && requestedPauseMinutes > 0
+        ? Math.min(requestedPauseMinutes, 30)
+        : 10;
+    const pausedUntil = pauseYouTubePolling(pauseMinutes, `manual targeted poll for ${channelId}`);
+
+    try {
+        const summary = await youtubePollerService.pollChannels({
+            force: true,
+            channelDbId: channelId
+        });
+
+        res.json({
+            success: true,
+            data: {
+                summary,
+                pause: {
+                    paused: true,
+                    pausedUntil: pausedUntil.toISOString(),
+                }
+            }
+        });
+    } catch (error: any) {
+        console.error('Failed to run targeted channel poll:', error);
+        res.status(500).json({ success: false, error: { message: error.message || 'Failed to run targeted channel poll' } });
+    } finally {
+        resumeYouTubePolling();
     }
 });
 

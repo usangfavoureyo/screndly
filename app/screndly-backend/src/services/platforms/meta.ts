@@ -12,6 +12,19 @@ type MetaPostResult =
     | { success: true; data: { id: string; platform: string } }
     | { success: false; error: string };
 
+export interface MetaCommentItem {
+    commentId: string;
+    postId: string;
+    username: string;
+    userId?: string;
+    content: string;
+    createdAt: Date;
+    parentPostCreatedAt?: Date;
+}
+
+const THREADS_COMMENT_FIELDS = 'id,text,timestamp,username,root_post,replied_to,is_reply,is_reply_owned_by_me';
+const THREADS_POST_FIELDS = 'id,text,timestamp,username,media_type,permalink,has_replies';
+
 const FORM_URL_ENCODED_HEADERS = {
     'Content-Type': 'application/x-www-form-urlencoded',
 };
@@ -897,6 +910,281 @@ export const metaService = {
             };
         } catch (error: any) {
             console.error('[Meta] Threads Video Post Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
+    async getRecentFacebookComments(
+        pageId: string,
+        accessToken: string,
+        since?: Date
+    ): Promise<MetaCommentItem[]> {
+        const response = await axios.get(`${BASE_URL}/${pageId}/posts`, {
+            params: {
+                fields: 'id,message,created_time,comments.limit(50){id,message,created_time,from,parent}',
+                limit: 10,
+                access_token: accessToken,
+            },
+        });
+
+        const posts = Array.isArray(response.data?.data) ? response.data.data : [];
+        const results: MetaCommentItem[] = [];
+
+        for (const post of posts) {
+            const postCreatedAt = post?.created_time ? new Date(post.created_time) : undefined;
+            const comments = Array.isArray(post?.comments?.data) ? post.comments.data : [];
+
+            for (const comment of comments) {
+                if (comment?.parent?.id) {
+                    continue;
+                }
+
+                const createdAt = comment?.created_time ? new Date(comment.created_time) : new Date();
+                if (since && createdAt < since) {
+                    continue;
+                }
+
+                if (String(comment?.from?.id || '') === pageId) {
+                    continue;
+                }
+
+                const content = String(comment?.message || '').trim();
+                if (!content) {
+                    continue;
+                }
+
+                results.push({
+                    commentId: String(comment.id),
+                    postId: String(post.id),
+                    username: String(comment?.from?.name || comment?.from?.id || 'facebook-user'),
+                    userId: typeof comment?.from?.id === 'string' ? comment.from.id : undefined,
+                    content,
+                    createdAt,
+                    parentPostCreatedAt: postCreatedAt,
+                });
+            }
+        }
+
+        return results;
+    },
+
+    async replyToFacebookComment(
+        commentId: string,
+        message: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const payload = new URLSearchParams({
+                message,
+                access_token: accessToken,
+            });
+
+            const response = await axios.post(
+                `${BASE_URL}/${commentId}/comments`,
+                payload.toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: String(response.data?.id || commentId),
+                    platform: 'Facebook',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Facebook Comment Reply Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
+    async getRecentInstagramComments(
+        igUserId: string,
+        accessToken: string,
+        since?: Date
+    ): Promise<MetaCommentItem[]> {
+        const mediaResponse = await axios.get(`${BASE_URL}/${igUserId}/media`, {
+            params: {
+                fields: 'id,caption,timestamp',
+                limit: 10,
+                access_token: accessToken,
+            },
+        });
+
+        const mediaItems = Array.isArray(mediaResponse.data?.data) ? mediaResponse.data.data : [];
+        const comments: MetaCommentItem[] = [];
+
+        for (const media of mediaItems) {
+            const postCreatedAt = media?.timestamp ? new Date(media.timestamp) : undefined;
+            const commentResponse = await axios.get(`${BASE_URL}/${media.id}/comments`, {
+                params: {
+                    fields: 'id,text,username,timestamp,parent_id',
+                    limit: 50,
+                    access_token: accessToken,
+                },
+            });
+
+            const commentItems = Array.isArray(commentResponse.data?.data) ? commentResponse.data.data : [];
+            for (const comment of commentItems) {
+                if (comment?.parent_id) {
+                    continue;
+                }
+
+                const createdAt = comment?.timestamp ? new Date(comment.timestamp) : new Date();
+                if (since && createdAt < since) {
+                    continue;
+                }
+
+                const content = String(comment?.text || '').trim();
+                if (!content) {
+                    continue;
+                }
+
+                comments.push({
+                    commentId: String(comment.id),
+                    postId: String(media.id),
+                    username: String(comment?.username || 'instagram-user'),
+                    content,
+                    createdAt,
+                    parentPostCreatedAt: postCreatedAt,
+                });
+            }
+        }
+
+        return comments;
+    },
+
+    async replyToInstagramComment(
+        commentId: string,
+        message: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const payload = new URLSearchParams({
+                message,
+                access_token: accessToken,
+            });
+
+            const response = await axios.post(
+                `${BASE_URL}/${commentId}/replies`,
+                payload.toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            return {
+                success: true,
+                data: {
+                    id: String(response.data?.id || commentId),
+                    platform: 'Instagram',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Instagram Comment Reply Error:', error?.response?.data || error);
+            return {
+                success: false,
+                error: extractMetaError(error),
+            };
+        }
+    },
+
+    async getRecentThreadsReplies(
+        userId: string,
+        accessToken: string,
+        since?: Date
+    ): Promise<MetaCommentItem[]> {
+        const postsResponse = await axios.get(`${THREADS_BASE_URL}/${userId}/threads`, {
+            params: {
+                fields: THREADS_POST_FIELDS,
+                limit: 20,
+                access_token: accessToken,
+            },
+        });
+
+        const posts = Array.isArray(postsResponse.data?.data) ? postsResponse.data.data : [];
+        const replies: MetaCommentItem[] = [];
+
+        for (const post of posts) {
+            const postId = String(post?.id || '');
+            if (!postId) {
+                continue;
+            }
+
+            const postCreatedAt = post?.timestamp ? new Date(post.timestamp) : undefined;
+
+            const repliesResponse = await axios.get(`${THREADS_BASE_URL}/${postId}/replies`, {
+                params: {
+                    fields: THREADS_COMMENT_FIELDS,
+                    reverse: false,
+                    access_token: accessToken,
+                },
+            });
+
+            const items = Array.isArray(repliesResponse.data?.data) ? repliesResponse.data.data : [];
+            for (const item of items) {
+                const createdAt = item?.timestamp ? new Date(item.timestamp) : new Date();
+                if (since && createdAt < since) {
+                    continue;
+                }
+
+                const content = String(item?.text || '').trim();
+                if (!content) {
+                    continue;
+                }
+
+                if (item?.is_reply_owned_by_me) {
+                    continue;
+                }
+
+                replies.push({
+                    commentId: String(item.id),
+                    postId,
+                    username: String(item?.username || 'threads-user'),
+                    content,
+                    createdAt,
+                    parentPostCreatedAt: postCreatedAt,
+                });
+            }
+        }
+
+        return replies;
+    },
+
+    async replyToThreadsReply(
+        userId: string,
+        replyThreadId: string,
+        text: string,
+        accessToken: string
+    ): Promise<MetaPostResult> {
+        try {
+            const payload = new URLSearchParams({
+                media_type: 'TEXT',
+                text,
+                reply_to_id: replyThreadId,
+                access_token: accessToken,
+            });
+
+            const creationId = await createThreadsContainer(userId, payload);
+            const publishId = await publishThreadsContainer(userId, creationId, accessToken);
+
+            return {
+                success: true,
+                data: {
+                    id: publishId,
+                    platform: 'Threads',
+                },
+            };
+        } catch (error: any) {
+            console.error('[Meta] Threads Reply Error:', error?.response?.data || error);
             return {
                 success: false,
                 error: extractMetaError(error),

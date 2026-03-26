@@ -37,6 +37,31 @@ const VIDEO_STUDIO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; 
     },
 ];
 
+let youtubePollingPausedUntil: Date | null = null;
+let youtubePollingPauseReason: string | null = null;
+
+export function pauseYouTubePolling(minutes: number, reason = 'manual targeted poll'): Date {
+    const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 10;
+    const pausedUntil = new Date(Date.now() + safeMinutes * 60 * 1000);
+    youtubePollingPausedUntil = pausedUntil;
+    youtubePollingPauseReason = reason;
+    return pausedUntil;
+}
+
+export function resumeYouTubePolling(): void {
+    youtubePollingPausedUntil = null;
+    youtubePollingPauseReason = null;
+}
+
+export function getYouTubePollingPauseStatus(now = new Date()) {
+    const paused = Boolean(youtubePollingPausedUntil && youtubePollingPausedUntil > now);
+    return {
+        paused,
+        pausedUntil: paused ? youtubePollingPausedUntil?.toISOString() : undefined,
+        reason: paused ? youtubePollingPauseReason || undefined : undefined,
+    };
+}
+
 function parseBooleanSettingValue(value: unknown, fallback: boolean): boolean {
     if (typeof value === 'boolean') {
         return value;
@@ -342,6 +367,14 @@ export async function initCronJobs() {
     // YouTube Polling - Every 2 minutes
     cron.schedule('*/2 * * * *', async () => {
         try {
+            const pauseStatus = getYouTubePollingPauseStatus();
+            if (pauseStatus.paused) {
+                await logCron(
+                    'info',
+                    `YouTube polling skipped while paused until ${pauseStatus.pausedUntil}${pauseStatus.reason ? ` (${pauseStatus.reason})` : ''}`
+                );
+                return;
+            }
             await youtubePollerService.pollChannels();
         } catch (error) {
             await logCron('error', `YouTube polling cycle failed: ${error}`);

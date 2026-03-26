@@ -33,7 +33,12 @@ import { decideYouTubeCandidate } from './youtube-detection/decisionEngine';
 import { checkPromoDuplicate, recordAcceptedPromoFingerprint, recordDuplicateRelationship } from './youtube-detection/deduplicationEngine';
 import { parsePromoAssetType } from './youtube-detection/promoAssetParsing';
 import type { PollingCandidate } from './youtube-detection/types';
-import { extractCollaboratorMetadata, isExplicitCollaboratorForTrackedChannel } from './youtube-detection/collabDiscovery';
+import {
+    extractCollaboratorMetadata,
+    hasStructuredSearchCollaboratorSignal,
+    isExplicitCollaboratorForTrackedChannel,
+    isRegionalFamilyChannelAssociation,
+} from './youtube-detection/collabDiscovery';
 
 const parser = new Parser();
 
@@ -62,6 +67,17 @@ export interface PollSummary {
     successfulPublishes: number;
     failedPublishes: number;
     results: ChannelPollResult[];
+}
+
+export interface PollStatus {
+    isPolling: boolean;
+    currentChannelId?: string;
+    currentChannelName?: string;
+    pollStartedAt?: string;
+    lastStartedAt?: string;
+    lastFinishedAt?: string;
+    staleAfterMs: number;
+    stale: boolean;
 }
 
 export interface ChannelDiscoveryPreviewItem {
@@ -158,13 +174,18 @@ const PLATFORM_SETTING_KEYS: Record<string, string> = {
 
 const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
 const MAX_RECENT_FEED_ITEMS = 15;
+const MAX_OWNED_VIDEO_CANDIDATES = 8;
+const MAX_COLLAB_CANDIDATES = 6;
+const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 8;
+const MAX_COLLAB_KEYWORD_QUERIES = 2;
 const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 3;
-const DEBUG_COLLAB_CHANNEL_NAMES = new Set(['hbo max']);
 const FEED_FRESHNESS_HOURS = 24;
 const MIN_TRAILER_HEIGHT = 1080;
 const MIN_TRAILER_WIDTH = 1920;
 const DEFAULT_TRAILER_KEYWORDS = ['trailer', 'teaser', 'official', 'first look', 'sneak peek'];
 const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
+const POLL_STALE_AFTER_MS = 30 * 60 * 1000;
+const SLOW_STAGE_WARN_MS = 15 * 1000;
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
@@ -215,6 +236,57 @@ function escapeRegexValue(value: string): string {
 
 export class YouTubePollerService {
     private isPolling = false;
+    private pollStartedAt: Date | null = null;
+    private currentChannelId: string | null = null;
+    private currentChannelName: string | null = null;
+    private lastPollStartedAt: Date | null = null;
+    private lastPollFinishedAt: Date | null = null;
+
+    getPollStatus(): PollStatus {
+        const now = Date.now();
+        const stale = this.isPolling &&
+            this.pollStartedAt instanceof Date &&
+            now - this.pollStartedAt.getTime() > POLL_STALE_AFTER_MS;
+
+        return {
+            isPolling: this.isPolling,
+            currentChannelId: this.currentChannelId || undefined,
+            currentChannelName: this.currentChannelName || undefined,
+            pollStartedAt: this.pollStartedAt?.toISOString(),
+            lastStartedAt: this.lastPollStartedAt?.toISOString(),
+            lastFinishedAt: this.lastPollFinishedAt?.toISOString(),
+            staleAfterMs: POLL_STALE_AFTER_MS,
+            stale,
+        };
+    }
+
+    private resetPollState(): void {
+        this.isPolling = false;
+        this.pollStartedAt = null;
+        this.currentChannelId = null;
+        this.currentChannelName = null;
+    }
+
+    private logStageDuration(context: string, stage: string, startedAtMs: number, extra?: Record<string, unknown>) {
+        const durationMs = Date.now() - startedAtMs;
+        const level = durationMs >= SLOW_STAGE_WARN_MS ? 'warn' : 'log';
+        console[level](`[YouTubePoller] ${context}: stage ${stage} completed in ${durationMs}ms`, extra || {});
+        return durationMs;
+    }
+
+    private async timeStage<T>(
+        context: string,
+        stage: string,
+        stageDurations: Record<string, number>,
+        fn: () => Promise<T>
+    ): Promise<T> {
+        const startedAtMs = Date.now();
+        try {
+            return await fn();
+        } finally {
+            stageDurations[stage] = this.logStageDuration(context, stage, startedAtMs);
+        }
+    }
 
     private parseISODate(value?: string): Date | null {
         if (!value) {
@@ -236,6 +308,15 @@ export class YouTubePollerService {
 
     async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
         const startedAt = new Date();
+
+        if (
+            this.isPolling &&
+            this.pollStartedAt instanceof Date &&
+            startedAt.getTime() - this.pollStartedAt.getTime() > POLL_STALE_AFTER_MS
+        ) {
+            console.warn('[YouTubePoller] Resetting stale in-memory poll lock', this.getPollStatus());
+            this.resetPollState();
+        }
 
         if (this.isPolling) {
             return {
@@ -260,6 +341,10 @@ export class YouTubePollerService {
         }
 
         this.isPolling = true;
+        this.pollStartedAt = startedAt;
+        this.lastPollStartedAt = startedAt;
+        this.currentChannelId = null;
+        this.currentChannelName = null;
         console.log('[YouTubePoller] Starting poll...');
         console.log(`[YouTubePoller] yt-dlp auth mode: ${describeYtDlpAuthConfiguration()}`);
 
@@ -282,6 +367,9 @@ export class YouTubePollerService {
             const results: ChannelPollResult[] = [];
 
             for (const channel of channels) {
+                this.currentChannelId = channel.channelId;
+                this.currentChannelName = channel.name;
+
                 if (!options.force && channel.lastCheck) {
                     const lastCheckTime = new Date(channel.lastCheck).getTime();
                     if (now - lastCheckTime < intervalMs) {
@@ -338,7 +426,8 @@ export class YouTubePollerService {
                 }]
             };
         } finally {
-            this.isPolling = false;
+            this.lastPollFinishedAt = new Date();
+            this.resetPollState();
             console.log('[YouTubePoller] Poll finished');
         }
     }
@@ -349,14 +438,19 @@ export class YouTubePollerService {
         options: PollOptions = {}
     ): Promise<ChannelPollResult> {
         let activeChannel = channel;
+        const channelStartedAtMs = Date.now();
+        const stageDurations: Record<string, number> = {};
+        let processedVideos = 0;
 
         try {
-            activeChannel = await this.ensureCanonicalChannel(channel);
-            const supportsFeedItemStatus = await hasFeedItemStatusColumn();
+            activeChannel = await this.timeStage(channel.name, 'canonicalize_channel', stageDurations, () => this.ensureCanonicalChannel(channel));
+            const supportsFeedItemStatus = await this.timeStage(activeChannel.name, 'check_feed_item_status', stageDurations, () => hasFeedItemStatusColumn());
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
-            const { items: ownedVideos, source } = await this.getRecentChannelVideos(activeChannel);
-            const collaborativeVideos = await this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords);
-            const latestVideos = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]);
+            const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel));
+            const collaborativeVideos = await this.timeStage(activeChannel.name, 'discover_collab_uploads', stageDurations, () => this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords));
+            const latestVideos = await this.timeStage(activeChannel.name, 'merge_candidates', stageDurations, async () =>
+                this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]).slice(0, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL)
+            );
             if (source === 'yt-dlp') {
                 console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
             }
@@ -390,6 +484,8 @@ export class YouTubePollerService {
             let sawFreshUnprocessedVideo = false;
 
             for (const video of latestVideos) {
+                const videoLabel = `${video.title || 'Untitled YouTube upload'} (${this.extractVideoId(video.link || '', video.id || '') || 'unknown'})`;
+                const videoStartedAtMs = Date.now();
                 const processed = await this.processFeedVideo(
                     video,
                     activeChannel,
@@ -399,6 +495,13 @@ export class YouTubePollerService {
                     trailerKeywords,
                     targetPlatforms
                 );
+                processedVideos += 1;
+                this.logStageDuration(activeChannel.name, `process_video:${videoLabel}`, videoStartedAtMs, {
+                    kind: processed.kind,
+                    reason: processed.reason,
+                    sawFreshVideo: processed.sawFreshVideo === true,
+                    stopScanning: processed.stopScanning === true,
+                });
 
                 if (processed.reason) {
                     skippedReasons.push(processed.reason);
@@ -442,6 +545,11 @@ export class YouTubePollerService {
                 published: false,
                 failed: true,
                 message: error.message || 'Unknown channel processing error'
+            });
+        } finally {
+            this.logStageDuration(activeChannel.name || channel.name, 'channel_total', channelStartedAtMs, {
+                processedVideos,
+                stageDurations,
             });
         }
     }
@@ -570,7 +678,9 @@ export class YouTubePollerService {
 
         try {
             const feed = await parser.parseURL(rssUrl);
-            const items = Array.isArray(feed.items) ? this.sortRecentChannelVideos(feed.items) : [];
+            const items = Array.isArray(feed.items)
+                ? this.sortRecentChannelVideos(feed.items).slice(0, MAX_OWNED_VIDEO_CANDIDATES)
+                : [];
             if (items.length > 0) {
                 return {
                     items: items.map((item) => ({
@@ -619,7 +729,7 @@ export class YouTubePollerService {
         const channelUrl = `https://www.youtube.com/channel/${channelId}/videos`;
         const playlist = await ytDlp(channelUrl, {
             flatPlaylist: true,
-            playlistEnd: MAX_RECENT_FEED_ITEMS,
+            playlistEnd: MAX_OWNED_VIDEO_CANDIDATES,
             dumpSingleJson: true,
             skipDownload: true,
             noWarnings: true,
@@ -667,21 +777,18 @@ export class YouTubePollerService {
 
         return this.sortRecentChannelVideos(
             resolvedVideos.filter((video): video is any => Boolean(video?.pubDate))
-        );
+        ).slice(0, MAX_OWNED_VIDEO_CANDIDATES);
     }
 
     private async fetchCollaborativeVideosForChannel(channel: any, trailerKeywords: string[]): Promise<any[]> {
-        const keywordQueries = trailerKeywords
+        const prioritizedKeywords = [
+            ...trailerKeywords.filter((keyword) => ['trailer', 'teaser'].includes(String(keyword).toLowerCase())),
+            ...trailerKeywords,
+        ];
+        const keywordQueries = Array.from(new Set(prioritizedKeywords))
             .filter((keyword) => !NON_STANDALONE_TRAILER_KEYWORDS.has(keyword))
-            .slice(0, 4);
+            .slice(0, MAX_COLLAB_KEYWORD_QUERIES);
         const candidateMap = new Map<string, any>();
-        const debugCollab = DEBUG_COLLAB_CHANNEL_NAMES.has(String(channel?.name || '').trim().toLowerCase());
-        const normalizeSearchName = (value?: string) => String(value || '')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-        const trackedChannelName = normalizeSearchName(channel?.name);
 
         for (const keyword of keywordQueries) {
             const searchQuery = `${channel.name} ${keyword}`.trim();
@@ -697,16 +804,6 @@ export class YouTubePollerService {
                 const entries = Array.isArray((results as any)?.entries)
                     ? (results as any).entries.slice(0, MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD)
                     : [];
-
-                if (debugCollab) {
-                    console.info(`[YouTubePoller] ${channel.name}: collaborative query "${searchQuery}" returned ${entries.length} top entries`, entries.map((entry: any) => ({
-                        id: entry?.id,
-                        title: entry?.title,
-                        channel: entry?.channel,
-                        uploader: entry?.uploader,
-                        url: entry?.url,
-                    })));
-                }
 
                 for (const entry of entries) {
                     if (candidateMap.size >= MAX_RECENT_FEED_ITEMS) {
@@ -730,38 +827,12 @@ export class YouTubePollerService {
                         const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
                         const collaboratorMetadata = extractCollaboratorMetadata(raw);
                         const explicitCollaboratorMatch = isExplicitCollaboratorForTrackedChannel(channel, raw);
-                        const entryChannel = normalizeSearchName(typeof entry?.channel === 'string' ? entry.channel : '');
-                        const entryUploader = normalizeSearchName(typeof entry?.uploader === 'string' ? entry.uploader : '');
-                        const structuredSearchCollaboratorSignal = [entryChannel, entryUploader].some((value) =>
-                            value.includes(trackedChannelName) && /\band\s+\d+\s+more\b/.test(value)
-                        );
-                        const rawPrimaryChannelName = normalizeSearchName(typeof raw?.channel === 'string' ? raw.channel : raw?.uploader);
-                        const regionalFamilyChannelSignal =
-                            Boolean(trackedChannelName) &&
-                            rawPrimaryChannelName.startsWith(`${trackedChannelName} `) &&
-                            raw?.channel_id !== channel.channelId;
+                        const structuredSearchCollaboratorSignal = hasStructuredSearchCollaboratorSignal(channel.name, entry);
+                        const regionalFamilyChannelSignal = isRegionalFamilyChannelAssociation(channel, raw);
                         const collaborativeAssociationMatch =
                             explicitCollaboratorMatch ||
                             structuredSearchCollaboratorSignal ||
                             regionalFamilyChannelSignal;
-
-                        if (debugCollab) {
-                            console.info(`[YouTubePoller] ${channel.name}: inspected collaborative candidate ${videoId}`, {
-                                searchQuery,
-                                entryTitle: entry?.title,
-                                entryChannel: entry?.channel,
-                                entryUploader: entry?.uploader,
-                                rawTitle: raw?.title,
-                                rawChannel: raw?.channel,
-                                rawChannelId: raw?.channel_id,
-                                rawCreators: raw?.creators,
-                                collaboratorMetadata,
-                                explicitCollaboratorMatch,
-                                structuredSearchCollaboratorSignal,
-                                regionalFamilyChannelSignal,
-                                collaborativeAssociationMatch,
-                            });
-                        }
 
                         if (!collaborativeAssociationMatch) {
                             continue;
@@ -800,7 +871,8 @@ export class YouTubePollerService {
             }
         }
 
-        return this.sortRecentChannelVideos([...candidateMap.values()].filter((video) => Boolean(video?.pubDate)));
+        return this.sortRecentChannelVideos([...candidateMap.values()].filter((video) => Boolean(video?.pubDate)))
+            .slice(0, MAX_COLLAB_CANDIDATES);
     }
 
     private async completeChannelCheck(

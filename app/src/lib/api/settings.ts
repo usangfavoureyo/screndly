@@ -136,6 +136,30 @@ const THUMBNAIL_BACKEND_KEYS = [
   'thumbnailConfig_x',
 ] as const;
 
+const COMMENT_AUTOMATION_BACKEND_KEYS = [
+  'commentRepliesActive',
+  'commentBlacklistUsernames',
+  'commentBlacklistKeywords',
+  'commentReplyFrequency',
+  'commentThrottle',
+  'commentReplyModel',
+  'commentReplyTemperature',
+  'commentReplyTone',
+  'commentReplyMaxLength',
+  'commentReplyPrompt',
+  'commentUseGoogleSearch',
+  'commentUseSerper',
+  'commentGoogleSearchApiKey',
+  'commentGoogleSearchCx',
+  'xCommentBlacklist',
+  'threadsCommentBlacklist',
+  'facebookCommentBlacklist',
+  'instagramCommentBlacklist',
+  'youtubeCommentBlacklist',
+  'tiktokCommentBlacklist',
+  'pinterestCommentBlacklist',
+] as const;
+
 const CLEANUP_BACKEND_KEYS = [
   'cleanupEnabled',
   'cleanupInterval',
@@ -242,6 +266,7 @@ const BACKEND_PERSISTED_KEYS = [
     ...DESIGN_STUDIO_BACKEND_KEYS,
     ...VIDEO_STUDIO_BACKEND_KEYS,
     ...THUMBNAIL_BACKEND_KEYS,
+    ...COMMENT_AUTOMATION_BACKEND_KEYS,
     ...CLEANUP_BACKEND_KEYS,
     ...TMDB_BACKEND_KEYS,
   ]),

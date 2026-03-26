@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractCollaboratorMetadata, isExplicitCollaboratorForTrackedChannel } from '../services/youtube-detection/collabDiscovery';
+import {
+    extractCollaboratorMetadata,
+    hasStructuredSearchCollaboratorSignal,
+    isExplicitCollaboratorForTrackedChannel,
+    isRegionalFamilyChannelAssociation,
+} from '../services/youtube-detection/collabDiscovery';
 
 test('detects explicit collaborator from creators metadata', () => {
     const raw = {
@@ -47,6 +52,42 @@ test('does not treat primary owner as collaborator discovery', () => {
 
     assert.equal(
         isExplicitCollaboratorForTrackedChannel({ channelId: 'UC_HBO', name: 'HBO Max' }, raw),
+        false
+    );
+});
+
+test('accepts structured search collaborator result with channel and 2 more', () => {
+    assert.equal(
+        hasStructuredSearchCollaboratorSignal('HBO Max', {
+            channel: 'HBO Max and 2 more',
+            uploader: 'HBO Max and 2 more',
+        }),
+        true
+    );
+});
+
+test('accepts official regional family channel association', () => {
+    assert.equal(
+        isRegionalFamilyChannelAssociation(
+            { channelId: 'UC_HBO', name: 'HBO Max' },
+            {
+                channel_id: 'UC_HBO_NORDIC',
+                channel: 'HBO Max Nordic',
+            }
+        ),
+        true
+    );
+});
+
+test('does not accept unrelated similar brand channel as family association', () => {
+    assert.equal(
+        isRegionalFamilyChannelAssociation(
+            { channelId: 'UC_HBO', name: 'HBO Max' },
+            {
+                channel_id: 'UC_FAKE',
+                channel: 'HBO Max Recaps',
+            }
+        ),
         false
     );
 });

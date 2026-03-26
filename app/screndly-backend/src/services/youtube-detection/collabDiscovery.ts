@@ -6,7 +6,17 @@ export interface CollaboratorMetadata {
     isCollaborativePost: boolean;
 }
 
-function normalizeName(value?: string): string {
+const ALLOWED_REGIONAL_CHANNEL_SUFFIXES = [
+    'asia',
+    'nordic',
+    'uk ireland',
+    'uk and ireland',
+    'latam',
+    'latin america',
+    'emea',
+];
+
+export function normalizeCollaboratorName(value?: string): string {
     return String(value || '')
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, ' ')
@@ -66,9 +76,34 @@ export function isExplicitCollaboratorForTrackedChannel(
         return false;
     }
 
-    const trackedName = normalizeName(trackedChannel.name);
-    const collaboratorNameMatch = metadata.collaboratorChannelNames.some((name) => normalizeName(name) === trackedName);
+    const trackedName = normalizeCollaboratorName(trackedChannel.name);
+    const collaboratorNameMatch = metadata.collaboratorChannelNames.some((name) => normalizeCollaboratorName(name) === trackedName);
     const collaboratorIdMatch = metadata.collaboratorChannelIds.some((value) => value.includes(trackedChannel.channelId));
 
     return collaboratorNameMatch || collaboratorIdMatch;
+}
+
+export function hasStructuredSearchCollaboratorSignal(
+    trackedChannelName: string,
+    entry: { channel?: string; uploader?: string }
+): boolean {
+    const tracked = normalizeCollaboratorName(trackedChannelName);
+    return [entry.channel, entry.uploader]
+        .map((value) => normalizeCollaboratorName(value))
+        .some((value) => value.includes(tracked) && /\band\s+\d+\s+more\b/.test(value));
+}
+
+export function isRegionalFamilyChannelAssociation(
+    trackedChannel: { channelId: string; name: string },
+    raw: any
+): boolean {
+    const tracked = normalizeCollaboratorName(trackedChannel.name);
+    const rawPrimaryChannelName = normalizeCollaboratorName(typeof raw?.channel === 'string' ? raw.channel : raw?.uploader);
+    const suffix = rawPrimaryChannelName.startsWith(`${tracked} `)
+        ? rawPrimaryChannelName.slice(tracked.length).trim()
+        : '';
+
+    return Boolean(tracked) &&
+        ALLOWED_REGIONAL_CHANNEL_SUFFIXES.includes(suffix) &&
+        raw?.channel_id !== trackedChannel.channelId;
 }

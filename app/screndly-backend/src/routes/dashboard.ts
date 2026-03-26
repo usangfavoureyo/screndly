@@ -41,6 +41,25 @@ function asObject(value: unknown): Record<string, any> {
   return {};
 }
 
+function parseSettingValue(value: unknown): Record<string, any> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, any>;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
 router.get('/stats', authenticate, async (_req, res) => {
   try {
     const today = startOfToday();
@@ -57,6 +76,7 @@ router.get('/stats', authenticate, async (_req, res) => {
       dailyFailures,
       dailySuccess,
       comments,
+      commentSettings,
       activeUploads,
       completedUploadsToday,
       activePipelines,
@@ -100,6 +120,21 @@ router.get('/stats', authenticate, async (_req, res) => {
           platform: true,
           repliedAt: true,
           updatedAt: true,
+        },
+      }),
+      prisma.setting.findMany({
+        where: {
+          key: {
+            in: [
+              'xCommentBlacklist',
+              'instagramCommentBlacklist',
+              'facebookCommentBlacklist',
+              'threadsCommentBlacklist',
+              'youtubeCommentBlacklist',
+              'tiktokCommentBlacklist',
+              'pinterestCommentBlacklist',
+            ],
+          },
         },
       }),
       prisma.uploadJob.count({
@@ -272,7 +307,18 @@ router.get('/stats', authenticate, async (_req, res) => {
       }),
     ]);
 
-    const commentPlatforms = ['X', 'Instagram', 'TikTok', 'Facebook', 'YouTube', 'Threads', 'Pinterest'];
+    const commentPlatformSettingKeys: Record<string, string> = {
+      X: 'xCommentBlacklist',
+      Instagram: 'instagramCommentBlacklist',
+      Facebook: 'facebookCommentBlacklist',
+      Threads: 'threadsCommentBlacklist',
+      YouTube: 'youtubeCommentBlacklist',
+      TikTok: 'tiktokCommentBlacklist',
+      Pinterest: 'pinterestCommentBlacklist',
+    };
+    const activeCommentPlatforms = Object.entries(commentPlatformSettingKeys)
+      .filter(([, key]) => Boolean(parseSettingValue(commentSettings.find((setting) => setting.key === key)?.value).active))
+      .map(([platform]) => platform);
     const recentReplies = comments
       .slice(0, 5)
       .map((comment) => ({
@@ -382,7 +428,7 @@ router.get('/stats', authenticate, async (_req, res) => {
           repliesToday,
           successRate: commentSuccessRate,
           recentReplies,
-          activePlatforms: commentPlatforms.length,
+          activePlatforms: activeCommentPlatforms.length,
         },
         video: {
           activeChannels,

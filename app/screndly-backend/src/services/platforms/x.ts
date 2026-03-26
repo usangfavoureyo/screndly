@@ -28,6 +28,16 @@ interface XResolvedMediaSource {
     sourceType: 'file' | 'remote-url';
 }
 
+export interface XMentionComment {
+    commentId: string;
+    postId: string;
+    username: string;
+    userId?: string;
+    content: string;
+    createdAt: Date;
+    parentPostCreatedAt?: Date;
+}
+
 export class XService {
     private static readonly MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
     private apiKey: string;
@@ -467,6 +477,181 @@ export class XService {
                 mediaId: null,
                 error: error instanceof Error ? error.message : 'Failed to upload video to X',
             };
+        }
+    }
+
+    async getRecentMentions(connection: PlatformConnection, since?: Date): Promise<XMentionComment[]> {
+        const authToken = this.getUserAccessToken(connection);
+        if (!authToken) {
+            throw new Error('X user access token not configured. Reconnect X from Platforms.');
+        }
+
+        if (!connection.userId) {
+            throw new Error('X user id missing on platform connection. Reconnect X from Platforms.');
+        }
+
+        const params = new URLSearchParams({
+            max_results: '25',
+            expansions: 'author_id',
+            'tweet.fields': 'author_id,conversation_id,created_at,in_reply_to_user_id,text',
+            'user.fields': 'username',
+        });
+
+        if (since) {
+            params.set('start_time', since.toISOString());
+        }
+
+        const response = await fetch(
+            `https://api.x.com/2/users/${encodeURIComponent(connection.userId)}/mentions?${params.toString()}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                },
+            }
+        );
+
+        const data = await this.getJsonResponse(response);
+        this.logUploadDebug('Mentions response', {
+            status: response.status,
+            hasData: Array.isArray(data?.data),
+            count: Array.isArray(data?.data) ? data.data.length : 0,
+        });
+
+        if (!response.ok) {
+            throw new Error(
+                this.extractApiErrorMessage(
+                    data,
+                    `Failed to fetch X mentions (${response.status})`
+                )
+            );
+        }
+
+        const users = new Map<string, string>();
+        const includedUsers = Array.isArray(data?.includes?.users) ? data.includes.users : [];
+        for (const user of includedUsers) {
+            if (typeof user?.id === 'string' && typeof user?.username === 'string') {
+                users.set(user.id, user.username);
+            }
+        }
+
+        const tweets = Array.isArray(data?.data) ? data.data : [];
+        const conversationIds = Array.from(
+            new Set(
+                tweets
+                    .map((tweet: any) =>
+                        typeof tweet?.conversation_id === 'string' ? tweet.conversation_id : null
+                    )
+                    .filter((value: string | null): value is string => Boolean(value))
+            )
+        );
+
+        const conversationCreatedAt = new Map<string, Date>();
+        for (let index = 0; index < conversationIds.length; index += 100) {
+            const batch = conversationIds.slice(index, index + 100);
+            const lookupParams = new URLSearchParams({
+                ids: batch.join(','),
+                'tweet.fields': 'created_at',
+            });
+            const lookupResponse = await fetch(
+                `https://api.x.com/2/tweets?${lookupParams.toString()}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${authToken}`,
+                    },
+                }
+            );
+            const lookupData = await this.getJsonResponse(lookupResponse);
+            if (!lookupResponse.ok) {
+                throw new Error(
+                    this.extractApiErrorMessage(
+                        lookupData,
+                        `Failed to fetch X root tweets (${lookupResponse.status})`
+                    )
+                );
+            }
+
+            const rootTweets = Array.isArray(lookupData?.data) ? lookupData.data : [];
+            for (const tweet of rootTweets) {
+                if (typeof tweet?.id === 'string' && typeof tweet?.created_at === 'string') {
+                    const createdAt = new Date(tweet.created_at);
+                    if (!Number.isNaN(createdAt.getTime())) {
+                        conversationCreatedAt.set(tweet.id, createdAt);
+                    }
+                }
+            }
+        }
+
+        return tweets
+            .filter((tweet: any) => {
+                if (typeof tweet?.id !== 'string' || typeof tweet?.text !== 'string') {
+                    return false;
+                }
+
+                if (typeof tweet?.author_id !== 'string' || tweet.author_id === connection.userId) {
+                    return false;
+                }
+
+                if (tweet?.in_reply_to_user_id && tweet.in_reply_to_user_id !== connection.userId) {
+                    return false;
+                }
+
+                return true;
+            })
+            .map((tweet: any) => ({
+                commentId: String(tweet.id),
+                postId: typeof tweet?.conversation_id === 'string' ? tweet.conversation_id : String(tweet.id),
+                username: users.get(String(tweet.author_id)) || String(tweet.author_id),
+                userId: typeof tweet?.author_id === 'string' ? tweet.author_id : undefined,
+                content: String(tweet.text || '').trim(),
+                createdAt: new Date(tweet.created_at || Date.now()),
+                parentPostCreatedAt: typeof tweet?.conversation_id === 'string'
+                    ? conversationCreatedAt.get(tweet.conversation_id)
+                    : undefined,
+            }))
+            .filter((mention: { content: string }) => mention.content.length > 0);
+    }
+
+    async replyToTweet(tweetId: string, text: string, connection?: PlatformConnection): Promise<XPostResult> {
+        const authToken = this.getUserAccessToken(connection);
+        if (!authToken) {
+            return { success: false, error: 'X user access token not configured. Reconnect X from Platforms.' };
+        }
+
+        try {
+            const response = await fetch('https://api.x.com/2/tweets', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: text.slice(0, 280),
+                    reply: {
+                        in_reply_to_tweet_id: tweetId,
+                    },
+                }),
+            });
+
+            const data = await this.getJsonResponse(response);
+            this.logUploadDebug('Reply tweet response', {
+                status: response.status,
+                body: data,
+            });
+
+            if (!response.ok) {
+                return {
+                    success: false,
+                    error: this.extractApiErrorMessage(data, `Failed to reply on X (${response.status})`),
+                };
+            }
+
+            return {
+                success: true,
+                postId: data?.data?.id,
+                postUrl: data?.data?.id ? `https://x.com/i/web/status/${data.data.id}` : undefined,
+            };
+        } catch (error) {
+            return { success: false, error: `X API error: ${error}` };
         }
     }
 

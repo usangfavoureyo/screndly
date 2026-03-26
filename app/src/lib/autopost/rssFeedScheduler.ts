@@ -25,6 +25,7 @@
 import { postQueue, PostCandidate, calculateUrgencyScore } from './postQueue';
 import { toast } from "sonner";
 import { generateRSSCaption } from '../../utils/rssCaptionGenerator';
+import { enrichArticleWithImages } from '../rss/image-enrichment';
 
 export interface RSSFeedConfig {
   id: string;
@@ -66,11 +67,20 @@ export interface RSSItem {
   url: string;
   publishedDate: Date;
   imageUrl?: string;
+  imageUrls?: string[];
+  imageSelectionStrategy?: string;
+  imageSelectionReasons?: string[];
+  imageSelectionConfidence?: number;
   content?: string;
 }
 
 function stripHtml(value?: string): string {
   return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function buildFallbackCaption(item: Pick<RSSItem, 'title' | 'description' | 'content'>): string {
+  const summary = stripHtml(item.content || item.description || '');
+  return `${item.title}\n\n${summary}`.trim();
 }
 
 export interface RSSFeedSchedulerConfig {
@@ -442,10 +452,38 @@ export class RSSFeedScheduler {
   private async enrichItem(item: RSSItem, _feed: RSSFeedConfig): Promise<RSSItem> {
     console.log(`[RSSFeedScheduler] Enriching item: ${item.title}`);
 
-    return {
-      ...item,
-      imageUrl: item.imageUrl,
-    };
+    try {
+      const desiredImageCount =
+        _feed.imageCount === 'random'
+          ? 2
+          : Math.max(1, Number.parseInt(_feed.imageCount, 10) || 1);
+
+      const enriched = await enrichArticleWithImages(
+        {
+          title: item.title,
+          description: stripHtml(item.content || item.description || ''),
+          link: item.url,
+          images: item.imageUrl ? [{ url: item.imageUrl }] : undefined,
+        },
+        null,
+        desiredImageCount,
+      );
+
+      return {
+        ...item,
+        imageUrl: enriched.images[0]?.url || item.imageUrl,
+        imageUrls: enriched.images.map((image) => image.url),
+        imageSelectionStrategy: enriched.strategy,
+        imageSelectionReasons: enriched.debug?.winnerReasons,
+        imageSelectionConfidence: enriched.confidence,
+      };
+    } catch {
+      return {
+        ...item,
+        imageUrl: item.imageUrl,
+        imageUrls: item.imageUrl ? [item.imageUrl] : [],
+      };
+    }
   }
 
   private async generateActualCaption(item: RSSItem, feed: RSSFeedConfig): Promise<string> {
@@ -473,7 +511,17 @@ export class RSSFeedScheduler {
       settings,
     );
 
-    return generated.caption;
+    const caption = String(generated.caption || '').trim();
+    if (caption) {
+      return caption;
+    }
+
+    const fallbackCaption = buildFallbackCaption(item);
+    console.warn('[RSSFeedScheduler] Generated caption was empty, using fallback caption', {
+      title: item.title,
+      fallbackLength: fallbackCaption.length,
+    });
+    return fallbackCaption;
   }
 
   /**
@@ -518,8 +566,13 @@ export class RSSFeedScheduler {
 
       title: item.title,
       caption,
-      mediaUrl: item.url,
+      mediaUrl: undefined,
       thumbnailUrl: item.imageUrl,
+      imageUrls: item.imageUrls?.length ? item.imageUrls : item.imageUrl ? [item.imageUrl] : [],
+      linkUrl: item.url,
+      imageSelectionStrategy: item.imageSelectionStrategy,
+      imageSelectionReasons: item.imageSelectionReasons,
+      imageSelectionConfidence: item.imageSelectionConfidence,
 
       earliestPostTime,
       latestPostTime,

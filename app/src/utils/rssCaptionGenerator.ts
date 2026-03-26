@@ -24,6 +24,10 @@ interface CaptionGenerationOptions {
   prompt: string;
 }
 
+function buildFallbackCaption(article: RSSArticle): string {
+  return `${article.title}\n\n${article.description}`.trim();
+}
+
 function buildSystemPrompt(options: CaptionGenerationOptions): string {
   return [
     options.prompt,
@@ -75,6 +79,9 @@ export async function generateRSSCaption(
     }
 
     const caption = response.data.content.trim();
+    if (!caption) {
+      throw new Error('RSS caption generator returned an empty caption');
+    }
     const articleId = article.link.split('/').pop() || article.title.slice(0, 20);
     captionOptimizer.recordCaptionMetadata(
       articleId,
@@ -92,7 +99,7 @@ export async function generateRSSCaption(
     };
   } catch (error) {
     console.error('Failed to generate RSS caption:', error);
-    const fallbackCaption = `${article.title}\n\n${article.description}`.trim();
+    const fallbackCaption = buildFallbackCaption(article);
     return {
       caption: fallbackCaption,
       charCount: fallbackCaption.length,

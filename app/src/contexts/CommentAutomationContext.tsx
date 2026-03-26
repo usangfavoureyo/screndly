@@ -7,6 +7,15 @@ interface CommentReply {
   time: string;
 }
 
+interface PlatformReadiness {
+  platform: string;
+  enabled: boolean;
+  connected: boolean;
+  ready: boolean;
+  username?: string;
+  reasons: string[];
+}
+
 interface PlatformCommentData {
   platform: string;
   color: string;
@@ -14,6 +23,10 @@ interface PlatformCommentData {
   successRate: string;
   recentReplies: CommentReply[];
   enabled: boolean;
+  connected: boolean;
+  ready: boolean;
+  reasons: string[];
+  username?: string;
 }
 
 interface CommentAutomationContextType {
@@ -44,6 +57,10 @@ function createEmptyPlatformData(platform: string): PlatformCommentData {
     successRate: '0%',
     recentReplies: [],
     enabled: true,
+    connected: false,
+    ready: false,
+    reasons: [],
+    username: undefined,
   };
 }
 
@@ -53,16 +70,31 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
   useEffect(() => {
     const fetchCommentData = async () => {
       try {
-        const response = await apiClient.get<any[]>('/api/comments/automation/stats');
+        const [statsResponse, readinessResponse] = await Promise.all([
+          apiClient.get<any[]>('/api/comments/automation/stats'),
+          apiClient.get<PlatformReadiness[]>('/api/comments/automation/readiness'),
+        ]);
 
-        if (!response.success || !Array.isArray(response.data)) {
-          throw new Error(response.error?.message || 'Failed to fetch comment stats');
+        if (!statsResponse.success || !Array.isArray(statsResponse.data)) {
+          throw new Error(statsResponse.error?.message || 'Failed to fetch comment stats');
         }
 
+        const readinessMap = new Map(
+          (readinessResponse.success && Array.isArray(readinessResponse.data) ? readinessResponse.data : []).map((entry) => [entry.platform, entry])
+        );
+
         const mapped = ALL_PLATFORMS.map((platform) => {
-          const item = response.data.find((entry: any) => entry.platform === platform);
+          const item = statsResponse.data.find((entry: any) => entry.platform === platform);
+          const readiness = readinessMap.get(platform);
           if (!item) {
-            return createEmptyPlatformData(platform);
+            return {
+              ...createEmptyPlatformData(platform),
+              enabled: readiness?.enabled ?? false,
+              connected: readiness?.connected ?? false,
+              ready: readiness?.ready ?? false,
+              reasons: Array.isArray(readiness?.reasons) ? readiness.reasons : [],
+              username: readiness?.username,
+            };
           }
 
           return {
@@ -77,7 +109,11 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
                 time: reply.time || '',
               }))
               : [],
-            enabled: true,
+            enabled: readiness?.enabled ?? Boolean(item.enabled),
+            connected: readiness?.connected ?? false,
+            ready: readiness?.ready ?? false,
+            reasons: Array.isArray(readiness?.reasons) ? readiness.reasons : [],
+            username: readiness?.username,
           };
         });
 

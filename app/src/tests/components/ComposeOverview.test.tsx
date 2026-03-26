@@ -101,7 +101,7 @@ describe('ComposeOverview', () => {
     expect(screen.queryByText('Published title')).not.toBeInTheDocument();
   });
 
-  it('navigates to add post on click without using touchstart as a separate navigation path', () => {
+  it('navigates on a touch pointer tap without waiting for a synthetic click', () => {
     const onNavigate = vi.fn();
 
     render(
@@ -112,10 +112,21 @@ describe('ComposeOverview', () => {
 
     const addPostButton = screen.getByRole('button', { name: 'Add Post' });
 
-    fireEvent.touchStart(addPostButton);
+    fireEvent.pointerDown(addPostButton, {
+      button: 0,
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 48,
+      clientY: 96,
+    });
     expect(onNavigate).not.toHaveBeenCalled();
 
-    fireEvent.click(addPostButton);
+    fireEvent.pointerUp(addPostButton, {
+      pointerId: 1,
+      pointerType: 'touch',
+      clientX: 50,
+      clientY: 98,
+    });
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
   });
