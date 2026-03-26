@@ -259,6 +259,52 @@ function normalizeGeneratedText(content: string, preferredJsonKeys: string[] = [
     return trimmed.replace(/^"|"$/g, '');
 }
 
+function normalizeCommentReplyText(content: string): string {
+    return content
+        .replace(/[—–]/g, ', ')
+        .replace(/\s+,\s+/g, ', ')
+        .replace(/\s{2,}/g, ' ')
+        .replace(/\s+([,.!?])/g, '$1')
+        .trim();
+}
+
+function determineCommentReplyLengthProfile(
+    comment: string,
+    normalizedMaxLength: number
+): { label: 'short' | 'medium' | 'long'; targetChars: number; maxTokens: number } {
+    const normalizedComment = comment.trim();
+    const wordCount = normalizedComment ? normalizedComment.split(/\s+/).length : 0;
+    const asksQuestion = /\?/.test(normalizedComment);
+    const hasMultipleQuestions = (normalizedComment.match(/\?/g) || []).length > 1;
+    const asksWhyOrHow = /\b(why|how|what|when|where|which|who|explain|thoughts)\b/i.test(normalizedComment);
+    const detailedComment = normalizedComment.length > 140 || wordCount > 24;
+
+    if (hasMultipleQuestions || (asksQuestion && asksWhyOrHow) || detailedComment) {
+        const targetChars = Math.min(normalizedMaxLength, 180);
+        return {
+            label: 'long',
+            targetChars,
+            maxTokens: Math.min(120, Math.max(70, Math.ceil(targetChars / 2))),
+        };
+    }
+
+    if (asksQuestion || normalizedComment.length > 70 || wordCount > 12) {
+        const targetChars = Math.min(normalizedMaxLength, 110);
+        return {
+            label: 'medium',
+            targetChars,
+            maxTokens: Math.min(80, Math.max(45, Math.ceil(targetChars / 2))),
+        };
+    }
+
+    const targetChars = Math.min(normalizedMaxLength, 55);
+    return {
+        label: 'short',
+        targetChars,
+        maxTokens: Math.min(48, Math.max(24, Math.ceil(targetChars / 2))),
+    };
+}
+
 function extractOpenAIMessageContent(content: unknown): string {
     if (typeof content === 'string') {
         return content;
@@ -1183,6 +1229,7 @@ export async function generateCommentReply(
     const normalizedMaxLength = typeof context.maxLength === 'number' && Number.isFinite(context.maxLength)
         ? Math.min(Math.max(Math.floor(context.maxLength), 40), 280)
         : 220;
+    const lengthProfile = determineCommentReplyLengthProfile(context.originalComment, normalizedMaxLength);
     const tone = context.tone?.trim() || 'Natural, warm, and conversational';
     const defaultSystemPrompt = `You write social replies for Screen Render as a real human community voice.
 Goal: reply to the person in a way that feels natural, specific, and grounded in the actual post.
@@ -1193,10 +1240,14 @@ Goal: reply to the person in a way that feels natural, specific, and grounded in
 - Avoid generic filler like "Thanks for your comment", "We appreciate it", or "Stay tuned".
 - Avoid hashtags and promo language.
 - Avoid emoji spam. Use at most one emoji only if it feels natural.
+- Do not use em dashes, en dashes, semicolons, or overly polished copywriting punctuation.
 - If the comment is excited, match the energy.
 - If the comment is asking a question, answer only from the provided context. If the answer is unclear, keep it honest and brief.
 - If the comment is negative or skeptical, stay calm, respectful, and human.
+- Default to a short reply. Only go medium or long if the comment clearly needs more context.
+- Length profile for this reply: ${lengthProfile.label}.
 - Tone target: ${tone}.
+- Target length for this reply: around ${lengthProfile.targetChars} characters or less.
 - Hard length limit: ${normalizedMaxLength} characters.
 - Return only the reply text.`;
 
@@ -1210,7 +1261,9 @@ Goal: reply to the person in a way that feels natural, specific, and grounded in
         context.description ? `Post summary: ${context.description}` : null,
         context.postTitle ? `Post title: ${context.postTitle}` : null,
         context.postText ? `Post text/caption: ${context.postText.slice(0, 500)}` : null,
-        `Reply limit: ${normalizedMaxLength} characters`,
+        `Reply profile: ${lengthProfile.label}`,
+        `Preferred reply size: around ${lengthProfile.targetChars} characters or less`,
+        `Hard reply limit: ${normalizedMaxLength} characters`,
         'Write a direct reply to the commenter. Return ONLY the reply text.',
     ].filter((section): section is string => typeof section === 'string' && section.trim().length > 0);
 
@@ -1220,7 +1273,7 @@ Goal: reply to the person in a way that feels natural, specific, and grounded in
         model,
         prompt,
         systemPrompt,
-        maxTokens: Math.min(160, Math.max(60, Math.ceil(normalizedMaxLength / 2))),
+        maxTokens: lengthProfile.maxTokens,
         temperature: customTemperature !== undefined ? customTemperature : 0.9,
         jsonMode: false
     });
@@ -1229,7 +1282,9 @@ Goal: reply to the person in a way that feels natural, specific, and grounded in
         return 'Appreciate that';
     }
 
-    const normalizedReply = response.content.trim().replace(/^"|"$/g, '').replace(/\s+/g, ' ').trim();
+    const normalizedReply = normalizeCommentReplyText(
+        response.content.trim().replace(/^"|"$/g, '').replace(/\s+/g, ' ').trim()
+    );
     if (!normalizedReply) {
         return 'Appreciate that';
     }

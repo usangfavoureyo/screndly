@@ -248,6 +248,45 @@ const RSS_TOPIC_SIGNATURE_STOP_WORDS = new Set([
   'were',
   'with',
 ]);
+const RSS_TOPIC_ENTITY_STOP_WORDS = new Set([
+  ...RSS_TOPIC_SIGNATURE_STOP_WORDS,
+  'actor',
+  'actors',
+  'actress',
+  'actresses',
+  'cast',
+  'casts',
+  'casting',
+  'pilot',
+  'series',
+  'show',
+  'movie',
+  'movies',
+  'tv',
+  'role',
+  'roles',
+  'star',
+  'stars',
+  'starring',
+  'joins',
+  'join',
+  'boards',
+  'board',
+  'opposite',
+  'set',
+  'lead',
+  'reboot',
+  'revival',
+  'exclusive',
+  'first',
+  'look',
+  'images',
+  'image',
+  'trailer',
+  'teaser',
+  'official',
+  'new',
+]);
 
 type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
@@ -1205,6 +1244,78 @@ function getRSSTopicSignature(title?: string | null): string {
     .filter((token) => token.length > 2 || /^\d+$/.test(token));
   const uniqueTokens = Array.from(new Set(tokens)).sort();
   return uniqueTokens.join(' ');
+}
+
+function getRSSTopicTokens(title?: string | null): string[] {
+  const normalizedTitle = normalizeRSSDedupeValue(title);
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  return normalizedTitle
+    .split(' ')
+    .filter((token) => token && !RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token))
+    .filter((token) => token.length > 2 || /^\d+$/.test(token));
+}
+
+function extractRSSEntityTokens(title?: string | null): string[] {
+  if (!title) {
+    return [];
+  }
+
+  const entityMatches = Array.from(
+    title.matchAll(/\b([A-Z][a-z0-9]+(?:['-][A-Z]?[a-z0-9]+)*|[A-Z]{2,}|[0-9]+)\b/g)
+  )
+    .map((match) => normalizeRSSDedupeValue(match[0]))
+    .filter((token) => token && !RSS_TOPIC_ENTITY_STOP_WORDS.has(token))
+    .filter((token) => token.length > 2 || /^\d+$/.test(token));
+
+  return Array.from(new Set(entityMatches));
+}
+
+function buildRSSTopicFingerprint(title?: string | null): {
+  signature: string;
+  tokens: Set<string>;
+  entityTokens: Set<string>;
+} {
+  const signature = getRSSTopicSignature(title);
+  return {
+    signature,
+    tokens: new Set(getRSSTopicTokens(title)),
+    entityTokens: new Set(extractRSSEntityTokens(title)),
+  };
+}
+
+function getSetIntersectionCount(left: Set<string>, right: Set<string>): number {
+  let count = 0;
+  for (const value of left) {
+    if (right.has(value)) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function areRSSTopicFingerprintsSimilar(
+  left: { signature: string; tokens: Set<string>; entityTokens: Set<string> },
+  right: { signature: string; tokens: Set<string>; entityTokens: Set<string> }
+): boolean {
+  if (!left.signature || !right.signature) {
+    return false;
+  }
+
+  if (left.signature === right.signature) {
+    return true;
+  }
+
+  const sharedTokens = getSetIntersectionCount(left.tokens, right.tokens);
+  const sharedEntities = getSetIntersectionCount(left.entityTokens, right.entityTokens);
+  const minTokenSize = Math.min(left.tokens.size, right.tokens.size);
+  const entityHeavyMatch = sharedEntities >= 2 && sharedTokens >= 4;
+  const highTokenOverlap = minTokenSize >= 4 && sharedTokens >= Math.max(4, minTokenSize - 1);
+  const weightedScore = sharedTokens + sharedEntities * 2;
+
+  return entityHeavyMatch || highTokenOverlap || weightedScore >= 8;
 }
 
 function getRSSItemTopicDedupeKey(item: RSSItem): string {
@@ -2323,24 +2434,28 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     const recentActivities = recentActivityLogs
       .map((log) => parseRSSActivityLog(log))
       .filter((activity): activity is RSSActivityItem => Boolean(activity));
-    const recentTopicKeys = new Set(
-      recentActivities
-        .filter((activity) => activity.status === 'pending' || activity.status === 'published')
-        .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
-        .map((activity) => getRSSActivityTopicDedupeKey(activity))
-        .filter((key): key is string => Boolean(key))
-    );
+    const recentTopicFingerprints = recentActivities
+      .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+      .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
+      .map((activity) => buildRSSTopicFingerprint(activity.title))
+      .filter((fingerprint) => fingerprint.signature);
     const getCrossSourceTopicDuplicateReason = (item: RSSItem): string | null => {
-      const topicKey = getRSSItemTopicDedupeKey(item);
-      if (!topicKey || !recentTopicKeys.has(topicKey)) {
+      const itemFingerprint = buildRSSTopicFingerprint(item.title);
+      if (!itemFingerprint.signature) {
+        return null;
+      }
+      const matchesRecentTopic = recentTopicFingerprints.some((fingerprint) =>
+        areRSSTopicFingerprintsSimilar(itemFingerprint, fingerprint)
+      );
+      if (!matchesRecentTopic) {
         return null;
       }
       return 'Filtered as a duplicate topic that was already queued or published recently from another source.';
     };
     const rememberRecentTopic = (item: RSSItem): void => {
-      const topicKey = getRSSItemTopicDedupeKey(item);
-      if (topicKey) {
-        recentTopicKeys.add(topicKey);
+      const fingerprint = buildRSSTopicFingerprint(item.title);
+      if (fingerprint.signature) {
+        recentTopicFingerprints.push(fingerprint);
       }
     };
     const selectionMode = manualLatestSelection ? 'latest_item' : 'backlog';
