@@ -1891,6 +1891,7 @@ async function attemptRSSPublish(
       successfulPlatforms: string[];
       platformPostIds: Record<string, string>;
       platformResults: PublishResult[];
+      errorMessage?: string;
     }
   | {
       status: 'failed';
@@ -1938,6 +1939,10 @@ async function attemptRSSPublish(
         .filter((result) => result.status === 'posted' && typeof result.id === 'string' && result.id.trim())
         .map((result) => [result.platform, result.id!.trim()] as const)
     );
+    const failedResults = publishResults.filter((result) => result.status !== 'posted');
+    const partialFailureMessage = failedResults.length > 0
+      ? failedResults.map((result) => `${result.platform}: ${result.error || result.status}`).join('; ')
+      : undefined;
 
     if (successfulPlatforms.length === 0) {
       return {
@@ -1960,6 +1965,7 @@ async function attemptRSSPublish(
       successfulPlatforms,
       platformPostIds,
       platformResults: publishResults,
+      errorMessage: partialFailureMessage,
     };
   } catch (error) {
     const fallbackImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
@@ -2629,6 +2635,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           platforms: publishAttempt.successfulPlatforms,
           platformPostIds: publishAttempt.platformPostIds,
           platformResults: publishAttempt.platformResults,
+          errorMessage: publishAttempt.errorMessage,
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
@@ -2788,6 +2795,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           platforms: publishAttempt.successfulPlatforms,
           platformPostIds: publishAttempt.platformPostIds,
           platformResults: publishAttempt.platformResults,
+          errorMessage: publishAttempt.errorMessage,
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);

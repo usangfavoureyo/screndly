@@ -9,7 +9,7 @@ import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
 import { tiktokService } from './platforms/tiktok';
 import { pinterestService } from './platforms/pinterest';
-import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from './platforms/connectionAuth';
+import { ensureFreshPlatformConnection, hasPublishablePlatformConnection, hasUsablePlatformAccessToken } from './platforms/connectionAuth';
 import { notificationService } from './notification.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze, uploadLocalFileToBackblaze } from './backblaze';
 
@@ -81,6 +81,19 @@ function describePublishItem(content: PublishContent, localVideoFile?: string | 
 }
 
 export class PublisherService {
+    private getInvalidConnectionMessage(platform: string): string {
+        switch (platform) {
+            case 'Facebook':
+                return 'Facebook connection is invalid or incomplete. Reconnect Facebook from Platforms.';
+            case 'Instagram':
+                return 'Instagram connection is invalid or incomplete. Reconnect Instagram from Platforms.';
+            case 'Threads':
+                return 'Threads connection is invalid or incomplete. Reconnect Threads from Platforms.';
+            default:
+                return 'Platform not configured';
+        }
+    }
+
     private getMimeType(filePath: string): string {
         const extension = path.extname(filePath).toLowerCase();
         switch (extension) {
@@ -377,25 +390,34 @@ export class PublisherService {
                             break;
 
                         case 'Facebook':
-                            if (connection.accessToken && connection.userId) {
+                            if (hasPublishablePlatformConnection(connection)) {
+                                const facebookUserId = connection.userId as string;
+                                const facebookAccessToken = connection.accessToken as string;
                                 const fbResult = localVideoFile
                                     ? await metaService.postVideoToFacebook(
-                                        connection.userId,
+                                        facebookUserId,
                                         platformContent.text,
                                         localVideoFile,
-                                        connection.accessToken
+                                        facebookAccessToken
                                     )
                                     : await metaService.postToFacebook(
-                                        connection.userId,
+                                        facebookUserId,
                                         platformContent.text,
                                         resolvedImageUrls.length > 0 ? resolvedImageUrls : (primaryImageUrl || null),
-                                        connection.accessToken,
+                                        facebookAccessToken,
                                         platformContent.link
                                     );
                                 result = {
                                     platform,
                                     ...fbResult,
                                     status: fbResult.success ? 'posted' : 'failed',
+                                    postedAt: new Date().toISOString()
+                                };
+                            } else {
+                                result = {
+                                    platform,
+                                    status: 'failed',
+                                    error: this.getInvalidConnectionMessage(platform),
                                     postedAt: new Date().toISOString()
                                 };
                             }
@@ -437,24 +459,33 @@ export class PublisherService {
                             break;
 
                         case 'Threads':
-                            if (connection.accessToken && connection.userId) {
+                            if (hasPublishablePlatformConnection(connection)) {
+                                const threadsUserId = connection.userId as string;
+                                const threadsAccessToken = connection.accessToken as string;
                                 const threadsResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
                                     ? await metaService.postVideoToThreads(
-                                        connection.userId,
+                                        threadsUserId,
                                         platformContent.text,
                                         await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
-                                        connection.accessToken
+                                        threadsAccessToken
                                     )
                                     : await metaService.postToThreads(
-                                        connection.userId,
+                                        threadsUserId,
                                         platformContent.text,
                                         resolvedImageUrls.length > 0 ? resolvedImageUrls : (primaryImageUrl || null),
-                                        connection.accessToken
+                                        threadsAccessToken
                                     );
                                 result = {
                                     platform,
                                     ...threadsResult,
                                     status: threadsResult.success ? 'posted' : 'failed',
+                                    postedAt: new Date().toISOString()
+                                };
+                            } else {
+                                result = {
+                                    platform,
+                                    status: 'failed',
+                                    error: this.getInvalidConnectionMessage(platform),
                                     postedAt: new Date().toISOString()
                                 };
                             }

@@ -13,7 +13,7 @@ import { metaService } from '../services/platforms/meta';
 import { youtubeService } from '../services/platforms/youtube';
 import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
-import { ensureFreshPlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
+import { ensureFreshPlatformConnection, hasPublishablePlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze, uploadLocalFileToBackblaze } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
@@ -1103,13 +1103,16 @@ router.get('/status', authenticate, async (req, res) => {
             if (!platform) return;
 
             const metadata = getJsonObject(conn.metadata);
+            const connected = hasPublishablePlatformConnection(conn);
             const nextStatus: BackendPlatformStatus = {
-                connected: hasUsablePlatformAccessToken(conn),
+                connected,
                 username: conn.username || undefined,
                 lastPost: getJsonString(metadata, 'lastPostAt'),
                 profileUrl: buildProfileUrl(platform, conn.username, conn.userId, metadata),
                 expiresAt: conn.expiresAt?.toISOString(),
-                error,
+                error: error || (!connected && hasUsablePlatformAccessToken(conn)
+                    ? `${platform} connection is incomplete. Reconnect ${platform} from Platforms.`
+                    : undefined),
             };
 
             status[platform] = nextStatus;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
@@ -267,6 +267,16 @@ export function ComposeEditorPage({
     () => JSON.stringify(formState) !== initialFormSnapshot,
     [formState, initialFormSnapshot],
   );
+  const activePreviewAssetUrl = useMemo(() => {
+    if (!previewAsset) {
+      return undefined;
+    }
+
+    return previewAsset.kind === 'video'
+      ? getComposeAssetPublishUrl(previewAsset) || getComposeAssetPreviewUrl(previewAsset)
+      : getComposeAssetPreviewUrl(previewAsset);
+  }, [previewAsset]);
+  const isMediaPreviewOpen = Boolean(activePreviewAssetUrl || previewThumbnail);
   const isScheduleInteractionActive = isScheduleOpen || isScheduleDatePickerOpen || isScheduleTimePickerOpen;
   const unsavedChangesGuard = useUnsavedBackGuard({
     isDirty: hasUnsavedChanges,
@@ -275,6 +285,20 @@ export function ComposeEditorPage({
   });
 
   const handleEditorCloseRequest = useCallback(() => {
+    if (previewAsset) {
+      setPreviewAsset(null);
+      return true;
+    }
+
+    if (previewThumbnail) {
+      setPreviewThumbnail(null);
+      return true;
+    }
+
+    if (unsavedChangesGuard.isPromptOpen) {
+      return true;
+    }
+
     if (isScheduleDatePickerOpen || isScheduleTimePickerOpen) {
       return true;
     }
@@ -293,6 +317,8 @@ export function ComposeEditorPage({
     isScheduleTimePickerOpen,
     onNavigate,
     previousPage,
+    previewAsset,
+    previewThumbnail,
     unsavedChangesGuard,
   ]);
 
@@ -384,7 +410,7 @@ export function ComposeEditorPage({
   ]);
 
   useBackEntry({
-    enabled: hasUnsavedChanges && !isScheduleInteractionActive && !unsavedChangesGuard.isPromptOpen,
+    enabled: (hasUnsavedChanges || isScheduleInteractionActive || isMediaPreviewOpen) && !unsavedChangesGuard.isPromptOpen,
     priority: 100,
     onBack: () => handleEditorCloseRequest(),
   });
@@ -699,7 +725,9 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewAsset = (asset: ComposeMediaAsset) => {
-    const previewUrl = getComposeAssetPreviewUrl(asset);
+    const previewUrl = asset.kind === 'video'
+      ? getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)
+      : getComposeAssetPreviewUrl(asset);
     if (!previewUrl) {
       return;
     }
@@ -1029,7 +1057,9 @@ export function ComposeEditorPage({
                           </button>
                         </div>
                       </div>
-                      {getComposeAssetPreviewUrl(asset) ? (
+                      {(asset.kind === 'video'
+                        ? getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)
+                        : getComposeAssetPreviewUrl(asset)) ? (
                         <button
                           type="button"
                           onClick={() => handlePreviewAsset(asset)}
@@ -1039,7 +1069,7 @@ export function ComposeEditorPage({
                           {asset.kind === 'video' ? (
                             <>
                               <video
-                                src={getComposeAssetPreviewUrl(asset)}
+                                src={getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)}
                                 className="pointer-events-none h-48 w-full object-contain"
                                 muted
                                 playsInline
@@ -1618,8 +1648,8 @@ export function ComposeEditorPage({
       </BottomSheet>
 
       <MediaPreviewDialog
-        open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
+        open={Boolean(previewAsset && activePreviewAssetUrl)}
+        src={activePreviewAssetUrl}
         mediaType={previewAsset?.kind ?? 'image'}
         title={previewAsset?.fileName}
         badgeLabel={previewAsset?.kind}

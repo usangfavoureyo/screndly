@@ -56,6 +56,27 @@ export function hasUsablePlatformAccessToken(
     return !!connection?.accessToken && !isPlaceholderAccessToken(connection.accessToken);
 }
 
+export function hasPublishablePlatformConnection(
+    connection: Pick<PlatformConnection, 'platform' | 'accessToken' | 'userId'> | null | undefined
+): boolean {
+    if (!hasUsablePlatformAccessToken(connection)) {
+        return false;
+    }
+
+    if (!connection) {
+        return false;
+    }
+
+    switch (connection.platform) {
+        case 'Facebook':
+        case 'Instagram':
+        case 'Threads':
+            return typeof connection.userId === 'string' && connection.userId.trim().length > 0;
+        default:
+            return true;
+    }
+}
+
 function needsRefresh(connection: PlatformConnection): boolean {
     if (!connection.accessToken || !connection.expiresAt) {
         return false;
@@ -339,6 +360,88 @@ async function repairInstagramConnection(connection: PlatformConnection): Promis
     });
 }
 
+async function repairFacebookConnection(connection: PlatformConnection): Promise<PlatformConnection> {
+    const metadata = getJsonObject(connection.metadata);
+    const storedUserToken = getJsonString(metadata, 'userToken') || connection.accessToken || undefined;
+    const storedPageId = getJsonString(metadata, 'pageId') || connection.userId || undefined;
+    const needsRepair =
+        !hasPublishablePlatformConnection(connection)
+        || !storedPageId
+        || !getJsonString(metadata, 'profileUrl');
+
+    if (!needsRepair || !storedUserToken) {
+        return connection;
+    }
+
+    try {
+        const pages = await metaService.getPages(storedUserToken);
+        if (!Array.isArray(pages) || pages.length === 0) {
+            return connection;
+        }
+
+        const matchedPage =
+            pages.find((page) => typeof page?.id === 'string' && page.id === storedPageId)
+            || pages[0];
+
+        if (!matchedPage?.id || !matchedPage?.access_token) {
+            return connection;
+        }
+
+        return updatePlatformConnection(connection.platform, {
+            accessToken: matchedPage.access_token,
+            refreshToken: connection.refreshToken,
+            expiresAt: connection.expiresAt,
+            userId: String(matchedPage.id),
+            username: typeof matchedPage.name === 'string' ? matchedPage.name : connection.username,
+            metadata: {
+                ...metadata,
+                userToken: storedUserToken,
+                pageId: String(matchedPage.id),
+                pageName: typeof matchedPage.name === 'string' ? matchedPage.name : undefined,
+                profileUrl: `https://www.facebook.com/${matchedPage.id}`,
+            },
+        });
+    } catch {
+        return connection;
+    }
+}
+
+async function repairThreadsConnection(connection: PlatformConnection): Promise<PlatformConnection> {
+    const metadata = getJsonObject(connection.metadata);
+    const needsRepair =
+        !hasPublishablePlatformConnection(connection)
+        || !connection.username
+        || !getJsonString(metadata, 'profileUrl');
+
+    if (!needsRepair || !hasUsablePlatformAccessToken(connection)) {
+        return connection;
+    }
+
+    try {
+        const profile = await metaService.getThreadsProfile(connection.accessToken as string);
+        if (!profile?.id) {
+            return connection;
+        }
+
+        return updatePlatformConnection(connection.platform, {
+            accessToken: connection.accessToken,
+            refreshToken: connection.refreshToken,
+            expiresAt: connection.expiresAt,
+            userId: String(profile.id),
+            username: profile.username || profile.name || connection.username || String(profile.id),
+            metadata: {
+                ...metadata,
+                profileUrl: profile.username ? `https://www.threads.net/@${profile.username}` : getJsonString(metadata, 'profileUrl'),
+                profileImageUrl: profile.threads_profile_picture_url,
+                bio: profile.threads_biography,
+                isVerified: profile.is_verified,
+            },
+        });
+    } catch {
+        return connection;
+    }
+}
+
 async function syncMetaAutomationPermissions(connection: PlatformConnection): Promise<PlatformConnection> {
     if (connection.platform !== 'Facebook' && connection.platform !== 'Instagram') {
         return connection;
@@ -397,26 +500,39 @@ export async function ensureFreshPlatformConnection(connection: PlatformConnecti
         connection = await repairInstagramConnection(connection);
     }
 
+    if (connection.platform === 'Facebook') {
+        connection = await repairFacebookConnection(connection);
+    }
+
     if (connection.platform === 'Facebook' || connection.platform === 'Instagram') {
         connection = await syncMetaAutomationPermissions(connection);
     }
 
-    if (!needsRefresh(connection)) {
-        return connection;
+    if (needsRefresh(connection)) {
+        switch (connection.platform) {
+            case 'X':
+                connection = await refreshXConnection(connection);
+                break;
+            case 'YouTube':
+                connection = await refreshYouTubeConnection(connection);
+                break;
+            case 'TikTok':
+                connection = await refreshTikTokConnection(connection);
+                break;
+            case 'Pinterest':
+                connection = await refreshPinterestConnection(connection);
+                break;
+            case 'Threads':
+                connection = await refreshThreadsConnection(connection);
+                break;
+            default:
+                break;
+        }
     }
 
-    switch (connection.platform) {
-        case 'X':
-            return refreshXConnection(connection);
-        case 'YouTube':
-            return refreshYouTubeConnection(connection);
-        case 'TikTok':
-            return refreshTikTokConnection(connection);
-        case 'Pinterest':
-            return refreshPinterestConnection(connection);
-        case 'Threads':
-            return refreshThreadsConnection(connection);
-        default:
-            return connection;
+    if (connection.platform === 'Threads') {
+        connection = await repairThreadsConnection(connection);
     }
+
+    return connection;
 }

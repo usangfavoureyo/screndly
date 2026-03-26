@@ -465,6 +465,7 @@ export async function initCronJobs() {
 
                     const results = await publisherService.publish(platforms, content);
                     const success = results.some(r => r.status === 'posted');
+                    const partialSuccess = success && results.some(r => r.status !== 'posted');
                     const failureMessage = results
                         .filter(r => r.status !== 'posted')
                         .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
@@ -474,11 +475,20 @@ export async function initCronJobs() {
                         status: success ? 'published' : 'failed',
                         publishedTime: now,
                         dispatchedAt: now,
-                        errorMessage: success ? null : (failureMessage || 'Failed to publish TMDb post'),
+                        errorMessage: success ? (failureMessage || null) : (failureMessage || 'Failed to publish TMDb post'),
                     });
 
-                    if (success) {
+                    if (success && !partialSuccess) {
                         await logCron('info', `Successfully published post: ${post.title}`);
+                    } else if (partialSuccess) {
+                        await logCron('warn', `Partially published post ${post.title}: ${failureMessage}`);
+                        await notificationService.notifyUser({
+                            title: 'Auto-Post partially published',
+                            message: `"${post.title}" posted to some platforms, but failed on: ${failureMessage}`,
+                            type: 'warning',
+                            source: 'tmdb',
+                            actionPage: '/tmdb-feeds'
+                        });
                     } else {
                         const errors = results.map(r => `${r.platform}: ${r.error}`).join(', ');
                         await logCron('error', `Failed to publish post ${post.title}: ${errors}`);
