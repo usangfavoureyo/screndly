@@ -81,6 +81,16 @@ function describePublishItem(content: PublishContent, localVideoFile?: string | 
 }
 
 export class PublisherService {
+    private normalizeRemoteMediaUrl(value: string): string {
+        try {
+            const parsed = new URL(value.trim());
+            parsed.searchParams.delete('Authorization');
+            return parsed.toString();
+        } catch {
+            return value.trim();
+        }
+    }
+
     private getInvalidConnectionMessage(platform: string): string {
         switch (platform) {
             case 'Facebook':
@@ -139,12 +149,12 @@ export class PublisherService {
             .getResolvedImageUrls(content)
             .slice(0, this.getPlatformImageLimit(platform));
 
-        return Promise.all(rawUrls.map((value) => getBackblazeAuthorizedDownloadUrl(value)));
+        return Promise.all(rawUrls.map((value) => getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(value))));
     }
 
     private async getResolvedRemoteCoverImageUrl(content: PublishContent): Promise<string | undefined> {
         const value = this.getRemoteCoverImageUrl(content);
-        return value ? getBackblazeAuthorizedDownloadUrl(value) : undefined;
+        return value ? getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(value)) : undefined;
     }
 
     private async prepareHostedMetaImageUrl(source: string, cache: Map<string, string>): Promise<string> {
@@ -158,20 +168,9 @@ export class PublisherService {
         let originalName: string;
 
         if (/^https?:\/\//i.test(cacheKey)) {
-            const resolvedUrl = await getBackblazeAuthorizedDownloadUrl(cacheKey);
-            const response = await axios.get<ArrayBuffer>(resolvedUrl, {
-                responseType: 'arraybuffer',
-                timeout: 60_000,
-            });
-
-            sourceBuffer = Buffer.from(response.data);
-
-            try {
-                const parsedUrl = new URL(resolvedUrl);
-                originalName = path.basename(parsedUrl.pathname) || 'image';
-            } catch {
-                originalName = 'image';
-            }
+            const remoteUrl = this.normalizeRemoteMediaUrl(cacheKey);
+            cache.set(cacheKey, remoteUrl);
+            return remoteUrl;
         } else {
             sourceBuffer = await fs.readFile(cacheKey);
             originalName = path.basename(cacheKey);
@@ -200,7 +199,7 @@ export class PublisherService {
             }
         );
 
-        const hostedUrl = await getBackblazeAuthorizedDownloadUrl(uploadedImage.url);
+        const hostedUrl = uploadedImage.url;
         cache.set(cacheKey, hostedUrl);
         return hostedUrl;
     }
@@ -269,7 +268,7 @@ export class PublisherService {
         cache: Map<string, string>
     ): Promise<string> {
         if (this.isDirectVideoUrl(directVideoUrl)) {
-            return getBackblazeAuthorizedDownloadUrl(directVideoUrl.trim());
+            return this.normalizeRemoteMediaUrl(directVideoUrl.trim());
         }
 
         if (!mediaFilePath || !this.isVideo(mediaFilePath)) {
@@ -292,9 +291,9 @@ export class PublisherService {
             }
         );
 
-        const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(uploaded.url);
-        cache.set(cacheKey, authorizedUrl);
-        return authorizedUrl;
+        const hostedUrl = uploaded.url;
+        cache.set(cacheKey, hostedUrl);
+        return hostedUrl;
     }
 
     /**
