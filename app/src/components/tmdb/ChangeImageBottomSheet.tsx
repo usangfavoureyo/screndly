@@ -14,6 +14,16 @@ import {
 } from '../ui/bottom-sheet';
 import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import { RedSpinner } from '../PageLoader';
+import { getImagePreferences, getTMDbImagePreferenceLabel, type TMDbImagePreference } from '../../lib/tmdb/tmdbSettingsService';
+
+type ChangeImageMode = TMDbImagePreference | 'custom';
+
+interface ChangeImageSelection {
+    imageUrl: string;
+    imageType: 'poster' | 'backdrop' | 'logo' | 'custom';
+    imageUrls: string[];
+    imageTypes: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
+}
 
 interface ChangeImageBottomSheetProps {
     open: boolean;
@@ -22,8 +32,10 @@ interface ChangeImageBottomSheetProps {
     mediaType: 'movie' | 'tv' | 'person';
     tmdbId: number;
     currentImageUrl?: string;
-    currentImageType?: 'poster' | 'backdrop' | 'custom';
-    onSave: (imageUrl: string, imageType: 'poster' | 'backdrop' | 'custom') => Promise<void> | void;
+    currentImageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
+    currentImageUrls?: string[];
+    currentImageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
+    onSave: (selection: ChangeImageSelection) => Promise<void> | void;
 }
 
 export function ChangeImageBottomSheet({
@@ -33,28 +45,50 @@ export function ChangeImageBottomSheet({
     mediaType,
     tmdbId,
     currentImageUrl,
+    currentImageUrls,
     currentImageType = 'poster',
+    currentImageTypes,
     onSave
 }: ChangeImageBottomSheetProps) {
-    const [selectedImageType, setSelectedImageType] = useState<'poster' | 'backdrop' | 'custom'>(currentImageType);
-    const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
+    const [selectedMode, setSelectedMode] = useState<ChangeImageMode>('custom');
+    const [previewImageUrls, setPreviewImageUrls] = useState<string[]>([]);
+    const [previewImageTypes, setPreviewImageTypes] = useState<Array<'poster' | 'backdrop' | 'logo' | 'custom'>>([]);
     const [isFetchingImage, setIsFetchingImage] = useState(false);
-    const [fetchingImageType, setFetchingImageType] = useState<'poster' | 'backdrop' | 'custom' | null>(null);
+    const [fetchingImageType, setFetchingImageType] = useState<ChangeImageMode | null>(null);
     const [isSavingImage, setIsSavingImage] = useState(false);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const preferredModes = getImagePreferences();
+    const availableModes = Array.from(new Set<ChangeImageMode>([...preferredModes, 'custom']));
+
+    const currentImageSelectionType = currentImageType === 'logo'
+        ? 'backdrop_logo'
+        : Array.isArray(currentImageTypes) && currentImageTypes[0] === 'poster' && currentImageTypes[1] === 'backdrop'
+            ? 'poster_backdrop'
+            : Array.isArray(currentImageTypes) && currentImageTypes[0] === 'backdrop' && currentImageTypes[1] === 'logo'
+                ? 'backdrop_logo'
+                : currentImageType === 'backdrop'
+                    ? 'backdrop'
+                    : currentImageType === 'custom'
+                        ? 'custom'
+                        : 'poster';
 
     // Reset state when opening
     useEffect(() => {
         if (open) {
-            setSelectedImageType(currentImageType);
-            setPreviewImageUrl(null);
+            setSelectedMode(currentImageSelectionType);
+            setPreviewImageUrls(Array.isArray(currentImageUrls) && currentImageUrls.length > 0
+                ? currentImageUrls
+                : (currentImageUrl ? [currentImageUrl] : []));
+            setPreviewImageTypes(Array.isArray(currentImageTypes) && currentImageTypes.length > 0
+                ? currentImageTypes
+                : [currentImageType]);
             setIsFetchingImage(false);
             setFetchingImageType(null);
             setIsSavingImage(false);
             setIsPreviewOpen(false);
         }
-    }, [open, currentImageType]);
+    }, [open, currentImageSelectionType, currentImageUrl, currentImageUrls, currentImageType, currentImageTypes]);
 
     useEffect(() => {
         if (!open) {
@@ -97,25 +131,9 @@ export function ChangeImageBottomSheet({
         reader.onload = (e) => {
             const dataUrl = e.target?.result as string;
             if (dataUrl) {
-                setPreviewImageUrl(dataUrl);
-                setSelectedImageType('custom'); // Or 'backdrop' as previous logic? User logic says "custom" or "upload"
-                // Previous logic set it to 'backdrop' for custom uploads, but let's be explicit if we can.
-                // However, the backend/types might expect 'poster' or 'backdrop'.
-                // The prompt says "Support Poster / Backdrop / Upload". Upload usually maps to custom or backdrop.
-                // In TMDbModals line 197 it set it to 'backdrop'. 
-                // But TMDbActivityPage has 'custom'.
-                // To support both, I will use the type passed in or default to 'backdrop' if 'custom' isn't supported by the parent?
-                // Actually, the parent `onSave` expects specialized types.
-                // Let's stick to the props interface: 'poster' | 'backdrop' | 'custom'.
-                // If the parent (TMDbModals) only supports 'poster' | 'backdrop', it might be an issue.
-                // Checking TMDbModals again... `updatePost` uses `imageType: selectedImageType`.
-                // In `TMDbModals` line 71: `useState<'poster' | 'backdrop'>('poster')`. It didn't support 'custom' explicitly in state type there?
-                // But Line 197 says `setSelectedImageType('backdrop')`.
-                // So custom uploads were treated as backdrops.
-                // In `TMDbActivityPage`, it explicitly supports 'custom'.
-                // I should probably support 'custom' to be safe, loops back to 'backdrop' if needed.
-                // Let's use 'custom' for uploaded files to distinguish them.
-                setSelectedImageType('custom');
+                setPreviewImageUrls([dataUrl]);
+                setPreviewImageTypes(['custom']);
+                setSelectedMode('custom');
                 haptics.light();
                 toast.success('Image loaded - tap Save to apply');
             }
@@ -131,7 +149,7 @@ export function ChangeImageBottomSheet({
         event.target.value = '';
     };
 
-    const handleFetchImage = async (type: 'poster' | 'backdrop') => {
+    const handleFetchImage = async (type: TMDbImagePreference) => {
         haptics.selection();
         setIsFetchingImage(true);
         setFetchingImageType(type);
@@ -149,16 +167,27 @@ export function ChangeImageBottomSheet({
 
             const result = await apiClient.get<{
                 imageUrl?: string;
-                imageType?: 'poster' | 'backdrop';
+                imageType?: 'poster' | 'backdrop' | 'logo';
+                imageUrls?: string[];
+                imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
             }>(`/api/tmdb/images/${mediaType}/${tmdbId}?${query.toString()}`);
 
             if (result.success && result.data?.imageUrl) {
-                setPreviewImageUrl(result.data.imageUrl);
-                setSelectedImageType(result.data.imageType || type);
+                setPreviewImageUrls(
+                    Array.isArray(result.data.imageUrls) && result.data.imageUrls.length > 0
+                        ? result.data.imageUrls
+                        : [result.data.imageUrl]
+                );
+                setPreviewImageTypes(
+                    Array.isArray(result.data.imageTypes) && result.data.imageTypes.length > 0
+                        ? result.data.imageTypes
+                        : [result.data.imageType || 'poster']
+                );
+                setSelectedMode(type);
                 haptics.light();
-                toast.success(`${type} loaded - tap Save to apply`);
+                toast.success(`${getTMDbImagePreferenceLabel(type)} loaded - tap Save to apply`);
             } else {
-                toast.error(result.error?.message || `No ${type} available`);
+                toast.error(result.error?.message || `No ${getTMDbImagePreferenceLabel(type)} available`);
             }
         } catch (error) {
             console.error('Error fetching image:', error);
@@ -173,7 +202,7 @@ export function ChangeImageBottomSheet({
         // Prevent double saves
         if (isFetchingImage || isSavingImage) return;
 
-        if (!previewImageUrl) {
+        if (previewImageUrls.length === 0) {
             toast.error('Please select an image first');
             return;
         }
@@ -182,21 +211,15 @@ export function ChangeImageBottomSheet({
         setIsSavingImage(true);
 
         try {
-            // Note: onSave might be void or return a Promise. We handle both.
-            await Promise.resolve(onSave(previewImageUrl, selectedImageType));
+            await Promise.resolve(onSave({
+                imageUrl: previewImageUrls[0],
+                imageType: previewImageTypes[0] || 'poster',
+                imageUrls: previewImageUrls,
+                imageTypes: previewImageTypes,
+            }));
 
-            // Standardized Feedback & Dismissal
             haptics.success();
-            // Optional: You could pass a success message prop if needed, defaulting to 'Image saved'
-            // But for now, we standardized on 'Image saved' based on user request.
-            // If the parent wants to handle the toast, they can do so in onSave, but standardization suggests we do it here.
-            // However, checking TMDbModals (Line 370) it says "Image saved".
-            // TMDbActivityPage (Line 900) says "Image changed to [type]".
-            // To be truly standard, we should pick one. "Image saved" is cleaner.
-            // But if I put it here, I should remove it from parents.
             toast.success('Image saved');
-
-            // Close immediately after save
             onOpenChange(false);
         } catch (error) {
             console.error('Save failed', error);
@@ -211,86 +234,51 @@ export function ChangeImageBottomSheet({
 
     const handleCancel = () => {
         haptics.light();
-        setPreviewImageUrl(null);
+        setPreviewImageUrls([]);
+        setPreviewImageTypes([]);
         setIsPreviewOpen(false);
         onOpenChange(false);
     };
-
-    const previewImageType =
-        selectedImageType === 'backdrop'
-            ? 'backdrop'
-            : currentImageType === 'backdrop'
-                ? 'backdrop'
-                : 'poster';
 
     return (
         <>
             <BottomSheet open={open} onOpenChange={(val) => !val && handleCancel()}>
                 <BottomSheetHeader>
                     <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
-                    <BottomSheetDescription>Tap to fetch a new image</BottomSheetDescription>
+                    <BottomSheetDescription>Tap to fetch a new TMDb image mode or upload your own image</BottomSheetDescription>
                 </BottomSheetHeader>
                 <BottomSheetBody>
-                    <div className="flex gap-3">
-                        {/* Poster Button */}
-                        <button
-                            onClick={() => handleFetchImage('poster')}
-                            disabled={isFetchingImage || isSavingImage}
-                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'poster' && (previewImageUrl || isFetchingImage)
-                                    ? 'border-[#ec1e24]'
-                                    : 'border-gray-200 dark:border-[#333333]'
-                                } 
-                                active:border-[#ec1e24] 
-                                disabled:opacity-50`}
-                        >
-                            {isFetchingImage && fetchingImageType === 'poster' ? (
-                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading poster image..." />
-                            ) : (
-                                <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                            )}
-                            <p className="text-sm">Poster</p>
-                        </button>
+                    <div className="grid grid-cols-2 gap-3">
+                        {availableModes.map((mode) => {
+                            const isUpload = mode === 'custom';
+                            const isSelected = selectedMode === mode && (previewImageUrls.length > 0 || isFetchingImage);
+                            const label = isUpload ? 'Upload' : getTMDbImagePreferenceLabel(mode);
 
-                        {/* Backdrop Button */}
-                        <button
-                            onClick={() => handleFetchImage('backdrop')}
-                            disabled={isFetchingImage || isSavingImage}
-                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'backdrop' && (previewImageUrl || isFetchingImage)
-                                    ? 'border-[#ec1e24]'
-                                    : 'border-gray-200 dark:border-[#333333]'
-                                } 
-                                active:border-[#ec1e24] 
-                                disabled:opacity-50`}
-                        >
-                            {isFetchingImage && fetchingImageType === 'backdrop' ? (
-                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading backdrop image..." />
-                            ) : (
-                                <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                            )}
-                            <p className="text-sm">Backdrop</p>
-                        </button>
-
-                        {/* Upload Button */}
-                        <button
-                            onClick={handleSelectFile}
-                            disabled={isFetchingImage || isSavingImage}
-                            className={`flex-1 p-4 rounded-lg border-2 transition-all bg-white dark:bg-black 
-                                ${selectedImageType === 'custom' && (previewImageUrl || isFetchingImage)
-                                    ? 'border-[#ec1e24]'
-                                    : 'border-gray-200 dark:border-[#333333]'
-                                } 
-                                active:border-[#ec1e24] 
-                                disabled:opacity-50`}
-                        >
-                            {isFetchingImage && fetchingImageType === 'custom' ? (
-                                <RedSpinner size="md" className="mx-auto mb-2" label="Loading uploaded image preview..." />
-                            ) : (
-                                <Upload className="w-6 h-6 mx-auto mb-2" />
-                            )}
-                            <p className="text-sm">Upload</p>
-                        </button>
+                            return (
+                                <button
+                                    key={mode}
+                                    onClick={isUpload ? handleSelectFile : () => handleFetchImage(mode)}
+                                    disabled={isFetchingImage || isSavingImage}
+                                    className={`p-4 rounded-lg border-2 transition-all bg-white dark:bg-black
+                                        ${isSelected ? 'border-[#ec1e24]' : 'border-gray-200 dark:border-[#333333]'}
+                                        active:border-[#ec1e24]
+                                        disabled:opacity-50`}
+                                >
+                                    {isFetchingImage && fetchingImageType === mode ? (
+                                        <RedSpinner
+                                            size="md"
+                                            className="mx-auto mb-2"
+                                            label={isUpload ? 'Loading uploaded image preview...' : `Loading ${label.toLowerCase()}...`}
+                                        />
+                                    ) : isUpload ? (
+                                        <Upload className="w-6 h-6 mx-auto mb-2" />
+                                    ) : (
+                                        <ImageIcon className="w-6 h-6 mx-auto mb-2" />
+                                    )}
+                                    <p className="text-sm">{label}</p>
+                                </button>
+                            );
+                        })}
 
                         <input
                             type="file"
@@ -306,7 +294,7 @@ export function ChangeImageBottomSheet({
                     </div>
 
                     {/* Image Preview */}
-                    {previewImageUrl && (
+                    {previewImageUrls.length > 0 && (
                         <button
                             type="button"
                             onClick={() => {
@@ -314,10 +302,12 @@ export function ChangeImageBottomSheet({
                                 setIsPreviewOpen(true);
                             }}
                             className="mt-4 w-full rounded-lg overflow-hidden border-2 border-[#ec1e24] text-left transition-opacity hover:opacity-95"
-                            aria-label={`Expand ${previewImageType} preview for ${title}`}
+                            aria-label={`Expand preview for ${title}`}
                         >
-                            <img src={previewImageUrl} alt="Preview" className="w-full h-32 object-cover" />
-                            <p className="text-xs text-center py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-600 dark:text-[#9CA3AF]">Preview - tap to expand</p>
+                            <img src={previewImageUrls[0]} alt="Preview" className="w-full h-32 object-cover" />
+                            <p className="text-xs text-center py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-600 dark:text-[#9CA3AF]">
+                                {previewImageUrls.length > 1 ? `Preview ${previewImageUrls.length} images - tap to expand` : 'Preview - tap to expand'}
+                            </p>
                         </button>
                     )}
                 </BottomSheetBody>
@@ -329,7 +319,7 @@ export function ChangeImageBottomSheet({
 
                     <Button
                         onClick={handleSaveImage}
-                        disabled={!previewImageUrl || isFetchingImage || isSavingImage}
+                        disabled={previewImageUrls.length === 0 || isFetchingImage || isSavingImage}
                     >
                         {isSavingImage ? (
                             <>
@@ -345,9 +335,11 @@ export function ChangeImageBottomSheet({
                 open={isPreviewOpen}
                 onOpenChange={setIsPreviewOpen}
                 onClose={() => setIsPreviewOpen(false)}
-                imageUrl={previewImageUrl}
+                imageUrl={previewImageUrls[0]}
+                imageUrls={previewImageUrls}
                 title={title}
-                imageType={previewImageType}
+                imageType={previewImageTypes[0] === 'custom' ? 'poster' : previewImageTypes[0]}
+                imageTypes={previewImageTypes.map((value) => value === 'custom' ? 'poster' : value)}
             />
         </>
     );

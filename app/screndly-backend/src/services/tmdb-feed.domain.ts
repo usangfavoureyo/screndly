@@ -293,6 +293,62 @@ function setTimeOfDay(base: Date, timeValue: string) {
     return result;
 }
 
+function getVariedGapMinutes(
+    previous: ScheduledCandidate | null,
+    next: TMDbCandidate,
+    settings: SchedulerSettings,
+    scheduledCount: number,
+): number {
+    const baseGap = Math.max(1, settings.minGapBetweenPostsMinutes);
+    if (previous?.candidate.moduleType === next.moduleType) {
+        return Math.max(baseGap, settings.preferredGapBetweenSameModuleMinutes);
+    }
+
+    const jitterSteps = [0, 15, 30];
+    const jitter = jitterSteps[(next.tmdbId + scheduledCount) % jitterSteps.length] || 0;
+    const ceiling = Math.max(baseGap, settings.preferredGapBetweenSameModuleMinutes);
+    return Math.min(ceiling, baseGap + jitter);
+}
+
+function findNextAvailableTime(
+    desiredTime: Date,
+    reserved: Date[],
+    end: Date,
+    minGapMinutes: number,
+): Date | null {
+    const minGapMs = Math.max(1, minGapMinutes) * 60_000;
+    let candidate = new Date(desiredTime.getTime());
+
+    while (candidate.getTime() <= end.getTime()) {
+        const conflict = reserved.find((reservedTime) => Math.abs(reservedTime.getTime() - candidate.getTime()) < minGapMs);
+        if (!conflict) {
+            return candidate;
+        }
+
+        candidate = new Date(conflict.getTime() + minGapMs);
+    }
+
+    return null;
+}
+
+function chooseNextCandidate(
+    pool: TMDbCandidate[],
+    previous: ScheduledCandidate | null,
+    interleaveModules: boolean,
+): TMDbCandidate {
+    if (pool.length === 1) {
+        return pool[0];
+    }
+
+    const sorted = [...pool].sort((left, right) => scoreSimilarity(previous, left) - scoreSimilarity(previous, right));
+    if (!interleaveModules || !previous) {
+        return sorted[0];
+    }
+
+    const differentModule = sorted.filter((candidate) => candidate.moduleType !== previous.candidate.moduleType);
+    return differentModule[0] || sorted[0];
+}
+
 export function scheduleCandidates(
     candidates: TMDbCandidate[],
     existingScheduledTimes: Date[],
@@ -300,8 +356,10 @@ export function scheduleCandidates(
     timezone: string,
     settings: SchedulerSettings,
 ): ScheduledCandidate[] {
-    const urgent = candidates.filter((candidate) => candidate.moduleType === 'today' || candidate.moduleType === 'anniversary');
-    const standard = candidates.filter((candidate) => candidate.moduleType === 'weekly' || candidate.moduleType === 'monthly');
+    const todayPool = candidates.filter((candidate) => candidate.moduleType === 'today');
+    const weeklyPool = candidates.filter((candidate) => candidate.moduleType === 'weekly');
+    const monthlyPool = candidates.filter((candidate) => candidate.moduleType === 'monthly');
+    const anniversaryPool = candidates.filter((candidate) => candidate.moduleType === 'anniversary');
     const results: ScheduledCandidate[] = [];
     const reserved = [...existingScheduledTimes].sort((left, right) => left.getTime() - right.getTime());
     const start = setTimeOfDay(now, settings.postingWindowStart);
@@ -314,111 +372,194 @@ export function scheduleCandidates(
         Math.floor(windowMinutes / Math.max(1, settings.minGapBetweenPostsMinutes)) + 1,
     ));
     const remainingOverallCapacity = Math.max(0, availableSlots - reserved.length);
-    const urgentCapacity = Math.max(0, remainingOverallCapacity);
-    const standardCapacity = Math.max(0, remainingOverallCapacity - Math.min(settings.reserveUrgentSlots, urgent.length));
+    const standardPoolCount = weeklyPool.length + monthlyPool.length;
+    const reservedTodaySlots = Math.min(settings.reserveUrgentSlots, todayPool.length);
+    const standardCapacity = standardPoolCount > 0
+        ? Math.max(0, remainingOverallCapacity - reservedTodaySlots)
+        : remainingOverallCapacity;
+    const prioritizedTodaySlots = Math.min(1, todayPool.length);
+    const prioritizedAnniversarySlots = Math.min(1, anniversaryPool.length);
 
     let previous: ScheduledCandidate | null = null;
     let nextTime = new Date(currentStart.getTime());
+    let scheduledCount = 0;
+    let standardScheduledCount = 0;
+    let todayScheduledCount = 0;
+    let anniversaryScheduledCount = 0;
 
-    const place = (pool: TMDbCandidate[], capacity: number, urgentMode: boolean) => {
-        let used = 0;
-        while (pool.length > 0) {
-            const sorted = [...pool].sort((left, right) => scoreSimilarity(previous, left) - scoreSimilarity(previous, right));
-            const next = sorted[0];
-            pool.splice(pool.findIndex((item) => item.tmdbId === next.tmdbId && item.mediaType === next.mediaType && item.moduleType === next.moduleType), 1);
-
-            if (used >= capacity) {
-                const overflowPolicy = next.moduleType === 'weekly' ? settings.weeklyOverflowPolicy : settings.monthlyOverflowPolicy;
-                if (urgentMode) {
-                    results.push({
-                        candidate: next,
-                        status: 'unscheduled',
-                        reason: 'unscheduled_no_same_day_capacity',
-                        scheduledAt: null,
-                    });
-                } else if (overflowPolicy === 'DROP') {
-                    results.push({
-                        candidate: next,
-                        status: 'unscheduled',
-                        reason: 'dropped_due_to_overflow_policy',
-                        scheduledAt: null,
-                        overflowPolicy,
-                    });
-                } else if (overflowPolicy === 'HOLD_FOR_REVIEW') {
-                    results.push({
-                        candidate: next,
-                        status: 'queued',
-                        reason: 'held_for_review_overflow',
-                        scheduledAt: null,
-                        overflowPolicy,
-                    });
-                } else {
-                    const validityDays = next.moduleType === 'weekly'
-                        ? settings.weeklyRescheduleValidityDays
-                        : settings.monthlyRescheduleValidityDays;
-                    const scheduledAt = addCalendarDays(now, 1, timezone);
-                    const overflowExpiresAt = addCalendarDays(now, validityDays, timezone);
-                    if (scheduledAt.getTime() > overflowExpiresAt.getTime()) {
-                        results.push({
-                            candidate: next,
-                            status: 'unscheduled',
-                            reason: 'reschedule_window_expired',
-                            scheduledAt: null,
-                            overflowPolicy,
-                            overflowExpiresAt,
-                        });
-                    } else {
-                        const captionContext = buildCaptionContext(next, scheduledAt, now, timezone);
-                        results.push({
-                            candidate: next,
-                            status: 'scheduled',
-                            reason: 'rescheduled_with_caption_regen',
-                            scheduledAt,
-                            overflowPolicy,
-                            overflowExpiresAt,
-                            captionContext,
-                            captionContextHash: hashCaptionContext(captionContext),
-                        });
-                    }
-                }
-                continue;
-            }
-
-            if (nextTime.getTime() > end.getTime()) {
+    const pushOverflow = (next: TMDbCandidate, urgentMode: boolean) => {
+        const overflowPolicy = next.moduleType === 'weekly' ? settings.weeklyOverflowPolicy : settings.monthlyOverflowPolicy;
+        if (urgentMode) {
+            results.push({
+                candidate: next,
+                status: 'unscheduled',
+                reason: 'unscheduled_no_same_day_capacity',
+                scheduledAt: null,
+            });
+        } else if (overflowPolicy === 'DROP') {
+            results.push({
+                candidate: next,
+                status: 'unscheduled',
+                reason: 'dropped_due_to_overflow_policy',
+                scheduledAt: null,
+                overflowPolicy,
+            });
+        } else if (overflowPolicy === 'HOLD_FOR_REVIEW') {
+            results.push({
+                candidate: next,
+                status: 'queued',
+                reason: 'held_for_review_overflow',
+                scheduledAt: null,
+                overflowPolicy,
+            });
+        } else {
+            const validityDays = next.moduleType === 'weekly'
+                ? settings.weeklyRescheduleValidityDays
+                : settings.monthlyRescheduleValidityDays;
+            const scheduledAt = addCalendarDays(now, 1, timezone);
+            const overflowExpiresAt = addCalendarDays(now, validityDays, timezone);
+            if (scheduledAt.getTime() > overflowExpiresAt.getTime()) {
                 results.push({
                     candidate: next,
-                    status: urgentMode ? 'unscheduled' : 'unscheduled',
-                    reason: urgentMode ? 'posting_window_closed' : 'unscheduled_no_same_day_capacity',
+                    status: 'unscheduled',
+                    reason: 'reschedule_window_expired',
                     scheduledAt: null,
+                    overflowPolicy,
+                    overflowExpiresAt,
                 });
-                continue;
+            } else {
+                const captionContext = buildCaptionContext(next, scheduledAt, now, timezone);
+                results.push({
+                    candidate: next,
+                    status: 'scheduled',
+                    reason: 'rescheduled_with_caption_regen',
+                    scheduledAt,
+                    overflowPolicy,
+                    overflowExpiresAt,
+                    captionContext,
+                    captionContextHash: hashCaptionContext(captionContext),
+                });
             }
-
-            const captionContext = buildCaptionContext(next, nextTime, now, timezone);
-            const scheduled: ScheduledCandidate = {
-                candidate: next,
-                status: 'scheduled',
-                reason: 'scheduled_same_day',
-                scheduledAt: new Date(nextTime.getTime()),
-                captionContext,
-                captionContextHash: hashCaptionContext(captionContext),
-            };
-            results.push(scheduled);
-            previous = scheduled;
-            reserved.push(new Date(nextTime.getTime()));
-            used += 1;
-
-            const dynamicGap = Math.max(
-                settings.minGapBetweenPostsMinutes,
-                Math.floor(windowMinutes / Math.max(1, candidates.length)),
-            );
-            const extraGap = previous?.candidate.moduleType === next.moduleType ? settings.preferredGapBetweenSameModuleMinutes : 0;
-            nextTime = new Date(nextTime.getTime() + Math.max(dynamicGap, extraGap || dynamicGap) * 60000);
         }
     };
 
-    place(urgent, urgentCapacity, true);
-    place(standard, standardCapacity, false);
+    const removeCandidate = (pool: TMDbCandidate[], candidate: TMDbCandidate) => {
+        const index = pool.findIndex((item) =>
+            item.tmdbId === candidate.tmdbId &&
+            item.mediaType === candidate.mediaType &&
+            item.moduleType === candidate.moduleType
+        );
+
+        if (index >= 0) {
+            pool.splice(index, 1);
+        }
+    };
+
+    while (todayPool.length > 0 || weeklyPool.length > 0 || monthlyPool.length > 0 || anniversaryPool.length > 0) {
+        const schedulingCandidates: TMDbCandidate[] = [];
+        const standardAvailable = weeklyPool.length + monthlyPool.length > 0;
+        const urgentRemaining = todayPool.length + anniversaryPool.length;
+        const slotsRemaining = Math.max(0, remainingOverallCapacity - scheduledCount);
+        const canScheduleStandard = standardScheduledCount < standardCapacity && slotsRemaining > urgentRemaining;
+        const shouldPrioritizeToday = todayPool.length > 0 && todayScheduledCount < prioritizedTodaySlots;
+        const shouldPrioritizeAnniversary = anniversaryPool.length > 0 && anniversaryScheduledCount < prioritizedAnniversarySlots;
+        const shouldUseEarlyUrgentWindow = shouldPrioritizeToday || shouldPrioritizeAnniversary;
+
+        if (shouldUseEarlyUrgentWindow) {
+            schedulingCandidates.push(...todayPool);
+            schedulingCandidates.push(...anniversaryPool);
+        }
+
+        if (standardAvailable && canScheduleStandard) {
+            schedulingCandidates.push(...weeklyPool, ...monthlyPool);
+        }
+
+        if (todayPool.length > 0 && !shouldPrioritizeToday) {
+            schedulingCandidates.push(...todayPool);
+        }
+
+        const anniversaryOnlyMode = !standardAvailable && todayPool.length === 0;
+        if (anniversaryOnlyMode || schedulingCandidates.length === 0) {
+            schedulingCandidates.push(...anniversaryPool);
+        }
+
+        if (schedulingCandidates.length === 0) {
+            const overflowCandidate = weeklyPool[0] || monthlyPool[0] || todayPool[0] || anniversaryPool[0];
+            if (!overflowCandidate) {
+                break;
+            }
+
+            removeCandidate(
+                overflowCandidate.moduleType === 'weekly'
+                    ? weeklyPool
+                    : overflowCandidate.moduleType === 'monthly'
+                        ? monthlyPool
+                        : overflowCandidate.moduleType === 'today'
+                            ? todayPool
+                            : anniversaryPool,
+                overflowCandidate,
+            );
+
+            pushOverflow(overflowCandidate, overflowCandidate.moduleType === 'today' || overflowCandidate.moduleType === 'anniversary');
+            continue;
+        }
+
+        const next = chooseNextCandidate(schedulingCandidates, previous, settings.interleaveModules);
+        removeCandidate(
+            next.moduleType === 'weekly'
+                ? weeklyPool
+                : next.moduleType === 'monthly'
+                    ? monthlyPool
+                    : next.moduleType === 'today'
+                        ? todayPool
+                        : anniversaryPool,
+            next,
+        );
+
+        if (scheduledCount >= remainingOverallCapacity || ((next.moduleType === 'weekly' || next.moduleType === 'monthly') && standardScheduledCount >= standardCapacity)) {
+            pushOverflow(next, next.moduleType === 'today' || next.moduleType === 'anniversary');
+            continue;
+        }
+
+        const availableTime = findNextAvailableTime(nextTime, reserved, end, settings.minGapBetweenPostsMinutes);
+        if (!availableTime) {
+            results.push({
+                candidate: next,
+                status: 'unscheduled',
+                reason: next.moduleType === 'today' ? 'posting_window_closed' : 'unscheduled_no_same_day_capacity',
+                scheduledAt: null,
+            });
+            continue;
+        }
+
+        const captionContext = buildCaptionContext(next, availableTime, now, timezone);
+        const scheduled: ScheduledCandidate = {
+            candidate: next,
+            status: 'scheduled',
+            reason: 'scheduled_same_day',
+            scheduledAt: new Date(availableTime.getTime()),
+            captionContext,
+            captionContextHash: hashCaptionContext(captionContext),
+        };
+        results.push(scheduled);
+        previous = scheduled;
+        reserved.push(new Date(availableTime.getTime()));
+        reserved.sort((left, right) => left.getTime() - right.getTime());
+        scheduledCount += 1;
+
+        if (next.moduleType === 'weekly' || next.moduleType === 'monthly') {
+            standardScheduledCount += 1;
+        }
+        if (next.moduleType === 'today') {
+            todayScheduledCount += 1;
+        }
+        if (next.moduleType === 'anniversary') {
+            anniversaryScheduledCount += 1;
+        }
+
+        const nextGap = getVariedGapMinutes(previous, next, settings, scheduledCount);
+        nextTime = new Date(availableTime.getTime() + nextGap * 60000);
+    }
 
     return results;
 }

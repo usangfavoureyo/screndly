@@ -9,6 +9,10 @@ import { metaService } from './meta';
 
 const REFRESH_WINDOW_MS = 5 * 60 * 1000;
 const PLACEHOLDER_ACCESS_TOKEN_PREFIXES = ['test-', 'mock-', 'placeholder-', 'fake-', 'demo-'];
+const META_COMMENT_AUTOMATION_SCOPES = {
+    Facebook: ['pages_manage_engagement'],
+    Instagram: ['instagram_manage_comments'],
+} as const;
 
 function getJsonObject(value: Prisma.JsonValue | null | undefined): Prisma.JsonObject {
     if (!value || Array.isArray(value) || typeof value !== 'object') {
@@ -21,6 +25,20 @@ function getJsonObject(value: Prisma.JsonValue | null | undefined): Prisma.JsonO
 function getJsonString(value: Prisma.JsonObject, key: string): string | undefined {
     const candidate = value[key];
     return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate.trim() : undefined;
+}
+
+function getJsonBoolean(value: Prisma.JsonObject, key: string): boolean | undefined {
+    const candidate = value[key];
+    return typeof candidate === 'boolean' ? candidate : undefined;
+}
+
+function getJsonStringArray(value: Prisma.JsonObject, key: string): string[] {
+    const candidate = value[key];
+    if (!Array.isArray(candidate)) {
+        return [];
+    }
+
+    return candidate.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
 }
 
 export function isPlaceholderAccessToken(accessToken?: string | null): boolean {
@@ -321,6 +339,55 @@ async function repairInstagramConnection(connection: PlatformConnection): Promis
     });
 }
 
+async function syncMetaAutomationPermissions(connection: PlatformConnection): Promise<PlatformConnection> {
+    if (connection.platform !== 'Facebook' && connection.platform !== 'Instagram') {
+        return connection;
+    }
+
+    const metadata = getJsonObject(connection.metadata);
+    const requiredScopes = META_COMMENT_AUTOMATION_SCOPES[connection.platform];
+    const storedRequiredScopes = getJsonStringArray(metadata, 'requiredAutomationScopes');
+    const storedGrantedScopes = getJsonStringArray(metadata, 'grantedScopes');
+    const storedPermissionState = getJsonBoolean(metadata, 'automationReplyScopesGranted');
+
+    if (
+        storedPermissionState !== undefined
+        && storedGrantedScopes.length > 0
+        && storedRequiredScopes.length === requiredScopes.length
+        && requiredScopes.every((scope) => storedRequiredScopes.includes(scope))
+    ) {
+        return connection;
+    }
+
+    const userToken = getJsonString(metadata, 'userToken') || connection.accessToken;
+    if (!userToken) {
+        return connection;
+    }
+
+    try {
+        const scopeInfo = await metaService.getGrantedScopes(userToken);
+        const grantedScopeSet = new Set([...scopeInfo.scopes, ...scopeInfo.granularScopes]);
+        const grantedScopes = Array.from(grantedScopeSet).sort();
+        const automationReplyScopesGranted = requiredScopes.every((scope) => grantedScopeSet.has(scope));
+
+        return updatePlatformConnection(connection.platform, {
+            accessToken: connection.accessToken,
+            refreshToken: connection.refreshToken,
+            expiresAt: connection.expiresAt,
+            userId: connection.userId,
+            username: connection.username,
+            metadata: {
+                ...metadata,
+                grantedScopes,
+                requiredAutomationScopes: [...requiredScopes],
+                automationReplyScopesGranted,
+            },
+        });
+    } catch {
+        return connection;
+    }
+}
+
 export async function ensureFreshPlatformConnection(connection: PlatformConnection | null): Promise<PlatformConnection | null> {
     if (!connection) {
         return connection;
@@ -328,6 +395,10 @@ export async function ensureFreshPlatformConnection(connection: PlatformConnecti
 
     if (connection.platform === 'Instagram') {
         connection = await repairInstagramConnection(connection);
+    }
+
+    if (connection.platform === 'Facebook' || connection.platform === 'Instagram') {
+        connection = await syncMetaAutomationPermissions(connection);
     }
 
     if (!needsRefresh(connection)) {

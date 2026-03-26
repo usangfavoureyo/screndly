@@ -76,6 +76,11 @@ interface YouTubePlaylistPayload {
 }
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v19.0';
+const META_COMMENT_AUTOMATION_SCOPES = {
+    Facebook: ['pages_manage_engagement'],
+    Instagram: ['instagram_manage_comments'],
+} as const;
+const META_BASE_SCOPES = ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement'] as const;
 type NormalizedMediaChoice =
     | { kind: 'none' }
     | { kind: 'image'; source: string; sourceType: 'file' | 'remote-url' }
@@ -1269,8 +1274,8 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
             case 'Facebook': {
                 assertConfigured('Meta', { META_APP_ID: env.META_APP_ID });
                 const scopes = platform === 'Instagram'
-                    ? ['instagram_basic', 'instagram_content_publish', 'pages_show_list', 'pages_manage_posts', 'pages_read_engagement']
-                    : ['pages_show_list', 'pages_manage_posts', 'pages_read_engagement'];
+                    ? ['instagram_basic', 'instagram_content_publish', ...META_BASE_SCOPES, ...META_COMMENT_AUTOMATION_SCOPES.Instagram]
+                    : [...META_BASE_SCOPES, ...META_COMMENT_AUTOMATION_SCOPES.Facebook];
 
                 oauthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${env.META_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${encodeURIComponent(stateFor())}&response_type=code&scope=${encodeURIComponent(scopes.join(','))}`;
                 break;
@@ -1400,9 +1405,15 @@ router.post('/callback', async (req, res) => {
             const longTokenData = await metaService.exchangeForLongLivedToken(shortToken);
             const userAccessToken = longTokenData.access_token;
             const expiresAt = longTokenData.expires_in ? new Date(Date.now() + longTokenData.expires_in * 1000) : null;
+            const grantedScopeInfo = await metaService.getGrantedScopes(userAccessToken);
+            const grantedScopes = Array.from(new Set([
+                ...grantedScopeInfo.scopes,
+                ...grantedScopeInfo.granularScopes,
+            ])).sort();
 
             // 3. Perform Discovery
             if (normalizedPlatform === 'Facebook') {
+                const requiredAutomationScopes = [...META_COMMENT_AUTOMATION_SCOPES.Facebook];
                 const pages = await metaService.getPages(userAccessToken);
                 if (!pages || pages.length === 0) {
                     throw new Error('No Facebook Pages were found for this account. Connect an account that manages at least one Facebook Page.');
@@ -1420,10 +1431,14 @@ router.post('/callback', async (req, res) => {
                     expiresAt,
                     metadata: {
                         userToken: userAccessToken,
-                        profileUrl: `https://www.facebook.com/${page.id}`
+                        profileUrl: `https://www.facebook.com/${page.id}`,
+                        grantedScopes,
+                        requiredAutomationScopes,
+                        automationReplyScopesGranted: requiredAutomationScopes.every((scope) => grantedScopes.includes(scope)),
                     }
                 });
             } else if (normalizedPlatform === 'Instagram') {
+                const requiredAutomationScopes = [...META_COMMENT_AUTOMATION_SCOPES.Instagram];
                 const pages = await metaService.getPages(userAccessToken);
                 if (!pages || pages.length === 0) {
                     throw new Error('No Facebook Pages were found for this account. Instagram Business connections require a Facebook Page linked to an Instagram professional account.');
@@ -1450,7 +1465,10 @@ router.post('/callback', async (req, res) => {
                             userToken: userAccessToken,
                             pageId: matchedPage.id,
                             pageName: matchedPage.name,
-                            profileUrl: profile.profileUrl
+                            profileUrl: profile.profileUrl,
+                            grantedScopes,
+                            requiredAutomationScopes,
+                            automationReplyScopesGranted: requiredAutomationScopes.every((scope) => grantedScopes.includes(scope)),
                         }
                     });
                 } else {

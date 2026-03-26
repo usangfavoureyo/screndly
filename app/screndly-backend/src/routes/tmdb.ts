@@ -11,6 +11,7 @@ import {
     updateTMDbPost,
 } from '../services/tmdb.service';
 import { authenticate } from '../middleware/auth';
+import { renderTMDbLogoCard } from '../services/rss-logo-render.service';
 
 const router = Router();
 router.use(authenticate);
@@ -288,13 +289,13 @@ router.delete('/posts/:id', async (req, res) => {
 router.get('/images/:mediaType/:tmdbId', async (req, res) => {
     try {
         const { mediaType, tmdbId } = req.params;
-        const { type } = req.query; // 'poster' or 'backdrop'
+        const { type } = req.query; // 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo'
         const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : '';
 
-        if (!type || !['poster', 'backdrop'].includes(type as string)) {
+        if (!type || !['poster', 'backdrop', 'poster_backdrop', 'backdrop_logo'].includes(type as string)) {
             return res.status(400).json({
                 success: false,
-                error: { message: 'Invalid image type. Must be "poster" or "backdrop".' }
+                error: { message: 'Invalid image type. Must be "poster", "backdrop", "poster_backdrop", or "backdrop_logo".' }
             });
         }
 
@@ -320,17 +321,17 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             file_path: string;
             aspect_ratio: number;
             vote_average: number;
+            iso_639_1?: string | null;
         }
 
         interface TMDbImagesResponse {
             posters?: TMDbImage[];
             backdrops?: TMDbImage[];
+            logos?: TMDbImage[];
         }
 
         const data = await response.json() as TMDbImagesResponse;
         const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
-
-        let imageUrl = '';
         const selectImageUrl = (images: TMDbImage[] | undefined) => {
             if (!images || images.length === 0) {
                 return '';
@@ -345,10 +346,73 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             return candidates[randomIndex];
         };
 
+        const selectLogoUrl = (images: TMDbImage[] | undefined) => {
+            if (!images || images.length === 0) {
+                return '';
+            }
+
+            const sorted = [...images]
+                .filter((image) => typeof image.file_path === 'string' && image.file_path.length > 0)
+                .sort((left, right) => {
+                    const leftLanguageScore = left.iso_639_1 === 'en' ? 1 : left.iso_639_1 === null ? 0.5 : 0;
+                    const rightLanguageScore = right.iso_639_1 === 'en' ? 1 : right.iso_639_1 === null ? 0.5 : 0;
+
+                    if (leftLanguageScore !== rightLanguageScore) {
+                        return rightLanguageScore - leftLanguageScore;
+                    }
+
+                    return (right.vote_average || 0) - (left.vote_average || 0);
+                });
+
+            return sorted[0] ? `${TMDB_IMAGE_BASE}${sorted[0].file_path}` : '';
+        };
+
+        let imageUrl = '';
+        let imageType: 'poster' | 'backdrop' | 'logo' = 'poster';
+        let imageUrls: string[] = [];
+        let imageTypes: Array<'poster' | 'backdrop' | 'logo'> = [];
+
         if (type === 'poster') {
             imageUrl = selectImageUrl(data.posters);
+            imageType = 'poster';
+            imageUrls = imageUrl ? [imageUrl] : [];
+            imageTypes = imageUrl ? ['poster'] : [];
         } else if (type === 'backdrop') {
             imageUrl = selectImageUrl(data.backdrops);
+            imageType = 'backdrop';
+            imageUrls = imageUrl ? [imageUrl] : [];
+            imageTypes = imageUrl ? ['backdrop'] : [];
+        } else if (type === 'poster_backdrop') {
+            const posterUrl = selectImageUrl(data.posters);
+            const backdropUrl = selectImageUrl(data.backdrops);
+
+            imageUrls = [posterUrl, backdropUrl].filter((value): value is string => Boolean(value));
+            imageTypes = [
+                ...(posterUrl ? ['poster' as const] : []),
+                ...(backdropUrl ? ['backdrop' as const] : []),
+            ];
+            imageUrl = imageUrls[0] || '';
+            imageType = (imageTypes[0] || 'poster') as 'poster' | 'backdrop';
+        } else {
+            const backdropUrl = selectImageUrl(data.backdrops);
+            const logoUrl = selectLogoUrl(data.logos);
+            let renderedLogoUrl = '';
+
+            if (logoUrl) {
+                try {
+                    renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
+                } catch (error) {
+                    console.warn('[TMDb] Failed to render logo card for change-image flow:', error);
+                }
+            }
+
+            imageUrls = [backdropUrl, renderedLogoUrl].filter((value): value is string => Boolean(value));
+            imageTypes = [
+                ...(backdropUrl ? ['backdrop' as const] : []),
+                ...(renderedLogoUrl ? ['logo' as const] : []),
+            ];
+            imageUrl = imageUrls[0] || '';
+            imageType = (imageTypes[0] || 'backdrop') as 'backdrop' | 'logo';
         }
 
         if (!imageUrl) {
@@ -362,9 +426,12 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             success: true,
             data: {
                 imageUrl,
-                imageType: type,
+                imageType,
+                imageUrls,
+                imageTypes,
                 availablePosters: data.posters?.length || 0,
-                availableBackdrops: data.backdrops?.length || 0
+                availableBackdrops: data.backdrops?.length || 0,
+                availableLogos: data.logos?.length || 0,
             }
         });
     } catch (error) {

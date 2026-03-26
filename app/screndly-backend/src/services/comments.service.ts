@@ -106,6 +106,14 @@ function parseJsonBoolean(value: unknown): boolean {
     return value === true;
 }
 
+function parseJsonStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+}
+
 function normalizeBlacklist(value: unknown): PlatformBlacklist {
     const raw = parseJsonObject(value);
     return {
@@ -328,6 +336,8 @@ class CommentsService {
             const reasons: string[] = [];
             const metadata = parseJsonObject(connection?.metadata);
             const threadsScopesGranted = parseJsonBoolean(metadata.automationReplyScopesGranted);
+            const requiredAutomationScopes = parseJsonStringArray(metadata.requiredAutomationScopes);
+            const automationReplyScopesGranted = parseJsonBoolean(metadata.automationReplyScopesGranted);
 
             if (!enabled) {
                 reasons.push('Disabled in Comment Automation settings');
@@ -341,11 +351,34 @@ class CommentsService {
                 reasons.push('Reconnect Threads to grant threads_read_replies and threads_manage_replies.');
             }
 
+            if (platform === 'Instagram' && connected && !automationReplyScopesGranted) {
+                reasons.push(
+                    requiredAutomationScopes.length > 0
+                        ? `Reconnect Instagram to grant ${requiredAutomationScopes.join(', ')}.`
+                        : 'Reconnect Instagram to grant comment-management access.'
+                );
+            }
+
+            if (platform === 'Facebook' && connected && !automationReplyScopesGranted) {
+                reasons.push(
+                    requiredAutomationScopes.length > 0
+                        ? `Reconnect Facebook to grant ${requiredAutomationScopes.join(', ')}.`
+                        : 'Reconnect Facebook to grant comment-management access.'
+                );
+            }
+
+            const ready =
+                enabled
+                && connected
+                && (platform !== 'Threads' || threadsScopesGranted)
+                && (platform !== 'Instagram' || automationReplyScopesGranted)
+                && (platform !== 'Facebook' || automationReplyScopesGranted);
+
             return {
                 platform,
                 enabled,
                 connected,
-                ready: enabled && connected && (platform !== 'Threads' || threadsScopesGranted),
+                ready,
                 username: connection?.username || undefined,
                 reasons,
             };

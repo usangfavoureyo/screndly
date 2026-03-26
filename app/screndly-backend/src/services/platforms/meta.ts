@@ -1,6 +1,7 @@
 import axios from 'axios';
 import fs from 'fs/promises';
 import path from 'path';
+import { env } from '../../lib/env';
 
 const FACEBOOK_API_VERSION = 'v19.0';
 const BASE_URL = `https://graph.facebook.com/${FACEBOOK_API_VERSION}`;
@@ -21,6 +22,11 @@ export interface MetaCommentItem {
     createdAt: Date;
     parentPostCreatedAt?: Date;
 }
+
+export type MetaGrantedScopeInfo = {
+    scopes: string[];
+    granularScopes: string[];
+};
 
 const THREADS_COMMENT_FIELDS = 'id,text,timestamp,username,root_post,replied_to,is_reply,is_reply_owned_by_me';
 const THREADS_POST_FIELDS = 'id,text,timestamp,username,media_type,permalink,has_replies';
@@ -224,6 +230,34 @@ async function waitForThreadsMediaReady(containerId: string, accessToken: string
 }
 
 export const metaService = {
+    async getGrantedScopes(userAccessToken: string): Promise<MetaGrantedScopeInfo> {
+        if (!env.META_APP_ID || !env.META_APP_SECRET) {
+            throw new Error('Meta App credentials not configured');
+        }
+
+        const response = await axios.get(`${BASE_URL}/debug_token`, {
+            params: {
+                input_token: userAccessToken,
+                access_token: `${env.META_APP_ID}|${env.META_APP_SECRET}`,
+            },
+        });
+
+        const data = response.data?.data || {};
+        const scopes = Array.isArray(data.scopes)
+            ? data.scopes.filter((scope: unknown): scope is string => typeof scope === 'string' && scope.trim().length > 0)
+            : [];
+        const granularScopes = Array.isArray(data.granular_scopes)
+            ? data.granular_scopes
+                .map((item: any) => (typeof item?.scope === 'string' ? item.scope.trim() : ''))
+                .filter((scope: string) => scope.length > 0)
+            : [];
+
+        return {
+            scopes,
+            granularScopes,
+        };
+    },
+
     /**
      * Post text/link/image to Facebook Page
      */

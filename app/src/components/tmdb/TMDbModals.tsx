@@ -452,23 +452,18 @@ export function TMDbModals() {
                     mediaType={changeImageModal.feed.mediaType}
                     tmdbId={changeImageModal.feed.tmdbId}
                     currentImageUrl={changeImageModal.feed.imageUrl}
-                    currentImageType={changeImageModal.feed.imageType === 'backdrop' ? 'backdrop' : 'poster'}
-                    onSave={(imageUrl, imageType) => {
+                    currentImageUrls={changeImageModal.feed.imageUrls}
+                    currentImageType={changeImageModal.feed.imageType}
+                    currentImageTypes={changeImageModal.feed.imageTypes}
+                    onSave={({ imageUrl, imageType, imageUrls, imageTypes }) => {
                         if (changeImageModal.feed) {
-                            // Logic is handled in the component
                             updatePost(changeImageModal.feed.id, {
                                 imageUrl,
                                 imageType,
-                                imageUrls: Array.isArray(changeImageModal.feed.imageUrls) && changeImageModal.feed.imageUrls.length > 1
-                                    ? [imageUrl, ...changeImageModal.feed.imageUrls.slice(1)]
-                                    : [imageUrl],
-                                imageTypes: Array.isArray(changeImageModal.feed.imageTypes) && changeImageModal.feed.imageTypes.length > 1
-                                    ? [imageType, ...changeImageModal.feed.imageTypes.slice(1)]
-                                    : [imageType],
+                                imageUrls,
+                                imageTypes,
                             }).catch(error => {
                                 console.error('Failed to update image', error);
-                                // Note: Component has already dismissed and toasted success optimistically.
-                                // If this fails, we might want to show an error, but that's handled by global error handlers usually.
                             });
                         }
                     }}

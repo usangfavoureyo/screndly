@@ -48,10 +48,12 @@ interface TMDbActivityItem {
   error?: string;
   errorMessage?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   scheduledDate?: string;
   scheduledTime?: string;
   caption?: string;
-  imageType?: 'poster' | 'backdrop' | 'custom';
+  imageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
+  imageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
   year?: number;
   releaseDate?: string;
   cast?: string[];
@@ -1123,10 +1125,13 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           title={posts.find(p => p.id === selectedItemId)?.title || ''}
           mediaType={posts.find(p => p.id === selectedItemId)?.mediaType || 'movie'}
           tmdbId={posts.find(p => p.id === selectedItemId)?.tmdbId || 0}
+          currentImageUrl={posts.find(p => p.id === selectedItemId)?.imageUrl}
+          currentImageUrls={posts.find(p => p.id === selectedItemId)?.imageUrls}
           currentImageType={posts.find(p => p.id === selectedItemId)?.imageType}
-          onSave={(imageUrl, imageType) => {
+          currentImageTypes={posts.find(p => p.id === selectedItemId)?.imageTypes}
+          onSave={({ imageUrl, imageType, imageUrls, imageTypes }) => {
             if (selectedItemId) {
-              updatePost(selectedItemId, { imageUrl, imageType });
+              updatePost(selectedItemId, { imageUrl, imageType, imageUrls, imageTypes });
             }
           }}
         />
