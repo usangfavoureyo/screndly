@@ -81,7 +81,7 @@ export async function generateThreadsXCropVariant(
   focusYPercent: number,
   onProgress?: (progress: number, message: string) => void,
 ): Promise<ComposeProcessedVideoAsset> {
-  const source = asset.storageUrl || asset.previewUrl;
+  const source = asset.previewUrl || asset.storageUrl;
   if (!source) {
     throw new Error('Upload the source video before generating a 3:4 crop.');
   }

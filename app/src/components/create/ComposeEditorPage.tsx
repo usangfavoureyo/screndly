@@ -272,9 +272,7 @@ export function ComposeEditorPage({
       return undefined;
     }
 
-    return previewAsset.kind === 'video'
-      ? getComposeAssetPublishUrl(previewAsset) || getComposeAssetPreviewUrl(previewAsset)
-      : getComposeAssetPreviewUrl(previewAsset);
+    return getComposeAssetPreviewUrl(previewAsset);
   }, [previewAsset]);
   const isMediaPreviewOpen = Boolean(activePreviewAssetUrl || previewThumbnail);
   const isScheduleInteractionActive = isScheduleOpen || isScheduleDatePickerOpen || isScheduleTimePickerOpen;
@@ -725,9 +723,7 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewAsset = (asset: ComposeMediaAsset) => {
-    const previewUrl = asset.kind === 'video'
-      ? getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)
-      : getComposeAssetPreviewUrl(asset);
+    const previewUrl = getComposeAssetPreviewUrl(asset);
     if (!previewUrl) {
       return;
     }
@@ -1057,9 +1053,7 @@ export function ComposeEditorPage({
                           </button>
                         </div>
                       </div>
-                      {(asset.kind === 'video'
-                        ? getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)
-                        : getComposeAssetPreviewUrl(asset)) ? (
+                      {getComposeAssetPreviewUrl(asset) ? (
                         <button
                           type="button"
                           onClick={() => handlePreviewAsset(asset)}
@@ -1069,7 +1063,7 @@ export function ComposeEditorPage({
                           {asset.kind === 'video' ? (
                             <>
                               <video
-                                src={getComposeAssetPublishUrl(asset) || getComposeAssetPreviewUrl(asset)}
+                                src={getComposeAssetPreviewUrl(asset)}
                                 className="pointer-events-none h-48 w-full object-contain"
                                 muted
                                 playsInline
