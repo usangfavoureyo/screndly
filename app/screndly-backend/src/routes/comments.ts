@@ -18,6 +18,7 @@ const COMMENT_PLATFORM_SETTING_KEYS = {
 } as const;
 
 const COMMENT_AUTOMATION_PLATFORMS = ['X', 'Instagram', 'Facebook', 'Threads'] as const;
+type CommentAutomationPlatform = typeof COMMENT_AUTOMATION_PLATFORMS[number];
 
 function parseSettingValue(value: unknown): Record<string, any> {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -122,6 +123,34 @@ router.get('/automation/readiness', authenticate, async (_req, res) => {
         res.status(500).json({
             success: false,
             error: { message: 'Failed to fetch comment automation readiness' },
+        });
+    }
+});
+
+router.post('/automation/test-reply', authenticate, async (req, res) => {
+    try {
+        const platform = req.body?.platform;
+
+        if (!COMMENT_AUTOMATION_PLATFORMS.includes(platform)) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'Unsupported comment automation platform' },
+            });
+        }
+
+        const data = await commentsService.sendTestReply(platform as CommentAutomationPlatform);
+
+        res.json({
+            success: true,
+            data,
+        });
+    } catch (error) {
+        console.error('Error sending comment automation test reply:', error);
+        res.status(400).json({
+            success: false,
+            error: {
+                message: error instanceof Error ? error.message : 'Failed to send test reply',
+            },
         });
     }
 });

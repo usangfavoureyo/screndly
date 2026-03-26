@@ -75,6 +75,7 @@ const DEFAULT_PLATFORM_BLACKLIST: PlatformBlacklist = {
 const POLL_TIMESTAMP_KEY = 'commentAutomationLastPollAt';
 const PROCESS_TIMESTAMP_KEY = 'commentAutomationLastProcessAt';
 const THREADS_UNSUPPORTED_REASON = 'Threads comment polling/reply publishing is not supported by the current API scopes in this build.';
+const TEST_REPLY_MESSAGE = 'Screndly test reply: comment automation connection confirmed.';
 const PLATFORM_BLACKLIST_KEYS: Record<SupportedCommentPlatform, keyof CommentAutomationSettings> = {
     X: 'xCommentBlacklist',
     Instagram: 'instagramCommentBlacklist',
@@ -434,6 +435,50 @@ class CommentsService {
         await this.touchRunTimestamp(PROCESS_TIMESTAMP_KEY);
     }
 
+    async sendTestReply(platform: SupportedCommentPlatform): Promise<{
+        platform: SupportedCommentPlatform;
+        commentId: string;
+        username: string;
+        reply: string;
+    }> {
+        const readiness = await this.getAutomationReadiness();
+        const platformState = readiness.find((item) => item.platform === platform);
+
+        if (!platformState?.ready) {
+            throw new Error(platformState?.reasons[0] || `${platform} is not ready for comment automation.`);
+        }
+
+        const recentComments = await this.fetchRecentCommentsForPlatform(platform);
+        if (recentComments.length === 0) {
+            throw new Error(`No recent ${platform} comments were found to test against.`);
+        }
+
+        await this.persistPolledComments(platform, recentComments);
+
+        const candidate = await prisma.comment.findFirst({
+            where: {
+                platform,
+                processed: false,
+                blacklisted: false,
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+
+        if (!candidate) {
+            throw new Error(`No eligible recent ${platform} comments were available for a test reply.`);
+        }
+
+        await this.replyToComment(platform, candidate.commentId, TEST_REPLY_MESSAGE);
+        await this.markProcessed(candidate.id, TEST_REPLY_MESSAGE);
+
+        return {
+            platform,
+            commentId: candidate.commentId,
+            username: candidate.username,
+            reply: TEST_REPLY_MESSAGE,
+        };
+    }
+
     private async pollXComments(since: Date | null): Promise<void> {
         const connection = await ensureFreshPlatformConnection(await findPlatformConnection('X'));
         if (!connection || !hasUsablePlatformAccessToken(connection)) {
@@ -527,6 +572,101 @@ class CommentsService {
         }
     }
 
+    private async fetchRecentCommentsForPlatform(
+        platform: SupportedCommentPlatform
+    ): Promise<Array<XMentionComment | MetaCommentItem>> {
+        switch (platform) {
+            case 'X': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('X'));
+                if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                    throw new Error('X is not connected');
+                }
+                return xService.getRecentMentions(connection);
+            }
+            case 'Facebook': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Facebook'));
+                if (!connection || !hasUsablePlatformAccessToken(connection) || !connection.userId) {
+                    throw new Error('Facebook is not connected');
+                }
+                return metaService.getRecentFacebookComments(connection.userId, connection.accessToken || '');
+            }
+            case 'Instagram': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Instagram'));
+                if (!connection || !hasUsablePlatformAccessToken(connection) || !connection.userId) {
+                    throw new Error('Instagram is not connected');
+                }
+                return metaService.getRecentInstagramComments(connection.userId, connection.accessToken || '');
+            }
+            case 'Threads': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Threads'));
+                if (!connection || !hasUsablePlatformAccessToken(connection) || !connection.userId) {
+                    throw new Error('Threads is not connected');
+                }
+                const metadata = parseJsonObject(connection.metadata);
+                if (!parseJsonBoolean(metadata.automationReplyScopesGranted)) {
+                    throw new Error('Reconnect Threads to grant threads_read_replies and threads_manage_replies.');
+                }
+                return metaService.getRecentThreadsReplies(connection.userId, connection.accessToken || '');
+            }
+        }
+    }
+
+    private async replyToComment(
+        platform: SupportedCommentPlatform,
+        commentId: string,
+        reply: string
+    ): Promise<void> {
+        let result: { success: boolean; error?: string } = { success: false, error: 'Unsupported comment platform' };
+
+        switch (platform) {
+            case 'X': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('X'));
+                if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                    throw new Error('X is not connected');
+                }
+                result = await xService.replyToTweet(commentId, reply, connection);
+                break;
+            }
+            case 'Facebook': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Facebook'));
+                if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                    throw new Error('Facebook is not connected');
+                }
+                result = await metaService.replyToFacebookComment(commentId, reply, connection.accessToken || '');
+                break;
+            }
+            case 'Instagram': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Instagram'));
+                if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                    throw new Error('Instagram is not connected');
+                }
+                result = await metaService.replyToInstagramComment(commentId, reply, connection.accessToken || '');
+                break;
+            }
+            case 'Threads': {
+                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Threads'));
+                if (!connection || !hasUsablePlatformAccessToken(connection) || !connection.userId) {
+                    throw new Error('Threads is not connected');
+                }
+                const metadata = parseJsonObject(connection.metadata);
+                if (!parseJsonBoolean(metadata.automationReplyScopesGranted)) {
+                    throw new Error('Reconnect Threads to grant threads_read_replies and threads_manage_replies.');
+                }
+                result = await metaService.replyToThreadsReply(
+                    connection.userId,
+                    commentId,
+                    reply,
+                    connection.accessToken || '',
+                );
+                break;
+            }
+        }
+
+        if (!result.success) {
+            throw new Error(result.error || `Failed to reply on ${platform}`);
+        }
+    }
+
     private shouldBlacklist(item: PolledComment | XMentionComment | MetaCommentItem, blacklist: PlatformBlacklist): boolean {
         if (!blacklist.active) {
             return false;
@@ -589,57 +729,7 @@ class CommentsService {
             settings.commentReplyModel,
         );
 
-        let result: { success: boolean; error?: string } = { success: false, error: 'Unsupported comment platform' };
-
-        switch (platform) {
-            case 'X': {
-                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('X'));
-                if (!connection || !hasUsablePlatformAccessToken(connection)) {
-                    throw new Error('X is not connected');
-                }
-                result = await xService.replyToTweet(comment.commentId, reply, connection);
-                break;
-            }
-            case 'Facebook': {
-                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Facebook'));
-                if (!connection || !hasUsablePlatformAccessToken(connection)) {
-                    throw new Error('Facebook is not connected');
-                }
-                result = await metaService.replyToFacebookComment(comment.commentId, reply, connection.accessToken || '');
-                break;
-            }
-            case 'Instagram': {
-                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Instagram'));
-                if (!connection || !hasUsablePlatformAccessToken(connection)) {
-                    throw new Error('Instagram is not connected');
-                }
-                result = await metaService.replyToInstagramComment(comment.commentId, reply, connection.accessToken || '');
-                break;
-            }
-            case 'Threads':
-            {
-                const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Threads'));
-                if (!connection || !hasUsablePlatformAccessToken(connection) || !connection.userId) {
-                    throw new Error('Threads is not connected');
-                }
-                const metadata = parseJsonObject(connection.metadata);
-                if (!parseJsonBoolean(metadata.automationReplyScopesGranted)) {
-                    throw new Error('Reconnect Threads to grant threads_read_replies and threads_manage_replies.');
-                }
-                result = await metaService.replyToThreadsReply(
-                    connection.userId,
-                    comment.commentId,
-                    reply,
-                    connection.accessToken || '',
-                );
-                break;
-            }
-        }
-
-        if (!result.success) {
-            throw new Error(result.error || `Failed to reply on ${platform}`);
-        }
-
+        await this.replyToComment(platform, comment.commentId, reply);
         await this.markProcessed(comment.id, reply);
     }
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Switch } from '../ui/switch';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -7,6 +8,7 @@ import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
+import { apiClient } from '../../lib/api/client';
 
 interface CommentReplySettingsProps {
   settings: any;
@@ -14,7 +16,12 @@ interface CommentReplySettingsProps {
   onBack: () => void;
 }
 
+type SupportedTestCommentPlatform = 'X' | 'Instagram' | 'Facebook' | 'Threads';
+type TestButtonState = Partial<Record<SupportedTestCommentPlatform, boolean>>;
+
 export function CommentReplySettings({ settings, updateSetting, onBack }: CommentReplySettingsProps) {
+  const [testButtonState, setTestButtonState] = useState<TestButtonState>({});
+
   // Defensive defaults for platform blacklist settings
   const defaultBlacklist = {
     active: false,
@@ -33,6 +40,54 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
   const youtubeBlacklist = settings.youtubeCommentBlacklist || defaultBlacklist;
   const tiktokBlacklist = settings.tiktokCommentBlacklist || defaultBlacklist;
   const pinterestBlacklist = settings.pinterestCommentBlacklist || defaultBlacklist;
+
+  const runTestReply = async (platform: SupportedTestCommentPlatform, label: string) => {
+    haptics.light();
+    setTestButtonState((current) => ({ ...current, [platform]: true }));
+
+    try {
+      const response = await apiClient.post<{
+        platform: SupportedTestCommentPlatform;
+        username: string;
+      }>('/api/comments/automation/test-reply', { platform });
+
+      if (!response.success) {
+        throw new Error(response.error?.message || `Failed to send ${label} test reply.`);
+      }
+
+      toast.success(`Test reply sent on ${label}${response.data?.username ? ` to @${response.data.username}` : ''}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Failed to send ${label} test reply.`);
+    } finally {
+      setTestButtonState((current) => ({ ...current, [platform]: false }));
+    }
+  };
+
+  const renderTestReplyButton = (platform: SupportedTestCommentPlatform, label: string) => (
+    <button
+      type="button"
+      onClick={() => void runTestReply(platform, label)}
+      disabled={Boolean(testButtonState[platform])}
+      className="rounded-full border border-[#ec1e24]/30 px-3 py-1 text-xs text-[#ec1e24] transition hover:border-[#ec1e24] hover:bg-[#ec1e24]/5 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      {testButtonState[platform] ? 'Testing...' : 'Test Reply'}
+    </button>
+  );
+
+  const renderUnsupportedTestReply = (platformName: string) => (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-gray-200 px-3 py-2 dark:border-[#1F1F1F]">
+      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+        Test reply is not available for {platformName} comment automation in this build.
+      </p>
+      <button
+        type="button"
+        disabled
+        className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-400 dark:border-[#333333] dark:text-[#6B7280]"
+      >
+        Test Reply
+      </button>
+    </div>
+  );
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
@@ -166,15 +221,21 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
         <div className="pt-4 border-t border-gray-200 dark:border-[#1F1F1F]">
           <div className="flex items-center justify-between mb-3">
             <Label className="text-[#9CA3AF]">X (Twitter) Settings</Label>
-            <Switch
-              checked={xBlacklist.active}
-              onCheckedChange={(checked) => {
-                haptics.light();
-                updateSetting('xCommentBlacklist', { ...xBlacklist, active: checked });
-              }}
-            />
+            <div className="flex items-center gap-2">
+              {renderTestReplyButton('X', 'X')}
+              <Switch
+                checked={xBlacklist.active}
+                onCheckedChange={(checked) => {
+                  haptics.light();
+                  updateSetting('xCommentBlacklist', { ...xBlacklist, active: checked });
+                }}
+              />
+            </div>
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Sends a fixed test reply to the most recent eligible X mention.
+            </p>
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -253,15 +314,21 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
         <div className="pt-4 border-t border-gray-200 dark:border-[#1F1F1F]">
           <div className="flex items-center justify-between mb-3">
             <Label className="text-[#9CA3AF]">Threads Settings</Label>
-            <Switch
-              checked={threadsBlacklist.active}
-              onCheckedChange={(checked) => {
-                haptics.light();
-                updateSetting('threadsCommentBlacklist', { ...threadsBlacklist, active: checked });
-              }}
-            />
+            <div className="flex items-center gap-2">
+              {renderTestReplyButton('Threads', 'Threads')}
+              <Switch
+                checked={threadsBlacklist.active}
+                onCheckedChange={(checked) => {
+                  haptics.light();
+                  updateSetting('threadsCommentBlacklist', { ...threadsBlacklist, active: checked });
+                }}
+              />
+            </div>
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Sends a fixed test reply to the most recent eligible Threads reply.
+            </p>
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -340,15 +407,21 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
         <div className="pt-4 border-t border-gray-200 dark:border-[#1F1F1F]">
           <div className="flex items-center justify-between mb-3">
             <Label className="text-[#9CA3AF]">Facebook Settings</Label>
-            <Switch
-              checked={facebookBlacklist.active}
-              onCheckedChange={(checked) => {
-                haptics.light();
-                updateSetting('facebookCommentBlacklist', { ...facebookBlacklist, active: checked });
-              }}
-            />
+            <div className="flex items-center gap-2">
+              {renderTestReplyButton('Facebook', 'Facebook')}
+              <Switch
+                checked={facebookBlacklist.active}
+                onCheckedChange={(checked) => {
+                  haptics.light();
+                  updateSetting('facebookCommentBlacklist', { ...facebookBlacklist, active: checked });
+                }}
+              />
+            </div>
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Sends a fixed test reply to the most recent eligible Facebook comment.
+            </p>
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -427,15 +500,21 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
         <div className="pt-4 border-t border-gray-200 dark:border-[#1F1F1F]">
           <div className="flex items-center justify-between mb-3">
             <Label className="text-[#9CA3AF]">Instagram Settings</Label>
-            <Switch
-              checked={instagramBlacklist.active}
-              onCheckedChange={(checked) => {
-                haptics.light();
-                updateSetting('instagramCommentBlacklist', { ...instagramBlacklist, active: checked });
-              }}
-            />
+            <div className="flex items-center gap-2">
+              {renderTestReplyButton('Instagram', 'Instagram')}
+              <Switch
+                checked={instagramBlacklist.active}
+                onCheckedChange={(checked) => {
+                  haptics.light();
+                  updateSetting('instagramCommentBlacklist', { ...instagramBlacklist, active: checked });
+                }}
+              />
+            </div>
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Sends a fixed test reply to the most recent eligible Instagram comment.
+            </p>
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -523,6 +602,7 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
             />
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            {renderUnsupportedTestReply('YouTube')}
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -610,6 +690,7 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
             />
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            {renderUnsupportedTestReply('TikTok')}
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea
@@ -697,6 +778,7 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
             />
           </div>
           <div className="space-y-3 pl-4 border-l-2 border-gray-200 dark:border-[#1F1F1F]">
+            {renderUnsupportedTestReply('Pinterest')}
             <div>
               <Label className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Blacklist Usernames</Label>
               <Textarea

@@ -82,9 +82,11 @@
     },
     "scripts": {
         "dev": "vite",
-        "build": "vite build",
-        "lint": "eslint src",
-        "lint:fix": "eslint src --fix",
-        "lint:strict": "eslint src --max-warnings 0"
-    }
+    "build": "vite build",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "lint:strict": "eslint src --max-warnings 0",
+    "test:unit:one": "vitest run",
+    "test:unit:serial": "vitest run --pool=forks --file-parallelism=false --maxWorkers=1 --minWorkers=1"
+  }
 }
