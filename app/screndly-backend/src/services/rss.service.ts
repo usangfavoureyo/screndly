@@ -2444,6 +2444,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     let pendingCount = 0;
     let failedCount = 0;
     let latestHandledItem: RSSItem | undefined;
+    let latestPublishedItem: RSSItem | undefined;
     let latestCaption: string | null = null;
     let latestPublishedImageUrl: string | undefined;
 
@@ -2483,6 +2484,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
+        latestPublishedItem = item;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
         rememberRecentTopic(item);
@@ -2648,6 +2650,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
+        latestPublishedItem = item;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
         rememberRecentTopic(item);
@@ -2717,7 +2720,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       checkedCount: itemsToProcess.length,
       pendingCount,
       failedCount,
-      latestItemTitle: latestHandledItem?.title || parsed.items[0]?.title,
+      latestItemTitle: latestPublishedItem?.title || latestHandledItem?.title || parsed.items[0]?.title,
       selectionMode,
     };
   } catch (error) {

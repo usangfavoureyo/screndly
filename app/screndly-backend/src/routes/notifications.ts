@@ -42,6 +42,33 @@ function inferRssFeedName(title: string): string | null {
     return match?.[1]?.trim() || null;
 }
 
+function normalizeNotificationText(value: string): string {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/['"`\u2018\u2019\u201c\u201d]/g, '')
+        .replace(/[^a-z0-9]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function titleTokenOverlapScore(left: string, right: string): number {
+    const leftTokens = new Set(normalizeNotificationText(left).split(' ').filter((token) => token.length >= 4));
+    const rightTokens = new Set(normalizeNotificationText(right).split(' ').filter((token) => token.length >= 4));
+
+    if (leftTokens.size === 0 || rightTokens.size === 0) {
+        return 0;
+    }
+
+    let overlap = 0;
+    for (const token of leftTokens) {
+        if (rightTokens.has(token)) {
+            overlap += 1;
+        }
+    }
+
+    return overlap / Math.max(Math.min(leftTokens.size, rightTokens.size), 1);
+}
+
 function mapActionTarget(actionPage?: string | null, source?: string | null) {
     if (actionPage === '/tmdb-feeds' || source === 'tmdb') {
         return { page: 'feeds', tab: 'tmdb' as const };
@@ -69,8 +96,9 @@ async function buildNotificationDetail(notification: any) {
         const windowStart = new Date(createdAt.getTime() - 2 * 60 * 60 * 1000);
         const windowEnd = new Date(createdAt.getTime() + 2 * 60 * 60 * 1000);
         const activity = await getRSSActivity(250);
+        const normalizedQuotedTitle = normalizeNotificationText(quotedTitle || '');
 
-        const relatedItems = activity.items.filter((item) => {
+        const publishedCandidates = activity.items.filter((item) => {
             if (item.status !== 'published') {
                 return false;
             }
@@ -85,12 +113,31 @@ async function buildNotificationDetail(notification: any) {
             }
 
             if (quotedTitle) {
-                const titlePattern = new RegExp(`^${escapeRegExp(quotedTitle)}$`, 'i');
-                return titlePattern.test(item.title);
+                const normalizedItemTitle = normalizeNotificationText(item.title || '');
+                if (!normalizedItemTitle) {
+                    return false;
+                }
+
+                if (
+                    normalizedItemTitle === normalizedQuotedTitle ||
+                    normalizedItemTitle.includes(normalizedQuotedTitle) ||
+                    normalizedQuotedTitle.includes(normalizedItemTitle)
+                ) {
+                    return true;
+                }
+
+                return titleTokenOverlapScore(item.title || '', quotedTitle) >= 0.7;
             }
 
             return true;
-        }).slice(0, 10);
+        });
+        const relatedItems = [...publishedCandidates]
+            .sort((left, right) => {
+                const leftDistance = Math.abs(new Date(left.timestamp).getTime() - createdAt.getTime());
+                const rightDistance = Math.abs(new Date(right.timestamp).getTime() - createdAt.getTime());
+                return leftDistance - rightDistance;
+            })
+            .slice(0, 10);
 
         return {
             kind: 'generic',

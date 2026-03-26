@@ -36,6 +36,12 @@ export interface XMentionComment {
     content: string;
     createdAt: Date;
     parentPostCreatedAt?: Date;
+    postText?: string;
+}
+
+export interface XPostContext {
+    text?: string;
+    createdAt?: Date;
 }
 
 export class XService {
@@ -607,8 +613,41 @@ export class XService {
                 parentPostCreatedAt: typeof tweet?.conversation_id === 'string'
                     ? conversationCreatedAt.get(tweet.conversation_id)
                     : undefined,
+                postText: undefined,
             }))
             .filter((mention: { content: string }) => mention.content.length > 0);
+    }
+
+    async getTweetContext(tweetId: string, connection?: PlatformConnection): Promise<XPostContext> {
+        const authToken = this.getUserAccessToken(connection);
+        if (!authToken) {
+            return {};
+        }
+
+        try {
+            const response = await fetch(`https://api.x.com/2/tweets/${encodeURIComponent(tweetId)}?tweet.fields=text,created_at`, {
+                headers: {
+                    Authorization: `Bearer ${authToken}`,
+                },
+            });
+
+            const data = await this.getJsonResponse(response);
+            if (!response.ok) {
+                console.warn('[X] Failed to fetch tweet context', {
+                    status: response.status,
+                    body: data,
+                });
+                return {};
+            }
+
+            return {
+                text: typeof data?.data?.text === 'string' ? data.data.text.trim() : undefined,
+                createdAt: typeof data?.data?.created_at === 'string' ? new Date(data.data.created_at) : undefined,
+            };
+        } catch (error) {
+            console.warn('[X] Failed to fetch tweet context:', error);
+            return {};
+        }
     }
 
     async replyToTweet(tweetId: string, text: string, connection?: PlatformConnection): Promise<XPostResult> {

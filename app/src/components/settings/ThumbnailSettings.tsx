@@ -12,6 +12,7 @@ import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { uploadToBackblaze } from '../../utils/backblaze';
+import { apiClient } from '../../lib/api/client';
 import {
   getLogoFrameMetrics,
   getTrailerLabelMetrics,
@@ -93,6 +94,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [previewDetectedType, setPreviewDetectedType] = useState<string | null>(null);
   const [previewDetectedVariant, setPreviewDetectedVariant] = useState<string | null>(null);
   const [previewResolvedAssetKey, setPreviewResolvedAssetKey] = useState<string | null>(null);
+  const [brandedAssetPreviewUrls, setBrandedAssetPreviewUrls] = useState<Record<Platform, Partial<Record<BrandedOverlayAssetKey, string>>>>({
+    youtube: {},
+    x: {},
+  });
   const [assetOverrides, setAssetOverrides] = useState<Record<Platform, ThumbnailAssetOverride>>({
     youtube: {},
     x: {},
@@ -158,15 +163,29 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   // Current active config state
   const currentConfig = activePlatform === 'youtube' ? youtubeConfig : xConfig;
   const currentAssets = assetOverrides[activePlatform];
+  const currentBrandedPreviewUrls = brandedAssetPreviewUrls[activePlatform] || {};
   const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
   const brandedAssetEntries = Object.entries(currentConfig.brandedOverlayAssets || {}) as Array<[BrandedOverlayAssetKey, string]>;
   const resolvedManualOverlayUrl = currentAssets.manualOverlayUrl
-    || (currentAssets.manualSavedOverlayKey ? currentConfig.brandedOverlayAssets?.[currentAssets.manualSavedOverlayKey] : undefined);
+    || (currentAssets.manualSavedOverlayKey
+      ? currentBrandedPreviewUrls[currentAssets.manualSavedOverlayKey] || currentConfig.brandedOverlayAssets?.[currentAssets.manualSavedOverlayKey]
+      : undefined);
   const resolvedManualOverlayLabel = currentAssets.manualOverlayName
     || currentAssets.manualSavedOverlayKey
     || null;
   const brandedPreviewFallbackUrl = resolvedManualOverlayUrl
-    || (previewResolvedAssetKey ? currentConfig.brandedOverlayAssets?.[previewResolvedAssetKey as BrandedOverlayAssetKey] : undefined);
+    || (previewResolvedAssetKey
+      ? currentBrandedPreviewUrls[previewResolvedAssetKey as BrandedOverlayAssetKey]
+        || currentConfig.brandedOverlayAssets?.[previewResolvedAssetKey as BrandedOverlayAssetKey]
+      : undefined);
+
+  const resolveAssetPreviewUrl = async (url: string): Promise<string> => {
+    const response = await apiClient.post<{ url: string; previewUrl: string }>('/api/create/asset-preview', { url });
+    if (!response.success || !response.data?.previewUrl) {
+      throw new Error(response.error?.message || 'Failed to resolve overlay preview');
+    }
+    return response.data.previewUrl;
+  };
 
   const clearActiveAssets = () => {
     setAssetOverrides((prev) => ({
@@ -284,6 +303,15 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
         [assetKey]: result.url,
       };
       await updateBrandedAssets(nextAssets);
+      if (result.previewUrl) {
+        setBrandedAssetPreviewUrls((prev) => ({
+          ...prev,
+          [activePlatform]: {
+            ...prev[activePlatform],
+            [assetKey]: result.previewUrl!,
+          },
+        }));
+      }
       toast.success('Branded overlay saved');
     } catch (error) {
       console.error('Failed to upload branded overlay asset', error);
@@ -295,6 +323,14 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     const nextAssets = { ...(currentConfig.brandedOverlayAssets || {}) };
     delete nextAssets[assetKey];
     await updateBrandedAssets(nextAssets);
+    setBrandedAssetPreviewUrls((prev) => {
+      const nextPlatformPreviews = { ...(prev[activePlatform] || {}) };
+      delete nextPlatformPreviews[assetKey];
+      return {
+        ...prev,
+        [activePlatform]: nextPlatformPreviews,
+      };
+    });
     haptics.light();
     toast.success('Branded overlay removed');
   };
@@ -426,6 +462,47 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     isBrandedStyle,
     shouldShowPreviewBox,
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const assets = currentConfig.brandedOverlayAssets || {};
+    const entries = Object.entries(assets) as Array<[BrandedOverlayAssetKey, string]>;
+
+    if (entries.length === 0) {
+      setBrandedAssetPreviewUrls((prev) => ({
+        ...prev,
+        [activePlatform]: {},
+      }));
+      return;
+    }
+
+    void (async () => {
+      const resolvedEntries = await Promise.all(
+        entries.map(async ([assetKey, assetUrl]) => {
+          try {
+            const previewUrl = await resolveAssetPreviewUrl(assetUrl);
+            return [assetKey, previewUrl] as const;
+          } catch (error) {
+            console.warn(`Failed to resolve branded asset preview for ${assetKey}`, error);
+            return [assetKey, assetUrl] as const;
+          }
+        })
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      setBrandedAssetPreviewUrls((prev) => ({
+        ...prev,
+        [activePlatform]: Object.fromEntries(resolvedEntries),
+      }));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activePlatform, currentConfig.brandedOverlayAssets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -598,9 +675,10 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     <p className="text-gray-900 dark:text-white">{group.label}</p>
                   </div>
                   {(['white', 'black'] as const).map((variant) => {
-                    const assetKey = `${group.type}_${variant}` as BrandedOverlayAssetKey;
-                    const assetUrl = currentConfig.brandedOverlayAssets?.[assetKey];
-                    return (
+                     const assetKey = `${group.type}_${variant}` as BrandedOverlayAssetKey;
+                     const assetUrl = currentConfig.brandedOverlayAssets?.[assetKey];
+                     const assetPreviewUrl = currentBrandedPreviewUrls[assetKey] || assetUrl;
+                     return (
                       <div key={assetKey} className="space-y-2">
                         <div className="flex items-center justify-between gap-3">
                           <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
@@ -622,7 +700,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                         {assetUrl && (
                           <div className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-[#333333] p-3">
                             <img
-                              src={assetUrl}
+                              src={assetPreviewUrl}
                               alt={`${assetKey} preview`}
                               className="h-16 w-28 rounded-md object-cover border border-gray-200 dark:border-[#333333]"
                             />

@@ -21,12 +21,19 @@ export interface MetaCommentItem {
     content: string;
     createdAt: Date;
     parentPostCreatedAt?: Date;
+    postText?: string;
 }
 
 export type MetaGrantedScopeInfo = {
     scopes: string[];
     granularScopes: string[];
 };
+
+export interface MetaPostContext {
+    text?: string;
+    title?: string;
+    createdAt?: Date;
+}
 
 const THREADS_COMMENT_FIELDS = 'id,text,timestamp,username,root_post,replied_to,is_reply,is_reply_owned_by_me';
 const THREADS_POST_FIELDS = 'id,text,timestamp,username,media_type,permalink,has_replies';
@@ -998,6 +1005,7 @@ export const metaService = {
                     content,
                     createdAt,
                     parentPostCreatedAt: postCreatedAt,
+                    postText: typeof post?.message === 'string' ? post.message.trim() : undefined,
                 });
             }
         }
@@ -1089,6 +1097,7 @@ export const metaService = {
                     content,
                     createdAt,
                     parentPostCreatedAt: postCreatedAt,
+                    postText: typeof media?.caption === 'string' ? media.caption.trim() : undefined,
                 });
             }
         }
@@ -1186,11 +1195,71 @@ export const metaService = {
                     content,
                     createdAt,
                     parentPostCreatedAt: postCreatedAt,
+                    postText: typeof post?.text === 'string' ? post.text.trim() : undefined,
                 });
             }
         }
 
         return replies;
+    },
+
+    async getFacebookPostContext(postId: string, accessToken: string): Promise<MetaPostContext> {
+        try {
+            const response = await axios.get(`${BASE_URL}/${postId}`, {
+                params: {
+                    fields: 'id,message,created_time',
+                    access_token: accessToken,
+                },
+            });
+
+            return {
+                text: typeof response.data?.message === 'string' ? response.data.message.trim() : undefined,
+                createdAt: typeof response.data?.created_time === 'string' ? new Date(response.data.created_time) : undefined,
+            };
+        } catch (error) {
+            console.warn('[Meta] Failed to fetch Facebook post context:', extractMetaError(error));
+            return {};
+        }
+    },
+
+    async getInstagramPostContext(postId: string, accessToken: string): Promise<MetaPostContext> {
+        try {
+            const response = await axios.get(`${BASE_URL}/${postId}`, {
+                params: {
+                    fields: 'id,caption,timestamp,media_type',
+                    access_token: accessToken,
+                },
+            });
+
+            return {
+                text: typeof response.data?.caption === 'string' ? response.data.caption.trim() : undefined,
+                title: typeof response.data?.media_type === 'string' ? response.data.media_type.trim() : undefined,
+                createdAt: typeof response.data?.timestamp === 'string' ? new Date(response.data.timestamp) : undefined,
+            };
+        } catch (error) {
+            console.warn('[Meta] Failed to fetch Instagram post context:', extractMetaError(error));
+            return {};
+        }
+    },
+
+    async getThreadsPostContext(postId: string, accessToken: string): Promise<MetaPostContext> {
+        try {
+            const response = await axios.get(`${THREADS_BASE_URL}/${postId}`, {
+                params: {
+                    fields: THREADS_POST_FIELDS,
+                    access_token: accessToken,
+                },
+            });
+
+            return {
+                text: typeof response.data?.text === 'string' ? response.data.text.trim() : undefined,
+                title: typeof response.data?.media_type === 'string' ? response.data.media_type.trim() : undefined,
+                createdAt: typeof response.data?.timestamp === 'string' ? new Date(response.data.timestamp) : undefined,
+            };
+        } catch (error) {
+            console.warn('[Meta] Failed to fetch Threads post context:', extractMetaError(error));
+            return {};
+        }
     },
 
     async replyToThreadsReply(

@@ -1165,9 +1165,13 @@ Write ONLY the caption.`;
 
 export interface CommentContext {
     originalComment: string;
-    description?: string; // Metadata about the item being thanked/replied to
+    description?: string;
     platform: 'X' | 'Threads' | 'Facebook' | 'Instagram';
     tone?: string;
+    maxLength?: number;
+    username?: string;
+    postTitle?: string;
+    postText?: string;
 }
 
 export async function generateCommentReply(
@@ -1176,36 +1180,61 @@ export async function generateCommentReply(
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
-    const defaultSystemPrompt = `You are a social media manager.
-Goal: Write a friendly, engaging reply to a user comment.
-- Tone: Helpful, positive, slightly informal.
-- Length: Under 140 chars.
-- NO hashtags.
-- If the comment is negative, be polite and professional.
-`;
+    const normalizedMaxLength = typeof context.maxLength === 'number' && Number.isFinite(context.maxLength)
+        ? Math.min(Math.max(Math.floor(context.maxLength), 40), 280)
+        : 220;
+    const tone = context.tone?.trim() || 'Natural, warm, and conversational';
+    const defaultSystemPrompt = `You write social replies for Screen Render as a real human community voice.
+Goal: reply to the person in a way that feels natural, specific, and grounded in the actual post.
+- Sound like a real person, not a bot or brand template.
+- Respond directly to what the commenter said.
+- Use the supplied post context when it helps, but do not awkwardly dump title words back at them.
+- Keep it concise, natural, and easy to read.
+- Avoid generic filler like "Thanks for your comment", "We appreciate it", or "Stay tuned".
+- Avoid hashtags and promo language.
+- Avoid emoji spam. Use at most one emoji only if it feels natural.
+- If the comment is excited, match the energy.
+- If the comment is asking a question, answer only from the provided context. If the answer is unclear, keep it honest and brief.
+- If the comment is negative or skeptical, stay calm, respectful, and human.
+- Tone target: ${tone}.
+- Hard length limit: ${normalizedMaxLength} characters.
+- Return only the reply text.`;
 
-    const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const systemPrompt = customSystemPrompt?.trim()
+        ? `${defaultSystemPrompt}\n\nAdditional brand voice instructions:\n${customSystemPrompt.trim()}`
+        : defaultSystemPrompt;
+    const promptSections = [
+        `Platform: ${context.platform}`,
+        context.username ? `Commenter: ${context.username}` : null,
+        `Comment: "${context.originalComment}"`,
+        context.description ? `Post summary: ${context.description}` : null,
+        context.postTitle ? `Post title: ${context.postTitle}` : null,
+        context.postText ? `Post text/caption: ${context.postText.slice(0, 500)}` : null,
+        `Reply limit: ${normalizedMaxLength} characters`,
+        'Write a direct reply to the commenter. Return ONLY the reply text.',
+    ].filter((section): section is string => typeof section === 'string' && section.trim().length > 0);
 
-    const prompt = `Generate a reply to this comment:
-Platform: ${context.platform}
-Comment: "${context.originalComment}"
-Context: ${context.description || 'General post'}
-
-Write ONLY the reply text.`;
+    const prompt = promptSections.join('\n');
 
     const response = await generateCompletion({
         model,
         prompt,
         systemPrompt,
-        maxTokens: 100,
-        temperature: customTemperature !== undefined ? customTemperature : 0.7,
+        maxTokens: Math.min(160, Math.max(60, Math.ceil(normalizedMaxLength / 2))),
+        temperature: customTemperature !== undefined ? customTemperature : 0.9,
         jsonMode: false
     });
 
     if (!response.success) {
-        return `Thanks for your comment! 🙌`;
+        return 'Appreciate that';
     }
-    return response.content.trim().replace(/^"|"$/g, '');
+
+    const normalizedReply = response.content.trim().replace(/^"|"$/g, '').replace(/\s+/g, ' ').trim();
+    if (!normalizedReply) {
+        return 'Appreciate that';
+    }
+
+    return normalizedReply.slice(0, normalizedMaxLength).trim();
 }
 
 // ============================================

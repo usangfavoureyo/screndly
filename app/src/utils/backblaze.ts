@@ -21,6 +21,7 @@ interface UploadOptions {
 interface UploadResult {
   success: boolean;
   url?: string;
+  previewUrl?: string;
   fileId?: string;
   error?: string;
 }
@@ -114,6 +115,7 @@ export async function uploadToBackblaze(options: UploadOptions): Promise<UploadR
   return {
     success: true,
     url: response.data.url,
+    previewUrl: response.data.previewUrl,
     fileId: response.data.fileId || response.data.fileName,
   };
 }

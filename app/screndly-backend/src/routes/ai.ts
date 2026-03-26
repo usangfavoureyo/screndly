@@ -65,7 +65,19 @@ router.post('/generate', async (req: Request, res: Response) => {
  */
 router.post('/generate/comment-reply', async (req: Request, res: Response) => {
     try {
-        const { originalComment, platform, description, tone, model, customSystemPrompt, customTemperature } = req.body;
+        const {
+            originalComment,
+            platform,
+            description,
+            tone,
+            maxLength,
+            username,
+            postTitle,
+            postText,
+            model,
+            customSystemPrompt,
+            customTemperature,
+        } = req.body;
 
         if (!originalComment || !platform) {
             return res.status(400).json({ success: false, error: { message: 'Comment and platform required' } });
@@ -75,7 +87,11 @@ router.post('/generate/comment-reply', async (req: Request, res: Response) => {
             originalComment,
             platform,
             description,
-            tone
+            tone,
+            maxLength,
+            username,
+            postTitle,
+            postText,
         }, model, customSystemPrompt, customTemperature);
 
         res.json({ success: true, data: { content: reply } });

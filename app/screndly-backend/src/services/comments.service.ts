@@ -25,6 +25,10 @@ type CommentAutomationSettings = {
     commentReplyFrequency: ReplyFrequency;
     commentThrottle: ReplyThrottle;
     commentReplyModel: AIModel;
+    commentReplyTemperature: number;
+    commentReplyTone: string;
+    commentReplyMaxLength: number;
+    commentReplyPrompt: string;
     xCommentBlacklist: PlatformBlacklist;
     instagramCommentBlacklist: PlatformBlacklist;
     facebookCommentBlacklist: PlatformBlacklist;
@@ -40,6 +44,7 @@ type PolledComment = {
     content: string;
     createdAt: Date;
     parentPostCreatedAt?: Date;
+    postText?: string;
 };
 
 type PlatformReadiness = {
@@ -56,6 +61,10 @@ const COMMENT_SETTINGS_KEYS = [
     'commentReplyFrequency',
     'commentThrottle',
     'commentReplyModel',
+    'commentReplyTemperature',
+    'commentReplyTone',
+    'commentReplyMaxLength',
+    'commentReplyPrompt',
     'xCommentBlacklist',
     'instagramCommentBlacklist',
     'facebookCommentBlacklist',
@@ -166,6 +175,21 @@ function parseBoolean(value: unknown, fallback = false): boolean {
     return fallback;
 }
 
+function parseNumber(value: unknown, fallback: number): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+
+    return fallback;
+}
+
 function splitCsvValues(input: string): string[] {
     return input
         .split(/[\n,]/)
@@ -258,6 +282,12 @@ class CommentsService {
                 typeof map.get('commentReplyModel') === 'string' ? String(map.get('commentReplyModel')) : null,
                 DEFAULT_OPENAI_MODEL,
             ),
+            commentReplyTemperature: Math.min(Math.max(parseNumber(map.get('commentReplyTemperature'), 0.9), 0), 1.5),
+            commentReplyTone: typeof map.get('commentReplyTone') === 'string' && String(map.get('commentReplyTone')).trim()
+                ? String(map.get('commentReplyTone')).trim()
+                : 'Natural and conversational',
+            commentReplyMaxLength: Math.min(Math.max(Math.round(parseNumber(map.get('commentReplyMaxLength'), 220)), 40), 280),
+            commentReplyPrompt: typeof map.get('commentReplyPrompt') === 'string' ? String(map.get('commentReplyPrompt')).trim() : '',
             xCommentBlacklist: normalizeBlacklist(map.get('xCommentBlacklist')),
             instagramCommentBlacklist: normalizeBlacklist(map.get('instagramCommentBlacklist')),
             facebookCommentBlacklist: normalizeBlacklist(map.get('facebookCommentBlacklist')),
@@ -605,6 +635,60 @@ class CommentsService {
         }
     }
 
+    private summarizePostContext(text?: string): string {
+        if (typeof text !== 'string') {
+            return '';
+        }
+
+        return text
+            .replace(/\s+/g, ' ')
+            .replace(/https?:\/\/\S+/gi, '')
+            .trim()
+            .slice(0, 320);
+    }
+
+    private async getPostContext(
+        platform: SupportedCommentPlatform,
+        postId: string
+    ): Promise<{ text?: string; title?: string; createdAt?: Date }> {
+        try {
+            switch (platform) {
+                case 'X': {
+                    const connection = await ensureFreshPlatformConnection(await findPlatformConnection('X'));
+                    if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                        return {};
+                    }
+                    return xService.getTweetContext(postId, connection);
+                }
+                case 'Facebook': {
+                    const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Facebook'));
+                    if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                        return {};
+                    }
+                    return metaService.getFacebookPostContext(postId, connection.accessToken || '');
+                }
+                case 'Instagram': {
+                    const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Instagram'));
+                    if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                        return {};
+                    }
+                    return metaService.getInstagramPostContext(postId, connection.accessToken || '');
+                }
+                case 'Threads': {
+                    const connection = await ensureFreshPlatformConnection(await findPlatformConnection('Threads'));
+                    if (!connection || !hasUsablePlatformAccessToken(connection)) {
+                        return {};
+                    }
+                    return metaService.getThreadsPostContext(postId, connection.accessToken || '');
+                }
+            }
+        } catch (error) {
+            console.warn(`[Comments] Failed to fetch ${platform} post context for ${postId}:`, error);
+        }
+
+        return {};
+    }
+
     private async fetchRecentCommentsForPlatform(
         platform: SupportedCommentPlatform
     ): Promise<Array<XMentionComment | MetaCommentItem>> {
@@ -753,13 +837,28 @@ class CommentsService {
             return;
         }
 
+        const postContext = await this.getPostContext(platform, comment.postId);
+        const postSummary = this.summarizePostContext(postContext.text);
+        const description = postSummary || postContext.title || 'Social post about film and TV news';
+        const tone = settings.commentReplyTone;
+        const customPrompt = settings.commentReplyPrompt
+            ? `${settings.commentReplyPrompt}\n\nExtra runtime rules:\n- Reply naturally to the actual comment.\n- Use the supplied post context when relevant.\n- Avoid generic brand-template phrasing.\n- Keep it under ${settings.commentReplyMaxLength} characters.`
+            : undefined;
+
         const reply = await generateCommentReply(
             {
                 originalComment: comment.content,
                 platform,
-                description: 'General post',
+                description,
+                tone,
+                maxLength: settings.commentReplyMaxLength,
+                username: comment.username,
+                postTitle: postContext.title,
+                postText: postSummary,
             },
             settings.commentReplyModel,
+            customPrompt,
+            settings.commentReplyTemperature,
         );
 
         await this.replyToComment(platform, comment.commentId, reply);

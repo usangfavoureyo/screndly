@@ -119,4 +119,31 @@ router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (re
   }
 });
 
+router.post('/asset-preview', authenticate, async (req, res) => {
+  try {
+    const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+    if (!rawUrl) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Asset URL is required' },
+      });
+    }
+
+    const previewUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 7 * 24 * 60 * 60);
+    return res.json({
+      success: true,
+      data: {
+        url: rawUrl,
+        previewUrl,
+      },
+    });
+  } catch (error) {
+    console.error('Error resolving asset preview URL:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to resolve asset preview URL' },
+    });
+  }
+});
+
 export default router;

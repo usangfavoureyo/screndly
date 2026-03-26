@@ -119,6 +119,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   const buildFeedCreatePayload = (feed: Feed, name: string = feed.name) => ({
     name,
     url: feed.url,
+    favicon: feed.favicon,
     enabled: feed.enabled,
     interval: feed.interval,
     imageCount: feed.imageCount,

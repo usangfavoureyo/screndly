@@ -131,12 +131,17 @@ router.post('/poll/targeted', async (req, res) => {
     const pauseMinutes = Number.isFinite(requestedPauseMinutes) && requestedPauseMinutes > 0
         ? Math.min(requestedPauseMinutes, 30)
         : 10;
+    const requestedAgeGateOverrideHours = Number.parseFloat(String(req.body?.ageGateOverrideHours || '6'));
+    const ageGateOverrideHours = Number.isFinite(requestedAgeGateOverrideHours) && requestedAgeGateOverrideHours > 0
+        ? Math.min(requestedAgeGateOverrideHours, 24)
+        : 6;
     const pausedUntil = pauseYouTubePolling(pauseMinutes, `manual targeted poll for ${channelId}`);
 
     try {
         const summary = await youtubePollerService.pollChannels({
             force: true,
-            channelDbId: channelId
+            channelDbId: channelId,
+            ageGateOverrideHours,
         });
 
         res.json({

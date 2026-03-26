@@ -45,6 +45,7 @@ const parser = new Parser();
 interface PollOptions {
     force?: boolean;
     channelDbId?: string;
+    ageGateOverrideHours?: number | null;
 }
 
 interface ChannelPollResult {
@@ -178,8 +179,11 @@ const MAX_OWNED_VIDEO_CANDIDATES = 8;
 const MAX_COLLAB_CANDIDATES = 6;
 const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 8;
 const MAX_COLLAB_KEYWORD_QUERIES = 2;
-const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 3;
+const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 1;
+const MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL = 20 * 1000;
 const FEED_FRESHNESS_HOURS = 24;
+const AGE_GATE_OVERDUE_BUFFER_HOURS = 0.25;
+const MAX_EFFECTIVE_AGE_GATE_HOURS = 24;
 const MIN_TRAILER_HEIGHT = 1080;
 const MIN_TRAILER_WIDTH = 1920;
 const DEFAULT_TRAILER_KEYWORDS = ['trailer', 'teaser', 'official', 'first look', 'sneak peek'];
@@ -474,10 +478,13 @@ export class YouTubePollerService {
             );
             console.log(`[YouTubePoller] ${activeChannel.name}: discovered ${ownedVideos.length} owned uploads and ${collaborativeVideos.length} collaborative candidates`);
             const futureOnlySince = this.getFutureOnlySince(settings);
+            const effectiveAgeGateHours = Number.isFinite(options.ageGateOverrideHours as number) && (options.ageGateOverrideHours as number) > 0
+                ? Number(options.ageGateOverrideHours)
+                : this.getEffectiveVideoAgeGateHours(settings, activeChannel.lastCheck);
             console.log(
                 futureOnlySince
                     ? `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}; future-only cutoff ${futureOnlySince.toISOString()}`
-                    : `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}; backlog mode ${settings.videoBacklogMode}`
+                    : `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}${effectiveAgeGateHours !== null ? ` (effective ${effectiveAgeGateHours.toFixed(2)} hours)` : ''}; backlog mode ${settings.videoBacklogMode}`
             );
             const targetPlatforms = this.getTargetPlatforms(settings);
             const skippedReasons: string[] = [];
@@ -493,7 +500,8 @@ export class YouTubePollerService {
                     options,
                     supportsFeedItemStatus,
                     trailerKeywords,
-                    targetPlatforms
+                    targetPlatforms,
+                    effectiveAgeGateHours
                 );
                 processedVideos += 1;
                 this.logStageDuration(activeChannel.name, `process_video:${videoLabel}`, videoStartedAtMs, {
@@ -781,6 +789,7 @@ export class YouTubePollerService {
     }
 
     private async fetchCollaborativeVideosForChannel(channel: any, trailerKeywords: string[]): Promise<any[]> {
+        const collabStartedAtMs = Date.now();
         const prioritizedKeywords = [
             ...trailerKeywords.filter((keyword) => ['trailer', 'teaser'].includes(String(keyword).toLowerCase())),
             ...trailerKeywords,
@@ -791,6 +800,11 @@ export class YouTubePollerService {
         const candidateMap = new Map<string, any>();
 
         for (const keyword of keywordQueries) {
+            if (Date.now() - collabStartedAtMs >= MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL) {
+                console.warn(`[YouTubePoller] ${channel.name}: stopped collaborative discovery after reaching ${MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL}ms budget`);
+                break;
+            }
+
             const searchQuery = `${channel.name} ${keyword}`.trim();
             const query = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
             try {
@@ -806,6 +820,11 @@ export class YouTubePollerService {
                     : [];
 
                 for (const entry of entries) {
+                    if (Date.now() - collabStartedAtMs >= MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL) {
+                        console.warn(`[YouTubePoller] ${channel.name}: stopped collaborative discovery during candidate inspection after reaching ${MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL}ms budget`);
+                        break;
+                    }
+
                     if (candidateMap.size >= MAX_RECENT_FEED_ITEMS) {
                         break;
                     }
@@ -1029,6 +1048,32 @@ export class YouTubePollerService {
         return ageGate === null ? 'off' : `${ageGate} hour${ageGate === 1 ? '' : 's'}`;
     }
 
+    private getEffectiveVideoAgeGateHours(settings: LoadedVideoSettings, channelLastCheck?: Date | string | null): number | null {
+        const configuredAgeGate = settings.videoAgeGateHours === null
+            ? null
+            : (settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS);
+
+        if (configuredAgeGate === null) {
+            return null;
+        }
+
+        const parsedLastCheck = channelLastCheck instanceof Date
+            ? channelLastCheck
+            : (typeof channelLastCheck === 'string' ? new Date(channelLastCheck) : null);
+
+        if (!(parsedLastCheck instanceof Date) || Number.isNaN(parsedLastCheck.getTime())) {
+            return configuredAgeGate;
+        }
+
+        const hoursSinceLastCheck = Math.max(0, (Date.now() - parsedLastCheck.getTime()) / (1000 * 60 * 60));
+        const extendedAgeGate = Math.min(
+            MAX_EFFECTIVE_AGE_GATE_HOURS,
+            hoursSinceLastCheck + AGE_GATE_OVERDUE_BUFFER_HOURS
+        );
+
+        return Math.max(configuredAgeGate, extendedAgeGate);
+    }
+
     private extractYearFromText(value: string): number | undefined {
         const match = /\b(19|20)\d{2}\b/.exec(value);
         return match ? Number(match[0]) : undefined;
@@ -1136,7 +1181,8 @@ export class YouTubePollerService {
         options: PollOptions,
         supportsFeedItemStatus: boolean,
         trailerKeywords: string[],
-        targetPlatforms: string[]
+        targetPlatforms: string[],
+        effectiveAgeGateHours: number | null
     ): Promise<FeedVideoProcessingResult> {
         const videoTitle = video.title || 'Untitled YouTube upload';
         const videoId = this.extractVideoId(video.link || '', video.id || '');
@@ -1177,13 +1223,11 @@ export class YouTubePollerService {
         }
 
         const hoursSince = (Date.now() - pubDate.getTime()) / (1000 * 60 * 60);
-        const ageGateHours = settings.videoAgeGateHours === null
-            ? null
-            : (settings.videoAgeGateHours ?? FEED_FRESHNESS_HOURS);
+        const ageGateHours = effectiveAgeGateHours;
         if (ageGateHours !== null && hoursSince > ageGateHours) {
             return {
                 kind: 'continue',
-                reason: `${videoTitle}: older than ${ageGateHours} hour${ageGateHours === 1 ? '' : 's'}`,
+                reason: `${videoTitle}: older than ${ageGateHours.toFixed(2)} hour${ageGateHours === 1 ? '' : 's'}`,
                 stopScanning: true,
             };
         }
