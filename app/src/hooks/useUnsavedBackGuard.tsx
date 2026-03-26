@@ -1,6 +1,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { UnsavedChangesPrompt } from '../components/UnsavedChangesPrompt';
 
+const PROMPT_OPEN_SETTLE_WINDOW_MS = 350;
+
 interface UseUnsavedBackGuardOptions {
   cancelLabel?: string;
   confirmLabel?: string;
@@ -18,15 +20,18 @@ export function useUnsavedBackGuard({
 }: UseUnsavedBackGuardOptions) {
   const [isPromptOpen, setIsPromptOpen] = useState(false);
   const pendingActionRef = useRef<(() => void) | null>(null);
+  const promptOpenedAtRef = useRef(0);
 
   const cancelDiscard = useCallback(() => {
     pendingActionRef.current = null;
+    promptOpenedAtRef.current = 0;
     setIsPromptOpen(false);
   }, []);
 
   const confirmDiscard = useCallback(() => {
     const action = pendingActionRef.current;
     pendingActionRef.current = null;
+    promptOpenedAtRef.current = 0;
     setIsPromptOpen(false);
     action?.();
   }, []);
@@ -38,6 +43,7 @@ export function useUnsavedBackGuard({
     }
 
     pendingActionRef.current = action;
+    promptOpenedAtRef.current = Date.now();
     setIsPromptOpen(true);
     return true;
   }, [isDirty]);
@@ -47,7 +53,12 @@ export function useUnsavedBackGuard({
       open={isPromptOpen}
       onOpenChange={(open) => {
         if (open) {
+          promptOpenedAtRef.current = Date.now();
           setIsPromptOpen(true);
+          return;
+        }
+
+        if (Date.now() - promptOpenedAtRef.current < PROMPT_OPEN_SETTLE_WINDOW_MS) {
           return;
         }
 

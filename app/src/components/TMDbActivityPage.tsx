@@ -28,8 +28,6 @@ import {
   BottomSheetFooter
 } from './ui/bottom-sheet';
 import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
-import { apiClient } from '../lib/api/client';
-import { publishTMDbPost } from '../lib/tmdb/tmdbPublish';
 import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFromSource } from '../utils/tmdbCaptionGenerator';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
@@ -222,19 +220,6 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     return result.caption;
   };
 
-  const createTmdbLog = async (title: string, platform: string) => {
-    await apiClient.post('/api/logs', {
-      level: 'info',
-      message: `TMDb post published: ${title}`,
-      service: 'tmdb',
-      metadata: {
-        videoTitle: title,
-        platform,
-        type: 'tmdb',
-      },
-    });
-  };
-
   const getStatusConfig = (status: TMDbActivityItem['status']) => {
     switch (status) {
       case 'queued':
@@ -287,51 +272,16 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
   };
 
-  const handlePostImmediately = async (id: string, title: string) => {
+  const handleOpenPublishSheet = (id: string) => {
     haptics.medium();
 
-    const post = posts.find(p => p.id === id);
-    if (!post) return;
-
-    try {
-      const publishResult = await publishTMDbPost(post);
-
-      if (publishResult.postedPlatforms.length === 0) {
-        await updatePost(id, {
-          status: 'failed',
-          platforms: publishResult.platformNames,
-          publishedTime: undefined,
-          errorMessage: publishResult.errorMessage || 'Failed to publish TMDb post',
-        });
-        throw new Error(publishResult.errorMessage || 'Failed to publish TMDb post');
-      }
-
-      const publishedTime = new Date().toISOString();
-      await updatePost(id, {
-        status: 'published',
-        platforms: publishResult.platformNames,
-        publishedTime,
-        errorMessage: undefined,
-      });
-      await createTmdbLog(title, publishResult.postedPlatforms.join(', ') || 'Social Media');
-
-      toast.success('Posted Successfully', {
-        description: publishResult.failedResults.length > 0
-          ? `"${title}" published on ${publishResult.postedPlatforms.join(', ')}. Some platforms failed.`
-          : `"${title}" has been published`,
-      });
-    } catch (error) {
-      console.error('Failed to publish TMDb item:', error);
-      const message = error instanceof Error ? error.message : 'Failed to publish item';
-      await updatePost(id, {
-        status: 'failed',
-        publishedTime: undefined,
-        errorMessage: message,
-      }).catch(() => {
-        // Keep the original publish error as the primary failure signal.
-      });
-      toast.error(message);
+    const selectedPost = posts.find((post) => post.id === id);
+    if (!selectedPost) {
+      toast.error('TMDb post not found');
+      return;
     }
+
+    openPlatformSelect(selectedPost, 'publish');
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -831,7 +781,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                                 onClick={() => {
                                   closeMenuThen(() => {
                                     haptics.medium();
-                                    handlePostImmediately(item.id, item.title);
+                                    handleOpenPublishSheet(item.id);
                                   });
                                 }}
                                 className="w-full py-2 px-4 rounded-xl bg-white dark:bg-black border border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white font-medium hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors text-center"
