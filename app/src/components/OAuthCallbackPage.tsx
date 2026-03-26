@@ -15,6 +15,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
+    const CALLBACK_TIMEOUT_MS = 60000;
 
     useEffect(() => {
         const getStoredPlatform = (): string | null => {
@@ -123,7 +124,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             try {
                 const controller = new AbortController();
-                const timeoutId = window.setTimeout(() => controller.abort(), 25000);
+                const timeoutId = window.setTimeout(() => controller.abort(), CALLBACK_TIMEOUT_MS);
                 const rawResponse = await fetch(`${getApiUrl()}/api/platforms/callback`, {
                     method: 'POST',
                     headers: {
@@ -170,7 +171,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     return (
         <div className="flex flex-col items-center justify-center min-h-[60vh] p-8">
             {status === 'loading' && (
-                <PageLoader size="lg" className="h-auto py-8" label="Connecting to platform..." />
+                <PageLoader size="lg" className="h-auto py-8" label="Finalizing platform connection..." />
             )}
 
             {status === 'success' && (
