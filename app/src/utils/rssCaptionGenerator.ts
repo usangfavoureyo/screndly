@@ -67,11 +67,14 @@ export async function generateRSSCaption(
 
     const caption = response.data.content.trim();
     const articleId = article.link.split('/').pop() || article.title.slice(0, 20);
-    captionOptimizer.recordCaptionMetadata(articleId, 'rss', options.model, {
-      tone: options.tone,
-      titleLength: article.title.length,
-      hasContent: Boolean(article.content),
-    });
+    captionOptimizer.recordCaptionMetadata(
+      articleId,
+      'x',
+      'rss',
+      caption,
+      options.model,
+      options.tone,
+    );
 
     return {
       caption,

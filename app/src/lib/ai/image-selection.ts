@@ -7,6 +7,7 @@
 
 import { searchSerperImagesWithRetry, type SerperImageResult } from '../api/serper';
 import { extractSubjectMatter, type SubjectMatterAnalysis } from './subject-extraction';
+import type { AIRouterMetadata } from './router';
 import {
   filterByQuality,
   shouldRejectImage,
@@ -38,7 +39,7 @@ export interface SmartImageResult {
   queries: string[];
   confidence: number;
   confidenceLevel: 'high' | 'medium' | 'low';
-  analysisMetadata?: Record<string, unknown> | null;
+  analysisMetadata?: AIRouterMetadata | null;
 }
 
 /**
@@ -120,15 +121,12 @@ export async function selectSmartImages(
     // Return empty result instead of throwing error when backend is unavailable
     console.warn('⚠️ No images found - returning empty result');
     return {
-      selectedImages: [],
-      metadata: {
-        totalImages: 0,
-        usedQuery: queries[0] || article.title,
-        fallbackUsed: true,
-        rssImagesAvailable: article.images?.length || 0,
-        primarySubject: analysis.primarySubject.name,
-        contextType: analysis.contextType
-      }
+      images: [],
+      analysis,
+      queries,
+      confidence: 0,
+      confidenceLevel: 'low',
+      analysisMetadata: analysisResult.metadata,
     };
   }
   

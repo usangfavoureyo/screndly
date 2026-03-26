@@ -35,8 +35,6 @@ export function AnalysisSettingsPanel({
   onAIModelChange
 }: AnalysisSettingsPanelProps) {
   const budgetPercentage = (monthlySpend / monthlyBudget) * 100;
-  const budgetColor = budgetPercentage > 90 ? 'text-[#ec1e24]' : budgetPercentage > 70 ? 'text-amber-500' : 'text-green-500';
-
   return (
     <div className="space-y-4">
       {/* Header */}

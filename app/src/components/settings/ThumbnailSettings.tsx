@@ -10,13 +10,16 @@ import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, Bot
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
+import { uploadToBackblaze } from '../../utils/backblaze';
 import {
   getLogoFrameMetrics,
   getTrailerLabelMetrics,
-  renderThumbnailDataUrl,
+  renderThumbnailPreviewResult,
   shouldUseThumbnailLogoShadow,
   type ThumbnailConfig,
   type LogoPosition,
+  type BrandedOverlayAssetKey,
+  type BrandedOverlayAssets,
 } from '../../utils/thumbnailRenderer';
 
 interface ThumbnailSettingsProps {
@@ -45,7 +48,19 @@ interface ThumbnailAssetOverride {
   backdropName?: string;
   logoUrl?: string;
   logoName?: string;
+  manualOverlayUrl?: string;
+  manualOverlayName?: string;
 }
+
+const BRANDED_ASSET_GROUPS: Array<{
+  label: string;
+  type: 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
+}> = [
+  { label: 'Trailer', type: 'trailer' },
+  { label: 'Teaser', type: 'teaser' },
+  { label: 'Clip', type: 'clip' },
+  { label: 'Sneak Peek', type: 'sneak_peek' },
+];
 
 const LOGO_POSITIONS: Record<LogoPosition, string> = {
   'top-left': 'Top Left',
@@ -71,6 +86,11 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [expandedPreviewSrc, setExpandedPreviewSrc] = useState<string | null>(null);
   const [isGeneratingExpandedPreview, setIsGeneratingExpandedPreview] = useState(false);
   const [shouldApplyPreviewLogoShadow, setShouldApplyPreviewLogoShadow] = useState(false);
+  const [previewTitle, setPreviewTitle] = useState('Official Trailer');
+  const [previewOutput, setPreviewOutput] = useState<string | null>(null);
+  const [previewDetectedType, setPreviewDetectedType] = useState<string | null>(null);
+  const [previewDetectedVariant, setPreviewDetectedVariant] = useState<string | null>(null);
+  const [previewResolvedAssetKey, setPreviewResolvedAssetKey] = useState<string | null>(null);
   const [assetOverrides, setAssetOverrides] = useState<Record<Platform, ThumbnailAssetOverride>>({
     youtube: {},
     x: {},
@@ -86,7 +106,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
-    showTrailerTypeText: false
+    showTrailerTypeText: false,
+    brandedOverlayAssets: {},
   };
 
   const defaultXConfig: ThumbnailConfig = {
@@ -98,7 +119,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     trailerTextSize: 32,
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
-    showTrailerTypeText: false
+    showTrailerTypeText: false,
+    brandedOverlayAssets: {},
   };
 
   const [youtubeConfig, setYoutubeConfig] = useState<ThumbnailConfig>(defaultYoutubeConfig);
@@ -134,6 +156,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   // Current active config state
   const currentConfig = activePlatform === 'youtube' ? youtubeConfig : xConfig;
   const currentAssets = assetOverrides[activePlatform];
+  const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
 
   const clearActiveAssets = () => {
     setAssetOverrides((prev) => ({
@@ -173,23 +196,105 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     reader.readAsDataURL(file);
   };
 
+  const updateBrandedAssets = async (nextAssets: BrandedOverlayAssets) => {
+    await handleUpdate({ brandedOverlayAssets: nextAssets });
+  };
+
+  const handleManualOverlayUpload = (file?: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    const platform = activePlatform;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : undefined;
+      if (!result) {
+        toast.error('Failed to load overlay');
+        return;
+      }
+
+      setAssetOverrides((prev) => ({
+        ...prev,
+        [platform]: {
+          ...prev[platform],
+          manualOverlayUrl: result,
+          manualOverlayName: file.name,
+        },
+      }));
+      haptics.light();
+      toast.success('Manual preview overlay loaded');
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read overlay file');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBrandedAssetUpload = async (assetKey: BrandedOverlayAssetKey, file?: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Overlay must be an image');
+      return;
+    }
+
+    if (!/png/i.test(file.type) && !/\.png$/i.test(file.name)) {
+      toast.warning('PNG with transparency is recommended for branded overlays');
+    }
+
+    try {
+      haptics.medium();
+      const result = await uploadToBackblaze({ file });
+      if (!result.success || !result.url) {
+        toast.error(result.error || 'Failed to upload branded overlay');
+        return;
+      }
+
+      const nextAssets = {
+        ...(currentConfig.brandedOverlayAssets || {}),
+        [assetKey]: result.url,
+      };
+      await updateBrandedAssets(nextAssets);
+      toast.success('Branded overlay saved');
+    } catch (error) {
+      console.error('Failed to upload branded overlay asset', error);
+      toast.error('Failed to upload branded overlay');
+    }
+  };
+
+  const handleBrandedAssetRemove = async (assetKey: BrandedOverlayAssetKey) => {
+    const nextAssets = { ...(currentConfig.brandedOverlayAssets || {}) };
+    delete nextAssets[assetKey];
+    await updateBrandedAssets(nextAssets);
+    haptics.light();
+    toast.success('Branded overlay removed');
+  };
+
   const renderThumbnailToCanvas = async (format: 'png' | 'jpeg') => {
-    return renderThumbnailDataUrl(currentConfig, {
+    const result = await renderThumbnailPreviewResult(currentConfig, {
       width: THUMBNAIL_WIDTH,
       height: THUMBNAIL_HEIGHT,
       backdropUrl: currentAssets.backdropUrl,
       logoUrl: currentAssets.logoUrl,
-      trailerLabel: currentConfig.showTrailerTypeText ? 'OFFICIAL TRAILER' : null,
+      title: previewTitle,
+      trailerLabel: null,
+      brandedOverlayAssets: currentConfig.brandedOverlayAssets,
+      manualOverlayUrl: currentAssets.manualOverlayUrl,
       format,
     });
+
+    return result;
   };
 
   const openExpandedPreview = async () => {
     try {
       haptics.light();
       setIsGeneratingExpandedPreview(true);
-      const previewUrl = await renderThumbnailToCanvas('png');
-      setExpandedPreviewSrc(previewUrl);
+      const previewResult = await renderThumbnailToCanvas('png');
+      setExpandedPreviewSrc(previewResult.dataUrl);
       setIsExpandedPreviewOpen(true);
     } catch (error) {
       console.error('Failed to generate expanded thumbnail preview', error);
@@ -202,10 +307,11 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const handleDownload = async () => {
     try {
       haptics.medium();
-      const url = await renderThumbnailToCanvas(downloadFormat);
+      const previewResult = await renderThumbnailToCanvas(downloadFormat);
       const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `thumbnail-${activePlatform}.${downloadFormat === 'jpeg' ? 'jpg' : 'png'}`;
+      anchor.href = previewResult.dataUrl;
+      const inferredKey = previewResult.resolvedAssetKey || 'thumbnail-preview';
+      anchor.download = `thumbnail-preview-${inferredKey}.${downloadFormat === 'jpeg' ? 'jpg' : 'png'}`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -263,7 +369,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   useEffect(() => {
     let isCancelled = false;
 
-    if (!currentConfig.autoContrastOverlay || shouldShowPreviewBox || !currentAssets.logoUrl) {
+    if (isBrandedStyle || !currentConfig.autoContrastOverlay || shouldShowPreviewBox || !currentAssets.logoUrl) {
       setShouldApplyPreviewLogoShadow(false);
       return;
     }
@@ -291,7 +397,43 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     currentAssets.backdropUrl,
     currentAssets.logoUrl,
     currentConfig,
+    isBrandedStyle,
     shouldShowPreviewBox,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void renderThumbnailToCanvas('png')
+      .then((result) => {
+        if (cancelled) {
+          return;
+        }
+        setPreviewOutput(result.dataUrl);
+        setPreviewDetectedType(result.detectedType || null);
+        setPreviewDetectedVariant(result.detectedVariant || null);
+        setPreviewResolvedAssetKey(result.resolvedAssetKey || null);
+      })
+      .catch((error) => {
+        console.error('Failed to generate thumbnail preview', error);
+        if (!cancelled) {
+          setPreviewOutput(null);
+          setPreviewDetectedType(null);
+          setPreviewDetectedVariant(null);
+          setPreviewResolvedAssetKey(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activePlatform,
+    currentAssets.backdropUrl,
+    currentAssets.logoUrl,
+    currentAssets.manualOverlayUrl,
+    currentConfig,
+    previewTitle,
   ]);
 
   return (
@@ -407,12 +549,80 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             }}
             className="w-full justify-between border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
           >
-            <span>{currentConfig.logoDisplayMode === 'boxed' ? 'Logo inside box' : 'Logo only'}</span>
+            <span>
+              {currentConfig.logoDisplayMode === 'boxed'
+                ? 'Logo inside box'
+                : currentConfig.logoDisplayMode === 'branded'
+                  ? 'Branded'
+                  : 'Logo only'}
+            </span>
             <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
           </Button>
         </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+        {isBrandedStyle && (
+          <>
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-900 dark:text-white mb-2 block">Branded Overlay Assets</Label>
+                <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-4">
+                  Upload full-frame 1280×720 overlay PNGs for each content type and contrast variant.
+                </p>
+              </div>
+
+              {BRANDED_ASSET_GROUPS.map((group) => (
+                <div key={group.type} className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4 space-y-4">
+                  <div>
+                    <p className="text-gray-900 dark:text-white">{group.label}</p>
+                  </div>
+                  {(['white', 'black'] as const).map((variant) => {
+                    const assetKey = `${group.type}_${variant}` as BrandedOverlayAssetKey;
+                    const assetUrl = currentConfig.brandedOverlayAssets?.[assetKey];
+                    return (
+                      <div key={assetKey} className="space-y-2">
+                        <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                          Upload {variant === 'white' ? 'White' : 'Black'}
+                        </Label>
+                        <Input
+                          type="file"
+                          accept="image/png,image/*"
+                          onChange={(e) => void handleBrandedAssetUpload(assetKey, e.target.files?.[0])}
+                          className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+                        />
+                        {assetUrl && (
+                          <div className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-[#333333] p-3">
+                            <img
+                              src={assetUrl}
+                              alt={`${assetKey} preview`}
+                              className="h-16 w-28 rounded-md object-cover border border-gray-200 dark:border-[#333333]"
+                            />
+                            <div className="flex-1 space-y-2">
+                              <p className="text-xs text-gray-700 dark:text-gray-300 break-all">{assetKey}</p>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
+                                  onClick={() => handleBrandedAssetRemove(assetKey)}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+          </>
+        )}
 
         {/* Auto Contrast Settings */}
         <div className="space-y-4">
@@ -588,6 +798,34 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                 )}
               </div>
             </div>
+            <div className="grid gap-4 md:grid-cols-2 mb-4">
+              <div className="space-y-2">
+                <Label className="text-gray-900 dark:text-white">Preview Title</Label>
+                <Input
+                  value={previewTitle}
+                  onChange={(e) => setPreviewTitle(e.target.value)}
+                  placeholder="Official Trailer"
+                  className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+                />
+              </div>
+              {isBrandedStyle && (
+                <div className="space-y-2">
+                  <Label className="text-gray-900 dark:text-white">Manual Overlay (Preview Only)</Label>
+                  <Input
+                    type="file"
+                    accept="image/png,image/*"
+                    onChange={(e) => handleManualOverlayUpload(e.target.files?.[0])}
+                    className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                    Overrides automatic asset selection for preview only.
+                  </p>
+                  {currentAssets.manualOverlayName && (
+                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{currentAssets.manualOverlayName}</p>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => void openExpandedPreview()}
@@ -597,7 +835,13 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             >
             <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
               <div className="absolute inset-0 overflow-hidden rounded-lg">
-                {currentAssets.backdropUrl ? (
+                {isBrandedStyle && previewOutput ? (
+                  <img
+                    src={previewOutput}
+                    alt="Branded thumbnail preview"
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : currentAssets.backdropUrl ? (
                   <img
                     src={currentAssets.backdropUrl}
                     alt="Example backdrop"
@@ -681,6 +925,22 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                   <span className="text-gray-500 dark:text-[#6B7280]">Logo:</span>{' '}
                   <span className="text-gray-900 dark:text-white">{currentAssets.logoName || 'Default logo indicator'}</span>
                 </div>
+                {isBrandedStyle && (
+                  <>
+                    <div>
+                      <span className="text-gray-500 dark:text-[#6B7280]">Detected type:</span>{' '}
+                      <span className="text-gray-900 dark:text-white">{previewDetectedType || 'trailer'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-[#6B7280]">Variant:</span>{' '}
+                      <span className="text-gray-900 dark:text-white">{previewDetectedVariant || 'white'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-[#6B7280]">Resolved asset:</span>{' '}
+                      <span className="text-gray-900 dark:text-white">{previewResolvedAssetKey || (currentAssets.manualOverlayName ? 'manual_overlay' : 'none')}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -735,7 +995,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           <BottomSheetTitle>Logo Style</BottomSheetTitle>
         </BottomSheetHeader>
         <BottomSheetBody className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <button
               type="button"
               onClick={() => {
@@ -759,6 +1019,18 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             >
               <p className="mb-1">Logo inside box</p>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Keep the logo inside the overlay frame.</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                haptics.medium();
+                void handleUpdate({ logoDisplayMode: 'branded' });
+                setIsLogoStyleSheetOpen(false);
+              }}
+              className={`rounded-2xl border p-4 text-left transition-all ${currentConfig.logoDisplayMode === 'branded' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+            >
+              <p className="mb-1">Branded</p>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Use a full-frame overlay asset with the logo and label already built in.</p>
             </button>
           </div>
         </BottomSheetBody>

@@ -46,7 +46,7 @@ export class OpenAIApi {
         escalated: decision.escalated,
         reason: response.error?.message || 'unknown failure',
       });
-      return response as ApiResponse<RoutedOpenAIResult<OpenAICompletionResponse>>;
+      return response as unknown as ApiResponse<RoutedOpenAIResult<OpenAICompletionResponse>>;
     }
 
     const metadata = attachUsageToMetadata(createRouterMetadata(decision), response.data.usage);

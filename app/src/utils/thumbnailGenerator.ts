@@ -100,6 +100,7 @@ export async function generateThumbnailsForPublish(
         width: dimensions.width,
         height: dimensions.height,
         backdropUrl: video.thumbnailUrl,
+        title: video.title,
         trailerLabel: getTrailerTypeLabel(video.title),
         format: 'jpeg',
       });

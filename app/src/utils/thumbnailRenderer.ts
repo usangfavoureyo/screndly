@@ -1,4 +1,18 @@
 export type ThumbnailPlatformConfig = 'youtube' | 'x';
+export type BrandedOverlayType = 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
+export type BrandedOverlayVariant = 'white' | 'black';
+export type BrandedOverlayAssetKey =
+  | 'trailer_white'
+  | 'trailer_black'
+  | 'teaser_white'
+  | 'teaser_black'
+  | 'clip_white'
+  | 'clip_black'
+  | 'sneak_peek_white'
+  | 'sneak_peek_black';
+
+export type BrandedOverlayAssets = Partial<Record<BrandedOverlayAssetKey, string>>;
+export type ThumbnailLogoDisplayMode = 'boxed' | 'logo-only' | 'branded';
 
 export type LogoPosition =
   | 'top-left'
@@ -15,12 +29,13 @@ export interface ThumbnailConfig {
   platform: ThumbnailPlatformConfig;
   logoPosition: LogoPosition;
   autoScale: boolean;
-  logoDisplayMode: 'boxed' | 'logo-only';
+  logoDisplayMode: ThumbnailLogoDisplayMode;
   maxLogoSize: number;
   trailerTextSize: number;
   autoContrastBackdrop: boolean;
   autoContrastOverlay: boolean;
   showTrailerTypeText: boolean;
+  brandedOverlayAssets?: BrandedOverlayAssets;
 }
 
 export interface ThumbnailRenderOptions {
@@ -29,8 +44,18 @@ export interface ThumbnailRenderOptions {
   backdropUrl?: string;
   logoUrl?: string;
   trailerLabel?: string | null;
+  title?: string;
+  brandedOverlayAssets?: BrandedOverlayAssets;
+  manualOverlayUrl?: string;
   format?: 'png' | 'jpeg';
   quality?: number;
+}
+
+export interface ThumbnailRenderResult {
+  dataUrl: string;
+  detectedType?: BrandedOverlayType;
+  detectedVariant?: BrandedOverlayVariant;
+  resolvedAssetKey?: BrandedOverlayAssetKey;
 }
 
 export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, ThumbnailConfig> = {
@@ -61,6 +86,12 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
 const CONTRAST_RATIO_THRESHOLD = 2.6;
+const BRANDED_TEXT_REGION = {
+  x: 0.04,
+  y: 0.58,
+  width: 0.42,
+  height: 0.24,
+};
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -321,18 +352,110 @@ export function getTrailerLabelMetrics(
   };
 }
 
-function inferTrailerLabel(title: string): string {
-  const normalized = title.toLowerCase();
+function normalizeOverlayTitle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function detectOverlayType(title: string): BrandedOverlayType {
+  const normalized = normalizeOverlayTitle(title);
+  if (normalized.includes('sneak peek')) {
+    return 'sneak_peek';
+  }
   if (normalized.includes('teaser')) {
-    return 'OFFICIAL TEASER';
+    return 'teaser';
   }
   if (normalized.includes('clip')) {
+    return 'clip';
+  }
+  if (normalized.includes('trailer')) {
+    return 'trailer';
+  }
+  return 'trailer';
+}
+
+function inferTrailerLabel(title: string): string {
+  const overlayType = detectOverlayType(title);
+  if (overlayType === 'sneak_peek') {
+    return 'SNEAK PEEK';
+  }
+  if (overlayType === 'teaser') {
+    return 'OFFICIAL TEASER';
+  }
+  if (overlayType === 'clip') {
     return 'OFFICIAL CLIP';
   }
-  if (normalized.includes('featurette')) {
-    return 'OFFICIAL FEATURETTE';
-  }
   return 'OFFICIAL TRAILER';
+}
+
+function getBrandedAssetKey(
+  type: BrandedOverlayType,
+  variant: BrandedOverlayVariant
+): BrandedOverlayAssetKey {
+  return `${type}_${variant}` as BrandedOverlayAssetKey;
+}
+
+async function detectOverlayContrast(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number
+): Promise<BrandedOverlayVariant> {
+  const sampleX = Math.max(0, Math.floor(width * BRANDED_TEXT_REGION.x));
+  const sampleY = Math.max(0, Math.floor(height * BRANDED_TEXT_REGION.y));
+  const sampleWidth = Math.max(1, Math.floor(width * BRANDED_TEXT_REGION.width));
+  const sampleHeight = Math.max(1, Math.floor(height * BRANDED_TEXT_REGION.height));
+  const imageData = ctx.getImageData(sampleX, sampleY, sampleWidth, sampleHeight).data;
+
+  let weightedLuminance = 0;
+  let totalWeight = 0;
+
+  for (let index = 0; index < imageData.length; index += 4) {
+    const alpha = imageData[index + 3] / 255;
+    if (alpha <= 0.05) {
+      continue;
+    }
+
+    const luminance =
+      0.2126 * imageData[index]
+      + 0.7152 * imageData[index + 1]
+      + 0.0722 * imageData[index + 2];
+
+    weightedLuminance += luminance * alpha;
+    totalWeight += alpha;
+  }
+
+  const averageLuminance = totalWeight > 0 ? weightedLuminance / totalWeight : 0;
+  return averageLuminance < 160 ? 'white' : 'black';
+}
+
+function resolveOverlayAsset(
+  assets: BrandedOverlayAssets | undefined,
+  type: BrandedOverlayType,
+  variant: BrandedOverlayVariant
+): { key?: BrandedOverlayAssetKey; src?: string } {
+  if (!assets) {
+    return {};
+  }
+
+  const oppositeVariant: BrandedOverlayVariant = variant === 'white' ? 'black' : 'white';
+  const candidates: BrandedOverlayAssetKey[] = [
+    getBrandedAssetKey(type, variant),
+    getBrandedAssetKey(type, oppositeVariant),
+    getBrandedAssetKey('trailer', variant),
+    getBrandedAssetKey('trailer', oppositeVariant),
+  ];
+
+  for (const key of candidates) {
+    const src = assets[key];
+    if (src) {
+      return { key, src };
+    }
+  }
+
+  return {};
 }
 
 export function getStoredThumbnailConfig(platform: ThumbnailPlatformConfig): ThumbnailConfig {
@@ -405,12 +528,12 @@ export async function shouldUseThumbnailLogoShadow(
   return shouldApplyLogoContrastShadow(ctx, config, options, width, height);
 }
 
-export async function renderThumbnailDataUrl(
+export async function renderThumbnailPreviewResult(
   config: ThumbnailConfig,
   options: ThumbnailRenderOptions = {}
-): Promise<string> {
+): Promise<ThumbnailRenderResult> {
   if (typeof document === 'undefined') {
-    return options.backdropUrl || '';
+    return { dataUrl: options.backdropUrl || '' };
   }
 
   const width = options.width || DEFAULT_WIDTH;
@@ -436,6 +559,32 @@ export async function renderThumbnailDataUrl(
     }
   } else {
     drawDefaultBackdrop(ctx, width, height);
+  }
+
+  const brandedAssets = options.brandedOverlayAssets || config.brandedOverlayAssets;
+  if (config.logoDisplayMode === 'branded') {
+    const detectedType = detectOverlayType(options.title || options.trailerLabel || '');
+    const detectedVariant = await detectOverlayContrast(ctx, width, height);
+    const manualOverlayUrl = options.manualOverlayUrl;
+    const resolvedOverlay = manualOverlayUrl
+      ? { key: undefined, src: manualOverlayUrl }
+      : resolveOverlayAsset(brandedAssets, detectedType, detectedVariant);
+
+    if (resolvedOverlay.src) {
+      try {
+        const overlayImage = await loadImage(resolvedOverlay.src);
+        drawCoverImage(ctx, overlayImage, width, height);
+      } catch (error) {
+        console.warn('Failed to load branded overlay asset:', error);
+      }
+    }
+
+    return {
+      dataUrl: canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined),
+      detectedType,
+      detectedVariant,
+      resolvedAssetKey: resolvedOverlay.key,
+    };
   }
 
   const { boxWidth, boxHeight, boxX, boxY } = getLogoFrameMetrics(config, width, height);
@@ -496,7 +645,7 @@ export async function renderThumbnailDataUrl(
   }
 
   if (config.showTrailerTypeText) {
-    const trailerLabel = options.trailerLabel || inferTrailerLabel('');
+    const trailerLabel = options.trailerLabel || inferTrailerLabel(options.title || '');
     const trailerLabelMetrics = getTrailerLabelMetrics(config, width, height);
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
@@ -513,5 +662,15 @@ export async function renderThumbnailDataUrl(
     ctx.shadowOffsetY = 0;
   }
 
-  return canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined);
+  return {
+    dataUrl: canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined),
+  };
+}
+
+export async function renderThumbnailDataUrl(
+  config: ThumbnailConfig,
+  options: ThumbnailRenderOptions = {}
+): Promise<string> {
+  const result = await renderThumbnailPreviewResult(config, options);
+  return result.dataUrl;
 }

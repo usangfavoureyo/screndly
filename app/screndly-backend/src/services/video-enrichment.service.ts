@@ -8,6 +8,19 @@ import { uploadBufferToBackblaze } from './backblaze';
 import { getTmdbApiKey } from './tmdb.service';
 
 type LandscapePlatform = 'youtube' | 'x';
+type BrandedOverlayType = 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
+type BrandedOverlayVariant = 'white' | 'black';
+type BrandedOverlayAssetKey =
+    | 'trailer_white'
+    | 'trailer_black'
+    | 'teaser_white'
+    | 'teaser_black'
+    | 'clip_white'
+    | 'clip_black'
+    | 'sneak_peek_white'
+    | 'sneak_peek_black';
+type ThumbnailLogoDisplayMode = 'boxed' | 'logo-only' | 'branded';
+type BrandedOverlayAssets = Partial<Record<BrandedOverlayAssetKey, string>>;
 
 type LogoPosition =
     | 'top-left'
@@ -150,12 +163,13 @@ interface ThumbnailConfig {
     platform: LandscapePlatform;
     logoPosition: LogoPosition;
     autoScale: boolean;
-    logoDisplayMode: 'boxed' | 'logo-only';
+    logoDisplayMode: ThumbnailLogoDisplayMode;
     maxLogoSize: number;
     trailerTextSize: number;
     autoContrastBackdrop: boolean;
     autoContrastOverlay: boolean;
     showTrailerTypeText: boolean;
+    brandedOverlayAssets?: BrandedOverlayAssets;
 }
 
 export interface LoadedVideoSettings {
@@ -278,6 +292,12 @@ const MEDIA_TYPE_HINT_PATTERNS = {
 const MIN_CONFIDENT_TMDB_SCORE = 420;
 const MIN_CONFIDENT_TITLE_SIMILARITY = 0.72;
 const MIN_TMBD_SCORE_GAP = 55;
+const BRANDED_TEXT_REGION = {
+    x: 0.04,
+    y: 0.58,
+    width: 0.42,
+    height: 0.24,
+};
 
 const VIDEO_SETTINGS_KEYS = [
     'fetchInterval',
@@ -746,6 +766,54 @@ function detectTrailerType(title: string): string | undefined {
     return undefined;
 }
 
+function normalizeOverlayTitle(title: string): string {
+    return title
+        .toLowerCase()
+        .replace(/[^\w\s]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function detectBrandedOverlayType(title: string): BrandedOverlayType {
+    const normalized = normalizeOverlayTitle(title);
+    if (normalized.includes('sneak peek')) return 'sneak_peek';
+    if (normalized.includes('teaser')) return 'teaser';
+    if (normalized.includes('clip')) return 'clip';
+    if (normalized.includes('trailer')) return 'trailer';
+    return 'trailer';
+}
+
+function getBrandedOverlayAssetKey(type: BrandedOverlayType, variant: BrandedOverlayVariant): BrandedOverlayAssetKey {
+    return `${type}_${variant}` as BrandedOverlayAssetKey;
+}
+
+function resolveBrandedOverlayAsset(
+    assets: BrandedOverlayAssets | undefined,
+    type: BrandedOverlayType,
+    variant: BrandedOverlayVariant
+): { key?: BrandedOverlayAssetKey; url?: string } {
+    if (!assets) {
+        return {};
+    }
+
+    const oppositeVariant: BrandedOverlayVariant = variant === 'white' ? 'black' : 'white';
+    const candidates: BrandedOverlayAssetKey[] = [
+        getBrandedOverlayAssetKey(type, variant),
+        getBrandedOverlayAssetKey(type, oppositeVariant),
+        getBrandedOverlayAssetKey('trailer', variant),
+        getBrandedOverlayAssetKey('trailer', oppositeVariant),
+    ];
+
+    for (const key of candidates) {
+        const url = assets[key];
+        if (url) {
+            return { key, url };
+        }
+    }
+
+    return {};
+}
+
 export function cleanVideoTitle(title: string, regexPattern?: string): string {
     let cleaned = title;
 
@@ -821,6 +889,42 @@ async function fetchBuffer(sourceUrl: string): Promise<Buffer> {
     }
 
     return Buffer.from(await response.arrayBuffer());
+}
+
+async function detectBrandedOverlayContrast(
+    backdropBuffer: Buffer,
+    width: number,
+    height: number
+): Promise<BrandedOverlayVariant> {
+    const sampleLeft = Math.max(0, Math.floor(width * BRANDED_TEXT_REGION.x));
+    const sampleTop = Math.max(0, Math.floor(height * BRANDED_TEXT_REGION.y));
+    const sampleWidth = Math.max(1, Math.floor(width * BRANDED_TEXT_REGION.width));
+    const sampleHeight = Math.max(1, Math.floor(height * BRANDED_TEXT_REGION.height));
+
+    const raw = await sharp(backdropBuffer)
+        .extract({
+            left: sampleLeft,
+            top: sampleTop,
+            width: Math.min(sampleWidth, width - sampleLeft),
+            height: Math.min(sampleHeight, height - sampleTop),
+        })
+        .removeAlpha()
+        .raw()
+        .toBuffer();
+
+    let totalLuminance = 0;
+    let pixelCount = 0;
+
+    for (let index = 0; index < raw.length; index += 3) {
+        totalLuminance +=
+            0.2126 * raw[index]
+            + 0.7152 * raw[index + 1]
+            + 0.0722 * raw[index + 2];
+        pixelCount += 1;
+    }
+
+    const averageLuminance = pixelCount > 0 ? totalLuminance / pixelCount : 0;
+    return averageLuminance < 160 ? 'white' : 'black';
 }
 
 async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
@@ -1453,7 +1557,7 @@ export async function generateLandscapeThumbnail(
         const dimensions = parseDimensionOverride(settings.videoYoutubeXThumbnailPrompt, LANDSCAPE_DEFAULT_DIMENSIONS);
         const config = platform === 'youtube' ? settings.thumbnailConfigYoutube : settings.thumbnailConfigX;
         const match = metadata.tmdbMatch;
-        const shouldRenderLogoBox = config.logoDisplayMode !== 'logo-only';
+        const shouldRenderLogoBox = config.logoDisplayMode === 'boxed';
 
         let baseUrl = match?.backdropUrl;
         let logoUrl = match?.logoUrl;
@@ -1490,6 +1594,52 @@ export async function generateLandscapeThumbnail(
         });
 
         const composites: sharp.OverlayOptions[] = [];
+
+        if (config.logoDisplayMode === 'branded') {
+            const resizedBackdrop = await image.png().toBuffer();
+            const overlayType = detectBrandedOverlayType(originalTitle);
+            const overlayVariant = await detectBrandedOverlayContrast(
+                resizedBackdrop,
+                dimensions.width,
+                dimensions.height
+            );
+            const resolvedOverlay = resolveBrandedOverlayAsset(
+                config.brandedOverlayAssets,
+                overlayType,
+                overlayVariant
+            );
+
+            if (resolvedOverlay.url) {
+                try {
+                    const overlayBuffer = await fetchBuffer(resolvedOverlay.url);
+                    const normalizedOverlay = await sharp(overlayBuffer)
+                        .resize(dimensions.width, dimensions.height, {
+                            fit: 'contain',
+                            background: { r: 0, g: 0, b: 0, alpha: 0 },
+                        })
+                        .png()
+                        .toBuffer();
+
+                    const finalBuffer = await sharp(resizedBackdrop)
+                        .composite([{ input: normalizedOverlay, top: 0, left: 0 }])
+                        .jpeg({ quality: 88, mozjpeg: true })
+                        .toBuffer();
+
+                    const fileName = `${sanitizeFileName(originalTitle)}-${platform}.jpg`;
+                    const localPath = await writeTempFile(fileName, finalBuffer);
+                    const publicUrl = await uploadGeneratedAsset(finalBuffer, fileName, 'generated-thumbnails/video');
+
+                    return {
+                        localPath,
+                        publicUrl,
+                        sourceUrl: baseUrl,
+                        strategy: resolvedOverlay.key ? `tmdb_backdrop_branded_${resolvedOverlay.key}` : 'tmdb_backdrop_branded',
+                    };
+                } catch (error) {
+                    console.warn('[VideoEnrichment] Failed to apply branded overlay, falling back to existing thumbnail flow:', error);
+                }
+            }
+        }
 
         if (config.autoContrastBackdrop) {
             const gradientSvg = Buffer.from(`

@@ -131,12 +131,14 @@ export async function generateTMDbCaption(
 
     const caption = response.data.content.trim();
     const itemId = `tmdb_${item.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30)}`;
-    captionOptimizer.recordCaptionMetadata(itemId, 'tmdb', options.model, {
-      feedType: options.feedType,
-      mediaType: item.mediaType,
-      hasCast: Boolean(item.cast?.length),
-      titleLength: item.title.length,
-    });
+    captionOptimizer.recordCaptionMetadata(
+      itemId,
+      'x',
+      `tmdb_${options.feedType}`,
+      caption,
+      options.model,
+      undefined,
+    );
 
     return {
       caption,

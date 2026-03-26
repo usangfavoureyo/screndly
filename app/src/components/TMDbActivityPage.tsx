@@ -207,7 +207,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     });
   const selection = useBulkSelection(filteredItems.map((item) => item.id));
 
-  const generateTmdbCaption = async (post: TMDbActivityItem) => {
+  const generateTmdbCaption = async (post: Pick<TMDbPost, 'title' | 'mediaType' | 'releaseDate' | 'cast' | 'year' | 'platforms' | 'source'>) => {
     const result = await generateTMDbCaptionWithSettings({
       title: post.title,
       mediaType: post.mediaType,

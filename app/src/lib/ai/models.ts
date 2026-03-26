@@ -220,7 +220,10 @@ export function normalizeModelSettingRecord<
   const nextRecord = { ...record };
 
   for (const [key, feature] of Object.entries(modelKeys) as Array<[keyof T, DefaultModelFeature]>) {
-    nextRecord[key] = normalizeAIModelId(nextRecord[key], getDefaultModelForFeature(feature));
+    (nextRecord as Record<string, unknown>)[String(key)] = normalizeAIModelId(
+      nextRecord[key],
+      getDefaultModelForFeature(feature),
+    );
   }
 
   return nextRecord;

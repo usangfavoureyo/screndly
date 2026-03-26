@@ -1,7 +1,6 @@
 import {
   AIModelId,
   DefaultModelFeature,
-  getDefaultModelForFeature,
   normalizeAIModelId,
   resolveSelectedModel,
 } from './models';
@@ -79,7 +78,7 @@ const MINI_FIRST_TASKS = new Set<AIRouterTaskType>([
   'complex-disambiguation',
 ]);
 
-function logRouting(message: string, payload: Record<string, unknown>) {
+function logRouting(message: string, payload: unknown) {
   console.log(`[AIRouter] ${message}`, payload);
 }
 
@@ -191,4 +190,3 @@ export function attachUsageToMetadata(
     },
   };
 }
-

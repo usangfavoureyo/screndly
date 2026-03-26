@@ -158,7 +158,7 @@ const defaultSettings = {
   enableMonthly: true,
   enableAnniversaries: true,
   anniversaryYears: DEFAULT_ANNIVERSARY_YEARS,
-  customAnniversaryYears: [],
+  customAnniversaryYears: [] as string[],
   anniversaryStartYear: '1995',
   maxPerAnniversary: '2',
   // Four independent feed max_items (replaced global maxItemsPerFeed)
@@ -199,6 +199,7 @@ const defaultSettings = {
   tvGenres: [] as number[],
   selectedGenres: [] as number[], // Unified genre selection
   minPopularityThreshold: 1,
+  onlyPopular: true,
   tmdbRegion: 'US',
   languageFilter: 'en', // English only by default
   // Auto-post settings
@@ -607,7 +608,7 @@ export function TMDbSettings() {
         localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
       }
       if (typeof merged.minPopularityThreshold !== 'number') {
-        merged.minPopularityThreshold = merged.onlyPopular === false ? 0 : 1;
+        merged.minPopularityThreshold = (merged as { onlyPopular?: boolean }).onlyPopular === false ? 0 : 1;
       }
       if (typeof merged.tmdbRegion !== 'string' || !merged.tmdbRegion.trim()) {
         merged.tmdbRegion = 'US';
@@ -953,7 +954,7 @@ export function TMDbSettings() {
                 className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono resize-none"
               />
               <p className="text-xs text-gray-500 dark:text-white mt-2">
-                Context: month_notice — For movies/TV shows releasing next month
+                Context: exact_calendar_month_plus_1 or fallback timing context when the final schedule is no longer exactly one month out
               </p>
             </div>
           )}
@@ -1348,6 +1349,180 @@ export function TMDbSettings() {
       {/* Divider */}
       <div className="border-t border-gray-200 dark:border-[#333333]"></div>
 
+      {/* Scheduling Policy Section */}
+      <div className="space-y-4">
+        <div>
+          <h3 className="text-gray-900 dark:text-white mb-1">Scheduling Policy</h3>
+          <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            One TMDb daily refresh evaluates Today, Anniversary, Weekly, and Monthly together before scheduling. Today and Anniversary are same-day only; Weekly and Monthly prefer same-day placement and use explicit overflow rules.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="tmdb-daily-refresh-time" className="text-[#9CA3AF]">TMDb Daily Refresh Time</Label>
+            <Input
+              id="tmdb-daily-refresh-time"
+              type="time"
+              value={tmdbSettings.tmdbDailyRefreshTime}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('tmdbDailyRefreshTime', e.target.value);
+              }}
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+            />
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Runs one master TMDb refresh in the configured timezone instead of separate per-module fetch times.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="reserve-urgent-slots" className="text-[#9CA3AF]">Reserved Urgent Slots</Label>
+            <Input
+              id="reserve-urgent-slots"
+              type="number"
+              min="0"
+              max="12"
+              value={tmdbSettings.reserveUrgentSlots}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('reserveUrgentSlots', e.target.value);
+              }}
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+            />
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Protect same-day Today and Anniversary capacity before Weekly and Monthly are placed.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="posting-window-start" className="text-[#9CA3AF]">Posting Window Start</Label>
+            <Input
+              id="posting-window-start"
+              type="time"
+              value={tmdbSettings.postingWindowStart}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('postingWindowStart', e.target.value);
+              }}
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="posting-window-end" className="text-[#9CA3AF]">Posting Window End</Label>
+            <Input
+              id="posting-window-end"
+              type="time"
+              value={tmdbSettings.postingWindowEnd}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('postingWindowEnd', e.target.value);
+              }}
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="weekly-overflow-policy" className="text-[#9CA3AF]">Weekly Overflow Policy</Label>
+            <Select
+              value={tmdbSettings.weeklyOverflowPolicy}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('weeklyOverflowPolicy', value);
+              }}
+            >
+              <SelectTrigger id="weekly-overflow-policy" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DROP">Drop</SelectItem>
+                <SelectItem value="HOLD_FOR_REVIEW">Hold for Review</SelectItem>
+                <SelectItem value="RESCHEDULE_WITH_REGEN">Reschedule With Caption Regen</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Weekly only matches exact releases 7 calendar days out. It never silently rolls into tomorrow.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="monthly-overflow-policy" className="text-[#9CA3AF]">Monthly Overflow Policy</Label>
+            <Select
+              value={tmdbSettings.monthlyOverflowPolicy}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('monthlyOverflowPolicy', value);
+              }}
+            >
+              <SelectTrigger id="monthly-overflow-policy" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="DROP">Drop</SelectItem>
+                <SelectItem value="HOLD_FOR_REVIEW">Hold for Review</SelectItem>
+                <SelectItem value="RESCHEDULE_WITH_REGEN">Reschedule With Caption Regen</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Monthly only matches the exact one-calendar-month target using true calendar math, including end-of-month cases.
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="text-[#9CA3AF]">Today and Anniversary Urgent Priority</span>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Protects hard-deadline same-day modules so Weekly and Monthly cannot crowd them out.
+              </p>
+            </div>
+            <Switch
+              checked={tmdbSettings.todayAnniversaryUrgentPriority}
+              onCheckedChange={(checked) => updateSetting('todayAnniversaryUrgentPriority', checked)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="text-[#9CA3AF]">Interleave Modules</span>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Avoid consecutive same-module posts when alternatives exist.
+              </p>
+            </div>
+            <Switch
+              checked={tmdbSettings.interleaveModules}
+              onCheckedChange={(checked) => updateSetting('interleaveModules', checked)}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="text-[#9CA3AF]">Regenerate Captions on Schedule Change</span>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Recomputes schedule-aware timing context so delayed posts do not keep stale “next week” or “next month” language.
+              </p>
+            </div>
+            <Switch
+              checked={tmdbSettings.captionRegenOnScheduleChange}
+              onCheckedChange={(checked) => updateSetting('captionRegenOnScheduleChange', checked)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="border-t border-gray-200 dark:border-[#333333]"></div>
+
       {/* Content Filters Section */}
       <div className="space-y-4">
         <div>
@@ -1513,7 +1688,7 @@ export function TMDbSettings() {
             <div>
               <span className="text-[#9CA3AF]">Weekly Releases</span>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Up to {tmdbSettings.weeklyMaxItems} popular movies + up to {tmdbSettings.weeklyMaxItems} popular TV shows releasing next week
+                Exact releases 7 calendar days from the refresh date. Same-day scheduling is preferred; overflow follows the configured policy.
               </p>
             </div>
             <Switch
@@ -1545,7 +1720,7 @@ export function TMDbSettings() {
             <div>
               <span className="text-[#9CA3AF]">Monthly Previews</span>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Up to {tmdbSettings.monthlyMaxItems} popular movies + up to {tmdbSettings.monthlyMaxItems} popular TV shows for next month
+                Exact releases one calendar month from the refresh date using real calendar math. Same-day scheduling is preferred; overflow follows the configured policy.
               </p>
             </div>
             <Switch
@@ -1577,7 +1752,7 @@ export function TMDbSettings() {
             <div>
               <span className="text-[#9CA3AF]">Anniversaries</span>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Daily anniversary posts (1, 2, 3, 5, 10, 15, 20, 25 years)
+                Exact anniversary month/day matches only, limited to the milestone years selected below. Must post the same day.
               </p>
             </div>
             <Switch

@@ -12,6 +12,7 @@ export interface TMDbFeed {
     id: string;
     tmdbId: number;
     mediaType: 'movie' | 'tv';
+    moduleType?: 'today' | 'weekly' | 'monthly' | 'anniversary';
     title: string;
     year: number;
     releaseDate: string;
@@ -24,7 +25,13 @@ export interface TMDbFeed {
     popularity: number;
     cacheHit: boolean;
     platforms?: string[];
-    status?: 'queued' | 'scheduled' | 'published' | 'failed';
+    status?: 'queued' | 'scheduled' | 'dispatched' | 'published' | 'failed' | 'unscheduled' | 'skipped';
+    runId?: string;
+    captionContextHash?: string;
+    overflowPolicy?: string;
+    overflowExpiresAt?: string;
+    unscheduledReason?: string;
+    dispatchedAt?: string;
     publishedTime?: string;
     errorMessage?: string;
     createdAt?: string;

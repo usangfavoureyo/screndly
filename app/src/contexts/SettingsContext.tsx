@@ -621,7 +621,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             const mergedSettings = normalizeSettingsModels({
               ...getDefaultSettings(),
               ...mergeSettings(response.data, localSettings),
-            });
+            }) as Settings;
             const merged = shouldInjectCultureCravePrompts
               ? { ...mergedSettings, ...settingsPromptDefaults }
               : mergedSettings;
@@ -634,7 +634,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               shouldInjectCultureCravePrompts
                 ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
                 : { ...getDefaultSettings(), ...localSettings },
-            );
+            ) as Settings;
             setSettings(fallbackSettings);
             syncThemeSetting(fallbackSettings.darkMode);
           }
@@ -644,7 +644,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
             shouldInjectCultureCravePrompts
               ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
               : { ...getDefaultSettings(), ...localSettings },
-          );
+          ) as Settings;
           setSettings(fallbackSettings);
           syncThemeSetting(fallbackSettings.darkMode);
         }
@@ -654,7 +654,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           shouldInjectCultureCravePrompts
             ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
             : { ...getDefaultSettings(), ...localSettings },
-        );
+        ) as Settings;
         setSettings(fallbackSettings);
         syncThemeSetting(fallbackSettings.darkMode);
       }
@@ -806,7 +806,7 @@ function extractNonSensitiveSettings(settings: Partial<Settings>): Partial<Setti
   const nonSensitive: Partial<Settings> = {};
   for (const key in settings) {
     if (!SECRET_STORAGE_KEYS.has(key)) {
-      nonSensitive[key as keyof Settings] = settings[key as keyof Settings];
+      (nonSensitive as Record<string, unknown>)[key] = settings[key as keyof Settings];
     }
   }
   return nonSensitive;
