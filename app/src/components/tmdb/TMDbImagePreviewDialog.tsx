@@ -1,10 +1,24 @@
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 
+function formatImageTypeLabel(value?: 'poster' | 'backdrop' | 'logo') {
+  if (!value) {
+    return undefined;
+  }
+
+  if (value === 'logo') {
+    return 'Logo';
+  }
+
+  return value === 'poster' ? 'Poster' : 'Backdrop';
+}
+
 interface TMDbImagePreviewDialogProps {
   open: boolean;
   imageUrl?: string | null;
+  imageUrls?: string[];
   title?: string;
-  imageType?: 'poster' | 'backdrop';
+  imageType?: 'poster' | 'backdrop' | 'logo';
+  imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
   onOpenChange: (open: boolean) => void;
   onClose: () => void;
 }
@@ -12,8 +26,10 @@ interface TMDbImagePreviewDialogProps {
 export function TMDbImagePreviewDialog({
   open,
   imageUrl,
+  imageUrls,
   title,
   imageType,
+  imageTypes,
   onOpenChange,
   onClose,
 }: TMDbImagePreviewDialogProps) {
@@ -29,9 +45,11 @@ export function TMDbImagePreviewDialog({
     <MediaPreviewDialog
       open={open}
       src={imageUrl}
+      imageSources={imageUrls}
       mediaType="image"
       title={title || 'TMDb image preview'}
-      badgeLabel={imageType}
+      badgeLabel={formatImageTypeLabel(imageType)}
+      badgeLabels={imageTypes?.map((value) => formatImageTypeLabel(value) || '')}
       onOpenChange={handleOpenChange}
     />
   );

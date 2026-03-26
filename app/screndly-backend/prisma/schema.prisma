@@ -34,7 +34,9 @@ model TMDbPost {
   releaseDate   DateTime
   caption       String   @db.Text
   imageUrl      String
-  imageType     String   // "poster" or "backdrop"
+  imageType     String   // "poster", "backdrop", or "logo"
+  imageUrls     String[] @default([])
+  imageTypes    String[] @default([])
   scheduledTime DateTime
   source        String   // "tmdb_today", "tmdb_weekly", "tmdb_monthly", "tmdb_anniversary"
   cast          String[] // Array of cast members

@@ -33,6 +33,7 @@ import { decideYouTubeCandidate } from './youtube-detection/decisionEngine';
 import { checkPromoDuplicate, recordAcceptedPromoFingerprint, recordDuplicateRelationship } from './youtube-detection/deduplicationEngine';
 import { parsePromoAssetType } from './youtube-detection/promoAssetParsing';
 import type { PollingCandidate } from './youtube-detection/types';
+import { extractCollaboratorMetadata, isExplicitCollaboratorForTrackedChannel } from './youtube-detection/collabDiscovery';
 
 const parser = new Parser();
 
@@ -61,6 +62,21 @@ export interface PollSummary {
     successfulPublishes: number;
     failedPublishes: number;
     results: ChannelPollResult[];
+}
+
+export interface ChannelDiscoveryPreviewItem {
+    videoId: string;
+    title: string;
+    publishedAt?: string;
+    discoveredVia: 'owned_upload' | 'collab_association';
+    detectedViaChannelName?: string;
+    primaryChannelName?: string;
+    collaboratorChannelNames: string[];
+    isCollaborativePost: boolean;
+    keywordMatched: boolean;
+    decisionPath?: string;
+    allow?: boolean;
+    reasonSummary?: string;
 }
 
 interface PlatformAutomationSettings {
@@ -127,7 +143,7 @@ interface FeedVideoProcessingResult {
 
 interface ChannelVideoSourceResult {
     items: any[];
-    source: 'rss' | 'yt-dlp';
+    source: 'rss' | 'yt-dlp' | 'merged';
 }
 
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
@@ -335,7 +351,10 @@ export class YouTubePollerService {
         try {
             activeChannel = await this.ensureCanonicalChannel(channel);
             const supportsFeedItemStatus = await hasFeedItemStatusColumn();
-            const { items: latestVideos, source } = await this.getRecentChannelVideos(activeChannel);
+            const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
+            const { items: ownedVideos, source } = await this.getRecentChannelVideos(activeChannel);
+            const collaborativeVideos = await this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords);
+            const latestVideos = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]);
             if (source === 'yt-dlp') {
                 console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
             }
@@ -352,12 +371,12 @@ export class YouTubePollerService {
                     message: 'No videos found in channel source'
                 });
             }
-            const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
             console.log(
                 usingDefaultTrailerKeywords
                     ? `[YouTubePoller] ${activeChannel.name}: using default trailer filters (${trailerKeywords.join(', ')}) because advancedFilters is blank`
                     : `[YouTubePoller] ${activeChannel.name}: using trailer filters (${trailerKeywords.join(', ')})`
             );
+            console.log(`[YouTubePoller] ${activeChannel.name}: discovered ${ownedVideos.length} owned uploads and ${collaborativeVideos.length} collaborative candidates`);
             const futureOnlySince = this.getFutureOnlySince(settings);
             console.log(
                 futureOnlySince
@@ -431,6 +450,119 @@ export class YouTubePollerService {
             .slice(0, MAX_RECENT_FEED_ITEMS);
     }
 
+    async previewChannelDiscovery(channelDbId: string, limit = 10): Promise<ChannelDiscoveryPreviewItem[]> {
+        const settings = await getYouTubeRuntimeSettings();
+        const channel = await prisma.channel.findUnique({ where: { id: channelDbId } });
+        if (!channel) {
+            throw new Error('Channel not found');
+        }
+
+        const activeChannel = await this.ensureCanonicalChannel(channel);
+        const { keywords: trailerKeywords } = this.getTrailerKeywords(settings);
+        const { items: ownedVideos } = await this.getRecentChannelVideos(activeChannel);
+        const collaborativeVideos = await this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords);
+        const latestVideos = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]).slice(0, Math.max(1, limit));
+
+        const previews = await Promise.all(latestVideos.map(async (video) => {
+            const videoId = this.extractVideoId(video.link || '', video.id || '');
+            const title = video.title || 'Untitled YouTube upload';
+            const keywordMatched = this.matchesTrailerFilters((title || '').toLowerCase(), trailerKeywords);
+
+            let allow: boolean | undefined;
+            let decisionPath: string | undefined;
+            let reasonSummary: string | undefined;
+
+            if (videoId && keywordMatched) {
+                try {
+                    const metadata = await enrichYouTubeVideoMetadata(
+                        videoId,
+                        title,
+                        video.contentSnippet || '',
+                        settings
+                    );
+                    const candidate = this.buildDecisionCandidate(
+                        videoId,
+                        title,
+                        video.contentSnippet || '',
+                        activeChannel,
+                        new Date(video.pubDate || Date.now()),
+                        video
+                    );
+                    candidate.normalizedTitle = metadata.cleanedTitle || candidate.normalizedTitle;
+                    if (metadata.tmdbMatch) {
+                        candidate.mediaTypeGuess = metadata.tmdbMatch.mediaType;
+                        candidate.extractedYear = metadata.tmdbMatch.year;
+                        candidate.seasonNumber = metadata.tmdbMatch.seasonNumber;
+                        candidate.trailerType = metadata.trailerType;
+                    }
+                    const decision = await decideYouTubeCandidate(candidate, metadata, settings);
+                    allow = decision.allow;
+                    decisionPath = decision.decisionPath;
+                    reasonSummary = decision.reasonSummary;
+                } catch (error) {
+                    reasonSummary = error instanceof Error ? error.message : 'Preview classification failed';
+                }
+            }
+
+            return {
+                videoId,
+                title,
+                publishedAt: typeof video.pubDate === 'string' ? video.pubDate : undefined,
+                discoveredVia: video.discoveredVia === 'collab_association' ? 'collab_association' : 'owned_upload',
+                detectedViaChannelName: video.detectedViaChannelName,
+                primaryChannelName: video.primaryChannelName,
+                collaboratorChannelNames: Array.isArray(video.collaboratorChannelNames) ? video.collaboratorChannelNames : [],
+                isCollaborativePost: video.isCollaborativePost === true,
+                keywordMatched,
+                allow,
+                decisionPath,
+                reasonSummary,
+            } satisfies ChannelDiscoveryPreviewItem;
+        }));
+
+        return previews;
+    }
+
+    private mergeDiscoveredCandidates(candidates: any[]): any[] {
+        const byVideoId = new Map<string, any>();
+
+        for (const candidate of candidates) {
+            const videoId = this.extractVideoId(candidate?.link || '', candidate?.id || '');
+            if (!videoId) {
+                continue;
+            }
+
+            const existing = byVideoId.get(videoId);
+            if (!existing) {
+                byVideoId.set(videoId, candidate);
+                continue;
+            }
+
+            const existingOrigins = new Set<string>(existing.detectedViaChannels || [existing.detectedViaChannelName].filter(Boolean));
+            const nextOrigins = new Set<string>(candidate.detectedViaChannels || [candidate.detectedViaChannelName].filter(Boolean));
+            const mergedDetectedViaChannels = Array.from(new Set([...existingOrigins, ...nextOrigins])).filter(Boolean);
+            const mergedCollaboratorNames = Array.from(new Set([
+                ...((existing.collaboratorChannelNames as string[]) || []),
+                ...((candidate.collaboratorChannelNames as string[]) || []),
+            ]));
+            const mergedCollaboratorIds = Array.from(new Set([
+                ...((existing.collaboratorChannelIds as string[]) || []),
+                ...((candidate.collaboratorChannelIds as string[]) || []),
+            ]));
+
+            byVideoId.set(videoId, {
+                ...existing,
+                contentSnippet: existing.contentSnippet || candidate.contentSnippet,
+                detectedViaChannels: mergedDetectedViaChannels,
+                collaboratorChannelNames: mergedCollaboratorNames,
+                collaboratorChannelIds: mergedCollaboratorIds,
+                isCollaborativePost: existing.isCollaborativePost || candidate.isCollaborativePost,
+            });
+        }
+
+        return this.sortRecentChannelVideos([...byVideoId.values()]);
+    }
+
     private async getRecentChannelVideos(channel: any): Promise<ChannelVideoSourceResult> {
         const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`;
 
@@ -439,7 +571,18 @@ export class YouTubePollerService {
             const items = Array.isArray(feed.items) ? this.sortRecentChannelVideos(feed.items) : [];
             if (items.length > 0) {
                 return {
-                    items,
+                    items: items.map((item) => ({
+                        ...item,
+                        primaryChannelId: channel.channelId,
+                        primaryChannelName: channel.name,
+                        detectedViaChannelId: channel.channelId,
+                        detectedViaChannelName: channel.name,
+                        detectedViaChannels: [channel.name],
+                        collaboratorChannelIds: [],
+                        collaboratorChannelNames: [],
+                        isCollaborativePost: false,
+                        discoveredVia: 'owned_upload',
+                    })),
                     source: 'rss',
                 };
             }
@@ -504,6 +647,15 @@ export class YouTubePollerService {
                     contentSnippet: typeof raw?.description === 'string'
                         ? raw.description
                         : (typeof entry?.description === 'string' ? entry.description : ''),
+                    primaryChannelId: typeof raw?.channel_id === 'string' ? raw.channel_id : channelId,
+                    primaryChannelName: typeof raw?.channel === 'string' ? raw.channel : channelName,
+                    detectedViaChannelId: channelId,
+                    detectedViaChannelName: channelName,
+                    detectedViaChannels: [channelName],
+                    collaboratorChannelIds: [],
+                    collaboratorChannelNames: [],
+                    isCollaborativePost: false,
+                    discoveredVia: 'owned_upload',
                 };
             } catch (error) {
                 console.warn(`[YouTubePoller] ${channelName}: failed to resolve yt-dlp fallback metadata for ${videoId}; skipping entry`, error);
@@ -514,6 +666,73 @@ export class YouTubePollerService {
         return this.sortRecentChannelVideos(
             resolvedVideos.filter((video): video is any => Boolean(video?.pubDate))
         );
+    }
+
+    private async fetchCollaborativeVideosForChannel(channel: any, trailerKeywords: string[]): Promise<any[]> {
+        const keywordQueries = trailerKeywords
+            .filter((keyword) => !NON_STANDALONE_TRAILER_KEYWORDS.has(keyword))
+            .slice(0, 4);
+        const candidateMap = new Map<string, any>();
+
+        for (const keyword of keywordQueries) {
+            const query = `ytsearchdate${Math.min(MAX_RECENT_FEED_ITEMS, 8)}:"${channel.name}" ${keyword}`;
+            try {
+                const results = await ytDlp(query, {
+                    flatPlaylist: true,
+                    dumpSingleJson: true,
+                    skipDownload: true,
+                    noWarnings: true,
+                    quiet: true,
+                } as any);
+                const entries = Array.isArray((results as any)?.entries) ? (results as any).entries : [];
+
+                for (const entry of entries) {
+                    const videoId = typeof entry?.id === 'string' ? entry.id.trim() : '';
+                    if (!videoId || candidateMap.has(videoId)) {
+                        continue;
+                    }
+
+                    const videoUrl = typeof entry?.url === 'string' && entry.url.trim().length > 0
+                        ? entry.url
+                        : `https://www.youtube.com/watch?v=${videoId}`;
+
+                    try {
+                        const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
+                        if (!isExplicitCollaboratorForTrackedChannel(channel, raw)) {
+                            continue;
+                        }
+
+                        const collaboratorMetadata = extractCollaboratorMetadata(raw);
+                        candidateMap.set(videoId, {
+                            id: `yt:video:${videoId}`,
+                            link: typeof raw?.webpage_url === 'string' ? raw.webpage_url : videoUrl,
+                            title: typeof raw?.title === 'string' && raw.title.trim().length > 0
+                                ? raw.title
+                                : (typeof entry?.title === 'string' && entry.title.trim().length > 0 ? entry.title : 'Untitled YouTube upload'),
+                            pubDate: this.parseYtDlpPublishedAt(raw),
+                            contentSnippet: typeof raw?.description === 'string'
+                                ? raw.description
+                                : (typeof entry?.description === 'string' ? entry.description : ''),
+                            primaryChannelId: collaboratorMetadata.primaryChannelId,
+                            primaryChannelName: collaboratorMetadata.primaryChannelName,
+                            detectedViaChannelId: channel.channelId,
+                            detectedViaChannelName: channel.name,
+                            detectedViaChannels: [channel.name],
+                            collaboratorChannelIds: collaboratorMetadata.collaboratorChannelIds,
+                            collaboratorChannelNames: collaboratorMetadata.collaboratorChannelNames,
+                            isCollaborativePost: true,
+                            discoveredVia: 'collab_association',
+                        });
+                    } catch (error) {
+                        console.warn(`[YouTubePoller] ${channel.name}: failed to inspect collaborative candidate ${videoId}`, error);
+                    }
+                }
+            } catch (error) {
+                console.warn(`[YouTubePoller] ${channel.name}: collaborative discovery query failed for "${keyword}"`, error);
+            }
+        }
+
+        return this.sortRecentChannelVideos([...candidateMap.values()].filter((video) => Boolean(video?.pubDate)));
     }
 
     private async completeChannelCheck(
@@ -692,7 +911,7 @@ export class YouTubePollerService {
         return 'unknown';
     }
 
-    private buildDecisionCandidate(videoId: string, videoTitle: string, description: string, activeChannel: any, pubDate: Date): PollingCandidate {
+    private buildDecisionCandidate(videoId: string, videoTitle: string, description: string, activeChannel: any, pubDate: Date, sourceVideo?: any): PollingCandidate {
         const combinedText = `${videoTitle}\n${description}`;
         return {
             youtubeVideoId: videoId,
@@ -701,6 +920,14 @@ export class YouTubePollerService {
             description,
             channelId: activeChannel.channelId,
             channelName: activeChannel.name,
+            primaryChannelId: sourceVideo?.primaryChannelId || activeChannel.channelId,
+            primaryChannelName: sourceVideo?.primaryChannelName || activeChannel.name,
+            detectedViaChannelId: sourceVideo?.detectedViaChannelId || activeChannel.channelId,
+            detectedViaChannelName: sourceVideo?.detectedViaChannelName || activeChannel.name,
+            collaboratorChannelIds: Array.isArray(sourceVideo?.collaboratorChannelIds) ? sourceVideo.collaboratorChannelIds : [],
+            collaboratorChannelNames: Array.isArray(sourceVideo?.collaboratorChannelNames) ? sourceVideo.collaboratorChannelNames : [],
+            isCollaborativePost: sourceVideo?.isCollaborativePost === true,
+            discoveredVia: sourceVideo?.discoveredVia === 'collab_association' ? 'collab_association' : 'owned_upload',
             publishedAt: pubDate,
             mediaTypeGuess: this.guessMediaType(combinedText),
             extractedYear: this.extractYearFromText(combinedText),
@@ -896,7 +1123,8 @@ export class YouTubePollerService {
             video.title || '',
             details.description || video.contentSnippet || '',
             activeChannel,
-            pubDate
+            pubDate,
+            video
         );
         decisionCandidate.normalizedTitle = enrichedMetadata.cleanedTitle || decisionCandidate.normalizedTitle;
         if (enrichedMetadata.tmdbMatch) {
@@ -939,6 +1167,17 @@ export class YouTubePollerService {
         }
 
         const decisionResult = await decideYouTubeCandidate(decisionCandidate, enrichedMetadata, settings);
+        const sourceAttribution = {
+            discoveredVia: decisionCandidate.discoveredVia,
+            detectedViaChannelId: decisionCandidate.detectedViaChannelId,
+            detectedViaChannelName: decisionCandidate.detectedViaChannelName,
+            detectedViaChannels: video.detectedViaChannels || [decisionCandidate.detectedViaChannelName].filter(Boolean),
+            primaryChannelId: decisionCandidate.primaryChannelId,
+            primaryChannelName: decisionCandidate.primaryChannelName,
+            collaboratorChannelIds: decisionCandidate.collaboratorChannelIds,
+            collaboratorChannelNames: decisionCandidate.collaboratorChannelNames,
+            isCollaborativePost: decisionCandidate.isCollaborativePost,
+        };
         console.log('[YouTubePoller] decision', JSON.stringify({
             videoId,
             channelName: activeChannel.name,
@@ -947,12 +1186,16 @@ export class YouTubePollerService {
             finalDecision: decisionResult.allow ? 'allow' : 'reject',
             decisionPath: decisionResult.decisionPath,
             reasonSummary: decisionResult.reasonSummary,
+            sourceAttribution,
             decisionLog: decisionResult.decisionLog,
         }));
         if (!decisionResult.allow) {
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored', {
                 decisionPath: decisionResult.decisionPath,
-                decisionLog: decisionResult.decisionLog,
+                decisionLog: {
+                    ...decisionResult.decisionLog,
+                    sourceAttribution,
+                },
             });
             return {
                 kind: 'continue',
@@ -968,6 +1211,7 @@ export class YouTubePollerService {
                     decisionPath: decisionResult.decisionPath,
                     decisionLog: {
                         ...decisionResult.decisionLog,
+                        sourceAttribution,
                         legacyCustomFilterDecision: aiDecision,
                     },
                 });
@@ -998,6 +1242,7 @@ export class YouTubePollerService {
                 duplicateOfVideoId: dedupResult.matchedCanonicalVideoId,
                 decisionLog: {
                     ...decisionResult.decisionLog,
+                    sourceAttribution,
                     dedup: dedupResult,
                 },
             });
@@ -1015,6 +1260,7 @@ export class YouTubePollerService {
                 promoFingerprint: dedupResult.dedupFingerprint,
                 decisionLog: {
                     ...decisionResult.decisionLog,
+                    sourceAttribution,
                     dedup: dedupResult,
                 },
             });
@@ -1220,6 +1466,7 @@ export class YouTubePollerService {
                     promoFingerprint: dedupResult.dedupFingerprint,
                     decisionLog: {
                         ...decisionResult.decisionLog,
+                        sourceAttribution,
                         dedup: dedupResult,
                     },
                 });
@@ -1260,6 +1507,7 @@ export class YouTubePollerService {
                     promoFingerprint: dedupResult.dedupFingerprint,
                     decisionLog: {
                         ...decisionResult.decisionLog,
+                        sourceAttribution,
                         dedup: dedupResult,
                     },
                 });
@@ -1284,6 +1532,7 @@ export class YouTubePollerService {
                 promoFingerprint: dedupResult.dedupFingerprint,
                 decisionLog: {
                     ...decisionResult.decisionLog,
+                    sourceAttribution,
                     dedup: dedupResult,
                 },
             });

@@ -9,6 +9,9 @@ type MediaPreviewKind = 'image' | 'video';
 interface MediaPreviewDialogProps {
   open: boolean;
   src?: string | null;
+  imageSources?: string[];
+  badgeLabels?: string[];
+  initialIndex?: number;
   mediaType: MediaPreviewKind;
   title?: string;
   badgeLabel?: string;
@@ -22,7 +25,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-function getTouchDistance(touchA: Touch, touchB: Touch) {
+function getTouchDistance(
+  touchA: Pick<Touch, 'clientX' | 'clientY'>,
+  touchB: Pick<Touch, 'clientX' | 'clientY'>,
+) {
   return Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY);
 }
 
@@ -46,6 +52,9 @@ function formatPlaybackTime(value: number) {
 export function MediaPreviewDialog({
   open,
   src,
+  imageSources,
+  badgeLabels,
+  initialIndex = 0,
   mediaType,
   title,
   badgeLabel,
@@ -64,6 +73,20 @@ export function MediaPreviewDialog({
   const offsetRef = useRef({ x: 0, y: 0 });
   const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
   const panStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const resolvedImageSources = mediaType === 'image'
+    ? (Array.isArray(imageSources) && imageSources.length > 0
+      ? imageSources.filter((value): value is string => typeof value === 'string' && value.length > 0)
+      : (src ? [src] : []))
+    : [];
+  const activeImageSource = mediaType === 'image'
+    ? (resolvedImageSources[currentImageIndex] ?? resolvedImageSources[0] ?? src ?? null)
+    : src;
+  const activeBadgeLabel = mediaType === 'image'
+    ? (Array.isArray(badgeLabels) ? badgeLabels[currentImageIndex] : undefined) || badgeLabel
+    : badgeLabel;
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -95,12 +118,23 @@ export function MediaPreviewDialog({
   const resetImageTransform = useCallback(() => {
     pinchStartRef.current = null;
     panStartRef.current = null;
+    swipeStartRef.current = null;
     scaleRef.current = MIN_SCALE;
     offsetRef.current = { x: 0, y: 0 };
     setScale(MIN_SCALE);
     setOffset({ x: 0, y: 0 });
     setIsInteracting(false);
   }, []);
+
+  const goToImage = useCallback((nextIndex: number) => {
+    if (resolvedImageSources.length <= 1) {
+      return;
+    }
+
+    const boundedIndex = clamp(nextIndex, 0, resolvedImageSources.length - 1);
+    setCurrentImageIndex(boundedIndex);
+    resetImageTransform();
+  }, [resetImageTransform, resolvedImageSources.length]);
 
   const updateTransform = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
     const safeScale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
@@ -137,12 +171,16 @@ export function MediaPreviewDialog({
     }
 
     if (mediaType === 'image') {
+      const safeIndex = resolvedImageSources.length > 0
+        ? clamp(initialIndex, 0, resolvedImageSources.length - 1)
+        : 0;
+      setCurrentImageIndex(safeIndex);
       resetImageTransform();
       return;
     }
 
     resetVideoPlayback();
-  }, [mediaType, open, resetImageTransform, resetVideoPlayback, src]);
+  }, [initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedImageSources.length, src]);
 
   const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
@@ -179,6 +217,13 @@ export function MediaPreviewDialog({
         offsetY: offsetRef.current.y,
       };
       setIsInteracting(true);
+      swipeStartRef.current = null;
+      return;
+    }
+
+    if (event.touches.length === 1 && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
+      const touch = event.touches[0];
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
     }
   };
 
@@ -226,6 +271,19 @@ export function MediaPreviewDialog({
     if (scaleRef.current <= 1.01) {
       resetImageTransform();
     }
+
+    if (event.changedTouches.length === 1 && swipeStartRef.current && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
+      const touch = event.changedTouches[0];
+      const deltaX = touch.clientX - swipeStartRef.current.x;
+      const deltaY = touch.clientY - swipeStartRef.current.y;
+
+      if (Math.abs(deltaX) > 48 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        haptics.light();
+        goToImage(currentImageIndex + (deltaX < 0 ? 1 : -1));
+      }
+    }
+
+    swipeStartRef.current = null;
   };
 
   const handleImageDoubleClick = () => {
@@ -272,7 +330,9 @@ export function MediaPreviewDialog({
   const previewTitle = title || (mediaType === 'video' ? 'Video preview' : 'Image preview');
   const previewDescription = mediaType === 'video'
     ? 'Expanded video preview with tap playback and scrub controls.'
-    : 'Expanded image preview with pinch and double-tap zoom.';
+    : resolvedImageSources.length > 1
+      ? 'Expanded image preview with swipe, pinch, and double-tap zoom.'
+      : 'Expanded image preview with pinch and double-tap zoom.';
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
@@ -295,9 +355,15 @@ export function MediaPreviewDialog({
             <X className="h-6 w-6" />
           </button>
 
-          {badgeLabel ? (
+          {activeBadgeLabel ? (
             <div className="absolute left-4 top-4 z-40 rounded-full bg-black/70 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white">
-              {badgeLabel}
+              {activeBadgeLabel}
+            </div>
+          ) : null}
+
+          {mediaType === 'image' && resolvedImageSources.length > 1 ? (
+            <div className="absolute right-4 top-16 z-40 rounded-full bg-black/70 px-3 py-1 text-xs text-white">
+              {currentImageIndex + 1} / {resolvedImageSources.length}
             </div>
           ) : null}
 
@@ -312,9 +378,9 @@ export function MediaPreviewDialog({
               onTouchEnd={handleImageTouchEnd}
               onTouchCancel={handleImageTouchEnd}
             >
-              {src ? (
+              {activeImageSource ? (
                 <img
-                  src={src}
+                  src={activeImageSource}
                   alt={previewTitle}
                   draggable={false}
                   className="max-h-full max-w-full object-contain"
@@ -330,11 +396,11 @@ export function MediaPreviewDialog({
             </div>
           ) : (
             <div className="relative flex h-[90vh] w-full items-center justify-center overflow-hidden bg-black">
-              {src ? (
+              {activeImageSource ? (
                 <>
                   <video
                     ref={videoRef}
-                    src={src}
+                    src={activeImageSource}
                     className="h-full w-full object-contain"
                     playsInline
                     preload="metadata"

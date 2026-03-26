@@ -211,4 +211,23 @@ router.get('/:id/videos', async (req, res) => {
     }
 });
 
+// GET /api/channels/:id/discovery-preview
+router.get('/:id/discovery-preview', async (req, res) => {
+    try {
+        const limit = Number.parseInt(String(req.query.limit || '10'), 10);
+        const data = await youtubePollerService.previewChannelDiscovery(
+            req.params.id,
+            Number.isFinite(limit) && limit > 0 ? Math.min(limit, 20) : 10
+        );
+
+        res.json({ success: true, data });
+    } catch (error: any) {
+        console.error('Failed to preview channel discovery:', error);
+        res.status(error?.message === 'Channel not found' ? 404 : 500).json({
+            success: false,
+            error: { message: error?.message || 'Failed to preview channel discovery' },
+        });
+    }
+});
+
 export default router;

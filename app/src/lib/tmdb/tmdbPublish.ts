@@ -9,6 +9,7 @@ export interface TMDbPublishablePost {
     title: string;
     caption?: string;
     imageUrl?: string;
+    imageUrls?: string[];
     source: TMDbSource;
     platforms?: string[];
 }
@@ -124,6 +125,7 @@ export async function publishTMDbPost(
             text: post.caption?.trim() || post.title,
             title: post.title,
             imageUrl: post.imageUrl || undefined,
+            imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : undefined,
         }
     );
 

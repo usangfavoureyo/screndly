@@ -219,6 +219,8 @@ router.post('/posts', async (req, res) => {
                 caption: data.caption,
                 imageUrl: data.imageUrl,
                 imageType: data.imageType,
+                imageUrls: Array.isArray(data.imageUrls) && data.imageUrls.length > 0 ? data.imageUrls : [data.imageUrl],
+                imageTypes: Array.isArray(data.imageTypes) && data.imageTypes.length > 0 ? data.imageTypes : [data.imageType],
                 scheduledTime: new Date(data.scheduledTime),
                 source: data.source,
                 cast: data.cast,
@@ -253,6 +255,14 @@ router.put('/posts/:id', async (req, res) => {
 
         if (Object.prototype.hasOwnProperty.call(data, 'errorMessage')) {
             updateData.errorMessage = data.errorMessage ?? null;
+        }
+
+        if (Object.prototype.hasOwnProperty.call(data, 'imageUrls')) {
+            updateData.imageUrls = Array.isArray(data.imageUrls) ? data.imageUrls.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0) : [];
+        }
+
+        if (Object.prototype.hasOwnProperty.call(data, 'imageTypes')) {
+            updateData.imageTypes = Array.isArray(data.imageTypes) ? data.imageTypes.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0) : [];
         }
 
         const post = await updateTMDbPost(id, updateData);

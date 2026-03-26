@@ -30,6 +30,7 @@ import {
     type TMDbOverflowPolicy,
     type TMDbPostStatus,
 } from './tmdb-feed.domain';
+import { renderTMDbLogoCard } from './rss-logo-render.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -40,6 +41,8 @@ const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
 
 type MediaType = 'movie' | 'tv';
+type TMDbImageMode = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
+type TMDbImageAssetType = 'poster' | 'backdrop' | 'logo';
 
 interface TMDbMovie {
     id: number;
@@ -76,6 +79,16 @@ interface TMDbDetails {
     genres?: Array<{ id: number; name: string }>;
     release_date?: string;
     first_air_date?: string;
+}
+
+interface TMDbImagesResponse {
+    logos?: Array<{
+        file_path?: string | null;
+        iso_639_1?: string | null;
+        vote_average?: number;
+        width?: number;
+        height?: number;
+    }>;
 }
 
 interface TMDbMovieReleaseDatesResponse {
@@ -118,6 +131,7 @@ export interface RefreshSettings {
     monthlyMaxItems?: number;
     anniversaryMaxItems?: number;
     preferredImage?: 'poster' | 'backdrop' | 'random';
+    preferredImageTypes?: TMDbImageMode[];
     selectedGenres?: number[];
     movieGenres?: number[];
     tvGenres?: number[];
@@ -194,6 +208,7 @@ const defaultRefreshSettings: RefreshSettings = {
     monthlyMaxItems: 30,
     anniversaryMaxItems: 5,
     preferredImage: 'poster',
+    preferredImageTypes: ['poster'],
     selectedGenres: [],
     movieGenres: [],
     tvGenres: [],
@@ -705,24 +720,117 @@ function getPlatformsForModule(moduleType: TMDbModuleType, config: RefreshSettin
     return platforms;
 }
 
-function selectImage(candidate: TMDbCandidate, preferred: RefreshSettings['preferredImage']) {
+function normalizePreferredImageModes(config: RefreshSettings): TMDbImageMode[] {
+    const preferredImageTypes = Array.isArray(config.preferredImageTypes)
+        ? config.preferredImageTypes.filter((value): value is TMDbImageMode =>
+            value === 'poster' ||
+            value === 'backdrop' ||
+            value === 'poster_backdrop' ||
+            value === 'backdrop_logo'
+        )
+        : [];
+
+    if (preferredImageTypes.length > 0) {
+        return [...new Set(preferredImageTypes)];
+    }
+
+    if (config.preferredImage === 'backdrop') {
+        return ['backdrop'];
+    }
+
+    if (config.preferredImage === 'random') {
+        return ['poster', 'backdrop'];
+    }
+
+    return ['poster'];
+}
+
+function buildTMDbImageUrl(path: string | null | undefined): string {
+    return path ? `${TMDB_IMAGE_BASE}${path}` : '';
+}
+
+async function fetchBestLogoUrl(mediaType: MediaType, tmdbId: number): Promise<string> {
+    try {
+        const details = await tmdbFetch<TMDbImagesResponse>(
+            `/${mediaType === 'movie' ? 'movie' : 'tv'}/${tmdbId}/images`,
+            { include_image_language: 'en,null' },
+        );
+        const logos = (details.logos || []).filter((logo) => typeof logo.file_path === 'string' && logo.file_path.length > 0);
+        if (logos.length === 0) {
+            return '';
+        }
+
+        logos.sort((left, right) => {
+            const leftLanguage = left.iso_639_1 === 'en' ? 1 : left.iso_639_1 === null ? 0.5 : 0;
+            const rightLanguage = right.iso_639_1 === 'en' ? 1 : right.iso_639_1 === null ? 0.5 : 0;
+            if (leftLanguage !== rightLanguage) {
+                return rightLanguage - leftLanguage;
+            }
+
+            const leftScore = (left.vote_average || 0) + (((left.width || 0) * (left.height || 0)) / 1_000_000);
+            const rightScore = (right.vote_average || 0) + (((right.width || 0) * (right.height || 0)) / 1_000_000);
+            return rightScore - leftScore;
+        });
+
+        return buildTMDbImageUrl(logos[0]?.file_path);
+    } catch (error) {
+        console.warn(`[TMDb] Failed to fetch logo for ${mediaType}:${tmdbId}`, error);
+        return '';
+    }
+}
+
+async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     const poster = candidate.posterPath ? `${TMDB_IMAGE_BASE}${candidate.posterPath}` : '';
     const backdrop = candidate.backdropPath ? `${TMDB_IMAGE_BASE}${candidate.backdropPath}` : '';
+    const selectedModes = normalizePreferredImageModes(config);
+    const selectedMode = selectedModes[Math.floor(Math.random() * selectedModes.length)] || 'poster';
 
-    if (preferred === 'backdrop') {
-        return { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' as const : 'poster' as const };
+    const makeSelection = (images: Array<{ imageUrl: string; imageType: TMDbImageAssetType }>) => {
+        const filtered = images.filter((image) => Boolean(image.imageUrl));
+        const primary = filtered[0] || { imageUrl: '', imageType: 'poster' as const };
+        return {
+            selectedMode,
+            imageUrl: primary.imageUrl,
+            imageType: primary.imageType,
+            imageUrls: filtered.map((image) => image.imageUrl),
+            imageTypes: filtered.map((image) => image.imageType),
+        };
+    };
+
+    if (selectedMode === 'backdrop') {
+        return makeSelection([
+            { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' : 'poster' },
+        ]);
     }
 
-    if (preferred === 'random') {
-        const available = [
-            ...(poster ? [{ imageUrl: poster, imageType: 'poster' as const }] : []),
-            ...(backdrop ? [{ imageUrl: backdrop, imageType: 'backdrop' as const }] : []),
-        ];
-
-        return available[Math.floor(Math.random() * Math.max(1, available.length))] || { imageUrl: '', imageType: 'poster' as const };
+    if (selectedMode === 'poster_backdrop') {
+        return makeSelection([
+            { imageUrl: poster || backdrop, imageType: poster ? 'poster' : 'backdrop' },
+            ...(poster && backdrop ? [{ imageUrl: backdrop, imageType: 'backdrop' as const }] : []),
+        ]);
     }
 
-    return { imageUrl: poster || backdrop, imageType: poster ? 'poster' as const : 'backdrop' as const };
+    if (selectedMode === 'backdrop_logo') {
+        const logoUrl = await fetchBestLogoUrl(candidate.mediaType, candidate.tmdbId);
+        let renderedLogoUrl = '';
+
+        if (logoUrl) {
+            try {
+                renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
+            } catch (error) {
+                console.warn(`[TMDb] Failed to render logo card for ${candidate.mediaType}:${candidate.tmdbId}`, error);
+            }
+        }
+
+        return makeSelection([
+            { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' : 'poster' },
+            ...(renderedLogoUrl ? [{ imageUrl: renderedLogoUrl, imageType: 'logo' as const }] : []),
+        ]);
+    }
+
+    return makeSelection([
+        { imageUrl: poster || backdrop, imageType: poster ? 'poster' : 'backdrop' },
+    ]);
 }
 
 function buildAICaptionContext(candidate: TMDbCandidate, context: CaptionContext, config: RefreshSettings): AICaptionContext {
@@ -874,7 +982,7 @@ async function saveTMDbPost(
     autoPost: boolean,
 ): Promise<SaveTMDbPostResult> {
     const { candidate, captionContext } = scheduled;
-    const { imageUrl, imageType } = selectImage(candidate, config.preferredImage);
+    const { imageUrl, imageType, imageUrls, imageTypes } = await selectImages(candidate, config);
     const existing = await prisma.tMDbPost.findFirst({
         where: {
             tmdbId: candidate.tmdbId,
@@ -897,6 +1005,8 @@ async function saveTMDbPost(
         caption,
         imageUrl,
         imageType,
+        imageUrls,
+        imageTypes,
         scheduledTime,
         source: candidate.source,
         cast: candidate.cast,
@@ -1136,6 +1246,14 @@ export async function regenerateCaptionForTMDbPost(postId: string, scheduledTime
 
     const timezone = getTimezone(defaultRefreshSettings);
     const moduleType = (post.moduleType || post.source.replace('tmdb_', '')) as TMDbModuleType;
+    const resolvedImageUrls = Array.isArray(post.imageUrls) && post.imageUrls.length > 0
+        ? post.imageUrls
+        : [post.imageUrl].filter(Boolean);
+    const resolvedImageTypes = Array.isArray(post.imageTypes) && post.imageTypes.length === resolvedImageUrls.length
+        ? post.imageTypes
+        : [post.imageType, ...new Array(Math.max(0, resolvedImageUrls.length - 1)).fill('backdrop')];
+    const posterUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'poster') || (post.imageType === 'poster' ? post.imageUrl : null);
+    const backdropUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'backdrop') || (post.imageType === 'backdrop' ? post.imageUrl : null);
     const candidate: TMDbCandidate = {
         provider: 'tmdb',
         moduleType,
@@ -1149,8 +1267,8 @@ export async function regenerateCaptionForTMDbPost(postId: string, scheduledTime
         overview: '',
         originalLanguage: 'en',
         popularity: post.popularity,
-        posterPath: post.imageType === 'poster' ? post.imageUrl.replace(TMDB_IMAGE_BASE, '') : null,
-        backdropPath: post.imageType === 'backdrop' ? post.imageUrl.replace(TMDB_IMAGE_BASE, '') : null,
+        posterPath: posterUrl ? posterUrl.replace(TMDB_IMAGE_BASE, '') : null,
+        backdropPath: backdropUrl ? backdropUrl.replace(TMDB_IMAGE_BASE, '') : null,
         cast: post.cast,
         genres: [],
         platforms: post.platforms,
@@ -1240,7 +1358,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-        'preferredImage', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
+        'preferredImage', 'preferredImageTypes', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
         'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
         'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL', 'timezone',
@@ -1259,6 +1377,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
     const result: Record<string, any> = {};
     const structuredKeys = new Set([
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears',
+        'preferredImageTypes',
         'todayPlatforms', 'weeklyPlatforms', 'monthlyPlatforms', 'anniversaryPlatforms',
     ]);
 
@@ -1278,7 +1397,14 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         }
     });
 
-    return { ...defaultRefreshSettings, ...result };
+    return {
+        ...defaultRefreshSettings,
+        ...result,
+        preferredImageTypes: normalizePreferredImageModes({
+            ...defaultRefreshSettings,
+            ...result,
+        }),
+    };
 }
 
 export async function cleanupQueuedTMDbPosts(retentionHours: number): Promise<number> {

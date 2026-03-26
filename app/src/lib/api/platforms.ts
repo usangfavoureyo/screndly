@@ -22,6 +22,7 @@ export interface PublishContent {
     title?: string; // For YouTube/TikTok
     link?: string; // For Pinterest/FB
     imageUrl?: string; // If posting image
+    imageUrls?: string[]; // If posting a multi-image carousel/gallery
     videoUrl?: string; // If posting video from URL
     sharedThumbnailUrl?: string;
     youtubeThumbnailUrl?: string;

@@ -17,6 +17,7 @@ import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } fr
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
 import { tmdbPromptDefaults } from '../../config/cultureCravePromptDefaults';
 import { useSettings } from '../../contexts/SettingsContext';
+import { TMDB_IMAGE_PREFERENCE_OPTIONS, getTMDbImagePreferenceLabel, type LegacyImagePreference, type TMDbImagePreference } from '../../lib/tmdb/tmdbSettingsService';
 
 const TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_tmdb_prompts_v1';
 const TMDB_SHARED_SETTING_KEYS = new Set([
@@ -44,11 +45,41 @@ const TMDB_REGION_OPTIONS = [
 
 const DEFAULT_ANNIVERSARY_YEARS = ['1', '2', '3', '5', '10', '15', '20', '25'];
 
+function normalizePreferredImageTypes(
+  preferredImageTypes: unknown,
+  legacyPreferredImage?: unknown,
+): TMDbImagePreference[] {
+  const normalized = Array.isArray(preferredImageTypes)
+    ? preferredImageTypes.filter((value): value is TMDbImagePreference =>
+      typeof value === 'string' && TMDB_IMAGE_PREFERENCE_OPTIONS.includes(value as TMDbImagePreference)
+    )
+    : [];
+
+  if (normalized.length > 0) {
+    return Array.from(new Set(normalized));
+  }
+
+  if (legacyPreferredImage === 'backdrop') {
+    return ['backdrop'];
+  }
+
+  if (legacyPreferredImage === 'random') {
+    return ['poster', 'backdrop'];
+  }
+
+  return ['poster'];
+}
+
 function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
   return {
     ...settings,
     openaiModel: normalizeAIModelId(settings.openaiModel, DEFAULT_MODELS.tmdb),
     tmdbCaptionModel: normalizeAIModelId(settings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+    preferredImageTypes: normalizePreferredImageTypes(
+      settings.preferredImageTypes,
+      settings.preferredImage,
+    ),
+    preferredImage: undefined,
   };
 }
 
@@ -169,7 +200,8 @@ const defaultSettings = {
   captionMaxLength: '100',
   includeCast: true,
   includeDate: true,
-  preferredImage: 'poster',
+  preferredImageTypes: ['poster'] as TMDbImagePreference[],
+  preferredImage: undefined as LegacyImagePreference | undefined,
   rehostImages: true,
   dedupeWindow: '30',
   tmdbQueuedRetentionHours: '168',
@@ -695,13 +727,15 @@ export function TMDbSettings() {
       toast.success(`AI Model changed to ${getModelDisplayName(value)}`);
     } else if (key === 'timezone') {
       toast.success(`Timezone changed to ${value}`);
-    } else if (key === 'preferredImage') {
-      const imagePreferenceLabel = value === 'poster'
-        ? 'Poster (Vertical)'
-        : value === 'backdrop'
-          ? 'Backdrop (Horizontal)'
-          : 'Random';
-      toast.success(`Image preference changed to ${imagePreferenceLabel}`);
+    } else if (key === 'preferredImageTypes') {
+      const labels = Array.isArray(value)
+        ? value.map((entry: TMDbImagePreference) => getTMDbImagePreferenceLabel(entry))
+        : [];
+      toast.success(
+        labels.length > 0
+          ? `Image preferences updated: ${labels.join(', ')}`
+          : 'Image preferences updated'
+      );
     } else if (key === 'todayPlatforms' || key === 'weeklyPlatforms' || key === 'monthlyPlatforms' || key === 'anniversaryPlatforms') {
       const platformType = key.replace('Platforms', '');
       const enabledPlatforms = Object.entries(value).filter(([_, enabled]) => enabled).map(([platform]) => platformLabels[platform]);
@@ -712,6 +746,21 @@ export function TMDbSettings() {
       }
     }
 
+  };
+
+  const togglePreferredImageType = (value: TMDbImagePreference) => {
+    const current = Array.isArray(tmdbSettings.preferredImageTypes) ? tmdbSettings.preferredImageTypes : ['poster'];
+    const exists = current.includes(value);
+    const next = exists
+      ? current.filter((entry: TMDbImagePreference) => entry !== value)
+      : [...current, value];
+
+    if (next.length === 0) {
+      toast.warning('Select at least one preferred image type');
+      return;
+    }
+
+    updateSetting('preferredImageTypes', next);
   };
 
   const toggleAnniversaryYear = (year: string) => {
@@ -1981,46 +2030,34 @@ export function TMDbSettings() {
       <div className="space-y-3">
         <div>
           <Label className="text-[#9CA3AF]">Preferred Image Type</Label>
-          <div className="grid grid-cols-3 gap-2 mt-2">
-            <button
-              onClick={() => {
-                haptics.light();
-                updateSetting('preferredImage', 'poster');
-              }}
-              className={`px-4 py-2 rounded-lg transition-all text-sm ${tmdbSettings.preferredImage === 'poster'
-                ? 'bg-[#ec1e24] text-white'
-                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#222222]'
-                }`}
-            >
-              Poster (Vertical)
-            </button>
-            <button
-              onClick={() => {
-                haptics.light();
-                updateSetting('preferredImage', 'backdrop');
-              }}
-              className={`px-4 py-2 rounded-lg transition-all text-sm ${tmdbSettings.preferredImage === 'backdrop'
-                ? 'bg-[#ec1e24] text-white'
-                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#222222]'
-                }`}
-            >
-              Backdrop (Horizontal)
-            </button>
-            <button
-              onClick={() => {
-                haptics.light();
-                updateSetting('preferredImage', 'random');
-              }}
-              className={`px-4 py-2 rounded-lg transition-all text-sm ${tmdbSettings.preferredImage === 'random'
-                ? 'bg-[#ec1e24] text-white'
-                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#222222]'
-                }`}
-            >
-              Random
-            </button>
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            {[
+              { value: 'poster' as TMDbImagePreference, label: 'Poster' },
+              { value: 'backdrop' as TMDbImagePreference, label: 'Backdrop' },
+              { value: 'poster_backdrop' as TMDbImagePreference, label: 'Poster + Backdrop' },
+              { value: 'backdrop_logo' as TMDbImagePreference, label: 'Backdrop + Logo' },
+            ].map((option) => {
+              const isActive = tmdbSettings.preferredImageTypes.includes(option.value);
+
+              return (
+                <button
+                  key={option.value}
+                  onClick={() => {
+                    haptics.light();
+                    togglePreferredImageType(option.value);
+                  }}
+                  className={`px-4 py-2 rounded-lg transition-all text-sm ${isActive
+                    ? 'bg-[#ec1e24] text-white'
+                    : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#222222]'
+                    }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
           </div>
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-            Random will automatically choose between poster and backdrop for each post
+            Select one or more image modes. If multiple modes are active, TMDb feeds will randomly use one of the selected modes for each post.
           </p>
         </div>
 

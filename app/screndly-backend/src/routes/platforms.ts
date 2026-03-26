@@ -76,6 +76,40 @@ interface YouTubePlaylistPayload {
 }
 
 const META_GRAPH_BASE = 'https://graph.facebook.com/v19.0';
+type NormalizedMediaChoice =
+    | { kind: 'none' }
+    | { kind: 'image'; source: string; sourceType: 'file' | 'remote-url' }
+    | { kind: 'video'; source: string; sourceType: 'file' | 'remote-url' };
+
+function asNonEmptyString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function resolvePreferredMediaChoice(options: {
+    localFilePath: string | null;
+    mimeType?: string | null;
+    imageUrl?: string;
+    videoUrl?: string;
+}): NormalizedMediaChoice {
+    if (options.localFilePath && options.mimeType) {
+        if (isVideoMimeType(options.mimeType)) {
+            return { kind: 'video', source: options.localFilePath, sourceType: 'file' };
+        }
+        if (isImageMimeType(options.mimeType)) {
+            return { kind: 'image', source: options.localFilePath, sourceType: 'file' };
+        }
+    }
+
+    if (options.videoUrl) {
+        return { kind: 'video', source: options.videoUrl, sourceType: 'remote-url' };
+    }
+
+    if (options.imageUrl) {
+        return { kind: 'image', source: options.imageUrl, sourceType: 'remote-url' };
+    }
+
+    return { kind: 'none' };
+}
 
 function normalizePlatform(value?: string | null): SupportedPlatform | null {
     if (!value) return null;
@@ -576,25 +610,49 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         // Content might be JSON stringified if multipart/form-data
         const parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
         const {
-            text,
-            link,
             title,
             youtubeTitle,
             youtubeDescription,
             sharedThumbnailUrl,
             youtubeThumbnailUrl
         } = parsedContent;
+        const text = asNonEmptyString(parsedContent?.text) || '';
+        const link = asNonEmptyString(parsedContent?.link);
         const youtubePlaylists = Array.isArray(parsedContent?.youtubePlaylistIds)
             ? parsedContent.youtubePlaylistIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
             : typeof parsedContent?.youtubePlaylistIds === 'string'
                 ? parsedContent.youtubePlaylistIds.split(',').map((value: string) => value.trim()).filter(Boolean)
                 : [];
 
-        let imageUrl = parsedContent.imageUrl;
-        let videoUrl = parsedContent.videoUrl;
+        let imageUrl = asNonEmptyString(parsedContent?.imageUrl);
+        let videoUrl = asNonEmptyString(parsedContent?.videoUrl);
         const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
         const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
         const coverImageUrl = sharedThumbnailUrl || imageUrl;
+        const preferredMedia = resolvePreferredMediaChoice({
+            localFilePath,
+            mimeType: req.file?.mimetype,
+            imageUrl,
+            videoUrl,
+        });
+
+        console.log('[Platforms] Normalized publish media input', {
+            selectedSource: preferredMedia.kind === 'none' ? 'none' : `${preferredMedia.kind}:${preferredMedia.sourceType}`,
+            hasUploadedFile: Boolean(localFilePath),
+            originalMimeType: req.file?.mimetype || null,
+            imageUrlPresent: Boolean(imageUrl),
+            videoUrlPresent: Boolean(videoUrl),
+            textLength: text.length,
+        });
+
+        if (preferredMedia.kind === 'video') {
+            imageUrl = undefined;
+        } else if (preferredMedia.kind === 'image') {
+            videoUrl = undefined;
+        } else {
+            imageUrl = undefined;
+            videoUrl = undefined;
+        }
 
         const getPreparedImageUrl = async (): Promise<string | undefined> => {
             if (preparedImageUrl !== undefined) {
@@ -681,15 +739,15 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 switch (platform) {
                     case 'X':
                         if (connection?.accessToken) {
-                            const xResult = (hasUploadedVideo || videoUrl)
+                            const xResult = preferredMedia.kind === 'video'
                                 ? await xService.postVideoTweet(
                                     text,
-                                    hasUploadedVideo && localFilePath ? localFilePath : videoUrl!,
+                                    preferredMedia.source,
                                     connection
                                 )
                                 : await xService.postTweet(
                                     text,
-                                    imageUrl || (hasUploadedImage && localFilePath ? localFilePath : undefined),
+                                    preferredMedia.kind === 'image' ? preferredMedia.source : undefined,
                                     connection
                                 );
                             result = { platform: platformLabel, ...xResult, status: xResult.success ? 'posted' : 'failed' };

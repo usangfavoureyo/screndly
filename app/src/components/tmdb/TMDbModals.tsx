@@ -84,7 +84,7 @@ export function TMDbModals() {
 
     useEffect(() => {
         if (changeImageModal.open && changeImageModal.feed) {
-            setSelectedImageType(changeImageModal.feed.imageType);
+            setSelectedImageType(changeImageModal.feed.imageType === 'backdrop' ? 'backdrop' : 'poster');
             setPreviewImageUrl(null); // Reset preview on open
         }
     }, [changeImageModal.open, changeImageModal.feed]);
@@ -375,8 +375,10 @@ export function TMDbModals() {
                 onOpenChange={(open) => !open && handleCloseImagePreview()}
                 onClose={handleCloseImagePreview}
                 imageUrl={imagePreviewModal.feed?.imageUrl}
+                imageUrls={imagePreviewModal.feed?.imageUrls}
                 title={imagePreviewModal.feed?.title}
                 imageType={imagePreviewModal.feed?.imageType}
+                imageTypes={imagePreviewModal.feed?.imageTypes}
             />
 
             {/* Edit Caption Modal */}
@@ -450,13 +452,19 @@ export function TMDbModals() {
                     mediaType={changeImageModal.feed.mediaType}
                     tmdbId={changeImageModal.feed.tmdbId}
                     currentImageUrl={changeImageModal.feed.imageUrl}
-                    currentImageType={changeImageModal.feed.imageType}
+                    currentImageType={changeImageModal.feed.imageType === 'backdrop' ? 'backdrop' : 'poster'}
                     onSave={(imageUrl, imageType) => {
                         if (changeImageModal.feed) {
                             // Logic is handled in the component
                             updatePost(changeImageModal.feed.id, {
                                 imageUrl,
-                                imageType
+                                imageType,
+                                imageUrls: Array.isArray(changeImageModal.feed.imageUrls) && changeImageModal.feed.imageUrls.length > 1
+                                    ? [imageUrl, ...changeImageModal.feed.imageUrls.slice(1)]
+                                    : [imageUrl],
+                                imageTypes: Array.isArray(changeImageModal.feed.imageTypes) && changeImageModal.feed.imageTypes.length > 1
+                                    ? [imageType, ...changeImageModal.feed.imageTypes.slice(1)]
+                                    : [imageType],
                             }).catch(error => {
                                 console.error('Failed to update image', error);
                                 // Note: Component has already dismissed and toasted success optimistically.

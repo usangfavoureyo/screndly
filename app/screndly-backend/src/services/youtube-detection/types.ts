@@ -30,6 +30,14 @@ export interface PollingCandidate {
     description: string;
     channelId: string;
     channelName: string;
+    primaryChannelId?: string;
+    primaryChannelName?: string;
+    detectedViaChannelId?: string;
+    detectedViaChannelName?: string;
+    collaboratorChannelIds?: string[];
+    collaboratorChannelNames?: string[];
+    isCollaborativePost?: boolean;
+    discoveredVia?: 'owned_upload' | 'collab_association';
     publishedAt: Date;
     mediaTypeGuess: 'movie' | 'tv' | 'unknown';
     extractedYear?: number;

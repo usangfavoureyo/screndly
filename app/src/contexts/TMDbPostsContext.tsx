@@ -23,7 +23,9 @@ export interface TMDbPost {
   releaseDate: string;
   caption: string;
   imageUrl: string;
-  imageType: 'poster' | 'backdrop';
+  imageType: 'poster' | 'backdrop' | 'logo';
+  imageUrls?: string[];
+  imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
   scheduledTime: string;
   source: 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary';
   cast: string[];
@@ -115,6 +117,8 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           caption: post.caption,
           imageUrl: post.imageUrl,
           imageType: post.imageType,
+          imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : [post.imageUrl],
+          imageTypes: Array.isArray(post.imageTypes) && post.imageTypes.length > 0 ? post.imageTypes : [post.imageType],
           scheduledTime: post.scheduledTime,
           source: post.source,
           cast: post.cast || [],

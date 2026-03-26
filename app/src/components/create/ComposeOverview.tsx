@@ -80,7 +80,6 @@ function toIsoSchedule(date?: Date, time?: string) {
 export function ComposeOverview({ onNavigate, isCompactLayout = false }: ComposeOverviewProps) {
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
-  const ignoreNextAddPostClickRef = useRef(false);
   const addPostNavigationLockRef = useRef(0);
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
@@ -287,20 +286,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       <Button
         type="button"
         className="w-full touch-manipulation"
-        onTouchStart={(event) => {
-          ignoreNextAddPostClickRef.current = true;
-          event.preventDefault();
-          event.stopPropagation();
-          triggerCreateNavigation();
-        }}
-        onClick={() => {
-          if (ignoreNextAddPostClickRef.current) {
-            ignoreNextAddPostClickRef.current = false;
-            return;
-          }
-
-          triggerCreateNavigation();
-        }}
+        onClick={triggerCreateNavigation}
       >
         Add Post
       </Button>

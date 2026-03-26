@@ -9,6 +9,8 @@ export {
     isFeedEnabled,
     getMaxItemsForFeed,
     getImagePreference,
+    getImagePreferences,
+    getTMDbImagePreferenceLabel,
     isAutoPostEnabled,
     getPlatformsForFeed,
     getEnabledPlatforms,
@@ -27,6 +29,8 @@ export {
     type TMDbSettings,
     type FeedType,
     type ImagePreference,
+    type TMDbImagePreference,
+    type LegacyImagePreference,
     type PlatformFlags
 } from './tmdbSettingsService';
 

@@ -582,15 +582,23 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     const assetUrl = currentConfig.brandedOverlayAssets?.[assetKey];
                     return (
                       <div key={assetKey} className="space-y-2">
-                        <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-                          Upload {variant === 'white' ? 'White' : 'Black'}
-                        </Label>
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                            Upload {variant === 'white' ? 'White' : 'Black'}
+                          </Label>
+                          <span className="rounded-full border border-gray-200 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-gray-700 dark:border-[#333333] dark:text-gray-300">
+                            {assetKey}
+                          </span>
+                        </div>
                         <Input
                           type="file"
                           accept="image/png,image/*"
                           onChange={(e) => void handleBrandedAssetUpload(assetKey, e.target.files?.[0])}
                           className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
                         />
+                        <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                          Expected file: transparent PNG, recommended 1280×720.
+                        </p>
                         {assetUrl && (
                           <div className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-[#333333] p-3">
                             <img

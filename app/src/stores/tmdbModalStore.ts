@@ -18,7 +18,9 @@ export interface TMDbFeed {
     releaseDate: string;
     caption: string;
     imageUrl: string;
-    imageType: 'poster' | 'backdrop';
+    imageType: 'poster' | 'backdrop' | 'logo';
+    imageUrls?: string[];
+    imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
     scheduledTime: string;
     source: 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary' | 'tmdb_today';
     cast: string[];

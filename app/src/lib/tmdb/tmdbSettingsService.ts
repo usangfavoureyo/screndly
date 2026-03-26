@@ -6,7 +6,23 @@
 import { DEFAULT_MODELS, normalizeAIModelId } from '../ai/models';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
-export type ImagePreference = 'poster' | 'backdrop' | 'random';
+export type LegacyImagePreference = 'poster' | 'backdrop' | 'random';
+export type TMDbImagePreference = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
+export type ImagePreference = TMDbImagePreference;
+
+export const TMDB_IMAGE_PREFERENCE_OPTIONS: TMDbImagePreference[] = [
+    'poster',
+    'backdrop',
+    'poster_backdrop',
+    'backdrop_logo',
+];
+
+const TMDB_IMAGE_PREFERENCE_LABELS: Record<TMDbImagePreference, string> = {
+    poster: 'Poster',
+    backdrop: 'Backdrop',
+    poster_backdrop: 'Poster + Backdrop',
+    backdrop_logo: 'Backdrop + Logo',
+};
 
 export interface PlatformFlags {
     x: boolean;
@@ -42,7 +58,8 @@ export interface TMDbSettings {
     maxPerAnniversary: string;
 
     // Image preference
-    preferredImage: ImagePreference;
+    preferredImageTypes: TMDbImagePreference[];
+    preferredImage?: LegacyImagePreference;
     rehostImages: boolean;
 
     // Auto-post toggles
@@ -133,6 +150,7 @@ const defaultSettings: TMDbSettings = {
     customAnniversaryYears: [],
     anniversaryStartYear: '1995',
     maxPerAnniversary: '2',
+    preferredImageTypes: ['poster'],
     preferredImage: 'poster',
     rehostImages: true,
     todayAutoPost: false,
@@ -194,6 +212,46 @@ const defaultSettings: TMDbSettings = {
 
 const STORAGE_KEY = 'screndly_tmdb_settings';
 
+function normalizePreferredImageTypes(
+    preferredImageTypes: unknown,
+    legacyPreferredImage?: unknown,
+): TMDbImagePreference[] {
+    const normalized = Array.isArray(preferredImageTypes)
+        ? preferredImageTypes.filter((value): value is TMDbImagePreference =>
+            typeof value === 'string' && TMDB_IMAGE_PREFERENCE_OPTIONS.includes(value as TMDbImagePreference)
+        )
+        : [];
+
+    if (normalized.length > 0) {
+        return Array.from(new Set(normalized));
+    }
+
+    if (legacyPreferredImage === 'backdrop') {
+        return ['backdrop'];
+    }
+
+    if (legacyPreferredImage === 'random') {
+        return ['poster', 'backdrop'];
+    }
+
+    return ['poster'];
+}
+
+function normalizeStoredSettings(settings: Partial<TMDbSettings> & Record<string, any>): TMDbSettings {
+    const preferredImageTypes = normalizePreferredImageTypes(
+        settings.preferredImageTypes,
+        settings.preferredImage,
+    );
+
+    return {
+        ...defaultSettings,
+        ...settings,
+        preferredImageTypes,
+        preferredImage: preferredImageTypes[0] === 'backdrop' ? 'backdrop' : 'poster',
+        tmdbCaptionModel: normalizeAIModelId(settings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+    };
+}
+
 /**
  * Get all TMDb settings from localStorage
  * Returns merged settings with defaults for any missing values
@@ -203,19 +261,12 @@ export function getTMDbSettings(): TMDbSettings {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
             const parsed = JSON.parse(saved);
-            return {
-                ...defaultSettings,
-                ...parsed,
-                tmdbCaptionModel: normalizeAIModelId(parsed.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
-            };
+            return normalizeStoredSettings(parsed);
         }
     } catch (error) {
         console.error('[TMDbSettingsService] Error loading settings:', error);
     }
-    return {
-        ...defaultSettings,
-        tmdbCaptionModel: normalizeAIModelId(defaultSettings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
-    };
+    return normalizeStoredSettings(defaultSettings);
 }
 
 /**
@@ -247,11 +298,19 @@ export function getMaxItemsForFeed(feedType: FeedType): number {
 }
 
 /**
- * Get the global image preference setting
+ * Get the global image preference settings
  */
 export function getImagePreference(): ImagePreference {
+    return getImagePreferences()[0] || 'poster';
+}
+
+export function getImagePreferences(): TMDbImagePreference[] {
     const settings = getTMDbSettings();
-    return settings.preferredImage || 'poster';
+    return settings.preferredImageTypes.length > 0 ? settings.preferredImageTypes : ['poster'];
+}
+
+export function getTMDbImagePreferenceLabel(value: TMDbImagePreference): string {
+    return TMDB_IMAGE_PREFERENCE_LABELS[value];
 }
 
 /**
@@ -406,7 +465,7 @@ export function getSettingsForBackend(): Record<string, any> {
         weeklyMaxItems: parseInt(settings.weeklyMaxItems) || 10,
         monthlyMaxItems: parseInt(settings.monthlyMaxItems) || 30,
         anniversaryMaxItems: parseInt(settings.anniversaryMaxItems) || 5,
-        preferredImage: settings.preferredImage,
+        preferredImageTypes: settings.preferredImageTypes,
         rehostImages: settings.rehostImages,
         selectedGenres: settings.selectedGenres,
         movieGenres: settings.movieGenres,

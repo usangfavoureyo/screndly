@@ -172,6 +172,7 @@ const TMDB_BACKEND_KEYS = [
   'includeCast',
   'includeDate',
   'preferredImage',
+  'preferredImageTypes',
   'rehostImages',
   'dedupeWindow',
   'tmdbQueuedRetentionHours',

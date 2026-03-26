@@ -163,6 +163,17 @@ export function PlatformTestPublishModal({
     : mediaFile?.type.startsWith('image/')
       ? 'image'
       : null;
+  const normalizedImageUrl = imageUrl.trim();
+  const normalizedVideoUrl = videoUrl.trim();
+  const activeMediaSource = mediaFile
+    ? `Uploaded ${mediaFileKind || 'media'} file`
+    : normalizedVideoUrl
+      ? 'Public video URL'
+      : normalizedImageUrl
+        ? 'Public image URL'
+        : 'None';
+  const shouldDisableImageUrl = Boolean(mediaFile || normalizedVideoUrl);
+  const shouldDisableVideoUrl = Boolean(mediaFile);
 
   useEffect(() => {
     if (!isOpen) {
@@ -238,8 +249,8 @@ export function PlatformTestPublishModal({
     const response = await publishContent(selection, {
       title: title.trim() || undefined,
       text: text.trim(),
-      imageUrl: imageUrl.trim() || undefined,
-      videoUrl: videoUrl.trim() || undefined,
+      imageUrl: mediaFile || normalizedVideoUrl ? undefined : normalizedImageUrl || undefined,
+      videoUrl: mediaFile ? undefined : normalizedVideoUrl || undefined,
       link: link.trim() || undefined,
     }, mediaFile || undefined, {
       timeout: 180000,
@@ -325,6 +336,7 @@ export function PlatformTestPublishModal({
               value={imageUrl}
               onChange={(event) => setImageUrl(event.target.value)}
               placeholder="https://example.com/image.jpg"
+              disabled={shouldDisableImageUrl}
             />
             {platform === 'Instagram' && (
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
@@ -341,6 +353,7 @@ export function PlatformTestPublishModal({
               value={videoUrl}
               onChange={(event) => setVideoUrl(event.target.value)}
               placeholder="https://example.com/video.mp4"
+              disabled={shouldDisableVideoUrl}
             />
             {platform === 'TikTok' && (
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
@@ -387,6 +400,13 @@ export function PlatformTestPublishModal({
                 Preferred for video platforms. File upload avoids remote URL fetch and ownership issues.
               </p>
             )}
+          </div>
+        )}
+
+        {(supportsImageInput || supportsVideoInput || supportsMediaFile) && (
+          <div className="rounded-lg border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-3">
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Media source that will be used</p>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">{activeMediaSource}</p>
           </div>
         )}
 

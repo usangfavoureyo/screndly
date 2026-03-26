@@ -346,6 +346,26 @@ function TMDbFeedCardComponent({
     }
   };
 
+  const getImageBadgeLabel = () => {
+    if (Array.isArray(feed.imageTypes) && feed.imageTypes.length > 1) {
+      if (feed.imageTypes[0] === 'poster' && feed.imageTypes[1] === 'backdrop') {
+        return 'Poster + Backdrop';
+      }
+
+      if (feed.imageTypes[0] === 'backdrop' && feed.imageTypes[1] === 'logo') {
+        return 'Backdrop + Logo';
+      }
+
+      return `${feed.imageTypes.length} Images`;
+    }
+
+    if (feed.imageType === 'logo') {
+      return 'Logo';
+    }
+
+    return feed.imageType === 'poster' ? 'Poster' : 'Backdrop';
+  };
+
   const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -425,7 +445,7 @@ function TMDbFeedCardComponent({
               className="w-full h-full object-cover"
             />
             <div className="absolute bottom-2 left-2 bg-black/80 text-white px-2 py-1 rounded-lg text-xs">
-              {feed.imageType === 'poster' ? 'Poster' : 'Backdrop'}
+              {getImageBadgeLabel()}
             </div>
           </div>
 
@@ -598,6 +618,8 @@ function areEqual(prevProps: TMDbFeedCardProps, nextProps: TMDbFeedCardProps) {
     prev.caption === next.caption &&
     prev.imageUrl === next.imageUrl &&
     prev.imageType === next.imageType &&
+    JSON.stringify(prev.imageUrls || []) === JSON.stringify(next.imageUrls || []) &&
+    JSON.stringify(prev.imageTypes || []) === JSON.stringify(next.imageTypes || []) &&
     prev.scheduledTime === next.scheduledTime &&
     prev.releaseDate === next.releaseDate &&
     prev.createdAt === next.createdAt &&

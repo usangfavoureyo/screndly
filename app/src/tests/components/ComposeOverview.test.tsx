@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BackNavigationProvider } from '../../contexts/BackNavigationContext';
 import { ComposeOverview } from '../../components/create/ComposeOverview';
@@ -99,5 +99,24 @@ describe('ComposeOverview', () => {
     expect(screen.getByText('Draft title')).toBeInTheDocument();
     expect(screen.queryByText('Scheduled title')).not.toBeInTheDocument();
     expect(screen.queryByText('Published title')).not.toBeInTheDocument();
+  });
+
+  it('navigates to add post on click without using touchstart as a separate navigation path', () => {
+    const onNavigate = vi.fn();
+
+    render(
+      <BackNavigationProvider>
+        <ComposeOverview onNavigate={onNavigate} />
+      </BackNavigationProvider>,
+    );
+
+    const addPostButton = screen.getByRole('button', { name: 'Add Post' });
+
+    fireEvent.touchStart(addPostButton);
+    expect(onNavigate).not.toHaveBeenCalled();
+
+    fireEvent.click(addPostButton);
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
   });
 });

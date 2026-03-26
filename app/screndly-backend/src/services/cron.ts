@@ -426,7 +426,8 @@ export async function initCronJobs() {
                     const content = {
                         text: post.caption || post.title,
                         title: post.title,
-                        imageUrl: post.imageUrl || undefined
+                        imageUrl: post.imageUrl || undefined,
+                        imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : undefined,
                     };
 
                     const results = await publisherService.publish(platforms, content);

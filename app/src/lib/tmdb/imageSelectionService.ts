@@ -1,7 +1,7 @@
 /**
  * Image Selection Service
- * Handles poster/backdrop/random image selection with rotation
- * Enforces the global preferredImage setting
+ * Handles poster/backdrop image selection with rotation
+ * Enforces the global TMDb image preference setting
  */
 
 import { getImagePreference, type ImagePreference } from './tmdbSettingsService';
@@ -10,7 +10,6 @@ import {
     getNextUnusedImage,
     resetUsedImages,
     isImageTypeExhausted,
-    getUsedImages
 } from './imageRotationStore';
 
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -27,7 +26,8 @@ export interface ImageSelection {
  * Modes:
  * - poster: Always use posters, never fallback to backdrop
  * - backdrop: Always use backdrops, never fallback to poster  
- * - random: Context-aware selection based on aspect ratio needs
+ * Combined TMDb feed modes are resolved server-side. This client-side helper
+ * keeps supporting single-image poster/backdrop rotation for the change-image flow.
  */
 export function selectImageForPost(
     tmdbId: number,
@@ -44,11 +44,8 @@ export function selectImageForPost(
         case 'backdrop':
             return selectBackdrop(tmdbId, backdrops);
 
-        case 'random':
-            return selectSmartRandom(tmdbId, posters, backdrops);
-
         default:
-            return selectPoster(tmdbId, posters);
+            return selectPoster(tmdbId, posters) || selectBackdrop(tmdbId, backdrops);
     }
 }
 
@@ -120,57 +117,6 @@ function selectBackdrop(tmdbId: number, backdrops: string[]): ImageSelection | n
         type: 'backdrop',
         isCustomUpload: false
     };
-}
-
-/**
- * Smart random selection based on context
- * - For landscape-oriented platforms (YouTube, etc): prefer backdrop
- * - For portrait/square platforms (Instagram, Pinterest): prefer poster
- * - Alternates between types to provide variety
- */
-function selectSmartRandom(
-    tmdbId: number,
-    posters: string[],
-    backdrops: string[]
-): ImageSelection | null {
-    const hasPosters = posters && posters.length > 0;
-    const hasBackdrops = backdrops && backdrops.length > 0;
-
-    if (!hasPosters && !hasBackdrops) {
-        return null;
-    }
-
-    if (!hasPosters) {
-        return selectBackdrop(tmdbId, backdrops);
-    }
-
-    if (!hasBackdrops) {
-        return selectPoster(tmdbId, posters);
-    }
-
-    // Both available - use smart alternation
-    // Check which type has more unused images proportionally
-    const posterUsedRatio = getUsedRatio(tmdbId, 'poster', posters.length);
-    const backdropUsedRatio = getUsedRatio(tmdbId, 'backdrop', backdrops.length);
-
-    // Prefer the type with lower usage ratio (more fresh options)
-    if (posterUsedRatio <= backdropUsedRatio) {
-        return selectPoster(tmdbId, posters);
-    } else {
-        return selectBackdrop(tmdbId, backdrops);
-    }
-}
-
-/**
- * Get the ratio of used images (0.0 to 1.0)
- */
-function getUsedRatio(tmdbId: number, type: 'poster' | 'backdrop', total: number): number {
-    if (total === 0) return 1.0;
-
-    const usedImages = getUsedImages(tmdbId);
-    const used = type === 'poster' ? usedImages.posters.length : usedImages.backdrops.length;
-
-    return used / total;
 }
 
 /**

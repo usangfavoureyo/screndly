@@ -19,6 +19,15 @@ interface XUploadResult {
     error?: string;
 }
 
+interface XResolvedMediaSource {
+    source: string;
+    buffer: Buffer;
+    fileName: string;
+    mimeType: string;
+    kind: 'image' | 'video';
+    sourceType: 'file' | 'remote-url';
+}
+
 export class XService {
     private static readonly MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024;
     private apiKey: string;
@@ -65,6 +74,10 @@ export class XService {
         return token ? token : null;
     }
 
+    private logUploadDebug(label: string, payload: Record<string, unknown>) {
+        console.log(`[X] ${label}`, payload);
+    }
+
     private extractApiErrorMessage(data: any, fallback: string): string {
         const detail =
             data?.detail
@@ -108,6 +121,10 @@ export class XService {
                 return { success: false, error: uploadErrors[0] || 'Failed to upload image media to X' };
             }
 
+            this.logUploadDebug('Create tweet payload', {
+                textLength: text.slice(0, 280).length,
+                mediaIds,
+            });
             const response = await fetch('https://api.x.com/2/tweets', {
                 method: 'POST',
                 headers: {
@@ -122,6 +139,10 @@ export class XService {
 
             if (!response.ok) {
                 const errorData: any = await response.json();
+                this.logUploadDebug('Create tweet response', {
+                    status: response.status,
+                    body: errorData,
+                });
                 return { success: false, error: errorData.detail || 'Failed to post tweet' };
             }
 
@@ -155,6 +176,10 @@ export class XService {
                 return { success: false, error: uploadResult.error || 'Failed to upload video to X' };
             }
 
+            this.logUploadDebug('Create video tweet payload', {
+                textLength: text.slice(0, 280).length,
+                mediaId: uploadResult.mediaId,
+            });
             const response = await fetch('https://api.x.com/2/tweets', {
                 method: 'POST',
                 headers: {
@@ -169,6 +194,10 @@ export class XService {
 
             if (!response.ok) {
                 const errorData: any = await response.json().catch(() => ({}));
+                this.logUploadDebug('Create video tweet response', {
+                    status: response.status,
+                    body: errorData,
+                });
                 return { success: false, error: errorData.detail || errorData.error || 'Failed to post video tweet' };
             }
 
@@ -230,6 +259,59 @@ export class XService {
             fileName: path.basename(source),
             mimeType: this.getMimeType(source),
         };
+    }
+
+    private isSupportedImageMime(mimeType: string): boolean {
+        return ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(mimeType);
+    }
+
+    private isSupportedVideoMime(mimeType: string): boolean {
+        return ['video/mp4'].includes(mimeType);
+    }
+
+    async resolveMediaSource(source: string): Promise<XResolvedMediaSource> {
+        const payload = await this.getUploadPayload(source);
+        const mimeType = payload.mimeType.split(';')[0].trim().toLowerCase();
+        const kind = mimeType.startsWith('video/')
+            ? 'video'
+            : mimeType.startsWith('image/')
+                ? 'image'
+                : null;
+
+        if (!kind) {
+            throw new Error(`Unsupported media type for X: ${mimeType || 'unknown'}`);
+        }
+
+        if (payload.buffer.length === 0) {
+            throw new Error('Media file is empty');
+        }
+
+        if (kind === 'image' && !this.isSupportedImageMime(mimeType)) {
+            throw new Error(`Unsupported image type for X: ${mimeType}`);
+        }
+
+        if (kind === 'video' && !this.isSupportedVideoMime(mimeType)) {
+            throw new Error(`Unsupported video type for X: ${mimeType}`);
+        }
+
+        const resolved: XResolvedMediaSource = {
+            source,
+            buffer: payload.buffer,
+            fileName: payload.fileName,
+            mimeType,
+            kind,
+            sourceType: /^https?:\/\//i.test(source) ? 'remote-url' : 'file',
+        };
+
+        this.logUploadDebug('Resolved media source', {
+            sourceType: resolved.sourceType,
+            kind: resolved.kind,
+            fileName: resolved.fileName,
+            mimeType: resolved.mimeType,
+            bytes: resolved.buffer.length,
+        });
+
+        return resolved;
     }
 
     private getMediaCategory(mimeType: string): string {
@@ -302,8 +384,6 @@ export class XService {
         initializeBody.append('media_type', payload.mimeType);
         initializeBody.append('media_category', this.getMediaCategory(payload.mimeType));
         initializeBody.append('total_bytes', String(payload.buffer.length));
-        initializeBody.append('shared', 'true');
-
         const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
             method: 'POST',
             headers: {
@@ -313,6 +393,13 @@ export class XService {
         });
 
         const initializeData = await this.getJsonResponse(initializeResponse);
+        this.logUploadDebug('INIT response', {
+            status: initializeResponse.status,
+            mediaCategory: this.getMediaCategory(payload.mimeType),
+            mimeType: payload.mimeType,
+            totalBytes: payload.buffer.length,
+            body: initializeData,
+        });
         if (!initializeResponse.ok) {
             throw new Error(
                 this.extractApiErrorMessage(
@@ -340,13 +427,20 @@ export class XService {
         }
 
         try {
-            const payload = await this.getUploadPayload(source);
-            if (!payload.mimeType.startsWith('video/')) {
+            const resolved = await this.resolveMediaSource(source);
+            if (resolved.kind !== 'video') {
                 throw new Error('X native video upload requires a video file');
             }
-            const mediaId = await this.initializeMediaUpload(authToken, payload);
+            const mediaId = await this.initializeMediaUpload(authToken, {
+                buffer: resolved.buffer,
+                mimeType: resolved.mimeType,
+            });
 
-            const processingInfo = await this.appendAndFinalizeUpload(mediaId, payload, authToken);
+            const processingInfo = await this.appendAndFinalizeUpload(mediaId, {
+                buffer: resolved.buffer,
+                fileName: resolved.fileName,
+                mimeType: resolved.mimeType,
+            }, authToken);
             await this.waitForVideoProcessing(mediaId, authToken, processingInfo);
 
             return { mediaId };
@@ -385,6 +479,11 @@ export class XService {
 
             if (!appendResponse.ok) {
                 const appendData = await this.getJsonResponse(appendResponse);
+                this.logUploadDebug('APPEND response', {
+                    status: appendResponse.status,
+                    segmentIndex,
+                    body: appendData,
+                });
                 throw new Error(
                     this.extractApiErrorMessage(
                         appendData,
@@ -409,6 +508,10 @@ export class XService {
         });
 
         const finalizeData = await this.getJsonResponse(finalizeResponse);
+        this.logUploadDebug('FINALIZE response', {
+            status: finalizeResponse.status,
+            body: finalizeData,
+        });
         if (!finalizeResponse.ok) {
             throw new Error(
                 this.extractApiErrorMessage(
@@ -442,6 +545,10 @@ export class XService {
             );
 
             const data = await this.getJsonResponse(response);
+            this.logUploadDebug('STATUS response', {
+                status: response.status,
+                body: data,
+            });
             if (!response.ok) {
                 throw new Error(
                     this.extractApiErrorMessage(
@@ -476,11 +583,14 @@ export class XService {
         }
 
         try {
-            const rawPayload = await this.getUploadPayload(imageUrl);
+            const resolved = await this.resolveMediaSource(imageUrl);
+            if (resolved.kind !== 'image') {
+                throw new Error('X image upload requires an image file');
+            }
             const payload = await this.normalizeImagePayload(
-                rawPayload.buffer,
-                rawPayload.fileName,
-                rawPayload.mimeType
+                resolved.buffer,
+                resolved.fileName,
+                resolved.mimeType
             );
             const jsonUploadResponse = await fetch('https://api.x.com/2/media/upload', {
                 method: 'POST',

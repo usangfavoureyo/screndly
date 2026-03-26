@@ -20,7 +20,7 @@ export interface TMDbLogEntry {
     tmdbId?: number;
     mediaType?: 'movie' | 'tv';
     year?: number;
-    imageType?: 'poster' | 'backdrop';
+  imageType?: 'poster' | 'backdrop' | 'logo';
     scheduledTime?: string;
   };
 }
