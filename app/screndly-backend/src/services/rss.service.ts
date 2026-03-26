@@ -190,8 +190,17 @@ interface RSSRuntimeSettings {
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
+const RSS_TOPIC_DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
+const activeRSSFeedRefreshes = new Map<string, Promise<RefreshResult>>();
+let activeScheduledRSSRefresh: Promise<{
+  total: number;
+  success: number;
+  failed: number;
+  isScheduledRun: boolean;
+  results: RefreshResult[];
+}> | null = null;
 const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
@@ -210,6 +219,35 @@ const RSS_SETTINGS_KEYS = [
   'quietHoursEnd',
   'timezone',
 ] as const;
+const RSS_TOPIC_SIGNATURE_STOP_WORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'are',
+  'as',
+  'at',
+  'be',
+  'but',
+  'by',
+  'for',
+  'from',
+  'in',
+  'into',
+  'is',
+  'it',
+  'its',
+  'of',
+  'on',
+  'or',
+  'that',
+  'the',
+  'their',
+  'this',
+  'to',
+  'was',
+  'were',
+  'with',
+]);
 
 type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
@@ -963,6 +1001,7 @@ function collectLocalImageContext(image: RSSDomElement): string {
     image.getAttribute('alt'),
     image.getAttribute('title'),
     image.getAttribute('class'),
+    image.closest('header, .entry-header, .article-header, .hero, .featured-image, .post-featured-image, .wp-block-post-featured-image')?.getAttribute('class'),
     image.closest('figure')?.querySelector('figcaption')?.textContent,
     image.closest('figure')?.getAttribute('class'),
     image.parentElement?.textContent,
@@ -997,6 +1036,26 @@ function isComicBookBrandedExclusiveHero(
   const isWideHero = width >= 600 && width > height;
 
   return isExclusiveStory && brandedHeroHints && featuredStructureHints && isWideHero && !gallerySignals;
+}
+
+function isGenericFeaturedHeroImage(
+  articleText: string,
+  localContext: string,
+  sourceUrl: string,
+  width: number,
+  height: number
+): boolean {
+  const combinedText = `${localContext} ${sourceUrl}`;
+  const featuredStructureHints =
+    /\b(entry-header--hero|wp-block-post-featured-image|post-featured-image|featured-image|featured-media|article-hero|hero-image|hero-media|hero|header|featured|lead-image|lede)\b/i
+      .test(combinedText);
+  const bodyImageSignals =
+    /\b(figcaption|caption|wp-caption|gallery|photo|photos|still|stills|scene|set photo|cast photo|behind-the-scenes|bts|exclusive image|first look|new still)\b/i
+      .test(localContext);
+  const isWideHero = width >= 600 && width > height;
+  const isRevealDriven = isRevealDrivenHeadline(articleText);
+
+  return isRevealDriven && featuredStructureHints && isWideHero && !bodyImageSignals;
 }
 
 function scoreArticleBodyImageCandidate(
@@ -1052,6 +1111,10 @@ function scoreArticleBodyImageCandidate(
 
   if (isComicBookBrandedExclusiveHero(articleText, localContext, sourceUrl, width, height)) {
     score -= 80;
+  }
+
+  if (isGenericFeaturedHeroImage(articleText, localContext, sourceUrl, width, height)) {
+    score -= 55;
   }
 
   return score;
@@ -1128,6 +1191,25 @@ function getRSSItemDedupeKey(item: RSSItem): string {
   }
 
   return `title:${normalizeRSSDedupeValue(item.title)}`;
+}
+
+function getRSSTopicSignature(title?: string | null): string {
+  const normalizedTitle = normalizeRSSDedupeValue(title);
+  if (!normalizedTitle) {
+    return '';
+  }
+
+  const tokens = normalizedTitle
+    .split(' ')
+    .filter((token) => token && !RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token))
+    .filter((token) => token.length > 2 || /^\d+$/.test(token));
+  const uniqueTokens = Array.from(new Set(tokens)).sort();
+  return uniqueTokens.join(' ');
+}
+
+function getRSSItemTopicDedupeKey(item: RSSItem): string {
+  const signature = getRSSTopicSignature(item.title);
+  return signature ? `topic:${signature}` : '';
 }
 
 function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
@@ -1487,6 +1569,11 @@ function getRSSActivityDedupeKey(activity: RSSActivityItem): string {
   }
 
   return `title:${normalizeRSSDedupeValue(activity.title)}`;
+}
+
+function getRSSActivityTopicDedupeKey(activity: RSSActivityItem): string {
+  const signature = getRSSTopicSignature(activity.title);
+  return signature ? `topic:${signature}` : '';
 }
 
 function mergeRSSActivityItems(primary: RSSActivityItem[], fallback: RSSActivityItem[], limit: number): RSSActivityItem[] {
@@ -2130,7 +2217,7 @@ async function deleteFeed(id: string) {
   });
 }
 
-async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promise<RefreshResult> {
+async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Promise<RefreshResult> {
   const select = await getRSSFeedSelect();
   const feed = applyRSSFeedCompatibility(
     await prisma.rSSFeed.findUnique({ where: { id }, select }) as Record<string, any> | null
@@ -2236,6 +2323,26 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
     const recentActivities = recentActivityLogs
       .map((log) => parseRSSActivityLog(log))
       .filter((activity): activity is RSSActivityItem => Boolean(activity));
+    const recentTopicKeys = new Set(
+      recentActivities
+        .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+        .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
+        .map((activity) => getRSSActivityTopicDedupeKey(activity))
+        .filter((key): key is string => Boolean(key))
+    );
+    const getCrossSourceTopicDuplicateReason = (item: RSSItem): string | null => {
+      const topicKey = getRSSItemTopicDedupeKey(item);
+      if (!topicKey || !recentTopicKeys.has(topicKey)) {
+        return null;
+      }
+      return 'Filtered as a duplicate topic that was already queued or published recently from another source.';
+    };
+    const rememberRecentTopic = (item: RSSItem): void => {
+      const topicKey = getRSSItemTopicDedupeKey(item);
+      if (topicKey) {
+        recentTopicKeys.add(topicKey);
+      }
+    };
     const selectionMode = manualLatestSelection ? 'latest_item' : 'backlog';
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
@@ -2324,7 +2431,9 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
       ? manualSelectionCandidates
           .find((item) => {
             const dedupeKey = getRSSItemDedupeKey(item);
-            return !manualRunBlockedKeys.has(dedupeKey) && evaluateFeedRules(item, feedFilters).allowed;
+            return !manualRunBlockedKeys.has(dedupeKey)
+              && !getCrossSourceTopicDuplicateReason(item)
+              && evaluateFeedRules(item, feedFilters).allowed;
           })
       : undefined;
     const itemsToProcess = manualLatestSelection
@@ -2360,6 +2469,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
 
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
+        rememberRecentTopic(item);
         continue;
       }
 
@@ -2375,6 +2485,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         publishedCount += 1;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
+        rememberRecentTopic(item);
         if (support.feedItemsTable) {
           await prisma.rSSFeedItem.update({
             where: { id: pendingEntry.record.id },
@@ -2457,6 +2568,16 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         continue;
       }
 
+      const topicDuplicateReason = getCrossSourceTopicDuplicateReason(item);
+      if (topicDuplicateReason) {
+        await upsertRSSFeedItem(feed.id, item, 'filtered', {
+          errorMessage: topicDuplicateReason,
+          firstSeenAt: item.pubDate,
+        });
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
         const pendingImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
@@ -2483,6 +2604,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           firstSeenAt: item.pubDate,
         });
         seenKeys.add(dedupeKey);
+        rememberRecentTopic(item);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
           rememberRSSActivity(recentActivities, pendingMetadata);
@@ -2513,6 +2635,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
           firstSeenAt: item.pubDate,
         });
         seenKeys.add(dedupeKey);
+        rememberRecentTopic(item);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
           rememberRSSActivity(recentActivities, pendingMetadata);
@@ -2527,6 +2650,7 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
         publishedCount += 1;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
+        rememberRecentTopic(item);
         await upsertRSSFeedItem(feed.id, item, 'published', {
           publishedAt: item.pubDate,
           errorMessage: null,
@@ -2618,7 +2742,23 @@ async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promis
   }
 }
 
-async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
+async function refreshFeed(id: string, options: RefreshFeedOptions = {}): Promise<RefreshResult> {
+  const activeRefresh = activeRSSFeedRefreshes.get(id);
+  if (activeRefresh) {
+    return activeRefresh;
+  }
+
+  const refreshPromise = runRefreshFeed(id, options).finally(() => {
+    const currentRefresh = activeRSSFeedRefreshes.get(id);
+    if (currentRefresh === refreshPromise) {
+      activeRSSFeedRefreshes.delete(id);
+    }
+  });
+  activeRSSFeedRefreshes.set(id, refreshPromise);
+  return refreshPromise;
+}
+
+async function runRefreshAllFeeds(checkSchedule: boolean = false): Promise<{
   total: number;
   success: number;
   failed: number;
@@ -2664,6 +2804,30 @@ async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
     isScheduledRun: checkSchedule,
     results,
   };
+}
+
+async function refreshAllFeeds(checkSchedule: boolean = false): Promise<{
+  total: number;
+  success: number;
+  failed: number;
+  isScheduledRun: boolean;
+  results: RefreshResult[];
+}> {
+  if (!checkSchedule) {
+    return runRefreshAllFeeds(false);
+  }
+
+  if (activeScheduledRSSRefresh) {
+    return activeScheduledRSSRefresh;
+  }
+
+  const scheduledRefreshPromise = runRefreshAllFeeds(true).finally(() => {
+    if (activeScheduledRSSRefresh === scheduledRefreshPromise) {
+      activeScheduledRSSRefresh = null;
+    }
+  });
+  activeScheduledRSSRefresh = scheduledRefreshPromise;
+  return scheduledRefreshPromise;
 }
 
 async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> {

@@ -81,7 +81,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
 
   const handleCloseSubpage = () => {
     haptics.light();
-    window.history.back();
+    setActiveSettingsPage(null);
   };
 
   // Integration with BackNavigationContext to resolve conflicts

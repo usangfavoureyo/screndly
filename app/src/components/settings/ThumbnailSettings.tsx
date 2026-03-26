@@ -165,6 +165,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const resolvedManualOverlayLabel = currentAssets.manualOverlayName
     || currentAssets.manualSavedOverlayKey
     || null;
+  const brandedPreviewFallbackUrl = resolvedManualOverlayUrl
+    || (previewResolvedAssetKey ? currentConfig.brandedOverlayAssets?.[previewResolvedAssetKey as BrandedOverlayAssetKey] : undefined);
 
   const clearActiveAssets = () => {
     setAssetOverrides((prev) => ({
@@ -911,33 +913,42 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                     />
                   </div>
                 )}
-                <div
-                  style={{
-                    position: 'absolute',
-                    left: previewLogoBox.left,
-                    top: previewLogoBox.top,
-                    width: previewLogoBox.width,
-                    height: previewLogoBox.height,
-                  }}
-                  className="pointer-events-none"
-                >
+                {isBrandedStyle && !previewOutput && brandedPreviewFallbackUrl ? (
+                  <img
+                    src={brandedPreviewFallbackUrl}
+                    alt="Branded overlay preview"
+                    className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                  />
+                ) : null}
+                {!isBrandedStyle && (
                   <div
-                    className={`flex h-full w-full items-center justify-center shadow-2xl ${shouldShowPreviewBox ? 'rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 backdrop-blur-sm' : ''}`}
-                    style={shouldShowPreviewBox ? { padding: previewLogoPadding } : undefined}
+                    style={{
+                      position: 'absolute',
+                      left: previewLogoBox.left,
+                      top: previewLogoBox.top,
+                      width: previewLogoBox.width,
+                      height: previewLogoBox.height,
+                    }}
+                    className="pointer-events-none"
                   >
-                    {currentAssets.logoUrl ? (
-                      <img
-                        src={currentAssets.logoUrl}
-                        alt="Uploaded logo preview"
-                        className={`object-contain ${shouldShowPreviewBox ? 'max-h-full max-w-full' : 'h-full w-full'}`}
-                        style={shouldApplyPreviewLogoShadow ? { filter: 'drop-shadow(0 8px 18px rgba(0, 0, 0, 0.62))' } : undefined}
-                      />
-                    ) : (
-                      <div className={`bg-white/[0.02] ${shouldShowPreviewBox ? 'h-full w-full rounded-[inherit] border border-white/10' : 'h-1.5 w-[70%] rounded-full border border-white/10'}`} />
-                    )}
+                    <div
+                      className={`flex h-full w-full items-center justify-center shadow-2xl ${shouldShowPreviewBox ? 'rounded-lg border-2 border-white/80 bg-[#1a1a1a]/95 backdrop-blur-sm' : ''}`}
+                      style={shouldShowPreviewBox ? { padding: previewLogoPadding } : undefined}
+                    >
+                      {currentAssets.logoUrl ? (
+                        <img
+                          src={currentAssets.logoUrl}
+                          alt="Uploaded logo preview"
+                          className={`object-contain ${shouldShowPreviewBox ? 'max-h-full max-w-full' : 'h-full w-full'}`}
+                          style={shouldApplyPreviewLogoShadow ? { filter: 'drop-shadow(0 8px 18px rgba(0, 0, 0, 0.62))' } : undefined}
+                        />
+                      ) : (
+                        <div className={`bg-white/[0.02] ${shouldShowPreviewBox ? 'h-full w-full rounded-[inherit] border border-white/10' : 'h-1.5 w-[70%] rounded-full border border-white/10'}`} />
+                      )}
+                    </div>
                   </div>
-                </div>
-                {previewTrailerLabel && (
+                )}
+                {!isBrandedStyle && previewTrailerLabel && (
                   <div
                     className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap font-semibold tracking-[0.28em] text-white"
                     style={{
