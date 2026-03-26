@@ -110,6 +110,24 @@ interface GeneratedCaptions {
     pinterestDescription?: string;
 }
 
+export function buildCaptionContextTitle(metadata: EnrichedVideoMetadata, fallbackTitle: string): string {
+    const tmdbTitle = metadata.tmdbMatch?.title?.trim();
+    const cleanedTitle = metadata.cleanedTitle?.trim();
+    const seasonNumber = metadata.tmdbMatch?.seasonNumber;
+    const baseTitle = tmdbTitle || cleanedTitle || fallbackTitle;
+
+    if (
+        metadata.tmdbMatch?.mediaType === 'tv'
+        && typeof seasonNumber === 'number'
+        && seasonNumber > 0
+        && !new RegExp(`\\bseason\\s+${seasonNumber}\\b`, 'i').test(baseTitle)
+    ) {
+        return `${baseTitle} Season ${seasonNumber}`;
+    }
+
+    return baseTitle;
+}
+
 interface VideoValidationDecision {
     allow: boolean;
     reason?: string;
@@ -2658,8 +2676,9 @@ Respond ONLY as strict JSON:
             return { fallback };
         }
 
+        const captionTitle = buildCaptionContextTitle(metadata, video.title);
         const context = {
-            videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
+            videoTitle: captionTitle,
             channelName: video.author || 'YouTube Channel',
             description: metadata.tmdbMatch?.overview || details.description || video.contentSnippet || '',
             platform: 'X' as const,
@@ -2672,7 +2691,7 @@ Respond ONLY as strict JSON:
             productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
             tmdbMatchStatus: metadata.tmdbMatchStatus,
             enableReleaseResearch: shouldEnableReleaseResearch({
-                videoTitle: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
+                videoTitle: captionTitle,
                 description: details.description || video.contentSnippet || '',
                 releaseDate: metadata.tmdbMatch?.releaseDate,
                 productionNames: metadata.tmdbMatch?.productionNames?.slice(0, 3),
@@ -2699,7 +2718,7 @@ Respond ONLY as strict JSON:
             if (needsPinterestMetadata) {
                 const pinterestMetadata = await aiService.generatePinterestMetadata(
                     {
-                        title: metadata.tmdbMatch?.title || metadata.cleanedTitle || video.title,
+                        title: captionTitle,
                         description: metadata.tmdbMatch?.overview || details.description || video.contentSnippet || '',
                         cast: metadata.tmdbMatch?.castNames?.slice(0, 3),
                         mediaType: metadata.tmdbMatch?.mediaType,

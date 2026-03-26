@@ -85,6 +85,38 @@ const POLL_TIMESTAMP_KEY = 'commentAutomationLastPollAt';
 const PROCESS_TIMESTAMP_KEY = 'commentAutomationLastProcessAt';
 const THREADS_UNSUPPORTED_REASON = 'Threads comment polling/reply publishing is not supported by the current API scopes in this build.';
 const TEST_REPLY_MESSAGE = 'Screndly test reply: comment automation connection confirmed.';
+const LEGACY_COMMENT_PROMPT = `You are a social media comment writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized comments for video content.
+
+INPUT: Video title, description, and content
+OUTPUT: Engaging social media comment with emojis, hashtags, and hook
+
+Guidelines:
+- Hook in first line (7-10 words max)
+- Include 3 relevant emoji and hashtags
+- Add 2-3 strategically placed emojis
+- Keep total under {maxLength} characters for platform compatibility
+- Match the tone of the video content
+- No generic "Check this out" openers
+- Focus on the key news or reveal from the video
+- Make it shareable and clickable`;
+const DEFAULT_COMMENT_PROMPT = `Write replies for Screen Render like a real person running the account.
+
+Goal:
+- reply to the actual comment
+- sound natural, specific, and human
+- stay grounded in the post or trailer context
+
+Rules:
+- no hashtags
+- no promo language
+- no generic filler like "Thanks for your comment" or "Stay tuned"
+- no forced hooks
+- no emoji spam; use at most one emoji only when it feels natural
+- match the mood of the commenter
+- if they are excited, meet the energy
+- if they are skeptical, stay calm and conversational
+- if they ask a question, answer briefly using only the provided context
+- keep it short, clear, and platform-native`;
 const PLATFORM_BLACKLIST_KEYS: Record<SupportedCommentPlatform, keyof CommentAutomationSettings> = {
     X: 'xCommentBlacklist',
     Instagram: 'instagramCommentBlacklist',
@@ -190,6 +222,19 @@ function parseNumber(value: unknown, fallback: number): number {
     return fallback;
 }
 
+function normalizeCommentPrompt(value: unknown): string {
+    if (typeof value !== 'string' || !value.trim()) {
+        return DEFAULT_COMMENT_PROMPT;
+    }
+
+    const trimmed = value.trim();
+    if (trimmed === LEGACY_COMMENT_PROMPT.trim()) {
+        return DEFAULT_COMMENT_PROMPT;
+    }
+
+    return trimmed;
+}
+
 function splitCsvValues(input: string): string[] {
     return input
         .split(/[\n,]/)
@@ -287,7 +332,7 @@ class CommentsService {
                 ? String(map.get('commentReplyTone')).trim()
                 : 'Natural and conversational',
             commentReplyMaxLength: Math.min(Math.max(Math.round(parseNumber(map.get('commentReplyMaxLength'), 220)), 40), 280),
-            commentReplyPrompt: typeof map.get('commentReplyPrompt') === 'string' ? String(map.get('commentReplyPrompt')).trim() : '',
+            commentReplyPrompt: normalizeCommentPrompt(map.get('commentReplyPrompt')),
             xCommentBlacklist: normalizeBlacklist(map.get('xCommentBlacklist')),
             instagramCommentBlacklist: normalizeBlacklist(map.get('instagramCommentBlacklist')),
             facebookCommentBlacklist: normalizeBlacklist(map.get('facebookCommentBlacklist')),

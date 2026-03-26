@@ -249,6 +249,14 @@ interface ResolvedTMDbMatch {
     posterSource?: 'series' | 'season';
 }
 
+export function resolveTvSeasonAwareReleaseDate(options: {
+    seriesFirstAirDate?: string;
+    candidateFirstAirDate?: string;
+    seasonAirDate?: string;
+}): string | undefined {
+    return options.seasonAirDate || options.seriesFirstAirDate || options.candidateFirstAirDate;
+}
+
 export interface EnrichedVideoMetadata {
     cleanedTitle: string;
     trailerType?: string;
@@ -1054,6 +1062,7 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
     let seasonTitle: string | undefined;
     let resolvedSeasonNumber: number | undefined;
     let seasonPosterUrl: string | undefined;
+    let seasonAirDate: string | undefined;
     if (detectedSeasonNumber) {
         try {
             const seasonDetails = await tmdbFetch<TMDbSeasonDetails>(`/tv/${candidate.id}/season/${detectedSeasonNumber}`, {
@@ -1063,6 +1072,7 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
             seasonTitle = asString(seasonDetails.name);
             resolvedSeasonNumber = seasonDetails.season_number || detectedSeasonNumber;
             seasonPosterUrl = selectBestImageAsset(seasonDetails.poster_path, seasonDetails.images?.posters, ['en', null]);
+            seasonAirDate = asString(seasonDetails.air_date);
         } catch (error) {
             console.warn(`[VideoEnrichment] Failed to resolve TMDb season ${detectedSeasonNumber} for tv:${candidate.id}:`, error);
             resolvedSeasonNumber = detectedSeasonNumber;
@@ -1070,6 +1080,11 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
     }
 
     const seriesPosterUrl = selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]);
+    const resolvedReleaseDate = resolveTvSeasonAwareReleaseDate({
+        seasonAirDate,
+        seriesFirstAirDate: details.first_air_date,
+        candidateFirstAirDate: candidate.first_air_date,
+    });
 
     return {
         tmdbId: details.id,
@@ -1088,8 +1103,8 @@ async function fetchResolvedMatch(candidate: TMDbSearchResult, detectedSeasonNum
             .filter((value): value is string => Boolean(value)),
         productionCountries: (details.production_countries || []).map((country) => country.iso_3166_1).filter(Boolean),
         originCountries: (details.origin_country || []).filter(Boolean),
-        releaseDate: details.first_air_date || candidate.first_air_date,
-        year: extractYear(details.first_air_date || candidate.first_air_date),
+        releaseDate: resolvedReleaseDate,
+        year: extractYear(resolvedReleaseDate),
         genres: (details.genres || []).map((genre) => genre.name),
         allowedRegions: [
             ...(details.origin_country || []).filter(Boolean),

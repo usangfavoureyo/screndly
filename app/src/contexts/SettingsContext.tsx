@@ -24,6 +24,38 @@ import { settingsPromptDefaults } from '../config/cultureCravePromptDefaults';
 const LOCAL_SETTINGS_KEY = 'screndlySettings';
 const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
 const CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_prompts_v1';
+const LEGACY_COMMENT_PROMPT = `You are a social media comment writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized comments for video content.
+
+INPUT: Video title, description, and content
+OUTPUT: Engaging social media comment with emojis, hashtags, and hook
+
+Guidelines:
+- Hook in first line (7-10 words max)
+- Include 3 relevant emoji and hashtags
+- Add 2-3 strategically placed emojis
+- Keep total under {maxLength} characters for platform compatibility
+- Match the tone of the video content
+- No generic "Check this out" openers
+- Focus on the key news or reveal from the video
+- Make it shareable and clickable`;
+const DEFAULT_COMMENT_PROMPT = `Write replies for Screen Render like a real person running the account.
+
+Goal:
+- reply to the actual comment
+- sound natural, specific, and human
+- stay grounded in the post or trailer context
+
+Rules:
+- no hashtags
+- no promo language
+- no generic filler like "Thanks for your comment" or "Stay tuned"
+- no forced hooks
+- no emoji spam; use at most one emoji only when it feels natural
+- match the mood of the commenter
+- if they are excited, meet the energy
+- if they are skeptical, stay calm and conversational
+- if they ask a question, answer briefly using only the provided context
+- keep it short, clear, and platform-native`;
 
 export interface Settings {
   videoYoutubeSelectedPlaylists?: Array<{
@@ -330,7 +362,27 @@ const SETTINGS_MODEL_KEYS: Partial<Record<keyof Settings, DefaultModelFeature>> 
 };
 
 function normalizeSettingsModels(settings: Partial<Settings>): Partial<Settings> {
-  return normalizeModelSettingRecord(settings, SETTINGS_MODEL_KEYS);
+  const normalized = normalizeModelSettingRecord(settings, SETTINGS_MODEL_KEYS);
+
+  if (typeof normalized.commentReplyPrompt !== 'string' || !normalized.commentReplyPrompt.trim()) {
+    normalized.commentReplyPrompt = DEFAULT_COMMENT_PROMPT;
+  } else if (normalized.commentReplyPrompt.trim() === LEGACY_COMMENT_PROMPT.trim()) {
+    normalized.commentReplyPrompt = DEFAULT_COMMENT_PROMPT;
+  }
+
+  if (typeof normalized.commentReplyTone !== 'string' || !normalized.commentReplyTone.trim()) {
+    normalized.commentReplyTone = 'Natural and conversational';
+  }
+
+  if (typeof normalized.commentReplyTemperature !== 'number' || !Number.isFinite(normalized.commentReplyTemperature)) {
+    normalized.commentReplyTemperature = 0.9;
+  }
+
+  if (typeof normalized.commentReplyMaxLength !== 'number' || !Number.isFinite(normalized.commentReplyMaxLength)) {
+    normalized.commentReplyMaxLength = 220;
+  }
+
+  return normalized;
 }
 
 function getDefaultSettings(): Settings {
@@ -405,23 +457,10 @@ function getDefaultSettings(): Settings {
     commentReplyFrequency: 'instant',
     commentThrottle: 'low',
     commentReplyModel: DEFAULT_MODELS.comment,
-    commentReplyTemperature: 0.7,
-    commentReplyTone: 'Engaging',
-    commentReplyMaxLength: 280,
-    commentReplyPrompt: `You are a social media comment writer for Screen Render, a movie and TV trailer news platform. Create engaging, platform-optimized comments for video content.
-
-INPUT: Video title, description, and content
-OUTPUT: Engaging social media comment with emojis, hashtags, and hook
-
-Guidelines:
-- Hook in first line (7-10 words max)
-- Include 3 relevant emoji and hashtags
-- Add 2-3 strategically placed emojis
-- Keep total under {maxLength} characters for platform compatibility
-- Match the tone of the video content
-- No generic "Check this out" openers
-- Focus on the key news or reveal from the video
-- Make it shareable and clickable`,
+    commentReplyTemperature: 0.9,
+    commentReplyTone: 'Natural and conversational',
+    commentReplyMaxLength: 220,
+    commentReplyPrompt: DEFAULT_COMMENT_PROMPT,
     commentUseGoogleSearch: false,
     commentUseSerper: false,
     commentGoogleSearchApiKey: '',
