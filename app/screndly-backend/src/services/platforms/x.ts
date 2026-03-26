@@ -79,6 +79,24 @@ export class XService {
     }
 
     private extractApiErrorMessage(data: any, fallback: string): string {
+        const detailedErrors = Array.isArray(data?.errors)
+            ? data.errors
+                .map((error: any) => {
+                    const detail = typeof error?.detail === 'string' ? error.detail.trim() : '';
+                    const title = typeof error?.title === 'string' ? error.title.trim() : '';
+                    return detail || title;
+                })
+                .filter(Boolean)
+            : [];
+
+        if (detailedErrors.length > 0) {
+            const joined = detailedErrors.join(' | ');
+            if (/forbidden|not authorized|unauthorized|insufficient/i.test(joined)) {
+                return `${joined}. Reconnect X from Platforms so Screndly gets a fresh user token for media upload.`;
+            }
+            return joined;
+        }
+
         const detail =
             data?.detail
             || data?.error
@@ -379,25 +397,24 @@ export class XService {
         authToken: string,
         payload: { buffer: Buffer; mimeType: string }
     ): Promise<string> {
-        const initializeBody = new FormData();
-        initializeBody.append('command', 'INIT');
-        initializeBody.append('media_type', payload.mimeType);
-        initializeBody.append('media_category', this.getMediaCategory(payload.mimeType));
-        initializeBody.append('total_bytes', String(payload.buffer.length));
-        const initializeResponse = await fetch('https://api.x.com/2/media/upload', {
+        const initializePayload = {
+            media_type: payload.mimeType,
+            media_category: this.getMediaCategory(payload.mimeType),
+            total_bytes: payload.buffer.length,
+        };
+        const initializeResponse = await fetch('https://api.x.com/2/media/upload/initialize', {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
             },
-            body: initializeBody,
+            body: JSON.stringify(initializePayload),
         });
 
         const initializeData = await this.getJsonResponse(initializeResponse);
         this.logUploadDebug('INIT response', {
             status: initializeResponse.status,
-            mediaCategory: this.getMediaCategory(payload.mimeType),
-            mimeType: payload.mimeType,
-            totalBytes: payload.buffer.length,
+            request: initializePayload,
             body: initializeData,
         });
         if (!initializeResponse.ok) {
@@ -464,12 +481,10 @@ export class XService {
         for (let offset = 0; offset < payload.buffer.length; offset += chunkSize) {
             const chunk = payload.buffer.subarray(offset, Math.min(offset + chunkSize, payload.buffer.length));
             const formData = new FormData();
-            formData.append('command', 'APPEND');
-            formData.append('media_id', mediaId);
             formData.append('segment_index', String(segmentIndex));
             formData.append('media', new Blob([chunk], { type: payload.mimeType }), payload.fileName);
 
-            const appendResponse = await fetch('https://api.x.com/2/media/upload', {
+            const appendResponse = await fetch(`https://api.x.com/2/media/upload/${encodeURIComponent(mediaId)}/append`, {
                 method: 'POST',
                 headers: {
                     Authorization: `Bearer ${authToken}`,
@@ -495,16 +510,11 @@ export class XService {
             segmentIndex += 1;
         }
 
-        const finalizeBody = new FormData();
-        finalizeBody.append('command', 'FINALIZE');
-        finalizeBody.append('media_id', mediaId);
-
-        const finalizeResponse = await fetch('https://api.x.com/2/media/upload', {
+        const finalizeResponse = await fetch(`https://api.x.com/2/media/upload/${encodeURIComponent(mediaId)}/finalize`, {
             method: 'POST',
             headers: {
                 Authorization: `Bearer ${authToken}`,
             },
-            body: finalizeBody,
         });
 
         const finalizeData = await this.getJsonResponse(finalizeResponse);

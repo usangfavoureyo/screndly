@@ -21,6 +21,7 @@ import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
+import { isThreadsXCropVariantReady } from '../../lib/create/composeVideoProcessing';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import {
   buildComposePublishFailureNotification,
@@ -334,6 +335,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
               const primaryAsset = getPrimaryAsset(item);
               const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);
               const extraAssetCount = Math.max((item.mediaAssets?.length ?? (item.media ? 1 : 0)) - 1, 0);
+              const hasThreadsXCropReady = primaryAsset ? isThreadsXCropVariantReady(item, primaryAsset) : false;
+              const hasThreadsXCropEnabled = item.platformFields.videoProcessing?.cropMode === 'threads_x_3_4';
 
               return (
                 <SwipeableActivityCard
@@ -407,6 +410,15 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               {getComposePlatformLabel(platform)}
                             </span>
                           ))}
+                          {hasThreadsXCropEnabled ? (
+                            <span className={`text-xs px-2 py-1 rounded ${
+                              hasThreadsXCropReady
+                                ? 'bg-[#ec1e24]/10 text-[#ec1e24]'
+                                : 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#3A2A00] dark:text-[#FBBF24]'
+                            }`}>
+                              {hasThreadsXCropReady ? 'Threads/X 3:4 Ready' : 'Threads/X 3:4 Pending'}
+                            </span>
+                          ) : null}
                         </div>
                         {item.error ? (
                           <p className="mt-3 text-sm text-[#EF4444]">{item.error}</p>
@@ -531,7 +543,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
       <MediaPreviewDialog
         open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={getComposeAssetPreviewUrl(previewAsset)}
+        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
         mediaType={previewAsset?.kind ?? 'image'}
         title={previewAsset?.fileName}
         badgeLabel={previewAsset?.kind}

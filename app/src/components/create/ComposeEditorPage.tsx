@@ -6,6 +6,7 @@ import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Slider } from '../ui/slider';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { DatePicker } from '../ui/date-picker';
@@ -35,6 +36,11 @@ import {
   normalizeComposeItem,
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
+import {
+  buildComposeAssetSignature,
+  generateThreadsXCropVariant,
+  shouldOfferThreadsXCrop,
+} from '../../lib/create/composeVideoProcessing';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import {
@@ -45,7 +51,13 @@ import {
 } from '../../lib/create/composeNotifications';
 import { uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
-import type { ComposeItem, ComposeMediaAsset, ComposePlatformKey, ComposeThumbnailAsset } from '../../types/compose';
+import type {
+  ComposeItem,
+  ComposeMediaAsset,
+  ComposePlatformKey,
+  ComposeProcessedVideoAsset,
+  ComposeThumbnailAsset,
+} from '../../types/compose';
 import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
@@ -53,6 +65,7 @@ import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtu
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
+import { extractVideoMetadata } from '../../utils/videoMetadata';
 
 interface ComposeEditorPageProps {
   isCompactLayout?: boolean;
@@ -74,6 +87,9 @@ type FormState = {
   sharedThumbnail: ComposeThumbnailAsset | null;
   youtubeThumbnail: ComposeThumbnailAsset | null;
   xThumbnail: ComposeThumbnailAsset | null;
+  videoCropMode: 'original' | 'threads_x_3_4';
+  videoCropFocusYPercent: number;
+  threadsXCropVideo: ComposeProcessedVideoAsset | null;
 };
 
 const PLATFORM_ICONS = {
@@ -121,6 +137,9 @@ function createInitialForm(item?: ComposeItem): FormState {
     sharedThumbnail: normalized?.platformFields.thumbnails?.shared ?? null,
     youtubeThumbnail: normalized?.platformFields.thumbnails?.youtube ?? null,
     xThumbnail: normalized?.platformFields.thumbnails?.x ?? null,
+    videoCropMode: normalized?.platformFields.videoProcessing?.cropMode ?? 'original',
+    videoCropFocusYPercent: normalized?.platformFields.videoProcessing?.focusYPercent ?? 50,
+    threadsXCropVideo: normalized?.platformFields.videoProcessing?.threadsXCrop ?? null,
   };
 }
 
@@ -193,6 +212,7 @@ export function ComposeEditorPage({
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isGeneratingThreadsXCrop, setIsGeneratingThreadsXCrop] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isScheduleDatePickerOpen, setIsScheduleDatePickerOpen] = useState(false);
@@ -220,6 +240,16 @@ export function ComposeEditorPage({
   const hasUploadingAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'uploading');
   const hasFailedAssets = formState.mediaAssets.some((asset) => asset.uploadStatus === 'failed');
   const isSingleVideo = mediaSummary.kind === 'single-video' && formState.mediaAssets[0]?.kind === 'video';
+  const primaryVideoAsset = isSingleVideo ? formState.mediaAssets[0] : undefined;
+  const canOfferThreadsXCrop = shouldOfferThreadsXCrop(primaryVideoAsset, formState.platforms);
+  const isThreadsXCropEnabled = canOfferThreadsXCrop && formState.videoCropMode === 'threads_x_3_4';
+  const isThreadsXCropReady =
+    isThreadsXCropEnabled &&
+    Boolean(formState.threadsXCropVideo) &&
+    formState.threadsXCropVideo?.sourceAssetId === primaryVideoAsset?.id &&
+    formState.threadsXCropVideo?.sourceSignature === (primaryVideoAsset ? buildComposeAssetSignature(primaryVideoAsset) : '') &&
+    formState.threadsXCropVideo?.focusYPercent === formState.videoCropFocusYPercent &&
+    formState.threadsXCropVideo?.uploadStatus !== 'failed';
   const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
   const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
@@ -287,6 +317,17 @@ export function ComposeEditorPage({
       existingItem?.scheduledAt ? new Date(existingItem.scheduledAt).toISOString().slice(11, 16) : '09:00',
     );
   }, [activeItemId, existingItem]);
+
+  useEffect(() => {
+    if (canOfferThreadsXCrop || formState.videoCropMode === 'original') {
+      return;
+    }
+
+    setFormState((current) => ({
+      ...current,
+      videoCropMode: 'original',
+    }));
+  }, [canOfferThreadsXCrop, formState.videoCropMode]);
 
   useBackEntry({
     enabled: hasUnsavedChanges && !isScheduleInteractionActive && !unsavedChangesGuard.isPromptOpen,
@@ -360,7 +401,25 @@ export function ComposeEditorPage({
     if (!files.length) return;
 
     event.target.value = '';
-    const pendingAssets = files.map((file, index) => buildComposeMediaAsset(file, formState.mediaAssets.length + index));
+    const pendingAssets = await Promise.all(
+      files.map(async (file, index) => {
+        if (!file.type.startsWith('video/')) {
+          return buildComposeMediaAsset(file, formState.mediaAssets.length + index);
+        }
+
+        try {
+          const metadata = await extractVideoMetadata(file);
+          return buildComposeMediaAsset(file, formState.mediaAssets.length + index, {
+            width: metadata.width,
+            height: metadata.height,
+            aspectRatioValue: metadata.aspectRatioValue,
+            aspectRatioLabel: metadata.aspectRatioLabel,
+          });
+        } catch {
+          return buildComposeMediaAsset(file, formState.mediaAssets.length + index);
+        }
+      }),
+    );
 
     setFormState((current) => ({
       ...current,
@@ -500,6 +559,8 @@ export function ComposeEditorPage({
       mediaAssets: current.mediaAssets
         .filter((asset) => asset.id !== assetId)
         .map((asset, index) => ({ ...asset, order: index })),
+      threadsXCropVideo:
+        current.threadsXCropVideo?.sourceAssetId === assetId ? null : current.threadsXCropVideo,
     }));
   };
 
@@ -530,6 +591,49 @@ export function ComposeEditorPage({
         uploadError: message,
       }));
       toast.error(message);
+    }
+  };
+
+  const handleGenerateThreadsXCrop = async () => {
+    if (!primaryVideoAsset) {
+      toast.error('Upload a single 9:16 video before generating a 3:4 crop.');
+      return;
+    }
+
+    setIsGeneratingThreadsXCrop(true);
+    setFormState((current) => ({
+      ...current,
+      threadsXCropVideo: current.threadsXCropVideo
+        ? { ...current.threadsXCropVideo, uploadStatus: 'uploading', uploadError: undefined }
+        : null,
+    }));
+
+    try {
+      const variant = await generateThreadsXCropVariant(primaryVideoAsset, formState.videoCropFocusYPercent, (_, message) => {
+        if (message) {
+          toast.dismiss('threads-x-crop-progress');
+          toast.loading(message, { id: 'threads-x-crop-progress' });
+        }
+      });
+
+      toast.dismiss('threads-x-crop-progress');
+      setFormState((current) => ({
+        ...current,
+        threadsXCropVideo: variant,
+      }));
+      toast.success('3:4 video prepared for Threads and X.');
+    } catch (error) {
+      toast.dismiss('threads-x-crop-progress');
+      const message = error instanceof Error ? error.message : 'Failed to generate the 3:4 crop.';
+      setFormState((current) => ({
+        ...current,
+        threadsXCropVideo: current.threadsXCropVideo
+          ? { ...current.threadsXCropVideo, uploadStatus: 'failed', uploadError: message }
+          : null,
+      }));
+      toast.error(message);
+    } finally {
+      setIsGeneratingThreadsXCrop(false);
     }
   };
 
@@ -606,6 +710,10 @@ export function ComposeEditorPage({
       toast.error(selectedPlatformIssues[0].reason || 'One or more selected platforms do not support this media set.');
       return false;
     }
+    if ((mode === 'scheduled' || mode === 'published') && isThreadsXCropEnabled && !isThreadsXCropReady) {
+      toast.error('Generate the 3:4 Threads/X crop before scheduling or publishing.');
+      return false;
+    }
     if (
       isPinterestSelected &&
       (!formState.pinterestTitle.trim() || !formState.pinterestDescription.trim() || !formState.pinterestBoard)
@@ -660,6 +768,13 @@ export function ComposeEditorPage({
           youtube: formState.youtubeThumbnail ?? undefined,
           x: formState.xThumbnail ?? undefined,
         },
+        videoProcessing: isSingleVideo
+          ? {
+              cropMode: formState.videoCropMode,
+              focusYPercent: formState.videoCropFocusYPercent,
+              threadsXCrop: formState.threadsXCropVideo ?? undefined,
+            }
+          : undefined,
       },
       createdAt: existingItem?.createdAt || now,
       updatedAt: now,
@@ -1020,6 +1135,112 @@ export function ComposeEditorPage({
             </div>
           ) : null}
 
+          {canOfferThreadsXCrop ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+              <div className="mb-4">
+                <h3 className="mb-1 text-gray-900 dark:text-white">Threads and X Video Crop</h3>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                  X currently accepts `3:4`, so a vertical `9:16` upload can use a cropped `3:4` version for Threads and X while the original file stays available for other platforms.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant={formState.videoCropMode === 'original' ? 'default' : 'outline'}
+                    onClick={() => setFormState((current) => ({ ...current, videoCropMode: 'original' }))}
+                  >
+                    Keep Original 9:16
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={formState.videoCropMode === 'threads_x_3_4' ? 'default' : 'outline'}
+                    onClick={() => setFormState((current) => ({ ...current, videoCropMode: 'threads_x_3_4' }))}
+                  >
+                    Crop to 3:4 for Threads and X
+                  </Button>
+                </div>
+
+                {isThreadsXCropEnabled ? (
+                  <div className={`grid gap-5 ${isCompactLayout ? 'grid-cols-1' : 'md:grid-cols-[minmax(0,280px)_minmax(0,1fr)]'}`}>
+                    <div className="space-y-3">
+                      <div className="overflow-hidden rounded-2xl border border-gray-200 bg-black dark:border-[#333333]">
+                        <div className="relative aspect-[3/4] w-full overflow-hidden">
+                          <video
+                            src={getComposeAssetPreviewUrl(primaryVideoAsset)}
+                            className="absolute inset-0 h-full w-full object-cover"
+                            style={{ objectPosition: `50% ${formState.videoCropFocusYPercent}%` }}
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                        Adjust the crop up or down for end-card logos and titles like the Mortal Kombat II screen you shared.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <div className="mb-2 flex items-center justify-between gap-3">
+                          <Label className="text-gray-600 dark:text-[#9CA3AF]">Vertical Focus</Label>
+                          <span className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            {formState.videoCropFocusYPercent < 45
+                              ? 'Shifted up'
+                              : formState.videoCropFocusYPercent > 55
+                                ? 'Shifted down'
+                                : 'Centered'}
+                          </span>
+                        </div>
+                        <Slider
+                          value={[formState.videoCropFocusYPercent]}
+                          min={0}
+                          max={100}
+                          step={1}
+                          onValueChange={(values) => {
+                            const nextValue = values[0] ?? 50;
+                            setFormState((current) => ({
+                              ...current,
+                              videoCropFocusYPercent: nextValue,
+                            }));
+                          }}
+                        />
+                        <div className="mt-2 flex items-center justify-between text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                          <span>Top</span>
+                          <span>Center</span>
+                          <span>Bottom</span>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                        <p className="text-sm text-gray-900 dark:text-white">
+                          {isThreadsXCropReady ? '3:4 crop is ready for Threads and X.' : 'Generate the 3:4 crop after you set the framing.'}
+                        </p>
+                        <p className="mt-1 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                          {formState.threadsXCropVideo?.uploadError
+                            ? formState.threadsXCropVideo.uploadError
+                            : isThreadsXCropReady
+                              ? `Prepared as ${formState.threadsXCropVideo?.fileName}`
+                              : 'The generated variant is required before scheduling or publishing with this crop enabled.'}
+                        </p>
+                      </div>
+
+                      <Button
+                        type="button"
+                        onClick={() => void handleGenerateThreadsXCrop()}
+                        disabled={isGeneratingThreadsXCrop || !primaryVideoAsset}
+                      >
+                        {isGeneratingThreadsXCrop ? 'Generating 3:4 Video...' : isThreadsXCropReady ? 'Update 3:4 Video' : 'Generate 3:4 Video'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
             <div className="mt-4 space-y-4">
@@ -1194,16 +1415,16 @@ export function ComposeEditorPage({
                             </SelectItem>
                           )}
                           {isLoadingYouTubePlaylists && (
-                            <SelectItem value="__youtube-playlists-loading" disabled>
+                            <div className="px-3 py-2">
                               <div className="flex w-full items-center justify-center py-1">
                                 <RedSpinner size="sm" label="Loading YouTube playlists..." />
                               </div>
-                            </SelectItem>
+                            </div>
                           )}
                           {!isLoadingYouTubePlaylists && youtubePlaylists.length === 0 && (
-                            <SelectItem value="__youtube-playlists-empty" disabled>
+                            <div className="px-3 py-2 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
                               No channel playlists found
-                            </SelectItem>
+                            </div>
                           )}
                           {youtubePlaylists.map((playlist) => (
                             <SelectItem key={playlist.id} value={playlist.title}>
@@ -1333,7 +1554,7 @@ export function ComposeEditorPage({
 
       <MediaPreviewDialog
         open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={getComposeAssetPreviewUrl(previewAsset)}
+        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
         mediaType={previewAsset?.kind ?? 'image'}
         title={previewAsset?.fileName}
         badgeLabel={previewAsset?.kind}

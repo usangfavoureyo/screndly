@@ -1,5 +1,6 @@
 import { publishContent, type PlatformSelection } from '../api/platforms';
 import { getComposeAssetPublishUrl, getComposeThumbnailPublishUrl } from './composeMedia';
+import { getVideoUrlForComposePlatform } from './composeVideoProcessing';
 import { getComposePlatformLabel } from './composePlatforms';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
 
@@ -53,6 +54,10 @@ function formatFailedResults(results: any[] = []): Array<{ platform: string; err
     }));
 }
 
+function toSinglePlatformSelection(platform: ComposePlatformKey): PlatformSelection {
+  return toPlatformSelection([platform]);
+}
+
 export async function publishComposeItem(item: ComposeItem): Promise<ComposePublishOutcome> {
   const platformKeys = Array.from(new Set(item.platforms));
   if (platformKeys.length === 0) {
@@ -75,33 +80,42 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
   const youtubeThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.youtube);
   const xThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.x);
 
-  const content = {
-    text: item.sharedCaption?.trim() || item.title,
-    title:
-      item.platformFields.youtube?.title ||
-      item.platformFields.pinterest?.title ||
-      item.title,
-    youtubeTitle: item.platformFields.youtube?.title,
-    youtubeDescription: item.platformFields.youtube?.description,
-    youtubePlaylistIds: item.platformFields.youtube?.playlist
-      ? [item.platformFields.youtube.playlist]
-      : undefined,
-    sharedThumbnailUrl: primaryAsset.kind === 'video' ? sharedThumbnailUrl : undefined,
-    youtubeThumbnailUrl: primaryAsset.kind === 'video' ? youtubeThumbnailUrl : undefined,
-    xThumbnailUrl: primaryAsset.kind === 'video' ? xThumbnailUrl : undefined,
-    imageUrl: primaryAsset.kind === 'image' ? mediaUrl : undefined,
-    videoUrl: primaryAsset.kind === 'video' ? mediaUrl : undefined,
-  };
+  const results: any[] = [];
+  for (const platform of platformKeys) {
+    const content = {
+      text: item.sharedCaption?.trim() || item.title,
+      title:
+        item.platformFields.youtube?.title ||
+        item.platformFields.pinterest?.title ||
+        item.title,
+      youtubeTitle: item.platformFields.youtube?.title,
+      youtubeDescription: item.platformFields.youtube?.description,
+      youtubePlaylistIds: item.platformFields.youtube?.playlist
+        ? [item.platformFields.youtube.playlist]
+        : undefined,
+      sharedThumbnailUrl: primaryAsset.kind === 'video' ? sharedThumbnailUrl : undefined,
+      youtubeThumbnailUrl: primaryAsset.kind === 'video' ? youtubeThumbnailUrl : undefined,
+      xThumbnailUrl: primaryAsset.kind === 'video' ? xThumbnailUrl : undefined,
+      imageUrl: primaryAsset.kind === 'image' ? mediaUrl : undefined,
+      videoUrl: primaryAsset.kind === 'video' ? getVideoUrlForComposePlatform(item, platform) || mediaUrl : undefined,
+    };
 
-  const response = await publishContent(toPlatformSelection(platformKeys), content, undefined, {
-    timeout: 180000,
-  });
+    const response = await publishContent(toSinglePlatformSelection(platform), content, undefined, {
+      timeout: 180000,
+    });
 
-  if (!response.success) {
-    throw new Error(response.error?.message || 'Failed to publish post');
+    if (!response.success) {
+      results.push({
+        platform: PLATFORM_NAME_BY_KEY[platform] ?? getComposePlatformLabel(platform),
+        status: 'failed',
+        error: response.error?.message || 'Failed to publish post',
+      });
+      continue;
+    }
+
+    results.push(...(response.data?.results || []));
   }
 
-  const results = response.data?.results || [];
   const postedPlatforms = results
     .filter((result: any) => result?.status === 'posted' && typeof result?.platform === 'string')
     .map((result: any) => result.platform);

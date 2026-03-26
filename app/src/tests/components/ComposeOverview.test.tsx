@@ -57,7 +57,7 @@ describe('ComposeOverview', () => {
           title: 'Draft title',
           status: 'draft',
           mediaAssets: [],
-          platforms: ['instagram'],
+          platforms: ['instagram_feed'],
           sharedCaption: '',
           platformFields: {},
           createdAt: '2026-03-12T07:00:00.000Z',
@@ -80,7 +80,7 @@ describe('ComposeOverview', () => {
           title: 'Published title',
           status: 'published',
           mediaAssets: [],
-          platforms: ['youtube'],
+          platforms: ['youtube_longform'],
           sharedCaption: '',
           platformFields: {},
           createdAt: '2026-03-12T07:00:00.000Z',
@@ -118,5 +118,60 @@ describe('ComposeOverview', () => {
     fireEvent.click(addPostButton);
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
+  });
+
+  it('shows the Threads/X crop status when a draft uses the 3:4 variant', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Crop-ready trailer',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'video-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              storageUrl: 'https://cdn.example.com/trailer.mp4',
+              aspectRatioLabel: '9:16',
+              aspectRatioValue: 9 / 16,
+            },
+          ],
+          platforms: ['threads', 'x'],
+          sharedCaption: '',
+          platformFields: {
+            videoProcessing: {
+              cropMode: 'threads_x_3_4',
+              focusYPercent: 50,
+              threadsXCrop: {
+                fileName: 'trailer-3x4.mp4',
+                mimeType: 'video/mp4',
+                size: 2048,
+                storageUrl: 'https://cdn.example.com/trailer-3x4.mp4',
+                sourceAssetId: 'video-1',
+                sourceSignature: 'video-1|trailer.mp4|1024||https://cdn.example.com/trailer.mp4||9:16',
+                focusYPercent: 50,
+                aspectRatioLabel: '3:4',
+                uploadStatus: 'uploaded',
+              },
+            },
+          },
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeOverview onNavigate={vi.fn()} />
+      </BackNavigationProvider>,
+    );
+
+    expect(screen.getByText('Threads/X 3:4 Ready')).toBeInTheDocument();
   });
 });

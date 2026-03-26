@@ -22,6 +22,10 @@ export interface ComposeMediaAsset {
   mimeType: string;
   size: number;
   order: number;
+  width?: number;
+  height?: number;
+  aspectRatioValue?: number;
+  aspectRatioLabel?: string;
   previewUrl?: string;
   storageUrl?: string;
   storageFileId?: string;
@@ -73,6 +77,11 @@ export interface ComposePlatformFields {
     youtube?: ComposeThumbnailAsset;
     x?: ComposeThumbnailAsset;
   };
+  videoProcessing?: {
+    cropMode?: ComposeVideoCropMode;
+    focusYPercent?: number;
+    threadsXCrop?: ComposeProcessedVideoAsset;
+  };
 }
 
 export interface ComposeThumbnailAsset {
@@ -84,6 +93,23 @@ export interface ComposeThumbnailAsset {
   storageFileId?: string;
   uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
   uploadError?: string;
+}
+
+export type ComposeVideoCropMode = 'original' | 'threads_x_3_4';
+
+export interface ComposeProcessedVideoAsset {
+  fileName: string;
+  mimeType: string;
+  size: number;
+  previewUrl?: string;
+  storageUrl?: string;
+  storageFileId?: string;
+  uploadStatus?: 'idle' | 'uploading' | 'uploaded' | 'failed';
+  uploadError?: string;
+  sourceAssetId: string;
+  sourceSignature: string;
+  focusYPercent: number;
+  aspectRatioLabel: '3:4';
 }
 
 export interface ComposeItem {

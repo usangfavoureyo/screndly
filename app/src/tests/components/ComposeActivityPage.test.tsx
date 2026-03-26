@@ -68,7 +68,7 @@ describe('ComposeActivityPage', () => {
           title: 'Campaign poster',
           status: 'scheduled',
           mediaAssets: [],
-          platforms: ['instagram'],
+          platforms: ['instagram_feed'],
           sharedCaption: '',
           platformFields: {},
           createdAt: '2026-03-12T07:00:00.000Z',

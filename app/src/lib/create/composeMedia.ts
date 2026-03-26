@@ -3,6 +3,7 @@ import type {
   ComposeMedia,
   ComposeMediaAsset,
   ComposeMediaKind,
+  ComposeProcessedVideoAsset,
   ComposeMediaSummary,
   ComposePlatformCompatibility,
   ComposePlatformKey,
@@ -163,6 +164,13 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
     platformFields: {
       ...item.platformFields,
       thumbnails: normalizeThumbnails(item.platformFields?.thumbnails),
+      videoProcessing: item.platformFields?.videoProcessing
+        ? {
+            cropMode: item.platformFields.videoProcessing.cropMode ?? 'original',
+            focusYPercent: item.platformFields.videoProcessing.focusYPercent ?? 50,
+            threadsXCrop: normalizeProcessedVideoAsset(item.platformFields.videoProcessing.threadsXCrop),
+          }
+        : undefined,
     },
   };
 }
@@ -183,6 +191,13 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
     platformFields: {
       ...normalized.platformFields,
       thumbnails: sanitizeThumbnails(normalized.platformFields?.thumbnails),
+      videoProcessing: normalized.platformFields.videoProcessing
+        ? {
+            cropMode: normalized.platformFields.videoProcessing.cropMode ?? 'original',
+            focusYPercent: normalized.platformFields.videoProcessing.focusYPercent ?? 50,
+            threadsXCrop: sanitizeProcessedVideoAsset(normalized.platformFields.videoProcessing.threadsXCrop),
+          }
+        : undefined,
     },
   };
 }
@@ -218,6 +233,24 @@ function normalizeThumbnails(thumbnails?: {
   };
 }
 
+function normalizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): ComposeProcessedVideoAsset | undefined {
+  if (!asset) return undefined;
+  const previewUrl = asset.previewUrl || asset.storageUrl;
+  const normalizedStatus =
+    asset.uploadStatus === 'uploading'
+      ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+        ? 'uploaded'
+        : 'idle'
+      : asset.uploadStatus ?? (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+
+  return {
+    ...asset,
+    previewUrl,
+    storageUrl: asset.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    uploadStatus: normalizedStatus,
+  };
+}
+
 function sanitizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
   if (!asset) return undefined;
   return {
@@ -243,7 +276,23 @@ function sanitizeThumbnails(thumbnails?: {
   };
 }
 
-export function buildComposeMediaAsset(file: File, order: number): ComposeMediaAsset {
+function sanitizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): ComposeProcessedVideoAsset | undefined {
+  if (!asset) return undefined;
+  return {
+    ...asset,
+    previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+    storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+    uploadStatus:
+      asset.uploadStatus ??
+      (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
+  };
+}
+
+export function buildComposeMediaAsset(
+  file: File,
+  order: number,
+  metadata?: Pick<ComposeMediaAsset, 'width' | 'height' | 'aspectRatioValue' | 'aspectRatioLabel'>,
+): ComposeMediaAsset {
   const kind: ComposeMediaKind = file.type.startsWith('video/') ? 'video' : 'image';
 
   return {
@@ -253,6 +302,7 @@ export function buildComposeMediaAsset(file: File, order: number): ComposeMediaA
     mimeType: file.type,
     size: file.size,
     order,
+    ...metadata,
     previewUrl: URL.createObjectURL(file),
     uploadStatus: 'uploading',
   };

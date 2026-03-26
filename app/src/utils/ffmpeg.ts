@@ -11,7 +11,11 @@
 
 // Type imports only (these don't execute any code)
 type FFmpeg = any;
-type FFmpegUtil = any;
+type FFmpegModuleBundle = {
+  FFmpeg: any;
+  fetchFile: (input: File | Blob | string) => Promise<Uint8Array>;
+  toBlobURL: (url: string, mimeType: string) => Promise<string>;
+};
 
 let ffmpegInstance: FFmpeg | null = null;
 let isLoading = false;
@@ -21,9 +25,9 @@ let loadAbortController: AbortController | null = null;
  * Dynamically import FFmpeg modules (only when needed)
  * Uses runtime script loading to completely bypass Vite
  */
-async function importFFmpegModules() {
+async function importFFmpegModules(): Promise<FFmpegModuleBundle> {
   // Load FFmpeg using runtime script injection - Vite cannot analyze this
-  return new Promise((resolve, reject) => {
+  return new Promise<FFmpegModuleBundle>((resolve, reject) => {
     // Check if already loaded
     if ((window as any).FFmpegWASM && (window as any).FFmpegUtil) {
       resolve({
@@ -255,6 +259,14 @@ interface CutVideoResult {
   duration?: number;
 }
 
+interface CropVideoOptions {
+  input: File | string;
+  targetAspectRatio: '3:4';
+  focusYPercent?: number;
+  outputFormat?: string;
+  onProgress?: (progress: number, message: string) => void;
+}
+
 /**
  * Cut video segment using FFmpeg.wasm
  * Uses -c copy for fast, lossless extraction
@@ -346,6 +358,77 @@ export async function cutVideoSegment(options: CutVideoOptions): Promise<CutVide
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error during video cutting'
+    };
+  }
+}
+
+export async function cropVideoToAspectRatio(options: CropVideoOptions): Promise<CutVideoResult> {
+  const { input, targetAspectRatio, focusYPercent = 50, outputFormat = 'mp4', onProgress } = options;
+
+  try {
+    const { fetchFile } = await importFFmpegModules();
+    if (onProgress) onProgress(5, 'Loading FFmpeg.wasm...');
+    const ffmpeg = await loadFFmpeg();
+
+    if (onProgress) onProgress(15, 'Loading source video...');
+    let inputFileName = 'input.mp4';
+    let inputData: Uint8Array;
+
+    if (typeof input === 'string') {
+      inputData = await fetchFile(input);
+      inputFileName = `input.${input.split('.').pop() || 'mp4'}`;
+    } else {
+      inputData = await fetchFile(input);
+      inputFileName = `input.${input.name.split('.').pop() || 'mp4'}`;
+    }
+
+    await ffmpeg.writeFile(inputFileName, inputData);
+
+    if (onProgress) onProgress(30, 'Reading video dimensions...');
+    const targetRatioValue = targetAspectRatio === '3:4' ? 3 / 4 : 3 / 4;
+    const even = (value: number) => Math.max(2, Math.floor(value / 2) * 2);
+    const metadata = await import('./videoMetadata');
+    const sourceMetadata = await metadata.extractVideoMetadata(input);
+    const cropWidth = even(sourceMetadata.width);
+    const cropHeight = even(Math.min(sourceMetadata.height, Math.floor(cropWidth / targetRatioValue)));
+    const maxYOffset = Math.max(sourceMetadata.height - cropHeight, 0);
+    const cropY = even((maxYOffset * Math.max(0, Math.min(focusYPercent, 100))) / 100);
+
+    const outputFileName = `crop-output.${outputFormat}`;
+    const filter = `crop=${cropWidth}:${cropHeight}:0:${cropY},setsar=1`;
+
+    if (onProgress) onProgress(45, 'Rendering 3:4 crop...');
+    await ffmpeg.exec([
+      '-i', inputFileName,
+      '-vf', filter,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-crf', '22',
+      '-c:a', 'aac',
+      '-movflags', '+faststart',
+      outputFileName,
+    ]);
+
+    if (onProgress) onProgress(90, 'Reading cropped video...');
+    const outputData = await ffmpeg.readFile(outputFileName);
+    const outputBlob = new Blob([outputData], { type: `video/${outputFormat}` });
+    const outputUrl = URL.createObjectURL(outputBlob);
+
+    await ffmpeg.deleteFile(inputFileName);
+    await ffmpeg.deleteFile(outputFileName);
+    if (onProgress) onProgress(100, 'Complete!');
+
+    return {
+      success: true,
+      outputBlob,
+      outputUrl,
+      duration: sourceMetadata.duration,
+    };
+  } catch (error) {
+    console.error('FFmpeg crop error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error during video crop',
     };
   }
 }

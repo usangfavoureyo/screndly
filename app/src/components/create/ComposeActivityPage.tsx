@@ -547,7 +547,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
 
       <MediaPreviewDialog
         open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={getComposeAssetPreviewUrl(previewAsset)}
+        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
         mediaType={previewAsset?.kind ?? 'image'}
         title={previewAsset?.fileName}
         badgeLabel={previewAsset?.kind}

@@ -158,6 +158,8 @@ const PLATFORM_SETTING_KEYS: Record<string, string> = {
 
 const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
 const MAX_RECENT_FEED_ITEMS = 15;
+const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 3;
+const DEBUG_COLLAB_CHANNEL_NAMES = new Set(['hbo max']);
 const FEED_FRESHNESS_HOURS = 24;
 const MIN_TRAILER_HEIGHT = 1080;
 const MIN_TRAILER_WIDTH = 1920;
@@ -673,9 +675,17 @@ export class YouTubePollerService {
             .filter((keyword) => !NON_STANDALONE_TRAILER_KEYWORDS.has(keyword))
             .slice(0, 4);
         const candidateMap = new Map<string, any>();
+        const debugCollab = DEBUG_COLLAB_CHANNEL_NAMES.has(String(channel?.name || '').trim().toLowerCase());
+        const normalizeSearchName = (value?: string) => String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const trackedChannelName = normalizeSearchName(channel?.name);
 
         for (const keyword of keywordQueries) {
-            const query = `ytsearchdate${Math.min(MAX_RECENT_FEED_ITEMS, 8)}:"${channel.name}" ${keyword}`;
+            const searchQuery = `${channel.name} ${keyword}`.trim();
+            const query = `https://www.youtube.com/results?search_query=${encodeURIComponent(searchQuery)}`;
             try {
                 const results = await ytDlp(query, {
                     flatPlaylist: true,
@@ -684,11 +694,31 @@ export class YouTubePollerService {
                     noWarnings: true,
                     quiet: true,
                 } as any);
-                const entries = Array.isArray((results as any)?.entries) ? (results as any).entries : [];
+                const entries = Array.isArray((results as any)?.entries)
+                    ? (results as any).entries.slice(0, MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD)
+                    : [];
+
+                if (debugCollab) {
+                    console.info(`[YouTubePoller] ${channel.name}: collaborative query "${searchQuery}" returned ${entries.length} top entries`, entries.map((entry: any) => ({
+                        id: entry?.id,
+                        title: entry?.title,
+                        channel: entry?.channel,
+                        uploader: entry?.uploader,
+                        url: entry?.url,
+                    })));
+                }
 
                 for (const entry of entries) {
+                    if (candidateMap.size >= MAX_RECENT_FEED_ITEMS) {
+                        break;
+                    }
+
                     const videoId = typeof entry?.id === 'string' ? entry.id.trim() : '';
-                    if (!videoId || candidateMap.has(videoId)) {
+                    const entryUrl = typeof entry?.url === 'string' ? entry.url : '';
+                    const isWatchUrl = entryUrl.includes('/watch?v=') || entryUrl.startsWith('https://www.youtube.com/watch?v=');
+                    const looksLikeVideoId = /^[A-Za-z0-9_-]{8,}$/.test(videoId);
+
+                    if (!videoId || candidateMap.has(videoId) || (!isWatchUrl && !looksLikeVideoId)) {
                         continue;
                     }
 
@@ -698,11 +728,45 @@ export class YouTubePollerService {
 
                     try {
                         const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
-                        if (!isExplicitCollaboratorForTrackedChannel(channel, raw)) {
+                        const collaboratorMetadata = extractCollaboratorMetadata(raw);
+                        const explicitCollaboratorMatch = isExplicitCollaboratorForTrackedChannel(channel, raw);
+                        const entryChannel = normalizeSearchName(typeof entry?.channel === 'string' ? entry.channel : '');
+                        const entryUploader = normalizeSearchName(typeof entry?.uploader === 'string' ? entry.uploader : '');
+                        const structuredSearchCollaboratorSignal = [entryChannel, entryUploader].some((value) =>
+                            value.includes(trackedChannelName) && /\band\s+\d+\s+more\b/.test(value)
+                        );
+                        const rawPrimaryChannelName = normalizeSearchName(typeof raw?.channel === 'string' ? raw.channel : raw?.uploader);
+                        const regionalFamilyChannelSignal =
+                            Boolean(trackedChannelName) &&
+                            rawPrimaryChannelName.startsWith(`${trackedChannelName} `) &&
+                            raw?.channel_id !== channel.channelId;
+                        const collaborativeAssociationMatch =
+                            explicitCollaboratorMatch ||
+                            structuredSearchCollaboratorSignal ||
+                            regionalFamilyChannelSignal;
+
+                        if (debugCollab) {
+                            console.info(`[YouTubePoller] ${channel.name}: inspected collaborative candidate ${videoId}`, {
+                                searchQuery,
+                                entryTitle: entry?.title,
+                                entryChannel: entry?.channel,
+                                entryUploader: entry?.uploader,
+                                rawTitle: raw?.title,
+                                rawChannel: raw?.channel,
+                                rawChannelId: raw?.channel_id,
+                                rawCreators: raw?.creators,
+                                collaboratorMetadata,
+                                explicitCollaboratorMatch,
+                                structuredSearchCollaboratorSignal,
+                                regionalFamilyChannelSignal,
+                                collaborativeAssociationMatch,
+                            });
+                        }
+
+                        if (!collaborativeAssociationMatch) {
                             continue;
                         }
 
-                        const collaboratorMetadata = extractCollaboratorMetadata(raw);
                         candidateMap.set(videoId, {
                             id: `yt:video:${videoId}`,
                             link: typeof raw?.webpage_url === 'string' ? raw.webpage_url : videoUrl,
@@ -729,6 +793,10 @@ export class YouTubePollerService {
                 }
             } catch (error) {
                 console.warn(`[YouTubePoller] ${channel.name}: collaborative discovery query failed for "${keyword}"`, error);
+            }
+
+            if (candidateMap.size >= MAX_RECENT_FEED_ITEMS) {
+                break;
             }
         }
 
