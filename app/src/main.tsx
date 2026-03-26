@@ -7,6 +7,7 @@ import "./index.css";
 // Prevent invalid token placeholders from lingering in storage.
 if (typeof window !== 'undefined') {
   console.log('[DEBUG] main.tsx start');
+  const OAUTH_CALLBACK_RESULT_KEY = 'screndly_oauth_callback_result';
 
   window.addEventListener('error', (e) => {
     console.log('[DEBUG GLOBAL ERROR]', e.message, e.filename, e.lineno, e.colno, e.error);
@@ -27,6 +28,25 @@ if (typeof window !== 'undefined') {
   if (startupToken === 'null' || startupToken === 'undefined' || startupToken === '[object Object]') {
     localStorage.removeItem(TOKEN_KEY);
     sessionStorage.removeItem(TOKEN_KEY);
+  }
+
+  try {
+    const pathname = window.location.pathname.replace(/\/+$/, '');
+    const isOAuthCallbackPath = pathname === '/platforms/callback' || pathname === '/callback';
+
+    if (isOAuthCallbackPath) {
+      const search = window.location.search || '';
+      const hash = window.location.hash || '';
+      if (search || hash) {
+        sessionStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, JSON.stringify({
+          search,
+          hash,
+          capturedAt: Date.now(),
+        }));
+      }
+    }
+  } catch (error) {
+    console.error('[DEBUG] Failed to snapshot OAuth callback URL:', error);
   }
 
   const originalSetItem = localStorage.setItem;

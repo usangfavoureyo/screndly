@@ -13,12 +13,21 @@ import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 import { getToken } from '../lib/api/authToken';
-import { getApiUrl } from '../lib/api/config';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
   isOpen: boolean;
   onClose: () => void;
+}
+
+function getOAuthBackendBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return 'https://screndly-production.up.railway.app';
+  }
+
+  const hostname = window.location.hostname;
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+  return isLocalHost ? 'http://localhost:3000' : 'https://screndly-production.up.railway.app';
 }
 
 export function PlatformConnectionModal({
@@ -116,7 +125,7 @@ export function PlatformConnectionModal({
   const info = platformInfo[platform];
   const redirectUri = getOAuthRedirectUri(platform);
   const oauthStartUrl = useMemo(
-    () => `${getApiUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`,
+    () => `${getOAuthBackendBaseUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`,
     [platform, redirectUri]
   );
 

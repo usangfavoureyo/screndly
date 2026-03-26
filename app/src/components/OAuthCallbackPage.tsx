@@ -14,6 +14,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const STATE_STORAGE_KEY = 'screndly_oauth_state';
     const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
     const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
+    const OAUTH_CALLBACK_RESULT_KEY = 'screndly_oauth_callback_result';
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
     const CALLBACK_TIMEOUT_MS = 60000;
@@ -39,6 +40,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
+            sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
         };
 
         const restoreAuthSessionForMobileReturn = () => {
@@ -91,8 +93,24 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             if (hasProcessedRef.current) return;
             hasProcessedRef.current = true;
 
-            const urlParams = new URLSearchParams(window.location.search);
-            const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+            let search = window.location.search || '';
+            let hash = window.location.hash || '';
+
+            if (!search && !hash) {
+                try {
+                    const storedCallbackResult = sessionStorage.getItem(OAUTH_CALLBACK_RESULT_KEY);
+                    if (storedCallbackResult) {
+                        const parsed = JSON.parse(storedCallbackResult) as { search?: string; hash?: string };
+                        search = typeof parsed.search === 'string' ? parsed.search : '';
+                        hash = typeof parsed.hash === 'string' ? parsed.hash : '';
+                    }
+                } catch {
+                    // Best-effort fallback only.
+                }
+            }
+
+            const urlParams = new URLSearchParams(search);
+            const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
 
             const providerError =
                 urlParams.get('error') ||
@@ -121,7 +139,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
             if (!code || (!platform && !effectiveState)) {
                 setStatus('error');
-                setErrorMsg('Missing authorization code or platform identifier.');
+                setErrorMsg('Missing OAuth callback data. Please retry the connection from Platforms.');
                 return;
             }
 
