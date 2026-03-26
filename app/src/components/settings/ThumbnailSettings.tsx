@@ -303,14 +303,26 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
         [assetKey]: result.url,
       };
       await updateBrandedAssets(nextAssets);
-      if (result.previewUrl) {
+      try {
+        const previewUrl = await resolveAssetPreviewUrl(result.url);
         setBrandedAssetPreviewUrls((prev) => ({
           ...prev,
           [activePlatform]: {
             ...prev[activePlatform],
-            [assetKey]: result.previewUrl!,
+            [assetKey]: previewUrl,
           },
         }));
+      } catch (error) {
+        console.warn(`Failed to resolve branded overlay preview for ${assetKey} immediately after upload`, error);
+        if (result.previewUrl) {
+          setBrandedAssetPreviewUrls((prev) => ({
+            ...prev,
+            [activePlatform]: {
+              ...prev[activePlatform],
+              [assetKey]: result.previewUrl!,
+            },
+          }));
+        }
       }
       toast.success('Branded overlay saved');
     } catch (error) {

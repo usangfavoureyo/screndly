@@ -129,7 +129,21 @@ router.post('/asset-preview', authenticate, async (req, res) => {
       });
     }
 
-    const previewUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 7 * 24 * 60 * 60);
+    const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 7 * 24 * 60 * 60);
+    const previewResponse = await fetch(authorizedUrl);
+
+    if (!previewResponse.ok) {
+      return res.status(502).json({
+        success: false,
+        error: { message: `Failed to fetch asset preview (${previewResponse.status})` },
+      });
+    }
+
+    const contentType = previewResponse.headers.get('content-type') || 'application/octet-stream';
+    const arrayBuffer = await previewResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const previewUrl = `data:${contentType};base64,${buffer.toString('base64')}`;
+
     return res.json({
       success: true,
       data: {
