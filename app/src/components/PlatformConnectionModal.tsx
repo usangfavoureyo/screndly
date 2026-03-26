@@ -13,8 +13,8 @@ import { XIcon } from './icons/XIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { getOAuthRedirectUri } from '../utils/oauthRedirect';
-import { apiClient } from '../lib/api/client';
 import { getToken } from '../lib/api/authToken';
+import { getApiUrl } from '../lib/api/config';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
@@ -28,8 +28,6 @@ export function PlatformConnectionModal({
   onClose
 }: PlatformConnectionModalProps) {
   const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
-  const STATE_STORAGE_KEY = 'screndly_oauth_state';
-  const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
   const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
   const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
@@ -133,55 +131,21 @@ export function PlatformConnectionModal({
     haptics.medium();
 
     try {
-      const decodeJwtPayload = (value: string): string | null => {
-        const parts = value.split('.');
-        if (parts.length !== 3) return null;
-
-        const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        const padding = '='.repeat((4 - (normalized.length % 4)) % 4);
-
-        try {
-          return atob(`${normalized}${padding}`);
-        } catch {
-          return null;
-        }
-      };
-
       const redirectUri = getOAuthRedirectUri(platform);
-      const response = await apiClient.get<{ url?: string }>(
-        `/api/platforms/auth/${platform}?redirectUri=${encodeURIComponent(redirectUri)}`
-      );
+      const authToken = getToken();
+      localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+      sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
+      localStorage.removeItem('screndly_oauth_state');
+      sessionStorage.removeItem('screndly_oauth_state');
+      localStorage.removeItem('screndly_oauth_code_verifier');
+      sessionStorage.removeItem('screndly_oauth_code_verifier');
 
-      if (response.success && response.data?.url) {
-        const authToken = getToken();
-        const oauthUrl = new URL(response.data.url);
-        const oauthState = oauthUrl.searchParams.get('state');
-        localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-        sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-        if (authToken) {
-          localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
-        }
-        if (oauthState) {
-          localStorage.setItem(STATE_STORAGE_KEY, oauthState);
-          sessionStorage.setItem(STATE_STORAGE_KEY, oauthState);
-
-          try {
-            const payloadRaw = decodeJwtPayload(oauthState);
-            if (payloadRaw) {
-              const payload = JSON.parse(payloadRaw) as { codeVerifier?: string };
-              if (payload.codeVerifier) {
-                localStorage.setItem(CODE_VERIFIER_STORAGE_KEY, payload.codeVerifier);
-                sessionStorage.setItem(CODE_VERIFIER_STORAGE_KEY, payload.codeVerifier);
-              }
-            }
-          } catch {
-            // Best-effort storage only.
-          }
-        }
-        window.location.href = response.data.url;
-      } else {
-        throw new Error(response.error?.message || 'Failed to get OAuth URL');
+      if (authToken) {
+        localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
       }
+
+      const oauthStartUrl = `${getApiUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`;
+      window.location.assign(oauthStartUrl);
     } catch (error) {
       console.error('Connection error:', error);
       haptics.error();

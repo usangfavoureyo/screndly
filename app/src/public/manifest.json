@@ -71,10 +71,10 @@
       "url": "/create",
       "icons": [
         {
-          "src": "/icons/shortcut-dashboard-96x96.png",
-          "sizes": "96x96",
+          "src": "/icons/shortcut-post-192x192.png",
+          "sizes": "192x192",
           "type": "image/png",
-          "purpose": "any"
+          "purpose": "any maskable"
         }
       ]
     },
@@ -85,24 +85,24 @@
       "url": "/feeds",
       "icons": [
         {
-          "src": "/icons/shortcut-feeds-96x96.png",
-          "sizes": "96x96",
+          "src": "/icons/shortcut-feeds-192x192.png",
+          "sizes": "192x192",
           "type": "image/png",
-          "purpose": "any"
+          "purpose": "any maskable"
         }
       ]
     },
     {
       "name": "Video Studio",
-      "short_name": "Studio",
+      "short_name": "Video Studio",
       "description": "Open Video Studio",
       "url": "/video-studio",
       "icons": [
         {
-          "src": "/icons/shortcut-studio-96x96.png",
-          "sizes": "96x96",
+          "src": "/icons/shortcut-video-studio-192x192.png",
+          "sizes": "192x192",
           "type": "image/png",
-          "purpose": "any"
+          "purpose": "any maskable"
         }
       ]
     }

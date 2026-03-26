@@ -34,6 +34,7 @@ const DESKTOP_SIDEBAR_STORAGE_KEY = "screndly.desktopSidebarCollapsed";
 const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
 const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = "5rem";
 const APP_STATE_STORAGE_KEY = "screndly_app_state";
+const RSS_ACTIVITY_TARGET_STORAGE_KEY = "screndly_rss_activity_target";
 
 // Lazy load heavy components for better performance
 const ChannelsPage = lazyWithRetry(() => import("./ChannelsPage").then(m => ({ default: m.ChannelsPage })), "ChannelsPage");
@@ -516,9 +517,15 @@ export function AppContent() {
     setIsSettingsOpen(false);
   };
 
-  const handleOpenNotificationPage = (page: string, tab?: 'rss' | 'tmdb') => {
+  const handleOpenNotificationPage = (page: string, tab?: 'rss' | 'tmdb', itemId?: string) => {
     if (page === 'feeds' && tab) {
       localStorage.setItem('feedsActiveTab', tab);
+    }
+
+    if (page === 'rss-activity' && itemId) {
+      localStorage.setItem(RSS_ACTIVITY_TARGET_STORAGE_KEY, itemId);
+    } else if (page !== 'rss-activity') {
+      localStorage.removeItem(RSS_ACTIVITY_TARGET_STORAGE_KEY);
     }
 
     setIsNotificationsOpen(false);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { AlertTriangle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
@@ -17,6 +17,8 @@ interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
   previousPage?: string | null;
 }
+
+const RSS_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_rss_activity_target';
 
 function formatActivityTimestamp(value: string): string {
   const date = new Date(value);
@@ -37,6 +39,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadActivity = async () => {
     setIsRefreshing(true);
@@ -50,6 +54,39 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   useEffect(() => {
     loadActivity();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || items.length === 0) {
+      return;
+    }
+
+    const targetId = window.localStorage.getItem(RSS_ACTIVITY_TARGET_STORAGE_KEY);
+    if (!targetId) {
+      return;
+    }
+
+    const targetItem = items.find((item) => item.id === targetId);
+    if (!targetItem) {
+      return;
+    }
+
+    setFilter('published');
+    setHighlightedItemId(targetId);
+    window.localStorage.removeItem(RSS_ACTIVITY_TARGET_STORAGE_KEY);
+
+    const timeoutId = window.setTimeout(() => {
+      itemRefs.current[targetId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+
+    const clearId = window.setTimeout(() => {
+      setHighlightedItemId((current) => (current === targetId ? null : current));
+    }, 3200);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(clearId);
+    };
+  }, [items]);
 
   const retentionHours = settings.rssActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
@@ -307,74 +344,83 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
               const StatusIcon = statusConfig.icon;
 
               return (
-                <SwipeableActivityCard
+                <div
                   key={item.id}
-                  id={item.id}
-                  onDelete={handleDelete}
-                  selectionMode={selection.selectionMode}
-                  selected={selection.isSelected(item.id)}
-                  onEnterSelectionMode={selection.enterSelectionMode}
-                  onToggleSelection={selection.toggleSelection}
-                  className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
-                  deleteLabel="Delete"
+                  ref={(node) => {
+                    itemRefs.current[item.id] = node;
+                  }}
+                  className={`rounded-xl transition-all duration-300 ${
+                    highlightedItemId === item.id ? 'ring-2 ring-[#ec1e24] ring-offset-2 ring-offset-white dark:ring-offset-[#000000]' : ''
+                  }`}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-gray-900 dark:text-white mb-1">{item.title}</p>
-                      <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2 flex-wrap">
-                        <span>{item.feedName}</span>
-                        <span>&bull;</span>
-                        <span>{formatActivityTimestamp(item.timestamp)}</span>
+                  <SwipeableActivityCard
+                    id={item.id}
+                    onDelete={handleDelete}
+                    selectionMode={selection.selectionMode}
+                    selected={selection.isSelected(item.id)}
+                    onEnterSelectionMode={selection.enterSelectionMode}
+                    onToggleSelection={selection.toggleSelection}
+                    className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
+                    deleteLabel="Delete"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-gray-900 dark:text-white mb-1">{item.title}</p>
+                        <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2 flex-wrap">
+                          <span>{item.feedName}</span>
+                          <span>&bull;</span>
+                          <span>{formatActivityTimestamp(item.timestamp)}</span>
+                        </div>
+                        {item.description ? (
+                          <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
+                            <p className="line-clamp-3">{item.description}</p>
+                          </div>
+                        ) : item.contentHtml ? (
+                          <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
+                            <p className="line-clamp-3">{stripHtml(item.contentHtml)}</p>
+                          </div>
+                        ) : null}
+                        {item.platforms.length > 0 && (
+                          <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                            {item.platforms.map((platform) => (
+                              <span
+                                key={platform}
+                                className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]"
+                              >
+                                {platform}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {item.error && (
+                          <div className={`mt-1 rounded-lg px-3 py-2 text-sm ${
+                            item.status === 'filtered'
+                              ? 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#78350F]/40 dark:text-[#FCD34D]'
+                              : 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
+                          }`}>
+                            {item.error}
+                          </div>
+                        )}
                       </div>
-                      {item.description ? (
-                        <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
-                          <p className="line-clamp-3">{item.description}</p>
-                        </div>
-                      ) : item.contentHtml ? (
-                        <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
-                          <p className="line-clamp-3">{stripHtml(item.contentHtml)}</p>
-                        </div>
-                      ) : null}
-                      {item.platforms.length > 0 && (
-                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                          {item.platforms.map((platform) => (
-                            <span
-                              key={platform}
-                              className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]"
-                            >
-                              {platform}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {item.error && (
-                        <div className={`mt-1 rounded-lg px-3 py-2 text-sm ${
-                          item.status === 'filtered'
-                            ? 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#78350F]/40 dark:text-[#FCD34D]'
-                            : 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
-                        }`}>
-                          {item.error}
-                        </div>
-                      )}
+                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                        <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${statusConfig.bg} ${statusConfig.color}`}>
+                          <StatusIcon className="w-4 h-4" />
+                          {statusConfig.label}
+                        </span>
+                        {!selection.selectionMode && item.status === 'failed' && item.feedId && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(event) => handleRetry(event, item)}
+                            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                          >
+                            Retry
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                      <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${statusConfig.bg} ${statusConfig.color}`}>
-                        <StatusIcon className="w-4 h-4" />
-                        {statusConfig.label}
-                      </span>
-                      {!selection.selectionMode && item.status === 'failed' && item.feedId && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(event) => handleRetry(event, item)}
-                          className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-                        >
-                          Retry
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </SwipeableActivityCard>
+                  </SwipeableActivityCard>
+                </div>
               );
             })
           )}

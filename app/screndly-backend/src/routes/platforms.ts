@@ -1260,12 +1260,13 @@ router.delete('/:platform', authenticate, async (req, res) => {
 
 // GET /api/platforms/auth/:platform (Protected)
 // Returns the OAuth URL to redirect the user to
-router.get('/auth/:platform', authenticate, async (req, res) => {
+router.get('/auth/:platform', async (req, res) => {
     try {
         const platform = normalizePlatform(req.params.platform);
         if (!platform) throw new Error('Unsupported platform');
 
         const redirectUri = getRedirectUri(getRequestedRedirectUri(req.query.redirectUri));
+        const shouldRedirect = req.query.redirect === '1' || req.query.redirect === 'true';
         let oauthUrl = '';
         const stateFor = (codeVerifier?: string) => createOAuthState(platform, redirectUri, codeVerifier);
 
@@ -1354,9 +1355,24 @@ router.get('/auth/:platform', authenticate, async (req, res) => {
                 throw new Error('Unsupported platform for automated OAuth');
         }
 
+        if (shouldRedirect) {
+            return res.redirect(oauthUrl);
+        }
+
         res.json({ success: true, data: { url: oauthUrl } });
     } catch (error: any) {
         console.error('OAuth URL Error:', error);
+        const requestedRedirect = getRequestedRedirectUri(req.query.redirectUri);
+        const redirectUri = requestedRedirect ? getRedirectUri(requestedRedirect) : null;
+        const shouldRedirect = req.query.redirect === '1' || req.query.redirect === 'true';
+
+        if (shouldRedirect && redirectUri) {
+            const callbackUrl = new URL(redirectUri);
+            callbackUrl.searchParams.set('error', 'oauth_start_failed');
+            callbackUrl.searchParams.set('error_description', error.message || 'Failed to generate OAuth URL');
+            return res.redirect(callbackUrl.toString());
+        }
+
         res.status(500).json({ success: false, error: { message: error.message || 'Failed to generate OAuth URL' } });
     }
 });

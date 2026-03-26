@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import { getActiveNotificationWhere, getExpiredNotificationWhere, purgeExpiredNotifications } from '../services/notification-retention.service';
 import { authenticate } from '../middleware/auth';
 import { webPushService } from '../services/web-push.service';
+import { getRSSActivity } from '../services/rss.service';
 
 const router = Router();
 
@@ -23,6 +24,24 @@ function inferExpectedItemCount(message: string): number {
     return Math.min(value, 20);
 }
 
+function extractQuotedTitle(value: string): string | null {
+    const smartQuoteMatch = value.match(/[“"]([^”"]+)[”"]/);
+    if (smartQuoteMatch?.[1]) {
+        return smartQuoteMatch[1].trim();
+    }
+
+    return null;
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function inferRssFeedName(title: string): string | null {
+    const match = title.match(/^RSS:\s*(.+)$/i);
+    return match?.[1]?.trim() || null;
+}
+
 function mapActionTarget(actionPage?: string | null, source?: string | null) {
     if (actionPage === '/tmdb-feeds' || source === 'tmdb') {
         return { page: 'feeds', tab: 'tmdb' as const };
@@ -41,12 +60,59 @@ function mapActionTarget(actionPage?: string | null, source?: string | null) {
 }
 
 async function buildNotificationDetail(notification: any) {
-    const actionTarget = mapActionTarget(notification.actionPage, notification.source);
+    const defaultActionTarget = mapActionTarget(notification.actionPage, notification.source);
+
+    if (notification.source === 'rss') {
+        const feedName = inferRssFeedName(notification.title || '');
+        const quotedTitle = extractQuotedTitle(notification.message || '');
+        const createdAt = new Date(notification.createdAt);
+        const windowStart = new Date(createdAt.getTime() - 2 * 60 * 60 * 1000);
+        const windowEnd = new Date(createdAt.getTime() + 2 * 60 * 60 * 1000);
+        const activity = await getRSSActivity(250);
+
+        const relatedItems = activity.items.filter((item) => {
+            if (item.status !== 'published') {
+                return false;
+            }
+
+            const itemTime = new Date(item.timestamp).getTime();
+            if (Number.isFinite(itemTime) && (itemTime < windowStart.getTime() || itemTime > windowEnd.getTime())) {
+                return false;
+            }
+
+            if (feedName && item.feedName !== feedName) {
+                return false;
+            }
+
+            if (quotedTitle) {
+                const titlePattern = new RegExp(`^${escapeRegExp(quotedTitle)}$`, 'i');
+                return titlePattern.test(item.title);
+            }
+
+            return true;
+        }).slice(0, 10);
+
+        return {
+            kind: 'generic',
+            actionTarget: relatedItems.length > 0
+                ? { page: 'rss-activity', itemId: relatedItems[0].id }
+                : defaultActionTarget,
+            relatedItems: relatedItems.map((item) => ({
+                id: item.id,
+                title: item.title,
+                link: item.link,
+                source: item.feedName,
+                status: item.status,
+                imageUrl: item.imageUrl,
+                createdAt: item.timestamp,
+            }))
+        };
+    }
 
     if (notification.source !== 'tmdb') {
         return {
             kind: 'generic',
-            actionTarget,
+            actionTarget: defaultActionTarget,
             relatedItems: []
         };
     }
@@ -84,7 +150,7 @@ async function buildNotificationDetail(notification: any) {
 
     return {
         kind: 'tmdb_refresh',
-        actionTarget,
+        actionTarget: defaultActionTarget,
         relatedItems: relatedItems.map((item) => ({
             id: item.id,
             title: item.title,

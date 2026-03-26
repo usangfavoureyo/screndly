@@ -37,11 +37,13 @@ export interface NotificationAction {
 interface NotificationActionTarget {
   page: string;
   tab?: 'rss' | 'tmdb';
+  itemId?: string;
 }
 
 interface NotificationRelatedItem {
   id: string;
   title: string;
+  link?: string;
   mediaType?: string;
   source?: string;
   status?: string;
@@ -68,7 +70,7 @@ interface NotificationPanelProps {
   onDeleteNotification?: (id: string) => void;
   onDeleteNotifications?: (ids: string[]) => Promise<void>;
   onNotificationAction?: (notificationId: string, actionType: string) => void;
-  onOpenPage?: (page: string, tab?: 'rss' | 'tmdb') => void;
+  onOpenPage?: (page: string, tab?: 'rss' | 'tmdb', itemId?: string) => void;
 }
 
 function getSourceLabel(source: NotificationSource) {
@@ -96,6 +98,7 @@ function getSourceLabel(source: NotificationSource) {
 
 function getTargetLabel(target?: NotificationActionTarget | null) {
   if (!target) return 'Open';
+  if (target.page === 'rss-activity') return 'Open RSS Activity';
   if (target.page === 'feeds' && target.tab === 'tmdb') return 'Open TMDb Feeds';
   if (target.page === 'feeds' && target.tab === 'rss') return 'Open RSS Feeds';
   if (target.page === 'channels') return 'Open Channels';
@@ -538,7 +541,7 @@ export function NotificationPanel({
               <button
                 onClick={() => {
                   haptics.medium();
-                  onOpenPage(actionTarget.page, actionTarget.tab);
+                  onOpenPage(actionTarget.page, actionTarget.tab, actionTarget.itemId);
                   onClose();
                 }}
                 className="mt-4 inline-flex items-center gap-2 text-sm text-[#ec1e24] hover:text-[#d11b20]"
