@@ -1,4 +1,4 @@
-import { LayoutDashboard, Youtube, Share2, Rss, Film, GripVertical, Image } from 'lucide-react';
+import { LayoutDashboard, ChannelsIcon, Share2, Rss, Film, GripVertical, Image } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import { useState, useEffect, useRef } from 'react';
@@ -18,7 +18,7 @@ interface NavItem {
 export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: MobileBottomNavProps) {
   const defaultNavItems: NavItem[] = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'channels', icon: Youtube, label: 'Channels' },
+    { id: 'channels', icon: ChannelsIcon, label: 'Channels' },
     { id: 'platforms', icon: Share2, label: 'Platforms' },
     { id: 'feeds', icon: Rss, label: 'Feeds' },
     { id: 'design-studio', icon: Image, label: 'Design Studio' },

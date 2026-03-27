@@ -453,8 +453,6 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
       if (!response.success || !response.data) {
         throw new Error(response.error?.message || 'Failed to retry RSS activity item');
       }
-
-      toast.success('RSS activity retry started');
       return response.data;
     } catch (err) {
       console.error('Error retrying RSS activity item:', err);

@@ -2079,7 +2079,7 @@ function mergeRSSActivityItems(primary: RSSActivityItem[], fallback: RSSActivity
   const seen = new Set<string>();
 
   for (const item of [...primary, ...fallback]) {
-    const dedupeKey = `${item.feedId || 'unknown'}:${getRSSActivityDedupeKey(item)}:${item.status}`;
+    const dedupeKey = `${item.feedId || 'unknown'}:${getRSSActivityDedupeKey(item)}`;
     if (seen.has(dedupeKey)) {
       continue;
     }

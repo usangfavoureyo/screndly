@@ -1,4 +1,4 @@
-import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, ChannelsIcon, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { useRef } from 'react';
 import { haptics } from '../utils/haptics';
@@ -8,7 +8,7 @@ import { cn } from './ui/utils';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'channels', label: 'Channels', icon: Youtube },
+  { id: 'channels', label: 'Channels', icon: ChannelsIcon },
   { id: 'platforms', label: 'Platforms', icon: Share2 },
   { id: 'feeds', label: 'Feeds', icon: Rss },
   { id: 'design-studio', label: 'Design Studio', icon: Image },
@@ -92,7 +92,7 @@ export function Navigation({
               )}
               aria-label="Go to dashboard"
             >
-              <img src={brandIcon} alt="Screndly" className="h-10 w-10 rounded-md object-contain transition-transform duration-300" />
+              <img src={brandIcon} alt="Screndly" className="h-9 w-9 rounded-md object-contain transition-transform duration-300" />
             </button>
 
             {isDesktop && isCollapsed && (
@@ -211,7 +211,7 @@ export function Navigation({
               className="flex items-center justify-center transition-transform duration-200 hover:scale-[1.03] active:scale-95"
               aria-label="Go to dashboard"
             >
-              <img src={brandIcon} alt="Screndly" className="h-11 w-11 rounded-md object-contain" />
+              <img src={brandIcon} alt="Screndly" className="h-9.5 w-9.5 rounded-md object-contain" />
             </button>
           </div>
 

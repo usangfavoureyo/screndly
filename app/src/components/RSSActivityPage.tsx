@@ -210,6 +210,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
       const retriedItem = await retryActivity(item.id);
       if (retriedItem) {
         await loadActivity();
+        if (retriedItem.status === 'published') {
+          toast.success('RSS item published on retry');
+        } else if (retriedItem.status === 'pending') {
+          toast.info(retriedItem.error || 'RSS item retried. Remaining platforms are still pending.');
+        } else {
+          toast.error(retriedItem.error || 'RSS item retry failed');
+        }
       }
     } finally {
       setRetryingItemId(null);
