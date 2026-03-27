@@ -86,6 +86,9 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
 const CONTRAST_RATIO_THRESHOLD = 2.6;
+const THUMBNAIL_CONFIG_STORAGE_PREFIX = 'screndly_thumbnailConfig_';
+const LOCAL_SETTINGS_KEY = 'screndlySettings';
+const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
 const BRANDED_TEXT_REGION = {
   x: 0.04,
   y: 0.58,
@@ -377,7 +380,12 @@ export function detectOverlayType(title: string): BrandedOverlayType {
   return 'trailer';
 }
 
-function inferTrailerLabel(title: string): string {
+export function getOverlayLabelForTitle(title: string): string {
+  const normalized = normalizeOverlayTitle(title);
+  if (normalized.includes('featurette')) {
+    return 'OFFICIAL FEATURETTE';
+  }
+
   const overlayType = detectOverlayType(title);
   if (overlayType === 'sneak_peek') {
     return 'SNEAK PEEK';
@@ -389,6 +397,38 @@ function inferTrailerLabel(title: string): string {
     return 'OFFICIAL CLIP';
   }
   return 'OFFICIAL TRAILER';
+}
+
+function parseThumbnailConfig(
+  value: unknown,
+  platform: ThumbnailPlatformConfig
+): ThumbnailConfig | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  if (!parsed || typeof parsed !== 'object') {
+    return null;
+  }
+
+  return {
+    ...DEFAULT_THUMBNAIL_CONFIG[platform],
+    ...parsed,
+    platform,
+  };
+}
+
+function getThumbnailConfigFromSettingsSnapshot(
+  snapshot: string | null,
+  platform: ThumbnailPlatformConfig
+): ThumbnailConfig | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const parsed = JSON.parse(snapshot) as Record<string, unknown>;
+  return parseThumbnailConfig(parsed?.[`thumbnailConfig_${platform}`], platform);
 }
 
 function getBrandedAssetKey(
@@ -466,18 +506,20 @@ export function getStoredThumbnailConfig(platform: ThumbnailPlatformConfig): Thu
   }
 
   try {
-    const saved = localStorage.getItem(`screndly_thumbnailConfig_${platform}`);
-    if (!saved) {
-      return fallback;
+    const directConfig = parseThumbnailConfig(
+      localStorage.getItem(`${THUMBNAIL_CONFIG_STORAGE_PREFIX}${platform}`),
+      platform
+    );
+    if (directConfig) {
+      return directConfig;
     }
 
-    const parsed = JSON.parse(saved);
-    if (parsed && typeof parsed === 'object') {
-      return {
-        ...fallback,
-        ...parsed,
-        platform,
-      };
+    const embeddedConfig = getThumbnailConfigFromSettingsSnapshot(
+      localStorage.getItem(LOCAL_SETTINGS_KEY) ?? localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY),
+      platform
+    );
+    if (embeddedConfig) {
+      return embeddedConfig;
     }
   } catch (error) {
     console.error(`Failed to load thumbnail config for ${platform}:`, error);
@@ -485,7 +527,6 @@ export function getStoredThumbnailConfig(platform: ThumbnailPlatformConfig): Thu
 
   return fallback;
 }
-
 export async function shouldUseThumbnailLogoShadow(
   config: ThumbnailConfig,
   options: Pick<ThumbnailRenderOptions, 'backdropUrl' | 'logoUrl'> & {
@@ -645,7 +686,7 @@ export async function renderThumbnailPreviewResult(
   }
 
   if (config.showTrailerTypeText) {
-    const trailerLabel = options.trailerLabel || inferTrailerLabel(options.title || '');
+    const trailerLabel = options.trailerLabel || getOverlayLabelForTitle(options.title || '');
     const trailerLabelMetrics = getTrailerLabelMetrics(config, width, height);
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';

@@ -3,9 +3,12 @@
  */
 
 import {
+  getOverlayLabelForTitle,
   getStoredThumbnailConfig,
-  renderThumbnailDataUrl,
+  renderThumbnailPreviewResult,
   type ThumbnailConfig,
+  type BrandedOverlayAssetKey,
+  type BrandedOverlayType,
   type ThumbnailPlatformConfig,
 } from './thumbnailRenderer';
 
@@ -24,6 +27,8 @@ interface GeneratedThumbnail {
   height: number;
   platform: ThumbnailPlatform;
   config: ThumbnailConfig;
+  detectedOverlayType?: BrandedOverlayType;
+  resolvedOverlayAssetKey?: BrandedOverlayAssetKey;
 }
 
 function mapPlatformToConfigType(platform: ThumbnailPlatform): ThumbnailPlatformConfig {
@@ -49,20 +54,6 @@ function getPlatformDimensions(platform: ThumbnailPlatform): { width: number; he
     default:
       return { width: 1280, height: 720 };
   }
-}
-
-function getTrailerTypeLabel(title: string): string {
-  const normalized = title.toLowerCase();
-  if (normalized.includes('teaser')) {
-    return 'OFFICIAL TEASER';
-  }
-  if (normalized.includes('featurette')) {
-    return 'OFFICIAL FEATURETTE';
-  }
-  if (normalized.includes('clip')) {
-    return 'OFFICIAL CLIP';
-  }
-  return 'OFFICIAL TRAILER';
 }
 
 export function getThumbnailConfig(platform: ThumbnailPlatformConfig): ThumbnailConfig {
@@ -96,24 +87,29 @@ export async function generateThumbnailsForPublish(
       const configType = mapPlatformToConfigType(platform);
       const config = getThumbnailConfig(configType);
       const dimensions = getPlatformDimensions(platform);
-      const thumbnailUrl = await renderThumbnailDataUrl(config, {
+      const previewResult = await renderThumbnailPreviewResult(config, {
         width: dimensions.width,
         height: dimensions.height,
         backdropUrl: video.thumbnailUrl,
         title: video.title,
-        trailerLabel: getTrailerTypeLabel(video.title),
+        trailerLabel: getOverlayLabelForTitle(video.title),
         format: 'jpeg',
       });
 
       result[platform] = {
-        url: thumbnailUrl,
+        url: previewResult.dataUrl,
         width: dimensions.width,
         height: dimensions.height,
         platform,
         config,
+        detectedOverlayType: previewResult.detectedType,
+        resolvedOverlayAssetKey: previewResult.resolvedAssetKey,
       };
 
-      console.log(`Generated ${platform} thumbnail with ${config.logoPosition} at ${config.maxLogoSize}%`);
+      const overlaySummary = previewResult.detectedType
+        ? ` using ${previewResult.detectedType}${previewResult.resolvedAssetKey ? ` (${previewResult.resolvedAssetKey})` : ''}`
+        : '';
+      console.log(`Generated ${platform} thumbnail with ${config.logoPosition} at ${config.maxLogoSize}%${overlaySummary}`);
     } catch (error) {
       console.error(`Failed to generate thumbnail for ${platform}:`, error);
     }

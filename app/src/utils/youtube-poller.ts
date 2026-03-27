@@ -268,6 +268,14 @@ class YouTubeRSSPoller {
 
       console.log('🎨 Generating thumbnails with overlay...');
       const thumbnails = await generateThumbnailsForPublish(videoMetadata, platformSettings, enabledPlatforms);
+      const youtubeThumbnail = thumbnails.YouTube;
+
+      if (youtubeThumbnail?.detectedOverlayType) {
+        console.log(
+          `🎞️ YouTube branded overlay resolved from title as ${youtubeThumbnail.detectedOverlayType}`
+          + `${youtubeThumbnail.resolvedOverlayAssetKey ? ` (${youtubeThumbnail.resolvedOverlayAssetKey})` : ''}`
+        );
+      }
 
       // Log success (In real app, we would upload 'thumbnails' here)
       console.log('✨ Thumbnails generated successfully:', Object.keys(thumbnails).filter(k => thumbnails[k as keyof typeof thumbnails]));

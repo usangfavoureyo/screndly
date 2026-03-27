@@ -742,6 +742,14 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [settings, isLoading, backendAvailable]);
 
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    syncDedicatedThumbnailConfigStorage(settings);
+  }, [isLoading, settings.thumbnailConfig_youtube, settings.thumbnailConfig_x]);
+
   const updateSetting = async (key: string, value: any) => {
     // Track change for optimization
     const previousValue = settings[key as keyof Settings];
@@ -836,6 +844,30 @@ function getLocalSettings(): Partial<Settings> {
     return saved ? normalizeSettingsModels(JSON.parse(saved)) : {};
   } catch {
     return {};
+  }
+}
+
+function syncDedicatedThumbnailConfigStorage(settings: Partial<Settings>) {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+
+  for (const platform of ['youtube', 'x'] as const) {
+    const settingsKey = `thumbnailConfig_${platform}` as const;
+    const storageKey = `screndly_thumbnailConfig_${platform}`;
+    const value = settings[settingsKey];
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      localStorage.setItem(storageKey, value);
+      continue;
+    }
+
+    if (value && typeof value === 'object') {
+      localStorage.setItem(storageKey, JSON.stringify(value));
+      continue;
+    }
+
+    localStorage.removeItem(storageKey);
   }
 }
 
