@@ -218,7 +218,7 @@ export class PublisherService {
     }
 
     private async preflightRemoteImage(source: string, platform: string): Promise<ImagePreflightResult> {
-        const normalizedSource = this.normalizeRemoteMediaUrl(source);
+        const normalizedSource = await getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(source));
         const response = await fetch(normalizedSource);
         if (!response.ok) {
             throw new Error(`preflight fetch failed (${response.status})`);
@@ -389,7 +389,7 @@ export class PublisherService {
         let originalName: string;
 
         if (/^https?:\/\//i.test(cacheKey)) {
-            const remoteUrl = this.normalizeRemoteMediaUrl(cacheKey);
+            const remoteUrl = await getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(cacheKey));
             const response = await fetch(remoteUrl);
             if (!response.ok) {
                 throw new Error(`Failed to download remote image (${response.status})`);

@@ -153,7 +153,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
 
   return (
     <nav
-      className={`lg:hidden fixed left-1/2 z-50 w-[min(92vw,30rem)] -translate-x-1/2 overflow-hidden rounded-[1.75rem] border border-black/10 bg-white/90 shadow-[0_22px_46px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_22px_50px_rgba(0,0,0,0.54)] ${scrollDirection === 'down' ? 'translate-y-[calc(100%+1.75rem)]' : 'translate-y-0'
+      className={`lg:hidden fixed left-1/2 z-50 w-[min(92vw,30rem)] -translate-x-1/2 overflow-hidden rounded-[999px] border border-black/10 bg-white/90 shadow-[0_22px_46px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_22px_50px_rgba(0,0,0,0.54)] ${scrollDirection === 'down' ? 'translate-y-[calc(100%+1.75rem)]' : 'translate-y-0'
         }`}
       style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.9rem)' }}
       aria-label="Main navigation"

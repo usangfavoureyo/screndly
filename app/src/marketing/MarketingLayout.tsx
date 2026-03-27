@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Menu, X, ArrowUpRight, Moon, Sun } from "lucide-react";
 import { motion } from "motion/react";
+import logoLight from "../assets/screndly-logo-red-black.png";
+import logoDark from "../assets/screndly-logo-red-white.png";
 
 const NAV_ITEMS = [
   { label: "Features", href: "/#features" },
@@ -21,6 +23,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [logoFailed, setLogoFailed] = useState(false);
   const initialThemeRef = useRef<{
     datasetTheme?: string;
     hadDark: boolean;
@@ -107,15 +110,19 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
       <header className={`sticky top-0 z-50 backdrop-blur ${headerClasses}`}>
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 lg:px-10">
           <a href="/" className="flex items-center gap-3">
-            <img
-              src={
-                theme === "dark"
-                  ? "/marketing/screndly-logo-red-white.png"
-                  : "/marketing/screndly-logo-red-black.png"
-              }
-              alt="Screndly"
-              className="h-6 w-auto md:h-7"
-            />
+            {!logoFailed ? (
+              <img
+                src={theme === "dark" ? logoDark : logoLight}
+                alt="Screndly"
+                className="h-6 w-auto md:h-7"
+                loading="eager"
+                onError={() => setLogoFailed(true)}
+              />
+            ) : (
+              <span className="text-lg font-semibold tracking-[0.2em] uppercase text-[var(--marketing-text)]">
+                Screndly
+              </span>
+            )}
           </a>
           <nav className="hidden items-center gap-6 text-sm font-medium text-[var(--marketing-muted)] md:flex">
             {NAV_ITEMS.map((item) => (

@@ -783,8 +783,62 @@ function isBlockedFeedFallbackUrl(url: string): boolean {
   return false;
 }
 
-function filterAllowedFeedFallbackUrls(urls: string[]): string[] {
-  return urls.filter((url) => !isBlockedFeedFallbackUrl(url));
+function isGenericBrandingFeedFallback(
+  url: string,
+  analysis: RSSSubjectAnalysis,
+  article: RSSImageSelectionArticle
+): boolean {
+  if (analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop' || analysis.allowLogoOnly) {
+    return false;
+  }
+
+  const urlText = normalizeText(url);
+  if (!urlText) {
+    return true;
+  }
+
+  const projectTerms = uniqueStrings([
+    analysis.contextProject,
+    analysis.visualSubject,
+    analysis.primarySubject.name,
+    article.title,
+  ]);
+  const hasProjectSignal = projectTerms.some((term) => entityMatches(urlText, term));
+  if (hasProjectSignal) {
+    return false;
+  }
+
+  const studioMatchCount = analysis.relevantStudios.filter((studio) => entityMatches(urlText, studio)).length;
+  const hasBrandingSignal = containsKeyword(urlText, [
+    ...LOGO_KEYWORDS,
+    ...OFFICIAL_STUDIO_TERMS,
+    'studio',
+    'network',
+    'streaming',
+    'service',
+    'channel',
+    'banner',
+  ]);
+
+  return studioMatchCount > 0 && hasBrandingSignal;
+}
+
+function filterAllowedFeedFallbackUrls(
+  urls: string[],
+  analysis?: RSSSubjectAnalysis,
+  article?: RSSImageSelectionArticle
+): string[] {
+  return urls.filter((url) => {
+    if (isBlockedFeedFallbackUrl(url)) {
+      return false;
+    }
+
+    if (analysis && article && isGenericBrandingFeedFallback(url, analysis, article)) {
+      return false;
+    }
+
+    return true;
+  });
 }
 
 function shouldUseFeedFallbackImages(_article: RSSImageSelectionArticle): boolean {
@@ -3222,13 +3276,16 @@ export async function resolveRelevantRSSImages(
     model?: AIModel | string;
   }
 ): Promise<RSSResolvedImage[]> {
-  const fallbackImages = shouldUseFeedFallbackImages(article)
-    ? filterAllowedFeedFallbackUrls(
-      dedupeUrls(article.fallbackImages || [])
-    )
-    : [];
   const limit = Math.max(options.limit, 1);
   const sources = getEnabledImageSources(options);
+  const analysis = await extractSubjectAnalysis(article, options.model);
+  const fallbackImages = shouldUseFeedFallbackImages(article)
+    ? filterAllowedFeedFallbackUrls(
+      dedupeUrls(article.fallbackImages || []),
+      analysis,
+      article
+    )
+    : [];
   const revealDrivenMode = getRevealDrivenArticleMode(article);
 
   if (revealDrivenMode && fallbackImages.length > 0) {
@@ -3249,7 +3306,6 @@ export async function resolveRelevantRSSImages(
     return buildFeedFallbackImages(fallbackImages, limit);
   }
 
-  const analysis = await extractSubjectAnalysis(article, options.model);
   const shouldUseStructuredPairing = limit >= 2 &&
     (options.smartCount || isStreamingAvailabilityStory(article, analysis));
 

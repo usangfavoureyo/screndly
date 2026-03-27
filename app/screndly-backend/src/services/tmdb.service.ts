@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import sharp from 'sharp';
 import { env } from '../lib/env';
 import prisma from '../lib/prisma';
 import { getSecretSetting } from '../lib/settings';
@@ -38,8 +39,12 @@ const TMDB_DISCOVER_MAX_PAGES = 3;
 const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
 const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
 const TMDB_THEATRICAL_RELEASE_TYPES = [3, 2] as const;
+const TMDB_IMAGE_SIMILARITY_SIZE = 32;
+const TMDB_IMAGE_MEAN_DIFF_THRESHOLD = 0.12;
+const TMDB_IMAGE_HASH_DIFF_THRESHOLD = 0.18;
 const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
+const tmdbImageFingerprintCache = new Map<string, Promise<Uint8Array | null>>();
 
 type MediaType = 'movie' | 'tv';
 type TMDbImageMode = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
@@ -771,6 +776,110 @@ function buildTMDbImageUrl(path: string | null | undefined): string {
     return path ? `${TMDB_IMAGE_BASE}${path}` : '';
 }
 
+async function getTMDbImageFingerprint(url: string): Promise<Uint8Array | null> {
+    if (!url) {
+        return null;
+    }
+
+    const cached = tmdbImageFingerprintCache.get(url);
+    if (cached) {
+        return cached;
+    }
+
+    const pending = (async () => {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                return null;
+            }
+
+            const buffer = Buffer.from(await response.arrayBuffer());
+            const normalized = await sharp(buffer, { animated: false })
+                .rotate()
+                .resize(TMDB_IMAGE_SIMILARITY_SIZE, TMDB_IMAGE_SIMILARITY_SIZE, {
+                    fit: 'contain',
+                    background: { r: 255, g: 255, b: 255, alpha: 1 },
+                    withoutEnlargement: false,
+                })
+                .greyscale()
+                .raw()
+                .toBuffer();
+
+            return Uint8Array.from(normalized);
+        } catch {
+            return null;
+        }
+    })();
+
+    tmdbImageFingerprintCache.set(url, pending);
+    return pending;
+}
+
+function getNormalizedMeanDifference(left: Uint8Array, right: Uint8Array): number {
+    const length = Math.min(left.length, right.length);
+    if (length === 0) {
+        return 1;
+    }
+
+    let total = 0;
+    for (let index = 0; index < length; index += 1) {
+        total += Math.abs(left[index] - right[index]);
+    }
+
+    return total / (length * 255);
+}
+
+function getAverageHashBits(values: Uint8Array): Uint8Array {
+    if (values.length === 0) {
+        return new Uint8Array();
+    }
+
+    let total = 0;
+    for (const value of values) {
+        total += value;
+    }
+    const average = total / values.length;
+
+    return Uint8Array.from(values, (value) => (value >= average ? 1 : 0));
+}
+
+function getNormalizedHashDifference(left: Uint8Array, right: Uint8Array): number {
+    const leftHash = getAverageHashBits(left);
+    const rightHash = getAverageHashBits(right);
+    const length = Math.min(leftHash.length, rightHash.length);
+    if (length === 0) {
+        return 1;
+    }
+
+    let diffCount = 0;
+    for (let index = 0; index < length; index += 1) {
+        if (leftHash[index] !== rightHash[index]) {
+            diffCount += 1;
+        }
+    }
+
+    return diffCount / length;
+}
+
+async function areTMDbImagesVisuallySimilar(primaryUrl: string, secondaryUrl: string): Promise<boolean> {
+    if (!primaryUrl || !secondaryUrl || primaryUrl === secondaryUrl) {
+        return Boolean(primaryUrl) && primaryUrl === secondaryUrl;
+    }
+
+    const [primaryFingerprint, secondaryFingerprint] = await Promise.all([
+        getTMDbImageFingerprint(primaryUrl),
+        getTMDbImageFingerprint(secondaryUrl),
+    ]);
+
+    if (!primaryFingerprint || !secondaryFingerprint) {
+        return false;
+    }
+
+    const meanDifference = getNormalizedMeanDifference(primaryFingerprint, secondaryFingerprint);
+    const hashDifference = getNormalizedHashDifference(primaryFingerprint, secondaryFingerprint);
+    return meanDifference <= TMDB_IMAGE_MEAN_DIFF_THRESHOLD || hashDifference <= TMDB_IMAGE_HASH_DIFF_THRESHOLD;
+}
+
 async function fetchBestLogoUrl(mediaType: MediaType, tmdbId: number): Promise<string> {
     try {
         const details = await tmdbFetch<TMDbImagesResponse>(
@@ -826,6 +935,13 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     }
 
     if (selectedMode === 'poster_backdrop') {
+        if (poster && backdrop && await areTMDbImagesVisuallySimilar(poster, backdrop)) {
+            console.log(`[TMDb] Skipping visually similar poster/backdrop pair for ${candidate.mediaType}:${candidate.tmdbId}`);
+            return makeSelection([
+                { imageUrl: poster, imageType: 'poster' },
+            ]);
+        }
+
         return makeSelection([
             { imageUrl: poster || backdrop, imageType: poster ? 'poster' : 'backdrop' },
             ...(poster && backdrop ? [{ imageUrl: backdrop, imageType: 'backdrop' as const }] : []),

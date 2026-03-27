@@ -69,12 +69,12 @@
 
   .marketing-root[data-marketing-theme="dark"] {
     --marketing-bg: #000000;
-    --marketing-surface: #0b0b0b;
-    --marketing-surface-alt: #111111;
-    --marketing-border: rgba(255, 255, 255, 0.12);
+    --marketing-surface: #0a0a0a;
+    --marketing-surface-alt: #121212;
+    --marketing-border: rgba(255, 255, 255, 0.1);
     --marketing-text: #f5f5f5;
-    --marketing-muted: #b8b8b8;
-    --marketing-muted-strong: #9a9a9a;
+    --marketing-muted: #b0b0b0;
+    --marketing-muted-strong: #8a8a8a;
   }
 
   .dark {
