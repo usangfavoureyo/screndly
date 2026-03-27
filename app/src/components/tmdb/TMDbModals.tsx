@@ -44,7 +44,7 @@ import { RedSpinner } from '../PageLoader';
  * - Re-renders cascading to feed cards
  */
 export function TMDbModals() {
-    const { posts, updatePost, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
+    const { posts, fetchPosts, updatePost, updatePostStatus, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
     const { showUndo } = useUndo();
 
     // Modal states from store
@@ -100,6 +100,8 @@ export function TMDbModals() {
     useEffect(() => {
         if (platformSelectModal.open && platformSelectModal.feed) {
             setSelectedPlatforms(getInitialTMDbPlatformKeys(platformSelectModal.feed.source, platformSelectModal.feed.platforms));
+        } else if (!platformSelectModal.open) {
+            setSelectedPlatforms([]);
         }
     }, [platformSelectModal.open, platformSelectModal.feed]);
 
@@ -281,21 +283,23 @@ export function TMDbModals() {
 
                 if (publishResult.postedPlatforms.length === 0) {
                     await updatePost(platformSelectModal.feed.id, {
-                        status: 'failed',
                         platforms: publishResult.platformNames,
-                        publishedTime: undefined,
-                        errorMessage: publishResult.errorMessage || 'Failed to publish TMDb post',
                     });
+                    await updatePostStatus(
+                        platformSelectModal.feed.id,
+                        'failed',
+                        undefined,
+                        publishResult.errorMessage || 'Failed to publish TMDb post',
+                    );
                     throw new Error(publishResult.errorMessage || 'Failed to publish TMDb post');
                 }
 
                 const publishedTime = new Date().toISOString();
                 await updatePost(platformSelectModal.feed.id, {
-                    status: 'published',
                     platforms: publishResult.platformNames,
-                    publishedTime,
-                    errorMessage: undefined,
                 });
+                await updatePostStatus(platformSelectModal.feed.id, 'published', publishedTime);
+                await fetchPosts({ silent: true });
 
                 haptics.success();
                 closePlatformSelect();

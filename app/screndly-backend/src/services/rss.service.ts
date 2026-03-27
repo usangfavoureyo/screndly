@@ -78,6 +78,9 @@ interface RSSItem {
   imageSource?: RSSResolvedImage['source'];
   imageReason?: string;
   selectedImages?: RSSResolvedImage[];
+  generatedCaption?: string;
+  platformPostIds?: Record<string, string>;
+  platformResults?: PublishResult[];
   contentHtml?: string;
   author?: string;
   guid?: string;
@@ -796,6 +799,36 @@ function applyResolvedImagesToRSSItem(item: RSSItem, images: RSSResolvedImage[])
   };
 }
 
+function mergePlatformPostIds(
+  previous: Record<string, string> | undefined,
+  next: Record<string, string>
+): Record<string, string> | undefined {
+  const merged = {
+    ...(previous || {}),
+    ...next,
+  };
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function mergePlatformResults(
+  previous: PublishResult[] | undefined,
+  next: PublishResult[]
+): PublishResult[] | undefined {
+  const merged = new Map<string, PublishResult>();
+
+  for (const result of previous || []) {
+    merged.set(result.platform, result);
+  }
+
+  for (const result of next) {
+    merged.set(result.platform, result);
+  }
+
+  const values = Array.from(merged.values());
+  return values.length > 0 ? values : undefined;
+}
+
 function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolean> | null | undefined): string[] {
   const platformMap = platforms ?? {};
   return Object.entries(platformMap)
@@ -1457,6 +1490,16 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
       source: image.source,
       score: image.score ?? null,
     })) ?? null,
+    generatedCaption: item.generatedCaption ?? null,
+    platformPostIds: item.platformPostIds ?? null,
+    platformResults: item.platformResults?.map((result) => ({
+      platform: result.platform,
+      status: result.status,
+      error: result.error ?? null,
+      id: result.id ?? null,
+      url: result.url ?? null,
+      postedAt: result.postedAt,
+    })) ?? null,
     contentHtml: item.contentHtml ?? null,
     author: item.author ?? null,
     guid: item.guid ?? null,
@@ -1508,6 +1551,39 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
             };
           })
           .filter((entry): entry is RSSResolvedImage => Boolean(entry))
+      : undefined,
+    generatedCaption: typeof value.generatedCaption === 'string' ? value.generatedCaption : undefined,
+    platformPostIds: value.platformPostIds && typeof value.platformPostIds === 'object' && !Array.isArray(value.platformPostIds)
+      ? Object.fromEntries(
+          Object.entries(value.platformPostIds as Record<string, unknown>)
+            .filter(([, entry]) => typeof entry === 'string' && entry.trim())
+            .map(([platform, entry]) => [platform, String(entry).trim()])
+        )
+      : undefined,
+    platformResults: Array.isArray(value.platformResults)
+      ? value.platformResults
+          .map((entry): PublishResult | null => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+              return null;
+            }
+
+            const record = entry as Record<string, unknown>;
+            const platform = typeof record.platform === 'string' ? record.platform : null;
+            const status = record.status;
+            if (!platform || (status !== 'posted' && status !== 'failed' && status !== 'skipped')) {
+              return null;
+            }
+
+            return {
+              platform,
+              status,
+              error: typeof record.error === 'string' ? record.error : undefined,
+              id: typeof record.id === 'string' ? record.id : undefined,
+              url: typeof record.url === 'string' ? record.url : undefined,
+              postedAt: typeof record.postedAt === 'string' ? record.postedAt : new Date().toISOString(),
+            };
+          })
+          .filter((entry): entry is PublishResult => Boolean(entry))
       : undefined,
     contentHtml: typeof value.contentHtml === 'string' ? value.contentHtml : undefined,
     author: typeof value.author === 'string' ? value.author : undefined,
@@ -1605,6 +1681,9 @@ function buildRSSCaptionSystemPrompt(
   const constraints = [
     options.tone ? `- Preferred tone: ${options.tone}.` : null,
     options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
+    '- Focus on the single strongest lead angle from the headline rather than summarizing every sub-story in the article.',
+    '- If the article is a roundup, mention secondary items only when they are essential to the lead angle.',
+    '- Keep the wording aligned with the selected image so the caption and visual feel like the same story.',
   ].filter(Boolean).join('\n');
 
   if (!basePrompt && !constraints) {
@@ -1998,10 +2077,20 @@ function buildRSSPublishPayload(
     platforms.map((platform) => {
       const limit = platformImageCounts[platform] ?? 1;
       const platformImages = imageUrls.slice(0, limit);
-      return [platform, {
+      const override: {
+        imageUrls: string[];
+        imageUrl?: string;
+        link?: string;
+      } = {
         imageUrls: platformImages,
         imageUrl: platformImages[0],
-      }];
+      };
+
+      if (platform === 'Facebook' || platform === 'Threads' || platform === 'X') {
+        override.link = undefined;
+      }
+
+      return [platform, override];
     })
   );
 
@@ -2060,7 +2149,20 @@ async function attemptRSSPublish(
       errorMessage?: string;
     }
   | {
+      status: 'pending';
+      caption: string;
+      imageUrl?: string;
+      imageUrls: string[];
+      resolvedImages: RSSResolvedImage[];
+      successfulPlatforms: string[];
+      remainingPlatforms: string[];
+      platformPostIds: Record<string, string>;
+      platformResults: PublishResult[];
+      errorMessage: string;
+    }
+  | {
       status: 'failed';
+      caption?: string;
       imageUrl?: string;
       imageUrls: string[];
       resolvedImages: RSSResolvedImage[];
@@ -2070,6 +2172,23 @@ async function attemptRSSPublish(
     }
 > {
   try {
+    const previousPlatformPostIds = item.platformPostIds || {};
+    const previousPlatformResults = item.platformResults || [];
+    const remainingPlatforms = platforms.filter((platform) => !previousPlatformPostIds[platform]);
+
+    if (remainingPlatforms.length === 0) {
+      return {
+        status: 'published',
+        caption: item.generatedCaption || '',
+        imageUrl: item.imageUrl,
+        imageUrls: item.imageUrls || [],
+        resolvedImages: item.selectedImages || [],
+        successfulPlatforms: platforms,
+        platformPostIds: previousPlatformPostIds,
+        platformResults: previousPlatformResults,
+      };
+    }
+
     const publishImages = await resolveRSSItemImages(
       feed,
       item,
@@ -2081,7 +2200,7 @@ async function attemptRSSPublish(
       tone: runtimeSettings.rssCaptionTone,
       maxLength: runtimeSettings.rssCaptionMaxLength,
     });
-    const caption = await aiService.generateRSSCaption(
+    const caption = item.generatedCaption || await aiService.generateRSSCaption(
       {
         articleTitle: item.title,
         feedName: feed.name,
@@ -2094,34 +2213,56 @@ async function attemptRSSPublish(
     );
 
     const publishResults = await publisherService.publish(
-      platforms,
-      buildRSSPublishPayload(item, caption, publishImageUrls, feed, platforms)
+      remainingPlatforms,
+      buildRSSPublishPayload(item, caption, publishImageUrls, feed, remainingPlatforms)
     );
 
-    const successfulPlatforms = publishResults
+    const newlySuccessfulPlatforms = publishResults
       .filter((result) => result.status === 'posted')
       .map((result) => result.platform);
-    const platformPostIds = Object.fromEntries(
+    const platformPostIds = mergePlatformPostIds(
+      previousPlatformPostIds,
+      Object.fromEntries(
       publishResults
         .filter((result) => result.status === 'posted' && typeof result.id === 'string' && result.id.trim())
         .map((result) => [result.platform, result.id!.trim()] as const)
-    );
+      )
+    ) || {};
+    const platformResults = mergePlatformResults(previousPlatformResults, publishResults) || [];
     const failedResults = publishResults.filter((result) => result.status !== 'posted');
     const partialFailureMessage = failedResults.length > 0
       ? failedResults.map((result) => `${result.platform}: ${result.error || result.status}`).join('; ')
       : undefined;
+    const successfulPlatforms = platforms.filter((platform) => Boolean(platformPostIds[platform]));
+    const unresolvedPlatforms = platforms.filter((platform) => !platformPostIds[platform]);
 
     if (successfulPlatforms.length === 0) {
       return {
         status: 'failed',
+        caption,
         imageUrl: publishImageUrl,
         imageUrls: publishImageUrls,
         resolvedImages: publishImages,
         platformPostIds,
-        platformResults: publishResults,
+        platformResults,
         errorMessage: publishResults
           .map((result) => `${result.platform}: ${result.error || result.status}`)
           .join('; ') || 'Publishing failed.',
+      };
+    }
+
+    if (unresolvedPlatforms.length > 0) {
+      return {
+        status: 'pending',
+        caption,
+        imageUrl: publishImageUrl,
+        imageUrls: publishImageUrls,
+        resolvedImages: publishImages,
+        successfulPlatforms,
+        remainingPlatforms: unresolvedPlatforms,
+        platformPostIds,
+        platformResults,
+        errorMessage: partialFailureMessage || `Pending retry for ${unresolvedPlatforms.join(', ')}`,
       };
     }
 
@@ -2133,7 +2274,7 @@ async function attemptRSSPublish(
       resolvedImages: publishImages,
       successfulPlatforms,
       platformPostIds,
-      platformResults: publishResults,
+      platformResults,
       errorMessage: partialFailureMessage,
     };
   } catch (error) {
@@ -2144,11 +2285,12 @@ async function attemptRSSPublish(
     }));
     return {
       status: 'failed',
+      caption: item.generatedCaption,
       imageUrl: fallbackImages[0]?.url,
       imageUrls: fallbackImages.map((image) => image.url),
       resolvedImages: fallbackImages,
-      platformPostIds: {},
-      platformResults: [],
+      platformPostIds: item.platformPostIds || {},
+      platformResults: item.platformResults || [],
       errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
     };
   }
@@ -2777,6 +2919,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
       const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
+      resolvedActivityItem.generatedCaption = publishAttempt.caption;
+      resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
+      resolvedActivityItem.platformResults = publishAttempt.platformResults;
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
@@ -2816,6 +2961,42 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
+        continue;
+      }
+
+      if (publishAttempt.status === 'pending') {
+        pendingCount += 1;
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'pending',
+              lastAttemptedAt: new Date(),
+              errorMessage: publishAttempt.errorMessage,
+              itemData: serializeRSSItem(resolvedActivityItem),
+            },
+          });
+        }
+        const pendingMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          imageUrl: publishAttempt.imageUrl,
+          imageUrls: publishAttempt.imageUrls,
+          imageSource: resolvedActivityItem.imageSource,
+          imageReason: resolvedActivityItem.imageReason,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'pending',
+          platforms: publishAttempt.remainingPlatforms,
+          platformPostIds: publishAttempt.platformPostIds,
+          platformResults: publishAttempt.platformResults,
+          errorMessage: publishAttempt.errorMessage,
+        };
+        await logRSSActivity(pendingMetadata);
+        rememberRSSActivity(recentActivities, pendingMetadata);
         continue;
       }
 
@@ -2949,6 +3130,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
       seenKeys.add(dedupeKey);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
+      resolvedActivityItem.generatedCaption = publishAttempt.caption;
+      resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
+      resolvedActivityItem.platformResults = publishAttempt.platformResults;
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
@@ -2981,6 +3165,35 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         };
         await logRSSActivity(publishedMetadata);
         rememberRSSActivity(recentActivities, publishedMetadata);
+        continue;
+      }
+
+      if (publishAttempt.status === 'pending') {
+        pendingCount += 1;
+        await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'pending', {
+          errorMessage: publishAttempt.errorMessage,
+          firstSeenAt: item.pubDate,
+        });
+        const pendingMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          imageUrl: publishAttempt.imageUrl,
+          imageUrls: publishAttempt.imageUrls,
+          imageSource: resolvedActivityItem.imageSource,
+          imageReason: resolvedActivityItem.imageReason,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'pending',
+          platforms: publishAttempt.remainingPlatforms,
+          platformPostIds: publishAttempt.platformPostIds,
+          platformResults: publishAttempt.platformResults,
+          errorMessage: publishAttempt.errorMessage,
+        };
+        await logRSSActivity(pendingMetadata);
+        rememberRSSActivity(recentActivities, pendingMetadata);
         continue;
       }
 

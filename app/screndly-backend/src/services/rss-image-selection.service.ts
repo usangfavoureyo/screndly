@@ -2409,7 +2409,41 @@ async function resolveSingleSlotImages(
     );
   }
 
+  if (resolved[0] && fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(analysis, resolved[0])) {
+    const fallbackPrimary = buildFeedFallbackImages(
+      fallbackImages.filter((url) => url !== resolved[0]?.url),
+      1
+    )[0];
+
+    if (fallbackPrimary) {
+      resolved = [
+        fallbackPrimary,
+        ...resolved.filter((image) => image.url !== fallbackPrimary.url && image.url !== resolved[0]?.url),
+      ];
+    }
+  }
+
   return resolved.slice(0, limit);
+}
+
+function shouldReplaceBrandingPrimaryWithFeedFallback(
+  analysis: RSSSubjectAnalysis,
+  image: RSSResolvedImage,
+  role?: ImageRole
+): boolean {
+  if (analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop') {
+    return false;
+  }
+
+  const normalizedReason = normalizeText(image.reason);
+  const brandingByRole = role === 'logo' || role === 'brand_backdrop';
+  const brandingByReason =
+    normalizedReason.includes('company logo') ||
+    normalizedReason.includes('official logo') ||
+    normalizedReason.includes('title logo') ||
+    normalizedReason.includes('brand backdrop');
+
+  return brandingByRole || brandingByReason;
 }
 
 async function resolveSmartPrimaryCandidate(
@@ -3021,6 +3055,10 @@ export async function resolveRelevantRSSImages(
     const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources);
 
     if (!primaryResolved) {
+      return buildFeedFallbackImages(fallbackImages, limit);
+    }
+
+    if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(primaryAnalysis, primaryResolved.image, primaryResolved.role)) {
       return buildFeedFallbackImages(fallbackImages, limit);
     }
 

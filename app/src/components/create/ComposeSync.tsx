@@ -18,28 +18,19 @@ function buildSignature(items: ComposeItem[]) {
   return JSON.stringify(normalizeItems(items));
 }
 
-function mergeComposeItems(localItems: ComposeItem[], remoteItems: ComposeItem[]) {
-  const merged = new Map<string, ComposeItem>();
-
-  for (const item of [...remoteItems, ...localItems]) {
-    const normalizedItem = sanitizeComposeItem(normalizeComposeItem(item));
-    const existing = merged.get(normalizedItem.id);
-
-    if (!existing) {
-      merged.set(normalizedItem.id, normalizedItem);
-      continue;
-    }
-
-    const existingTimestamp = Math.max(toTimestamp(existing.updatedAt), toTimestamp(existing.createdAt));
-    const nextTimestamp = Math.max(toTimestamp(normalizedItem.updatedAt), toTimestamp(normalizedItem.createdAt));
-    merged.set(normalizedItem.id, nextTimestamp >= existingTimestamp ? normalizedItem : existing);
-  }
-
-  return Array.from(merged.values()).sort((left, right) => {
+function sortComposeItems(items: ComposeItem[]) {
+  return [...items].sort((left, right) => {
     const rightTimestamp = Math.max(toTimestamp(right.updatedAt), toTimestamp(right.createdAt));
     const leftTimestamp = Math.max(toTimestamp(left.updatedAt), toTimestamp(left.createdAt));
     return rightTimestamp - leftTimestamp;
   });
+}
+
+function getItemsUpdatedAt(items: ComposeItem[]) {
+  return items.reduce((latestTimestamp, item) => {
+    const itemTimestamp = Math.max(toTimestamp(item.updatedAt), toTimestamp(item.createdAt));
+    return Math.max(latestTimestamp, itemTimestamp);
+  }, 0);
 }
 
 export function ComposeSync() {
@@ -55,36 +46,48 @@ export function ComposeSync() {
     let cancelled = false;
 
     const hydrate = async () => {
-      const localItems = normalizeItems(useComposeStore.getState().items);
+      const { items: localStoreItems, lastModifiedAt } = useComposeStore.getState();
+      const localItems = normalizeItems(localStoreItems);
+      const localSignature = buildSignature(localItems);
+      const localUpdatedAt = Math.max(toTimestamp(lastModifiedAt ?? undefined), getItemsUpdatedAt(localItems));
 
       try {
         const response = await composeApi.getState();
         if (!response.success || !response.data) {
-          lastSyncedSignatureRef.current = buildSignature(localItems);
+          lastSyncedSignatureRef.current = localSignature;
           hydratedRef.current = true;
           return;
         }
 
-        const remoteItems = normalizeItems(Array.isArray(response.data.items) ? response.data.items : []);
-        const mergedItems = mergeComposeItems(localItems, remoteItems);
-        const mergedSignature = buildSignature(mergedItems);
+        const remoteItems = sortComposeItems(normalizeItems(Array.isArray(response.data.items) ? response.data.items : []));
         const remoteSignature = buildSignature(remoteItems);
+        const remoteUpdatedAt = Math.max(
+          toTimestamp(response.data.updatedAt ?? undefined),
+          getItemsUpdatedAt(remoteItems),
+        );
+
+        const shouldPreferRemote = localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt;
+        const nextItems = shouldPreferRemote ? remoteItems : sortComposeItems(localItems);
+        const nextSignature = buildSignature(nextItems);
+        const nextModifiedAt = shouldPreferRemote
+          ? (response.data.updatedAt ?? (remoteUpdatedAt > 0 ? new Date(remoteUpdatedAt).toISOString() : null))
+          : (lastModifiedAt ?? (localUpdatedAt > 0 ? new Date(localUpdatedAt).toISOString() : null));
 
         if (!cancelled) {
-          replaceItems(mergedItems);
-          lastSyncedSignatureRef.current = mergedSignature;
+          replaceItems(nextItems, nextModifiedAt);
+          lastSyncedSignatureRef.current = nextSignature;
           hydratedRef.current = true;
         }
 
-        if (mergedSignature !== remoteSignature) {
-          await composeApi.saveState(mergedItems);
+        if (!shouldPreferRemote && nextSignature !== remoteSignature) {
+          await composeApi.saveState(nextItems);
           if (!cancelled) {
-            lastSyncedSignatureRef.current = mergedSignature;
+            lastSyncedSignatureRef.current = nextSignature;
           }
         }
       } catch (error) {
         console.warn('[ComposeSync] Failed to hydrate compose drafts:', error);
-        lastSyncedSignatureRef.current = buildSignature(localItems);
+        lastSyncedSignatureRef.current = localSignature;
         hydratedRef.current = true;
       }
     };

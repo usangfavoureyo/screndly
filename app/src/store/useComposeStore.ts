@@ -6,8 +6,9 @@ import { normalizeComposeItem, sanitizeComposeItem } from '../lib/create/compose
 interface ComposeStoreState {
   items: ComposeItem[];
   activeItemId: string | null;
+  lastModifiedAt: string | null;
   setActiveItemId: (itemId: string | null) => void;
-  replaceItems: (items: ComposeItem[]) => void;
+  replaceItems: (items: ComposeItem[], lastModifiedAt?: string | null) => void;
   saveItem: (item: ComposeItem) => void;
   deleteItem: (itemId: string) => void;
   getItemById: (itemId: string | null) => ComposeItem | undefined;
@@ -19,27 +20,39 @@ export const useComposeStore = create<ComposeStoreState>()(
     (set, get) => ({
       items: [],
       activeItemId: null,
+      lastModifiedAt: null,
       setActiveItemId: (itemId) => set({ activeItemId: itemId }),
-      replaceItems: (items) =>
+      replaceItems: (items, lastModifiedAt) =>
         set(() => ({
           items: items.map(normalizeComposeItem),
+          lastModifiedAt: lastModifiedAt ?? new Date().toISOString(),
         })),
       saveItem: (item) =>
         set((state) => {
+          const modifiedAt = new Date().toISOString();
           const normalizedItem = normalizeComposeItem(item);
           const existingIndex = state.items.findIndex((entry) => entry.id === normalizedItem.id);
           if (existingIndex === -1) {
-            return { items: [normalizedItem, ...state.items], activeItemId: normalizedItem.id };
+            return {
+              items: [normalizedItem, ...state.items],
+              activeItemId: normalizedItem.id,
+              lastModifiedAt: modifiedAt,
+            };
           }
 
           const nextItems = [...state.items];
           nextItems[existingIndex] = normalizedItem;
-          return { items: nextItems, activeItemId: normalizedItem.id };
+          return {
+            items: nextItems,
+            activeItemId: normalizedItem.id,
+            lastModifiedAt: modifiedAt,
+          };
         }),
       deleteItem: (itemId) =>
         set((state) => ({
           items: state.items.filter((item) => item.id !== itemId),
           activeItemId: state.activeItemId === itemId ? null : state.activeItemId,
+          lastModifiedAt: new Date().toISOString(),
         })),
       getItemById: (itemId) => get().items.find((item) => item.id === itemId),
       updateStatus: (itemId, status, scheduledAt) =>
@@ -54,6 +67,7 @@ export const useComposeStore = create<ComposeStoreState>()(
                 }
               : item,
           ),
+          lastModifiedAt: new Date().toISOString(),
         })),
     }),
     {
@@ -61,6 +75,7 @@ export const useComposeStore = create<ComposeStoreState>()(
       partialize: (state) => ({
         items: state.items.map(sanitizeComposeItem),
         activeItemId: state.activeItemId,
+        lastModifiedAt: state.lastModifiedAt,
       }),
       merge: (persistedState, currentState) => {
         const typedPersistedState = persistedState as Partial<ComposeStoreState> | undefined;
@@ -69,6 +84,7 @@ export const useComposeStore = create<ComposeStoreState>()(
           ...currentState,
           ...typedPersistedState,
           items: (typedPersistedState?.items ?? currentState.items).map(normalizeComposeItem),
+          lastModifiedAt: typedPersistedState?.lastModifiedAt ?? currentState.lastModifiedAt,
         };
       },
     },

@@ -161,17 +161,6 @@ export function PlatformConnectionModal({
     }
   };
 
-  const handleConnect = async () => {
-    if (isConnecting) {
-      return;
-    }
-
-    prepareOAuthStart();
-    setIsConnecting(true);
-    setStep('connecting');
-    window.location.assign(oauthStartUrl);
-  };
-
   const handleClose = () => {
     if (!isConnecting) {
       haptics.light();
@@ -281,13 +270,16 @@ export function PlatformConnectionModal({
             Cancel
           </Button>
           <Button
+            asChild
             className="flex-1 bg-[#ec1e24] hover:bg-[#d11b20] text-white"
-            onClick={() => {
-              void handleConnect();
-            }}
-            disabled={isConnecting}
           >
-            Connect {info.name}
+            <a
+              href={oauthStartUrl}
+              onPointerDown={prepareOAuthStart}
+              onClick={prepareOAuthStart}
+            >
+              Connect {info.name}
+            </a>
           </Button>
         </BottomSheetFooter>
       )}

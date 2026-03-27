@@ -266,6 +266,11 @@ self.addEventListener('fetch', (event) => {
 
   // Strategy 2: Network First for API calls
   if (url.pathname.startsWith('/api/')) {
+    // Let the browser handle OAuth auth redirects directly so the navigation
+    // can leave the app shell (service worker fetch would swallow the redirect).
+    if (url.pathname.startsWith('/api/platforms/auth/')) {
+      return;
+    }
     if (isCacheableApiRequest(event.request, url)) {
       event.respondWith(networkFirst(event.request, API_CACHE, CACHE_EXPIRATION.api));
     } else {

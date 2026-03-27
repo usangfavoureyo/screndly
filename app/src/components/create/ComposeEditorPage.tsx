@@ -121,6 +121,17 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
 };
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
+const SHARED_CAPTION_REQUIRED_PLATFORMS: ComposePlatformKey[] = [
+  'instagram_feed',
+  'instagram_reels',
+  'facebook_feed',
+  'threads',
+  'x',
+  'tiktok',
+  'youtube_longform',
+  'youtube_shorts',
+];
+
 function createInitialForm(item?: ComposeItem): FormState {
   const normalized = item ? normalizeComposeItem(item) : undefined;
 
@@ -260,6 +271,9 @@ export function ComposeEditorPage({
   const isYouTubeShortsSelected = formState.platforms.includes('youtube_shorts');
   const isYouTubeSelected = isYouTubeLongformSelected || isYouTubeShortsSelected;
   const isPinterestSelected = formState.platforms.includes('pinterest');
+  const selectedCaptionRequiredPlatforms = formState.platforms.filter((platform) =>
+    SHARED_CAPTION_REQUIRED_PLATFORMS.includes(platform),
+  );
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
   const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
@@ -319,6 +333,14 @@ export function ComposeEditorPage({
     previewThumbnail,
     unsavedChangesGuard,
   ]);
+
+  const handleScheduleSheetOpenChange = useCallback((nextOpen: boolean) => {
+    if (!nextOpen && (isScheduleDatePickerOpen || isScheduleTimePickerOpen)) {
+      return;
+    }
+
+    setIsScheduleOpen(nextOpen);
+  }, [isScheduleDatePickerOpen, isScheduleTimePickerOpen]);
 
   useEffect(() => {
     if (!registerCloseRequestHandler) {
@@ -769,6 +791,14 @@ export function ComposeEditorPage({
     }
     if ((mode === 'scheduled' || mode === 'published') && mediaSummary.totalAssets === 0) {
       toast.error(`Upload at least one image or video before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
+      return false;
+    }
+    if (
+      (mode === 'scheduled' || mode === 'published')
+      && selectedCaptionRequiredPlatforms.length > 0
+      && !formState.sharedCaption.trim()
+    ) {
+      toast.error('Enter a caption before scheduling or publishing to the selected platforms');
       return false;
     }
     if (hasUploadingAssets) {
@@ -1600,7 +1630,12 @@ export function ComposeEditorPage({
         </div>
       </div>
 
-      <BottomSheet open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+      <BottomSheet
+        open={isScheduleOpen}
+        onOpenChange={handleScheduleSheetOpenChange}
+        disableBackdropClose={isScheduleDatePickerOpen || isScheduleTimePickerOpen}
+        disableSwipe={isScheduleDatePickerOpen || isScheduleTimePickerOpen}
+      >
         <BottomSheetHeader>
           <BottomSheetTitle>{isEditingScheduledItem ? 'Update Schedule' : 'Schedule Post'}</BottomSheetTitle>
           <BottomSheetDescription>

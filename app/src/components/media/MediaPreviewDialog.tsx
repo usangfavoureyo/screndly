@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pause, Play, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { VisuallyHidden } from '../ui/visually-hidden';
 import { haptics } from '../../utils/haptics';
@@ -182,6 +182,27 @@ export function MediaPreviewDialog({
     resetVideoPlayback();
   }, [initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedImageSources.length, src]);
 
+  useEffect(() => {
+    if (!open || mediaType !== 'image' || resolvedImageSources.length <= 1) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        haptics.light();
+        goToImage(currentImageIndex - 1);
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        haptics.light();
+        goToImage(currentImageIndex + 1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentImageIndex, goToImage, mediaType, open, resolvedImageSources.length]);
+
   const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
       resetImageTransform();
@@ -250,6 +271,9 @@ export function MediaPreviewDialog({
   };
 
   const handleImageTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const swipeStart = swipeStartRef.current;
+    let didNavigate = false;
+
     if (event.touches.length < 2) {
       pinchStartRef.current = null;
     }
@@ -268,19 +292,20 @@ export function MediaPreviewDialog({
     panStartRef.current = null;
     setIsInteracting(false);
 
-    if (scaleRef.current <= 1.01) {
-      resetImageTransform();
-    }
-
-    if (event.changedTouches.length === 1 && swipeStartRef.current && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
+    if (event.changedTouches.length === 1 && swipeStart && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
       const touch = event.changedTouches[0];
-      const deltaX = touch.clientX - swipeStartRef.current.x;
-      const deltaY = touch.clientY - swipeStartRef.current.y;
+      const deltaX = touch.clientX - swipeStart.x;
+      const deltaY = touch.clientY - swipeStart.y;
 
       if (Math.abs(deltaX) > 48 && Math.abs(deltaX) > Math.abs(deltaY)) {
         haptics.light();
         goToImage(currentImageIndex + (deltaX < 0 ? 1 : -1));
+        didNavigate = true;
       }
+    }
+
+    if (!didNavigate && scaleRef.current <= 1.01) {
+      resetImageTransform();
     }
 
     swipeStartRef.current = null;
@@ -365,6 +390,35 @@ export function MediaPreviewDialog({
             <div className="absolute right-4 top-16 z-40 rounded-full bg-black/70 px-3 py-1 text-xs text-white">
               {currentImageIndex + 1} / {resolvedImageSources.length}
             </div>
+          ) : null}
+
+          {mediaType === 'image' && resolvedImageSources.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.light();
+                  goToImage(currentImageIndex - 1);
+                }}
+                disabled={currentImageIndex === 0}
+                className="absolute left-4 top-1/2 z-40 -translate-y-1/2 rounded-full bg-black/70 p-2 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Show previous image"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.light();
+                  goToImage(currentImageIndex + 1);
+                }}
+                disabled={currentImageIndex >= resolvedImageSources.length - 1}
+                className="absolute right-4 top-1/2 z-40 -translate-y-1/2 rounded-full bg-black/70 p-2 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Show next image"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </>
           ) : null}
 
           {mediaType === 'image' ? (
