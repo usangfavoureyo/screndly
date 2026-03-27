@@ -165,6 +165,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const currentAssets = assetOverrides[activePlatform];
   const currentBrandedPreviewUrls = brandedAssetPreviewUrls[activePlatform] || {};
   const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
+  const usesStandardLogoControls = !isBrandedStyle;
   const brandedAssetEntries = Object.entries(currentConfig.brandedOverlayAssets || {}) as Array<[BrandedOverlayAssetKey, string]>;
   const resolvedManualOverlayUrl = currentAssets.manualOverlayUrl
     || (currentAssets.manualSavedOverlayKey
@@ -610,42 +611,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
 
-        {/* Logo Position */}
         <div>
-          <Label className="text-gray-900 dark:text-white mb-2 block">Logo Position</Label>
-          <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
-            Where the movie/TV logo will be placed on the backdrop
-          </p>
-          <Select
-            value={currentConfig.logoPosition}
-            onValueChange={(value) => {
-              handleUpdate({ logoPosition: value as LogoPosition });
-            }}
-          >
-            <SelectTrigger
-              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
-              onFocus={() => haptics.light()}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]">
-              {Object.entries(LOGO_POSITIONS).map(([key, label]) => (
-                <SelectItem
-                  key={key}
-                  value={key}
-                  className="text-gray-900 dark:text-white focus:bg-gray-100 dark:focus:bg-[#1A1A1A]"
-                >
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
-
-        <div>
-          <Label className="text-gray-900 dark:text-white mb-2 block">Logo Style</Label>
+          <Label className="text-gray-900 dark:text-white mb-2 block">Thumbnail Style</Label>
           <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
             Choose whether the logo appears by itself or inside the overlay box.
           </p>
@@ -742,149 +709,183 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
           </>
         )}
 
-        {/* Auto Contrast Settings */}
-        <div className="space-y-4">
-          <div>
-            <Label className="text-gray-900 dark:text-white mb-2 block">Smart Contrast</Label>
-            <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-4">
-              Automatically ensure logo visibility on any backdrop
-            </p>
-          </div>
-
-          <div className="flex items-start justify-between gap-4">
+        {usesStandardLogoControls && (
+          <>
             <div>
-              <Label className="text-gray-900 dark:text-white">Smart Backdrop Selection</Label>
-              <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
-                When TMDb provides multiple backdrops, automatically select the one with the best contrast for your logo
+              <Label className="text-gray-900 dark:text-white mb-2 block">Logo Position</Label>
+              <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
+                Where the movie/TV logo will be placed on the backdrop
               </p>
-            </div>
-            <Switch
-              checked={currentConfig.autoContrastBackdrop}
-              onCheckedChange={(checked) => {
-                haptics.medium();
-                handleUpdate({ autoContrastBackdrop: checked });
-              }}
-            />
-          </div>
-
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <Label className="text-gray-900 dark:text-white">Smart Overlay Adjustment</Label>
-              <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
-                If the backdrop doesn't have good contrast, apply a subtle dark/light overlay behind the logo area
-              </p>
-            </div>
-            <Switch
-              checked={currentConfig.autoContrastOverlay}
-              onCheckedChange={(checked) => {
-                haptics.medium();
-                handleUpdate({ autoContrastOverlay: checked });
-              }}
-            />
-          </div>
-        </div>
-
-        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
-
-        {/* Text Overlay Settings */}
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Label className="text-gray-900 dark:text-white">Show trailer type text under logo</Label>
-            <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
-              Automatically adds "OFFICIAL TRAILER" or "OFFICIAL TEASER" text below the logo based on the video title
-            </p>
-          </div>
-          <Switch
-            checked={currentConfig.showTrailerTypeText}
-            onCheckedChange={(checked) => {
-              haptics.medium();
-              handleUpdate({ showTrailerTypeText: checked });
-            }}
-          />
-        </div>
-
-        {currentConfig.showTrailerTypeText && (
-          <div className="space-y-4 pt-2">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-                  Target Text Size
-                </Label>
-                <span className="text-sm text-gray-900 dark:text-white">
-                  {currentConfig.trailerTextSize}px
-                </span>
-              </div>
-              <input
-                type="range"
-                min="18"
-                max="56"
-                step="2"
-                value={currentConfig.trailerTextSize ?? 32}
-                onChange={(e) => {
-                  handleUpdate({ trailerTextSize: parseInt(e.target.value, 10) });
+              <Select
+                value={currentConfig.logoPosition}
+                onValueChange={(value) => {
+                  handleUpdate({ logoPosition: value as LogoPosition });
                 }}
-                onFocus={() => haptics.light()}
-                className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:border-0"
-              />
-            </div>
-          </div>
-        )}
-
-        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
-
-        {/* Auto-Scale Logo */}
-        <div>
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <Label className="text-gray-900 dark:text-white">Auto-Scale Logo</Label>
-              <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
-                Automatically normalize all logos to the same size. Small logos will be scaled up, large logos will be scaled down to match the target size.
-              </p>
-            </div>
-            <Switch
-              checked={currentConfig.autoScale}
-              onCheckedChange={(checked) => {
-                haptics.medium();
-                handleUpdate({ autoScale: checked });
-              }}
-            />
-          </div>
-
-          {currentConfig.autoScale && (
-            <div className="space-y-4 pt-2">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-                    Target Logo Size
-                  </Label>
-                  <span className="text-sm text-gray-900 dark:text-white">
-                    {currentConfig.maxLogoSize}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  step="5"
-                  value={currentConfig.maxLogoSize}
-                  onChange={(e) => {
-                    handleUpdate({ maxLogoSize: parseInt(e.target.value) });
-                  }}
+              >
+                <SelectTrigger
+                  className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
                   onFocus={() => haptics.light()}
-                  className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:border-0"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]">
+                  {Object.entries(LOGO_POSITIONS).map(([key, label]) => (
+                    <SelectItem
+                      key={key}
+                      value={key}
+                      className="text-gray-900 dark:text-white focus:bg-gray-100 dark:focus:bg-[#1A1A1A]"
+                    >
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+            <div className="space-y-4">
+              <div>
+                <Label className="text-gray-900 dark:text-white mb-2 block">Smart Contrast</Label>
+                <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-4">
+                  Automatically ensure logo visibility on any backdrop
+                </p>
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-gray-900 dark:text-white">Smart Backdrop Selection</Label>
+                  <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
+                    When TMDb provides multiple backdrops, automatically select the one with the best contrast for your logo
+                  </p>
+                </div>
+                <Switch
+                  checked={currentConfig.autoContrastBackdrop}
+                  onCheckedChange={(checked) => {
+                    haptics.medium();
+                    handleUpdate({ autoContrastBackdrop: checked });
+                  }}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-gray-900 dark:text-white">Smart Overlay Adjustment</Label>
+                  <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
+                    If the backdrop doesn't have good contrast, apply a subtle dark/light overlay behind the logo area
+                  </p>
+                </div>
+                <Switch
+                  checked={currentConfig.autoContrastOverlay}
+                  onCheckedChange={(checked) => {
+                    haptics.medium();
+                    handleUpdate({ autoContrastOverlay: checked });
+                  }}
                 />
               </div>
             </div>
-          )}
-        </div>
 
-        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <Label className="text-gray-900 dark:text-white">Show trailer type text under logo</Label>
+                <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
+                  Automatically adds "OFFICIAL TRAILER" or "OFFICIAL TEASER" text below the logo based on the video title
+                </p>
+              </div>
+              <Switch
+                checked={currentConfig.showTrailerTypeText}
+                onCheckedChange={(checked) => {
+                  haptics.medium();
+                  handleUpdate({ showTrailerTypeText: checked });
+                }}
+              />
+            </div>
+
+            {currentConfig.showTrailerTypeText && (
+              <div className="space-y-4 pt-2">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                      Target Text Size
+                    </Label>
+                    <span className="text-sm text-gray-900 dark:text-white">
+                      {currentConfig.trailerTextSize}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="18"
+                    max="56"
+                    step="2"
+                    value={currentConfig.trailerTextSize ?? 32}
+                    onChange={(e) => {
+                      handleUpdate({ trailerTextSize: parseInt(e.target.value, 10) });
+                    }}
+                    onFocus={() => haptics.light()}
+                    className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:border-0"
+                  />
+                </div>
+              </div>
+            )}
+
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+            <div>
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div>
+                  <Label className="text-gray-900 dark:text-white">Auto-Scale Logo</Label>
+                  <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-1">
+                    Automatically normalize all logos to the same size. Small logos will be scaled up, large logos will be scaled down to match the target size.
+                  </p>
+                </div>
+                <Switch
+                  checked={currentConfig.autoScale}
+                  onCheckedChange={(checked) => {
+                    haptics.medium();
+                    handleUpdate({ autoScale: checked });
+                  }}
+                />
+              </div>
+
+              {currentConfig.autoScale && (
+                <div className="space-y-4 pt-2">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm text-gray-600 dark:text-[#9CA3AF]">
+                        Target Logo Size
+                      </Label>
+                      <span className="text-sm text-gray-900 dark:text-white">
+                        {currentConfig.maxLogoSize}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="10"
+                      max="100"
+                      step="5"
+                      value={currentConfig.maxLogoSize}
+                      onChange={(e) => {
+                        handleUpdate({ maxLogoSize: parseInt(e.target.value) });
+                      }}
+                      onFocus={() => haptics.light()}
+                      className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[#ec1e24] [&::-moz-range-thumb]:border-0"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+          </>
+        )}
 
         {/* Preview */}
         <div>
           <Label className="text-gray-900 dark:text-white mb-3 block">Live Preview</Label>
           <div className="bg-white dark:bg-[#000000] rounded-lg p-4 border border-gray-200 dark:border-[#333333]">
-            <div className="grid gap-4 md:grid-cols-2 mb-4">
+            <div className={`grid gap-4 mb-4 ${usesStandardLogoControls ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
               <div className="space-y-2">
                 <Label className="text-gray-900 dark:text-white">Backdrop Image</Label>
                 <Input
@@ -900,23 +901,25 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                   <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{currentAssets.backdropName}</p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label className="text-gray-900 dark:text-white">Transparent PNG Logo</Label>
-                <Input
-                  type="file"
-                  accept="image/png,image/*"
-                  onChange={(e) => handleAssetUpload('logoUrl', e.target.files?.[0])}
-                  className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
-                />
-                <p className="text-xs text-gray-500 dark:text-[#6B7280]">
-                  Best results come from a PNG with transparent background.
-                </p>
-                {currentAssets.logoName && (
-                  <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{currentAssets.logoName}</p>
-                )}
-              </div>
+              {usesStandardLogoControls && (
+                <div className="space-y-2">
+                  <Label className="text-gray-900 dark:text-white">Transparent PNG Logo</Label>
+                  <Input
+                    type="file"
+                    accept="image/png,image/*"
+                    onChange={(e) => handleAssetUpload('logoUrl', e.target.files?.[0])}
+                    className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280]">
+                    Best results come from a PNG with transparent background.
+                  </p>
+                  {currentAssets.logoName && (
+                    <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{currentAssets.logoName}</p>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="grid gap-4 md:grid-cols-2 mb-4">
+            <div className={`grid gap-4 mb-4 ${isBrandedStyle ? 'md:grid-cols-2' : 'md:grid-cols-1'}`}>
               <div className="space-y-2">
                 <Label className="text-gray-900 dark:text-white">Preview Title</Label>
                 <Input
@@ -1057,17 +1060,21 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-[#333333]">
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-600 dark:text-[#9CA3AF]">
                 <div>
-                  <span className="text-gray-500 dark:text-[#6B7280]">Position:</span>{' '}
-                  <span className="text-gray-900 dark:text-white">{LOGO_POSITIONS[currentConfig.logoPosition]}</span>
-                </div>
-                <div>
                   <span className="text-gray-500 dark:text-[#6B7280]">Backdrop:</span>{' '}
                   <span className="text-gray-900 dark:text-white">{currentAssets.backdropName || 'Default backdrop'}</span>
                 </div>
-                <div>
-                  <span className="text-gray-500 dark:text-[#6B7280]">Logo:</span>{' '}
-                  <span className="text-gray-900 dark:text-white">{currentAssets.logoName || 'Default logo indicator'}</span>
-                </div>
+                {usesStandardLogoControls && (
+                  <>
+                    <div>
+                      <span className="text-gray-500 dark:text-[#6B7280]">Position:</span>{' '}
+                      <span className="text-gray-900 dark:text-white">{LOGO_POSITIONS[currentConfig.logoPosition]}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-[#6B7280]">Logo:</span>{' '}
+                      <span className="text-gray-900 dark:text-white">{currentAssets.logoName || 'Default logo indicator'}</span>
+                    </div>
+                  </>
+                )}
                 {isBrandedStyle && (
                   <>
                     <div>
@@ -1135,7 +1142,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
 
       <BottomSheet open={isLogoStyleSheetOpen} onOpenChange={setIsLogoStyleSheetOpen}>
         <BottomSheetHeader>
-          <BottomSheetTitle>Logo Style</BottomSheetTitle>
+          <BottomSheetTitle>Thumbnail Style</BottomSheetTitle>
         </BottomSheetHeader>
         <BottomSheetBody className="space-y-4">
           <div className="grid grid-cols-1 gap-3">

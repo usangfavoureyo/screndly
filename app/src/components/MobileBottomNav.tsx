@@ -25,21 +25,35 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
     { id: 'video-studio', icon: Film, label: 'Video Studio' },
   ];
 
+  const reconcileNavItems = (orderIds: string[]): NavItem[] => {
+    const seen = new Set<string>();
+    const orderedItems = orderIds
+      .map((id) => defaultNavItems.find((item) => item.id === id))
+      .filter((item): item is NavItem => Boolean(item))
+      .filter((item) => {
+        if (seen.has(item.id)) return false;
+        seen.add(item.id);
+        return true;
+      });
+
+    const missingItems = defaultNavItems.filter((item) => !seen.has(item.id));
+    return [...orderedItems, ...missingItems];
+  };
+
   // Load saved order from localStorage or use default
   const [navItems, setNavItems] = useState<NavItem[]>(() => {
     const savedOrder = localStorage.getItem('bottomNavOrder');
     if (savedOrder) {
       try {
         const orderIds = JSON.parse(savedOrder);
-        // Map saved IDs to nav items
-        return orderIds.map((id: string) =>
-          defaultNavItems.find(item => item.id === id)
-        ).filter(Boolean);
+        if (Array.isArray(orderIds)) {
+          return reconcileNavItems(orderIds);
+        }
       } catch {
-        return defaultNavItems;
+        return [...defaultNavItems];
       }
     }
-    return defaultNavItems;
+    return [...defaultNavItems];
   });
 
   // Drag and drop state

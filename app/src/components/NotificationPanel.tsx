@@ -26,6 +26,8 @@ import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { PageLoader } from './PageLoader';
 import { getComposeAssetPreviewUrl } from '../lib/create/composeMedia';
 import { BottomSheet, BottomSheetBody, BottomSheetHeader, BottomSheetTitle } from './ui/bottom-sheet';
+import { useScrollLock } from '../hooks/useScrollLock';
+import { useTransientHistoryState } from '../hooks/useTransientHistoryState';
 
 export interface NotificationAction {
   id: string;
@@ -167,6 +169,7 @@ export function NotificationPanel({
   onOpenPage,
 }: NotificationPanelProps) {
   const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
+  useScrollLock(isOpen);
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -213,6 +216,13 @@ export function NotificationPanel({
       unregisterModal('notification-detail');
     };
   }, [detail, registerModalWithCloseHandler, selectedNotification, unregisterModal]);
+
+  useTransientHistoryState(
+    selectedNotification !== null,
+    'notification-detail',
+    'notification-detail',
+    selectedNotification ? { notificationId: selectedNotification.id } : undefined,
+  );
 
   const unreadCount = filteredNotifications.filter((n) => !n.read).length;
   const sources = Array.from(new Set(notifications.map((n) => n.source).filter(Boolean)));

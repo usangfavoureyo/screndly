@@ -12,7 +12,7 @@ interface DesktopShortcutsConfig {
   onCloseNotifications: () => void;
 }
 
-const mainPages = ['dashboard', 'channels', 'platforms', 'rss', 'tmdb', 'video-studio'];
+const mainPages = ['dashboard', 'channels', 'platforms', 'feeds', 'design-studio', 'video-studio'] as const;
 
 export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
   const {
@@ -136,12 +136,12 @@ export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
             break;
           case '4':
             haptics.light();
-            onNavigate('rss');
+            onNavigate('feeds');
             e.preventDefault();
             break;
           case '5':
             haptics.light();
-            onNavigate('tmdb');
+            onNavigate('design-studio');
             e.preventDefault();
             break;
           case '6':
@@ -221,11 +221,11 @@ export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
             ev.preventDefault();
           } else if (ev.key === 'r') {
             haptics.light();
-            onNavigate('rss');
+            onNavigate('feeds');
             ev.preventDefault();
           } else if (ev.key === 't') {
             haptics.light();
-            onNavigate('tmdb');
+            onNavigate('design-studio');
             ev.preventDefault();
           } else if (ev.key === 'v') {
             haptics.light();

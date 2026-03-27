@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2, Shield, Key, AlertCircle } from 'lucide-react';
@@ -11,13 +11,23 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { XIcon } from './icons/XIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
+import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 import { getToken } from '../lib/api/authToken';
-import { beginManagedPlatformOAuth } from '../lib/api/platformIntegrations';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
   isOpen: boolean;
   onClose: () => void;
+}
+
+function getOAuthBackendBaseUrl(): string {
+  if (typeof window === 'undefined') {
+    return 'https://screndly-production.up.railway.app';
+  }
+
+  const hostname = window.location.hostname;
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
+  return isLocalHost ? 'http://localhost:3000' : 'https://screndly-production.up.railway.app';
 }
 
 export function PlatformConnectionModal({
@@ -116,6 +126,12 @@ export function PlatformConnectionModal({
   };
 
   const info = platformInfo[platform];
+  const redirectUri = getOAuthRedirectUri(platform);
+  const oauthStartUrl = useMemo(
+    () => `${getOAuthBackendBaseUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`,
+    [platform, redirectUri]
+  );
+
   useEffect(() => {
     if (!isOpen) {
       setIsConnecting(false);
@@ -153,17 +169,7 @@ export function PlatformConnectionModal({
     prepareOAuthStart();
     setIsConnecting(true);
     setStep('connecting');
-
-    try {
-      await beginManagedPlatformOAuth(platform);
-    } catch (error: any) {
-      console.error(`Failed to start ${platform} OAuth flow:`, error);
-      setIsConnecting(false);
-      setStep('info');
-      setErrorMessage(
-        error?.message || `Unable to start the ${info.name} connection right now. Please try again.`,
-      );
-    }
+    window.location.assign(oauthStartUrl);
   };
 
   const handleClose = () => {
