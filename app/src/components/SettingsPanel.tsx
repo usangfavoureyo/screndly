@@ -1,5 +1,5 @@
 import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
+import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
@@ -311,7 +311,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
     {
       id: 'haptic',
       label: 'Haptic Feedback',
-      icon: Smartphone,
+      icon: Smartphone03,
       keywords: [
         'haptic', 'haptics', 'vibration', 'vibrate', 'buzz',
         'feedback', 'tactile', 'touch',
@@ -384,7 +384,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   };
 
   const filteredSettings = filterItems(settingsItems);
-  const filteredLegal = filterItems(legalItems.map(item => ({ ...item, icon: FileText })));
+  const filteredLegal = filterItems(legalItems.map(item => ({ ...item, icon: Auction })));
   const filteredCompany = filterItems(companyItems.map(item => ({ ...item, icon: Mail })));
 
   const hasResults = filteredSettings.length > 0 || filteredLegal.length > 0 || filteredCompany.length > 0;

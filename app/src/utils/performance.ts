@@ -52,6 +52,7 @@ export function lazyWithRetry<T extends React.ComponentType<any>>(
   componentName: string
 ): React.LazyExoticComponent<T> {
   return React.lazy(async () => {
+    const isDev = import.meta.env.DEV;
     const pageHasAlreadyBeenForceRefreshed = JSON.parse(
       window.localStorage.getItem(FORCE_REFRESH_STORAGE_KEY) || 'false'
     );
@@ -61,6 +62,19 @@ export function lazyWithRetry<T extends React.ComponentType<any>>(
       window.localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, 'false');
       return component;
     } catch (error) {
+      if (isDev && isRecoverableChunkError(error)) {
+        try {
+          // During local Vite development, hot updates can briefly invalidate a lazy chunk.
+          // Retry once before surfacing an error or forcing a full reload.
+          await new Promise((resolve) => window.setTimeout(resolve, 150));
+          const component = await componentImport();
+          window.localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, 'false');
+          return component;
+        } catch {
+          // Fall through to existing recovery/error behavior.
+        }
+      }
+
       if (!pageHasAlreadyBeenForceRefreshed && isRecoverableChunkError(error)) {
         // Force a single full refresh so the latest app shell can recover stale chunks.
         window.localStorage.setItem(FORCE_REFRESH_STORAGE_KEY, 'true');

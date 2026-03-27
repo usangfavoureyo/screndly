@@ -296,7 +296,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
               className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
               aria-label={`Sort queued posts. Current: ${SORT_OPTION_LABELS[currentSort]}`}
             >
-              <ArrowDownWideNarrow size={12} className="shrink-0" />
+              <ArrowDownWideNarrow size={16} className="shrink-0" />
             </Button>
             {/* Manual Refresh Button - Icon Only, same height as View Activity */}
             <Button
