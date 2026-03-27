@@ -105,6 +105,12 @@ const ROOT_PAGE_MAP: Record<string, string> = {
   dashboard: 'dashboard',
   channels: 'channels',
   platforms: 'platforms',
+  logs: 'dashboard',
+  activity: 'dashboard',
+  'video-activity': 'dashboard',
+  'comment-automation': 'dashboard',
+  'upload-manager': 'dashboard',
+  'api-usage': 'dashboard',
   feeds: 'feeds',
   create: 'create',
   'design-studio': 'design-studio',
@@ -475,13 +481,19 @@ export function AppContent() {
         setCreateSourcePage(backSourcePage);
       }
 
+      const currentRootPage = getRootPage(currentPage);
+      const nextRootPage = getRootPage(page);
       const navigatingToRootDestination = isRootDestination(page);
       const shouldReplaceRootNavigation =
         navigatingToRootDestination &&
         normalizeShellPage(currentPage) !== 'dashboard' &&
         normalizeShellPage(page) !== 'dashboard';
+      const shouldReplaceChildBackNavigation =
+        navigatingToRootDestination &&
+        currentRootPage !== null &&
+        currentRootPage === nextRootPage;
       const historyMode =
-        skipHistory || activeOverlayType !== null || shouldReplaceRootNavigation ? "replace" : "push";
+        skipHistory || activeOverlayType !== null || shouldReplaceRootNavigation || shouldReplaceChildBackNavigation ? "replace" : "push";
       updateCurrentPage(page, historyMode);
 
       // If navigating to a static page, close settings after setting the page
@@ -711,7 +723,7 @@ export function AppContent() {
             {displayPage === "platforms" && <Suspense fallback={<PageLoader />}><PlatformsPage /></Suspense>}
             {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={addNotification} onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "activity" && (
-              <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} /></Suspense>
+              <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>
             )}
             {displayPage === "design-system" && (
               <Suspense fallback={<PageLoader />}><DesignSystemPage onNavigate={handleNavigate} /></Suspense>
@@ -763,9 +775,9 @@ export function AppContent() {
             {displayPage === "about" && <Suspense fallback={<PageLoader />}><AboutPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "data-deletion" && <Suspense fallback={<PageLoader />}><DataDeletionPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "app-info" && <Suspense fallback={<PageLoader />}><AppInfoPage onNavigate={handleNavigate} /></Suspense>}
-            {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => navigateBackWithFallback({ handleAppBack }, () => handleNavigate(previousPage || "dashboard"))} previousPage={previousPage} /></Suspense>}
+            {displayPage === "api-usage" && <Suspense fallback={<PageLoader />}><APIUsage onBack={() => handleNavigate(previousPage || "dashboard", undefined, true)} previousPage={previousPage} /></Suspense>}
             {displayPage === "comment-automation" && <Suspense fallback={<PageLoader />}><CommentAutomationPage onBack={() => handleNavigate(previousPage || "dashboard", undefined, true)} previousPage={previousPage} /></Suspense>}
-            {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => navigateBackWithFallback({ handleAppBack }, () => handleNavigate(previousPage || "dashboard"))} /></Suspense>}
+            {displayPage === "upload-manager" && <Suspense fallback={<PageLoader />}><UploadManagerPage onBack={() => handleNavigate(previousPage || "dashboard", undefined, true)} /></Suspense>}
             {displayPage === "platforms/callback" && <Suspense fallback={<PageLoader />}><OAuthCallbackPage onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "not-found" && <NotFoundPage onNavigate={handleNavigate} />}
           </div>

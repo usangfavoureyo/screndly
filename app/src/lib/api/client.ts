@@ -86,11 +86,22 @@ export class ApiClient {
     const url = `${this.baseUrl}${endpoint}`;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const requestTimeout = options?.timeout ?? this.timeout;
+    const { signal: externalSignal, ...requestOverrides } = options ?? {};
+    let removeAbortRelay: (() => void) | undefined;
 
     try {
       // Create abort controller for timeout
       const controller = new AbortController();
       timeoutId = setTimeout(() => controller.abort(), requestTimeout);
+      if (externalSignal) {
+        const relayAbort = () => controller.abort();
+        if (externalSignal.aborted) {
+          relayAbort();
+        } else {
+          externalSignal.addEventListener('abort', relayAbort, { once: true });
+          removeAbortRelay = () => externalSignal.removeEventListener('abort', relayAbort);
+        }
+      }
 
       // Build request options
       const requestOptions: RequestInit = {
@@ -99,11 +110,11 @@ export class ApiClient {
           'Content-Type': 'application/json',
           'X-Screndly-Version': CLIENT_VERSION,
           ...this.getAuthHeaders(),
-          ...options?.headers,
+          ...requestOverrides.headers,
         },
         body: data ? JSON.stringify(data) : undefined,
         signal: controller.signal,
-        ...options,
+        ...requestOverrides,
       };
 
       if (isProductionDebug) {
@@ -162,6 +173,7 @@ export class ApiClient {
       if (timeoutId !== undefined) {
         clearTimeout(timeoutId);
       }
+      removeAbortRelay?.();
     }
   }
 

@@ -3,6 +3,7 @@ import { haptics } from '../utils/haptics';
 import { dashboardApi, type ApiUsageActivity, type ApiUsageService } from '../lib/api/dashboard';
 import { Skeleton } from './ui/skeleton';
 import { toast } from 'sonner';
+import { BackIconButton } from './BackIconButton';
 
 interface APIUsageProps {
   onBack: () => void;
@@ -92,17 +93,12 @@ export function APIUsage({ onBack }: APIUsageProps) {
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start gap-4">
-          <button
+          <BackIconButton
             onClick={() => {
-              haptics.light();
               onBack();
             }}
-            className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 12H2M9 19l-7-7 7-7"/>
-            </svg>
-          </button>
+            className="mt-0.5"
+          />
           <div>
             <h1 className="text-gray-900 dark:text-white mb-2">API Usage Activity</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">Monitor your API consumption</p>

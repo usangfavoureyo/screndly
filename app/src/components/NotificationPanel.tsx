@@ -170,6 +170,7 @@ export function NotificationPanel({
 }: NotificationPanelProps) {
   const { registerModalWithCloseHandler, unregisterModal } = useBackNavigation();
   useScrollLock(isOpen);
+  const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -333,7 +334,7 @@ export function NotificationPanel({
 
   const renderListView = () => (
     <>
-      <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 z-10">
+      <div className="sticky top-0 z-10 bg-gradient-to-b from-white via-white/95 to-transparent px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] dark:from-[#000000] dark:via-[#000000]/95">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h2 className="text-black dark:text-white text-xl">Notifications</h2>
@@ -344,18 +345,19 @@ export function NotificationPanel({
             )}
           </div>
           <button
-            className="text-black dark:text-white p-1"
+            className={`flex h-12 w-12 items-center justify-center rounded-full text-black transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white ${floatingSurfaceClasses}`}
             onClick={() => {
               haptics.light();
               onClose();
             }}
+            aria-label="Close notifications"
           >
-            <X className="w-[26px] h-[26px] stroke-1" />
+            <X className="h-[22px] w-[22px] stroke-[1.75]" />
           </button>
         </div>
 
         {notifications.length > 0 && !selection.selectionMode && (
-          <div className="flex items-center justify-between gap-2">
+          <div className={`flex items-center justify-between gap-2 rounded-full px-3 py-2 ${floatingSurfaceClasses}`}>
             <button
               onClick={() => {
                 haptics.light();
@@ -505,7 +507,7 @@ export function NotificationPanel({
 
     return (
       <>
-        <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 z-10">
+        <div className="sticky top-0 z-10 bg-gradient-to-b from-white via-white/95 to-transparent px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] dark:from-[#000000] dark:via-[#000000]/95">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               <BackIconButton
@@ -513,7 +515,7 @@ export function NotificationPanel({
                   setSelectedNotification(null);
                   setDetail(null);
                 }}
-                className="text-black dark:text-white hover:text-[#ec1e24] p-1 -ml-1"
+                className="shrink-0"
                 ariaLabel="Back to notifications"
               />
               <div className="min-w-0">
@@ -522,13 +524,14 @@ export function NotificationPanel({
               </div>
             </div>
             <button
-              className="text-black dark:text-white p-1"
+              className={`flex h-12 w-12 items-center justify-center rounded-full text-black transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white ${floatingSurfaceClasses}`}
               onClick={() => {
                 haptics.light();
                 onClose();
               }}
+              aria-label="Close notifications"
             >
-              <X className="w-[26px] h-[26px] stroke-1" />
+              <X className="h-[22px] w-[22px] stroke-[1.75]" />
             </button>
           </div>
         </div>

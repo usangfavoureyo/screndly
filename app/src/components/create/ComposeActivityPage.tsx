@@ -6,27 +6,16 @@ import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 import { Button } from '../ui/button';
-import { Label } from '../ui/label';
-import { DatePicker } from '../ui/date-picker';
-import { TimePicker } from '../ui/time-picker';
-import {
-  BottomSheet,
-  BottomSheetBody,
-  BottomSheetDescription,
-  BottomSheetFooter,
-  BottomSheetHeader,
-  BottomSheetTitle,
-} from '../ui/bottom-sheet';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { publishComposeItem } from '../../lib/create/composePublish';
+import { validateComposeItemAction } from '../../lib/create/composeValidation';
 import {
   buildComposePublishFailureNotification,
   buildComposePublishSuccessNotification,
-  buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
 import type { ComposeItem, ComposeMediaAsset, ComposeStatus } from '../../types/compose';
 import { RedSpinner } from '../PageLoader';
@@ -65,22 +54,11 @@ function getPrimaryAsset(item: ComposeItem) {
   return item.mediaAssets?.[0] ?? item.media;
 }
 
-function toIsoSchedule(date?: Date, time?: string) {
-  if (!date || !time) return undefined;
-  const [hours, minutes] = time.split(':').map(Number);
-  const scheduled = new Date(date);
-  scheduled.setHours(hours || 0, minutes || 0, 0, 0);
-  return scheduled.toISOString();
-}
-
 export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout = false }: ComposeActivityPageProps) {
-  const { items, deleteItem, saveItem, setActiveItemId, updateStatus } = useComposeStore();
+  const { items, deleteItem, saveItem, setActiveItemId } = useComposeStore();
   const { addNotification } = useNotifications();
   const [filter, setFilter] = useState<'all' | ComposeStatus>('all');
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
-  const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
-  const [scheduleTime, setScheduleTime] = useState('09:00');
   const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
 
@@ -98,11 +76,6 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
     failed: items.filter((item) => item.status === 'failed').length,
   };
 
-  const scheduleItem = useMemo(
-    () => items.find((item) => item.id === scheduleItemId),
-    [items, scheduleItemId],
-  );
-
   const handleDeleteSelected = async () => {
     if (selection.selectedCount === 0) return;
 
@@ -115,6 +88,11 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
   const handlePublish = async (itemId: string) => {
     const item = items.find((entry) => entry.id === itemId);
     if (!item) return;
+    const validation = validateComposeItemAction(item, { mode: 'published' });
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
 
     setPublishingIds((current) => [...current, itemId]);
     haptics.medium();
@@ -183,42 +161,6 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
       setPublishingIds((current) => current.filter((id) => id !== itemId));
     }
   };
-
-  const handleOpenSchedule = (item: ComposeItem) => {
-    haptics.light();
-    setScheduleItemId(item.id);
-    setScheduleDate(item.scheduledAt ? new Date(item.scheduledAt) : new Date());
-    setScheduleTime(item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(11, 16) : '09:00');
-  };
-
-  const handleConfirmSchedule = () => {
-    if (!scheduleItemId) return;
-    const scheduledAt = toIsoSchedule(scheduleDate, scheduleTime);
-    if (!scheduledAt) {
-      toast.error('Select a schedule date and time');
-      return;
-    }
-
-    haptics.medium();
-    updateStatus(scheduleItemId, 'scheduled', scheduledAt);
-    if (scheduleItem) {
-      addNotification(
-        buildComposeScheduledNotification(
-          {
-            ...scheduleItem,
-            status: 'scheduled',
-            scheduledAt,
-            updatedAt: new Date().toISOString(),
-          },
-          scheduledAt,
-        ),
-      );
-    }
-    setScheduleItemId(null);
-    toast.success(scheduleItem?.status === 'scheduled' ? 'Schedule updated' : 'Post scheduled');
-  };
-
-  const isRescheduleMode = scheduleItem?.status === 'scheduled';
 
   const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
     const previewUrl = getComposeAssetPreviewUrl(asset);
@@ -418,7 +360,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onClick={(event) => {
                                 event.stopPropagation();
-                                handleOpenSchedule(item);
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
                               }}
                             >
                               Schedule
@@ -496,45 +439,6 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
           </div>
         )}
       </div>
-
-      <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
-        <BottomSheetHeader>
-          <BottomSheetTitle>{isRescheduleMode ? 'Update Schedule' : 'Schedule Post'}</BottomSheetTitle>
-          <BottomSheetDescription>
-            {scheduleItem
-              ? isRescheduleMode
-                ? `Choose a new scheduled time for "${scheduleItem.title}".`
-                : `Choose when "${scheduleItem.title}" should move into the scheduled queue.`
-              : 'Choose a schedule.'}
-          </BottomSheetDescription>
-        </BottomSheetHeader>
-        <BottomSheetBody>
-          <div className="space-y-4">
-            <div>
-              <Label className="text-gray-600 dark:text-[#9CA3AF]">Date</Label>
-              <div className="mt-2">
-                <DatePicker date={scheduleDate} onDateChange={setScheduleDate} />
-              </div>
-            </div>
-            <div>
-              <Label className="text-gray-600 dark:text-[#9CA3AF]">Time</Label>
-              <div className="mt-2">
-                <TimePicker value={scheduleTime} onChange={setScheduleTime} />
-              </div>
-            </div>
-          </div>
-        </BottomSheetBody>
-        <BottomSheetFooter>
-          <div className="flex gap-3 w-full">
-            <Button variant="outline" className="flex-1" onClick={() => setScheduleItemId(null)}>
-              Cancel
-            </Button>
-            <Button className="flex-1" onClick={handleConfirmSchedule}>
-              {isRescheduleMode ? 'Update Schedule' : 'Schedule'}
-            </Button>
-          </div>
-        </BottomSheetFooter>
-      </BottomSheet>
 
       <MediaPreviewDialog
         open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}

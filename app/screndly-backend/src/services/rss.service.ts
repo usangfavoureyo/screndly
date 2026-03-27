@@ -9,7 +9,7 @@ import Parser from 'rss-parser';
 import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
-import { uploadBufferToBackblaze } from './backblaze';
+import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
 
 const RSS_IMAGE_ANALYSIS_MODEL = DEFAULT_OPENAI_MODEL;
 
@@ -2069,6 +2069,36 @@ function mergeRSSActivityItems(primary: RSSActivityItem[], fallback: RSSActivity
     .slice(0, limit);
 }
 
+async function resolveRSSActivityImageUrl(url?: string): Promise<string | undefined> {
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    return await getBackblazeAuthorizedDownloadUrl(url, 7 * 24 * 60 * 60);
+  } catch {
+    return url;
+  }
+}
+
+async function resolveRSSActivityItemImages(item: RSSActivityItem): Promise<RSSActivityItem> {
+  const [imageUrl, imageUrls, selectedImages] = await Promise.all([
+    resolveRSSActivityImageUrl(item.imageUrl),
+    Promise.all((item.imageUrls || []).map((url) => resolveRSSActivityImageUrl(url))),
+    Promise.all((item.selectedImages || []).map(async (image) => ({
+      ...image,
+      url: (await resolveRSSActivityImageUrl(image.url)) || image.url,
+    }))),
+  ]);
+
+  return {
+    ...item,
+    imageUrl,
+    imageUrls: imageUrls.length > 0 ? imageUrls.filter((url): url is string => Boolean(url)) : item.imageUrls,
+    selectedImages: selectedImages.length > 0 ? selectedImages : item.selectedImages,
+  };
+}
+
 function hasRecentRSSActivity(
   items: RSSActivityItem[],
   feedId: string,
@@ -3591,16 +3621,19 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
     });
 
     const recordItems = records.map((record) => buildRSSActivityItemFromFeedRecord(record));
-    const items = mergeRSSActivityItems(recordItems, logItems, limit);
+    const items = await Promise.all(
+      mergeRSSActivityItems(recordItems, logItems, limit).map((item) => resolveRSSActivityItemImages(item))
+    );
     return {
       items,
       summary: buildActivitySummary(items),
     };
   }
 
+  const items = await Promise.all(logItems.slice(0, limit).map((item) => resolveRSSActivityItemImages(item)));
   return {
-    items: logItems.slice(0, limit),
-    summary: buildActivitySummary(logItems.slice(0, limit)),
+    items,
+    summary: buildActivitySummary(items),
   };
 }
 

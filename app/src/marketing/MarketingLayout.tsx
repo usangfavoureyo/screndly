@@ -75,9 +75,9 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
     document.documentElement.dataset.theme = theme;
     if (theme === "dark") {
       document.documentElement.classList.add("dark");
-      document.body.style.backgroundColor = "#0c0d0f";
+      document.body.style.backgroundColor = "#000000";
       document.body.style.color = "#f5f5f5";
-      if (themeColorMeta) themeColorMeta.setAttribute("content", "#0c0d0f");
+      if (themeColorMeta) themeColorMeta.setAttribute("content", "#000000");
     } else {
       document.documentElement.classList.remove("dark");
       document.body.style.backgroundColor = "#f9f9f7";

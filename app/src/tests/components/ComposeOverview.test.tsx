@@ -320,4 +320,46 @@ describe('ComposeOverview', () => {
     expect(screen.queryByTestId('schedule-sheet')).not.toBeInTheDocument();
     expect(useComposeStore.getState().items[0]?.status).toBe('scheduled');
   });
+
+  it('blocks invalid scheduling from the overview flow', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Caption missing',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'image-1',
+              kind: 'image',
+              fileName: 'poster.jpg',
+              mimeType: 'image/jpeg',
+              size: 1024,
+              order: 0,
+              storageUrl: 'https://cdn.example.com/poster.jpg',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_feed'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeOverview onNavigate={vi.fn()} />
+      </BackNavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Schedule' })[1]);
+
+    expect(screen.getByText('Schedule Post')).toBeInTheDocument();
+    expect(useComposeStore.getState().items[0]?.status).toBe('draft');
+  });
 });

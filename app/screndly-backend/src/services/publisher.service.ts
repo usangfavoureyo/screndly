@@ -98,7 +98,6 @@ export class PublisherService {
     private normalizeRemoteMediaUrl(value: string): string {
         try {
             const parsed = new URL(value.trim());
-            parsed.searchParams.delete('Authorization');
             return parsed.toString();
         } catch {
             return value.trim();
@@ -126,6 +125,22 @@ export class PublisherService {
         const normalized = value.toLowerCase();
         return normalized.includes('/rss/logo-cards/')
             || normalized.includes('/generated-thumbnails/');
+    }
+
+    private isRiskyGeneratedImageSource(value: string): boolean {
+        const normalized = value.trim().toLowerCase();
+        return normalized.includes('/rss/logo-cards/')
+            || normalized.includes('/generated-thumbnails/');
+    }
+
+    private isDirectMetaSafeRemoteImageSource(value: string): boolean {
+        try {
+            const url = new URL(value.trim());
+            const host = url.hostname.toLowerCase();
+            return host === 'image.tmdb.org';
+        } catch {
+            return false;
+        }
     }
 
     private getInvalidConnectionMessage(platform: string): string {
@@ -433,16 +448,32 @@ export class PublisherService {
         const rawUrls = this
             .getResolvedImageUrls(content)
             .slice(0, this.getPlatformImageLimit(platform));
+        const preferredRawUrls = rawUrls.filter((value) => !this.isRiskyGeneratedImageSource(value));
+        const fallbackRawUrls = rawUrls.filter((value) => this.isRiskyGeneratedImageSource(value));
+        const orderedRawUrls = preferredRawUrls.length > 0
+            ? [...preferredRawUrls, ...fallbackRawUrls]
+            : rawUrls;
 
         const resolved: string[] = [];
-        for (const value of rawUrls) {
+        for (const value of orderedRawUrls) {
             const trimmed = value.trim();
             if (!trimmed) {
                 continue;
             }
 
             if (/^https?:\/\//i.test(trimmed) || this.isImage(trimmed)) {
-                resolved.push(await this.prepareHostedMetaImageUrl(trimmed, cache));
+                try {
+                    if (this.isDirectMetaSafeRemoteImageSource(trimmed) && !this.isRiskyGeneratedImageSource(trimmed)) {
+                        resolved.push(this.normalizeRemoteMediaUrl(trimmed));
+                    } else {
+                        resolved.push(await this.prepareHostedMetaImageUrl(trimmed, cache));
+                    }
+                } catch (error) {
+                    console.warn(`[Publisher] Skipping Meta image candidate for ${platform}`, {
+                        source: trimmed,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
+                }
             }
         }
 
@@ -453,8 +484,8 @@ export class PublisherService {
             return safeUrls;
         }
 
-        if (rawUrls.length > 0) {
-            throw new Error('Meta publish requires a valid Screndly-hosted image asset');
+        if (orderedRawUrls.length > 0) {
+            throw new Error('Meta publish requires at least one valid Screndly-hosted image asset');
         }
 
         return [];

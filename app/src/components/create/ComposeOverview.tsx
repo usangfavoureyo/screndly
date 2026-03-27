@@ -23,6 +23,7 @@ import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
 import { isThreadsXCropVariantReady } from '../../lib/create/composeVideoProcessing';
 import { publishComposeItem } from '../../lib/create/composePublish';
+import { validateComposeItemAction } from '../../lib/create/composeValidation';
 import {
   buildComposePublishFailureNotification,
   buildComposePublishSuccessNotification,
@@ -133,6 +134,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const handlePublish = async (itemId: string) => {
     const item = items.find((entry) => entry.id === itemId);
     if (!item) return;
+    const validation = validateComposeItemAction(item, { mode: 'published' });
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
 
     setPublishingIds((current) => [...current, itemId]);
     haptics.medium();
@@ -146,6 +152,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
         ...item,
         status: nextStatus,
         updatedAt: new Date().toISOString(),
+        scheduledAt: nextStatus === 'published' ? undefined : item.scheduledAt,
         error: nextError,
       });
 
@@ -230,22 +237,28 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       toast.error('Select a schedule date and time');
       return;
     }
+    if (!scheduleItem) {
+      return;
+    }
+    const validation = validateComposeItemAction(scheduleItem, { mode: 'scheduled', scheduledAt });
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return;
+    }
 
     haptics.medium();
     updateStatus(scheduleItemId, 'scheduled', scheduledAt);
-    if (scheduleItem) {
-      addNotification(
-        buildComposeScheduledNotification(
-          {
-            ...scheduleItem,
-            status: 'scheduled',
-            scheduledAt,
-            updatedAt: new Date().toISOString(),
-          },
+    addNotification(
+      buildComposeScheduledNotification(
+        {
+          ...scheduleItem,
+          status: 'scheduled',
           scheduledAt,
-        ),
-      );
-    }
+          updatedAt: new Date().toISOString(),
+        },
+        scheduledAt,
+      ),
+    );
     setScheduleItemId(null);
     toast.success('Post scheduled');
   };

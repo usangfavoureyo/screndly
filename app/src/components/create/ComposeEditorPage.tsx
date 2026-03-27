@@ -30,7 +30,6 @@ import { COMPOSE_META_PLATFORM_GROUPS, COMPOSE_PLATFORM_OPTIONS } from '../../co
 import {
   buildComposeItemTitleFromAssets,
   buildComposeMediaAsset,
-  getComposeAssetPublishUrl,
   getComposeCompatibilityMap,
   getComposeAssetPreviewUrl,
   normalizeComposeItem,
@@ -43,6 +42,7 @@ import {
 } from '../../lib/create/composeVideoProcessing';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
 import { publishComposeItem } from '../../lib/create/composePublish';
+import { validateComposeItemAction } from '../../lib/create/composeValidation';
 import {
   buildComposeDraftNotification,
   buildComposePublishFailureNotification,
@@ -121,16 +121,6 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
 };
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
-const SHARED_CAPTION_REQUIRED_PLATFORMS: ComposePlatformKey[] = [
-  'instagram_feed',
-  'instagram_reels',
-  'facebook_feed',
-  'threads',
-  'x',
-  'tiktok',
-  'youtube_longform',
-  'youtube_shorts',
-];
 
 function createInitialForm(item?: ComposeItem): FormState {
   const normalized = item ? normalizeComposeItem(item) : undefined;
@@ -271,9 +261,6 @@ export function ComposeEditorPage({
   const isYouTubeShortsSelected = formState.platforms.includes('youtube_shorts');
   const isYouTubeSelected = isYouTubeLongformSelected || isYouTubeShortsSelected;
   const isPinterestSelected = formState.platforms.includes('pinterest');
-  const selectedCaptionRequiredPlatforms = formState.platforms.filter((platform) =>
-    SHARED_CAPTION_REQUIRED_PLATFORMS.includes(platform),
-  );
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.title === formState.youtubePlaylist);
   const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
@@ -784,80 +771,6 @@ export function ComposeEditorPage({
     }));
   };
 
-  const validate = (mode: 'draft' | 'scheduled' | 'published') => {
-    if (!formState.platforms.length) {
-      toast.error('Select at least one connected platform');
-      return false;
-    }
-    if ((mode === 'scheduled' || mode === 'published') && mediaSummary.totalAssets === 0) {
-      toast.error(`Upload at least one image or video before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
-      return false;
-    }
-    if (
-      (mode === 'scheduled' || mode === 'published')
-      && selectedCaptionRequiredPlatforms.length > 0
-      && !formState.sharedCaption.trim()
-    ) {
-      toast.error('Enter a caption before scheduling or publishing to the selected platforms');
-      return false;
-    }
-    if (hasUploadingAssets) {
-      toast.error('Wait for media uploads to finish before saving');
-      return false;
-    }
-    if (isGeneratingThreadsXCrop) {
-      toast.error('Wait for the Threads/X 3:4 crop to finish generating.');
-      return false;
-    }
-    if (hasUploadingThumbnails) {
-      toast.error('Wait for thumbnail uploads to finish before saving');
-      return false;
-    }
-    if (hasFailedAssets) {
-      toast.error('Remove or re-upload media that failed to upload to Backblaze');
-      return false;
-    }
-    if (hasFailedThumbnails) {
-      toast.error('Remove or re-upload thumbnails that failed to upload');
-      return false;
-    }
-    if ((mode === 'scheduled' || mode === 'published') && formState.mediaAssets.some((asset) => !getComposeAssetPublishUrl(asset))) {
-      toast.error(`Upload all media to Backblaze before ${mode === 'published' ? 'publishing' : 'scheduling'}`);
-      return false;
-    }
-    if (selectedPlatformIssues.length > 0) {
-      toast.error(selectedPlatformIssues[0].reason || 'One or more selected platforms do not support this media set.');
-      return false;
-    }
-    if ((mode === 'scheduled' || mode === 'published') && isThreadsXCropEnabled && !isThreadsXCropReady) {
-      toast.error('Generate the 3:4 Threads/X crop before scheduling or publishing.');
-      return false;
-    }
-    if (
-      isPinterestSelected &&
-      (!formState.pinterestTitle.trim() || !formState.pinterestDescription.trim() || !formState.pinterestBoard)
-    ) {
-      toast.error('Complete the Pinterest fields before saving');
-      return false;
-    }
-    if (
-      isYouTubeSelected &&
-      (
-        !formState.youtubeTitle.trim()
-        || (isYouTubeLongformSelected && !formState.youtubeDescription.trim())
-        || (isYouTubeLongformSelected && !formState.youtubePlaylist)
-      )
-    ) {
-      toast.error('Complete the YouTube fields before saving');
-      return false;
-    }
-    if (mode === 'scheduled' && !toIsoSchedule(scheduleDate, scheduleTime)) {
-      toast.error('Choose a date and time for the scheduled post');
-      return false;
-    }
-    return true;
-  };
-
   const buildItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string): ComposeItem => {
     const now = new Date().toISOString();
     return {
@@ -900,6 +813,25 @@ export function ComposeEditorPage({
       scheduledAt,
       error,
     };
+  };
+
+  const validate = (mode: 'draft' | 'scheduled' | 'published') => {
+    if (isGeneratingThreadsXCrop) {
+      toast.error('Wait for the Threads/X 3:4 crop to finish generating.');
+      return false;
+    }
+
+    const scheduledAt = mode === 'scheduled' ? toIsoSchedule(scheduleDate, scheduleTime) : undefined;
+    const validation = validateComposeItemAction(buildItem(mode, scheduledAt, existingItem?.error), {
+      mode,
+      scheduledAt,
+    });
+    if (!validation.ok) {
+      toast.error(validation.error);
+      return false;
+    }
+
+    return true;
   };
 
   const handleSaveDraft = () => {

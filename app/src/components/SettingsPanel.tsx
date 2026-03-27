@@ -73,6 +73,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const staticPageScrollRef = useRef<HTMLDivElement>(null);
   const [savedScrollPosition, setSavedScrollPosition] = useState(0);
+  const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
 
   // Unified Navigation Handlers (UI drives History)
   const handleCloseSettings = () => {
@@ -555,28 +556,31 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
         ref={scrollContainerRef}
         className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto"
       >
-        {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center justify-between z-10">
-          <h2 className="text-gray-900 dark:text-white text-xl">Settings</h2>
-          <button
-            className="text-gray-900 dark:text-white p-1"
-            onClick={() => {
-              try {
-                haptics.light();
-              } catch (e) {
-                // Silently fail if haptics not available
-              }
-              handleCloseSettings();
-            }}
-          >
-            <X className="w-[26px] h-[26px] stroke-1" />
-          </button>
+        <div className="sticky top-0 z-10 bg-gradient-to-b from-white via-white/95 to-transparent px-4 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] dark:from-[#000000] dark:via-[#000000]/95">
+          <div className="mb-3 flex items-start justify-between gap-4">
+            <div className="pt-1">
+              <h2 className="text-xl text-gray-900 dark:text-white">Settings</h2>
+            </div>
+            <button
+              className={`flex h-12 w-12 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white ${floatingSurfaceClasses}`}
+              onClick={() => {
+                try {
+                  haptics.light();
+                } catch (e) {
+                  // Silently fail if haptics not available
+                }
+                handleCloseSettings();
+              }}
+              aria-label="Close settings"
+            >
+              <X className="h-[22px] w-[22px] stroke-[1.75]" />
+            </button>
+          </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="px-6 pt-4 pb-2">
+        <div className="p-6 pt-4 space-y-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
             <Input
               type="text"
               placeholder="Search settings..."
@@ -586,7 +590,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
                 setSearchQuery(e.target.value);
               }}
               onFocus={() => haptics.light()}
-              className="pl-10 bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+              className="h-11 rounded-full border border-gray-200 bg-white pl-10 pr-10 text-gray-900 shadow-none dark:border-[#333333] dark:bg-[#000000] dark:text-white"
             />
             {searchQuery && (
               <button
@@ -594,15 +598,13 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
                   haptics.light();
                   setSearchQuery('');
                 }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-black/[0.04] hover:text-gray-600 dark:hover:bg-white/[0.06] dark:hover:text-gray-300"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
           </div>
-        </div>
 
-        <div className="p-6 space-y-4">
           {/* Settings Navigation Items */}
           <div className="space-y-1">
             {filteredSettings.map(item => (

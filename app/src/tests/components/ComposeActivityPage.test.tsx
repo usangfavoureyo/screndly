@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ComposeActivityPage } from '../../components/create/ComposeActivityPage';
 import { BackNavigationProvider } from '../../contexts/BackNavigationContext';
@@ -90,5 +90,48 @@ describe('ComposeActivityPage', () => {
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
+  });
+
+  it('routes draft scheduling through the editor instead of an inline schedule sheet', () => {
+    const onNavigate = vi.fn();
+
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Draft article',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'image',
+              fileName: 'poster.jpg',
+              mimeType: 'image/jpeg',
+              size: 1024,
+              order: 0,
+              storageUrl: 'https://cdn.example.com/poster.jpg',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_feed'],
+          sharedCaption: 'Caption ready',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeActivityPage onNavigate={onNavigate} previousPage="create" />
+      </BackNavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
+    expect(screen.queryByText('Schedule Post')).not.toBeInTheDocument();
   });
 });

@@ -55,6 +55,7 @@ export async function publishContent(
     mediaFile?: File,
     options?: {
         timeout?: number;
+        signal?: AbortSignal;
     },
 ): Promise<PublishResult> {
     const selectedPlatforms = Object.entries(platforms)
@@ -113,6 +114,7 @@ export async function publishContent(
                 content
             }, {
                 timeout: options?.timeout,
+                signal: options?.signal,
             });
 
             return response;

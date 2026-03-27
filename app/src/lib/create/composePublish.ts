@@ -12,6 +12,10 @@ export interface ComposePublishOutcome {
   errorMessage?: string;
 }
 
+interface ComposePublishOptions {
+  signal?: AbortSignal;
+}
+
 const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
   instagram_feed: 'Instagram Feed',
   instagram_reels: 'Instagram Reels',
@@ -58,7 +62,7 @@ function toSinglePlatformSelection(platform: ComposePlatformKey): PlatformSelect
   return toPlatformSelection([platform]);
 }
 
-export async function publishComposeItem(item: ComposeItem): Promise<ComposePublishOutcome> {
+export async function publishComposeItem(item: ComposeItem, options?: ComposePublishOptions): Promise<ComposePublishOutcome> {
   const platformKeys = Array.from(new Set(item.platforms));
   if (platformKeys.length === 0) {
     throw new Error('Select at least one platform');
@@ -82,6 +86,10 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
 
   const results: any[] = [];
   for (const platform of platformKeys) {
+    if (options?.signal?.aborted) {
+      throw new Error('Publish request cancelled');
+    }
+
     const content = {
       text: item.sharedCaption?.trim() || item.title,
       title:
@@ -102,7 +110,12 @@ export async function publishComposeItem(item: ComposeItem): Promise<ComposePubl
 
     const response = await publishContent(toSinglePlatformSelection(platform), content, undefined, {
       timeout: 180000,
+      signal: options?.signal,
     });
+
+    if (options?.signal?.aborted) {
+      throw new Error('Publish request cancelled');
+    }
 
     if (!response.success) {
       results.push({

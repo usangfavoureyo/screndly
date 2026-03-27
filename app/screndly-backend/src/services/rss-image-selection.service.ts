@@ -122,6 +122,12 @@ interface FranchiseValidationRule {
 
 const MIN_IMAGE_WIDTH = 600;
 const MIN_IMAGE_HEIGHT = 400;
+const MIN_EDITORIAL_QUALITY_WIDTH = 900;
+const MIN_EDITORIAL_QUALITY_HEIGHT = 500;
+const HIGH_QUALITY_WIDTH = 1400;
+const HIGH_QUALITY_HEIGHT = 780;
+const MIN_EDITORIAL_QUALITY_AREA = 700000;
+const HIGH_QUALITY_AREA = 1400000;
 const BLOCKED_DOMAINS = [
   'pinterest.com',
   'tumblr.com',
@@ -226,6 +232,13 @@ const WATERMARK_KEYWORDS = [
   'stock photo',
   'watermark',
   'editorial use only',
+  'comicbook review',
+  'review frame',
+  'review screengrab',
+  'outlet watermark',
+  'network bug',
+  'publisher bug',
+  'lower third',
 ];
 const BLOCKED_KEYWORDS = [
   'fan art',
@@ -531,6 +544,7 @@ const MIN_TRAILER_STILL_SERPER_SCORE = 82;
 const MIN_SMART_PRIMARY_SERPER_SCORE = 100;
 const MIN_SMART_SECONDARY_SCORE = 88;
 const MIN_SMART_LOGO_SECONDARY_SCORE = 74;
+const MAX_SECONDARY_SCORE_GAP = 18;
 const HEADLINE_PROJECT_GENERIC_TERMS = new Set([
   'a',
   'an',
@@ -2201,6 +2215,57 @@ function isEligibleSmartSecondaryCandidate(
     areImageRolesComplementary(primaryRole, secondaryRole);
 }
 
+function isBrandedEditorialFrame(image: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>): boolean {
+  const text = normalizeText(`${image.reason || ''} ${image.url || ''}`);
+  if (!text) {
+    return false;
+  }
+
+  const outletSignals = [
+    'comicbook review',
+    'screenrant',
+    'collider',
+    'cbr',
+    'movieweb',
+    'comingsoon',
+    'digitalspy',
+    'gamesradar',
+    'bloody disgusting',
+    'inverse',
+    'theplaylist',
+  ];
+  const frameSignals = [
+    'review',
+    'review frame',
+    'review screengrab',
+    'exclusive',
+    'preview',
+    'watermark',
+    'lower third',
+    'network bug',
+    'publisher bug',
+  ];
+
+  return containsKeyword(text, outletSignals) && containsKeyword(text, frameSignals);
+}
+
+function shouldKeepSecondaryCarouselImage(
+  primaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>,
+  secondaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>
+): boolean {
+  if (isBrandedEditorialFrame(secondaryImage)) {
+    return false;
+  }
+
+  if (typeof primaryImage.score === 'number' && typeof secondaryImage.score === 'number') {
+    if (primaryImage.score - secondaryImage.score > MAX_SECONDARY_SCORE_GAP) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 async function collectScoredImages(
   analysis: RSSSubjectAnalysis,
   limit: number
@@ -2250,8 +2315,22 @@ function buildResolvedImagesFromScored(
   const hasConfidentPrimary = typeof topScore === 'number' &&
     topScore >= scoreThreshold &&
     topScoreGap >= confidenceGapThreshold;
+  const primaryScore = typeof topScore === 'number' ? topScore : null;
   const confidentSelections = scoredSelections
-    .filter((item) => hasConfidentPrimary && item.score >= scoreThreshold)
+    .filter((item) =>
+      hasConfidentPrimary &&
+      item.score >= scoreThreshold &&
+      !isBrandedEditorialFrame({
+        url: item.image.imageUrl || '',
+        reason: item.reason,
+        score: item.score,
+      }) &&
+      (
+        primaryScore === null ||
+        item.score === primaryScore ||
+        primaryScore - item.score <= MAX_SECONDARY_SCORE_GAP
+      )
+    )
     .slice(0, limit)
     .map((item) => ({
       url: item.image.imageUrl!,
@@ -2280,7 +2359,19 @@ function buildResolvedImagesFromScored(
   }
 
   const acceptableSelections = scoredSelections
-    .filter((item) => item.score >= MIN_ACCEPTABLE_SERPER_SCORE)
+    .filter((item) =>
+      item.score >= MIN_ACCEPTABLE_SERPER_SCORE &&
+      !isBrandedEditorialFrame({
+        url: item.image.imageUrl || '',
+        reason: item.reason,
+        score: item.score,
+      }) &&
+      (
+        primaryScore === null ||
+        item.score === primaryScore ||
+        primaryScore - item.score <= MAX_SECONDARY_SCORE_GAP
+      )
+    )
     .slice(0, limit);
 
   if (acceptableSelections.length === 0) {
@@ -2741,6 +2832,17 @@ function isBlockedResultForIntent(image: SerperImageResult, intent: ImageIntent 
     return true;
   }
 
+  if (
+    (intent === 'still' || intent === 'backdrop' || intent === 'character_still') &&
+    (
+      (image.imageWidth || 0) < 720 ||
+      (image.imageHeight || 0) < 405 ||
+      ((image.imageWidth || 0) * (image.imageHeight || 0)) < 350000
+    )
+  ) {
+    return true;
+  }
+
   if (BLOCKED_DOMAINS.some((blocked) => domain.includes(normalizeText(blocked)))) {
     return true;
   }
@@ -2783,6 +2885,39 @@ function isTallPosterAspect(image: SerperImageResult): boolean {
 function isLandscapeAspect(image: SerperImageResult): boolean {
   const ratio = getAspectRatio(image);
   return ratio !== null && ratio >= 1.3;
+}
+
+function getImageQualityScore(image: SerperImageResult, intent: ImageIntent): number {
+  const width = image.imageWidth || 0;
+  const height = image.imageHeight || 0;
+  const area = width * height;
+  const editorialIntent = intent === 'still' || intent === 'backdrop' || intent === 'character_still';
+
+  if (!width || !height) {
+    return editorialIntent ? -12 : 0;
+  }
+
+  if (!editorialIntent) {
+    if (area >= HIGH_QUALITY_AREA) return 12;
+    if (area >= MIN_EDITORIAL_QUALITY_AREA) return 6;
+    return 0;
+  }
+
+  let score = 0;
+
+  if (width < MIN_EDITORIAL_QUALITY_WIDTH || height < MIN_EDITORIAL_QUALITY_HEIGHT || area < MIN_EDITORIAL_QUALITY_AREA) {
+    score -= 28;
+  } else if (width >= HIGH_QUALITY_WIDTH && height >= HIGH_QUALITY_HEIGHT && area >= HIGH_QUALITY_AREA) {
+    score += 20;
+  } else {
+    score += 10;
+  }
+
+  if (width >= 1800 || height >= 1000) {
+    score += 6;
+  }
+
+  return score;
 }
 
 function getDomainScore(domain: string): number {
@@ -2956,6 +3091,7 @@ function scoreImage(
 
   score += getDomainScore(image.domain || '');
   score += Math.min(20, Math.round(((image.imageWidth || 0) * (image.imageHeight || 0)) / 250000));
+  score += getImageQualityScore(image, analysis.imageIntent);
   score += Math.max(0, 10 - ((image.position || 10) - 1));
 
   const imageType = getImageTypeScore(text, analysis);
@@ -3157,10 +3293,12 @@ export async function resolveRelevantRSSImages(
         : [primaryResolved.image];
     }
 
-    return [
-      primaryResolved.image,
-      secondaryResolved,
-    ];
+    return shouldKeepSecondaryCarouselImage(primaryResolved.image, secondaryResolved)
+      ? [
+          primaryResolved.image,
+          secondaryResolved,
+        ]
+      : [primaryResolved.image];
   }
 
   return resolveSingleSlotImages(analysis, fallbackImages, sources, limit);

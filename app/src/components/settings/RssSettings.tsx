@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { rssPromptDefaults } from '../../config/cultureCravePromptDefaults';
+import { BackIconButton } from '../BackIconButton';
 
 interface RssSettingsProps {
   settings: any;
@@ -21,17 +22,11 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 flex min-h-0 flex-col overflow-hidden">
       {/* Header */}
       <div className="relative z-10 shrink-0 border-b border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 flex items-center gap-3">
-        <button
-          className="text-gray-900 dark:text-white p-1"
+        <BackIconButton
           onClick={() => {
-            haptics.light();
             onBack();
           }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 12H2M9 19l-7-7 7-7" />
-          </svg>
-        </button>
+        />
         <h2 className="text-gray-900 dark:text-white text-xl">RSS Feeds</h2>
       </div>
 

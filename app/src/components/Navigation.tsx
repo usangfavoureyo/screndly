@@ -1,6 +1,6 @@
-import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen, Menu, X } from 'lucide-react';
+import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import brandIcon from '../assets/brand-icon.png';
@@ -36,14 +36,12 @@ export function Navigation({
   isDesktopSidebarCollapsed,
   onToggleDesktopSidebar,
 }: NavigationProps) {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const pendingPointerActivationRef = useRef<string | null>(null);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
   const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
   const handleNavClick = (page: string) => {
     onNavigate(page);
-    setIsMobileMenuOpen(false);
   };
 
   const armPointerActivation = (activationId: string, callback: () => void) => (event: React.PointerEvent<HTMLElement>) => {
@@ -203,34 +201,35 @@ export function Navigation({
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', ['--desktop-sidebar-width' as string]: desktopSidebarWidth }}
       >
         <div className="relative h-14">
-          <div className="pointer-events-auto absolute left-4 lg:left-[calc(var(--desktop-sidebar-width)+1.5rem)]">
+          <div className="pointer-events-auto absolute left-4 lg:hidden">
             <button
               type="button"
               onClick={() => {
                 haptics.light();
-                if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-                  onToggleDesktopSidebar();
-                  return;
-                }
+                handleNavClick('dashboard');
+              }}
+              className="flex items-center justify-center transition-transform duration-200 hover:scale-[1.03] active:scale-95"
+              aria-label="Go to dashboard"
+            >
+              <img src={brandIcon} alt="Screndly" className="h-11 w-11 rounded-md object-contain" />
+            </button>
+          </div>
 
-                setIsMobileMenuOpen((previous) => !previous);
+          <div className="pointer-events-auto absolute left-4 hidden lg:left-[calc(var(--desktop-sidebar-width)+1.5rem)] lg:block">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                onToggleDesktopSidebar();
               }}
               className={cn(
                 'flex h-12 w-12 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white',
                 floatingSurfaceClasses,
               )}
-              aria-label={typeof window !== 'undefined' && window.innerWidth >= 1024
-                ? (isDesktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
-                : (isMobileMenuOpen ? 'Close menu' : 'Open menu')}
-              aria-pressed={typeof window !== 'undefined' && window.innerWidth >= 1024 ? isDesktopSidebarCollapsed : isMobileMenuOpen}
+              aria-label={isDesktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-pressed={isDesktopSidebarCollapsed}
             >
-              {typeof window !== 'undefined' && window.innerWidth >= 1024 ? (
-                isDesktopSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />
-              ) : isMobileMenuOpen ? (
-                <X className="h-5 w-5" />
-              ) : (
-                <Menu className="h-5 w-5" />
-              )}
+              {isDesktopSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
             </button>
           </div>
 
@@ -270,22 +269,6 @@ export function Navigation({
           </div>
         </div>
       </div>
-
-      {/* Mobile Menu Overlay and Drawer */}
-      {isMobileMenuOpen && (
-        <>
-          {/* Overlay */}
-          <div
-            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-
-          {/* Mobile Menu Drawer */}
-          <aside className="fixed top-0 left-0 h-full w-64 bg-white dark:bg-[#000000] border-r border-gray-200 dark:border-[#333333] flex-col z-50 lg:hidden flex">
-            <NavContent isCollapsed={false} isDesktop={false} />
-          </aside>
-        </>
-      )}
 
       {/* Sidebar - Desktop Only (lg and above) */}
       <aside
