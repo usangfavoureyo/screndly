@@ -694,7 +694,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<Archive className="w-6 h-6 text-[#ec1e24]" />}
+        icon={<img src="/icons/icons/hugeroundedicons/archive-04-stroke-rounded.svg" alt="" className="h-6 w-6 object-contain" />}
         title="Upload Manager"
         subtitle="Video upload pipeline"
         onViewAll={() => handleNavigate('upload-manager', 'dashboard')}

@@ -162,7 +162,13 @@ export function Navigation({
               aria-current={isActive ? 'page' : undefined}
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
-              <Icon className={cn('h-5 w-5 shrink-0 transition-transform duration-200', !isActive && 'group-hover:scale-110')} />
+              <Icon
+                size={item.id === 'channels' ? 22 : 20}
+                className={cn(
+                  'shrink-0 transition-transform duration-200',
+                  !isActive && 'group-hover:scale-110',
+                )}
+              />
               {(!isCollapsed || !isDesktop) && (
                 <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
               )}
