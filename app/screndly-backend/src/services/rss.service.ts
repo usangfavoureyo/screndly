@@ -209,10 +209,12 @@ interface RSSRuntimeSettings {
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
+const RSS_PUBLISH_CLAIM_STALE_MS = 15 * 60 * 1000;
 const RSS_TOPIC_DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
 const activeRSSFeedRefreshes = new Map<string, Promise<RefreshResult>>();
+const activeRSSPublishClaims = new Set<string>();
 let activeScheduledRSSRefresh: Promise<{
   total: number;
   success: number;
@@ -1550,6 +1552,27 @@ function areRSSTopicFingerprintsSimilar(
 function getRSSItemTopicDedupeKey(item: RSSItem): string {
   const signature = getRSSTopicSignature(item.title);
   return signature ? `topic:${signature}` : '';
+}
+
+function getRSSPublishClaimKeys(feedId: string, item: RSSItem): string[] {
+  return [
+    `${feedId}:${getRSSItemDedupeKey(item)}`,
+    getRSSItemTopicDedupeKey(item) ? `${feedId}:${getRSSItemTopicDedupeKey(item)}` : '',
+  ].filter(Boolean);
+}
+
+function acquireRSSPublishClaim(feedId: string, item: RSSItem): boolean {
+  const claimKeys = getRSSPublishClaimKeys(feedId, item);
+  if (claimKeys.some((key) => activeRSSPublishClaims.has(key))) {
+    return false;
+  }
+
+  claimKeys.forEach((key) => activeRSSPublishClaims.add(key));
+  return true;
+}
+
+function releaseRSSPublishClaim(feedId: string, item: RSSItem): void {
+  getRSSPublishClaimKeys(feedId, item).forEach((key) => activeRSSPublishClaims.delete(key));
 }
 
 function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
@@ -3046,6 +3069,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     for (const pendingEntry of activePendingQueue) {
       const item = pendingEntry.item;
       latestHandledItem = item;
+      const dedupeKey = getRSSItemDedupeKey(item);
 
       const pendingRuleEvaluation = evaluateFeedRules(item, feedFilters);
       if (!pendingRuleEvaluation.allowed) {
@@ -3075,7 +3099,30 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
-      const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+      if (hasRecentRSSActivity(recentActivities, feed.id, item, ['pending', 'published'])) {
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
+      if (!acquireRSSPublishClaim(feed.id, item)) {
+        pendingCount += 1;
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
+      let claimAcquired = false;
+      try {
+        claimAcquired = await claimRSSFeedItemForPublish(feed.id, item, {
+          recordId: pendingEntry.record.id,
+        });
+
+        if (!claimAcquired) {
+          pendingCount += 1;
+          seenKeys.add(dedupeKey);
+          continue;
+        }
+
+        const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
       resolvedActivityItem.generatedCaption = publishAttempt.caption;
       resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
@@ -3199,6 +3246,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       };
       await logRSSActivity(failedMetadata);
       rememberRSSActivity(recentActivities, failedMetadata);
+      } finally {
+        releaseRSSPublishClaim(feed.id, item);
+      }
     }
 
     for (const item of itemsToProcess) {
@@ -3294,8 +3344,30 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
-      const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
-      seenKeys.add(dedupeKey);
+      if (hasRecentRSSActivity(recentActivities, feed.id, item, ['pending', 'published'])) {
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
+      if (!acquireRSSPublishClaim(feed.id, item)) {
+        pendingCount += 1;
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
+      let claimAcquired = false;
+      try {
+        claimAcquired = await claimRSSFeedItemForPublish(feed.id, item, {
+          firstSeenAt: item.pubDate,
+        });
+
+        if (!claimAcquired) {
+          seenKeys.add(dedupeKey);
+          continue;
+        }
+
+        const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+        seenKeys.add(dedupeKey);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
       resolvedActivityItem.generatedCaption = publishAttempt.caption;
       resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
@@ -3398,6 +3470,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       };
       await logRSSActivity(failedMetadata);
       rememberRSSActivity(recentActivities, failedMetadata);
+      } finally {
+        releaseRSSPublishClaim(feed.id, item);
+      }
     }
 
     await updateFeed(id, {
@@ -3653,6 +3728,90 @@ async function deleteRSSActivity(id: string): Promise<void> {
   await prisma.log.delete({
     where: { id },
   });
+}
+
+async function claimRSSFeedItemForPublish(
+  feedId: string,
+  item: RSSItem,
+  options?: {
+    recordId?: string;
+    firstSeenAt?: Date;
+  }
+): Promise<boolean> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    return true;
+  }
+
+  const now = new Date();
+  const staleBefore = new Date(now.getTime() - RSS_PUBLISH_CLAIM_STALE_MS);
+  const dedupeKey = getRSSItemDedupeKey(item);
+
+  if (options?.recordId) {
+    const claimed = await prisma.rSSFeedItem.updateMany({
+      where: {
+        id: options.recordId,
+        feedId,
+        status: 'pending',
+        OR: [
+          { lastAttemptedAt: null },
+          { lastAttemptedAt: { lt: staleBefore } },
+        ],
+      },
+      data: {
+        lastAttemptedAt: now,
+        errorMessage: null,
+      },
+    });
+
+    return claimed.count > 0;
+  }
+
+  await prisma.rSSFeedItem.upsert({
+    where: {
+      feedId_dedupeKey: {
+        feedId,
+        dedupeKey,
+      },
+    },
+    create: {
+      feedId,
+      dedupeKey,
+      title: item.title,
+      link: item.link,
+      guid: item.guid,
+      status: 'pending',
+      itemData: serializeRSSItem(item),
+      firstSeenAt: options?.firstSeenAt ?? now,
+      lastAttemptedAt: null,
+      publishedAt: null,
+      errorMessage: null,
+    },
+    update: {
+      title: item.title,
+      link: item.link,
+      guid: item.guid,
+      itemData: serializeRSSItem(item),
+    },
+  });
+
+  const claimed = await prisma.rSSFeedItem.updateMany({
+    where: {
+      feedId,
+      dedupeKey,
+      status: 'pending',
+      OR: [
+        { lastAttemptedAt: null },
+        { lastAttemptedAt: { lt: staleBefore } },
+      ],
+    },
+    data: {
+      lastAttemptedAt: now,
+      errorMessage: null,
+    },
+  });
+
+  return claimed.count > 0;
 }
 
 export {

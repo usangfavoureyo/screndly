@@ -20,6 +20,7 @@ import {
 } from '../../utils/pwa';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
+import { BackIconButton } from '../BackIconButton';
 
 interface PWASettingsProps {
   settings: any;
@@ -201,6 +202,14 @@ export function PWASettings({ settings, updateSetting, onBack }: PWASettingsProp
 
   return (
     <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
+      <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center gap-3 z-10">
+        <BackIconButton
+          onClick={() => {
+            onBack();
+          }}
+        />
+        <h2 className="text-gray-900 dark:text-white text-xl">Progressive Web App</h2>
+      </div>
       {/* Header */}
       <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center gap-3">
         <button 
