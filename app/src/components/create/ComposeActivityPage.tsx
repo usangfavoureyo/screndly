@@ -132,6 +132,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         ...item,
         status: nextStatus,
         updatedAt,
+        scheduledAt: nextStatus === 'published' ? undefined : item.scheduledAt,
         error: nextError,
       };
 
@@ -163,6 +164,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         ...item,
         status: 'failed',
         updatedAt: new Date().toISOString(),
+        scheduledAt: item.scheduledAt,
         error: message,
       });
       addNotification(

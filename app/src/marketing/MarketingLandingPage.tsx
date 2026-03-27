@@ -75,18 +75,18 @@ const PREVIEWS = [
 export function MarketingLandingPage() {
   return (
     <MarketingLayout>
-      <section className="relative overflow-hidden border-b border-neutral-200 bg-white">
+      <section className="relative overflow-hidden border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-6 pb-16 pt-16 md:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:pb-24 lg:pt-20">
           <FadeIn>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">
               Private publishing workspace
             </p>
-            <h1 className="marketing-heading mt-6 text-3xl font-semibold leading-tight text-neutral-900 md:text-4xl lg:text-5xl">
+            <h1 className="marketing-heading mt-6 text-3xl font-semibold leading-tight text-[var(--marketing-text)] md:text-4xl lg:text-5xl">
               Private AI publishing and automation workspace for modern content operations.
             </h1>
-            <p className="mt-5 max-w-xl text-base text-neutral-700 md:text-lg">
-              Screndly is a private dashboard for managing media, generating captions, scheduling
-              posts, and running feed-driven publishing workflows across social platforms.
+            <p className="mt-5 max-w-xl text-base text-[var(--marketing-muted)] md:text-lg">
+              Private dashboard to manage media, generate captions, schedule posts, and run feed-driven
+              publishing across social platforms.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
               <a
@@ -97,7 +97,7 @@ export function MarketingLandingPage() {
               </a>
               <a
                 href="/app"
-                className="inline-flex items-center gap-2 rounded-full border border-neutral-300 px-5 py-3 text-sm font-semibold text-neutral-900 transition hover:border-neutral-900"
+                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] px-5 py-3 text-sm font-semibold text-[var(--marketing-text)] transition hover:border-[var(--marketing-text)]"
               >
                 Open Dashboard
               </a>
@@ -111,8 +111,8 @@ export function MarketingLandingPage() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="rounded-[32px] border border-neutral-200 bg-[#f6f6f4] p-5 shadow-[0_30px_60px_rgba(0,0,0,0.08)]">
-              <div className="flex items-center justify-between border-b border-neutral-200 pb-3 text-xs uppercase tracking-[0.25em] text-neutral-500">
+            <div className="rounded-[32px] border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5 shadow-[0_30px_60px_rgba(0,0,0,0.08)]">
+              <div className="flex items-center justify-between border-b border-[color:var(--marketing-border)] pb-3 text-xs uppercase tracking-[0.25em] text-[var(--marketing-muted-strong)]">
                 <span>Screndly Dashboard</span>
                 <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[10px] font-semibold text-[#ec1e24]">
                   Private
@@ -120,49 +120,49 @@ export function MarketingLandingPage() {
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                       Queue
                     </p>
                     <div className="mt-3 space-y-2">
-                      <div className="h-2 w-full rounded-full bg-neutral-200" />
-                      <div className="h-2 w-4/5 rounded-full bg-neutral-200" />
-                      <div className="h-2 w-2/3 rounded-full bg-neutral-200" />
+                      <div className="h-2 w-full rounded-full bg-[color:var(--marketing-border)]" />
+                      <div className="h-2 w-4/5 rounded-full bg-[color:var(--marketing-border)]" />
+                      <div className="h-2 w-2/3 rounded-full bg-[color:var(--marketing-border)]" />
                     </div>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                       Channels
                     </p>
-                    <div className="mt-3 space-y-2 text-xs font-medium text-neutral-700">
+                    <div className="mt-3 space-y-2 text-xs font-medium text-[var(--marketing-muted)]">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 rounded-full bg-[#ec1e24]" />
                         Pinterest Boards
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-neutral-400" />
+                        <span className="h-2 w-2 rounded-full bg-[color:var(--marketing-muted-strong)]" />
                         TikTok Studio
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-neutral-400" />
+                        <span className="h-2 w-2 rounded-full bg-[color:var(--marketing-muted-strong)]" />
                         Editorial Feed
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                       Compose
                     </p>
                     <Film size={16} className="text-[#ec1e24]" />
                   </div>
                   <div className="mt-3 space-y-3">
-                    <div className="h-28 rounded-xl bg-neutral-100" />
-                    <div className="h-2 w-full rounded-full bg-neutral-200" />
-                    <div className="h-2 w-4/5 rounded-full bg-neutral-200" />
-                    <div className="h-2 w-3/4 rounded-full bg-neutral-200" />
-                    <div className="flex items-center gap-2 pt-2 text-xs font-medium text-neutral-500">
+                    <div className="h-28 rounded-xl bg-[color:var(--marketing-surface-alt)]" />
+                    <div className="h-2 w-full rounded-full bg-[color:var(--marketing-border)]" />
+                    <div className="h-2 w-4/5 rounded-full bg-[color:var(--marketing-border)]" />
+                    <div className="h-2 w-3/4 rounded-full bg-[color:var(--marketing-border)]" />
+                    <div className="flex items-center gap-2 pt-2 text-xs font-medium text-[var(--marketing-muted-strong)]">
                       <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
                         <ClipboardList size={14} />
                       </span>
@@ -177,14 +177,14 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="features" className="border-b border-neutral-200 bg-[#f9f9f7]">
+      <section id="features" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-bg)]">
         <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               Built for controlled publishing workflows
             </h2>
-            <p className="mt-3 max-w-2xl text-sm text-neutral-600 md:text-base">
-              Screndly keeps every publishing step inside a private workspace, from ingestion to scheduling.
+            <p className="mt-3 max-w-2xl text-sm text-[var(--marketing-muted)] md:text-base">
+              Every publishing step stays inside a private workspace, from ingestion to scheduling.
             </p>
           </FadeIn>
           <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -192,14 +192,14 @@ export function MarketingLandingPage() {
               const Icon = feature.icon;
               return (
                 <FadeIn key={feature.title} delay={index * 0.05}>
-                  <div className="rounded-2xl border border-neutral-200 bg-white p-6">
+                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-6">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-neutral-900">{feature.title}</h3>
+                      <h3 className="text-lg font-semibold text-[var(--marketing-text)]">{feature.title}</h3>
                       <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
                         <Icon size={18} />
                       </span>
                     </div>
-                    <p className="mt-3 text-sm text-neutral-600">{feature.description}</p>
+                    <p className="mt-3 text-sm text-[var(--marketing-muted)]">{feature.description}</p>
                   </div>
                 </FadeIn>
               );
@@ -208,39 +208,33 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="pinterest" className="border-b border-neutral-200 bg-white">
+      <section id="pinterest" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-6 py-16 md:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-20">
           <FadeIn>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               Pinterest Integration
             </h2>
-            <div className="mt-4 space-y-4 text-sm text-neutral-600 md:text-base">
+            <div className="mt-4 space-y-4 text-sm text-[var(--marketing-muted)] md:text-base">
               <p>Screndly supports Pinterest publishing through the official Pinterest API.</p>
-              <p>
-                Users prepare content inside the dashboard, including media, title, description, and scheduling
-                details.
-              </p>
-              <p>
-                When the user authorizes Pinterest access, Screndly can publish content to Pinterest boards using
-                the official API.
-              </p>
+              <p>Users prepare media, title, description, and scheduling inside the dashboard.</p>
+              <p>After authorization, Screndly publishes to boards using the official API.</p>
               <p>Screndly does not scrape Pinterest or bypass platform permissions.</p>
-              <p>All publishing actions occur only after user authorization.</p>
+              <p>Publishing only occurs after user authorization.</p>
             </div>
           </FadeIn>
           <FadeIn delay={0.1}>
-            <div className="rounded-3xl border border-neutral-200 bg-[#f6f6f4] p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            <div className="rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                 Pinterest flow
               </p>
               <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4 text-sm text-[var(--marketing-muted)]">
                   Board selection + metadata
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4 text-sm text-[var(--marketing-muted)]">
                   Scheduled publish window
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-white p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4 text-sm text-[var(--marketing-muted)]">
                   API delivery status
                 </div>
               </div>
@@ -249,60 +243,58 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="tiktok" className="border-b border-neutral-200 bg-[#f9f9f7]">
+      <section id="tiktok" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-bg)]">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-6 py-16 md:grid-cols-[0.9fr_1.1fr] lg:px-10 lg:py-20">
           <FadeIn>
-            <div className="rounded-3xl border border-neutral-200 bg-white p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+            <div className="rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                 TikTok flow
               </p>
               <div className="mt-4 space-y-4">
-                <div className="rounded-2xl border border-neutral-200 bg-[#f6f6f4] p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-4 text-sm text-[var(--marketing-muted)]">
                   OAuth login + account identity
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-[#f6f6f4] p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-4 text-sm text-[var(--marketing-muted)]">
                   Video upload + caption
                 </div>
-                <div className="rounded-2xl border border-neutral-200 bg-[#f6f6f4] p-4 text-sm text-neutral-700">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-4 text-sm text-[var(--marketing-muted)]">
                   Content Posting API publish
                 </div>
               </div>
             </div>
           </FadeIn>
           <FadeIn delay={0.1}>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               TikTok Integration
             </h2>
-            <div className="mt-4 space-y-4 text-sm text-neutral-600 md:text-base">
+            <div className="mt-4 space-y-4 text-sm text-[var(--marketing-muted)] md:text-base">
               <p>Screndly integrates with TikTok using TikTok Login Kit and the Content Posting API.</p>
-              <p>Users connect their TikTok account using OAuth authorization.</p>
-              <p>
-                After authorization, Screndly retrieves basic profile information to identify the connected account.
-              </p>
-              <p>Users can upload video files, write captions, and publish posts from the Screndly dashboard.</p>
+              <p>Users connect their TikTok account through OAuth authorization.</p>
+              <p>Screndly retrieves basic profile data to identify the connected account.</p>
+              <p>Users upload videos, write captions, and publish from the Screndly dashboard.</p>
               <p>Videos are transferred through the official TikTok Content Posting API.</p>
-              <p>Publishing actions only occur with user authorization.</p>
+              <p>Publishing only occurs after user authorization.</p>
             </div>
           </FadeIn>
         </div>
       </section>
 
-      <section id="workflow" className="border-b border-neutral-200 bg-white">
+      <section id="workflow" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               How the workflow works
             </h2>
           </FadeIn>
           <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
             {WORKFLOW_STEPS.map((step, index) => (
               <FadeIn key={step.title} delay={index * 0.05}>
-                <div className="rounded-2xl border border-neutral-200 bg-[#f6f6f4] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">
+                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                     Step {index + 1}
                   </p>
-                  <h3 className="mt-3 text-base font-semibold text-neutral-900">{step.title}</h3>
-                  <p className="mt-2 text-sm text-neutral-600">{step.description}</p>
+                  <h3 className="mt-3 text-base font-semibold text-[var(--marketing-text)]">{step.title}</h3>
+                  <p className="mt-2 text-sm text-[var(--marketing-muted)]">{step.description}</p>
                 </div>
               </FadeIn>
             ))}
@@ -310,30 +302,30 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="product-preview" className="border-b border-neutral-200 bg-[#f9f9f7]">
+      <section id="product-preview" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-bg)]">
         <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               Product Preview
             </h2>
-            <p className="mt-3 max-w-2xl text-sm text-neutral-600 md:text-base">
+            <p className="mt-3 max-w-2xl text-sm text-[var(--marketing-muted)] md:text-base">
               Visual snapshots of the private dashboard experience.
             </p>
           </FadeIn>
           <div className="mt-10 grid gap-6 md:grid-cols-2">
             {PREVIEWS.map((preview, index) => (
               <FadeIn key={preview.title} delay={index * 0.05}>
-                <div className="rounded-3xl border border-neutral-200 bg-white p-5">
-                  <div className="rounded-2xl border border-neutral-200 bg-[#f6f6f4] p-5">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-neutral-500">
+                <div className="rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-5">
+                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                       <span>{preview.title}</span>
                       <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[10px] font-semibold text-[#ec1e24]">
                         Preview
                       </span>
                     </div>
-                    <div className="mt-4 h-36 rounded-xl bg-white" />
+                    <div className="mt-4 h-36 rounded-xl bg-[var(--marketing-surface)]" />
                   </div>
-                  <p className="mt-4 text-sm text-neutral-600">{preview.label}</p>
+                  <p className="mt-4 text-sm text-[var(--marketing-muted)]">{preview.label}</p>
                 </div>
               </FadeIn>
             ))}
@@ -341,28 +333,28 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="privacy" className="border-b border-neutral-200 bg-white">
+      <section id="privacy" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
-            <h2 className="marketing-heading text-2xl font-semibold text-neutral-900 md:text-3xl">
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
               Privacy and Data Handling
             </h2>
-            <div className="mt-4 space-y-4 text-sm text-neutral-600 md:text-base">
+            <div className="mt-4 space-y-4 text-sm text-[var(--marketing-muted)] md:text-base">
               <p>Screndly uses authorized platform connections for publishing workflows.</p>
-              <p>Access is limited to the functionality required for creating, scheduling, and publishing posts.</p>
+              <p>Access is limited to creating, scheduling, and publishing posts.</p>
               <p>Private dashboard content is not publicly exposed.</p>
               <p>User data is handled according to the Privacy Policy and Terms of Service.</p>
             </div>
             <div className="mt-6 flex flex-wrap gap-4">
               <a
                 href="/privacy-policy"
-                className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:border-neutral-900"
+                className="rounded-full border border-[color:var(--marketing-border)] px-4 py-2 text-sm font-medium text-[var(--marketing-text)] transition hover:border-neutral-900"
               >
                 Privacy Policy
               </a>
               <a
                 href="/terms"
-                className="rounded-full border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-900 transition hover:border-neutral-900"
+                className="rounded-full border border-[color:var(--marketing-border)] px-4 py-2 text-sm font-medium text-[var(--marketing-text)] transition hover:border-neutral-900"
               >
                 Terms of Service
               </a>
@@ -371,25 +363,21 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section className="bg-[#f9f9f7]">
+      <section className="bg-[var(--marketing-bg)]">
         <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
-            <div className="rounded-3xl border border-neutral-200 bg-white p-8 md:p-10">
+            <div className="rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-8 md:p-10">
               <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">
                 Reviewer Access Information
               </p>
-              <h2 className="marketing-heading mt-4 text-2xl font-semibold text-neutral-900 md:text-3xl">
+              <h2 className="marketing-heading mt-4 text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
                 Public overview for platform verification
               </h2>
-              <div className="mt-4 space-y-3 text-sm text-neutral-600 md:text-base">
+              <div className="mt-4 space-y-3 text-sm text-[var(--marketing-muted)] md:text-base">
                 <p>This public page provides an overview of Screndly and its platform integrations.</p>
                 <p>The working Screndly dashboard is private and protected.</p>
-                <p>
-                  The public website explains the product, workflows, and integrations without requiring login.
-                </p>
-                <p>
-                  Review access to the dashboard can be provided separately if requested for platform verification.
-                </p>
+                <p>The website explains product workflows and integrations without requiring login.</p>
+                <p>Review access to the dashboard can be provided separately if requested.</p>
               </div>
             </div>
           </FadeIn>

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, Youtube, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen, Menu, X } from 'lucide-react';
 import { Button } from './ui/button';
 import { useRef, useState } from 'react';
 import { haptics } from '../utils/haptics';
@@ -40,6 +40,7 @@ export function Navigation({
   const pendingPointerActivationRef = useRef<string | null>(null);
   const scrollDirection = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
+  const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
   const handleNavClick = (page: string) => {
     onNavigate(page);
     setIsMobileMenuOpen(false);
@@ -194,48 +195,79 @@ export function Navigation({
 
   return (
     <>
-      {/* Desktop/Mobile Header */}
       <div
-        className={`fixed right-0 h-16 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] z-40 flex items-center justify-between px-4 transition-[padding,transform,left] duration-200 ease-in-out left-0 lg:left-[var(--desktop-sidebar-width)] ${scrollDirection === 'down' ? '-translate-y-full' : 'translate-y-0'
-          }`}
-        style={{ top: 0, ["--desktop-sidebar-width" as string]: desktopSidebarWidth }}
+        className={cn(
+          'pointer-events-none fixed inset-x-0 z-40 transition-transform duration-300 ease-out',
+          scrollDirection === 'down' ? '-translate-y-4 opacity-0' : 'translate-y-0 opacity-100',
+        )}
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', ['--desktop-sidebar-width' as string]: desktopSidebarWidth }}
       >
-        {/* Logo on mobile/tablet, sidebar on desktop */}
-        <div className="flex items-center lg:flex-1">
-          <img src={brandIcon} alt="Screndly" className="w-8 h-8 lg:hidden rounded-sm object-contain" />
-        </div>
+        <div className="relative h-14">
+          <div className="pointer-events-auto absolute left-4 lg:left-[calc(var(--desktop-sidebar-width)+1.5rem)]">
+            <button
+              type="button"
+              onClick={() => {
+                haptics.light();
+                if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+                  onToggleDesktopSidebar();
+                  return;
+                }
 
-        <div className="flex items-center gap-2">
-          <button
-            className="text-gray-900 dark:text-white p-1 relative transition-all duration-300 hover:scale-110 active:scale-95 hover:text-[#ec1e24]"
-            onClick={() => {
-              haptics.light();
-              onToggleNotifications();
-            }}
-            aria-label={`Notifications${unreadNotifications > 0 ? ` (${unreadNotifications} unread)` : ''}`}
-            aria-expanded={false}
-          >
-            <Bell className="w-[26px] h-[26px] stroke-1 transition-transform duration-300" aria-hidden="true" />
-            {unreadNotifications > 0 && (
-              <div
-                className="absolute -top-1 -right-1 bg-[#ec1e24] text-white text-xs rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1 animate-pulse-slow"
-                aria-label={`${unreadNotifications} unread notifications`}
+                setIsMobileMenuOpen((previous) => !previous);
+              }}
+              className={cn(
+                'flex h-12 w-12 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white',
+                floatingSurfaceClasses,
+              )}
+              aria-label={typeof window !== 'undefined' && window.innerWidth >= 1024
+                ? (isDesktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar')
+                : (isMobileMenuOpen ? 'Close menu' : 'Open menu')}
+              aria-pressed={typeof window !== 'undefined' && window.innerWidth >= 1024 ? isDesktopSidebarCollapsed : isMobileMenuOpen}
+            >
+              {typeof window !== 'undefined' && window.innerWidth >= 1024 ? (
+                isDesktopSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />
+              ) : isMobileMenuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+            </button>
+          </div>
+
+          <div className="pointer-events-auto absolute right-4 lg:right-8">
+            <div className={cn('flex items-center gap-1 rounded-full p-1', floatingSurfaceClasses)}>
+              <button
+                className="relative flex h-11 w-11 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] hover:bg-black/[0.04] active:scale-95 dark:text-white dark:hover:bg-white/[0.06]"
+                onClick={() => {
+                  haptics.light();
+                  onToggleNotifications();
+                }}
+                aria-label={`Notifications${unreadNotifications > 0 ? ` (${unreadNotifications} unread)` : ''}`}
+                aria-expanded={false}
               >
-                {unreadNotifications}
-              </div>
-            )}
-          </button>
-          <button
-            className="text-gray-900 dark:text-white p-1 transition-all duration-300 hover:scale-110 active:scale-95 hover:text-[#ec1e24]"
-            onClick={() => {
-              haptics.light();
-              onToggleSettings();
-            }}
-            aria-label="Open settings"
-            aria-expanded={false}
-          >
-            <Settings className="w-[26px] h-[26px] stroke-1 transition-transform duration-300 hover:rotate-90" aria-hidden="true" />
-          </button>
+                <Bell className="h-[22px] w-[22px] stroke-[1.75]" aria-hidden="true" />
+                {unreadNotifications > 0 && (
+                  <div
+                    className="absolute right-1.5 top-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#ec1e24] px-1 text-[10px] font-semibold text-white"
+                    aria-label={`${unreadNotifications} unread notifications`}
+                  >
+                    {unreadNotifications}
+                  </div>
+                )}
+              </button>
+              <button
+                className="flex h-11 w-11 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] hover:bg-black/[0.04] active:scale-95 dark:text-white dark:hover:bg-white/[0.06]"
+                onClick={() => {
+                  haptics.light();
+                  onToggleSettings();
+                }}
+                aria-label="Open settings"
+                aria-expanded={false}
+              >
+                <Settings className="h-[22px] w-[22px] stroke-[1.75] transition-transform duration-300 hover:rotate-90" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -262,9 +294,6 @@ export function Navigation({
       >
         <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />
       </aside>
-
-      {/* Spacer for fixed header */}
-      <div className="h-16" />
     </>
   );
 }

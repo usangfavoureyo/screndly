@@ -33,19 +33,24 @@ export function ComposeScheduler() {
       );
 
       for (const item of dueItems) {
+        const latestItem = useComposeStore.getState().items.find((entry) => entry.id === item.id);
+        if (!latestItem || latestItem.status !== 'scheduled' || latestItem.scheduledAt !== item.scheduledAt) {
+          continue;
+        }
+
         processingIdsRef.current.add(item.id);
         const attemptStartedAt = new Date().toISOString();
         const publishLockExpiresAt = new Date(Date.now() + PUBLISH_LOCK_MS).toISOString();
 
         saveItem({
-          ...item,
+          ...latestItem,
           publishLockExpiresAt,
           lastPublishAttemptAt: attemptStartedAt,
           error: undefined,
         });
 
         try {
-          const result = await publishComposeItem(item);
+          const result = await publishComposeItem(latestItem);
           if (cancelled) return;
 
           const updatedAt = new Date().toISOString();
@@ -58,9 +63,10 @@ export function ComposeScheduler() {
                 : undefined;
 
           saveItem({
-            ...item,
+            ...latestItem,
             status: nextStatus,
             updatedAt,
+            scheduledAt: nextStatus === 'published' ? undefined : latestItem.scheduledAt,
             publishLockExpiresAt: undefined,
             lastPublishAttemptAt: attemptStartedAt,
             publishRetryCount: nextStatus === 'failed' ? (item.publishRetryCount ?? 0) + 1 : 0,

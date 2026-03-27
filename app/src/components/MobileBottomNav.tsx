@@ -61,7 +61,6 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [longPressedIndex, setLongPressedIndex] = useState<number | null>(null);
 
   // Save order to localStorage whenever it changes (debounced to avoid blocking)
   useEffect(() => {
@@ -103,7 +102,6 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
       haptics.medium();
       setIsDragging(true);
       setDraggedIndex(index);
-      setLongPressedIndex(index);
       if (onDragStateChange) {
         onDragStateChange(true);
       }
@@ -128,7 +126,6 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
     setIsDragging(false);
     setDraggedIndex(null);
     setDragOverIndex(null);
-    setLongPressedIndex(null);
     if (onDragStateChange) {
       onDragStateChange(false);
     }
@@ -156,9 +153,9 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
 
   return (
     <nav
-      className={`lg:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-[#000000] opacity-100 border-t border-gray-200 dark:border-[#333333] z-50 transition-transform duration-300 shadow-none ring-0 backdrop-blur-none overflow-hidden ${scrollDirection === 'down' ? 'translate-y-full' : 'translate-y-0'
+      className={`lg:hidden fixed left-1/2 z-50 w-[min(92vw,30rem)] -translate-x-1/2 overflow-hidden rounded-[1.75rem] border border-black/10 bg-white/90 shadow-[0_22px_46px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-transform duration-300 dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_22px_50px_rgba(0,0,0,0.54)] ${scrollDirection === 'down' ? 'translate-y-[calc(100%+1.75rem)]' : 'translate-y-0'
         }`}
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.9rem)' }}
       aria-label="Main navigation"
       role="navigation"
       onTouchMove={handleTouchMove}
@@ -171,7 +168,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
         </div>
       )}
 
-      <div className={`flex items-center justify-around ${isDragging ? 'pt-6 pb-3' : 'py-3'}`}>
+      <div className={`flex items-center justify-between px-2 ${isDragging ? 'pt-6 pb-2.5' : 'py-2.5'}`}>
         {navItems.map((item, index) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
@@ -184,7 +181,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
               data-nav-index={index}
               onClick={() => handleNavigation(item.id)}
               onTouchStart={() => handleTouchStart(index)}
-              className={`relative flex flex-col items-center justify-center p-2 transition-all duration-300 hover:scale-110 active:scale-95 ${isActive ? 'transform -translate-y-1' : ''
+              className={`relative flex min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-2 py-2 transition-all duration-300 hover:scale-[1.03] active:scale-95 ${isActive ? 'transform -translate-y-1' : ''
                 } ${isBeingDragged ? 'opacity-50 scale-110 z-50' : ''
                 } ${isDragOver ? 'scale-90 opacity-70' : ''
                 }`}
@@ -201,7 +198,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
               <Icon
                 className={`w-7 h-7 stroke-1 transition-all duration-300 ${isActive
                   ? 'text-[#ec1e24]'
-                  : 'text-black dark:text-white'
+                  : 'text-gray-700 dark:text-gray-200'
                   } ${isBeingDragged ? 'animate-bounce' : ''
                   }`}
                 aria-hidden="true"

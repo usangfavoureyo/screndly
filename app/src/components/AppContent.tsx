@@ -697,13 +697,13 @@ export function AppContent() {
 
       <main
         id="main-content"
-        className="relative z-10 mb-16 bg-white transition-[margin-left] duration-200 ease-in-out dark:bg-black lg:mb-0 lg:ml-[var(--desktop-sidebar-width)]"
+        className="relative z-10 bg-white transition-[margin-left] duration-200 ease-in-out dark:bg-black lg:ml-[var(--desktop-sidebar-width)]"
         role="main"
       >
         <PullToRefresh
           disabled={isDesktopViewport || isSettingsOpen || isNotificationsOpen || isCaptionEditorOpen || isPostFlowOpen}
         >
-          <div className="p-4 sm:p-6 lg:p-8 transition-opacity duration-200">
+          <div className="px-4 pb-28 pt-[calc(env(safe-area-inset-top,0px)+5rem)] transition-opacity duration-200 sm:px-6 sm:pt-[calc(env(safe-area-inset-top,0px)+5.5rem)] lg:px-8 lg:pb-10 lg:pt-10">
             {displayPage === "dashboard" && (
               <DashboardOverview onNavigate={handleNavigate} />
             )}
