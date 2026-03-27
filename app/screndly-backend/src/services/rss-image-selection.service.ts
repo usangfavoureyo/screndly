@@ -274,6 +274,16 @@ const HARD_REJECT_KEYWORDS = [
   'funko',
   'clipart',
   'sticker',
+  'dvd',
+  'blu ray',
+  'blu-ray',
+  '4k ultra hd',
+  'home video',
+  'box set',
+  'box art',
+  'cover art',
+  'dvd cover',
+  'blu ray cover',
   'etsy',
   'amazon',
   'ebay',
@@ -511,6 +521,10 @@ const FRANCHISE_VALIDATION_RULES: FranchiseValidationRule[] = [
 const MIN_CONFIDENT_SERPER_SCORE = 135;
 const MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK = 170;
 const MIN_ACCEPTABLE_SERPER_SCORE = 90;
+const MIN_CONFIDENT_TMDB_SCORE = 105;
+const MIN_CONFIDENT_TMDB_SCORE_WITH_FEED_FALLBACK = 125;
+const MIN_PRIMARY_CONFIDENCE_GAP = 10;
+const MIN_PRIMARY_CONFIDENCE_GAP_WITH_FEED_FALLBACK = 18;
 const MIN_BRAND_FALLBACK_SERPER_SCORE = 72;
 const MIN_GENERAL_LIST_SERPER_SCORE = 78;
 const MIN_TRAILER_STILL_SERPER_SCORE = 82;
@@ -2225,8 +2239,19 @@ function buildResolvedImagesFromScored(
   const scoreThreshold = fallbackImages.length > 0
     ? MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK
     : MIN_CONFIDENT_SERPER_SCORE;
+  const confidenceGapThreshold = fallbackImages.length > 0
+    ? MIN_PRIMARY_CONFIDENCE_GAP_WITH_FEED_FALLBACK
+    : MIN_PRIMARY_CONFIDENCE_GAP;
+  const topScore = scoredSelections[0]?.score;
+  const secondScore = scoredSelections[1]?.score;
+  const topScoreGap = typeof topScore === 'number'
+    ? topScore - (typeof secondScore === 'number' ? secondScore : 0)
+    : 0;
+  const hasConfidentPrimary = typeof topScore === 'number' &&
+    topScore >= scoreThreshold &&
+    topScoreGap >= confidenceGapThreshold;
   const confidentSelections = scoredSelections
-    .filter((item) => item.score >= scoreThreshold)
+    .filter((item) => hasConfidentPrimary && item.score >= scoreThreshold)
     .slice(0, limit)
     .map((item) => ({
       url: item.image.imageUrl!,
@@ -2248,6 +2273,10 @@ function buildResolvedImagesFromScored(
     if (fallback.length > 0) {
       return [...confidentSelections, ...fallback].slice(0, limit);
     }
+  }
+
+  if (allowFeedFallback && fallbackImages.length > 0 && !hasConfidentPrimary) {
+    return [];
   }
 
   const acceptableSelections = scoredSelections
@@ -2345,6 +2374,28 @@ function buildResolvedImagesFromTMDb(
   }));
 }
 
+function hasConfidentResolvedPrimary(
+  images: Array<RSSResolvedImage & { role?: ImageRole }>,
+  source: RSSImageSource,
+  fallbackAvailable: boolean
+): boolean {
+  const topScore = images[0]?.score;
+  if (typeof topScore !== 'number') {
+    return !fallbackAvailable;
+  }
+
+  const secondScore = images[1]?.score;
+  const topScoreGap = topScore - (typeof secondScore === 'number' ? secondScore : 0);
+  const scoreThreshold = source === 'tmdb'
+    ? (fallbackAvailable ? MIN_CONFIDENT_TMDB_SCORE_WITH_FEED_FALLBACK : MIN_CONFIDENT_TMDB_SCORE)
+    : (fallbackAvailable ? MIN_CONFIDENT_SERPER_SCORE_WITH_FEED_FALLBACK : MIN_CONFIDENT_SERPER_SCORE);
+  const gapThreshold = fallbackAvailable
+    ? MIN_PRIMARY_CONFIDENCE_GAP_WITH_FEED_FALLBACK
+    : MIN_PRIMARY_CONFIDENCE_GAP;
+
+  return topScore >= scoreThreshold && topScoreGap >= gapThreshold;
+}
+
 async function collectStructuredTMDbImages(
   analysis: RSSSubjectAnalysis,
   limit: number,
@@ -2385,15 +2436,18 @@ async function resolveSingleSlotImages(
         limit - resolved.length,
         resolved.map((image) => image.url)
       );
-      resolved = mergeResolvedImages(resolved, tmdbResolved, limit);
+      const confidentTMDbResolved = hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)
+        ? tmdbResolved
+        : [];
+      resolved = mergeResolvedImages(resolved, confidentTMDbResolved, limit);
       continue;
     }
 
     const serperResolved = buildResolvedImagesFromScored(
       await collectScoredImages(analysis, limit - resolved.length),
-      [],
+      fallbackImages,
       limit - resolved.length,
-      false
+      fallbackImages.length > 0
     );
     resolved = mergeResolvedImages(resolved, serperResolved, limit);
   }
@@ -2449,12 +2503,13 @@ function shouldReplaceBrandingPrimaryWithFeedFallback(
 async function resolveSmartPrimaryCandidate(
   article: RSSImageSelectionArticle,
   analysis: RSSSubjectAnalysis,
-  sources: RSSImageSource[]
+  sources: RSSImageSource[],
+  fallbackImages: string[]
 ): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
   for (const source of sources) {
     if (source === 'tmdb') {
       const tmdbResolved = await collectStructuredTMDbImages(analysis, 1);
-      if (tmdbResolved[0]) {
+      if (tmdbResolved[0] && hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)) {
         return {
           image: tmdbResolved[0],
           role: tmdbResolved[0].role,
@@ -2512,6 +2567,19 @@ async function resolveSmartPrimaryCandidate(
             : fallbackPrimary;
 
     if (!primaryResolvedImage) {
+      continue;
+    }
+
+    if (
+      fallbackImages.length > 0 &&
+      !hasConfidentResolvedPrimary(
+        [{
+          ...primaryResolvedImage,
+        }],
+        'serper',
+        true
+      )
+    ) {
       continue;
     }
 
@@ -3052,7 +3120,7 @@ export async function resolveRelevantRSSImages(
   if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);
     const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
-    const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources);
+    const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources, fallbackImages);
 
     if (!primaryResolved) {
       return buildFeedFallbackImages(fallbackImages, limit);

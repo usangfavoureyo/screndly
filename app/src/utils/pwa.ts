@@ -32,6 +32,7 @@ async function syncInstalledBuildId(): Promise<void> {
 
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
+    let hadActiveWorker = false;
     await Promise.all(
       registrations.map(async (registration) => {
         const scriptURL =
@@ -45,9 +46,19 @@ async function syncInstalledBuildId(): Promise<void> {
           return;
         }
 
+        if (scriptURL) {
+          hadActiveWorker = true;
+        }
+
         await registration.update().catch(() => undefined);
       })
     );
+
+    // Force a clean reload on build-id changes so PWA clients don't stay on stale bundles.
+    if (hadActiveWorker) {
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+      window.location.reload();
+    }
   }
 }
 

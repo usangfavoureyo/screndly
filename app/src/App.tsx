@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { TMDbPostsProvider } from "./contexts/TMDbPostsContext";
 import { SettingsProvider } from "./contexts/SettingsContext";
@@ -13,6 +14,9 @@ import AuthProvider from "./components/auth/AuthProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { initMonitoring, performanceMonitor } from "./utils/monitoring";
 import { initializeOptimization } from "./lib/optimization";
+import { MarketingLandingPage } from "./marketing/MarketingLandingPage";
+import { MarketingPrivacyPage } from "./marketing/MarketingPrivacyPage";
+import { MarketingTermsPage } from "./marketing/MarketingTermsPage";
 
 // Initialize monitoring services
 if (typeof window !== 'undefined') {
@@ -158,6 +162,34 @@ export default function App() {
   //     clearTimeout(timer);
   //   };
   // }, []);
+
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+  const isMarketingRoute = pathname === "/" || pathname === "/privacy-policy" || pathname === "/terms";
+  const isAppRoute = pathname === "/app" || pathname.startsWith("/app/");
+  const shouldRedirectToApp = !isMarketingRoute && !isAppRoute;
+
+  useEffect(() => {
+    if (!shouldRedirectToApp || typeof window === "undefined") {
+      return;
+    }
+
+    const nextPath = `/app${window.location.pathname}${window.location.search}${window.location.hash}`;
+    window.location.replace(nextPath);
+  }, [shouldRedirectToApp]);
+
+  if (isMarketingRoute) {
+    if (pathname === "/privacy-policy") {
+      return <MarketingPrivacyPage />;
+    }
+    if (pathname === "/terms") {
+      return <MarketingTermsPage />;
+    }
+    return <MarketingLandingPage />;
+  }
+
+  if (shouldRedirectToApp) {
+    return null;
+  }
 
   return (
     <ThemeProvider>

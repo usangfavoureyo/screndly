@@ -47,6 +47,20 @@ function formatImageSource(value?: RSSActivityItem['imageSource']): string | nul
   }
 }
 
+function formatSelectionConfidence(value?: RSSActivityItem['imageSelectionConfidence']): string | null {
+  if (!value) return null;
+  switch (value) {
+    case 'high':
+      return 'High confidence';
+    case 'medium':
+      return 'Medium confidence';
+    case 'low':
+      return 'Low confidence';
+    default:
+      return null;
+  }
+}
+
 function buildActivitySummary(items: RSSActivityItem[]) {
   return {
     total: items.length,
@@ -380,6 +394,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
               const StatusIcon = statusConfig.icon;
               const primaryImageUrl = item.imageUrl || item.imageUrls?.[0];
               const imageSourceLabel = formatImageSource(item.imageSource);
+              const selectionConfidenceLabel = formatSelectionConfidence(item.imageSelectionConfidence);
+              const alternateImages = (item.selectedImages || []).filter((image) => image.url !== primaryImageUrl);
 
               return (
                 <div
@@ -418,14 +434,49 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             />
                           </div>
                         )}
-                        {(imageSourceLabel || item.imageReason) && (
+                        {(imageSourceLabel || item.imageReason || selectionConfidenceLabel || typeof item.imageScore === 'number') && (
                           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                             {imageSourceLabel && (
                               <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
                                 {imageSourceLabel}
                               </span>
                             )}
+                            {selectionConfidenceLabel && (
+                              <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
+                                {selectionConfidenceLabel}
+                              </span>
+                            )}
+                            {typeof item.imageScore === 'number' && (
+                              <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
+                                Score {Math.round(item.imageScore)}
+                              </span>
+                            )}
                             {item.imageReason && <span>{item.imageReason}</span>}
+                          </div>
+                        )}
+                        {alternateImages.length > 0 && (
+                          <div className="mb-3">
+                            <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected alternates</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {alternateImages.slice(0, 2).map((image) => (
+                                <div
+                                  key={image.url}
+                                  className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-[#333333] dark:bg-[#050505]"
+                                >
+                                  <OptimizedImage
+                                    src={image.url}
+                                    alt={image.reason}
+                                    className="h-24 w-full"
+                                  />
+                                  <div className="p-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                    <p className="line-clamp-2">{image.reason}</p>
+                                    {typeof image.score === 'number' && (
+                                      <p className="mt-1">Score {Math.round(image.score)}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
                         {item.description ? (

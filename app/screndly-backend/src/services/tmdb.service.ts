@@ -139,6 +139,7 @@ export interface RefreshSettings {
     languageFilter?: string;
     tmdbRegion?: string;
     minPopularityThreshold?: number;
+    anniversaryMinPopularityThreshold?: number;
     onlyPopular?: boolean;
     dedupeWindow?: number;
     tmdbQueuedRetentionHours?: number;
@@ -216,6 +217,7 @@ const defaultRefreshSettings: RefreshSettings = {
     languageFilter: 'en',
     tmdbRegion: 'US',
     minPopularityThreshold: 1,
+    anniversaryMinPopularityThreshold: 1,
     onlyPopular: true,
     dedupeWindow: 30,
     tmdbQueuedRetentionHours: 168,
@@ -600,9 +602,13 @@ async function fetchAnniversaryCandidates(mediaType: MediaType, config: RefreshS
     return candidates;
 }
 
-function getPopularityThreshold(config: RefreshSettings): number | null {
-    if (typeof config.minPopularityThreshold === 'number' && Number.isFinite(config.minPopularityThreshold)) {
-        return config.minPopularityThreshold > 0 ? config.minPopularityThreshold : null;
+function getPopularityThreshold(config: RefreshSettings, moduleType: TMDbModuleType): number | null {
+    const configuredThreshold = moduleType === 'anniversary'
+        ? config.anniversaryMinPopularityThreshold
+        : config.minPopularityThreshold;
+
+    if (typeof configuredThreshold === 'number' && Number.isFinite(configuredThreshold)) {
+        return configuredThreshold > 0 ? configuredThreshold : null;
     }
 
     if (config.onlyPopular === false) {
@@ -625,7 +631,7 @@ async function validateCandidate(
         return { valid: false, reason: `REJECT_LANGUAGE (${candidate.original_language})` };
     }
 
-    const popularityThreshold = getPopularityThreshold(config);
+    const popularityThreshold = getPopularityThreshold(config, moduleType);
     if (popularityThreshold !== null && candidate.popularity < popularityThreshold) {
         return { valid: false, reason: `REJECT_POPULARITY (${candidate.popularity.toFixed(1)} < ${popularityThreshold})` };
     }
@@ -1374,7 +1380,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'enableToday', 'enableWeekly', 'enableMonthly', 'enableAnniversaries',
         'todayAutoPost', 'weeklyAutoPost', 'monthlyAutoPost', 'anniversaryAutoPost',
         'todayMaxItems', 'weeklyMaxItems', 'monthlyMaxItems', 'anniversaryMaxItems',
-        'preferredImage', 'preferredImageTypes', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
+        'preferredImage', 'preferredImageTypes', 'languageFilter', 'tmdbRegion', 'minPopularityThreshold', 'anniversaryMinPopularityThreshold', 'onlyPopular', 'dedupeWindow', 'tmdbQueuedRetentionHours',
         'selectedGenres', 'movieGenres', 'tvGenres', 'anniversaryYears', 'maxPerAnniversary', 'anniversaryStartYear',
         'captionMaxLength', 'includeCast', 'includeDate', 'rehostImages',
         'discoveryCacheTTL', 'creditsCacheTTL', 'captionCacheTTL', 'timezone',

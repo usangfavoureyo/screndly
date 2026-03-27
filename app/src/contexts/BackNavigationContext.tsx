@@ -78,6 +78,15 @@ function shouldHandleKeyboardFirstOnSystemBack() {
   return window.innerWidth < 1024;
 }
 
+function isAtDashboardRootPage(currentPage: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  return currentPage === 'dashboard' && pathname === '/';
+}
+
 export function BackNavigationProvider({ children }: { children: ReactNode }) {
   const [activeBottomSheets, setActiveBottomSheets] = useState<string[]>([]);
   const [activeModals, setActiveModals] = useState<string[]>([]);
@@ -282,6 +291,10 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
       return true;
     }
 
+    if (isAtDashboardRootPage(currentPage)) {
+      return false;
+    }
+
     if (typeof window !== 'undefined' && window.history.length > 1) {
       window.history.back();
       return true;
@@ -293,7 +306,7 @@ export function BackNavigationProvider({ children }: { children: ReactNode }) {
     }
 
     return false;
-  }, [handleBackPress]);
+  }, [currentPage, handleBackPress]);
 
   useEffect(() => {
     handleBackPressRef.current = handleBackPress;

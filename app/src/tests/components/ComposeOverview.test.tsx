@@ -1,5 +1,5 @@
+import { useState, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { BackNavigationProvider } from '../../contexts/BackNavigationContext';
@@ -27,21 +27,104 @@ vi.mock('../../components/media/MediaPreviewDialog', () => ({
   MediaPreviewDialog: () => null,
 }));
 
-vi.mock('../../components/ui/date-picker', () => ({
-  DatePicker: () => <div />,
-}));
-
-vi.mock('../../components/ui/time-picker', () => ({
-  TimePicker: () => <div />,
-}));
-
 vi.mock('../../components/ui/bottom-sheet', () => ({
-  BottomSheet: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheet: ({
+    children,
+    onOpenChange,
+    open,
+  }: {
+    children: ReactNode;
+    onOpenChange: (open: boolean) => void;
+    open: boolean;
+  }) => (open ? (
+    <div data-testid="schedule-sheet">
+      <button type="button" onClick={() => onOpenChange(false)}>
+        Dismiss Sheet
+      </button>
+      {children}
+    </div>
+  ) : null),
   BottomSheetBody: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   BottomSheetDescription: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   BottomSheetFooter: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   BottomSheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
   BottomSheetTitle: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+}));
+
+vi.mock('../../components/ui/date-picker', () => ({
+  DatePicker: ({
+    onDateChange,
+    onOpenChange,
+  }: {
+    onDateChange?: (date: Date | undefined) => void;
+    onOpenChange?: (open: boolean) => void;
+  }) => {
+    const [open, setOpen] = useState(false);
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+            onOpenChange?.(true);
+          }}
+        >
+          Open Date Picker
+        </button>
+        {open ? (
+          <button
+            type="button"
+            onClick={() => {
+              onDateChange?.(new Date(2026, 3, 7));
+              setOpen(false);
+              onOpenChange?.(false);
+            }}
+          >
+            Done Date
+          </button>
+        ) : null}
+      </div>
+    );
+  },
+}));
+
+vi.mock('../../components/ui/time-picker', () => ({
+  TimePicker: ({
+    onChange,
+    onOpenChange,
+  }: {
+    onChange?: (value: string) => void;
+    onOpenChange?: (open: boolean) => void;
+  }) => {
+    const [open, setOpen] = useState(false);
+
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+            onOpenChange?.(true);
+          }}
+        >
+          Open Time Picker
+        </button>
+        {open ? (
+          <button
+            type="button"
+            onClick={() => {
+              onChange?.('16:30');
+              setOpen(false);
+              onOpenChange?.(false);
+            }}
+          >
+            Done Time
+          </button>
+        ) : null}
+      </div>
+    );
+  },
 }));
 
 describe('ComposeOverview', () => {
@@ -184,5 +267,57 @@ describe('ComposeOverview', () => {
     );
 
     expect(screen.getByText('Threads/X 3:4 Ready')).toBeInTheDocument();
+  });
+
+  it('keeps the post overview open when confirming a schedule from a draft card', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Draft title',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'image-1',
+              kind: 'image',
+              fileName: 'poster.jpg',
+              mimeType: 'image/jpeg',
+              size: 1024,
+              order: 0,
+              storageUrl: 'https://cdn.example.com/poster.jpg',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_feed'],
+          sharedCaption: 'Launch poster',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeOverview onNavigate={vi.fn()} />
+      </BackNavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(screen.getByText('Schedule Post')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Date Picker' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss Sheet' }));
+    expect(screen.getByText('Schedule Post')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done Date' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Time Picker' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done Time' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Schedule' })[1]);
+
+    expect(screen.getByText('Post')).toBeInTheDocument();
+    expect(screen.queryByTestId('schedule-sheet')).not.toBeInTheDocument();
+    expect(useComposeStore.getState().items[0]?.status).toBe('scheduled');
   });
 });

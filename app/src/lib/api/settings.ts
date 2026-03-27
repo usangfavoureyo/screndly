@@ -225,6 +225,7 @@ const TMDB_BACKEND_KEYS = [
   'tvGenres',
   'selectedGenres',
   'minPopularityThreshold',
+  'anniversaryMinPopularityThreshold',
   'tmdbRegion',
   'onlyPopular',
   'languageFilter',

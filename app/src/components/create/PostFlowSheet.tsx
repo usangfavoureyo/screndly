@@ -63,7 +63,7 @@ export function PostFlowSheet({
     internalNavigationLockUntilRef.current = Date.now() + 450;
   }, []);
 
-  const navigateWithinSheet = useCallback((page: string) => {
+  const navigateWithinSheet = useCallback((page: string, fromPage?: string) => {
     if (page === 'compose-editor') {
       armInternalNavigationLock();
       setStack((currentStack) => (
@@ -88,6 +88,11 @@ export function PostFlowSheet({
     }
 
     if (page === 'create') {
+      if (fromPage === 'compose-activity') {
+        setStack(['overview', 'activity']);
+        return;
+      }
+
       setStack(['overview']);
     }
   }, [armInternalNavigationLock]);

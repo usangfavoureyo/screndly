@@ -35,6 +35,14 @@ export interface PublishResult {
     postedAt: string;
 }
 
+interface ImagePreflightResult {
+    source: string;
+    mimeType: string;
+    bytes: number;
+    width?: number;
+    height?: number;
+}
+
 export interface PublishOptions {
     youtubePlaylistIds?: string[];
     pinterestBoardId?: string;
@@ -106,6 +114,10 @@ export class PublisherService {
         }
     }
 
+    private isMetaHostedImageUrl(value: string): boolean {
+        return this.isBackblazeHostedUrl(value) && value.toLowerCase().includes('/social-publish/meta-images/');
+    }
+
     private isMetaRiskyGeneratedImageUrl(value: string): boolean {
         if (!this.isBackblazeHostedUrl(value)) {
             return false;
@@ -113,7 +125,6 @@ export class PublisherService {
 
         const normalized = value.toLowerCase();
         return normalized.includes('/rss/logo-cards/')
-            || normalized.includes('/social-publish/meta-images/')
             || normalized.includes('/generated-thumbnails/');
     }
 
@@ -176,6 +187,84 @@ export class PublisherService {
             .slice(0, this.getPlatformImageLimit(platform));
 
         return Promise.all(rawUrls.map((value) => getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(value))));
+    }
+
+    private getImageByteLimit(platform: string): number {
+        switch (platform) {
+            case 'Facebook':
+            case 'Threads':
+            case 'Instagram':
+                return 8 * 1024 * 1024;
+            case 'X':
+                return 15 * 1024 * 1024;
+            default:
+                return 15 * 1024 * 1024;
+        }
+    }
+
+    private async preflightRemoteImage(source: string, platform: string): Promise<ImagePreflightResult> {
+        const normalizedSource = this.normalizeRemoteMediaUrl(source);
+        const response = await fetch(normalizedSource);
+        if (!response.ok) {
+            throw new Error(`preflight fetch failed (${response.status})`);
+        }
+
+        const mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (!mimeType.startsWith('image/')) {
+            throw new Error(`preflight expected image content but received ${mimeType || 'unknown content type'}`);
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.length === 0) {
+            throw new Error('preflight fetched an empty image');
+        }
+
+        const byteLimit = this.getImageByteLimit(platform);
+        if (buffer.length > byteLimit) {
+            throw new Error(`preflight image exceeds ${Math.round(byteLimit / (1024 * 1024))}MB limit`);
+        }
+
+        const metadata = await sharp(buffer, { animated: false }).metadata().catch(() => null);
+        if (!metadata?.width || !metadata?.height) {
+            throw new Error('preflight could not read image dimensions');
+        }
+
+        if (metadata.width < 200 || metadata.height < 200) {
+            throw new Error(`preflight image is too small (${metadata.width}x${metadata.height})`);
+        }
+
+        return {
+            source: normalizedSource,
+            mimeType,
+            bytes: buffer.length,
+            width: metadata.width,
+            height: metadata.height,
+        };
+    }
+
+    private async preflightPublishImages(
+        platform: string,
+        resolvedImageUrls: string[]
+    ): Promise<ImagePreflightResult[]> {
+        if (resolvedImageUrls.length === 0 || (platform !== 'X' && platform !== 'Facebook' && platform !== 'Threads')) {
+            return [];
+        }
+
+        const results: ImagePreflightResult[] = [];
+        for (const imageUrl of resolvedImageUrls) {
+            results.push(await this.preflightRemoteImage(imageUrl, platform));
+        }
+
+        console.log(`[Publisher] ${platform} image preflight passed`, results.map((result) => ({
+            kind: 'image',
+            sourceType: /^https?:\/\//i.test(result.source) ? 'remote-url' : 'local-file',
+            mimeType: result.mimeType,
+            bytes: result.bytes,
+            width: result.width,
+            height: result.height,
+        })));
+
+        return results;
     }
 
     private async buildMediaFingerprintParts(
@@ -286,8 +375,19 @@ export class PublisherService {
 
         if (/^https?:\/\//i.test(cacheKey)) {
             const remoteUrl = this.normalizeRemoteMediaUrl(cacheKey);
-            cache.set(cacheKey, remoteUrl);
-            return remoteUrl;
+            const response = await fetch(remoteUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to download remote image (${response.status})`);
+            }
+
+            sourceBuffer = Buffer.from(await response.arrayBuffer());
+
+            try {
+                const parsedUrl = new URL(remoteUrl);
+                originalName = path.basename(parsedUrl.pathname) || 'image.jpg';
+            } catch {
+                originalName = 'image.jpg';
+            }
         } else {
             sourceBuffer = await fs.readFile(cacheKey);
             originalName = path.basename(cacheKey);
@@ -317,6 +417,10 @@ export class PublisherService {
         );
 
         const hostedUrl = uploadedImage.url;
+        if (!this.isMetaHostedImageUrl(hostedUrl)) {
+            throw new Error('Failed to create a Meta-safe hosted image URL');
+        }
+
         cache.set(cacheKey, hostedUrl);
         return hostedUrl;
     }
@@ -342,12 +446,18 @@ export class PublisherService {
             }
         }
 
-        const safeUrls = resolved.filter((value) => !this.isMetaRiskyGeneratedImageUrl(value));
+        const safeUrls = resolved.filter((value) =>
+            this.isMetaHostedImageUrl(value) && !this.isMetaRiskyGeneratedImageUrl(value)
+        );
         if (safeUrls.length > 0) {
             return safeUrls;
         }
 
-        return resolved.some((value) => this.isMetaRiskyGeneratedImageUrl(value)) ? [] : resolved;
+        if (rawUrls.length > 0) {
+            throw new Error('Meta publish requires a valid Screndly-hosted image asset');
+        }
+
+        return [];
     }
 
     private getPlatformImageLimit(platform: string): number {
@@ -483,6 +593,7 @@ export class PublisherService {
                     const resolvedImageUrls = useMetaSafeImages
                         ? await this.getResolvedMetaPublishImageUrls(platformContent, platform, hostedMetaImageUrlCache)
                         : await this.getResolvedPublishImageUrls(platformContent, platform);
+                    await this.preflightPublishImages(platform, resolvedImageUrls);
                     const primaryImageUrl = resolvedImageUrls[0];
                     const remoteCoverImageUrl = await this.getResolvedRemoteCoverImageUrl(platformContent);
                     const localVideoFile = mediaFilePath && this.isVideo(mediaFilePath) ? mediaFilePath : null;

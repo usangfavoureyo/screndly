@@ -77,6 +77,8 @@ interface RSSItem {
   imageUrls: string[];
   imageSource?: RSSResolvedImage['source'];
   imageReason?: string;
+  imageScore?: number;
+  imageSelectionConfidence?: 'high' | 'medium' | 'low';
   selectedImages?: RSSResolvedImage[];
   generatedCaption?: string;
   platformPostIds?: Record<string, string>;
@@ -129,6 +131,9 @@ export interface RSSActivityItem {
   imageUrls?: string[];
   imageSource?: RSSResolvedImage['source'];
   imageReason?: string;
+  imageScore?: number;
+  imageSelectionConfidence?: 'high' | 'medium' | 'low';
+  selectedImages?: RSSResolvedImage[];
   status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;
@@ -171,6 +176,9 @@ interface RSSActivityMetadata {
   imageUrls?: string[];
   imageSource?: RSSResolvedImage['source'];
   imageReason?: string;
+  imageScore?: number;
+  imageSelectionConfidence?: 'high' | 'medium' | 'low';
+  selectedImages?: RSSResolvedImage[];
   publishedAt?: string;
   status: 'pending' | 'published' | 'failed';
   platforms: string[];
@@ -475,9 +483,51 @@ function stripHtml(value?: string): string {
   return (value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+function stripMarkdownLinks(value?: string): string {
+  return (value || '').replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+|[^)\s]+)\)/gi, '$1');
+}
+
+function stripBareUrls(value?: string): string {
+  return (value || '').replace(/\bhttps?:\/\/[^\s<>()]+/gi, ' ');
+}
+
+function stripDanglingLinkArtifacts(value?: string): string {
+  return (value || '')
+    .replace(/\(\s*[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/[^\s()]*)?\s*\)/g, ' ')
+    .replace(/\[\s*[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/[^\s\]]*)?\s*\]/g, ' ');
+}
+
+function sanitizeRSSPlainText(value?: string): string {
+  return stripDanglingLinkArtifacts(
+    stripBareUrls(
+      stripMarkdownLinks(
+        stripHtml(value || '')
+      )
+    )
+  )
+    .replace(/[([]\s*([A-Za-z0-9.-]+\.[A-Za-z]{2,})\s*[)\]]/g, '$1')
+    .replace(/\butm_[a-z_]+=[^\s&]+/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
+  let sanitized = sanitizeRSSPlainText(value)
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([({\[])\s+/g, '$1')
+    .replace(/\s+([)}\]])/g, '$1')
+    .trim();
+
+  if (maxLength && sanitized.length > maxLength) {
+    sanitized = sanitized.slice(0, maxLength).replace(/\s+\S*$/, '').trim();
+  }
+
+  return sanitized;
+}
+
 function buildFilterBodyText(item: RSSItem): string {
-  const rawContentText = stripHtml(item.contentHtml || '');
-  const segments = [item.description || '', rawContentText].filter((segment) => segment.trim().length > 0);
+  const rawContentText = sanitizeRSSPlainText(item.contentHtml || '');
+  const segments = [sanitizeRSSPlainText(item.description || ''), rawContentText].filter((segment) => segment.trim().length > 0);
   return Array.from(new Set(segments)).join('\n').trim();
 }
 
@@ -485,7 +535,7 @@ function extractLeadParagraphText(item: Record<string, any>): string {
   const htmlContent = item['content:encoded'] || item.contentEncoded || item.content;
   if (typeof htmlContent === 'string' && htmlContent.trim()) {
     const paragraphs = Array.from(htmlContent.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi))
-      .map((match) => stripHtml(match[1] || ''))
+      .map((match) => sanitizeRSSPlainText(match[1] || ''))
       .filter((paragraph) => paragraph.length >= 40);
 
     if (paragraphs.length > 0) {
@@ -496,7 +546,7 @@ function extractLeadParagraphText(item: Record<string, any>): string {
     }
   }
 
-  return stripHtml(
+  return sanitizeRSSPlainText(
     item.contentSnippet ||
     item.summary ||
     item.description ||
@@ -789,12 +839,40 @@ function applyResolvedImagesToRSSItem(item: RSSItem, images: RSSResolvedImage[])
     return item;
   }
 
+  const primaryImage = images[0];
+  const primaryScore = typeof primaryImage?.score === 'number' ? primaryImage.score : undefined;
+  const imageSelectionConfidence = (() => {
+    if (!primaryImage) {
+      return undefined;
+    }
+
+    if (primaryImage.source === 'feed') {
+      return 'medium' as const;
+    }
+
+    if (typeof primaryScore !== 'number') {
+      return 'low' as const;
+    }
+
+    if (primaryImage.source === 'tmdb') {
+      if (primaryScore >= 140) return 'high' as const;
+      if (primaryScore >= 115) return 'medium' as const;
+      return 'low' as const;
+    }
+
+    if (primaryScore >= 180) return 'high' as const;
+    if (primaryScore >= 130) return 'medium' as const;
+    return 'low' as const;
+  })();
+
   return {
     ...item,
-    imageUrl: images[0]?.url,
+    imageUrl: primaryImage?.url,
     imageUrls: images.map((image) => image.url),
-    imageSource: images[0]?.source,
-    imageReason: images[0]?.reason,
+    imageSource: primaryImage?.source,
+    imageReason: primaryImage?.reason,
+    imageScore: primaryScore,
+    imageSelectionConfidence,
     selectedImages: images,
   };
 }
@@ -1484,6 +1562,8 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     imageUrls: item.imageUrls,
     imageSource: item.imageSource ?? null,
     imageReason: item.imageReason ?? null,
+    imageScore: item.imageScore ?? null,
+    imageSelectionConfidence: item.imageSelectionConfidence ?? null,
     selectedImages: item.selectedImages?.map((image) => ({
       url: image.url,
       reason: image.reason,
@@ -1528,6 +1608,13 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
       ? value.imageSource
       : undefined,
     imageReason: typeof value.imageReason === 'string' ? value.imageReason : undefined,
+    imageScore: typeof value.imageScore === 'number' ? value.imageScore : undefined,
+    imageSelectionConfidence:
+      value.imageSelectionConfidence === 'high' ||
+      value.imageSelectionConfidence === 'medium' ||
+      value.imageSelectionConfidence === 'low'
+        ? value.imageSelectionConfidence
+        : undefined,
     selectedImages: Array.isArray(value.selectedImages)
       ? value.selectedImages
           .map((entry): RSSResolvedImage | null => {
@@ -1844,6 +1931,37 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
       ? metadata.imageSource
       : undefined,
     imageReason: typeof metadata.imageReason === 'string' ? metadata.imageReason : undefined,
+    imageScore: typeof metadata.imageScore === 'number' ? metadata.imageScore : undefined,
+    imageSelectionConfidence:
+      metadata.imageSelectionConfidence === 'high' ||
+      metadata.imageSelectionConfidence === 'medium' ||
+      metadata.imageSelectionConfidence === 'low'
+        ? metadata.imageSelectionConfidence
+        : undefined,
+    selectedImages: Array.isArray(metadata.selectedImages)
+      ? metadata.selectedImages
+          .map((entry): RSSResolvedImage | null => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+              return null;
+            }
+
+            const record = entry as Prisma.JsonObject;
+            const url = typeof record.url === 'string' ? record.url : null;
+            const reason = typeof record.reason === 'string' ? record.reason : null;
+            const source = record.source;
+            if (!url || !reason || (source !== 'tmdb' && source !== 'serper' && source !== 'feed')) {
+              return null;
+            }
+
+            return {
+              url,
+              reason,
+              source,
+              score: typeof record.score === 'number' ? record.score : undefined,
+            };
+          })
+          .filter((entry): entry is RSSResolvedImage => Boolean(entry))
+      : undefined,
     status,
     timestamp: log.timestamp.toISOString(),
     publishedAt: typeof metadata.publishedAt === 'string' ? metadata.publishedAt : undefined,
@@ -1899,6 +2017,9 @@ function buildRSSActivityItemFromFeedRecord(record: {
     imageUrls: item?.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : undefined,
     imageSource: item?.imageSource,
     imageReason: item?.imageReason,
+    imageScore: item?.imageScore,
+    imageSelectionConfidence: item?.imageSelectionConfidence,
+    selectedImages: item?.selectedImages,
     status: normalizedStatus,
     timestamp: (record.publishedAt || record.firstSeenAt).toISOString(),
     publishedAt: record.publishedAt?.toISOString(),
@@ -1970,6 +2091,11 @@ function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMeta
     contentHtml: metadata.contentHtml,
     imageUrl: metadata.imageUrl,
     imageUrls: metadata.imageUrls,
+    imageSource: metadata.imageSource,
+    imageReason: metadata.imageReason,
+    imageScore: metadata.imageScore,
+    imageSelectionConfidence: metadata.imageSelectionConfidence,
+    selectedImages: metadata.selectedImages,
     status: metadata.status,
     timestamp: new Date().toISOString(),
     publishedAt: metadata.publishedAt,
@@ -2072,6 +2198,7 @@ function buildRSSPublishPayload(
   },
   platforms: string[]
 ) {
+  const sanitizedCaption = sanitizeRSSCaptionText(caption);
   const { platformImageCounts } = getRSSPublishImagePlan(feed, platforms);
   const platformOverrides = Object.fromEntries(
     platforms.map((platform) => {
@@ -2095,7 +2222,7 @@ function buildRSSPublishPayload(
   );
 
   return {
-    text: caption,
+    text: sanitizedCaption,
     title: item.title,
     link: item.link,
     imageUrls,
@@ -2200,17 +2327,18 @@ async function attemptRSSPublish(
       tone: runtimeSettings.rssCaptionTone,
       maxLength: runtimeSettings.rssCaptionMaxLength,
     });
-    const caption = item.generatedCaption || await aiService.generateRSSCaption(
+    const captionSource = item.generatedCaption || await aiService.generateRSSCaption(
       {
         articleTitle: item.title,
         feedName: feed.name,
-        summary: item.description,
+        summary: sanitizeRSSPlainText(item.description),
         platform: 'X',
       },
       normalizeAIModel(runtimeSettings.rssCaptionModel),
       systemPrompt,
       runtimeSettings.rssCaptionTemperature
     );
+    const caption = sanitizeRSSCaptionText(captionSource, runtimeSettings.rssCaptionMaxLength);
 
     const publishResults = await publisherService.publish(
       remainingPlatforms,
@@ -2366,7 +2494,7 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
 
   return {
     title: parsed.title || 'Unknown Feed',
-    description: stripHtml(parsed.description || ''),
+    description: sanitizeRSSPlainText(parsed.description || ''),
     link: parsed.link || '',
     lastBuildDate: parsed.lastBuildDate ? new Date(parsed.lastBuildDate) : undefined,
     items: (parsed.items || [])
@@ -2379,7 +2507,7 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
         return {
           title: String(item.title || '').trim(),
           link: String(item.link || '').trim(),
-          description: description.slice(0, 1000),
+          description: sanitizeRSSPlainText(description).slice(0, 1000),
           pubDate: Number.isNaN(pubDate.getTime()) ? new Date() : pubDate,
           imageUrl: imageUrls[0],
           imageUrls,
@@ -2952,6 +3080,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           imageUrls: publishAttempt.imageUrls,
           imageSource: resolvedActivityItem.imageSource,
           imageReason: resolvedActivityItem.imageReason,
+          imageScore: resolvedActivityItem.imageScore,
+          imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+          selectedImages: resolvedActivityItem.selectedImages,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
@@ -2988,6 +3119,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           imageUrls: publishAttempt.imageUrls,
           imageSource: resolvedActivityItem.imageSource,
           imageReason: resolvedActivityItem.imageReason,
+          imageScore: resolvedActivityItem.imageScore,
+          imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+          selectedImages: resolvedActivityItem.selectedImages,
           publishedAt: item.pubDate.toISOString(),
           status: 'pending',
           platforms: publishAttempt.remainingPlatforms,
@@ -3023,6 +3157,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         imageUrls: publishAttempt.imageUrls,
         imageSource: resolvedActivityItem.imageSource,
         imageReason: resolvedActivityItem.imageReason,
+        imageScore: resolvedActivityItem.imageScore,
+        imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+        selectedImages: resolvedActivityItem.selectedImages,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,
@@ -3156,6 +3293,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           imageUrls: publishAttempt.imageUrls,
           imageSource: resolvedActivityItem.imageSource,
           imageReason: resolvedActivityItem.imageReason,
+          imageScore: resolvedActivityItem.imageScore,
+          imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+          selectedImages: resolvedActivityItem.selectedImages,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
@@ -3185,6 +3325,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           imageUrls: publishAttempt.imageUrls,
           imageSource: resolvedActivityItem.imageSource,
           imageReason: resolvedActivityItem.imageReason,
+          imageScore: resolvedActivityItem.imageScore,
+          imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+          selectedImages: resolvedActivityItem.selectedImages,
           publishedAt: item.pubDate.toISOString(),
           status: 'pending',
           platforms: publishAttempt.remainingPlatforms,
@@ -3213,6 +3356,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         imageUrls: publishAttempt.imageUrls,
         imageSource: resolvedActivityItem.imageSource,
         imageReason: resolvedActivityItem.imageReason,
+        imageScore: resolvedActivityItem.imageScore,
+        imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+        selectedImages: resolvedActivityItem.selectedImages,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,
@@ -3390,25 +3536,26 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
     {
       articleTitle: previewItem.title,
       feedName: feed.name,
-      summary: previewItem.description,
+      summary: sanitizeRSSPlainText(previewItem.description),
       platform: 'X',
     },
     normalizeAIModel(runtimeSettings.rssCaptionModel),
     systemPrompt,
     runtimeSettings.rssCaptionTemperature
   );
+  const sanitizedCaption = sanitizeRSSCaptionText(caption, runtimeSettings.rssCaptionMaxLength);
 
   return {
     title: previewItem.title,
     link: previewItem.link,
     pubDate: previewItem.pubDate.toISOString(),
-    snippet: previewItem.description,
+    snippet: sanitizeRSSPlainText(previewItem.description),
     images: resolvedImages.map((image) => ({
       url: image.url,
       reason: image.reason,
     })),
-    caption,
-    captionCharCount: caption.length,
+    caption: sanitizedCaption,
+    captionCharCount: sanitizedCaption.length,
   };
 }
 

@@ -80,7 +80,9 @@ const OverlayLoader = () => (
 // Helper: Get page from URL pathname
 function getPageFromURL(): string {
   if (typeof window === 'undefined') return 'dashboard';
-  const pathname = window.location.pathname.replace(/^\//, '').replace(/\/$/, '');
+  const rawPath = window.location.pathname.replace(/\/$/, '');
+  const strippedPath = rawPath.startsWith('/app') ? rawPath.slice(4) : rawPath;
+  const pathname = strippedPath.replace(/^\//, '');
   if (pathname === 'callback') return 'platforms/callback';
   return pathname || 'dashboard';
 }

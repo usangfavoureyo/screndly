@@ -72,6 +72,9 @@ vi.mock('../../components/create/ComposeOverview', () => ({
       <button type="button" onClick={() => onNavigate('compose-editor')}>
         Open Editor
       </button>
+      <button type="button" onClick={() => onNavigate('create', 'compose-activity')}>
+        Return To Activity
+      </button>
     </div>
   ),
 }));
@@ -125,6 +128,9 @@ vi.mock('../../components/create/ComposeEditorPage', () => ({
         <p>{isCompactLayout ? 'Compact Editor' : 'Default Editor'}</p>
         <button type="button" onClick={() => onNavigate(previousPage || 'create')}>
           Editor Back
+        </button>
+        <button type="button" onClick={() => onNavigate('create', 'compose-activity')}>
+          Return To Activity
         </button>
       </div>
     );
@@ -203,5 +209,33 @@ describe('PostFlowSheet', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close Desktop Sheet' }));
     expect(handleOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('returns to activity when the editor closes back to compose activity', () => {
+    const handleOpenChange = vi.fn();
+
+    render(
+      <PostFlowSheet
+        open
+        initialView="overview"
+        onOpenChange={handleOpenChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Activity' }));
+    expect(screen.getByText('Activity')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Editor' }));
+    expect(screen.getByText('Editor')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editor Back' }));
+    expect(screen.getByText('Activity')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Editor' }));
+    expect(screen.getByText('Editor')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Return To Activity' }));
+    expect(screen.getByText('Activity')).toBeInTheDocument();
+    expect(handleOpenChange).not.toHaveBeenCalled();
   });
 });

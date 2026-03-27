@@ -4,6 +4,8 @@ import { useUndo } from './UndoContext';
 import { haptics } from '../utils/haptics';
 import { SwipeableActivityItem } from './SwipeableActivityItem';
 import { apiClient } from '../lib/api/client';
+import { useBackNavigation } from '../contexts/BackNavigationContext';
+import { navigateBackWithFallback } from '../utils/historyNavigation';
 import { toast } from 'sonner';
 
 interface Activity {
@@ -37,6 +39,7 @@ function getTimeAgo(timestamp: number): string {
 
 export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
   const { showUndo } = useUndo();
+  const { handleAppBack } = useBackNavigation();
 
   const { activities: logs } = useActivity({ limit: 20 });
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
@@ -106,7 +109,7 @@ export function RecentActivityPage({ onNavigate }: RecentActivityPageProps) {
         <button
           onClick={() => {
             haptics.light();
-            onNavigate('dashboard');
+            navigateBackWithFallback({ handleAppBack }, () => onNavigate('dashboard'));
           }}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
         >

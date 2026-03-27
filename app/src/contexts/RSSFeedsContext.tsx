@@ -106,6 +106,14 @@ export interface RSSActivityItem {
   imageUrls?: string[];
   imageSource?: 'tmdb' | 'serper' | 'feed';
   imageReason?: string;
+  imageScore?: number;
+  imageSelectionConfidence?: 'high' | 'medium' | 'low';
+  selectedImages?: Array<{
+    url: string;
+    reason: string;
+    source: 'tmdb' | 'serper' | 'feed';
+    score?: number;
+  }>;
   status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;

@@ -86,6 +86,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
+  const [isScheduleDatePickerOpen, setIsScheduleDatePickerOpen] = useState(false);
+  const [isScheduleTimePickerOpen, setIsScheduleTimePickerOpen] = useState(false);
   const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
@@ -209,6 +211,16 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     setScheduleItemId(item.id);
     setScheduleDate(item.scheduledAt ? new Date(item.scheduledAt) : new Date());
     setScheduleTime(item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(11, 16) : '09:00');
+  };
+
+  const handleScheduleSheetOpenChange = (open: boolean) => {
+    if (!open && (isScheduleDatePickerOpen || isScheduleTimePickerOpen)) {
+      return;
+    }
+
+    if (!open) {
+      setScheduleItemId(null);
+    }
   };
 
   const handleConfirmSchedule = () => {
@@ -536,7 +548,12 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
         )}
       </div>
 
-      <BottomSheet open={Boolean(scheduleItemId)} onOpenChange={(open) => !open && setScheduleItemId(null)}>
+      <BottomSheet
+        open={Boolean(scheduleItemId)}
+        onOpenChange={handleScheduleSheetOpenChange}
+        disableBackdropClose={isScheduleDatePickerOpen || isScheduleTimePickerOpen}
+        disableSwipe={isScheduleDatePickerOpen || isScheduleTimePickerOpen}
+      >
         <BottomSheetHeader>
           <BottomSheetTitle>Schedule Post</BottomSheetTitle>
           <BottomSheetDescription>
@@ -548,13 +565,21 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
             <div>
               <Label className="text-gray-600 dark:text-[#9CA3AF]">Date</Label>
               <div className="mt-2">
-                <DatePicker date={scheduleDate} onDateChange={setScheduleDate} />
+                <DatePicker
+                  date={scheduleDate}
+                  onDateChange={setScheduleDate}
+                  onOpenChange={setIsScheduleDatePickerOpen}
+                />
               </div>
             </div>
             <div>
               <Label className="text-gray-600 dark:text-[#9CA3AF]">Time</Label>
               <div className="mt-2">
-                <TimePicker value={scheduleTime} onChange={setScheduleTime} />
+                <TimePicker
+                  value={scheduleTime}
+                  onChange={setScheduleTime}
+                  onOpenChange={setIsScheduleTimePickerOpen}
+                />
               </div>
             </div>
           </div>

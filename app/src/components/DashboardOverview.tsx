@@ -760,7 +760,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       <SectionCard
         title="Recent Activity"
         subtitle=""
-        onViewAll={() => handleNavigate('activity')}
+        onViewAll={() => handleNavigate('activity', 'dashboard')}
       >
         <div className="space-y-3">
           {isLoading ? (

@@ -231,6 +231,7 @@ const defaultSettings = {
   tvGenres: [] as number[],
   selectedGenres: [] as number[], // Unified genre selection
   minPopularityThreshold: 1,
+  anniversaryMinPopularityThreshold: 1,
   onlyPopular: true,
   tmdbRegion: 'US',
   languageFilter: 'en', // English only by default
@@ -641,6 +642,9 @@ export function TMDbSettings() {
       }
       if (typeof merged.minPopularityThreshold !== 'number') {
         merged.minPopularityThreshold = (merged as { onlyPopular?: boolean }).onlyPopular === false ? 0 : 1;
+      }
+      if (typeof merged.anniversaryMinPopularityThreshold !== 'number') {
+        merged.anniversaryMinPopularityThreshold = merged.minPopularityThreshold;
       }
       if (typeof merged.tmdbRegion !== 'string' || !merged.tmdbRegion.trim()) {
         merged.tmdbRegion = 'US';
@@ -1610,9 +1614,9 @@ export function TMDbSettings() {
         <div>
           <div className="flex items-center justify-between mb-2">
             <div>
-              <span className="text-[#9CA3AF]">Minimum Popularity</span>
+              <span className="text-[#9CA3AF]">Minimum Popularity (Today, Weekly, Monthly)</span>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                TMDb popularity is not a 0-100 score. `0` disables filtering, and `1.0` is a practical default for release feeds.
+                Shared threshold for Today, Weekly, and Monthly. `0` disables filtering, and `1.0` is a practical default for release feeds.
               </p>
             </div>
             <span className="text-sm text-gray-600 dark:text-white">
@@ -1632,6 +1636,34 @@ export function TMDbSettings() {
           />
           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
             TMDb popularity is not a 0 to 100 rating. New releases often sit between 0 and 15, so this range is more practical.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="text-[#9CA3AF]">Minimum Popularity (Anniversary)</span>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Separate threshold for anniversary posts. `0` disables anniversary popularity filtering.
+              </p>
+            </div>
+            <span className="text-sm text-gray-600 dark:text-white">
+              {Number(tmdbSettings.anniversaryMinPopularityThreshold || 0).toFixed(1)}
+            </span>
+          </div>
+          <Slider
+            value={[Number(tmdbSettings.anniversaryMinPopularityThreshold || 0)]}
+            onValueChange={(value) => {
+              haptics.light();
+              updateSetting('anniversaryMinPopularityThreshold', value[0]);
+            }}
+            min={0}
+            max={20}
+            step={0.5}
+            className="mt-2"
+          />
+          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
+            Use this if you want anniversaries to be stricter or looser than Today, Weekly, and Monthly.
           </p>
         </div>
 

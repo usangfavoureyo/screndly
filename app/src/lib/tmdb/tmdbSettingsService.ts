@@ -79,6 +79,7 @@ export interface TMDbSettings {
     movieGenres: number[];
     tvGenres: number[];
     minPopularityThreshold: number;
+    anniversaryMinPopularityThreshold: number;
     tmdbRegion: string;
     languageFilter: string;
 
@@ -165,6 +166,7 @@ const defaultSettings: TMDbSettings = {
     movieGenres: [],
     tvGenres: [],
     minPopularityThreshold: 1,
+    anniversaryMinPopularityThreshold: 1,
     tmdbRegion: 'US',
     languageFilter: 'en',
     dedupeWindow: '30',
@@ -410,6 +412,11 @@ export function getMinPopularityThreshold(): number {
     return Number.isFinite(threshold) && threshold > 0 ? threshold : 0;
 }
 
+export function getAnniversaryMinPopularityThreshold(): number {
+    const threshold = Number(getTMDbSettings().anniversaryMinPopularityThreshold);
+    return Number.isFinite(threshold) && threshold > 0 ? threshold : 0;
+}
+
 /**
  * Get dedupe window in days
  */
@@ -472,6 +479,7 @@ export function getSettingsForBackend(): Record<string, any> {
         tvGenres: settings.tvGenres,
         languageFilter: settings.languageFilter,
         minPopularityThreshold: getMinPopularityThreshold(),
+        anniversaryMinPopularityThreshold: getAnniversaryMinPopularityThreshold(),
         tmdbRegion: getTMDbRegion(),
         dedupeWindow: parseInt(settings.dedupeWindow) || 30,
         tmdbQueuedRetentionHours: parseInt(settings.tmdbQueuedRetentionHours) || 168,

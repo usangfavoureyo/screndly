@@ -249,6 +249,8 @@ export interface Settings {
   weeklyPrompt?: string;
   monthlyPrompt?: string;
   anniversaryPrompt?: string;
+  minPopularityThreshold?: number;
+  anniversaryMinPopularityThreshold?: number;
 
   // Design Studio
   captionPosterPrompt?: string;
@@ -576,6 +578,8 @@ function getDefaultSettings(): Settings {
     weeklyPrompt: '',
     monthlyPrompt: '',
     anniversaryPrompt: '',
+    minPopularityThreshold: 1,
+    anniversaryMinPopularityThreshold: 1,
 
     // Design Studio
     captionPosterPrompt: '',
