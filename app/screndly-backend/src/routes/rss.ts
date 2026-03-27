@@ -15,6 +15,7 @@ import {
   parseRSSFeed,
   previewFeedPipeline,
   getRSSActivity,
+  retryRSSActivity,
   deleteRSSActivity,
   RSSFeedInput,
 } from '../services/rss.service';
@@ -202,6 +203,19 @@ router.delete('/activity/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[RSS] Error deleting activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to delete RSS activity' } });
+  }
+});
+
+router.post('/activity/:id/retry', async (req: Request, res: Response) => {
+  try {
+    const activityItem = await retryRSSActivity(req.params.id);
+    res.json({ success: true, data: activityItem });
+  } catch (error) {
+    console.error('[RSS] Error retrying activity item:', error);
+    res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to retry RSS activity item' },
+    });
   }
 });
 

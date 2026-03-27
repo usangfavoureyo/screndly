@@ -1,5 +1,5 @@
 import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, Clapperboard } from 'lucide-react';
+import { X, Video02, MessageSquare, Rss, Globe, AlertTriangle, Trash2, Smartphone, Palette, Bell, Download, Search, ChevronRight, LogOut, FileText, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
@@ -158,7 +158,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
     {
       id: 'video',
       label: 'Video',
-      icon: Video,
+      icon: Video02,
       keywords: [
         'video', 'trailer', 'monitoring', 'fetch', 'tracking',
         'interval', 'fetch interval', 'check frequency', 'polling',
@@ -216,7 +216,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
     {
       id: 'tmdb',
       label: 'TMDb Feeds',
-      icon: Clapperboard,
+      icon: WifiNoSignal,
       keywords: [
         'tmdb', 'the movie database', 'movie', 'database', 'film',
         'feeds', 'feed', 'content',

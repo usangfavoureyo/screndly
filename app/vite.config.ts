@@ -13,10 +13,11 @@ export default defineConfig({
     __APP_BUILD_ID__: JSON.stringify(new Date().toISOString()),
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "lucide-react": path.resolve(__dirname, "./src/lib/icons/lucide-compat.tsx"),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      { find: "@lucide-real", replacement: path.resolve(__dirname, "./node_modules/lucide-react/dist/esm/lucide-react.js") },
+      { find: /^lucide-react$/, replacement: path.resolve(__dirname, "./src/lib/icons/lucide-compat.tsx") },
+    ],
   },
   publicDir: 'src/public',
   build: {

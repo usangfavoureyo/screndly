@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import {
   Video,
+  Video02,
   HardDrive,
+  Archive,
   MessageSquare,
   Rss,
   Clapperboard,
@@ -10,6 +12,7 @@ import {
   Film,
   Image,
   PenSquare,
+  WifiNoSignal,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { Button } from './ui/button';
@@ -379,7 +382,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-shadow duration-200 sm:col-span-2 lg:col-span-4">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <Video className="w-6 h-6 text-[#ec1e24]" />
+              <Video02 className="w-6 h-6 text-[#ec1e24]" />
               <div>
                 <h3 className="text-gray-900 dark:text-white">Video</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Channel monitoring activity</p>
@@ -569,7 +572,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<Clapperboard className="w-6 h-6 text-[#ec1e24]" />}
+        icon={<WifiNoSignal className="w-6 h-6 text-[#ec1e24]" />}
         title="TMDb Feeds"
         subtitle="Upcoming scheduled posts"
         onViewAll={() => handleNavigate('tmdb-activity', 'dashboard')}
@@ -691,7 +694,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<HardDrive className="w-6 h-6 text-[#ec1e24]" />}
+        icon={<Archive className="w-6 h-6 text-[#ec1e24]" />}
         title="Upload Manager"
         subtitle="Video upload pipeline"
         onViewAll={() => handleNavigate('upload-manager', 'dashboard')}

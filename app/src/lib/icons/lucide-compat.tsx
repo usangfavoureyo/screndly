@@ -1,6 +1,6 @@
 import * as React from 'react';
-import type { LucideProps } from 'lucide-react/dist/esm/lucide-react.js';
-export * from 'lucide-react/dist/esm/lucide-react.js';
+import type { LucideProps } from '@lucide-real';
+export * from '@lucide-real';
 
 type IconComponent = React.FC<LucideProps>;
 
@@ -211,11 +211,12 @@ const VideoShape = (
 
 export const AlertCircle = createRoundedIcon(`${base}/alert-01-stroke-rounded.svg`);
 export const AlertTriangle = createRoundedIcon(`${base}/alert-01-stroke-rounded.svg`);
+export const Archive = createRoundedIcon(`${base}/archive-04-stroke-rounded.svg`);
 export const ArrowLeft = createRoundedIcon(`${base}/arrow-left-02-stroke-rounded.svg`);
 export const ArrowRight = createRoundedIcon(`${base}/arrow-right-02-stroke-rounded.svg`);
 export const ArrowUp = createRoundedIcon(`${base}/arrow-up-02-stroke-rounded.svg`);
 export const ArrowDown = createRoundedIcon(`${base}/arrow-down-02-stroke-rounded.svg`);
-export const ArrowDownWideNarrow = createRoundedIcon(`${base}/filter-horizontal-stroke-rounded.svg`);
+export const ArrowDownWideNarrow = createRoundedIcon(`${base}/filter-stroke-rounded.svg`);
 export const Activity = createRoundedIcon(`${base}/chat-feedback-stroke-rounded.svg`);
 export const Bell = createRoundedIcon(`${base}/notification-01-stroke-rounded.svg`);
 export const Bookmark = createRoundedIcon(`${base}/bookmark-02-stroke-rounded.svg`);
@@ -267,6 +268,7 @@ export const Globe = createRoundedIcon(`${base}/language-circle-stroke-rounded.s
 export const GripVertical = createCustomIcon('0 0 24 24', GripVerticalShape, { fill: true });
 export const GripVerticalIcon = createCustomIcon('0 0 24 24', GripVerticalShape, { fill: true });
 export const Hash = createCustomIcon('0 0 24 24', HashShape);
+export const HardDrive = createRoundedIcon(`${base}/activity-01-stroke-rounded.svg`);
 export const HelpCircle = createRoundedIcon(`${base}/help-circle-stroke-rounded.svg`);
 export const Home = createRoundedIcon(`${base}/home-01-stroke-rounded.svg`);
 export const Image = createRoundedIcon(`${base}/image-01-stroke-rounded.svg`);
@@ -332,11 +334,13 @@ export const Unplug = createRoundedIcon(`${base}/logout-01-stroke-rounded.svg`);
 export const Upload = createRoundedIcon(`${base}/upload-06-stroke-rounded.svg`);
 export const User = createRoundedIcon(`${base}/user-stroke-rounded.svg`);
 export const Video = createCustomIcon('0 0 24 24', VideoShape);
+export const Video02 = createRoundedIcon(`${base}/video-02-stroke-rounded.svg`);
 export const Volume2 = createRoundedIcon(`${base}/volume-high-stroke-rounded.svg`);
 export const VolumeX = createRoundedIcon(`${base}/volume-off-stroke-rounded.svg`);
 export const Wand2 = createRoundedIcon(`${base}/brush-stroke-rounded.svg`);
 export const Wifi = createCustomIcon('0 0 24 24', WifiShape);
 export const WifiOff = createCustomIcon('0 0 24 24', WifiOffShape);
+export const WifiNoSignal = createRoundedIcon(`${base}/wifi-no-signal-stroke-rounded.svg`);
 export const X = createRoundedIcon(`${base}/cancel-01-stroke-rounded.svg`);
 export const XIcon = createRoundedIcon(`${base}/cancel-01-stroke-rounded.svg`);
 export const XCircle = createRoundedIcon(`${base}/cancel-01-stroke-rounded.svg`);

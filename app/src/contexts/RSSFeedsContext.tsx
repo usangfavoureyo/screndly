@@ -172,6 +172,7 @@ interface RSSFeedsContextType {
   previewFeed: (url: string) => Promise<RSSFeedPreview | null>;
   previewFeedPipeline: (feedId: string) => Promise<RSSPipelinePreview | null>;
   getActivity: (limit?: number) => Promise<RSSActivityResponse | null>;
+  retryActivity: (activityId: string) => Promise<RSSActivityItem | null>;
   deleteActivity: (activityId: string) => Promise<void>;
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
   togglePlatform: (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => Promise<void>;
@@ -446,6 +447,22 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const retryActivity = async (activityId: string): Promise<RSSActivityItem | null> => {
+    try {
+      const response = await apiClient.post<RSSActivityItem>(`/api/rss/activity/${activityId}/retry`);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to retry RSS activity item');
+      }
+
+      toast.success('RSS activity retry started');
+      return response.data;
+    } catch (err) {
+      console.error('Error retrying RSS activity item:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to retry RSS activity item');
+      return null;
+    }
+  };
+
   const deleteActivity = async (activityId: string) => {
     try {
       const response = await apiClient.delete(`/api/rss/activity/${activityId}`);
@@ -475,11 +492,12 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         restoreFeed,
         refreshFeed,
         refreshAllFeeds,
-        previewFeed,
-        previewFeedPipeline,
-        getActivity,
-        deleteActivity,
-        toggleFeedEnabled,
+    previewFeed,
+    previewFeedPipeline,
+    getActivity,
+    retryActivity,
+    deleteActivity,
+    toggleFeedEnabled,
         togglePlatform,
         getFeedsByStatus,
         refetch: fetchFeeds,

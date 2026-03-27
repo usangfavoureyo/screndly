@@ -3730,6 +3730,181 @@ async function deleteRSSActivity(id: string): Promise<void> {
   });
 }
 
+async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    throw new Error('RSS activity retry is not available in this build.');
+  }
+
+  const feedSelect = await getRSSFeedSelect();
+  const record = await prisma.rSSFeedItem.findUnique({
+    where: { id },
+    include: {
+      feed: {
+        select: feedSelect,
+      },
+    },
+  });
+
+  if (!record?.feed) {
+    throw new Error('RSS activity item not found.');
+  }
+
+  const feed = applyRSSFeedCompatibility(record.feed as Record<string, any>);
+  if (!feed) {
+    throw new Error('RSS feed not found for this activity item.');
+  }
+
+  const item = deserializeRSSItem(record.itemData);
+  if (!item) {
+    throw new Error('RSS activity item is missing its stored publish payload.');
+  }
+
+  const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
+  if (platforms.length === 0) {
+    throw new Error('This RSS feed has no enabled publishing platforms.');
+  }
+
+  const remainingPlatforms = platforms.filter((platform) => !item.platformPostIds?.[platform]);
+  if (remainingPlatforms.length === 0) {
+    throw new Error('This RSS activity item has already been published to all enabled platforms.');
+  }
+
+  if (!acquireRSSPublishClaim(feed.id, item)) {
+    throw new Error('This RSS activity item is already being retried.');
+  }
+
+  try {
+    const runtimeSettings = await getRuntimeSettings();
+    const imagePlan = getRSSPublishImagePlan(feed, platforms);
+    const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+    const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
+    resolvedActivityItem.generatedCaption = publishAttempt.caption;
+    resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
+    resolvedActivityItem.platformResults = publishAttempt.platformResults;
+
+    const baseRecord = {
+      ...record,
+      itemData: serializeRSSItem(resolvedActivityItem),
+      feed: {
+        id: feed.id,
+        name: feed.name,
+        platformsEnabled: feed.platformsEnabled as Prisma.JsonValue,
+      },
+    };
+
+    if (publishAttempt.status === 'published') {
+      await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'published', {
+        publishedAt: item.pubDate,
+        errorMessage: publishAttempt.errorMessage ?? null,
+        firstSeenAt: record.firstSeenAt,
+      });
+
+      const publishedMetadata: RSSActivityMetadata = {
+        category: RSS_ACTIVITY_CATEGORY,
+        feedId: feed.id,
+        feedName: feed.name,
+        itemTitle: item.title,
+        itemLink: item.link,
+        description: item.description,
+        imageUrl: publishAttempt.imageUrl,
+        imageUrls: publishAttempt.imageUrls,
+        imageSource: resolvedActivityItem.imageSource,
+        imageReason: resolvedActivityItem.imageReason,
+        imageScore: resolvedActivityItem.imageScore,
+        imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+        selectedImages: resolvedActivityItem.selectedImages,
+        publishedAt: item.pubDate.toISOString(),
+        status: 'published',
+        platforms: publishAttempt.successfulPlatforms,
+        platformPostIds: publishAttempt.platformPostIds,
+        platformResults: publishAttempt.platformResults,
+        errorMessage: publishAttempt.errorMessage,
+      };
+      await logRSSActivity(publishedMetadata);
+
+      return resolveRSSActivityItemImages(buildRSSActivityItemFromFeedRecord({
+        ...baseRecord,
+        status: 'published',
+        publishedAt: item.pubDate,
+        errorMessage: publishAttempt.errorMessage ?? null,
+      }));
+    }
+
+    if (publishAttempt.status === 'pending') {
+      await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'pending', {
+        errorMessage: publishAttempt.errorMessage,
+        firstSeenAt: record.firstSeenAt,
+      });
+
+      const pendingMetadata: RSSActivityMetadata = {
+        category: RSS_ACTIVITY_CATEGORY,
+        feedId: feed.id,
+        feedName: feed.name,
+        itemTitle: item.title,
+        itemLink: item.link,
+        description: item.description,
+        imageUrl: publishAttempt.imageUrl,
+        imageUrls: publishAttempt.imageUrls,
+        imageSource: resolvedActivityItem.imageSource,
+        imageReason: resolvedActivityItem.imageReason,
+        imageScore: resolvedActivityItem.imageScore,
+        imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+        selectedImages: resolvedActivityItem.selectedImages,
+        publishedAt: item.pubDate.toISOString(),
+        status: 'pending',
+        platforms: publishAttempt.remainingPlatforms,
+        platformPostIds: publishAttempt.platformPostIds,
+        platformResults: publishAttempt.platformResults,
+        errorMessage: publishAttempt.errorMessage,
+      };
+      await logRSSActivity(pendingMetadata);
+
+      return resolveRSSActivityItemImages(buildRSSActivityItemFromFeedRecord({
+        ...baseRecord,
+        status: 'pending',
+        errorMessage: publishAttempt.errorMessage,
+      }));
+    }
+
+    await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'failed', {
+      errorMessage: publishAttempt.errorMessage,
+      firstSeenAt: record.firstSeenAt,
+    });
+
+    const failedMetadata: RSSActivityMetadata = {
+      category: RSS_ACTIVITY_CATEGORY,
+      feedId: feed.id,
+      feedName: feed.name,
+      itemTitle: item.title,
+      itemLink: item.link,
+      description: item.description,
+      imageUrl: publishAttempt.imageUrl,
+      imageUrls: publishAttempt.imageUrls,
+      imageSource: resolvedActivityItem.imageSource,
+      imageReason: resolvedActivityItem.imageReason,
+      imageScore: resolvedActivityItem.imageScore,
+      imageSelectionConfidence: resolvedActivityItem.imageSelectionConfidence,
+      selectedImages: resolvedActivityItem.selectedImages,
+      publishedAt: item.pubDate.toISOString(),
+      status: 'failed',
+      platforms,
+      platformPostIds: publishAttempt.platformPostIds,
+      platformResults: publishAttempt.platformResults,
+      errorMessage: publishAttempt.errorMessage,
+    };
+    await logRSSActivity(failedMetadata);
+
+    return resolveRSSActivityItemImages(buildRSSActivityItemFromFeedRecord({
+      ...baseRecord,
+      status: 'failed',
+      errorMessage: publishAttempt.errorMessage,
+    }));
+  } finally {
+    releaseRSSPublishClaim(feed.id, item);
+  }
+}
+
 async function claimRSSFeedItemForPublish(
   feedId: string,
   item: RSSItem,
@@ -3826,6 +4001,7 @@ export {
   refreshAllFeeds,
   previewFeedPipeline,
   getRSSActivity,
+  retryRSSActivity,
   deleteRSSActivity,
 };
 
@@ -3841,5 +4017,6 @@ export default {
   refreshAllFeeds,
   previewFeedPipeline,
   getRSSActivity,
+  retryRSSActivity,
   deleteRSSActivity,
 };

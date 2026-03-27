@@ -72,11 +72,12 @@ function buildActivitySummary(items: RSSActivityItem[]) {
 }
 
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
-  const { getActivity, refreshFeed } = useRSSFeeds();
+  const { getActivity, retryActivity } = useRSSFeeds();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'filtered'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
@@ -198,14 +199,21 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
 
   const handleRetry = async (event: React.MouseEvent, item: RSSActivityItem) => {
     event.stopPropagation();
-    if (!item.feedId) {
-      toast.error('This activity entry is missing its feed reference');
+    if (!item.id) {
+      toast.error('This activity entry is missing its retry reference');
       return;
     }
 
     haptics.medium();
-    await refreshFeed(item.feedId);
-    await loadActivity();
+    setRetryingItemId(item.id);
+    try {
+      const retriedItem = await retryActivity(item.id);
+      if (retriedItem) {
+        await loadActivity();
+      }
+    } finally {
+      setRetryingItemId(null);
+    }
   };
 
   const handleDelete = async (id?: string) => {
@@ -520,9 +528,10 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             variant="outline"
                             size="sm"
                             onClick={(event) => handleRetry(event, item)}
+                            disabled={retryingItemId === item.id}
                             className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                           >
-                            Retry
+                            {retryingItemId === item.id ? 'Retrying...' : 'Retry'}
                           </Button>
                         )}
                       </div>
