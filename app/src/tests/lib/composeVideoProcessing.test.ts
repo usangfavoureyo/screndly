@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildComposeAssetSignature,
+  getThreadsXCropSourceUrl,
   getVideoUrlForComposePlatform,
   isThreadsXCropVariantReady,
   shouldOfferThreadsXCrop,
@@ -88,5 +89,23 @@ describe('composeVideoProcessing', () => {
     expect(getVideoUrlForComposePlatform(item, 'threads')).toBe('https://cdn.example.com/trailer-3x4.mp4');
     expect(getVideoUrlForComposePlatform(item, 'x')).toBe('https://cdn.example.com/trailer-3x4.mp4');
     expect(getVideoUrlForComposePlatform(item, 'facebook_feed')).toBe('https://cdn.example.com/trailer.mp4');
+  });
+
+  it('prefers the uploaded source video over blob preview urls for crop generation', () => {
+    const asset = buildVideoAsset({
+      storageUrl: 'https://cdn.example.com/trailer.mp4',
+      previewUrl: 'blob:https://app.example.com/local-preview',
+    });
+
+    expect(getThreadsXCropSourceUrl(asset)).toBe('https://cdn.example.com/trailer.mp4');
+  });
+
+  it('falls back to preview url when no uploaded source video exists yet', () => {
+    const asset = buildVideoAsset({
+      storageUrl: undefined,
+      previewUrl: 'blob:https://app.example.com/local-preview',
+    });
+
+    expect(getThreadsXCropSourceUrl(asset)).toBe('blob:https://app.example.com/local-preview');
   });
 });

@@ -8,6 +8,66 @@ import { cleanup } from '@testing-library/react';
 import { afterEach, beforeAll, beforeEach, vi } from 'vitest';
 
 beforeAll(() => {
+  const createRequest = <T,>(result: T) => {
+    const request: {
+      result: T;
+      error: Error | null;
+      onsuccess: null | (() => void);
+      onerror: null | (() => void);
+      onupgradeneeded: null | ((event: { target: { result: T } }) => void);
+    } = {
+      result,
+      error: null,
+      onsuccess: null,
+      onerror: null,
+      onupgradeneeded: null,
+    };
+
+    queueMicrotask(() => {
+      request.onupgradeneeded?.({ target: { result } });
+      request.onsuccess?.();
+    });
+
+    return request;
+  };
+
+  const createStore = () => ({
+    get: vi.fn(() => createRequest(undefined)),
+    getAll: vi.fn(() => createRequest([])),
+    put: vi.fn(() => createRequest(1)),
+    delete: vi.fn(() => createRequest(undefined)),
+    clear: vi.fn(() => createRequest(undefined)),
+  });
+
+  Object.defineProperty(globalThis, 'indexedDB', {
+    configurable: true,
+    writable: true,
+    value: {
+      open: vi.fn(() => {
+        const stores = new Map<string, ReturnType<typeof createStore>>();
+        const db = {
+          objectStoreNames: {
+            contains: (name: string) => stores.has(name),
+          },
+          createObjectStore: (name: string) => {
+            const store = createStore();
+            stores.set(name, store);
+            return store;
+          },
+          transaction: (storeNames: string[]) => ({
+            objectStore: (name: string) => {
+              const existing = stores.get(name) ?? createStore();
+              stores.set(name, existing);
+              return existing;
+            },
+          }),
+        };
+
+        return createRequest(db);
+      }),
+    },
+  });
+
   global.WebSocket = vi.fn(() => ({
     send: vi.fn(),
     close: vi.fn(),

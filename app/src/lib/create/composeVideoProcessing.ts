@@ -76,12 +76,22 @@ export function getVideoUrlForComposePlatform(item: ComposeItem, platform: Compo
   return primaryAsset.storageUrl || primaryAsset.previewUrl;
 }
 
+export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | undefined {
+  const preferredCandidates = [asset.storageUrl, asset.previewUrl];
+  const publishedUrl = preferredCandidates.find(
+    (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()),
+  );
+  if (publishedUrl) return publishedUrl;
+
+  return asset.previewUrl || asset.storageUrl;
+}
+
 export async function generateThreadsXCropVariant(
   asset: ComposeMediaAsset,
   focusYPercent: number,
   onProgress?: (progress: number, message: string) => void,
 ): Promise<ComposeProcessedVideoAsset> {
-  const source = asset.previewUrl || asset.storageUrl;
+  const source = getThreadsXCropSourceUrl(asset);
   if (!source) {
     throw new Error('Upload the source video before generating a 3:4 crop.');
   }

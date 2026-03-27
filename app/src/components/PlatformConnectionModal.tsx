@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
 import { Button } from './ui/button';
 import { Loader2, CheckCircle2, Shield, Key, AlertCircle } from 'lucide-react';
@@ -11,23 +11,13 @@ import { TikTokIcon } from './icons/TikTokIcon';
 import { XIcon } from './icons/XIcon';
 import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
-import { getOAuthRedirectUri } from '../utils/oauthRedirect';
 import { getToken } from '../lib/api/authToken';
+import { beginManagedPlatformOAuth } from '../lib/api/platformIntegrations';
 
 interface PlatformConnectionModalProps {
   platform: PlatformType;
   isOpen: boolean;
   onClose: () => void;
-}
-
-function getOAuthBackendBaseUrl(): string {
-  if (typeof window === 'undefined') {
-    return 'https://screndly-production.up.railway.app';
-  }
-
-  const hostname = window.location.hostname;
-  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
-  return isLocalHost ? 'http://localhost:3000' : 'https://screndly-production.up.railway.app';
 }
 
 export function PlatformConnectionModal({
@@ -36,8 +26,11 @@ export function PlatformConnectionModal({
   onClose
 }: PlatformConnectionModalProps) {
   const PLATFORM_STORAGE_KEY = 'screndly_oauth_platform';
+  const STATE_STORAGE_KEY = 'screndly_oauth_state';
+  const CODE_VERIFIER_STORAGE_KEY = 'screndly_oauth_code_verifier';
+  const OAUTH_CALLBACK_RESULT_KEY = 'screndly_oauth_callback_result';
   const OAUTH_RETURN_TOKEN_KEY = 'screndly_oauth_return_token';
-  const [isConnecting] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [step, setStep] = useState<'info' | 'connecting' | 'success'>('info');
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -123,12 +116,6 @@ export function PlatformConnectionModal({
   };
 
   const info = platformInfo[platform];
-  const redirectUri = getOAuthRedirectUri(platform);
-  const oauthStartUrl = useMemo(
-    () => `${getOAuthBackendBaseUrl()}/api/platforms/auth/${platform}?redirect=1&redirectUri=${encodeURIComponent(redirectUri)}`,
-    [platform, redirectUri]
-  );
-
   useEffect(() => {
     if (!isOpen) {
       setIsConnecting(false);
@@ -144,13 +131,38 @@ export function PlatformConnectionModal({
     const authToken = getToken();
     localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
     sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-    localStorage.removeItem('screndly_oauth_state');
-    sessionStorage.removeItem('screndly_oauth_state');
-    localStorage.removeItem('screndly_oauth_code_verifier');
-    sessionStorage.removeItem('screndly_oauth_code_verifier');
+    localStorage.removeItem(STATE_STORAGE_KEY);
+    sessionStorage.removeItem(STATE_STORAGE_KEY);
+    localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+    sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+    localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+    sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
 
     if (authToken) {
       localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
+    } else {
+      localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
+    }
+  };
+
+  const handleConnect = async () => {
+    if (isConnecting) {
+      return;
+    }
+
+    prepareOAuthStart();
+    setIsConnecting(true);
+    setStep('connecting');
+
+    try {
+      await beginManagedPlatformOAuth(platform);
+    } catch (error: any) {
+      console.error(`Failed to start ${platform} OAuth flow:`, error);
+      setIsConnecting(false);
+      setStep('info');
+      setErrorMessage(
+        error?.message || `Unable to start the ${info.name} connection right now. Please try again.`,
+      );
     }
   };
 
@@ -263,16 +275,13 @@ export function PlatformConnectionModal({
             Cancel
           </Button>
           <Button
-            asChild
             className="flex-1 bg-[#ec1e24] hover:bg-[#d11b20] text-white"
+            onClick={() => {
+              void handleConnect();
+            }}
+            disabled={isConnecting}
           >
-            <a
-              href={oauthStartUrl}
-              onPointerDown={prepareOAuthStart}
-              onClick={prepareOAuthStart}
-            >
-              Connect {info.name}
-            </a>
+            Connect {info.name}
           </Button>
         </BottomSheetFooter>
       )}

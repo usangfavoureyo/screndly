@@ -38,11 +38,13 @@ if (typeof window !== 'undefined') {
       const search = window.location.search || '';
       const hash = window.location.hash || '';
       if (search || hash) {
-        sessionStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, JSON.stringify({
+        const callbackSnapshot = JSON.stringify({
           search,
           hash,
           capturedAt: Date.now(),
-        }));
+        });
+        sessionStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, callbackSnapshot);
+        localStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, callbackSnapshot);
       }
     }
   } catch (error) {

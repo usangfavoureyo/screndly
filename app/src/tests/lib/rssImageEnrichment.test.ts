@@ -156,9 +156,8 @@ describe('rss image enrichment', () => {
       1,
     );
 
-    expect(result.strategy).toBe('safe-title-fallback');
-    expect(result.images[0]?.url).toBe('https://serper.example/project-hail-mary-logo.png');
-    expect(result.images[0]?.url).not.toBe('https://rss.example/hero.jpg');
+    expect(result.strategy).toBe('no-safe-fallback');
+    expect(result.images).toHaveLength(0);
   });
 
   it('rejects partial-title matches like Apex -> Apex Predator', async () => {

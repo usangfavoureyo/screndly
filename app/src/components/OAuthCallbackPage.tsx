@@ -18,6 +18,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
     const CALLBACK_LOCK_PREFIX = 'screndly_oauth_callback_lock_';
     const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
     const CALLBACK_TIMEOUT_MS = 60000;
+    const CALLBACK_RESULT_TTL_MS = 5 * 60 * 1000;
 
     useEffect(() => {
         const getStoredPlatform = (): string | null => {
@@ -32,6 +33,44 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             return localStorage.getItem(CODE_VERIFIER_STORAGE_KEY) || sessionStorage.getItem(CODE_VERIFIER_STORAGE_KEY);
         };
 
+        const clearStoredCallbackResult = () => {
+            localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+            sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+        };
+
+        const getStoredCallbackResult = (): { search: string; hash: string } | null => {
+            const rawValue =
+                sessionStorage.getItem(OAUTH_CALLBACK_RESULT_KEY) ||
+                localStorage.getItem(OAUTH_CALLBACK_RESULT_KEY);
+            if (!rawValue) {
+                return null;
+            }
+
+            try {
+                const parsed = JSON.parse(rawValue) as {
+                    search?: string;
+                    hash?: string;
+                    capturedAt?: number;
+                };
+
+                if (
+                    typeof parsed.capturedAt === 'number' &&
+                    Date.now() - parsed.capturedAt > CALLBACK_RESULT_TTL_MS
+                ) {
+                    clearStoredCallbackResult();
+                    return null;
+                }
+
+                return {
+                    search: typeof parsed.search === 'string' ? parsed.search : '',
+                    hash: typeof parsed.hash === 'string' ? parsed.hash : '',
+                };
+            } catch {
+                clearStoredCallbackResult();
+                return null;
+            }
+        };
+
         const clearStoredPlatform = () => {
             localStorage.removeItem(PLATFORM_STORAGE_KEY);
             sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
@@ -40,7 +79,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
-            sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+            clearStoredCallbackResult();
         };
 
         const restoreAuthSessionForMobileReturn = () => {
@@ -97,17 +136,14 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             let hash = window.location.hash || '';
 
             if (!search && !hash) {
-                try {
-                    const storedCallbackResult = sessionStorage.getItem(OAUTH_CALLBACK_RESULT_KEY);
-                    if (storedCallbackResult) {
-                        const parsed = JSON.parse(storedCallbackResult) as { search?: string; hash?: string };
-                        search = typeof parsed.search === 'string' ? parsed.search : '';
-                        hash = typeof parsed.hash === 'string' ? parsed.hash : '';
-                    }
-                } catch {
-                    // Best-effort fallback only.
+                const storedCallbackResult = getStoredCallbackResult();
+                if (storedCallbackResult) {
+                    search = storedCallbackResult.search;
+                    hash = storedCallbackResult.hash;
                 }
             }
+
+            clearStoredCallbackResult();
 
             const urlParams = new URLSearchParams(search);
             const hashParams = new URLSearchParams(hash.replace(/^#/, ''));
@@ -138,6 +174,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
             const codeVerifier = getStoredCodeVerifier();
 
             if (!code || (!platform && !effectiveState)) {
+                clearStoredPlatform();
                 setStatus('error');
                 setErrorMsg('Missing OAuth callback data. Please retry the connection from Platforms.');
                 return;
