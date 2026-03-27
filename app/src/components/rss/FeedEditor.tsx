@@ -592,7 +592,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
 
               {perPlatformImageCount && (
                 <div className="pl-4 space-y-3 border-l-2 border-gray-200 dark:border-[#333333]">
-                  {['x', 'threads', 'facebook'].map((platform) => (
+                  {(['x', 'threads', 'facebook', 'pinterest'] as const).map((platform) => (
                     <div key={platform}>
                       <Label className="text-gray-600 dark:text-[#9CA3AF] capitalize text-sm">{platform}</Label>
                       <Select
@@ -613,8 +613,8 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="1">1</SelectItem>
-                          <SelectItem value="2">2</SelectItem>
-                          <SelectItem value="3">3</SelectItem>
+                          {platform !== 'pinterest' && <SelectItem value="2">2</SelectItem>}
+                          {platform !== 'pinterest' && <SelectItem value="3">3</SelectItem>}
                         </SelectContent>
                       </Select>
                     </div>

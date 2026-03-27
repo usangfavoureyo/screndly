@@ -5,7 +5,7 @@ import { uploadBufferToBackblaze } from './backblaze';
 import sharp from 'sharp';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
-const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/original';
+const TMDB_IMAGE_BASE_URL = 'https://image.tmdb.org/t/p/w1280';
 const MIN_TMDB_TITLE_SCORE = 180;
 const MIN_TMDB_PERSON_SCORE = 170;
 const MIN_TMDB_COMPANY_SCORE = 150;

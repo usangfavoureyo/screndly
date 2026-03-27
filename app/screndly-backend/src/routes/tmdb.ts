@@ -16,6 +16,9 @@ import { renderTMDbLogoCard } from '../services/rss-logo-render.service';
 const router = Router();
 router.use(authenticate);
 
+const TMDB_POSTER_IMAGE_BASE = 'https://image.tmdb.org/t/p/w780';
+const TMDB_BACKDROP_IMAGE_BASE = 'https://image.tmdb.org/t/p/w1280';
+
 // GET /api/tmdb/status - Check if TMDb is configured
 router.get('/status', async (req, res) => {
     try {
@@ -116,7 +119,6 @@ router.get('/search', async (req, res) => {
             }>;
         };
 
-        const imageBase = 'https://image.tmdb.org/t/p/original';
         const results = (data.results || [])
             .filter((item) => item.media_type === 'movie' || item.media_type === 'tv')
             .filter((item) => item.backdrop_path || item.poster_path)
@@ -125,8 +127,8 @@ router.get('/search', async (req, res) => {
                 id: item.id,
                 mediaType: item.media_type,
                 title: item.title || item.name || 'Untitled',
-                backdrop: item.backdrop_path ? `${imageBase}${item.backdrop_path}` : null,
-                poster: item.poster_path ? `${imageBase}${item.poster_path}` : null,
+                backdrop: item.backdrop_path ? `${TMDB_BACKDROP_IMAGE_BASE}${item.backdrop_path}` : null,
+                poster: item.poster_path ? `${TMDB_POSTER_IMAGE_BASE}${item.poster_path}` : null,
                 releaseDate: item.release_date || item.first_air_date || null,
             }));
 
@@ -331,13 +333,13 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
         }
 
         const data = await response.json() as TMDbImagesResponse;
-        const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
-        const selectImageUrl = (images: TMDbImage[] | undefined) => {
+        const selectImageUrl = (images: TMDbImage[] | undefined, kind: 'poster' | 'backdrop') => {
             if (!images || images.length === 0) {
                 return '';
             }
 
-            const imageUrls = images.map((image) => `${TMDB_IMAGE_BASE}${image.file_path}`);
+            const imageBase = kind === 'poster' ? TMDB_POSTER_IMAGE_BASE : TMDB_BACKDROP_IMAGE_BASE;
+            const imageUrls = images.map((image) => `${imageBase}${image.file_path}`);
             const filteredImageUrls = exclude
                 ? imageUrls.filter((candidate) => candidate !== exclude)
                 : imageUrls;
@@ -364,7 +366,7 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
                     return (right.vote_average || 0) - (left.vote_average || 0);
                 });
 
-            return sorted[0] ? `${TMDB_IMAGE_BASE}${sorted[0].file_path}` : '';
+            return sorted[0] ? `${TMDB_POSTER_IMAGE_BASE}${sorted[0].file_path}` : '';
         };
 
         let imageUrl = '';
@@ -373,18 +375,18 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
         let imageTypes: Array<'poster' | 'backdrop' | 'logo'> = [];
 
         if (type === 'poster') {
-            imageUrl = selectImageUrl(data.posters);
+            imageUrl = selectImageUrl(data.posters, 'poster');
             imageType = 'poster';
             imageUrls = imageUrl ? [imageUrl] : [];
             imageTypes = imageUrl ? ['poster'] : [];
         } else if (type === 'backdrop') {
-            imageUrl = selectImageUrl(data.backdrops);
+            imageUrl = selectImageUrl(data.backdrops, 'backdrop');
             imageType = 'backdrop';
             imageUrls = imageUrl ? [imageUrl] : [];
             imageTypes = imageUrl ? ['backdrop'] : [];
         } else if (type === 'poster_backdrop') {
-            const posterUrl = selectImageUrl(data.posters);
-            const backdropUrl = selectImageUrl(data.backdrops);
+            const posterUrl = selectImageUrl(data.posters, 'poster');
+            const backdropUrl = selectImageUrl(data.backdrops, 'backdrop');
 
             imageUrls = [posterUrl, backdropUrl].filter((value): value is string => Boolean(value));
             imageTypes = [
@@ -394,7 +396,7 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             imageUrl = imageUrls[0] || '';
             imageType = (imageTypes[0] || 'poster') as 'poster' | 'backdrop';
         } else {
-            const backdropUrl = selectImageUrl(data.backdrops);
+            const backdropUrl = selectImageUrl(data.backdrops, 'backdrop');
             const logoUrl = selectLogoUrl(data.logos);
             let renderedLogoUrl = '';
 

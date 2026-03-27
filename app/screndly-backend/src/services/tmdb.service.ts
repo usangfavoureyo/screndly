@@ -37,6 +37,7 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
 const TMDB_DISCOVER_MAX_PAGES = 3;
 const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
 const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
+const TMDB_THEATRICAL_RELEASE_TYPES = [3, 2] as const;
 const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
 
@@ -440,7 +441,11 @@ async function fetchMovieReleaseDates(id: number): Promise<TMDbMovieReleaseDates
     }
 }
 
-function getMovieReleaseDateForRegion(payload: TMDbMovieReleaseDatesResponse | null, region: string): string | null {
+function getMovieReleaseDateForRegion(
+    payload: TMDbMovieReleaseDatesResponse | null,
+    region: string,
+    preferredTypes: readonly number[] = TMDB_THEATRICAL_RELEASE_TYPES,
+): string | null {
     if (!payload?.results) {
         return null;
     }
@@ -451,6 +456,7 @@ function getMovieReleaseDateForRegion(payload: TMDbMovieReleaseDatesResponse | n
     }
 
     const datedEntries = match.release_dates
+        .filter((entry) => !preferredTypes.length || preferredTypes.includes(entry.type || 0))
         .map((entry) => entry.release_date)
         .filter((value): value is string => Boolean(value))
         .sort((left, right) => new Date(left).getTime() - new Date(right).getTime());
@@ -500,12 +506,22 @@ async function fetchDiscoverCandidatePool(
 }
 
 function buildExactDateParams(dateIso: string, mediaType: MediaType, config: RefreshSettings): Record<string, string> {
+    const region = mediaType === 'movie' ? getRegionFilter(config) : undefined;
+
     const params: Record<string, string> = mediaType === 'movie'
-        ? {
-            'primary_release_date.gte': dateIso,
-            'primary_release_date.lte': dateIso,
-            sort_by: 'popularity.desc',
-        }
+        ? region
+            ? {
+                region,
+                with_release_type: TMDB_THEATRICAL_RELEASE_TYPES.join('|'),
+                'release_date.gte': dateIso,
+                'release_date.lte': dateIso,
+                sort_by: 'popularity.desc',
+            }
+            : {
+                'primary_release_date.gte': dateIso,
+                'primary_release_date.lte': dateIso,
+                sort_by: 'popularity.desc',
+            }
         : {
             'first_air_date.gte': dateIso,
             'first_air_date.lte': dateIso,

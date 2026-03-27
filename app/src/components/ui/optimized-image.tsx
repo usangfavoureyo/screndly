@@ -95,6 +95,10 @@ export function OptimizedImage({
 
 // WebP support detection utility
 export function getOptimizedImageUrl(url: string, format: 'webp' | 'original' = 'webp'): string {
+  if (!url) {
+    return url;
+  }
+
   // Check if browser supports WebP
   const supportsWebP = (() => {
     const elem = document.createElement('canvas');
@@ -104,11 +108,13 @@ export function getOptimizedImageUrl(url: string, format: 'webp' | 'original' = 
     return false;
   })();
 
-  if (format === 'webp' && supportsWebP) {
-    // If the URL is from TMDb or other CDN, convert to WebP
-    if (url.includes('image.tmdb.org')) {
-      return url.replace(/\.(jpg|jpeg|png)$/i, '.webp');
+  if (url.includes('image.tmdb.org')) {
+    if (format === 'original') {
+      return url.replace('/w1280/', '/original/').replace('/w780/', '/original/').replace('/w500/', '/original/');
     }
+
+    const preferredSize = supportsWebP ? 'w1280' : 'w780';
+    return url.replace(/\/(original|w\d+)\//, `/${preferredSize}/`);
   }
 
   return url;

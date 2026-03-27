@@ -4,9 +4,12 @@ import { apiClient } from '../lib/api/client';
 import {
   enqueueTMDbMutation,
   getQueuedTMDbMutations,
+  getTMDbDeletedPostIds,
   getTMDbPostsSnapshot,
+  markTMDbPostDeleted,
   removeQueuedTMDbMutation,
   saveTMDbPostsSnapshot,
+  unmarkTMDbPostDeleted,
 } from '../utils/tmdbOfflineStore';
 
 interface FetchPostsOptions {
@@ -138,10 +141,13 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           updatedAt: post.updatedAt,
         }));
 
-        setPosts(transformedPosts);
+        const deletedIds = await getTMDbDeletedPostIds();
+        const filteredPosts = transformedPosts.filter((post) => !deletedIds.has(post.id));
+
+        setPosts(filteredPosts);
         setLastSyncTime(new Date());
         setError(null);
-        void saveTMDbPostsSnapshot(transformedPosts);
+        void saveTMDbPostsSnapshot(filteredPosts);
       } else {
         throw new Error(response.error?.message || 'Failed to fetch posts');
       }
@@ -154,8 +160,10 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
       // Fall back to IndexedDB snapshot if backend fails
       if (!silent) {
+        const deletedIds = await getTMDbDeletedPostIds();
         const saved = await getTMDbPostsSnapshot<TMDbPost[]>();
-        setPosts(saved ?? []);
+        const filtered = (saved ?? []).filter((post) => !deletedIds.has(post.id));
+        setPosts(filtered);
       }
     } finally {
       isFetchingRef.current = false;
@@ -291,6 +299,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const addPost = async (post: TMDbPost) => {
+    await unmarkTMDbPostDeleted(post.id);
     setPosts(prev => {
       const existingIndex = prev.findIndex(p => p.id === post.id);
       if (existingIndex !== -1) {
@@ -303,6 +312,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const restorePost = async (post: TMDbPost, index: number) => {
+    await unmarkTMDbPostDeleted(post.id);
     setPosts(prev => {
       const updated = [...prev];
       updated.splice(index, 0, post);
@@ -386,6 +396,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const deletePost = async (postId: string) => {
+    void markTMDbPostDeleted(postId);
     setPosts(prev => prev.filter(post => post.id !== postId));
 
     try {

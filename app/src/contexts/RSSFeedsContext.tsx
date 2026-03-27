@@ -104,10 +104,21 @@ export interface RSSActivityItem {
   contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
+  imageSource?: 'tmdb' | 'serper' | 'feed';
+  imageReason?: string;
   status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;
   platforms: string[];
+  platformPostIds?: Record<string, string>;
+  platformResults?: Array<{
+    platform: string;
+    status: 'posted' | 'failed' | 'skipped';
+    error?: string;
+    id?: string;
+    url?: string;
+    postedAt: string;
+  }>;
   error?: string;
 }
 

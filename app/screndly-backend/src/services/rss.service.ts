@@ -9,6 +9,7 @@ import Parser from 'rss-parser';
 import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
+import { uploadBufferToBackblaze } from './backblaze';
 
 const RSS_IMAGE_ANALYSIS_MODEL = DEFAULT_OPENAI_MODEL;
 
@@ -74,6 +75,9 @@ interface RSSItem {
   pubDate: Date;
   imageUrl?: string;
   imageUrls: string[];
+  imageSource?: RSSResolvedImage['source'];
+  imageReason?: string;
+  selectedImages?: RSSResolvedImage[];
   contentHtml?: string;
   author?: string;
   guid?: string;
@@ -120,6 +124,8 @@ export interface RSSActivityItem {
   contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
+  imageSource?: RSSResolvedImage['source'];
+  imageReason?: string;
   status: 'pending' | 'published' | 'failed' | 'filtered';
   timestamp: string;
   publishedAt?: string;
@@ -160,6 +166,8 @@ interface RSSActivityMetadata {
   contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
+  imageSource?: RSSResolvedImage['source'];
+  imageReason?: string;
   publishedAt?: string;
   status: 'pending' | 'published' | 'failed';
   platforms: string[];
@@ -676,6 +684,116 @@ function dedupeUrls(urls: Array<string | undefined | null>): string[] {
   }
 
   return resolved;
+}
+
+function slugifyRSSAssetName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'rss-image';
+}
+
+function getImageExtensionFromContentType(contentType?: string | null): string {
+  switch ((contentType || '').split(';')[0].trim().toLowerCase()) {
+    case 'image/jpeg':
+      return '.jpg';
+    case 'image/png':
+      return '.png';
+    case 'image/webp':
+      return '.webp';
+    case 'image/gif':
+      return '.gif';
+    case 'image/avif':
+      return '.avif';
+    default:
+      return '.jpg';
+  }
+}
+
+function isBackblazeHostedUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.toLowerCase().includes('backblazeb2.com');
+  } catch {
+    return false;
+  }
+}
+
+async function rehostRSSResolvedImage(
+  image: RSSResolvedImage,
+  feedId: string,
+  item: RSSItem,
+  index: number
+): Promise<RSSResolvedImage> {
+  if (!/^https?:\/\//i.test(image.url) || isBackblazeHostedUrl(image.url)) {
+    return image;
+  }
+
+  try {
+    const response = await fetch(image.url, {
+      headers: buildRSSFetchHeaders(image.url, RSS_BROWSER_FALLBACK_USER_AGENT),
+    });
+
+    if (!response.ok) {
+      throw new Error(`download failed with status ${response.status}`);
+    }
+
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.toLowerCase().startsWith('image/')) {
+      throw new Error(`expected image content but received ${contentType}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const originalName = `${slugifyRSSAssetName(item.title || `rss-image-${index + 1}`)}-${index + 1}${getImageExtensionFromContentType(contentType)}`;
+    const uploaded = await uploadBufferToBackblaze(buffer, originalName, {
+      bucketTypes: ['general'],
+      prefix: `rss/rehosted/${slugifyRSSAssetName(feedId)}`,
+      contentType: contentType || undefined,
+    });
+
+    return {
+      ...image,
+      url: uploaded.url,
+    };
+  } catch (error) {
+    console.warn('[RSS] Failed to rehost selected image. Falling back to original URL.', {
+      url: image.url,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return image;
+  }
+}
+
+async function maybeRehostRSSResolvedImages(
+  feed: {
+    id?: string;
+    rehostImages?: boolean | null;
+  },
+  item: RSSItem,
+  images: RSSResolvedImage[]
+): Promise<RSSResolvedImage[]> {
+  if (feed.rehostImages !== true || images.length === 0) {
+    return images;
+  }
+
+  const feedId = typeof feed.id === 'string' && feed.id.trim() ? feed.id : 'preview';
+  return Promise.all(images.map((image, index) => rehostRSSResolvedImage(image, feedId, item, index)));
+}
+
+function applyResolvedImagesToRSSItem(item: RSSItem, images: RSSResolvedImage[]): RSSItem {
+  if (images.length === 0) {
+    return item;
+  }
+
+  return {
+    ...item,
+    imageUrl: images[0]?.url,
+    imageUrls: images.map((image) => image.url),
+    imageSource: images[0]?.source,
+    imageReason: images[0]?.reason,
+    selectedImages: images,
+  };
 }
 
 function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolean> | null | undefined): string[] {
@@ -1331,6 +1449,14 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     pubDate: item.pubDate.toISOString(),
     imageUrl: item.imageUrl ?? null,
     imageUrls: item.imageUrls,
+    imageSource: item.imageSource ?? null,
+    imageReason: item.imageReason ?? null,
+    selectedImages: item.selectedImages?.map((image) => ({
+      url: image.url,
+      reason: image.reason,
+      source: image.source,
+      score: image.score ?? null,
+    })) ?? null,
     contentHtml: item.contentHtml ?? null,
     author: item.author ?? null,
     guid: item.guid ?? null,
@@ -1355,6 +1481,34 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
     imageUrls: Array.isArray(value.imageUrls)
       ? value.imageUrls.filter((entry): entry is string => typeof entry === 'string')
       : [],
+    imageSource: value.imageSource === 'tmdb' || value.imageSource === 'serper' || value.imageSource === 'feed'
+      ? value.imageSource
+      : undefined,
+    imageReason: typeof value.imageReason === 'string' ? value.imageReason : undefined,
+    selectedImages: Array.isArray(value.selectedImages)
+      ? value.selectedImages
+          .map((entry): RSSResolvedImage | null => {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+              return null;
+            }
+
+            const record = entry as Record<string, unknown>;
+            const url = typeof record.url === 'string' ? record.url : null;
+            const reason = typeof record.reason === 'string' ? record.reason : null;
+            const source = record.source;
+            if (!url || !reason || (source !== 'tmdb' && source !== 'serper' && source !== 'feed')) {
+              return null;
+            }
+
+            return {
+              url,
+              reason,
+              source,
+              score: typeof record.score === 'number' ? record.score : undefined,
+            };
+          })
+          .filter((entry): entry is RSSResolvedImage => Boolean(entry))
+      : undefined,
     contentHtml: typeof value.contentHtml === 'string' ? value.contentHtml : undefined,
     author: typeof value.author === 'string' ? value.author : undefined,
     guid: typeof value.guid === 'string' ? value.guid : undefined,
@@ -1414,15 +1568,17 @@ async function upsertRSSFeedItem(
 
 async function resolveRSSItemImages(
   feed: {
+    id?: string;
     serperEnabled?: boolean | null;
     tmdbEnabled?: boolean | null;
     serperPriority: boolean;
     imageCount?: string | null;
+    rehostImages?: boolean | null;
   },
   item: RSSItem,
   limit: number
 ): Promise<RSSResolvedImage[]> {
-  return resolveRelevantRSSImages(
+  const resolvedImages = await resolveRelevantRSSImages(
     {
       title: item.title,
       description: item.description,
@@ -1438,6 +1594,8 @@ async function resolveRSSItemImages(
       model: RSS_IMAGE_ANALYSIS_MODEL,
     }
   );
+
+  return maybeRehostRSSResolvedImages(feed, item, resolvedImages);
 }
 
 function buildRSSCaptionSystemPrompt(
@@ -1603,6 +1761,10 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
     contentHtml: typeof metadata.contentHtml === 'string' ? metadata.contentHtml : undefined,
     imageUrl: typeof metadata.imageUrl === 'string' ? metadata.imageUrl : undefined,
     imageUrls: parseRSSActivityImageUrls(metadata.imageUrls),
+    imageSource: metadata.imageSource === 'tmdb' || metadata.imageSource === 'serper' || metadata.imageSource === 'feed'
+      ? metadata.imageSource
+      : undefined,
+    imageReason: typeof metadata.imageReason === 'string' ? metadata.imageReason : undefined,
     status,
     timestamp: log.timestamp.toISOString(),
     publishedAt: typeof metadata.publishedAt === 'string' ? metadata.publishedAt : undefined,
@@ -1656,6 +1818,8 @@ function buildRSSActivityItemFromFeedRecord(record: {
     contentHtml: item?.contentHtml || undefined,
     imageUrl: item?.imageUrl || undefined,
     imageUrls: item?.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : undefined,
+    imageSource: item?.imageSource,
+    imageReason: item?.imageReason,
     status: normalizedStatus,
     timestamp: (record.publishedAt || record.firstSeenAt).toISOString(),
     publishedAt: record.publishedAt?.toISOString(),
@@ -1877,6 +2041,7 @@ async function attemptRSSPublish(
     serperPriority: boolean;
     imageCount?: string | null;
     platformImageCounts?: PlatformImageCounts | Prisma.JsonValue | null;
+    rehostImages?: boolean | null;
   },
   item: RSSItem,
   platforms: string[],
@@ -1888,6 +2053,7 @@ async function attemptRSSPublish(
       caption: string;
       imageUrl?: string;
       imageUrls: string[];
+      resolvedImages: RSSResolvedImage[];
       successfulPlatforms: string[];
       platformPostIds: Record<string, string>;
       platformResults: PublishResult[];
@@ -1897,6 +2063,7 @@ async function attemptRSSPublish(
       status: 'failed';
       imageUrl?: string;
       imageUrls: string[];
+      resolvedImages: RSSResolvedImage[];
       platformPostIds: Record<string, string>;
       platformResults: PublishResult[];
       errorMessage: string;
@@ -1949,6 +2116,7 @@ async function attemptRSSPublish(
         status: 'failed',
         imageUrl: publishImageUrl,
         imageUrls: publishImageUrls,
+        resolvedImages: publishImages,
         platformPostIds,
         platformResults: publishResults,
         errorMessage: publishResults
@@ -1962,17 +2130,23 @@ async function attemptRSSPublish(
       caption,
       imageUrl: publishImageUrl,
       imageUrls: publishImageUrls,
+      resolvedImages: publishImages,
       successfulPlatforms,
       platformPostIds,
       platformResults: publishResults,
       errorMessage: partialFailureMessage,
     };
   } catch (error) {
-    const fallbackImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
+    const fallbackImages = dedupeUrls([...(item.imageUrls || []), item.imageUrl]).map((url) => ({
+      url,
+      reason: 'Article body image',
+      source: 'feed' as const,
+    }));
     return {
       status: 'failed',
-      imageUrl: item.imageUrl,
-      imageUrls: fallbackImageUrls,
+      imageUrl: fallbackImages[0]?.url,
+      imageUrls: fallbackImages.map((image) => image.url),
+      resolvedImages: fallbackImages,
       platformPostIds: {},
       platformResults: [],
       errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',
@@ -2602,10 +2776,11 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+      const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
-        latestPublishedItem = item;
+        latestPublishedItem = resolvedActivityItem;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
         rememberRecentTopic(item);
@@ -2617,7 +2792,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
               lastAttemptedAt: new Date(),
               publishedAt: item.pubDate,
               errorMessage: null,
-              itemData: serializeRSSItem(item),
+              itemData: serializeRSSItem(resolvedActivityItem),
             },
           });
         }
@@ -2630,6 +2805,8 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           description: item.description,
           imageUrl: publishAttempt.imageUrl,
           imageUrls: publishAttempt.imageUrls,
+          imageSource: resolvedActivityItem.imageSource,
+          imageReason: resolvedActivityItem.imageReason,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
@@ -2650,7 +2827,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
             status: 'failed',
             lastAttemptedAt: new Date(),
             errorMessage: publishAttempt.errorMessage,
-            itemData: serializeRSSItem(item),
+            itemData: serializeRSSItem(resolvedActivityItem),
           },
         });
       }
@@ -2663,6 +2840,8 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         description: item.description,
         imageUrl: publishAttempt.imageUrl,
         imageUrls: publishAttempt.imageUrls,
+        imageSource: resolvedActivityItem.imageSource,
+        imageReason: resolvedActivityItem.imageReason,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,
@@ -2769,14 +2948,15 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
       const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
       seenKeys.add(dedupeKey);
+      const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
 
       if (publishAttempt.status === 'published') {
         publishedCount += 1;
-        latestPublishedItem = item;
+        latestPublishedItem = resolvedActivityItem;
         latestCaption = publishAttempt.caption;
         latestPublishedImageUrl = publishAttempt.imageUrl;
         rememberRecentTopic(item);
-        await upsertRSSFeedItem(feed.id, item, 'published', {
+        await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'published', {
           publishedAt: item.pubDate,
           errorMessage: null,
           firstSeenAt: item.pubDate,
@@ -2790,6 +2970,8 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           description: item.description,
           imageUrl: publishAttempt.imageUrl,
           imageUrls: publishAttempt.imageUrls,
+          imageSource: resolvedActivityItem.imageSource,
+          imageReason: resolvedActivityItem.imageReason,
           publishedAt: item.pubDate.toISOString(),
           status: 'published',
           platforms: publishAttempt.successfulPlatforms,
@@ -2803,7 +2985,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       failedCount += 1;
-      await upsertRSSFeedItem(feed.id, item, 'failed', {
+      await upsertRSSFeedItem(feed.id, resolvedActivityItem, 'failed', {
         errorMessage: publishAttempt.errorMessage,
         firstSeenAt: item.pubDate,
       });
@@ -2816,6 +2998,8 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         description: item.description,
         imageUrl: publishAttempt.imageUrl,
         imageUrls: publishAttempt.imageUrls,
+        imageSource: resolvedActivityItem.imageSource,
+        imageReason: resolvedActivityItem.imageReason,
         publishedAt: item.pubDate.toISOString(),
         status: 'failed',
         platforms,

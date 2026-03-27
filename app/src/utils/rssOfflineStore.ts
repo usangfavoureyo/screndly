@@ -1,8 +1,10 @@
 import { IndexedDBHelper } from './queryOptimizer';
 
 const DB_NAME = 'screndly-offline-cache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SNAPSHOT_STORE = 'snapshots';
+const TMDB_MUTATION_STORE = 'tmdbMutationQueue';
+const TMDB_DELETED_STORE = 'tmdbDeleted';
 
 const RSS_FEEDS_SNAPSHOT_ID = 'rss-feeds';
 const RSS_ACTIVITY_SNAPSHOT_ID = 'rss-activity';
@@ -23,7 +25,7 @@ let initPromise: Promise<void> | null = null;
 
 async function ensureDb(): Promise<void> {
   if (!initPromise) {
-    initPromise = db.init([SNAPSHOT_STORE]);
+    initPromise = db.init([SNAPSHOT_STORE, TMDB_MUTATION_STORE, TMDB_DELETED_STORE]);
   }
 
   await initPromise;

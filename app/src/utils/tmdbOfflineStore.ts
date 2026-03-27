@@ -1,9 +1,10 @@
 import { IndexedDBHelper } from './queryOptimizer';
 
 const DB_NAME = 'screndly-offline-cache';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SNAPSHOT_STORE = 'snapshots';
 const QUEUE_STORE = 'tmdbMutationQueue';
+const DELETED_STORE = 'tmdbDeleted';
 const SNAPSHOT_ID = 'tmdb-posts';
 const TMDB_CACHE_SCHEMA_VERSION = 1;
 const TMDB_CACHE_TTL_MS = 15 * 60 * 1000;
@@ -14,6 +15,11 @@ type SnapshotRecord<T> = {
   cachedAt: string;
   expiresAt: string;
   payload: T;
+};
+
+type DeletedRecord = {
+  id: string;
+  deletedAt: string;
 };
 
 export type TMDbMutationOperation =
@@ -36,7 +42,7 @@ let initPromise: Promise<void> | null = null;
 
 async function ensureDb(): Promise<void> {
   if (!initPromise) {
-    initPromise = db.init([SNAPSHOT_STORE, QUEUE_STORE]);
+    initPromise = db.init([SNAPSHOT_STORE, QUEUE_STORE, DELETED_STORE]);
   }
 
   await initPromise;
@@ -100,4 +106,21 @@ export async function getQueuedTMDbMutations(): Promise<TMDbMutationRecord[]> {
 export async function removeQueuedTMDbMutation(id: string): Promise<void> {
   await ensureDb();
   await db.delete(QUEUE_STORE, id);
+}
+
+export async function markTMDbPostDeleted(id: string): Promise<void> {
+  await ensureDb();
+  const record: DeletedRecord = { id, deletedAt: new Date().toISOString() };
+  await db.put(DELETED_STORE, record);
+}
+
+export async function unmarkTMDbPostDeleted(id: string): Promise<void> {
+  await ensureDb();
+  await db.delete(DELETED_STORE, id);
+}
+
+export async function getTMDbDeletedPostIds(): Promise<Set<string>> {
+  await ensureDb();
+  const records = await db.getAll<DeletedRecord>(DELETED_STORE);
+  return new Set(records.map((record) => record.id));
 }

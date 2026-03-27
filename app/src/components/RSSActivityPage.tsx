@@ -12,6 +12,8 @@ import { useBulkSelection } from '../hooks/useBulkSelection';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { BackIconButton } from './BackIconButton';
+import { OptimizedImage } from './ui/optimized-image';
+import { saveRSSActivitySnapshot } from '../utils/rssOfflineStore';
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
@@ -29,6 +31,30 @@ function formatActivityTimestamp(value: string): string {
 function stripHtml(value?: string): string {
   if (!value) return '';
   return value.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function formatImageSource(value?: RSSActivityItem['imageSource']): string | null {
+  if (!value) return null;
+  switch (value) {
+    case 'tmdb':
+      return 'TMDb';
+    case 'serper':
+      return 'Serper';
+    case 'feed':
+      return 'Feed';
+    default:
+      return null;
+  }
+}
+
+function buildActivitySummary(items: RSSActivityItem[]) {
+  return {
+    total: items.length,
+    published: items.filter((item) => item.status === 'published').length,
+    pending: items.filter((item) => item.status === 'pending').length,
+    failed: items.filter((item) => item.status === 'failed').length,
+    filtered: items.filter((item) => item.status === 'filtered').length,
+  };
 }
 
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
@@ -175,7 +201,11 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     const deletedIndex = items.findIndex((item) => item.id === id);
     if (!deletedItem || deletedIndex === -1) return;
 
-    setItems((prev) => prev.filter((item) => item.id !== id));
+    setItems((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
+      return next;
+    });
 
     showUndo({
       id,
@@ -187,6 +217,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           }
           const next = [...prev];
           next.splice(Math.min(deletedIndex, next.length), 0, deletedItem);
+          void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
           return next;
         });
       },
@@ -205,6 +236,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             }
             const next = [...prev];
             next.splice(Math.min(deletedIndex, next.length), 0, deletedItem);
+            void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
             return next;
           });
           toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
@@ -229,7 +261,11 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           }
         })
       );
-      setItems((prev) => prev.filter((item) => !selectedIdSet.has(item.id)));
+      setItems((prev) => {
+        const next = prev.filter((item) => !selectedIdSet.has(item.id));
+        void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
+        return next;
+      });
       toast.success(`${selection.selectedCount} RSS activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
       selection.clearSelection();
     } catch (error) {
@@ -342,6 +378,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             filteredItems.map((item) => {
               const statusConfig = getStatusConfig(item.status);
               const StatusIcon = statusConfig.icon;
+              const primaryImageUrl = item.imageUrl || item.imageUrls?.[0];
+              const imageSourceLabel = formatImageSource(item.imageSource);
 
               return (
                 <div
@@ -371,6 +409,25 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                           <span>&bull;</span>
                           <span>{formatActivityTimestamp(item.timestamp)}</span>
                         </div>
+                        {primaryImageUrl && (
+                          <div className="mb-3 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-[#333333] dark:bg-[#050505]">
+                            <OptimizedImage
+                              src={primaryImageUrl}
+                              alt={item.title}
+                              className="h-40 w-full"
+                            />
+                          </div>
+                        )}
+                        {(imageSourceLabel || item.imageReason) && (
+                          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            {imageSourceLabel && (
+                              <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
+                                {imageSourceLabel}
+                              </span>
+                            )}
+                            {item.imageReason && <span>{item.imageReason}</span>}
+                          </div>
+                        )}
                         {item.description ? (
                           <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-[#6B7280] dark:border-[#333333] dark:bg-[#050505] dark:text-[#9CA3AF]">
                             <p className="line-clamp-3">{item.description}</p>
