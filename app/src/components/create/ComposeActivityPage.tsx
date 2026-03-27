@@ -437,7 +437,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                         </div>
                       ) : item.status === 'scheduled' ? (
                         <div className="col-start-2">
-                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
+                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[18rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'}`}>
                             <Button
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -453,17 +453,6 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                                   Publish
                                 </>
                               ) : 'Publish'}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleOpenSchedule(item);
-                              }}
-                            >
-                              Schedule
                             </Button>
                             <Button
                               variant="outline"

@@ -88,5 +88,7 @@ describe('ComposeActivityPage', () => {
     expect(screen.getByText('Draft article')).toBeInTheDocument();
     expect(screen.getByText('Campaign poster')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
   });
 });
