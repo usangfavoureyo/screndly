@@ -6,6 +6,7 @@ import {
   type ResolvedStructuredTMDbImage,
   type StructuredTMDbImageRole,
 } from './rss-tmdb-image-selection.service';
+import sharp from 'sharp';
 
 export interface RSSImageSelectionArticle {
   title: string;
@@ -306,6 +307,8 @@ const HARD_REJECT_KEYWORDS = [
 ];
 const FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [];
 const FEED_FALLBACK_BLOCKED_URL_KEYWORDS: string[] = [];
+const MIN_FEED_FALLBACK_WIDTH = 200;
+const MIN_FEED_FALLBACK_HEIGHT = 200;
 const COMIC_ART_KEYWORDS = [
   'comic art',
   'comic book',
@@ -358,6 +361,15 @@ const BACKDROP_KEYWORDS = [
   'production still',
   'press still',
 ];
+
+type FeedFallbackProbeResult = {
+  allowed: boolean;
+  width?: number;
+  height?: number;
+  reason?: string;
+};
+
+const feedFallbackProbeCache = new Map<string, Promise<FeedFallbackProbeResult>>();
 const OFFICIAL_MARKERS = [
   'official',
   'studio',
@@ -838,6 +850,91 @@ function filterAllowedFeedFallbackUrls(
     }
 
     return true;
+  });
+}
+
+async function probeFeedFallbackUrl(url: string): Promise<FeedFallbackProbeResult> {
+  const cached = feedFallbackProbeCache.get(url);
+  if (cached) {
+    return cached;
+  }
+
+  const probePromise = (async (): Promise<FeedFallbackProbeResult> => {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (!response.ok) {
+        return {
+          allowed: false,
+          reason: `fetch failed (${response.status})`,
+        };
+      }
+
+      const contentType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!contentType.startsWith('image/')) {
+        return {
+          allowed: false,
+          reason: `non-image content (${contentType || 'unknown'})`,
+        };
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const metadata = await sharp(buffer, { animated: false }).metadata().catch(() => null);
+      if (!metadata?.width || !metadata?.height) {
+        return {
+          allowed: false,
+          reason: 'missing image metadata',
+        };
+      }
+
+      if (metadata.width < MIN_FEED_FALLBACK_WIDTH || metadata.height < MIN_FEED_FALLBACK_HEIGHT) {
+        return {
+          allowed: false,
+          width: metadata.width,
+          height: metadata.height,
+          reason: `too small (${metadata.width}x${metadata.height})`,
+        };
+      }
+
+      return {
+        allowed: true,
+        width: metadata.width,
+        height: metadata.height,
+      };
+    } catch (error) {
+      return {
+        allowed: false,
+        reason: error instanceof Error ? error.message : 'probe failed',
+      };
+    }
+  })();
+
+  feedFallbackProbeCache.set(url, probePromise);
+  return probePromise;
+}
+
+async function filterRenderableFeedFallbackUrls(urls: string[]): Promise<string[]> {
+  const results = await Promise.all(
+    urls.map(async (url) => ({
+      url,
+      probe: await probeFeedFallbackUrl(url),
+    }))
+  );
+
+  return results.flatMap(({ url, probe }) => {
+    if (probe.allowed) {
+      return [url];
+    }
+
+    console.warn('[RSS] Dropping feed fallback image before publish preflight.', {
+      url,
+      reason: probe.reason,
+      width: probe.width,
+      height: probe.height,
+    });
+    return [];
   });
 }
 
@@ -3290,10 +3387,12 @@ export async function resolveRelevantRSSImages(
   const sources = getEnabledImageSources(options);
   const analysis = await extractSubjectAnalysis(article, options.model);
   const fallbackImages = shouldUseFeedFallbackImages(article)
-    ? filterAllowedFeedFallbackUrls(
-      dedupeUrls(article.fallbackImages || []),
-      analysis,
-      article
+    ? await filterRenderableFeedFallbackUrls(
+      filterAllowedFeedFallbackUrls(
+        dedupeUrls(article.fallbackImages || []),
+        analysis,
+        article
+      )
     )
     : [];
   const revealDrivenMode = getRevealDrivenArticleMode(article);

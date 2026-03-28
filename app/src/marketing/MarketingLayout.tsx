@@ -19,10 +19,37 @@ type MarketingLayoutProps = {
   description?: string;
 };
 
+function getInitialMarketingTheme(): "light" | "dark" {
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+
+  try {
+    const storedMarketingTheme = window.localStorage.getItem("screndly_marketing_theme");
+    if (storedMarketingTheme === "dark" || storedMarketingTheme === "light") {
+      return storedMarketingTheme;
+    }
+
+    const datasetTheme = document.documentElement.dataset.theme;
+    if (datasetTheme === "dark" || datasetTheme === "light") {
+      return datasetTheme;
+    }
+
+    const storedAppTheme = window.localStorage.getItem("theme");
+    if (storedAppTheme === "dark" || storedAppTheme === "light") {
+      return storedAppTheme;
+    }
+  } catch (error) {
+    console.error("Failed to determine initial marketing theme:", error);
+  }
+
+  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+}
+
 export function MarketingLayout({ children }: MarketingLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">(getInitialMarketingTheme);
   const [logoFailed, setLogoFailed] = useState(false);
   const initialThemeRef = useRef<{
     datasetTheme?: string;
@@ -31,13 +58,6 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
     color: string;
     themeColor: string;
   } | null>(null);
-
-  useEffect(() => {
-    const storedTheme = localStorage.getItem("screndly_marketing_theme");
-    if (storedTheme === "dark" || storedTheme === "light") {
-      setTheme(storedTheme);
-    }
-  }, []);
 
   useEffect(() => {
     if (initialThemeRef.current) {

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowDownWideNarrow,
   CheckCheck,
   Clapperboard,
   ExternalLink,
-  Filter,
   Film,
   MoreVertical,
   Rss,
@@ -372,7 +372,7 @@ export function NotificationPanel({
                 filterSource || filterType ? 'text-[#ec1e24]' : 'text-[#9CA3AF]'
               } hover:text-[#ec1e24]`}
             >
-              <Filter className="w-3 h-3" />
+              <ArrowDownWideNarrow className="h-3 w-3" />
               Filter
             </button>
 
@@ -386,7 +386,7 @@ export function NotificationPanel({
                 type="button"
                 aria-label="Notification actions"
               >
-                <MoreVertical className="w-5 h-5" />
+                <MoreVertical className="h-4 w-4" />
               </button>
             </div>
           </div>

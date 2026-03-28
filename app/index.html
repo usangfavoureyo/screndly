@@ -47,6 +47,10 @@
         }
 
         if (theme !== 'dark' && theme !== 'light') {
+          theme = localStorage.getItem('screndly_marketing_theme');
+        }
+
+        if (theme !== 'dark' && theme !== 'light') {
           theme = localStorage.getItem('theme');
         }
 
