@@ -11,6 +11,7 @@ import {
   saveTMDbPostsSnapshot,
   unmarkTMDbPostDeleted,
 } from '../utils/tmdbOfflineStore';
+import { deriveTMDbImageStyle, normalizeTMDbImageTypes, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
 
 interface FetchPostsOptions {
   silent?: boolean;
@@ -26,9 +27,10 @@ export interface TMDbPost {
   releaseDate: string;
   caption: string;
   imageUrl: string;
-  imageType: 'poster' | 'backdrop' | 'logo';
+  imageType: TMDbImageAssetType;
   imageUrls?: string[];
-  imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
+  imageTypes?: TMDbImageAssetType[];
+  imageStyle?: TMDbFeedImageStyle;
   scheduledTime: string;
   source: 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary';
   cast: string[];
@@ -70,6 +72,8 @@ const TMDbPostsContext = createContext<TMDbPostsContextType | undefined>(undefin
 function normalizeTmdbPayload(payload: Record<string, any>) {
   const normalized: Record<string, any> = { ...payload };
 
+  delete normalized.imageStyle;
+
   if (Object.prototype.hasOwnProperty.call(payload, 'publishedTime') && payload.publishedTime === undefined) {
     normalized.publishedTime = null;
   }
@@ -79,6 +83,46 @@ function normalizeTmdbPayload(payload: Record<string, any>) {
   }
 
   return normalized;
+}
+
+function normalizeTMDbPostRecord(post: any): TMDbPost {
+  const imageUrls = Array.isArray(post.imageUrls) && post.imageUrls.length > 0
+    ? post.imageUrls.filter((value: unknown): value is string => typeof value === 'string' && value.length > 0)
+    : [post.imageUrl].filter((value: unknown): value is string => typeof value === 'string' && value.length > 0);
+  const imageTypes = normalizeTMDbImageTypes(post.imageType, post.imageTypes);
+
+  return {
+    id: post.id,
+    tmdbId: post.tmdbId,
+    mediaType: post.mediaType,
+    moduleType: post.moduleType,
+    title: post.title,
+    year: post.year,
+    releaseDate: post.releaseDate,
+    caption: post.caption,
+    imageUrl: post.imageUrl,
+    imageType: (post.imageType === 'custom' ? 'custom' : imageTypes[0]) || 'poster',
+    imageUrls,
+    imageTypes,
+    imageStyle: deriveTMDbImageStyle(post.imageType, imageTypes),
+    scheduledTime: post.scheduledTime,
+    source: post.source,
+    cast: post.cast || [],
+    popularity: post.popularity || 0,
+    cacheHit: post.cacheHit || false,
+    status: post.status,
+    platforms: Array.isArray(post.platforms) ? post.platforms : [],
+    runId: post.runId,
+    captionContextHash: post.captionContextHash,
+    overflowPolicy: post.overflowPolicy,
+    overflowExpiresAt: post.overflowExpiresAt,
+    unscheduledReason: post.unscheduledReason,
+    dispatchedAt: post.dispatchedAt,
+    publishedTime: post.publishedTime,
+    errorMessage: post.errorMessage,
+    createdAt: post.createdAt,
+    updatedAt: post.updatedAt,
+  };
 }
 
 export function TMDbPostsProvider({ children }: { children: ReactNode }) {
@@ -109,37 +153,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
 
       if (response.success && Array.isArray(response.data)) {
         // Transform backend data to match frontend interface
-        const transformedPosts: TMDbPost[] = response.data.map((post: any) => ({
-          id: post.id,
-          tmdbId: post.tmdbId,
-          mediaType: post.mediaType,
-          moduleType: post.moduleType,
-          title: post.title,
-          year: post.year,
-          releaseDate: post.releaseDate,
-          caption: post.caption,
-          imageUrl: post.imageUrl,
-          imageType: post.imageType,
-          imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : [post.imageUrl],
-          imageTypes: Array.isArray(post.imageTypes) && post.imageTypes.length > 0 ? post.imageTypes : [post.imageType],
-          scheduledTime: post.scheduledTime,
-          source: post.source,
-          cast: post.cast || [],
-          popularity: post.popularity || 0,
-          cacheHit: post.cacheHit || false,
-          status: post.status,
-          platforms: post.platforms || [],
-          runId: post.runId,
-          captionContextHash: post.captionContextHash,
-          overflowPolicy: post.overflowPolicy,
-          overflowExpiresAt: post.overflowExpiresAt,
-          unscheduledReason: post.unscheduledReason,
-          dispatchedAt: post.dispatchedAt,
-          publishedTime: post.publishedTime,
-          errorMessage: post.errorMessage,
-          createdAt: post.createdAt,
-          updatedAt: post.updatedAt,
-        }));
+        const transformedPosts: TMDbPost[] = response.data.map((post: any) => normalizeTMDbPostRecord(post));
 
         const deletedIds = await getTMDbDeletedPostIds();
         const filteredPosts = transformedPosts.filter((post) => !deletedIds.has(post.id));
@@ -192,7 +206,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
           switch (mutation.operation) {
             case 'restore':
             case 'create-or-update':
-              await apiClient.post('/api/tmdb/posts', mutation.payload);
+              await apiClient.post('/api/tmdb/posts', normalizeTmdbPayload((mutation.payload as Record<string, any>) || {}));
               break;
             case 'reschedule':
               await apiClient.put(`/api/tmdb/posts/${String(mutation.payload.postId)}`, {
@@ -320,7 +334,7 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     });
 
     try {
-      const response = await apiClient.post('/api/tmdb/posts', post);
+      const response = await apiClient.post('/api/tmdb/posts', normalizeTmdbPayload(post as unknown as Record<string, any>));
       if (!response.success) throw new Error(response.error?.message || 'Failed to restore post');
     } catch (err) {
       console.error('Failed to restore post:', err);
@@ -381,7 +395,14 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     setPosts(prev =>
       prev.map(post =>
         post.id === postId
-          ? { ...post, ...updates }
+          ? {
+            ...post,
+            ...updates,
+            imageStyle: deriveTMDbImageStyle(
+              updates.imageType ?? post.imageType,
+              updates.imageTypes ?? post.imageTypes,
+            ),
+          }
           : post
       )
     );

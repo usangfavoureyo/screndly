@@ -22,6 +22,7 @@ import { dashboardApi, DashboardStats } from '../lib/api/dashboard';
 import { useComposeStore } from '../store/useComposeStore';
 import { toast } from 'sonner';
 import { PageLoader } from './PageLoader';
+import uploadManagerIcon from '../public/icons/icons/hugeroundedicons/archive-04-stroke-rounded.svg';
 
 interface DashboardOverviewProps {
   onNavigate: (page: string, source?: string) => void;
@@ -694,7 +695,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<img src="/icons/icons/hugeroundedicons/archive-04-stroke-rounded.svg" alt="" className="h-6 w-6 object-contain" />}
+        icon={<img src={uploadManagerIcon} alt="" className="h-6 w-6 object-contain" />}
         title="Upload Manager"
         subtitle="Video upload pipeline"
         onViewAll={() => handleNavigate('upload-manager', 'dashboard')}

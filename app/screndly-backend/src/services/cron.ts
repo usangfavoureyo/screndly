@@ -10,6 +10,7 @@ import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
+import { renderTMDbLogoCard } from './rss-logo-render.service';
 
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
@@ -38,6 +39,41 @@ const VIDEO_STUDIO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; 
 ];
 
 let youtubePollingPausedUntil: Date | null = null;
+
+async function resolveTMDbPublishImageUrls(post: {
+    id?: string | null;
+    imageUrl?: string | null;
+    imageUrls?: string[] | null;
+    imageType?: string | null;
+    imageTypes?: string[] | null;
+}): Promise<string[]> {
+    const resolvedImageUrls = Array.isArray(post.imageUrls) && post.imageUrls.length > 0
+        ? post.imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [post.imageUrl].filter((value): value is string => typeof value === 'string' && value.length > 0);
+
+    if (resolvedImageUrls.length === 0) {
+        return [];
+    }
+
+    const resolvedImageTypes = Array.isArray(post.imageTypes) && post.imageTypes.length === resolvedImageUrls.length
+        ? post.imageTypes
+        : [post.imageType || 'poster', ...new Array(Math.max(0, resolvedImageUrls.length - 1)).fill('backdrop')];
+    const posterUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'poster');
+    const backdropUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'backdrop');
+    const logoUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'logo');
+
+    if (backdropUrl && logoUrl && !posterUrl && !logoUrl.includes('/rss/logo-cards/')) {
+        try {
+            const renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
+            return [backdropUrl, renderedLogoUrl];
+        } catch (error) {
+            console.warn(`[Cron] Failed to render TMDb logo card for post ${String(post.id || post.imageUrl || '')}:`, error);
+            return [backdropUrl];
+        }
+    }
+
+    return resolvedImageUrls;
+}
 let youtubePollingPauseReason: string | null = null;
 
 export function pauseYouTubePolling(minutes: number, reason = 'manual targeted poll'): Date {
@@ -456,11 +492,12 @@ export async function initCronJobs() {
                         continue;
                     }
 
+                    const publishImageUrls = await resolveTMDbPublishImageUrls(post);
                     const content = {
                         text: post.caption || post.title,
                         title: post.title,
-                        imageUrl: post.imageUrl || undefined,
-                        imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : undefined,
+                        imageUrl: publishImageUrls[0] || post.imageUrl || undefined,
+                        imageUrls: publishImageUrls.length > 0 ? publishImageUrls : undefined,
                     };
 
                     const results = await publisherService.publish(platforms, content);

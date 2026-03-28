@@ -349,9 +349,10 @@ describe('ComposeEditorPage scheduling', () => {
     );
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Schedule' })[0]);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Schedule' })[1]);
+    const confirmScheduleButton = screen.getAllByRole('button', { name: 'Schedule' })[1];
 
-    expect(toastMock.error).toHaveBeenCalledWith('Enter a caption before scheduling or publishing to the selected platforms');
+    expect(screen.getByText('Enter a caption before scheduling or publishing to the selected platforms')).toBeInTheDocument();
+    expect(confirmScheduleButton).toBeDisabled();
     expect(useComposeStore.getState().items[0]?.status).toBe('draft');
   }, 60000);
 

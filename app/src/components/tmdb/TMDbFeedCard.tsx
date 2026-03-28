@@ -4,6 +4,8 @@ import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
 import { formatCalendarDate, formatDateTime } from '../../utils/calendarDate';
+import { getTMDbImageBadgeLabel } from '../../lib/tmdb/feedImageSelection';
+import { TMDbStyledImage } from './TMDbStyledImage';
 import {
   BottomSheet,
   BottomSheetHeader,
@@ -346,31 +348,13 @@ function TMDbFeedCardComponent({
     }
   };
 
-  const getImageBadgeLabel = () => {
-    if (Array.isArray(feed.imageTypes) && feed.imageTypes.length > 1) {
-      if (feed.imageTypes[0] === 'poster' && feed.imageTypes[1] === 'backdrop') {
-        return 'Poster + Backdrop';
-      }
-
-      if (feed.imageTypes[0] === 'backdrop' && feed.imageTypes[1] === 'logo') {
-        return 'Backdrop + Logo';
-      }
-
-      return `${feed.imageTypes.length} Images`;
-    }
-
-    if (feed.imageType === 'logo') {
-      return 'Logo';
-    }
-
-    return feed.imageType === 'poster' ? 'Poster' : 'Backdrop';
-  };
+  const getImageBadgeLabel = () => getTMDbImageBadgeLabel(feed.imageType, feed.imageTypes);
 
   const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
     haptics.light();
-    onToggleSelection(feed.id);
+    onToggleSelection?.(feed.id);
   };
 
   const handleCardMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -439,10 +423,14 @@ function TMDbFeedCardComponent({
             className="sm:w-48 h-48 sm:h-auto relative flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] cursor-pointer hover:opacity-90 transition-opacity"
             onClick={handleImageClick}
           >
-            <img
-              src={feed.imageUrl}
-              alt={feed.title}
-              className="w-full h-full object-cover"
+            <TMDbStyledImage
+              title={feed.title}
+              imageUrl={feed.imageUrl}
+              imageUrls={feed.imageUrls}
+              imageType={feed.imageType}
+              imageTypes={feed.imageTypes}
+              imageStyle={feed.imageStyle}
+              className="h-full w-full"
             />
             <div className="absolute bottom-2 left-2 bg-black/80 text-white px-2 py-1 rounded-lg text-xs">
               {getImageBadgeLabel()}

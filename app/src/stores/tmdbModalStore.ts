@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
 
 /**
  * TMDb Modal Store
@@ -18,9 +19,10 @@ export interface TMDbFeed {
     releaseDate: string;
     caption: string;
     imageUrl: string;
-    imageType: 'poster' | 'backdrop' | 'logo';
+    imageType: TMDbImageAssetType;
     imageUrls?: string[];
-    imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
+    imageTypes?: TMDbImageAssetType[];
+    imageStyle?: TMDbFeedImageStyle;
     scheduledTime: string;
     source: 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary' | 'tmdb_today';
     cast: string[];

@@ -629,7 +629,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
               {/* Legal */}
               <div>
                 <div className="flex items-center gap-2 px-4 mb-2">
-                  <FileText className="w-5 h-5 text-[#ec1e24]" />
+                  <Auction className="w-5 h-5 text-[#ec1e24]" />
                   <h3 className="text-gray-900 dark:text-white">Legal</h3>
                 </div>
                 <div className="space-y-1">

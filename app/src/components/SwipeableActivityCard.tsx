@@ -20,7 +20,7 @@ export function SwipeableActivityCard({
   onDelete,
   children,
   className = '',
-  isScheduled = false,
+  isScheduled: _isScheduled = false,
   deleteLabel = 'Delete',
   selectionMode = false,
   selected = false,
@@ -202,7 +202,7 @@ export function SwipeableActivityCard({
     e.preventDefault();
     e.stopPropagation();
     haptics.light();
-    onToggleSelection(id);
+    onToggleSelection?.(id);
   };
 
   return (

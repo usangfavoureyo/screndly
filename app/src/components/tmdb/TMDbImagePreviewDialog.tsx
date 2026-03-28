@@ -1,8 +1,12 @@
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
 
-function formatImageTypeLabel(value?: 'poster' | 'backdrop' | 'logo') {
+function formatImageTypeLabel(value?: 'poster' | 'backdrop' | 'logo' | 'custom') {
   if (!value) {
     return undefined;
+  }
+
+  if (value === 'custom') {
+    return 'Uploaded';
   }
 
   if (value === 'logo') {
@@ -17,8 +21,8 @@ interface TMDbImagePreviewDialogProps {
   imageUrl?: string | null;
   imageUrls?: string[];
   title?: string;
-  imageType?: 'poster' | 'backdrop' | 'logo';
-  imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
+  imageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
+  imageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
   onOpenChange: (open: boolean) => void;
   onClose: () => void;
 }

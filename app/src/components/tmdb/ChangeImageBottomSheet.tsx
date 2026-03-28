@@ -1,346 +1,503 @@
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, Upload } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../ui/button';
-import { haptics } from '../../utils/haptics';
-import { toast } from "sonner";
 import { apiClient } from '../../lib/api/client';
+import { haptics } from '../../utils/haptics';
 import {
-    BottomSheet,
-    BottomSheetHeader,
-    BottomSheetTitle,
-    BottomSheetDescription,
-    BottomSheetBody,
-    BottomSheetFooter
+  BottomSheet,
+  BottomSheetBody,
+  BottomSheetDescription,
+  BottomSheetFooter,
+  BottomSheetHeader,
+  BottomSheetTitle,
 } from '../ui/bottom-sheet';
-import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import { RedSpinner } from '../PageLoader';
-import { getImagePreferences, getTMDbImagePreferenceLabel, type TMDbImagePreference } from '../../lib/tmdb/tmdbSettingsService';
-
-type ChangeImageMode = TMDbImagePreference | 'custom';
-
-interface ChangeImageSelection {
-    imageUrl: string;
-    imageType: 'poster' | 'backdrop' | 'logo' | 'custom';
-    imageUrls: string[];
-    imageTypes: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
-}
+import { ImageStyleSelector } from './ImageStyleSelector';
+import { useTmdbImageCycler } from '../../hooks/useTmdbImageCycler';
+import {
+  getTMDbImageStyleLabel,
+  type TMDbFeedImageStyle,
+  type TMDbImageAssetType,
+  type TMDbImagePools,
+  type TMDbImageSelectionPayload,
+} from '../../lib/tmdb/feedImageSelection';
 
 interface ChangeImageBottomSheetProps {
-    open: boolean;
-    onOpenChange: (open: boolean) => void;
-    title: string;
-    mediaType: 'movie' | 'tv' | 'person';
-    tmdbId: number;
-    currentImageUrl?: string;
-    currentImageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
-    currentImageUrls?: string[];
-    currentImageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
-    onSave: (selection: ChangeImageSelection) => Promise<void> | void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  mediaType: 'movie' | 'tv' | 'person';
+  tmdbId: number;
+  currentImageUrl?: string;
+  currentImageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
+  currentImageUrls?: Array<string>;
+  currentImageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
+  onSave: (selection: TMDbImageSelectionPayload) => Promise<void> | void;
+}
+
+interface TMDbImagePoolsResponse {
+  posters?: Array<{ path: string | null; url: string }>;
+  backdrops?: Array<{ path: string | null; url: string }>;
+  logos?: Array<{ path: string | null; url: string }>;
+}
+
+function createEmptyPools(): TMDbImagePools {
+  return {
+    posters: [],
+    backdrops: [],
+    logos: [],
+  };
+}
+
+function PreviewCard({
+  label,
+  imageUrl,
+  alt,
+  emptyMessage,
+}: {
+  label: string;
+  imageUrl?: string | null;
+  alt: string;
+  emptyMessage: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-black">
+      <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-[#333333]">
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-[#9CA3AF]">
+          {label}
+        </span>
+      </div>
+      <div className="h-36 bg-gray-100 dark:bg-[#111111]">
+        {imageUrl ? (
+          <img src={imageUrl} alt={alt} className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500 dark:text-[#9CA3AF]">
+            {emptyMessage}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export function ChangeImageBottomSheet({
-    open,
-    onOpenChange,
-    title,
-    mediaType,
-    tmdbId,
-    currentImageUrl,
-    currentImageUrls,
-    currentImageType = 'poster',
-    currentImageTypes,
-    onSave
+  open,
+  onOpenChange,
+  title,
+  mediaType,
+  tmdbId,
+  currentImageUrl,
+  currentImageType = 'poster',
+  currentImageUrls,
+  currentImageTypes,
+  onSave,
 }: ChangeImageBottomSheetProps) {
-    const [selectedMode, setSelectedMode] = useState<ChangeImageMode>('custom');
-    const [previewImageUrls, setPreviewImageUrls] = useState<string[]>([]);
-    const [previewImageTypes, setPreviewImageTypes] = useState<Array<'poster' | 'backdrop' | 'logo' | 'custom'>>([]);
-    const [isFetchingImage, setIsFetchingImage] = useState(false);
-    const [fetchingImageType, setFetchingImageType] = useState<ChangeImageMode | null>(null);
-    const [isSavingImage, setIsSavingImage] = useState(false);
-    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const preferredModes = getImagePreferences();
-    const availableModes = Array.from(new Set<ChangeImageMode>([...preferredModes, 'custom']));
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(false);
+  const [isSavingImage, setIsSavingImage] = useState(false);
+  const [pools, setPools] = useState<TMDbImagePools>(createEmptyPools);
 
-    const currentImageSelectionType = currentImageType === 'logo'
-        ? 'backdrop_logo'
-        : Array.isArray(currentImageTypes) && currentImageTypes[0] === 'poster' && currentImageTypes[1] === 'backdrop'
-            ? 'poster_backdrop'
-            : Array.isArray(currentImageTypes) && currentImageTypes[0] === 'backdrop' && currentImageTypes[1] === 'logo'
-                ? 'backdrop_logo'
-                : currentImageType === 'backdrop'
-                    ? 'backdrop'
-                    : currentImageType === 'custom'
-                        ? 'custom'
-                        : 'poster';
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
 
-    // Reset state when opening
-    useEffect(() => {
-        if (open) {
-            setSelectedMode(currentImageSelectionType);
-            setPreviewImageUrls(Array.isArray(currentImageUrls) && currentImageUrls.length > 0
-                ? currentImageUrls
-                : (currentImageUrl ? [currentImageUrl] : []));
-            setPreviewImageTypes(Array.isArray(currentImageTypes) && currentImageTypes.length > 0
-                ? currentImageTypes
-                : [currentImageType]);
-            setIsFetchingImage(false);
-            setFetchingImageType(null);
-            setIsSavingImage(false);
-            setIsPreviewOpen(false);
+    let isCancelled = false;
+
+    const loadAssets = async () => {
+      setIsLoadingAssets(true);
+
+      try {
+        const response = await apiClient.get<TMDbImagePoolsResponse>(`/api/tmdb/images/${mediaType}/${tmdbId}`);
+        if (!response.success || !response.data) {
+          throw new Error(response.error?.message || 'Failed to load TMDb images');
         }
-    }, [open, currentImageSelectionType, currentImageUrl, currentImageUrls, currentImageType, currentImageTypes]);
 
-    useEffect(() => {
-        if (!open) {
-            setIsPreviewOpen(false);
+        if (!isCancelled) {
+          setPools({
+            posters: (response.data.posters || []).map((asset) => ({ ...asset, type: 'poster' })),
+            backdrops: (response.data.backdrops || []).map((asset) => ({ ...asset, type: 'backdrop' })),
+            logos: (response.data.logos || []).map((asset) => ({ ...asset, type: 'logo' })),
+          });
         }
-    }, [open]);
-
-    const handleSelectFile = (e: React.MouseEvent) => {
-        // Prevent bubbling which might close sheet in some implementations
-        e.preventDefault();
-        haptics.light();
-
-        if (fileInputRef.current) {
-            fileInputRef.current.click();
-        } else {
-            console.error('File input ref missing');
-            toast.error('Unable to open file picker');
+      } catch (error) {
+        console.error('Failed to load TMDb image pools:', error);
+        if (!isCancelled) {
+          setPools(createEmptyPools());
+          toast.error('Failed to load TMDb images');
         }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingAssets(false);
+        }
+      }
     };
 
-    const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
+    void loadAssets();
 
+    return () => {
+      isCancelled = true;
+    };
+  }, [mediaType, open, tmdbId]);
+
+  const {
+    selectedStyle,
+    selectStyle,
+    selectedPoster,
+    selectedBackdrop,
+    selectedLogo,
+    cyclePoster,
+    cycleBackdrop,
+    cycleLogo,
+    uploadedImageUrl,
+    setUploadedImageUrl,
+    clearUploadedImage,
+    canSave,
+    selection,
+    availability,
+  } = useTmdbImageCycler({
+    open,
+    pools,
+    currentImageUrl,
+    currentImageType,
+    currentImageUrls,
+    currentImageTypes,
+  });
+
+  const disabledStyles = useMemo<Partial<Record<TMDbFeedImageStyle, boolean>>>(() => ({
+    poster: !availability.hasPosters,
+    backdrop: !availability.hasBackdrops,
+    poster_backdrop: !availability.hasPosters || !availability.hasBackdrops,
+    backdrop_logo: !availability.hasBackdrops || !availability.hasLogos,
+  }), [availability.hasBackdrops, availability.hasLogos, availability.hasPosters]);
+
+  const handleStyleSelect = (style: TMDbFeedImageStyle) => {
+    haptics.selection();
+    selectStyle(style);
+  };
+
+  const handleUploadTrigger = () => {
+    haptics.light();
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size too large (max 5MB)');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (loadEvent) => {
+      const dataUrl = loadEvent.target?.result;
+      if (typeof dataUrl === 'string' && dataUrl.length > 0) {
+        setUploadedImageUrl(dataUrl);
         haptics.light();
+        toast.success('Uploaded image ready to save');
+      }
+    };
+    reader.onerror = () => {
+      toast.error('Failed to read image file');
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
 
-        if (!file.type.startsWith('image/')) {
-            toast.error('Please upload an image file');
-            return;
-        }
+  const handleCycle = (assetType: TMDbImageAssetType) => {
+    haptics.selection();
 
-        if (file.size > 5 * 1024 * 1024) {
-            toast.error('Image size too large (max 5MB)');
-            return;
-        }
+    if (assetType === 'poster') {
+      cyclePoster();
+      return;
+    }
 
-        setIsFetchingImage(true);
-        setFetchingImageType('custom');
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            if (dataUrl) {
-                setPreviewImageUrls([dataUrl]);
-                setPreviewImageTypes(['custom']);
-                setSelectedMode('custom');
+    if (assetType === 'backdrop') {
+      cycleBackdrop();
+      return;
+    }
+
+    cycleLogo();
+  };
+
+  const handleClose = () => {
+    if (isSavingImage) {
+      return;
+    }
+
+    haptics.light();
+    onOpenChange(false);
+  };
+
+  const handleSaveImage = async () => {
+    if (!selection || !canSave || isSavingImage) {
+      return;
+    }
+
+    haptics.medium();
+    setIsSavingImage(true);
+
+    try {
+      await Promise.resolve(onSave(selection));
+      haptics.success();
+      toast.success('Image saved');
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to save TMDb image selection:', error);
+      toast.error('Failed to save image');
+    } finally {
+      setIsSavingImage(false);
+    }
+  };
+
+  const renderModeControls = () => {
+    if (uploadedImageUrl) {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between rounded-2xl border border-[#ec1e24]/30 bg-[#ec1e24]/5 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Uploaded image active</p>
+              <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
+                Save now or switch back to a TMDb image style.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
                 haptics.light();
-                toast.success('Image loaded - tap Save to apply');
-            }
-            setIsFetchingImage(false);
-            setFetchingImageType(null);
-        };
-        reader.onerror = () => {
-            toast.error('Failed to read image file');
-            setIsFetchingImage(false);
-            setFetchingImageType(null);
-        };
-        reader.readAsDataURL(file);
-        event.target.value = '';
-    };
+                clearUploadedImage();
+              }}
+              className="border-gray-200 dark:border-[#333333]"
+            >
+              Clear
+            </Button>
+          </div>
 
-    const handleFetchImage = async (type: TMDbImagePreference) => {
-        haptics.selection();
-        setIsFetchingImage(true);
-        setFetchingImageType(type);
+          <PreviewCard
+            label="Uploaded Image"
+            imageUrl={uploadedImageUrl}
+            alt={`${title} uploaded`}
+            emptyMessage="No uploaded image selected."
+          />
+        </div>
+      );
+    }
 
-        try {
-            const excludeImageUrl = previewImageUrl || currentImageUrl;
-            const query = new URLSearchParams({
-                type,
-                random: String(Date.now()),
-            });
+    if (selectedStyle === 'poster') {
+      return (
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleCycle('poster')}
+            disabled={!availability.hasPosters}
+            className="w-full border-gray-200 dark:border-[#333333]"
+          >
+            Poster
+          </Button>
+          <PreviewCard
+            label="Poster"
+            imageUrl={selectedPoster?.url}
+            alt={`${title} poster`}
+            emptyMessage="No posters available for this title."
+          />
+        </div>
+      );
+    }
 
-            if (excludeImageUrl) {
-                query.set('exclude', excludeImageUrl);
-            }
+    if (selectedStyle === 'backdrop') {
+      return (
+        <div className="space-y-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleCycle('backdrop')}
+            disabled={!availability.hasBackdrops}
+            className="w-full border-gray-200 dark:border-[#333333]"
+          >
+            Backdrop
+          </Button>
+          <PreviewCard
+            label="Backdrop"
+            imageUrl={selectedBackdrop?.url}
+            alt={`${title} backdrop`}
+            emptyMessage="No backdrops available for this title."
+          />
+        </div>
+      );
+    }
 
-            const result = await apiClient.get<{
-                imageUrl?: string;
-                imageType?: 'poster' | 'backdrop' | 'logo';
-                imageUrls?: string[];
-                imageTypes?: Array<'poster' | 'backdrop' | 'logo'>;
-            }>(`/api/tmdb/images/${mediaType}/${tmdbId}?${query.toString()}`);
-
-            if (result.success && result.data?.imageUrl) {
-                setPreviewImageUrls(
-                    Array.isArray(result.data.imageUrls) && result.data.imageUrls.length > 0
-                        ? result.data.imageUrls
-                        : [result.data.imageUrl]
-                );
-                setPreviewImageTypes(
-                    Array.isArray(result.data.imageTypes) && result.data.imageTypes.length > 0
-                        ? result.data.imageTypes
-                        : [result.data.imageType || 'poster']
-                );
-                setSelectedMode(type);
-                haptics.light();
-                toast.success(`${getTMDbImagePreferenceLabel(type)} loaded - tap Save to apply`);
-            } else {
-                toast.error(result.error?.message || `No ${getTMDbImagePreferenceLabel(type)} available`);
-            }
-        } catch (error) {
-            console.error('Error fetching image:', error);
-            toast.error('Failed to fetch image');
-        } finally {
-            setIsFetchingImage(false);
-            setFetchingImageType(null);
-        }
-    };
-
-    const handleSaveImage = async () => {
-        // Prevent double saves
-        if (isFetchingImage || isSavingImage) return;
-
-        if (previewImageUrls.length === 0) {
-            toast.error('Please select an image first');
-            return;
-        }
-
-        haptics.medium(); // Feedback immediately on click
-        setIsSavingImage(true);
-
-        try {
-            await Promise.resolve(onSave({
-                imageUrl: previewImageUrls[0],
-                imageType: previewImageTypes[0] || 'poster',
-                imageUrls: previewImageUrls,
-                imageTypes: previewImageTypes,
-            }));
-
-            haptics.success();
-            toast.success('Image saved');
-            onOpenChange(false);
-        } catch (error) {
-            console.error('Save failed', error);
-            toast.error('Something went wrong saving');
-        } finally {
-            // Check if open to avoid state update on unmounted component
-            if (open) {
-                setIsSavingImage(false);
-            }
-        }
-    };
-
-    const handleCancel = () => {
-        haptics.light();
-        setPreviewImageUrls([]);
-        setPreviewImageTypes([]);
-        setIsPreviewOpen(false);
-        onOpenChange(false);
-    };
+    if (selectedStyle === 'poster_backdrop') {
+      return (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCycle('poster')}
+              disabled={!availability.hasPosters}
+              className="border-gray-200 dark:border-[#333333]"
+            >
+              Poster
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleCycle('backdrop')}
+              disabled={!availability.hasBackdrops}
+              className="border-gray-200 dark:border-[#333333]"
+            >
+              Backdrop
+            </Button>
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <PreviewCard
+              label="Poster"
+              imageUrl={selectedPoster?.url}
+              alt={`${title} poster`}
+              emptyMessage="No posters available for this title."
+            />
+            <PreviewCard
+              label="Backdrop"
+              imageUrl={selectedBackdrop?.url}
+              alt={`${title} backdrop`}
+              emptyMessage="No backdrops available for this title."
+            />
+          </div>
+        </div>
+      );
+    }
 
     return (
-        <>
-            <BottomSheet open={open} onOpenChange={(val) => !val && handleCancel()}>
-                <BottomSheetHeader>
-                    <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
-                    <BottomSheetDescription>Tap to fetch a new TMDb image mode or upload your own image</BottomSheetDescription>
-                </BottomSheetHeader>
-                <BottomSheetBody>
-                    <div className="grid grid-cols-2 gap-3">
-                        {availableModes.map((mode) => {
-                            const isUpload = mode === 'custom';
-                            const isSelected = selectedMode === mode && (previewImageUrls.length > 0 || isFetchingImage);
-                            const label = isUpload ? 'Upload' : getTMDbImagePreferenceLabel(mode);
-
-                            return (
-                                <button
-                                    key={mode}
-                                    onClick={isUpload ? handleSelectFile : () => handleFetchImage(mode)}
-                                    disabled={isFetchingImage || isSavingImage}
-                                    className={`p-4 rounded-lg border-2 transition-all bg-white dark:bg-black
-                                        ${isSelected ? 'border-[#ec1e24]' : 'border-gray-200 dark:border-[#333333]'}
-                                        active:border-[#ec1e24]
-                                        disabled:opacity-50`}
-                                >
-                                    {isFetchingImage && fetchingImageType === mode ? (
-                                        <RedSpinner
-                                            size="md"
-                                            className="mx-auto mb-2"
-                                            label={isUpload ? 'Loading uploaded image preview...' : `Loading ${label.toLowerCase()}...`}
-                                        />
-                                    ) : isUpload ? (
-                                        <Upload className="w-6 h-6 mx-auto mb-2" />
-                                    ) : (
-                                        <ImageIcon className="w-6 h-6 mx-auto mb-2" />
-                                    )}
-                                    <p className="text-sm">{label}</p>
-                                </button>
-                            );
-                        })}
-
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            onChange={handleFileUpload}
-                            accept="image/*"
-                            className="hidden"
-                            onClick={(e) => {
-                                // Reset value to allow selecting same file again
-                                (e.target as HTMLInputElement).value = '';
-                            }}
-                        />
-                    </div>
-
-                    {/* Image Preview */}
-                    {previewImageUrls.length > 0 && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                haptics.light();
-                                setIsPreviewOpen(true);
-                            }}
-                            className="mt-4 w-full rounded-lg overflow-hidden border-2 border-[#ec1e24] text-left transition-opacity hover:opacity-95"
-                            aria-label={`Expand preview for ${title}`}
-                        >
-                            <img src={previewImageUrls[0]} alt="Preview" className="w-full h-32 object-cover" />
-                            <p className="text-xs text-center py-2 bg-gray-100 dark:bg-[#1A1A1A] text-gray-600 dark:text-[#9CA3AF]">
-                                {previewImageUrls.length > 1 ? `Preview ${previewImageUrls.length} images - tap to expand` : 'Preview - tap to expand'}
-                            </p>
-                        </button>
-                    )}
-                </BottomSheetBody>
-
-                <BottomSheetFooter>
-                    <Button variant="outline" onClick={handleCancel}>
-                        Cancel
-                    </Button>
-
-                    <Button
-                        onClick={handleSaveImage}
-                        disabled={previewImageUrls.length === 0 || isFetchingImage || isSavingImage}
-                    >
-                        {isSavingImage ? (
-                            <>
-                                <RedSpinner size="sm" className="mr-2" label="Saving selected image..." />
-                                Save
-                            </>
-                        ) : 'Save'}
-                    </Button>
-                </BottomSheetFooter>
-            </BottomSheet>
-
-            <TMDbImagePreviewDialog
-                open={isPreviewOpen}
-                onOpenChange={setIsPreviewOpen}
-                onClose={() => setIsPreviewOpen(false)}
-                imageUrl={previewImageUrls[0]}
-                imageUrls={previewImageUrls}
-                title={title}
-                imageType={previewImageTypes[0] === 'custom' ? 'poster' : previewImageTypes[0]}
-                imageTypes={previewImageTypes.map((value) => value === 'custom' ? 'poster' : value)}
-            />
-        </>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleCycle('backdrop')}
+            disabled={!availability.hasBackdrops}
+            className="border-gray-200 dark:border-[#333333]"
+          >
+            Backdrop
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleCycle('logo')}
+            disabled={!availability.hasLogos}
+            className="border-gray-200 dark:border-[#333333]"
+          >
+            Logo
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <PreviewCard
+            label="Backdrop"
+            imageUrl={selectedBackdrop?.url}
+            alt={`${title} backdrop`}
+            emptyMessage="No backdrops available for this title."
+          />
+          <PreviewCard
+            label="Logo"
+            imageUrl={selectedLogo?.url}
+            alt={`${title} logo`}
+            emptyMessage="No logos available for this title."
+          />
+        </div>
+      </div>
     );
+  };
+
+  return (
+    <BottomSheet open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
+      <BottomSheetHeader>
+        <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
+        <BottomSheetDescription>
+          Choose a TMDb image style or upload your own image for this feed.
+        </BottomSheetDescription>
+      </BottomSheetHeader>
+
+      <BottomSheetBody>
+        <div className="space-y-4">
+          <ImageStyleSelector
+            selectedStyle={selectedStyle}
+            disabledStyles={disabledStyles}
+            onSelect={handleStyleSelect}
+          />
+
+          <button
+            type="button"
+            onClick={handleUploadTrigger}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+          >
+            <Upload className="h-4 w-4" />
+            Upload your own image
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+
+          {isLoadingAssets ? (
+            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 dark:border-[#333333] dark:bg-black">
+              <RedSpinner
+                size="md"
+                className="mx-auto"
+                label={`Loading ${getTMDbImageStyleLabel(selectedStyle).toLowerCase()} options`}
+              />
+            </div>
+          ) : (
+            renderModeControls()
+          )}
+
+          {!uploadedImageUrl && !isLoadingAssets && !canSave && (
+            <div className="flex items-start gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-[#333333] dark:bg-black">
+              <ImageIcon className="mt-0.5 h-4 w-4 text-[#ec1e24]" />
+              <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
+                This style needs assets that TMDb does not have for this title. Choose another style or upload your own image.
+              </p>
+            </div>
+          )}
+        </div>
+      </BottomSheetBody>
+
+      <BottomSheetFooter>
+        <Button
+          onClick={handleSaveImage}
+          disabled={!canSave || isSavingImage || isLoadingAssets || !selection}
+        >
+          {isSavingImage ? (
+            <>
+              <RedSpinner size="sm" className="mr-2" label="Saving image selection" />
+              Save
+            </>
+          ) : 'Save'}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={handleClose}
+          disabled={isSavingImage}
+          className="border-gray-200 dark:border-[#333333]"
+        >
+          Cancel
+        </Button>
+      </BottomSheetFooter>
+    </BottomSheet>
+  );
 }

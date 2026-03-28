@@ -815,17 +815,28 @@ export function ComposeEditorPage({
     };
   };
 
+  const scheduledAtPreview = toIsoSchedule(scheduleDate, scheduleTime);
+  const scheduleValidation = validateComposeItemAction(
+    buildItem('scheduled', scheduledAtPreview, existingItem?.error),
+    {
+      mode: 'scheduled',
+      scheduledAt: scheduledAtPreview,
+    },
+  );
+
   const validate = (mode: 'draft' | 'scheduled' | 'published') => {
     if (isGeneratingThreadsXCrop) {
       toast.error('Wait for the Threads/X 3:4 crop to finish generating.');
       return false;
     }
 
-    const scheduledAt = mode === 'scheduled' ? toIsoSchedule(scheduleDate, scheduleTime) : undefined;
-    const validation = validateComposeItemAction(buildItem(mode, scheduledAt, existingItem?.error), {
-      mode,
-      scheduledAt,
-    });
+    const scheduledAt = mode === 'scheduled' ? scheduledAtPreview : undefined;
+    const validation = mode === 'scheduled'
+      ? scheduleValidation
+      : validateComposeItemAction(buildItem(mode, scheduledAt, existingItem?.error), {
+          mode,
+          scheduledAt,
+        });
     if (!validation.ok) {
       toast.error(validation.error);
       return false;
@@ -1598,12 +1609,17 @@ export function ComposeEditorPage({
                 />
               </div>
             </div>
+            {!scheduleValidation.ok ? (
+              <p className="text-sm text-[#EF4444]">{scheduleValidation.error}</p>
+            ) : null}
           </div>
         </BottomSheetBody>
         <BottomSheetFooter>
           <div className="flex w-full gap-3">
             <Button variant="outline" className="flex-1" onClick={() => setIsScheduleOpen(false)}>Cancel</Button>
-            <Button className="flex-1" onClick={handleSchedule}>{isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}</Button>
+            <Button className="flex-1" onClick={handleSchedule} disabled={!scheduleValidation.ok}>
+              {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
+            </Button>
           </div>
         </BottomSheetFooter>
       </BottomSheet>

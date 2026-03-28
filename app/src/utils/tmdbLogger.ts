@@ -15,13 +15,15 @@ export interface TMDbLogEntry {
   error?: string;
   errorDetails?: string;
   type: 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary' | 'tmdb_action';
-  action?: 'generated' | 'updated' | 'deleted' | 'posted' | 'scheduled' | 'caption_edited' | 'image_changed' | 'rescheduled';
+  action?: 'generated' | 'updated' | 'deleted' | 'posted' | 'published' | 'scheduled' | 'caption_edited' | 'image_changed' | 'rescheduled';
   metadata?: {
     tmdbId?: number;
     mediaType?: 'movie' | 'tv';
     year?: number;
-  imageType?: 'poster' | 'backdrop' | 'logo';
+    imageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
+    platforms?: string[];
     scheduledTime?: string;
+    action?: 'scheduled' | 'platforms-updated';
   };
 }
 
@@ -94,7 +96,7 @@ export function logFeedGeneration(
 export function logFeedUpdate(
   feedId: string,
   title: string,
-  action: 'caption_edited' | 'image_changed' | 'rescheduled',
+  action: 'caption_edited' | 'image_changed' | 'rescheduled' | 'scheduled' | 'published',
   platform: string = 'System',
   metadata?: TMDbLogEntry['metadata']
 ): void {

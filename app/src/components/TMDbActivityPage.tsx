@@ -34,6 +34,8 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 import { useTMDbModalStore } from '../stores/tmdbModalStore';
 import { BackIconButton } from './BackIconButton';
+import { TMDbStyledImage } from './tmdb/TMDbStyledImage';
+import { getTMDbImageBadgeLabel, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
 
 interface TMDbActivityItem {
   id: string;
@@ -50,8 +52,9 @@ interface TMDbActivityItem {
   scheduledDate?: string;
   scheduledTime?: string;
   caption?: string;
-  imageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
-  imageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
+  imageType?: TMDbImageAssetType;
+  imageTypes?: TMDbImageAssetType[];
+  imageStyle?: TMDbFeedImageStyle;
   year?: number;
   releaseDate?: string;
   cast?: string[];
@@ -101,13 +104,12 @@ function formatActivityTimestamp(timestamp: string): string {
 }
 
 export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageProps) {
-  const { posts, fetchPosts, refreshFromTMDb, reschedulePost, deletePost, updatePost, addPost, lastSyncTime } = useTMDbPosts();
+  const { posts, fetchPosts, reschedulePost, deletePost, updatePost, addPost } = useTMDbPosts();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const openImagePreview = useTMDbModalStore(s => s.openImagePreview);
   const openPlatformSelect = useTMDbModalStore(s => s.openPlatformSelect);
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangeDateOpen, setIsChangeDateOpen] = useState(false);
   const [isChangeTimeOpen, setIsChangeTimeOpen] = useState(false);
   const [isChangeDatePickerOpen, setIsChangeDatePickerOpen] = useState(false);
@@ -329,7 +331,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
   };
 
-  const handleChangeScheduleDate = (id: string, title: string) => {
+  const handleChangeScheduleDate = (id: string, _title: string) => {
     haptics.light();
     setSelectedItemId(id);
 
@@ -342,7 +344,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     setIsChangeDateOpen(true);
   };
 
-  const handleChangeScheduleTime = (id: string, title: string) => {
+  const handleChangeScheduleTime = (id: string, _title: string) => {
     haptics.light();
     setSelectedItemId(id);
 
@@ -356,34 +358,6 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
 
     setIsChangeTimeOpen(true);
-  };
-
-  const handleRefresh = async () => {
-    haptics.light();
-    setIsRefreshing(true);
-
-    try {
-      const result = await refreshFromTMDb();
-      if (result.errors.length > 0) {
-        throw new Error(result.errors[0]);
-      }
-      toast.success('Refreshed TMDb Activity', {
-        description: result.added > 0 ? `${result.added} new feed item${result.added === 1 ? '' : 's'} added.` : 'No new TMDb feed items were added.',
-      });
-    } catch (error) {
-      console.error('[TMDbActivityPage] Refresh failed:', error);
-      toast.error('Failed to refresh activity');
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  const handleDateChange = (date: Date) => {
-    setSelectedDate(date);
-  };
-
-  const handleTimeChange = (time: string) => {
-    setSelectedTime(time);
   };
 
   const closeMenuThen = (action: () => void) => {
@@ -434,7 +408,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     haptics.success();
   };
 
-  const handleEditCaption = (id: string, title: string) => {
+  const handleEditCaption = (id: string, _title: string) => {
     haptics.light();
     setSelectedItemId(id);
     const selectedPost = posts.find(p => p.id === id);
@@ -460,7 +434,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     setIsEditCaptionOpen(false);
   };
 
-  const handleChangeImage = (id: string, title: string) => {
+  const handleChangeImage = (id: string, _title: string) => {
     haptics.light();
     setSelectedItemId(id);
     setIsChangeImageOpen(true);
@@ -475,28 +449,6 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
     haptics.light();
     openPlatformSelect(selectedPost, 'update-platforms');
-  };
-
-  const handleRegenerateCaption = async (id: string, title: string) => {
-    haptics.light();
-    setIsRegenerating(true);
-
-    try {
-      const selectedPost = posts.find(p => p.id === id);
-      if (!selectedPost) {
-        throw new Error(`Unable to find "${title}"`);
-      }
-
-      const newCaption = await generateTmdbCaption(selectedPost);
-      await updatePost(id, { caption: newCaption });
-      haptics.success();
-      toast.success('Caption regenerated with AI');
-    } catch (error) {
-      console.error('Failed to regenerate TMDb caption:', error);
-      toast.error('Failed to regenerate caption');
-    } finally {
-      setIsRegenerating(false);
-    }
   };
 
   const handleImagePreview = (id: string) => {
@@ -652,7 +604,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
               <SwipeableActivityCard
                 key={item.id}
                 id={item.id}
-                onDelete={(id) => handleDelete(id, item.title)}
+                onDelete={(id) => handleDelete(id ?? item.id, item.title)}
                 isScheduled={item.status === 'scheduled'}
                 selectionMode={selection.selectionMode}
                 selected={selection.isSelected(item.id)}
@@ -671,12 +623,16 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                         handleImagePreview(item.id);
                       }}
                       className="w-20 h-28 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] transition-opacity hover:opacity-90"
-                      aria-label={`Expand ${item.imageType === 'backdrop' ? 'backdrop' : 'poster'} for ${item.title}`}
+                      aria-label={`Expand ${getTMDbImageBadgeLabel(item.imageType, item.imageTypes)} for ${item.title}`}
                     >
-                      <img
-                        src={item.imageUrl}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
+                      <TMDbStyledImage
+                        title={item.title}
+                        imageUrl={item.imageUrl}
+                        imageUrls={item.imageUrls}
+                        imageType={item.imageType}
+                        imageTypes={item.imageTypes}
+                        imageStyle={item.imageStyle}
+                        className="h-full w-full"
                       />
                     </button>
                   )}
@@ -745,7 +701,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 </div>
 
                 {/* Scheduled Date & Actions - Full Width Bar */}
-                {item.status === 'scheduled' && (
+                {item.status === 'scheduled' && item.scheduledTime && (
                   <div className="mt-4 pt-4 border-t border-gray-200 dark:border-[#333333] flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">
@@ -1079,9 +1035,9 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           currentImageUrls={posts.find(p => p.id === selectedItemId)?.imageUrls}
           currentImageType={posts.find(p => p.id === selectedItemId)?.imageType}
           currentImageTypes={posts.find(p => p.id === selectedItemId)?.imageTypes}
-          onSave={({ imageUrl, imageType, imageUrls, imageTypes }) => {
+          onSave={({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
             if (selectedItemId) {
-              updatePost(selectedItemId, { imageUrl, imageType, imageUrls, imageTypes });
+              updatePost(selectedItemId, { imageStyle, imageUrl, imageType, imageUrls, imageTypes });
             }
           }}
         />

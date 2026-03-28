@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto';
-import sharp from 'sharp';
 import { env } from '../lib/env';
 import prisma from '../lib/prisma';
 import { getSecretSetting } from '../lib/settings';
@@ -31,6 +30,11 @@ import {
     type TMDbOverflowPolicy,
     type TMDbPostStatus,
 } from './tmdb-feed.domain';
+import {
+    pickDistinctImageUrl,
+    rankBackdropImageUrls,
+    type TMDbImageAsset,
+} from './tmdb-image-selection.service';
 import { renderTMDbLogoCard } from './rss-logo-render.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -39,12 +43,9 @@ const TMDB_DISCOVER_MAX_PAGES = 3;
 const TMDB_DISCOVER_POOL_MULTIPLIER = 3;
 const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
 const TMDB_THEATRICAL_RELEASE_TYPES = [3, 2] as const;
-const TMDB_IMAGE_SIMILARITY_SIZE = 32;
-const TMDB_IMAGE_MEAN_DIFF_THRESHOLD = 0.12;
-const TMDB_IMAGE_HASH_DIFF_THRESHOLD = 0.18;
 const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
-const tmdbImageFingerprintCache = new Map<string, Promise<Uint8Array | null>>();
+const tmdbBackdropCandidatesCache = new Map<string, Promise<string[]>>();
 
 type MediaType = 'movie' | 'tv';
 type TMDbImageMode = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
@@ -88,13 +89,9 @@ interface TMDbDetails {
 }
 
 interface TMDbImagesResponse {
-    logos?: Array<{
-        file_path?: string | null;
-        iso_639_1?: string | null;
-        vote_average?: number;
-        width?: number;
-        height?: number;
-    }>;
+    logos?: TMDbImageAsset[];
+    posters?: TMDbImageAsset[];
+    backdrops?: TMDbImageAsset[];
 }
 
 interface TMDbMovieReleaseDatesResponse {
@@ -776,108 +773,51 @@ function buildTMDbImageUrl(path: string | null | undefined): string {
     return path ? `${TMDB_IMAGE_BASE}${path}` : '';
 }
 
-async function getTMDbImageFingerprint(url: string): Promise<Uint8Array | null> {
-    if (!url) {
-        return null;
-    }
-
-    const cached = tmdbImageFingerprintCache.get(url);
+async function fetchRankedBackdropUrls(candidate: TMDbCandidate): Promise<string[]> {
+    const cacheKey = `${candidate.mediaType}:${candidate.tmdbId}:${candidate.backdropPath || ''}`;
+    const cached = tmdbBackdropCandidatesCache.get(cacheKey);
     if (cached) {
         return cached;
     }
 
     const pending = (async () => {
+        const preferredBackdropUrl = buildTMDbImageUrl(candidate.backdropPath);
+
         try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                return null;
-            }
+            const details = await tmdbFetch<TMDbImagesResponse>(
+                `/${candidate.mediaType === 'movie' ? 'movie' : 'tv'}/${candidate.tmdbId}/images`,
+                { include_image_language: 'en,null' },
+            );
 
-            const buffer = Buffer.from(await response.arrayBuffer());
-            const normalized = await sharp(buffer, { animated: false })
-                .rotate()
-                .resize(TMDB_IMAGE_SIMILARITY_SIZE, TMDB_IMAGE_SIMILARITY_SIZE, {
-                    fit: 'contain',
-                    background: { r: 255, g: 255, b: 255, alpha: 1 },
-                    withoutEnlargement: false,
-                })
-                .greyscale()
-                .raw()
-                .toBuffer();
+            const ranked = rankBackdropImageUrls(details.backdrops, {
+                baseUrl: TMDB_IMAGE_BASE,
+                preferredPath: candidate.backdropPath,
+            });
 
-            return Uint8Array.from(normalized);
-        } catch {
-            return null;
+            return ranked.length > 0
+                ? ranked
+                : (preferredBackdropUrl ? [preferredBackdropUrl] : []);
+        } catch (error) {
+            console.warn(`[TMDb] Failed to fetch alternate backdrops for ${candidate.mediaType}:${candidate.tmdbId}`, error);
+            return preferredBackdropUrl ? [preferredBackdropUrl] : [];
         }
     })();
 
-    tmdbImageFingerprintCache.set(url, pending);
+    tmdbBackdropCandidatesCache.set(cacheKey, pending);
     return pending;
 }
 
-function getNormalizedMeanDifference(left: Uint8Array, right: Uint8Array): number {
-    const length = Math.min(left.length, right.length);
-    if (length === 0) {
-        return 1;
+async function resolveBackdropUrl(candidate: TMDbCandidate, posterUrl: string): Promise<string> {
+    const rankedBackdrops = await fetchRankedBackdropUrls(candidate);
+    if (rankedBackdrops.length === 0) {
+        return '';
     }
 
-    let total = 0;
-    for (let index = 0; index < length; index += 1) {
-        total += Math.abs(left[index] - right[index]);
+    if (!posterUrl) {
+        return rankedBackdrops[0] || '';
     }
 
-    return total / (length * 255);
-}
-
-function getAverageHashBits(values: Uint8Array): Uint8Array {
-    if (values.length === 0) {
-        return new Uint8Array();
-    }
-
-    let total = 0;
-    for (const value of values) {
-        total += value;
-    }
-    const average = total / values.length;
-
-    return Uint8Array.from(values, (value) => (value >= average ? 1 : 0));
-}
-
-function getNormalizedHashDifference(left: Uint8Array, right: Uint8Array): number {
-    const leftHash = getAverageHashBits(left);
-    const rightHash = getAverageHashBits(right);
-    const length = Math.min(leftHash.length, rightHash.length);
-    if (length === 0) {
-        return 1;
-    }
-
-    let diffCount = 0;
-    for (let index = 0; index < length; index += 1) {
-        if (leftHash[index] !== rightHash[index]) {
-            diffCount += 1;
-        }
-    }
-
-    return diffCount / length;
-}
-
-async function areTMDbImagesVisuallySimilar(primaryUrl: string, secondaryUrl: string): Promise<boolean> {
-    if (!primaryUrl || !secondaryUrl || primaryUrl === secondaryUrl) {
-        return Boolean(primaryUrl) && primaryUrl === secondaryUrl;
-    }
-
-    const [primaryFingerprint, secondaryFingerprint] = await Promise.all([
-        getTMDbImageFingerprint(primaryUrl),
-        getTMDbImageFingerprint(secondaryUrl),
-    ]);
-
-    if (!primaryFingerprint || !secondaryFingerprint) {
-        return false;
-    }
-
-    const meanDifference = getNormalizedMeanDifference(primaryFingerprint, secondaryFingerprint);
-    const hashDifference = getNormalizedHashDifference(primaryFingerprint, secondaryFingerprint);
-    return meanDifference <= TMDB_IMAGE_MEAN_DIFF_THRESHOLD || hashDifference <= TMDB_IMAGE_HASH_DIFF_THRESHOLD;
+    return pickDistinctImageUrl(posterUrl, rankedBackdrops);
 }
 
 async function fetchBestLogoUrl(mediaType: MediaType, tmdbId: number): Promise<string> {
@@ -912,7 +852,8 @@ async function fetchBestLogoUrl(mediaType: MediaType, tmdbId: number): Promise<s
 
 async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     const poster = candidate.posterPath ? `${TMDB_IMAGE_BASE}${candidate.posterPath}` : '';
-    const backdrop = candidate.backdropPath ? `${TMDB_IMAGE_BASE}${candidate.backdropPath}` : '';
+    const fallbackBackdrop = candidate.backdropPath ? `${TMDB_IMAGE_BASE}${candidate.backdropPath}` : '';
+    const rankedBackdrop = (await fetchRankedBackdropUrls(candidate))[0] || fallbackBackdrop;
     const selectedModes = normalizePreferredImageModes(config);
     const selectedMode = selectedModes[Math.floor(Math.random() * selectedModes.length)] || 'poster';
 
@@ -930,21 +871,23 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
 
     if (selectedMode === 'backdrop') {
         return makeSelection([
-            { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' : 'poster' },
+            { imageUrl: rankedBackdrop || poster, imageType: rankedBackdrop ? 'backdrop' : 'poster' },
         ]);
     }
 
     if (selectedMode === 'poster_backdrop') {
-        if (poster && backdrop && await areTMDbImagesVisuallySimilar(poster, backdrop)) {
-            console.log(`[TMDb] Skipping visually similar poster/backdrop pair for ${candidate.mediaType}:${candidate.tmdbId}`);
+        const distinctBackdrop = await resolveBackdropUrl(candidate, poster);
+
+        if (poster && !distinctBackdrop) {
+            console.log(`[TMDb] No distinct backdrop still found for ${candidate.mediaType}:${candidate.tmdbId}; using poster only.`);
             return makeSelection([
                 { imageUrl: poster, imageType: 'poster' },
             ]);
         }
 
         return makeSelection([
-            { imageUrl: poster || backdrop, imageType: poster ? 'poster' : 'backdrop' },
-            ...(poster && backdrop ? [{ imageUrl: backdrop, imageType: 'backdrop' as const }] : []),
+            { imageUrl: poster || distinctBackdrop, imageType: poster ? 'poster' : 'backdrop' },
+            ...(poster && distinctBackdrop ? [{ imageUrl: distinctBackdrop, imageType: 'backdrop' as const }] : []),
         ]);
     }
 
@@ -961,13 +904,13 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
         }
 
         return makeSelection([
-            { imageUrl: backdrop || poster, imageType: backdrop ? 'backdrop' : 'poster' },
+            { imageUrl: rankedBackdrop || poster, imageType: rankedBackdrop ? 'backdrop' : 'poster' },
             ...(renderedLogoUrl ? [{ imageUrl: renderedLogoUrl, imageType: 'logo' as const }] : []),
         ]);
     }
 
     return makeSelection([
-        { imageUrl: poster || backdrop, imageType: poster ? 'poster' : 'backdrop' },
+        { imageUrl: poster || rankedBackdrop, imageType: poster ? 'poster' : 'backdrop' },
     ]);
 }
 

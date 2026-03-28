@@ -196,7 +196,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
               )}
 
               <Icon
-                size={item.id === 'channels' ? 30 : 28}
+                size={item.id === 'channels' ? 32 : 28}
                 className={`stroke-1 shrink-0 transition-all duration-300 ${isActive
                   ? 'text-[#ec1e24]'
                   : 'text-gray-700 dark:text-gray-200'

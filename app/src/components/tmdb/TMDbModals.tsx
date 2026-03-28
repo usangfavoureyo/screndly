@@ -44,7 +44,7 @@ import { RedSpinner } from '../PageLoader';
  * - Re-renders cascading to feed cards
  */
 export function TMDbModals() {
-    const { posts, fetchPosts, updatePost, updatePostStatus, deletePost, schedulePost, addPost, restorePost } = useTMDbPosts();
+    const { posts, fetchPosts, updatePost, updatePostStatus, deletePost, schedulePost, restorePost } = useTMDbPosts();
     const { showUndo } = useUndo();
 
     // Modal states from store
@@ -65,9 +65,6 @@ export function TMDbModals() {
 
     // Local state for form inputs (only for active modal)
     const [editedCaption, setEditedCaption] = useState('');
-    const [selectedImageType, setSelectedImageType] = useState<'poster' | 'backdrop'>('poster');
-    const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
-    const [isLoadingImage, setIsLoadingImage] = useState(false);
     const [isSaving, setIsSaving] = useState(false); // New saving state for schedule/publish
     const [isSavingCaption, setIsSavingCaption] = useState(false);
     const [isRegenerating, setIsRegenerating] = useState(false);
@@ -81,13 +78,6 @@ export function TMDbModals() {
             setEditedCaption(editCaptionModal.feed.caption);
         }
     }, [editCaptionModal.open, editCaptionModal.feed]);
-
-    useEffect(() => {
-        if (changeImageModal.open && changeImageModal.feed) {
-            setSelectedImageType(changeImageModal.feed.imageType === 'backdrop' ? 'backdrop' : 'poster');
-            setPreviewImageUrl(null); // Reset preview on open
-        }
-    }, [changeImageModal.open, changeImageModal.feed]);
 
     useEffect(() => {
         if (rescheduleModal.open && rescheduleModal.feed) {
@@ -236,7 +226,13 @@ export function TMDbModals() {
             onUndo: () => {
                 haptics.light();
                 // Restore to original position
-                restorePost(deletedFeed, originalIndex);
+                restorePost(
+                    {
+                        ...deletedFeed,
+                        status: deletedFeed.status ?? 'scheduled',
+                    },
+                    originalIndex
+                );
             },
             onConfirm: () => {
                 // Log final deletion
@@ -459,9 +455,10 @@ export function TMDbModals() {
                     currentImageUrls={changeImageModal.feed.imageUrls}
                     currentImageType={changeImageModal.feed.imageType}
                     currentImageTypes={changeImageModal.feed.imageTypes}
-                    onSave={({ imageUrl, imageType, imageUrls, imageTypes }) => {
+                    onSave={({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
                         if (changeImageModal.feed) {
                             updatePost(changeImageModal.feed.id, {
+                                imageStyle,
                                 imageUrl,
                                 imageType,
                                 imageUrls,

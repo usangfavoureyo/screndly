@@ -10,14 +10,58 @@ import {
     getTmdbApiKey,
     updateTMDbPost,
 } from '../services/tmdb.service';
+import {
+    type TMDbImageAsset,
+} from '../services/tmdb-image-selection.service';
+import { getBackblazeAuthorizedDownloadUrl } from '../services/backblaze';
 import { authenticate } from '../middleware/auth';
-import { renderTMDbLogoCard } from '../services/rss-logo-render.service';
 
 const router = Router();
 router.use(authenticate);
 
 const TMDB_POSTER_IMAGE_BASE = 'https://image.tmdb.org/t/p/w780';
 const TMDB_BACKDROP_IMAGE_BASE = 'https://image.tmdb.org/t/p/w1280';
+const UI_MEDIA_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+function isHttpUrl(value: unknown): value is string {
+    return typeof value === 'string' && /^https?:\/\//i.test(value);
+}
+
+async function resolveUiMediaUrlMap(urls: string[]): Promise<Map<string, string>> {
+    const uniqueUrls = [...new Set(urls.filter(isHttpUrl))];
+    const resolvedEntries = await Promise.all(
+        uniqueUrls.map(async (url) => {
+            const resolved = await getBackblazeAuthorizedDownloadUrl(url, UI_MEDIA_URL_TTL_SECONDS);
+            return [url, resolved] as const;
+        })
+    );
+
+    return new Map<string, string>(resolvedEntries);
+}
+
+async function resolvePostUiMediaUrls<T extends { imageUrl?: string | null; imageUrls?: string[] | null }>(post: T): Promise<T> {
+    const rawImageUrls = Array.isArray(post.imageUrls) ? post.imageUrls.filter(isHttpUrl) : [];
+    const uniqueRawUrls = [
+        ...(isHttpUrl(post.imageUrl) ? [post.imageUrl] : []),
+        ...rawImageUrls,
+    ];
+
+    if (uniqueRawUrls.length === 0) {
+        return post;
+    }
+
+    const resolvedUrlMap = await resolveUiMediaUrlMap(uniqueRawUrls);
+
+    return {
+        ...post,
+        imageUrl: isHttpUrl(post.imageUrl)
+            ? (resolvedUrlMap.get(post.imageUrl) || post.imageUrl)
+            : post.imageUrl,
+        imageUrls: Array.isArray(post.imageUrls)
+            ? post.imageUrls.map((url) => resolvedUrlMap.get(url) || url)
+            : post.imageUrls,
+    };
+}
 
 // GET /api/tmdb/status - Check if TMDb is configured
 router.get('/status', async (req, res) => {
@@ -200,8 +244,9 @@ router.get('/posts', async (req, res) => {
             where: whereClause,
             orderBy: { scheduledTime: 'asc' }
         });
+        const resolvedPosts = await Promise.all(posts.map((post) => resolvePostUiMediaUrls(post)));
 
-        res.json({ success: true, data: posts });
+        res.json({ success: true, data: resolvedPosts });
     } catch (error) {
         console.error('Error fetching TMDb posts:', error);
         res.status(500).json({ success: false, error: { message: 'Failed to fetch posts' } });
@@ -287,21 +332,18 @@ router.delete('/posts/:id', async (req, res) => {
     }
 });
 
-// GET /api/tmdb/images/:mediaType/:tmdbId - Fetch specific image type from TMDb
+// GET /api/tmdb/images/:mediaType/:tmdbId - Fetch TMDb image pools for style selection
 router.get('/images/:mediaType/:tmdbId', async (req, res) => {
     try {
         const { mediaType, tmdbId } = req.params;
-        const { type } = req.query; // 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo'
-        const exclude = typeof req.query.exclude === 'string' ? req.query.exclude : '';
 
-        if (!type || !['poster', 'backdrop', 'poster_backdrop', 'backdrop_logo'].includes(type as string)) {
+        if (mediaType !== 'movie' && mediaType !== 'tv') {
             return res.status(400).json({
                 success: false,
-                error: { message: 'Invalid image type. Must be "poster", "backdrop", "poster_backdrop", or "backdrop_logo".' }
+                error: { message: 'Invalid media type. Must be "movie" or "tv".' }
             });
         }
 
-        // Get API key from settings or env
         const TMDB_API_KEY = await getTmdbApiKey();
         if (!TMDB_API_KEY) {
             return res.status(400).json({
@@ -310,21 +352,15 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             });
         }
 
-        const endpoint = mediaType === 'movie' ? 'movie' : 'tv';
         const response = await fetch(
-            `https://api.themoviedb.org/3/${endpoint}/${tmdbId}/images?api_key=${TMDB_API_KEY}`
+            `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/images?api_key=${TMDB_API_KEY}&include_image_language=en,null`
         );
 
         if (!response.ok) {
             throw new Error('Failed to fetch images from TMDb');
         }
 
-        interface TMDbImage {
-            file_path: string;
-            aspect_ratio: number;
-            vote_average: number;
-            iso_639_1?: string | null;
-        }
+        type TMDbImage = TMDbImageAsset;
 
         interface TMDbImagesResponse {
             posters?: TMDbImage[];
@@ -333,107 +369,40 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
         }
 
         const data = await response.json() as TMDbImagesResponse;
-        const selectImageUrl = (images: TMDbImage[] | undefined, kind: 'poster' | 'backdrop') => {
-            if (!images || images.length === 0) {
-                return '';
-            }
+        const scoreImage = (image: TMDbImage, kind: 'poster' | 'backdrop' | 'logo') => {
+            const width = image.width || 0;
+            const height = image.height || 0;
+            const resolutionScore = (width * height) / 1_000_000;
+            const voteScore = image.vote_average || 0;
+            const languageScore = kind === 'logo'
+                ? (image.iso_639_1 === 'en' ? 2 : image.iso_639_1 === null ? 1 : 0)
+                : 0;
 
-            const imageBase = kind === 'poster' ? TMDB_POSTER_IMAGE_BASE : TMDB_BACKDROP_IMAGE_BASE;
-            const imageUrls = images.map((image) => `${imageBase}${image.file_path}`);
-            const filteredImageUrls = exclude
-                ? imageUrls.filter((candidate) => candidate !== exclude)
-                : imageUrls;
-            const candidates = filteredImageUrls.length > 0 ? filteredImageUrls : imageUrls;
-            const randomIndex = Math.floor(Math.random() * candidates.length);
-            return candidates[randomIndex];
+            return (languageScore * 10) + voteScore + resolutionScore;
         };
 
-        const selectLogoUrl = (images: TMDbImage[] | undefined) => {
+        const buildAssets = (images: TMDbImage[] | undefined, kind: 'poster' | 'backdrop' | 'logo') => {
             if (!images || images.length === 0) {
-                return '';
+                return [];
             }
 
-            const sorted = [...images]
+            const baseUrl = kind === 'backdrop' ? TMDB_BACKDROP_IMAGE_BASE : TMDB_POSTER_IMAGE_BASE;
+
+            return [...images]
                 .filter((image) => typeof image.file_path === 'string' && image.file_path.length > 0)
-                .sort((left, right) => {
-                    const leftLanguageScore = left.iso_639_1 === 'en' ? 1 : left.iso_639_1 === null ? 0.5 : 0;
-                    const rightLanguageScore = right.iso_639_1 === 'en' ? 1 : right.iso_639_1 === null ? 0.5 : 0;
-
-                    if (leftLanguageScore !== rightLanguageScore) {
-                        return rightLanguageScore - leftLanguageScore;
-                    }
-
-                    return (right.vote_average || 0) - (left.vote_average || 0);
-                });
-
-            return sorted[0] ? `${TMDB_POSTER_IMAGE_BASE}${sorted[0].file_path}` : '';
+                .sort((left, right) => scoreImage(right, kind) - scoreImage(left, kind))
+                .map((image) => ({
+                    path: image.file_path || null,
+                    url: `${baseUrl}${image.file_path}`,
+                }));
         };
-
-        let imageUrl = '';
-        let imageType: 'poster' | 'backdrop' | 'logo' = 'poster';
-        let imageUrls: string[] = [];
-        let imageTypes: Array<'poster' | 'backdrop' | 'logo'> = [];
-
-        if (type === 'poster') {
-            imageUrl = selectImageUrl(data.posters, 'poster');
-            imageType = 'poster';
-            imageUrls = imageUrl ? [imageUrl] : [];
-            imageTypes = imageUrl ? ['poster'] : [];
-        } else if (type === 'backdrop') {
-            imageUrl = selectImageUrl(data.backdrops, 'backdrop');
-            imageType = 'backdrop';
-            imageUrls = imageUrl ? [imageUrl] : [];
-            imageTypes = imageUrl ? ['backdrop'] : [];
-        } else if (type === 'poster_backdrop') {
-            const posterUrl = selectImageUrl(data.posters, 'poster');
-            const backdropUrl = selectImageUrl(data.backdrops, 'backdrop');
-
-            imageUrls = [posterUrl, backdropUrl].filter((value): value is string => Boolean(value));
-            imageTypes = [
-                ...(posterUrl ? ['poster' as const] : []),
-                ...(backdropUrl ? ['backdrop' as const] : []),
-            ];
-            imageUrl = imageUrls[0] || '';
-            imageType = (imageTypes[0] || 'poster') as 'poster' | 'backdrop';
-        } else {
-            const backdropUrl = selectImageUrl(data.backdrops, 'backdrop');
-            const logoUrl = selectLogoUrl(data.logos);
-            let renderedLogoUrl = '';
-
-            if (logoUrl) {
-                try {
-                    renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
-                } catch (error) {
-                    console.warn('[TMDb] Failed to render logo card for change-image flow:', error);
-                }
-            }
-
-            imageUrls = [backdropUrl, renderedLogoUrl].filter((value): value is string => Boolean(value));
-            imageTypes = [
-                ...(backdropUrl ? ['backdrop' as const] : []),
-                ...(renderedLogoUrl ? ['logo' as const] : []),
-            ];
-            imageUrl = imageUrls[0] || '';
-            imageType = (imageTypes[0] || 'backdrop') as 'backdrop' | 'logo';
-        }
-
-        if (!imageUrl) {
-            return res.status(404).json({
-                success: false,
-                error: { message: `No ${type} image available for this title` }
-            });
-        }
 
         res.json({
             success: true,
             data: {
-                imageUrl,
-                imageType,
-                imageUrls,
-                imageTypes,
-                availablePosters: data.posters?.length || 0,
-                availableBackdrops: data.backdrops?.length || 0,
-                availableLogos: data.logos?.length || 0,
+                posters: buildAssets(data.posters, 'poster'),
+                backdrops: buildAssets(data.backdrops, 'backdrop'),
+                logos: buildAssets(data.logos, 'logo'),
             }
         });
     } catch (error) {
