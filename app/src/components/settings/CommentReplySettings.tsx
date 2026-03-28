@@ -10,6 +10,7 @@ import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName } from '../../lib/ai/mod
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { apiClient } from '../../lib/api/client';
 import { BackIconButton } from '../BackIconButton';
+import { useCommentAutomation } from '../../contexts/CommentAutomationContext';
 
 interface CommentReplySettingsProps {
   settings: any;
@@ -22,6 +23,7 @@ type TestButtonState = Partial<Record<SupportedTestCommentPlatform, boolean>>;
 
 export function CommentReplySettings({ settings, updateSetting, onBack }: CommentReplySettingsProps) {
   const [testButtonState, setTestButtonState] = useState<TestButtonState>({});
+  const { recordTestReply } = useCommentAutomation();
 
   // Defensive defaults for platform blacklist settings
   const defaultBlacklist = {
@@ -49,14 +51,37 @@ export function CommentReplySettings({ settings, updateSetting, onBack }: Commen
     try {
       const response = await apiClient.post<{
         platform: SupportedTestCommentPlatform;
-        username: string;
+        username?: string;
+        comment?: string;
+        reply?: string;
+        postTitle?: string;
+        repliedAt?: string;
+        commentId?: string;
       }>('/api/comments/automation/test-reply', { platform });
 
       if (!response.success) {
         throw new Error(response.error?.message || `Failed to send ${label} test reply.`);
       }
 
-      toast.success(`Test reply sent on ${label}${response.data?.username ? ` to @${response.data.username}` : ''}.`);
+      const replyDetails = response.data ?? {};
+      const targetLine = replyDetails.username
+        ? `Replied to @${replyDetails.username}`
+        : `Reply sent on ${label}`;
+      const postLine = replyDetails.postTitle ? `Post: ${replyDetails.postTitle}` : null;
+      const commentLine = replyDetails.comment ? `Comment: "${replyDetails.comment}"` : null;
+
+      recordTestReply(platform, {
+        id: replyDetails.commentId,
+        username: replyDetails.username,
+        comment: replyDetails.comment,
+        reply: replyDetails.reply,
+        postTitle: replyDetails.postTitle,
+        time: replyDetails.repliedAt,
+      });
+
+      toast.success(`Test reply sent on ${label}.`, {
+        description: [targetLine, postLine, commentLine].filter(Boolean).join(' • '),
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : `Failed to send ${label} test reply.`);
     } finally {

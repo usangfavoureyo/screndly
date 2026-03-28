@@ -6,16 +6,7 @@ import "./index.css";
 
 // Prevent invalid token placeholders from lingering in storage.
 if (typeof window !== 'undefined') {
-  console.log('[DEBUG] main.tsx start');
   const OAUTH_CALLBACK_RESULT_KEY = 'screndly_oauth_callback_result';
-
-  window.addEventListener('error', (e) => {
-    console.log('[DEBUG GLOBAL ERROR]', e.message, e.filename, e.lineno, e.colno, e.error);
-  });
-
-  window.addEventListener('unhandledrejection', (e) => {
-    console.log('[DEBUG UNHANDLED REJECTION]', e.reason);
-  });
 
   const TOKEN_KEY = 'screndly_auth_token';
 
@@ -44,11 +35,10 @@ if (typeof window !== 'undefined') {
           capturedAt: Date.now(),
         });
         sessionStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, callbackSnapshot);
-        localStorage.setItem(OAUTH_CALLBACK_RESULT_KEY, callbackSnapshot);
       }
     }
-  } catch (error) {
-    console.error('[DEBUG] Failed to snapshot OAuth callback URL:', error);
+  } catch {
+    sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
   }
 
   const originalSetItem = localStorage.setItem;
@@ -70,21 +60,14 @@ if (typeof window !== 'undefined') {
   };
 }
 
-console.log('[DEBUG] Calling createRoot');
 const rootElement = document.getElementById("root");
-console.log('[DEBUG] rootElement:', rootElement);
 
 if (rootElement) {
-  try {
-    ReactDOM.createRoot(rootElement).render(
-      <React.StrictMode>
-        <App />
-      </React.StrictMode>
-    );
-    console.log('[DEBUG] createRoot.render called');
-  } catch (err) {
-    console.error('[DEBUG] createRoot failed:', err);
-  }
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
 } else {
-  console.error('[DEBUG] ROOT ELEMENT NOT FOUND!');
+  throw new Error('Root element not found');
 }

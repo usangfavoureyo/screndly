@@ -28,10 +28,11 @@ export const REQUIRED_SCOPES = [
 ];
 
 // OAuth configuration
+const browserEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : undefined;
 const OAUTH_CONFIG = {
-  clientId: process.env.META_APP_ID || '',
-  clientSecret: process.env.META_APP_SECRET || '',
-  redirectUri: process.env.META_REDIRECT_URI || 'http://localhost:3000/auth/meta/callback',
+  clientId: browserEnv?.VITE_META_APP_ID || '',
+  clientSecret: '',
+  redirectUri: browserEnv?.VITE_META_REDIRECT_URI || 'http://localhost:3000/auth/meta/callback',
   authUrl: 'https://www.facebook.com/v18.0/dialog/oauth',
   tokenUrl: 'https://graph.facebook.com/v18.0/oauth/access_token',
   graphApiBase: 'https://graph.facebook.com/v18.0',
@@ -118,10 +119,13 @@ export class MetaAuth {
   private async exchangeCodeForToken(code: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
       client_id: OAUTH_CONFIG.clientId,
-      client_secret: OAUTH_CONFIG.clientSecret,
       redirect_uri: OAUTH_CONFIG.redirectUri,
       code,
     });
+
+    if (OAUTH_CONFIG.clientSecret) {
+      params.append('client_secret', OAUTH_CONFIG.clientSecret);
+    }
 
     const response = await fetch(`${OAUTH_CONFIG.tokenUrl}?${params.toString()}`);
     
@@ -141,9 +145,12 @@ export class MetaAuth {
     const params = new URLSearchParams({
       grant_type: 'fb_exchange_token',
       client_id: OAUTH_CONFIG.clientId,
-      client_secret: OAUTH_CONFIG.clientSecret,
       fb_exchange_token: shortLivedToken,
     });
+
+    if (OAUTH_CONFIG.clientSecret) {
+      params.append('client_secret', OAUTH_CONFIG.clientSecret);
+    }
 
     const response = await fetch(`${OAUTH_CONFIG.tokenUrl}?${params.toString()}`);
     

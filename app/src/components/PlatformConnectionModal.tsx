@@ -142,22 +142,25 @@ export function PlatformConnectionModal({
 
   const prepareOAuthStart = () => {
     setErrorMessage('');
+    setIsConnecting(true);
+    setStep('connecting');
     haptics.medium();
 
     const authToken = getToken();
-    localStorage.setItem(PLATFORM_STORAGE_KEY, platform);
     sessionStorage.setItem(PLATFORM_STORAGE_KEY, platform);
-    localStorage.removeItem(STATE_STORAGE_KEY);
     sessionStorage.removeItem(STATE_STORAGE_KEY);
-    localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
     sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
-    localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
     sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+    localStorage.removeItem(PLATFORM_STORAGE_KEY);
+    localStorage.removeItem(STATE_STORAGE_KEY);
+    localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+    localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+    localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
 
     if (authToken) {
-      localStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
+      sessionStorage.setItem(OAUTH_RETURN_TOKEN_KEY, authToken);
     } else {
-      localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
+      sessionStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
     }
   };
 

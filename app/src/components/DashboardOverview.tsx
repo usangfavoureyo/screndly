@@ -22,6 +22,7 @@ import { dashboardApi, DashboardStats } from '../lib/api/dashboard';
 import { useComposeStore } from '../store/useComposeStore';
 import { toast } from 'sonner';
 import { PageLoader } from './PageLoader';
+import { useCommentAutomation } from '../contexts/CommentAutomationContext';
 
 interface DashboardOverviewProps {
   onNavigate: (page: string, source?: string) => void;
@@ -183,6 +184,7 @@ function normalizeDashboardStats(payload: unknown): DashboardStats {
 
 export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
   const composeItems = useComposeStore((state) => state.items);
+  const { platformData } = useCommentAutomation();
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -261,6 +263,48 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
         .slice(0, 4),
     [composeItems],
   );
+  const localCommentReplies = useMemo(
+    () =>
+      platformData
+        .flatMap((platform) =>
+          platform.recentReplies.map((reply) => ({
+            id: reply.id || `${platform.platform}-${reply.time}-${reply.comment}`,
+            comment: reply.comment,
+            reply: reply.reply,
+            platform: platform.platform,
+            repliedAt: reply.time,
+            username: reply.username,
+            postTitle: reply.postTitle,
+          })),
+        )
+        .sort((left, right) => toTimestamp(right.repliedAt) - toTimestamp(left.repliedAt)),
+    [platformData],
+  );
+  const dashboardCommentReplies = useMemo(() => {
+    const remoteReplies = stats?.comments.recentReplies ?? [];
+    const merged = [...localCommentReplies, ...remoteReplies];
+    const seen = new Set<string>();
+
+    return merged
+      .filter((item) => {
+        const key = item.id || `${item.platform}-${item.repliedAt}-${item.comment}-${item.reply}`;
+        if (seen.has(key)) {
+          return false;
+        }
+
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 5);
+  }, [localCommentReplies, stats?.comments.recentReplies]);
+  const commentRepliesToday = useMemo(() => {
+    const localTotal = platformData.reduce((sum, platform) => sum + platform.repliesToday, 0);
+    return Math.max(stats?.comments.repliesToday ?? 0, localTotal);
+  }, [platformData, stats?.comments.repliesToday]);
+  const activeCommentPlatforms = useMemo(() => {
+    const localActive = platformData.filter((platform) => platform.enabled && platform.connected).length;
+    return Math.max(stats?.comments.activePlatforms ?? 0, localActive);
+  }, [platformData, stats?.comments.activePlatforms]);
 
   return (
     <div className="space-y-6">
@@ -395,13 +439,13 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           <div className="grid grid-cols-2 gap-4 mb-4">
             <MetricCard
               label="Replies Today"
-              value={isLoading ? <Skeleton className="h-8 w-12" /> : stats?.comments.repliesToday ?? 0}
+              value={isLoading ? <Skeleton className="h-8 w-12" /> : commentRepliesToday}
               caption="Comments replied today"
             />
             <MetricCard
               label="Success Rate"
               value={isLoading ? <Skeleton className="h-8 w-12" /> : `${stats?.comments.successRate ?? 0}%`}
-              caption={`${stats?.comments.activePlatforms ?? 0} platforms tracked`}
+              caption={`${activeCommentPlatforms} platforms tracked`}
             />
           </div>
 
@@ -416,17 +460,23 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                   </div>
                 ))}
               </div>
-            ) : stats?.comments.recentReplies.length ? (
-              stats.comments.recentReplies.map((item) => (
+            ) : dashboardCommentReplies.length ? (
+              dashboardCommentReplies.map((item) => (
                 <div key={item.id} className="p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
                   <div className="flex items-start justify-between mb-2 gap-3">
                     <p className="text-sm text-gray-600 dark:text-[#9CA3AF] italic">&quot;{item.comment}&quot;</p>
                     <div className="text-right">
-                      <span className="text-xs text-gray-900 dark:text-white">{item.platform}</span>
+                      <span className="text-xs text-gray-900 dark:text-white">
+                        {item.platform}
+                        {item.username ? ` • @${item.username}` : ''}
+                      </span>
                       <p className="text-xs text-gray-500 dark:text-[#6B7280]">{formatTimeAgo(item.repliedAt)}</p>
                     </div>
                   </div>
                   <p className="text-sm text-gray-900 dark:text-white">↳ {item.reply || 'No reply saved'}</p>
+                  {item.postTitle ? (
+                    <p className="mt-2 text-xs text-gray-500 dark:text-[#6B7280]">Post: {item.postTitle}</p>
+                  ) : null}
                 </div>
               ))
             ) : (

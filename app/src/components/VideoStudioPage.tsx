@@ -29,6 +29,7 @@ import { generateShotstackJSON, getRenderStatus, renderVideo } from '../lib/api/
 import { analyzeMultipleTrailers, MonthlyTrailerAnalysis, generateMonthlyCompilationJSON } from '../lib/api/monthlyCompilation';
 import { performWebSearch, formatSearchResultsForPrompt, buildSceneSearchQuery } from '../lib/api/webSearch';
 import { uploadVideoStudioAsset } from '../lib/api/backblaze';
+import { apiClient } from '../lib/api/client';
 import { generateVideoStudioCaption, type VideoContent, VideoContentType } from '../utils/videoStudioCaptionGenerator';
 import { publishContent } from '../lib/api/platforms';
 import type { AIModelId } from '../lib/ai/models';
@@ -1798,16 +1799,6 @@ export function VideoStudioPage({ onNavigate, onCaptionEditorChange }: VideoStud
     });
 
     try {
-      const openAIKey = localStorage.getItem('openaiKey');
-
-      if (!openAIKey) {
-        toast.error('OpenAI API Key Required', {
-          description: 'Please add your OpenAI API key in Settings',
-          id: toastId
-        });
-        return;
-      }
-
       // Build prompt context from spreadsheet
       let promptContext = '';
       if (importedScenes.length > 0) {
@@ -1872,83 +1863,21 @@ Do not include any other text or explanation. Only return the JSON object.`;
         id: toastId
       });
 
-      // Determine API endpoint and key based on model
-      let apiUrl = 'https://api.openai.com/v1/chat/completions';
-      let apiKey = openAIKey;
-      let requestBody: any = {
+      const systemPrompt = 'You are a movie scene timestamp expert. You provide precise timestamp ranges for specific scenes in movies and TV shows.';
+      const response = await apiClient.post<{ content: string }>('/api/ai/generate', {
         model: scenesAIModel,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a movie scene timestamp expert. You provide precise timestamp ranges for specific scenes in movies and TV shows.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ],
+        prompt,
+        systemPrompt,
         temperature: 0.7,
-        max_tokens: 200
-      };
-
-      // If using Flash 3, switch to Google Gemini API
-      if (scenesAIModel === 'flash-3') {
-        const geminiKey = (settings as typeof settings & { flash3Key?: string }).flash3Key;
-        if (!geminiKey) {
-          toast.error('Flash 3 API Key Required', {
-            description: 'Please add your Flash 3 API key in Settings',
-            id: toastId
-          });
-          return;
-        }
-        apiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
-        apiKey = geminiKey;
-        requestBody = {
-          system_instruction: {
-            parts: { text: 'You are a movie scene timestamp expert. You provide precise timestamp ranges for specific scenes in movies and TV shows.' }
-          },
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }]
-            }
-          ],
-          generationConfig: {
-            response_mime_type: "application/json"
-          }
-        };
-      }
-
-      const headers: any = {
-        'Content-Type': 'application/json'
-      };
-
-      if (scenesAIModel === 'flash-3') {
-        headers['x-goog-api-key'] = apiKey;
-      } else {
-        headers['Authorization'] = `Bearer ${apiKey}`;
-      }
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(requestBody)
+        maxTokens: 200,
+        jsonMode: true,
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || error.message || 'AI API request failed');
+      if (!response.success || !response.data?.content) {
+        throw new Error(response.error?.message || 'AI scene query failed');
       }
 
-      const data = await response.json();
-
-      // Extract content based on API provider
-      let content: string;
-      if (scenesAIModel === 'flash-3') {
-        content = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-      } else {
-        content = data.choices[0].message.content.trim();
-      }
+      const content = response.data.content.trim();
 
       // Parse the JSON response
       const jsonMatch = content.match(/\{[\s\S]*\}/);

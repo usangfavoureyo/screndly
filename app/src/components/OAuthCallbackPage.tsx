@@ -22,26 +22,24 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
 
     useEffect(() => {
         const getStoredPlatform = (): string | null => {
-            return localStorage.getItem(PLATFORM_STORAGE_KEY) || sessionStorage.getItem(PLATFORM_STORAGE_KEY);
+            return sessionStorage.getItem(PLATFORM_STORAGE_KEY) || localStorage.getItem(PLATFORM_STORAGE_KEY);
         };
 
         const getStoredState = (): string | null => {
-            return localStorage.getItem(STATE_STORAGE_KEY) || sessionStorage.getItem(STATE_STORAGE_KEY);
+            return sessionStorage.getItem(STATE_STORAGE_KEY) || localStorage.getItem(STATE_STORAGE_KEY);
         };
 
         const getStoredCodeVerifier = (): string | null => {
-            return localStorage.getItem(CODE_VERIFIER_STORAGE_KEY) || sessionStorage.getItem(CODE_VERIFIER_STORAGE_KEY);
+            return sessionStorage.getItem(CODE_VERIFIER_STORAGE_KEY) || localStorage.getItem(CODE_VERIFIER_STORAGE_KEY);
         };
 
         const clearStoredCallbackResult = () => {
-            localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
             sessionStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
+            localStorage.removeItem(OAUTH_CALLBACK_RESULT_KEY);
         };
 
         const getStoredCallbackResult = (): { search: string; hash: string } | null => {
-            const rawValue =
-                sessionStorage.getItem(OAUTH_CALLBACK_RESULT_KEY) ||
-                localStorage.getItem(OAUTH_CALLBACK_RESULT_KEY);
+            const rawValue = sessionStorage.getItem(OAUTH_CALLBACK_RESULT_KEY) || localStorage.getItem(OAUTH_CALLBACK_RESULT_KEY);
             if (!rawValue) {
                 return null;
             }
@@ -72,12 +70,13 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
         };
 
         const clearStoredPlatform = () => {
-            localStorage.removeItem(PLATFORM_STORAGE_KEY);
             sessionStorage.removeItem(PLATFORM_STORAGE_KEY);
-            localStorage.removeItem(STATE_STORAGE_KEY);
             sessionStorage.removeItem(STATE_STORAGE_KEY);
-            localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             sessionStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
+            sessionStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
+            localStorage.removeItem(PLATFORM_STORAGE_KEY);
+            localStorage.removeItem(STATE_STORAGE_KEY);
+            localStorage.removeItem(CODE_VERIFIER_STORAGE_KEY);
             localStorage.removeItem(OAUTH_RETURN_TOKEN_KEY);
             clearStoredCallbackResult();
         };
@@ -87,7 +86,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                 return;
             }
 
-            const pendingToken = localStorage.getItem(OAUTH_RETURN_TOKEN_KEY);
+            const pendingToken = sessionStorage.getItem(OAUTH_RETURN_TOKEN_KEY) || localStorage.getItem(OAUTH_RETURN_TOKEN_KEY);
             if (!pendingToken) {
                 return;
             }

@@ -16,10 +16,11 @@ export const REQUIRED_SCOPES = [
 ];
 
 // OAuth configuration
+const browserEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : undefined;
 const OAUTH_CONFIG = {
-  clientId: process.env.YOUTUBE_CLIENT_ID || '',
-  clientSecret: process.env.YOUTUBE_CLIENT_SECRET || '',
-  redirectUri: process.env.YOUTUBE_REDIRECT_URI || 'http://localhost:3000/auth/youtube/callback',
+  clientId: browserEnv?.VITE_YOUTUBE_CLIENT_ID || '',
+  clientSecret: '',
+  redirectUri: browserEnv?.VITE_YOUTUBE_REDIRECT_URI || 'http://localhost:3000/auth/youtube/callback',
   authUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: 'https://oauth2.googleapis.com/token',
   revokeUrl: 'https://oauth2.googleapis.com/revoke',
@@ -131,12 +132,15 @@ export class YouTubeAuth {
   private async exchangeCodeForToken(code: string, codeVerifier: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
       client_id: OAUTH_CONFIG.clientId,
-      client_secret: OAUTH_CONFIG.clientSecret,
       code,
       code_verifier: codeVerifier,
       grant_type: 'authorization_code',
       redirect_uri: OAUTH_CONFIG.redirectUri,
     });
+
+    if (OAUTH_CONFIG.clientSecret) {
+      params.append('client_secret', OAUTH_CONFIG.clientSecret);
+    }
 
     const response = await fetch(OAUTH_CONFIG.tokenUrl, {
       method: 'POST',
@@ -166,10 +170,13 @@ export class YouTubeAuth {
     try {
       const params = new URLSearchParams({
         client_id: OAUTH_CONFIG.clientId,
-        client_secret: OAUTH_CONFIG.clientSecret,
         refresh_token: token.refreshToken,
         grant_type: 'refresh_token',
       });
+
+      if (OAUTH_CONFIG.clientSecret) {
+        params.append('client_secret', OAUTH_CONFIG.clientSecret);
+      }
 
       const response = await fetch(OAUTH_CONFIG.tokenUrl, {
         method: 'POST',

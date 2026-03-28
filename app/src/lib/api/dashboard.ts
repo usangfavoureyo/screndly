@@ -14,6 +14,8 @@ export interface CommentReplySummary {
   reply: string;
   platform: string;
   repliedAt: string;
+  username?: string;
+  postTitle?: string;
 }
 
 export interface CommentStats {

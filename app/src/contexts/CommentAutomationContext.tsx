@@ -2,9 +2,21 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { apiClient } from '../lib/api/client';
 
 interface CommentReply {
+  id?: string;
   comment: string;
   reply: string;
   time: string;
+  username?: string;
+  postTitle?: string;
+}
+
+interface CommentReplyRecordInput {
+  id?: string;
+  comment?: string;
+  reply?: string;
+  time?: string;
+  username?: string;
+  postTitle?: string;
 }
 
 interface PlatformReadiness {
@@ -33,6 +45,7 @@ interface CommentAutomationContextType {
   platformData: PlatformCommentData[];
   updatePlatformData: (platform: string, data: Partial<PlatformCommentData>) => void;
   togglePlatform: (platform: string, enabled: boolean) => void;
+  recordTestReply: (platform: string, reply: CommentReplyRecordInput) => void;
 }
 
 const CommentAutomationContext = createContext<CommentAutomationContextType | undefined>(undefined);
@@ -104,9 +117,12 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
             successRate: `${item.successRate || 0}%`,
             recentReplies: Array.isArray(item.recentReplies)
               ? item.recentReplies.map((reply: any) => ({
+                id: reply.id,
                 comment: reply.comment || '',
                 reply: reply.reply || '',
                 time: reply.time || '',
+                username: reply.username,
+                postTitle: reply.postTitle,
               }))
               : [],
             enabled: readiness?.enabled ?? Boolean(item.enabled),
@@ -137,12 +153,47 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
     updatePlatformData(platform, { enabled });
   };
 
+  const recordTestReply = (platform: string, reply: CommentReplyRecordInput) => {
+    const timestamp = reply.time || new Date().toISOString();
+    const normalizedComment =
+      reply.comment?.trim() ||
+      (reply.username ? `Replied to @${reply.username}` : 'Test reply sent');
+    const normalizedReply = reply.reply?.trim() || 'Test reply sent';
+
+    setPlatformData((prev) =>
+      prev.map((item) => {
+        if (item.platform !== platform) {
+          return item;
+        }
+
+        const nextReplies: CommentReply[] = [
+          {
+            id: reply.id || `test-${platform}-${timestamp}`,
+            comment: normalizedComment,
+            reply: normalizedReply,
+            time: timestamp,
+            username: reply.username,
+            postTitle: reply.postTitle,
+          },
+          ...item.recentReplies,
+        ].slice(0, 5);
+
+        return {
+          ...item,
+          repliesToday: item.repliesToday + 1,
+          recentReplies: nextReplies,
+        };
+      }),
+    );
+  };
+
   return (
     <CommentAutomationContext.Provider
       value={{
         platformData,
         updatePlatformData,
         togglePlatform,
+        recordTestReply,
       }}
     >
       {children}

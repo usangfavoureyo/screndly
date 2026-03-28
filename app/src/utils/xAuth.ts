@@ -17,10 +17,11 @@ export const REQUIRED_SCOPES = [
 ];
 
 // OAuth configuration
+const browserEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : undefined;
 const OAUTH_CONFIG = {
-  clientId: process.env.X_CLIENT_ID || '',
-  clientSecret: process.env.X_CLIENT_SECRET || '', // Optional for PKCE
-  redirectUri: process.env.X_REDIRECT_URI || 'http://localhost:3000/auth/x/callback',
+  clientId: browserEnv?.VITE_X_CLIENT_ID || '',
+  clientSecret: '',
+  redirectUri: browserEnv?.VITE_X_REDIRECT_URI || 'http://localhost:3000/auth/x/callback',
   authUrl: 'https://twitter.com/i/oauth2/authorize',
   tokenUrl: 'https://api.twitter.com/2/oauth2/token',
   revokeUrl: 'https://api.twitter.com/2/oauth2/revoke',

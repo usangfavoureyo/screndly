@@ -16,10 +16,11 @@ export const REQUIRED_SCOPES = [
 ];
 
 // OAuth configuration
+const browserEnv = (typeof import.meta !== 'undefined' && import.meta.env) ? import.meta.env : undefined;
 const OAUTH_CONFIG = {
-  clientKey: process.env.TIKTOK_CLIENT_KEY || '',
-  clientSecret: process.env.TIKTOK_CLIENT_SECRET || '',
-  redirectUri: process.env.TIKTOK_REDIRECT_URI || 'http://localhost:3000/auth/tiktok/callback',
+  clientKey: browserEnv?.VITE_TIKTOK_CLIENT_KEY || '',
+  clientSecret: '',
+  redirectUri: browserEnv?.VITE_TIKTOK_REDIRECT_URI || 'http://localhost:3000/auth/tiktok/callback',
   authUrl: 'https://www.tiktok.com/v2/auth/authorize/',
   tokenUrl: 'https://open.tiktokapis.com/v2/oauth/token/',
   revokeUrl: 'https://open.tiktokapis.com/v2/oauth/revoke/',
@@ -127,11 +128,14 @@ export class TikTokAuth {
   private async exchangeCodeForToken(code: string): Promise<TokenResponse> {
     const params = new URLSearchParams({
       client_key: OAUTH_CONFIG.clientKey,
-      client_secret: OAUTH_CONFIG.clientSecret,
       code,
       grant_type: 'authorization_code',
       redirect_uri: OAUTH_CONFIG.redirectUri,
     });
+
+    if (OAUTH_CONFIG.clientSecret) {
+      params.append('client_secret', OAUTH_CONFIG.clientSecret);
+    }
 
     const response = await fetch(OAUTH_CONFIG.tokenUrl, {
       method: 'POST',
@@ -168,10 +172,13 @@ export class TikTokAuth {
     try {
       const params = new URLSearchParams({
         client_key: OAUTH_CONFIG.clientKey,
-        client_secret: OAUTH_CONFIG.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: token.refreshToken,
       });
+
+      if (OAUTH_CONFIG.clientSecret) {
+        params.append('client_secret', OAUTH_CONFIG.clientSecret);
+      }
 
       const response = await fetch(OAUTH_CONFIG.tokenUrl, {
         method: 'POST',

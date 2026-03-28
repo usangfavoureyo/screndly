@@ -13,6 +13,12 @@ vi.mock('../../lib/api/dashboard', () => ({
   },
 }));
 
+vi.mock('../../contexts/CommentAutomationContext', () => ({
+  useCommentAutomation: () => ({
+    platformData: [],
+  }),
+}));
+
 import { DashboardOverview } from '../../components/DashboardOverview';
 
 describe('DashboardOverview', () => {

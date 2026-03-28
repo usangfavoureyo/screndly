@@ -336,6 +336,21 @@ const COMIC_ART_KEYWORDS = [
   'illustration',
   'drawn art',
 ];
+const ILLUSTRATION_STYLE_KEYWORDS = [
+  'fanart',
+  'fan art',
+  'illustration',
+  'drawn art',
+  'digital art',
+  'digital painting',
+  'painting',
+  'concept art',
+  'artstation',
+  'deviantart',
+  'matte painting',
+  'fantasy art',
+  'rendered art',
+];
 const LOGO_KEYWORDS = [
   'logo',
   'wordmark',
@@ -3266,6 +3281,12 @@ function scoreImage(
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
   const suppressStudioOnlyResults = !isContainerSubjectType(analysis.primarySubject.type) && analysis.relevantStudios.length > 0;
   const compositeLikeResult = isCompositeLikeText(text);
+  const illustrationLikeResult = containsKeyword(text, ILLUSTRATION_STYLE_KEYWORDS);
+  const requiresStrongProjectIdentity =
+    isProjectAnchorType(analysis.primarySubject.type) &&
+    analysis.imageIntent !== 'person_portrait' &&
+    analysis.imageIntent !== 'logo' &&
+    analysis.imageIntent !== 'brand_backdrop';
 
   if (!mentionsRelevantEntity && !projectAnchorMatch && !relevantStudioMatch && contextMatchCount === 0) {
     return null;
@@ -3295,6 +3316,14 @@ function scoreImage(
   }
 
   if (compositeLikeResult && analysis.imageIntent !== 'logo' && analysis.imageIntent !== 'brand_backdrop') {
+    return null;
+  }
+
+  if (illustrationLikeResult && analysis.primarySubject.type !== 'character') {
+    return null;
+  }
+
+  if (requiresStrongProjectIdentity && !primaryMatch && !projectAnchorMatch && !visualMatch) {
     return null;
   }
 

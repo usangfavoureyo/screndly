@@ -14,6 +14,10 @@ const toastMock = vi.hoisted(() => ({
   error: vi.fn(),
 }));
 
+const commentAutomationMock = vi.hoisted(() => ({
+  recordTestReply: vi.fn(),
+}));
+
 vi.mock('../../lib/api/client', () => ({
   apiClient: apiClientMock,
 }));
@@ -26,6 +30,10 @@ vi.mock('../../utils/haptics', () => ({
   haptics: {
     light: vi.fn(),
   },
+}));
+
+vi.mock('../../contexts/CommentAutomationContext', () => ({
+  useCommentAutomation: () => commentAutomationMock,
 }));
 
 vi.mock('../../components/settings/AnalyticsSelfOptimization', () => ({
@@ -78,6 +86,7 @@ describe('CommentReplySettings', () => {
     apiClientMock.post.mockReset();
     toastMock.success.mockReset();
     toastMock.error.mockReset();
+    commentAutomationMock.recordTestReply.mockReset();
   });
 
   it('sends a test reply for a supported platform', async () => {
@@ -86,6 +95,11 @@ describe('CommentReplySettings', () => {
       data: {
         platform: 'X',
         username: 'tester',
+        comment: 'Loved this clip',
+        reply: 'Thanks for watching!',
+        postTitle: 'Launch teaser',
+        repliedAt: '2026-03-28T12:00:00.000Z',
+        commentId: 'comment-1',
       },
     });
 
@@ -105,7 +119,17 @@ describe('CommentReplySettings', () => {
       expect(apiClientMock.post).toHaveBeenCalledWith('/api/comments/automation/test-reply', { platform: 'X' });
     });
 
-    expect(toastMock.success).toHaveBeenCalledWith('Test reply sent on X to @tester.');
+    expect(commentAutomationMock.recordTestReply).toHaveBeenCalledWith('X', {
+      id: 'comment-1',
+      username: 'tester',
+      comment: 'Loved this clip',
+      reply: 'Thanks for watching!',
+      postTitle: 'Launch teaser',
+      time: '2026-03-28T12:00:00.000Z',
+    });
+    expect(toastMock.success).toHaveBeenCalledWith('Test reply sent on X.', {
+      description: 'Replied to @tester • Post: Launch teaser • Comment: "Loved this clip"',
+    });
   });
 
   it('shows unsupported placeholders for platforms without comment reply support', () => {

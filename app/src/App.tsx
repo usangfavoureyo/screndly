@@ -31,7 +31,6 @@ if (typeof window !== 'undefined') {
   // Initialize analytics-driven optimization layer
   // This starts background analytics ingestion and signal processing
   initializeOptimization();
-  console.log('[App] Analytics optimization layer initialized');
 }
 
 /**
@@ -52,11 +51,6 @@ if (typeof window !== 'undefined') {
  * and ensures WASM only loads when actually needed.
  */
 if (typeof window !== 'undefined') {
-  // Temporarily disabled console suppression for debugging
-  const originalConsoleError = console.error;
-  const originalConsoleWarn = console.warn;
-
-
   // Flag to control WebAssembly access
   let allowWebAssembly = false;
   (window as any).__enableWebAssembly = () => {
@@ -64,13 +58,24 @@ if (typeof window !== 'undefined') {
   };
   (window as any).__disableWebAssembly = () => { allowWebAssembly = false; };
 
+  const shouldBlockWasmRequest = (url: string) => {
+    if (!url) {
+      return false;
+    }
+
+    const normalizedUrl = url.toLowerCase();
+    return normalizedUrl.includes('.wasm') ||
+      normalizedUrl.includes('@ffmpeg/') ||
+      normalizedUrl.includes('ffmpeg-core');
+  };
+
   // 1. Intercept fetch requests to block .wasm files
   const originalFetch = window.fetch;
   window.fetch = function (...args: any[]): Promise<Response> {
     const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
 
     // Block .wasm files unless explicitly enabled
-    if (url.includes('.wasm') || url.includes('ffmpeg') || url.includes('WebAssembly')) {
+    if (shouldBlockWasmRequest(url)) {
       if (!allowWebAssembly) {
         return Promise.reject(new Error('WebAssembly blocked - call window.__enableWebAssembly() first'));
       }
