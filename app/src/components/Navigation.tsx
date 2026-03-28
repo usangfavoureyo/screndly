@@ -108,7 +108,7 @@ export function Navigation({
                 aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-pressed={isCollapsed}
               >
-                {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
+                {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
               </Button>
             )}
           </div>
@@ -130,7 +130,7 @@ export function Navigation({
               aria-label="Collapse sidebar"
               aria-pressed={false}
             >
-              <PanelLeftClose size={14} />
+              <PanelLeftClose size={18} />
             </Button>
           )}
         </div>

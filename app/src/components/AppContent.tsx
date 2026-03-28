@@ -715,7 +715,7 @@ export function AppContent() {
         <PullToRefresh
           disabled={isDesktopViewport || isSettingsOpen || isNotificationsOpen || isCaptionEditorOpen || isPostFlowOpen}
         >
-          <div className="px-4 pb-28 pt-[calc(env(safe-area-inset-top,0px)+5rem)] transition-opacity duration-200 sm:px-6 sm:pt-[calc(env(safe-area-inset-top,0px)+5.5rem)] lg:px-8 lg:pb-10 lg:pt-10">
+          <div className="px-4 pb-28 pt-[calc(env(safe-area-inset-top,0px)+5rem)] transition-opacity duration-200 sm:px-6 sm:pt-[calc(env(safe-area-inset-top,0px)+5.5rem)] lg:px-8 lg:pb-10 lg:pt-[calc(env(safe-area-inset-top,0px)+5rem)]">
             {displayPage === "dashboard" && (
               <DashboardOverview onNavigate={handleNavigate} />
             )}

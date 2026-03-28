@@ -4,8 +4,7 @@ import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
 import { formatCalendarDate, formatDateTime } from '../../utils/calendarDate';
-import { getTMDbImageBadgeLabel } from '../../lib/tmdb/feedImageSelection';
-import { TMDbStyledImage } from './TMDbStyledImage';
+import { deriveTMDbImageStyle, getTMDbAssetUrl, isTMDbLogoCardUrl } from '../../lib/tmdb/feedImageSelection';
 import {
   BottomSheet,
   BottomSheetHeader,
@@ -348,7 +347,14 @@ function TMDbFeedCardComponent({
     }
   };
 
-  const getImageBadgeLabel = () => getTMDbImageBadgeLabel(feed.imageType, feed.imageTypes);
+  const imageCount = Array.isArray(feed.imageUrls) && feed.imageUrls.length > 0 ? feed.imageUrls.length : 1;
+  const imageStyle = feed.imageStyle || deriveTMDbImageStyle(feed.imageType, feed.imageTypes);
+  const rawLogoPreviewUrl = getTMDbAssetUrl(feed.imageUrls, feed.imageTypes, 'logo');
+  const logoPreviewUrl = isTMDbLogoCardUrl(rawLogoPreviewUrl) ? undefined : rawLogoPreviewUrl;
+  const cardPreviewImageUrl = imageStyle === 'backdrop_logo'
+    ? (logoPreviewUrl || feed.imageUrl || feed.imageUrls?.[0])
+    : (feed.imageUrl || feed.imageUrls?.[0]);
+  const useSquareLogoThumbnail = imageStyle === 'backdrop_logo' && Boolean(logoPreviewUrl);
 
   const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -423,17 +429,25 @@ function TMDbFeedCardComponent({
             className="sm:w-48 h-48 sm:h-auto relative flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] cursor-pointer hover:opacity-90 transition-opacity"
             onClick={handleImageClick}
           >
-            <TMDbStyledImage
-              title={feed.title}
-              imageUrl={feed.imageUrl}
-              imageUrls={feed.imageUrls}
-              imageType={feed.imageType}
-              imageTypes={feed.imageTypes}
-              imageStyle={feed.imageStyle}
-              className="h-full w-full"
-            />
-            <div className="absolute bottom-2 left-2 bg-black/80 text-white px-2 py-1 rounded-lg text-xs">
-              {getImageBadgeLabel()}
+            {cardPreviewImageUrl ? (
+              useSquareLogoThumbnail ? (
+                <div className="flex h-full w-full items-center justify-center bg-[#050505] p-4">
+                  <img
+                    src={cardPreviewImageUrl}
+                    alt={`${feed.title} logo`}
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <img
+                  src={cardPreviewImageUrl}
+                  alt={feed.title}
+                  className="h-full w-full object-cover"
+                />
+              )
+            ) : null}
+            <div className="absolute bottom-2 right-2 min-w-7 rounded-full bg-black/80 px-2 py-1 text-center text-xs font-medium text-white">
+              {imageCount}
             </div>
           </div>
 
@@ -485,7 +499,7 @@ function TMDbFeedCardComponent({
                       setIsMenuOpen(true);
                     }}
                   >
-                    <MoreVertical className="w-4 h-4 text-gray-900 dark:text-white" />
+                    <MoreVertical size={14} className="text-gray-900 dark:text-white" />
                   </Button>
                 </>
               )}
