@@ -315,6 +315,62 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           </div>
         </div>
 
+        <SectionCard
+          icon={<PenSquare className="w-6 h-6 text-[#ec1e24]" />}
+          title="Posts"
+          subtitle="Drafts, scheduled items, and published post activity"
+          onViewAll={() => handleNavigate('compose-activity', 'dashboard')}
+        >
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <MetricCard
+              label="Post Items"
+              value={composeStats.total}
+              caption="Items in the post workflow"
+            />
+            <MetricCard
+              label="Draft Posts"
+              value={composeStats.drafts}
+              caption="Ready to edit or publish"
+            />
+            <MetricCard
+              label="Scheduled Posts"
+              value={composeStats.scheduled}
+              caption="Queued for a future time"
+            />
+            <MetricCard
+              label="Published Posts"
+              value={composeStats.published}
+              caption="Successfully published items"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-sm text-gray-900 dark:text-white">Recent Posts</h4>
+            {recentComposeItems.length ? (
+              recentComposeItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                  <div className="min-w-0 pr-4">
+                    <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
+                    <p className="text-sm text-gray-600 dark:text-[#9CA3AF] truncate">
+                      {item.platforms.length ? `${item.platforms.length} platform${item.platforms.length === 1 ? '' : 's'}` : 'No platforms selected'}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`inline-flex items-center rounded-lg px-3 py-1 text-xs ${getComposeStatusTone(item.status)}`}>
+                      {formatComposeStatusLabel(item.status)}
+                    </span>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-[#6B7280]">
+                      {formatTimeAgo(item.scheduledAt ?? item.updatedAt ?? item.createdAt)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <EmptyCardMessage message="No post activity recorded yet." />
+            )}
+          </div>
+        </SectionCard>
+
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-shadow duration-200 sm:col-span-2 lg:col-span-4">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -471,62 +527,6 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           </div>
         </div>
       </div>
-
-      <SectionCard
-        icon={<PenSquare className="w-6 h-6 text-[#ec1e24]" />}
-        title="Posts"
-        subtitle="Drafts, scheduled items, and published post activity"
-        onViewAll={() => handleNavigate('compose-activity', 'dashboard')}
-      >
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <MetricCard
-            label="Post Items"
-            value={composeStats.total}
-            caption="Items in the post workflow"
-          />
-          <MetricCard
-            label="Draft Posts"
-            value={composeStats.drafts}
-            caption="Ready to edit or publish"
-          />
-          <MetricCard
-            label="Scheduled Posts"
-            value={composeStats.scheduled}
-            caption="Queued for a future time"
-          />
-          <MetricCard
-            label="Published Posts"
-            value={composeStats.published}
-            caption="Successfully published items"
-          />
-        </div>
-
-        <div className="space-y-3">
-          <h4 className="text-sm text-gray-900 dark:text-white">Recent Posts</h4>
-          {recentComposeItems.length ? (
-            recentComposeItems.map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
-                <div className="min-w-0 pr-4">
-                  <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
-                  <p className="text-sm text-gray-600 dark:text-[#9CA3AF] truncate">
-                    {item.platforms.length ? `${item.platforms.length} platform${item.platforms.length === 1 ? '' : 's'}` : 'No platforms selected'}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <span className={`inline-flex items-center rounded-lg px-3 py-1 text-xs ${getComposeStatusTone(item.status)}`}>
-                    {formatComposeStatusLabel(item.status)}
-                  </span>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-[#6B7280]">
-                    {formatTimeAgo(item.scheduledAt ?? item.updatedAt ?? item.createdAt)}
-                  </p>
-                </div>
-              </div>
-            ))
-          ) : (
-            <EmptyCardMessage message="No post activity recorded yet." />
-          )}
-        </div>
-      </SectionCard>
 
       <SectionCard
         icon={<Rss className="w-6 h-6 text-[#ec1e24]" />}
@@ -694,7 +694,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<Archive className="w-7 h-7 text-[#ec1e24]" />}
+        icon={<Archive className="w-8 h-8 text-[#ec1e24]" />}
         title="Upload Manager"
         subtitle="Video upload pipeline"
         onViewAll={() => handleNavigate('upload-manager', 'dashboard')}
