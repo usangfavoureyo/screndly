@@ -2052,19 +2052,22 @@ function determineSmartImagePlan(
     isStreamingAvailabilityStory(article, analysis) &&
     (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise')
   ) {
-    secondary = buildImageSlotPlan(
-      primaryStreamingPlatform,
-      'streaming_service',
-      'logo',
-      analysis,
-      true
-    );
+    const projectSubject = titleAnchor || analysis.primarySubject.name;
+    if (projectSubject && normalizeText(projectSubject) !== normalizeText(primary.subject)) {
+      secondary = buildImageSlotPlan(
+        projectSubject,
+        inferSlotType(projectSubject, articleText, analysis.primarySubject.type, analysis),
+        'poster',
+        analysis,
+        false
+      );
 
-    return {
-      primary,
-      secondary,
-      useTwoImages: true,
-    };
+      return {
+        primary,
+        secondary,
+        useTwoImages: true,
+      };
+    }
   }
 
   if (isListArticle) {
@@ -2080,9 +2083,9 @@ function determineSmartImagePlan(
     secondary = buildImageSlotPlan(
       inferredLeadProjectSubject,
       inferSlotType(inferredLeadProjectSubject, articleText, 'franchise', analysis),
-      'logo',
+      'poster',
       analysis,
-      true
+      false
     );
     return {
       primary,
@@ -2112,9 +2115,9 @@ function determineSmartImagePlan(
     secondary = buildImageSlotPlan(
       titleAnchor,
       inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
-      'logo',
+      'poster',
       analysis,
-      true
+      false
     );
     useTwoImages = true;
   } else if (
@@ -2127,9 +2130,9 @@ function determineSmartImagePlan(
       secondary = buildImageSlotPlan(
         projectAnchorForPersonStory,
         inferSlotType(projectAnchorForPersonStory, articleText, 'franchise', analysis),
-        'logo',
+        'poster',
         analysis,
-        true
+        false
       );
       useTwoImages = true;
     }
@@ -2139,9 +2142,9 @@ function determineSmartImagePlan(
       secondary = buildImageSlotPlan(
         projectAnchorForPersonStory,
         inferSlotType(projectAnchorForPersonStory, articleText, 'franchise', analysis),
-        'logo',
+        'poster',
         analysis,
-        true
+        false
       );
       useTwoImages = true;
     }
@@ -2154,9 +2157,9 @@ function determineSmartImagePlan(
     secondary = buildImageSlotPlan(
       titleAnchor,
       inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
-      'logo',
+      'poster',
       analysis,
-      true
+      false
     );
     useTwoImages = true;
   }
@@ -2307,6 +2310,10 @@ function shouldKeepSecondaryCarouselImage(
   primaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>,
   secondaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>
 ): boolean {
+  if (getImageIdentity(primaryImage.url) === getImageIdentity(secondaryImage.url)) {
+    return false;
+  }
+
   if (isBrandedEditorialFrame(secondaryImage)) {
     return false;
   }
@@ -2610,14 +2617,17 @@ async function resolveSingleSlotImages(
 
   if (resolved[0] && fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(analysis, resolved[0])) {
     const fallbackPrimary = buildFeedFallbackImages(
-      fallbackImages.filter((url) => url !== resolved[0]?.url),
+      fallbackImages.filter((url) => getImageIdentity(url) !== getImageIdentity(resolved[0]?.url || '')),
       1
     )[0];
 
     if (fallbackPrimary) {
       resolved = [
         fallbackPrimary,
-        ...resolved.filter((image) => image.url !== fallbackPrimary.url && image.url !== resolved[0]?.url),
+        ...resolved.filter((image) =>
+          getImageIdentity(image.url) !== getImageIdentity(fallbackPrimary.url) &&
+          getImageIdentity(image.url) !== getImageIdentity(resolved[0]?.url || '')
+        ),
       ];
     }
   }
@@ -3340,7 +3350,7 @@ export async function resolveRelevantRSSImages(
       }
 
       const fallbackSecondary = buildFeedFallbackImages(
-        fallbackImages.filter((url) => url !== primaryResolved.image.url),
+        fallbackImages.filter((url) => getImageIdentity(url) !== getImageIdentity(primaryResolved.image.url)),
         1
       )[0];
 

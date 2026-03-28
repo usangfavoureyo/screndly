@@ -40,6 +40,39 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function sanitizeVapidKey(value: string | null | undefined): string | null {
+  if (!isNonEmptyString(value)) {
+    return null;
+  }
+
+  const trimmed = value.trim().replace(/^['"]|['"]$/g, '');
+  if (!trimmed) {
+    return null;
+  }
+
+  // Accept keys pasted in standard base64 form and normalize them to URL-safe base64 without padding.
+  return trimmed
+    .replace(/\s+/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function sanitizeVapidSubject(value: string | null | undefined): string {
+  const trimmed = typeof value === 'string' ? value.trim().replace(/^['"]|['"]$/g, '') : '';
+  return trimmed || DEFAULT_VAPID_SUBJECT;
+}
+
+function tryValidateVapidConfig(config: VapidConfig): VapidConfig | null {
+  try {
+    webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+    return config;
+  } catch (error) {
+    console.warn('[WebPush] Invalid VAPID config detected:', error);
+    return null;
+  }
+}
+
 function normalizeSubscription(payload: PushSubscriptionPayload) {
   if (!isNonEmptyString(payload?.endpoint)) {
     throw new Error('Push subscription endpoint is required');
@@ -60,7 +93,7 @@ function normalizeSubscription(payload: PushSubscriptionPayload) {
 }
 
 function getConfiguredVapidSubject(): string {
-  const configured = process.env.WEB_PUSH_VAPID_SUBJECT?.trim();
+  const configured = process.env.WEB_PUSH_VAPID_SUBJECT?.trim().replace(/^['"]|['"]$/g, '');
   if (configured) {
     return configured;
   }
@@ -98,16 +131,20 @@ class WebPushService {
   }
 
   private async loadOrCreateConfig(): Promise<VapidConfig> {
-    const envPublicKey = process.env.WEB_PUSH_VAPID_PUBLIC_KEY?.trim();
-    const envPrivateKey = process.env.WEB_PUSH_VAPID_PRIVATE_KEY?.trim();
-    const envSubject = getConfiguredVapidSubject();
+    const envPublicKey = sanitizeVapidKey(process.env.WEB_PUSH_VAPID_PUBLIC_KEY);
+    const envPrivateKey = sanitizeVapidKey(process.env.WEB_PUSH_VAPID_PRIVATE_KEY);
+    const envSubject = sanitizeVapidSubject(getConfiguredVapidSubject());
 
-    if (envPublicKey && envPrivateKey) {
-      return {
-        publicKey: envPublicKey,
-        privateKey: envPrivateKey,
-        subject: envSubject,
-      };
+    const envConfig = envPublicKey && envPrivateKey
+      ? tryValidateVapidConfig({
+          publicKey: envPublicKey,
+          privateKey: envPrivateKey,
+          subject: envSubject,
+        })
+      : null;
+
+    if (envConfig) {
+      return envConfig;
     }
 
     const [storedPublicKey, storedPrivateKey, storedSubject] = await Promise.all([
@@ -116,18 +153,22 @@ class WebPushService {
       getStringSetting(VAPID_SUBJECT_SETTING),
     ]);
 
-    if (storedPublicKey && storedPrivateKey) {
-      return {
-        publicKey: storedPublicKey,
-        privateKey: storedPrivateKey,
-        subject: storedSubject || envSubject,
-      };
+    const storedConfig = sanitizeVapidKey(storedPublicKey) && sanitizeVapidKey(storedPrivateKey)
+      ? tryValidateVapidConfig({
+          publicKey: sanitizeVapidKey(storedPublicKey)!,
+          privateKey: sanitizeVapidKey(storedPrivateKey)!,
+          subject: sanitizeVapidSubject(storedSubject || envSubject),
+        })
+      : null;
+
+    if (storedConfig) {
+      return storedConfig;
     }
 
     const generated = webpush.generateVAPIDKeys();
     const config: VapidConfig = {
-      publicKey: generated.publicKey,
-      privateKey: generated.privateKey,
+      publicKey: sanitizeVapidKey(generated.publicKey) || generated.publicKey,
+      privateKey: sanitizeVapidKey(generated.privateKey) || generated.privateKey,
       subject: envSubject,
     };
 
@@ -143,7 +184,6 @@ class WebPushService {
     if (!this.configPromise) {
       this.configPromise = this.loadOrCreateConfig()
         .then((config) => {
-          webpush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
           this.cachedConfig = config;
           return config;
         })

@@ -108,7 +108,7 @@ export function Navigation({
                 aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 aria-pressed={isCollapsed}
               >
-                {isCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
+                {isCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
               </Button>
             )}
           </div>
@@ -130,7 +130,7 @@ export function Navigation({
               aria-label="Collapse sidebar"
               aria-pressed={false}
             >
-              <PanelLeftClose className="h-5 w-5" />
+              <PanelLeftClose size={14} />
             </Button>
           )}
         </div>
@@ -163,7 +163,7 @@ export function Navigation({
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
               <Icon
-                size={item.id === 'channels' ? 22 : 20}
+                size={item.id === 'channels' ? 26 : 22}
                 className={cn(
                   'shrink-0 transition-transform duration-200',
                   !isActive && 'group-hover:scale-110',
@@ -190,7 +190,7 @@ export function Navigation({
           )}
           aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
         >
-          <LogOut className="h-5 w-5 shrink-0 transition-transform duration-200" />
+          <LogOut className="h-[22px] w-[22px] shrink-0 transition-transform duration-200" />
           {(!isCollapsed || !isDesktop) && <span className="truncate">Logout</span>}
         </Button>
       </div>

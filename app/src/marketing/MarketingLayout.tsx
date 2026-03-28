@@ -114,7 +114,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
               <img
                 src={theme === "dark" ? logoDark : logoLight}
                 alt="Screndly"
-                className="h-6 w-auto md:h-7"
+                className="h-8 w-auto md:h-9"
                 loading="eager"
                 onError={() => setLogoFailed(true)}
               />
@@ -212,7 +212,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
               </a>
             </div>
             <a
-              href="mailto:support@screndly.com"
+              href="mailto:screndlyapp@gmail.com"
               className="inline-flex items-center gap-2 font-medium text-[var(--marketing-text)] transition hover:text-[#ec1e24]"
             >
               Contact <ArrowUpRight size={16} />
