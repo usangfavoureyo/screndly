@@ -239,7 +239,6 @@ export const ChevronLeft = createRoundedIcon(`${base}/arrow-left-02-stroke-round
 export const ChevronRight = createRoundedIcon(`${base}/arrow-right-01-stroke-rounded.svg`);
 export const ChevronUp = createRoundedIcon(`${base}/arrow-up-02-stroke-rounded.svg`);
 export const ChevronDown = createRoundedIcon(`${base}/arrow-down-02-stroke-rounded.svg`);
-export const ChevronDownIcon = createRoundedIcon(`${base}/arrow-down-02-stroke-rounded.svg`);
 export const ChevronRightIcon = createRoundedIcon(`${base}/arrow-right-01-stroke-rounded.svg`);
 export const Circle = createCustomIcon('0 0 24 24', CircleShape);
 export const CircleIcon = createCustomIcon('0 0 24 24', CircleShape);
