@@ -78,16 +78,32 @@ const HERO_VIDEO_POSTER = "/marketing/video/hero-nebula-poster.jpg";
 export function MarketingLandingPage() {
   return (
     <MarketingLayout>
-      <section className="relative overflow-hidden border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
-        <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-6 pb-16 pt-16 md:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:pb-24 lg:pt-20">
+      <section className="relative overflow-hidden border-b border-[color:var(--marketing-border)] bg-black">
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          poster={HERO_VIDEO_POSTER}
+          aria-hidden="true"
+        >
+          <source src={HERO_VIDEO} type="video/mp4" />
+        </video>
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.82)_0%,rgba(0,0,0,0.62)_34%,rgba(0,0,0,0.38)_62%,rgba(0,0,0,0.58)_100%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(236,30,36,0.18),transparent_34%)]" />
+        <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,0.58))]" />
+
+        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-10 px-6 pb-16 pt-16 md:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:pb-24 lg:pt-20">
           <FadeIn>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">
               Private publishing workspace
             </p>
-            <h1 className="marketing-heading mt-6 text-3xl font-semibold leading-tight text-[var(--marketing-text)] md:text-4xl lg:text-5xl">
+            <h1 className="marketing-heading mt-6 text-3xl font-semibold leading-tight text-white md:text-4xl lg:text-5xl">
               Private AI publishing and automation workspace for modern content operations.
             </h1>
-            <p className="mt-5 max-w-xl text-base text-[var(--marketing-muted)] md:text-lg">
+            <p className="mt-5 max-w-xl text-base text-white/80 md:text-lg">
               Private dashboard to manage media, generate captions, schedule posts, and run feed-driven
               publishing across social platforms.
             </p>
@@ -100,7 +116,7 @@ export function MarketingLandingPage() {
               </a>
               <a
                 href="/app"
-                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] px-5 py-3 text-sm font-semibold text-[var(--marketing-text)] transition hover:border-[var(--marketing-text)]"
+                className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/10"
               >
                 Open Dashboard
               </a>
@@ -114,21 +130,8 @@ export function MarketingLandingPage() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="relative overflow-hidden rounded-[32px] border border-black/10 bg-black shadow-[0_30px_60px_rgba(0,0,0,0.18)]">
-              <video
-                className="absolute inset-0 h-full w-full object-cover"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                poster={HERO_VIDEO_POSTER}
-                aria-hidden="true"
-              >
-                <source src={HERO_VIDEO} type="video/mp4" />
-              </video>
-              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,0,0,0.5),rgba(0,0,0,0.2)_42%,rgba(236,30,36,0.12)_100%)]" />
-              <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,0.38))]" />
+            <div className="relative overflow-hidden rounded-[32px] border border-white/12 bg-black/55 shadow-[0_30px_60px_rgba(0,0,0,0.28)] backdrop-blur-md">
+              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,15,15,0.82),rgba(15,15,15,0.54)_42%,rgba(236,30,36,0.12)_100%)]" />
               <div className="relative p-5">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs uppercase tracking-[0.25em] text-white/65">
                   <span>Screndly Dashboard</span>

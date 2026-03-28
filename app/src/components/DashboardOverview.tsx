@@ -473,7 +473,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </div>
 
       <SectionCard
-        icon={<PenSquare className="w-9 h-9 text-[#ec1e24]" />}
+        icon={<PenSquare className="w-6 h-6 text-[#ec1e24]" />}
         title="Posts"
         subtitle="Drafts, scheduled items, and published post activity"
         onViewAll={() => handleNavigate('compose-activity', 'dashboard')}
@@ -736,7 +736,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
       </SectionCard>
 
       <SectionCard
-        icon={<Key className="w-6 h-6 text-[#ec1e24]" />}
+        icon={<Key className="w-7 h-7 text-[#ec1e24]" />}
         title="API Usage"
         subtitle="Track API usage"
         onViewAll={() => handleNavigate('api-usage', 'dashboard')}
