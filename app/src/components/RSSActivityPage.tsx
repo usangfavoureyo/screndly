@@ -75,7 +75,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const { getActivity, retryActivity } = useRSSFeeds();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
-  const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'filtered'>('all');
+  const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
@@ -151,7 +151,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     if (filter === 'failures') return item.status === 'failed';
     if (filter === 'published') return item.status === 'published';
     if (filter === 'pending') return item.status === 'pending';
-    if (filter === 'filtered') return item.status === 'filtered';
     return true;
   });
   const selection = useBulkSelection(filteredItems.map((item) => item.id));
@@ -161,7 +160,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     published: logLevelItems.filter((item) => item.status === 'published').length,
     pending: logLevelItems.filter((item) => item.status === 'pending').length,
     failed: logLevelItems.filter((item) => item.status === 'failed').length,
-    filtered: logLevelItems.filter((item) => item.status === 'filtered').length,
   };
 
   const getStatusConfig = (status: RSSActivityItem['status']) => {
@@ -339,7 +337,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Total Processed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{summary.total}</p>
@@ -355,10 +353,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{summary.failed}</p>
-        </div>
-        <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
-          <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Filtered</p>
-          <p className="text-gray-900 dark:text-white text-2xl">{summary.filtered}</p>
         </div>
       </div>
 
@@ -380,7 +374,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             { value: 'published', label: 'Published' },
             { value: 'pending', label: 'Pending' },
             { value: 'failures', label: 'Failures' },
-            { value: 'filtered', label: 'Filtered' },
           ].map((option) => (
             <button
               key={option.value}

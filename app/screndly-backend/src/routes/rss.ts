@@ -17,6 +17,7 @@ import {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  reorderFeeds,
   RSSFeedInput,
 } from '../services/rss.service';
 import prisma from '../lib/prisma';
@@ -35,6 +36,7 @@ router.get('/feeds', async (_req: Request, res: Response) => {
       url: feed.url,
       favicon: feed.favicon,
       enabled: feed.enabled,
+      displayOrder: feed.displayOrder,
       interval: feed.interval,
       imageCount: feed.imageCount,
       platformImageCounts: feed.platformImageCounts,
@@ -77,6 +79,7 @@ router.get('/feeds/:id', async (req: Request, res: Response) => {
         url: feed.url,
         favicon: feed.favicon,
         enabled: feed.enabled,
+        displayOrder: feed.displayOrder,
         interval: feed.interval,
         imageCount: feed.imageCount,
         platformImageCounts: feed.platformImageCounts,
@@ -203,6 +206,20 @@ router.delete('/activity/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('[RSS] Error deleting activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to delete RSS activity' } });
+  }
+});
+
+router.post('/feeds/reorder', async (req: Request, res: Response) => {
+  try {
+    const orderedIds = Array.isArray(req.body?.orderedIds) ? req.body.orderedIds : [];
+    const feeds = await reorderFeeds(orderedIds);
+    res.json({ success: true, data: feeds });
+  } catch (error) {
+    console.error('[RSS] Error reordering feeds:', error);
+    res.status(400).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to reorder feeds' },
+    });
   }
 });
 

@@ -108,6 +108,7 @@ model RSSFeed {
   
   // Content Settings
   enabled         Boolean  @default(true)
+  displayOrder    Int      @default(0)
   interval        Int      @default(10)  // Minutes between checks
   imageCount      String   @default("2") // "1", "2", "3", "random"
   dedupeDays      Int      @default(30)  // Days to check for duplicates

@@ -1,3 +1,4 @@
+import { ArrowLeft } from "lucide-react";
 import { FadeIn, MarketingLayout } from "./MarketingLayout";
 
 export function MarketingPrivacyPage() {
@@ -6,6 +7,13 @@ export function MarketingPrivacyPage() {
       <section className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto w-full max-w-4xl px-6 py-16 lg:px-10 lg:py-20">
           <FadeIn>
+            <a
+              href="/"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] px-4 py-2 text-sm font-medium text-[var(--marketing-text)] transition hover:border-[var(--marketing-text)]"
+            >
+              <ArrowLeft size={16} />
+              Back to Home
+            </a>
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">Privacy Policy</p>
             <h1 className="marketing-heading mt-5 text-3xl font-semibold text-[var(--marketing-text)] md:text-4xl">
               Screndly Privacy Policy

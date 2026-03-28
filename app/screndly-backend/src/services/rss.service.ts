@@ -315,6 +315,7 @@ type RSSFeedColumnSupport = {
   feedItemsTable: boolean;
   serperEnabled: boolean;
   tmdbEnabled: boolean;
+  displayOrder: boolean;
 };
 
 let rssFeedColumnSupportPromise: Promise<RSSFeedColumnSupport> | null = null;
@@ -345,7 +346,7 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           FROM information_schema.columns
           WHERE table_schema = current_schema()
             AND table_name = 'RSSFeed'
-            AND column_name IN ('platformImageCounts', 'trickle', 'serperEnabled', 'tmdbEnabled')
+            AND column_name IN ('platformImageCounts', 'trickle', 'serperEnabled', 'tmdbEnabled', 'displayOrder')
         `;
 
         const tableNames = new Set(tables.map((table) => table.table_name));
@@ -356,6 +357,7 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           feedItemsTable: tableNames.has('RSSFeedItem'),
           serperEnabled: columnNames.has('serperEnabled'),
           tmdbEnabled: columnNames.has('tmdbEnabled'),
+          displayOrder: columnNames.has('displayOrder'),
         };
       } catch (error) {
         console.warn('[RSS] Failed to inspect RSSFeed schema. Falling back to legacy-compatible mode.', error);
@@ -365,6 +367,7 @@ async function getRSSFeedColumnSupport(): Promise<RSSFeedColumnSupport> {
           feedItemsTable: false,
           serperEnabled: false,
           tmdbEnabled: false,
+          displayOrder: false,
         };
       }
     })();
@@ -382,6 +385,7 @@ async function getRSSFeedSelect(): Promise<Prisma.RSSFeedSelect> {
     url: true,
     favicon: true,
     enabled: true,
+    ...(support.displayOrder ? { displayOrder: true } : {}),
     interval: true,
     imageCount: true,
     dedupeDays: true,
@@ -412,6 +416,7 @@ async function getRSSFeedSelect(): Promise<Prisma.RSSFeedSelect> {
 }
 
 function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T): (T & {
+  displayOrder: number;
   platformImageCounts?: Prisma.JsonValue | null;
   trickle: 'newest_first' | 'oldest_first';
   serperEnabled: boolean;
@@ -427,6 +432,7 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
 
   return {
     ...feed,
+    displayOrder: typeof feed.displayOrder === 'number' ? feed.displayOrder : 0,
     filters: 'filters' in feed ? ensureFeedFilters(feed.filters as RSSFeedFilters | undefined) : undefined,
     platformImageCounts: 'platformImageCounts' in feed ? feed.platformImageCounts : null,
     trickle: normalizeTrickle(typeof feed.trickle === 'string' ? feed.trickle : undefined),
@@ -444,6 +450,7 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
 }
 
 function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]): Array<T & {
+  displayOrder: number;
   platformImageCounts?: Prisma.JsonValue | null;
   trickle: 'newest_first' | 'oldest_first';
   serperEnabled: boolean;
@@ -2575,8 +2582,11 @@ async function parseRSSFeed(xml: string): Promise<RSSFeedData> {
 
 async function getAllFeeds() {
   const select = await getRSSFeedSelect();
+  const support = await getRSSFeedColumnSupport();
   const feeds = await prisma.rSSFeed.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: support.displayOrder
+      ? [{ displayOrder: 'asc' }, { createdAt: 'desc' }]
+      : [{ createdAt: 'desc' }],
     select,
   });
 
@@ -2627,12 +2637,18 @@ async function createFeed(data: RSSFeedInput) {
   };
   const support = await getRSSFeedColumnSupport();
   const select = await getRSSFeedSelect();
+  const nextDisplayOrder = support.displayOrder
+    ? await prisma.rSSFeed.aggregate({
+        _max: { displayOrder: true },
+      }).then((result) => (result._max.displayOrder ?? -1) + 1)
+    : undefined;
 
   const createData: Prisma.RSSFeedCreateInput = {
     name: feedTitle || data.name,
     url: data.url,
     favicon,
     enabled: data.enabled ?? true,
+    ...(support.displayOrder ? { displayOrder: nextDisplayOrder } : {}),
     interval: data.interval ?? 10,
     imageCount: data.imageCount ?? '2',
     dedupeDays: data.dedupeDays ?? 30,
@@ -2675,6 +2691,7 @@ async function createFeed(data: RSSFeedInput) {
 async function updateFeed(
   id: string,
   data: Partial<RSSFeedInput> & {
+    displayOrder?: number;
     lastProcessedAt?: Date;
     nextRunAt?: Date | null;
     errorMessage?: string | null;
@@ -2741,6 +2758,7 @@ async function updateFeed(
   if (data.url !== undefined) updateData.url = data.url;
   if (data.favicon !== undefined) updateData.favicon = data.favicon;
   if (data.enabled !== undefined) updateData.enabled = data.enabled;
+  if (support.displayOrder && data.displayOrder !== undefined) updateData.displayOrder = Math.max(0, data.displayOrder);
   if (data.interval !== undefined) updateData.interval = data.interval;
   if (data.imageCount !== undefined) updateData.imageCount = data.imageCount;
   if (support.platformImageCounts && data.platformImageCounts !== undefined) {
@@ -2823,6 +2841,45 @@ async function updateFeed(
   }
 
   return applyRSSFeedCompatibility(updatedFeed as Record<string, any>);
+}
+
+async function reorderFeeds(orderedIds: string[]) {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.displayOrder) {
+    throw new Error('RSS feed ordering is not available until the latest migration is applied.');
+  }
+
+  const ids = orderedIds
+    .filter((id): id is string => typeof id === 'string')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    throw new Error('At least one feed id is required to reorder feeds.');
+  }
+
+  const existingFeeds = await prisma.rSSFeed.findMany({
+    select: { id: true },
+  });
+  const existingIds = existingFeeds.map((feed) => feed.id);
+
+  if (existingIds.length !== ids.length || existingIds.some((id) => !ids.includes(id))) {
+    throw new Error('Feed reorder payload must include every existing feed exactly once.');
+  }
+
+  await prisma.$transaction(
+    ids.map((id, index) =>
+      prisma.rSSFeed.update({
+        where: { id },
+        data: {
+          displayOrder: index,
+          updatedAt: new Date(),
+        },
+      })
+    )
+  );
+
+  return getAllFeeds();
 }
 
 async function deleteFeed(id: string) {
@@ -4003,6 +4060,7 @@ export {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  reorderFeeds,
 };
 
 export default {
@@ -4019,4 +4077,5 @@ export default {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  reorderFeeds,
 };

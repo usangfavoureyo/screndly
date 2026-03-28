@@ -126,7 +126,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
   }, [scrolled]);
 
   return (
-    <div className="marketing-root bg-[var(--marketing-bg)] text-[var(--marketing-text)]" data-marketing-theme={theme}>
+    <div className="marketing-root overflow-x-hidden bg-[var(--marketing-bg)] text-[var(--marketing-text)]" data-marketing-theme={theme}>
       <header className={`sticky top-0 z-50 backdrop-blur ${headerClasses}`}>
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 lg:px-10">
           <a href="/" className="flex items-center gap-3">

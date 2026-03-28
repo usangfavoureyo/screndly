@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, ReactNode } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -15,6 +15,7 @@ export interface Feed {
   name: string;
   url: string;
   enabled: boolean;
+  displayOrder?: number;
   interval: number;
   imageCount: '1' | '2' | '3' | 'random';
   platformImageCounts?: { x?: number; threads?: number; facebook?: number; pinterest?: number };
@@ -59,6 +60,9 @@ interface FeedCardProps {
   onTogglePlatform: (feedId: string, platform: string, enabled: boolean) => void;
   onToggleEnabled: (feedId: string, enabled: boolean) => void;
   onRunNow: (feedId: string) => Promise<void>;
+  touchSwipeEnabled?: boolean;
+  dragHandle?: ReactNode;
+  isReorderMode?: boolean;
 }
 
 function formatRelativeTimestamp(value?: string): string {
@@ -100,11 +104,13 @@ export function FeedCard({
   onTogglePlatform,
   onToggleEnabled,
   onRunNow,
+  touchSwipeEnabled = true,
+  dragHandle,
+  isReorderMode = false,
 }: FeedCardProps) {
   const [isRefreshRunning, setIsRefreshRunning] = useState(false);
   const [faviconError, setFaviconError] = useState(false);
   const [, setTimeTick] = useState(0);
-  const touchSwipeEnabled = true;
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
@@ -323,26 +329,31 @@ export function FeedCard({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => {
-                haptics.medium();
-                onDuplicate(feed.id);
-              }}
-              className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-gray-900 dark:hover:text-white"
-              aria-label="Duplicate feed"
-            >
-              <Copy className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                haptics.medium();
-                onDelete(feed.id);
-              }}
-              className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
-              aria-label="Delete feed"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
+            {dragHandle}
+            {!isReorderMode ? (
+              <>
+                <button
+                  onClick={() => {
+                    haptics.medium();
+                    onDuplicate(feed.id);
+                  }}
+                  className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-gray-900 dark:hover:text-white"
+                  aria-label="Duplicate feed"
+                >
+                  <Copy className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => {
+                    haptics.medium();
+                    onDelete(feed.id);
+                  }}
+                  className="hidden md:flex opacity-0 group-hover:opacity-100 transition-opacity duration-200 items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-[#1a1a1a] text-gray-600 dark:text-[#9CA3AF] hover:text-[#ec1e24] dark:hover:text-[#ec1e24]"
+                  aria-label="Delete feed"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            ) : null}
 
             <Switch
               checked={feed.enabled}

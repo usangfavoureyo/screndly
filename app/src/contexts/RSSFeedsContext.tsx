@@ -44,6 +44,7 @@ export interface RSSFeed {
   url: string;
   favicon?: string;
   enabled: boolean;
+  displayOrder?: number;
   interval: number;
   imageCount: '1' | '2' | '3' | 'random';
   platformImageCounts?: PlatformImageCounts;
@@ -176,6 +177,7 @@ interface RSSFeedsContextType {
   deleteActivity: (activityId: string) => Promise<void>;
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
   togglePlatform: (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => Promise<void>;
+  reorderFeeds: (orderedIds: string[]) => Promise<void>;
   getFeedsByStatus: (status: RSSFeed['status']) => RSSFeed[];
   refetch: (options?: { silent?: boolean }) => Promise<void>;
 }
@@ -201,11 +203,52 @@ function buildRefreshToastMessage(result: RSSRefreshResult): string {
 function normalizeFeed(feed: RSSFeed): RSSFeed {
   return {
     ...feed,
+    displayOrder: typeof feed.displayOrder === 'number' ? feed.displayOrder : 0,
     serperEnabled: feed.serperEnabled ?? true,
     tmdbEnabled: feed.tmdbEnabled ?? false,
     serperPriority: feed.serperPriority ?? true,
     rehostImages: feed.rehostImages ?? false,
   };
+}
+
+function reorderFeedCollection(collection: RSSFeed[], orderedIds: string[]): RSSFeed[] {
+  if (orderedIds.length === 0) {
+    return collection;
+  }
+
+  const currentById = new Map(collection.map((feed) => [feed.id, feed] as const));
+  const orderedFeeds: RSSFeed[] = [];
+
+  for (const id of orderedIds) {
+    const feed = currentById.get(id);
+    if (!feed) {
+      return collection;
+    }
+    orderedFeeds.push(feed);
+    currentById.delete(id);
+  }
+
+  if (currentById.size > 0) {
+    orderedFeeds.push(...currentById.values());
+  }
+
+  return orderedFeeds.map((feed, index) => ({
+    ...feed,
+    displayOrder: index,
+  }));
+}
+
+function sortFeedsByDisplayOrder(collection: RSSFeed[]): RSSFeed[] {
+  return [...collection].sort((left, right) => {
+    const displayOrderDelta = (left.displayOrder ?? 0) - (right.displayOrder ?? 0);
+    if (displayOrderDelta !== 0) {
+      return displayOrderDelta;
+    }
+
+    const leftCreatedAt = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightCreatedAt = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+    return rightCreatedAt - leftCreatedAt;
+  });
 }
 
 export function RSSFeedsProvider({ children }: { children: ReactNode }) {
@@ -228,14 +271,14 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
       }
 
       const normalizedFeeds = Array.isArray(response.data) ? response.data.map((feed) => normalizeFeed(feed)) : [];
-      setFeeds(normalizedFeeds);
+      setFeeds(sortFeedsByDisplayOrder(normalizedFeeds));
       void saveRSSFeedsSnapshot(normalizedFeeds);
     } catch (err) {
       console.error('Error fetching RSS feeds:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch feeds');
       const savedFeeds = await getRSSFeedsSnapshot<RSSFeed[]>();
       if (savedFeeds) {
-        setFeeds(savedFeeds.map((feed) => normalizeFeed(feed)));
+        setFeeds(sortFeedsByDisplayOrder(savedFeeds.map((feed) => normalizeFeed(feed))));
       } else if (!silent) {
         setFeeds([]);
       }
@@ -254,7 +297,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setFeeds(savedFeeds.map((feed) => normalizeFeed(feed)));
+      setFeeds(sortFeedsByDisplayOrder(savedFeeds.map((feed) => normalizeFeed(feed))));
       setIsLoading(false);
     });
 
@@ -277,7 +320,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
       }
 
       const normalizedFeed = normalizeFeed(response.data);
-      setFeeds((prev) => [normalizedFeed, ...prev]);
+      setFeeds((prev) => sortFeedsByDisplayOrder([...prev, normalizedFeed]));
       toast.success('Feed added successfully');
       return normalizedFeed;
     } catch (err) {
@@ -310,7 +353,9 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
       }
 
       const normalizedFeed = normalizeFeed(response.data);
-      setFeeds((prev) => prev.map((feed) => (feed.id === feedId ? { ...feed, ...normalizedFeed } : feed)));
+      setFeeds((prev) =>
+        sortFeedsByDisplayOrder(prev.map((feed) => (feed.id === feedId ? { ...feed, ...normalizedFeed } : feed)))
+      );
     } catch (err) {
       console.error('Error updating RSS feed:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to update feed');
@@ -367,6 +412,31 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     };
 
     await updateFeed(feedId, { platformsEnabled });
+  };
+
+  const reorderFeeds = async (orderedIds: string[]) => {
+    if (orderedIds.length === 0) {
+      return;
+    }
+
+    const previousFeeds = feeds;
+    const optimisticFeeds = reorderFeedCollection(previousFeeds, orderedIds);
+    setFeeds(optimisticFeeds);
+
+    try {
+      const response = await apiClient.post<RSSFeed[]>('/api/rss/feeds/reorder', { orderedIds });
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to reorder feeds');
+      }
+
+      setFeeds(sortFeedsByDisplayOrder(response.data.map((feed) => normalizeFeed(feed))));
+      toast.success('Feed order saved');
+    } catch (err) {
+      console.error('Error reordering RSS feeds:', err);
+      setFeeds(previousFeeds);
+      toast.error(err instanceof Error ? err.message : 'Failed to reorder feeds');
+      throw err instanceof Error ? err : new Error('Failed to reorder feeds');
+    }
   };
 
   const refreshFeed = async (
@@ -493,10 +563,11 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     previewFeed,
     previewFeedPipeline,
     getActivity,
-    retryActivity,
-    deleteActivity,
-    toggleFeedEnabled,
+        retryActivity,
+        deleteActivity,
+        toggleFeedEnabled,
         togglePlatform,
+        reorderFeeds,
         getFeedsByStatus,
         refetch: fetchFeeds,
       }}

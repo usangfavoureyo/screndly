@@ -199,13 +199,13 @@ export function MarketingLandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
             viewport={{ once: true }}
-            className="relative flex justify-center md:justify-end"
+            className="relative flex min-w-0 justify-center md:justify-end"
           >
-            <div className="relative w-full max-w-[680px]">
+            <div className="relative w-full max-w-[680px] overflow-hidden">
               <img
                 src={HERO_DEVICE_MOCKUP}
                 alt="Samsung Galaxy mockup showing the Screndly dashboard."
-                className="relative z-10 ml-auto w-full max-w-[560px] object-contain drop-shadow-[0_35px_70px_rgba(0,0,0,0.38)]"
+                className="relative z-10 mx-auto w-full max-w-[320px] object-contain drop-shadow-[0_35px_70px_rgba(0,0,0,0.38)] sm:ml-auto sm:mr-0 sm:max-w-[420px] lg:max-w-[560px]"
               />
               <div className="pointer-events-none absolute right-6 top-10 h-44 w-44 rounded-full bg-[#ec1e24]/18 blur-3xl" />
               <div className="pointer-events-none absolute bottom-8 left-8 h-36 w-36 rounded-full bg-white/8 blur-3xl" />
@@ -361,8 +361,8 @@ export function MarketingLandingPage() {
                       </span>
                     </div>
                     {preview.images ? (
-                      <div className="mt-4 overflow-hidden rounded-xl bg-[var(--marketing-surface)] p-3">
-                        <div className="flex gap-3 overflow-x-auto pb-1">
+                      <div className="mt-4 w-full overflow-hidden rounded-xl bg-[var(--marketing-surface)] p-3">
+                        <div className="flex max-w-full gap-3 overflow-x-auto pb-1">
                           {preview.images.map((image) => (
                             <div
                               key={image.src}

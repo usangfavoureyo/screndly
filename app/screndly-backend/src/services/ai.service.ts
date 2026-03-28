@@ -174,7 +174,7 @@ function resolveReasoningEffort(request: AIRequest): AIReasoningEffort | undefin
         return undefined;
     }
 
-    return request.model.startsWith('gpt-5') ? 'low' : 'minimal';
+    return 'minimal';
 }
 
 export interface ValidationResult {
@@ -674,6 +674,10 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
         }
 
         const data = await response.json() as {
+            status?: string;
+            incomplete_details?: {
+                reason?: string;
+            };
             output_text?: unknown;
             output?: Array<{
                 type?: string;
@@ -689,6 +693,14 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
             };
         };
         const content = extractOpenAIResponsesContent(data);
+
+        if (!content) {
+            throw new Error(
+                data.status === 'incomplete' && data.incomplete_details?.reason
+                    ? `OpenAI Responses API returned no content (${data.incomplete_details.reason})`
+                    : 'OpenAI Responses API returned no content'
+            );
+        }
 
         await trackApiUsage({
             service: 'openai',
