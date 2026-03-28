@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
   AlertCircle,
+  WifiNoSignal,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { BackIconButton } from './BackIconButton';
@@ -313,8 +314,12 @@ export function NotificationPanel({
   };
 
   const getIcon = (notification: Notification) => {
-    if (notification.source === 'rss' || notification.source === 'tmdb') {
+    if (notification.source === 'rss') {
       return <Rss className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
+    if (notification.source === 'tmdb') {
+      return <WifiNoSignal className="w-5 h-5 text-[#ec1e24]" />;
     }
 
     if (notification.source === 'videostudio') {

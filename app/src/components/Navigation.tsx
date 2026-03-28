@@ -1,7 +1,6 @@
 import { LayoutDashboard, ChannelsIcon, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { useRef } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import brandIcon from '../assets/brand-icon.png';
@@ -15,26 +14,6 @@ const NAV_ITEMS = [
   { id: 'design-studio', label: 'Design Studio', icon: Image },
   { id: 'video-studio', label: 'Video Studio', icon: Film },
 ] as const;
-
-const TOP_BAR_AVATAR_SPRING = {
-  type: 'spring' as const,
-  stiffness: 540,
-  damping: 32,
-  mass: 0.82,
-  restSpeed: 0.08,
-  restDelta: 0.12,
-};
-
-const TOP_BAR_AVATAR_VARIANTS = {
-  hidden: {
-    y: 8,
-    scale: 0.94,
-  },
-  visible: {
-    y: 0,
-    scale: 1,
-  },
-};
 
 interface NavigationProps {
   currentPage: string;
@@ -58,7 +37,6 @@ export function Navigation({
   onToggleDesktopSidebar,
 }: NavigationProps) {
   const pendingPointerActivationRef = useRef<string | null>(null);
-  const prefersReducedMotion = useReducedMotion();
   const { scrollDirection, isNearTop } = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
   const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
@@ -185,7 +163,7 @@ export function Navigation({
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
               <Icon
-                size={item.id === 'channels' ? 24 : 20}
+                size={item.id === 'channels' ? 22 : 20}
                 className={cn(
                   'shrink-0 transition-transform duration-200',
                   !isActive && 'group-hover:scale-110',
@@ -229,31 +207,24 @@ export function Navigation({
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', ['--desktop-sidebar-width' as string]: desktopSidebarWidth }}
       >
         <div className="relative h-14">
-          <div
-            className={cn(
-              'absolute left-4 lg:hidden',
-              isNearTop
-                ? 'pointer-events-auto'
-                : 'pointer-events-none',
-            )}
-          >
-            <motion.button
-              type="button"
-              initial="hidden"
-              animate={isNearTop ? 'visible' : 'hidden'}
-              variants={TOP_BAR_AVATAR_VARIANTS}
-              transition={prefersReducedMotion ? { duration: 0 } : TOP_BAR_AVATAR_SPRING}
-              onClick={() => {
-                haptics.light();
-                handleNavClick('dashboard');
-              }}
-              className="flex items-center justify-center [backface-visibility:hidden] [transform:translateZ(0)] will-change-transform"
-              aria-label="Go to dashboard"
-              // Match X/Twitter's top-bar avatar reveal: compact spring rise, tiny overshoot, immediate settle.
-            >
-              <img src={brandIcon} alt="Screndly" className="h-10 w-10 object-contain" />
-            </motion.button>
-          </div>
+          {isNearTop && (
+            <div className="pointer-events-auto absolute left-4 lg:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.light();
+                  handleNavClick('dashboard');
+                }}
+                className={cn(
+                  'flex items-center justify-center rounded-full px-2 py-1.5 transition-[transform,opacity] duration-200 hover:scale-[1.03] active:scale-95',
+                  floatingSurfaceClasses,
+                )}
+                aria-label="Go to dashboard"
+              >
+                <img src={brandIcon} alt="Screndly" className="h-8 w-8 rounded-md object-contain" />
+              </button>
+            </div>
+          )}
 
           <div className="pointer-events-auto absolute right-4 lg:right-8">
             <div className={cn('flex items-center gap-1 rounded-full p-1', floatingSurfaceClasses)}>

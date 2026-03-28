@@ -7,6 +7,7 @@ import {
   Settings as SettingsIcon,
   Film,
   Rss,
+  WifiNoSignal,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 
@@ -260,8 +261,12 @@ export function SwipeableNotificationCard({
   };
 
   const getIcon = (currentNotification: Notification) => {
-    if (currentNotification.source === 'rss' || currentNotification.source === 'tmdb') {
+    if (currentNotification.source === 'rss') {
       return <Rss className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
+    if (currentNotification.source === 'tmdb') {
+      return <WifiNoSignal className="w-5 h-5 text-[#ec1e24]" />;
     }
 
     if (currentNotification.source === 'videostudio') {

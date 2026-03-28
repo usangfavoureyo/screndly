@@ -23,6 +23,7 @@ interface TMDbImagePreviewDialogProps {
   title?: string;
   imageType?: 'poster' | 'backdrop' | 'logo' | 'custom';
   imageTypes?: Array<'poster' | 'backdrop' | 'logo' | 'custom'>;
+  initialIndex?: number;
   onOpenChange: (open: boolean) => void;
   onClose: () => void;
 }
@@ -34,6 +35,7 @@ export function TMDbImagePreviewDialog({
   title,
   imageType,
   imageTypes,
+  initialIndex,
   onOpenChange,
   onClose,
 }: TMDbImagePreviewDialogProps) {
@@ -54,6 +56,7 @@ export function TMDbImagePreviewDialog({
       title={title || 'TMDb image preview'}
       badgeLabel={formatImageTypeLabel(imageType)}
       badgeLabels={imageTypes?.map((value) => formatImageTypeLabel(value) || '')}
+      initialIndex={initialIndex}
       onOpenChange={handleOpenChange}
     />
   );

@@ -14,6 +14,7 @@ import {
 } from '../ui/bottom-sheet';
 import { RedSpinner } from '../PageLoader';
 import { ImageStyleSelector } from './ImageStyleSelector';
+import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import { useTmdbImageCycler } from '../../hooks/useTmdbImageCycler';
 import {
   getTMDbImageStyleLabel,
@@ -55,30 +56,53 @@ function PreviewCard({
   imageUrl,
   alt,
   emptyMessage,
+  onPreview,
 }: {
   label: string;
   imageUrl?: string | null;
   alt: string;
   emptyMessage: string;
+  onPreview?: () => void;
 }) {
+  const isClickable = Boolean(imageUrl && onPreview);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-black">
       <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-[#333333]">
         <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-[#9CA3AF]">
           {label}
         </span>
+        {isClickable ? (
+          <span className="text-[11px] font-medium text-[#ec1e24]">
+            Tap to expand
+          </span>
+        ) : null}
       </div>
-      <div className="h-36 bg-gray-100 dark:bg-[#111111]">
-        {imageUrl ? (
+      {imageUrl ? (
+        <button
+          type="button"
+          onClick={onPreview}
+          className={`h-36 w-full bg-gray-100 text-left dark:bg-[#111111] ${isClickable ? 'cursor-zoom-in transition-opacity hover:opacity-90' : 'cursor-default'}`}
+          disabled={!isClickable}
+        >
           <img src={imageUrl} alt={alt} className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-xs text-gray-500 dark:text-[#9CA3AF]">
-            {emptyMessage}
-          </div>
-        )}
-      </div>
+        </button>
+      ) : (
+        <div className="flex h-36 items-center justify-center bg-gray-100 px-4 text-center text-xs text-gray-500 dark:bg-[#111111] dark:text-[#9CA3AF]">
+          {emptyMessage}
+        </div>
+      )}
     </div>
   );
+}
+
+interface PreviewDialogState {
+  open: boolean;
+  imageUrl?: string;
+  imageUrls?: string[];
+  imageType?: TMDbImageAssetType;
+  imageTypes?: TMDbImageAssetType[];
+  initialIndex?: number;
 }
 
 export function ChangeImageBottomSheet({
@@ -97,6 +121,7 @@ export function ChangeImageBottomSheet({
   const [isLoadingAssets, setIsLoadingAssets] = useState(false);
   const [isSavingImage, setIsSavingImage] = useState(false);
   const [pools, setPools] = useState<TMDbImagePools>(createEmptyPools);
+  const [previewDialog, setPreviewDialog] = useState<PreviewDialogState>({ open: false });
 
   useEffect(() => {
     if (!open) {
@@ -239,6 +264,37 @@ export function ChangeImageBottomSheet({
     onOpenChange(false);
   };
 
+  const openPreview = ({
+    imageUrls,
+    imageTypes,
+    initialIndex = 0,
+  }: {
+    imageUrls: string[];
+    imageTypes: TMDbImageAssetType[];
+    initialIndex?: number;
+  }) => {
+    const filteredUrls = imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0);
+    const filteredTypes = imageTypes.filter((value): value is TMDbImageAssetType => typeof value === 'string');
+
+    if (filteredUrls.length === 0) {
+      return;
+    }
+
+    haptics.light();
+    setPreviewDialog({
+      open: true,
+      imageUrl: filteredUrls[initialIndex] ?? filteredUrls[0],
+      imageUrls: filteredUrls,
+      imageType: filteredTypes[initialIndex] ?? filteredTypes[0],
+      imageTypes: filteredTypes.length > 0 ? filteredTypes : undefined,
+      initialIndex,
+    });
+  };
+
+  const closePreview = () => {
+    setPreviewDialog({ open: false });
+  };
+
   const handleSaveImage = async () => {
     if (!selection || !canSave || isSavingImage) {
       return;
@@ -290,6 +346,10 @@ export function ChangeImageBottomSheet({
             imageUrl={uploadedImageUrl}
             alt={`${title} uploaded`}
             emptyMessage="No uploaded image selected."
+            onPreview={uploadedImageUrl ? () => openPreview({
+              imageUrls: [uploadedImageUrl],
+              imageTypes: ['custom'],
+            }) : undefined}
           />
         </div>
       );
@@ -312,6 +372,10 @@ export function ChangeImageBottomSheet({
             imageUrl={selectedPoster?.url}
             alt={`${title} poster`}
             emptyMessage="No posters available for this title."
+            onPreview={selectedPoster?.url ? () => openPreview({
+              imageUrls: [selectedPoster.url],
+              imageTypes: ['poster'],
+            }) : undefined}
           />
         </div>
       );
@@ -334,6 +398,10 @@ export function ChangeImageBottomSheet({
             imageUrl={selectedBackdrop?.url}
             alt={`${title} backdrop`}
             emptyMessage="No backdrops available for this title."
+            onPreview={selectedBackdrop?.url ? () => openPreview({
+              imageUrls: [selectedBackdrop.url],
+              imageTypes: ['backdrop'],
+            }) : undefined}
           />
         </div>
       );
@@ -368,12 +436,28 @@ export function ChangeImageBottomSheet({
               imageUrl={selectedPoster?.url}
               alt={`${title} poster`}
               emptyMessage="No posters available for this title."
+              onPreview={selectedPoster?.url && selectedBackdrop?.url ? () => openPreview({
+                imageUrls: [selectedPoster.url, selectedBackdrop.url],
+                imageTypes: ['poster', 'backdrop'],
+                initialIndex: 0,
+              }) : selectedPoster?.url ? () => openPreview({
+                imageUrls: [selectedPoster.url],
+                imageTypes: ['poster'],
+              }) : undefined}
             />
             <PreviewCard
               label="Backdrop"
               imageUrl={selectedBackdrop?.url}
               alt={`${title} backdrop`}
               emptyMessage="No backdrops available for this title."
+              onPreview={selectedPoster?.url && selectedBackdrop?.url ? () => openPreview({
+                imageUrls: [selectedPoster.url, selectedBackdrop.url],
+                imageTypes: ['poster', 'backdrop'],
+                initialIndex: 1,
+              }) : selectedBackdrop?.url ? () => openPreview({
+                imageUrls: [selectedBackdrop.url],
+                imageTypes: ['backdrop'],
+              }) : undefined}
             />
           </div>
         </div>
@@ -408,12 +492,28 @@ export function ChangeImageBottomSheet({
             imageUrl={selectedBackdrop?.url}
             alt={`${title} backdrop`}
             emptyMessage="No backdrops available for this title."
+            onPreview={selectedBackdrop?.url && selectedLogo?.url ? () => openPreview({
+              imageUrls: [selectedBackdrop.url, selectedLogo.url],
+              imageTypes: ['backdrop', 'logo'],
+              initialIndex: 0,
+            }) : selectedBackdrop?.url ? () => openPreview({
+              imageUrls: [selectedBackdrop.url],
+              imageTypes: ['backdrop'],
+            }) : undefined}
           />
           <PreviewCard
             label="Logo"
             imageUrl={selectedLogo?.url}
             alt={`${title} logo`}
             emptyMessage="No logos available for this title."
+            onPreview={selectedBackdrop?.url && selectedLogo?.url ? () => openPreview({
+              imageUrls: [selectedBackdrop.url, selectedLogo.url],
+              imageTypes: ['backdrop', 'logo'],
+              initialIndex: 1,
+            }) : selectedLogo?.url ? () => openPreview({
+              imageUrls: [selectedLogo.url],
+              imageTypes: ['logo'],
+            }) : undefined}
           />
         </div>
       </div>
@@ -421,83 +521,101 @@ export function ChangeImageBottomSheet({
   };
 
   return (
-    <BottomSheet open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
-      <BottomSheetHeader>
-        <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
-        <BottomSheetDescription>
-          Choose a TMDb image style or upload your own image for this feed.
-        </BottomSheetDescription>
-      </BottomSheetHeader>
+    <>
+      <TMDbImagePreviewDialog
+        open={previewDialog.open}
+        imageUrl={previewDialog.imageUrl}
+        imageUrls={previewDialog.imageUrls}
+        title={title}
+        imageType={previewDialog.imageType}
+        imageTypes={previewDialog.imageTypes}
+        initialIndex={previewDialog.initialIndex}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closePreview();
+          }
+        }}
+        onClose={closePreview}
+      />
 
-      <BottomSheetBody>
-        <div className="space-y-4">
-          <ImageStyleSelector
-            selectedStyle={selectedStyle}
-            disabledStyles={disabledStyles}
-            onSelect={handleStyleSelect}
-          />
+      <BottomSheet open={open} onOpenChange={(nextOpen) => !nextOpen && handleClose()}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Change Image ({title})</BottomSheetTitle>
+          <BottomSheetDescription>
+            Choose a TMDb image style or upload your own image for this feed.
+          </BottomSheetDescription>
+        </BottomSheetHeader>
 
-          <button
-            type="button"
-            onClick={handleUploadTrigger}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+        <BottomSheetBody>
+          <div className="space-y-4">
+            <ImageStyleSelector
+              selectedStyle={selectedStyle}
+              disabledStyles={disabledStyles}
+              onSelect={handleStyleSelect}
+            />
+
+            <button
+              type="button"
+              onClick={handleUploadTrigger}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+            >
+              <Upload className="h-4 w-4" />
+              Upload your own image
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            {isLoadingAssets ? (
+              <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 dark:border-[#333333] dark:bg-black">
+                <RedSpinner
+                  size="md"
+                  className="mx-auto"
+                  label={`Loading ${getTMDbImageStyleLabel(selectedStyle).toLowerCase()} options`}
+                />
+              </div>
+            ) : (
+              renderModeControls()
+            )}
+
+            {!uploadedImageUrl && !isLoadingAssets && !canSave && (
+              <div className="flex items-start gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-[#333333] dark:bg-black">
+                <ImageIcon className="mt-0.5 h-4 w-4 text-[#ec1e24]" />
+                <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
+                  This style needs assets that TMDb does not have for this title. Choose another style or upload your own image.
+                </p>
+              </div>
+            )}
+          </div>
+        </BottomSheetBody>
+
+        <BottomSheetFooter>
+          <Button
+            onClick={handleSaveImage}
+            disabled={!canSave || isSavingImage || isLoadingAssets || !selection}
           >
-            <Upload className="h-4 w-4" />
-            Upload your own image
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-
-          {isLoadingAssets ? (
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-10 dark:border-[#333333] dark:bg-black">
-              <RedSpinner
-                size="md"
-                className="mx-auto"
-                label={`Loading ${getTMDbImageStyleLabel(selectedStyle).toLowerCase()} options`}
-              />
-            </div>
-          ) : (
-            renderModeControls()
-          )}
-
-          {!uploadedImageUrl && !isLoadingAssets && !canSave && (
-            <div className="flex items-start gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-[#333333] dark:bg-black">
-              <ImageIcon className="mt-0.5 h-4 w-4 text-[#ec1e24]" />
-              <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
-                This style needs assets that TMDb does not have for this title. Choose another style or upload your own image.
-              </p>
-            </div>
-          )}
-        </div>
-      </BottomSheetBody>
-
-      <BottomSheetFooter>
-        <Button
-          onClick={handleSaveImage}
-          disabled={!canSave || isSavingImage || isLoadingAssets || !selection}
-        >
-          {isSavingImage ? (
-            <>
-              <RedSpinner size="sm" className="mr-2" label="Saving image selection" />
-              Save
-            </>
-          ) : 'Save'}
-        </Button>
-        <Button
-          variant="outline"
-          onClick={handleClose}
-          disabled={isSavingImage}
-          className="border-gray-200 dark:border-[#333333]"
-        >
-          Cancel
-        </Button>
-      </BottomSheetFooter>
-    </BottomSheet>
+            {isSavingImage ? (
+              <>
+                <RedSpinner size="sm" className="mr-2" label="Saving image selection" />
+                Save
+              </>
+            ) : 'Save'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleClose}
+            disabled={isSavingImage}
+            className="border-gray-200 dark:border-[#333333]"
+          >
+            Cancel
+          </Button>
+        </BottomSheetFooter>
+      </BottomSheet>
+    </>
   );
 }

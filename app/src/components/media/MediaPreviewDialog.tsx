@@ -359,6 +359,10 @@ export function MediaPreviewDialog({
       ? 'Expanded image preview with swipe, pinch, and double-tap zoom.'
       : 'Expanded image preview with pinch and double-tap zoom.';
 
+  if (!open) {
+    return null;
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
