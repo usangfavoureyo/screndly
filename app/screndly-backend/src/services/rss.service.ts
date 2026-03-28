@@ -449,6 +449,10 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
   };
 }
 
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
+}
+
 function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]): Array<T & {
   displayOrder: number;
   platformImageCounts?: Prisma.JsonValue | null;
@@ -456,14 +460,7 @@ function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]
   serperEnabled: boolean;
   tmdbEnabled: boolean;
 }> {
-  return feeds
-    .map((feed) => applyRSSFeedCompatibility(feed))
-    .filter((feed): feed is T & {
-      platformImageCounts?: Prisma.JsonValue | null;
-      trickle: 'newest_first' | 'oldest_first';
-      serperEnabled: boolean;
-      tmdbEnabled: boolean;
-    } => Boolean(feed));
+  return feeds.map((feed) => applyRSSFeedCompatibility(feed)).filter(isPresent);
 }
 
 function asString(value: Prisma.JsonValue | undefined): string | undefined {
