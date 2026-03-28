@@ -215,13 +215,10 @@ export function Navigation({
                   haptics.light();
                   handleNavClick('dashboard');
                 }}
-                className={cn(
-                  'flex items-center justify-center rounded-full px-2 py-1.5 transition-[transform,opacity] duration-200 hover:scale-[1.03] active:scale-95',
-                  floatingSurfaceClasses,
-                )}
+                className="flex items-center justify-center transition-transform duration-200 hover:scale-[1.03] active:scale-95"
                 aria-label="Go to dashboard"
               >
-                <img src={brandIcon} alt="Screndly" className="h-8 w-8 rounded-md object-contain" />
+                <img src={brandIcon} alt="Screndly" className="h-10 w-10 object-contain" />
               </button>
             </div>
           )}

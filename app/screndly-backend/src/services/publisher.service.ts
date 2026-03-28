@@ -127,6 +127,14 @@ export class PublisherService {
             || normalized.includes('/generated-thumbnails/');
     }
 
+    private isAcceptedMetaPublishImageUrl(value: string): boolean {
+        if (this.isMetaHostedImageUrl(value) && !this.isMetaRiskyGeneratedImageUrl(value)) {
+            return true;
+        }
+
+        return this.isDirectMetaSafeRemoteImageSource(value) && !this.isRiskyGeneratedImageSource(value);
+    }
+
     private isRiskyGeneratedImageSource(value: string): boolean {
         const normalized = value.trim().toLowerCase();
         return normalized.includes('/rss/logo-cards/')
@@ -478,15 +486,13 @@ export class PublisherService {
             }
         }
 
-        const safeUrls = resolved.filter((value) =>
-            this.isMetaHostedImageUrl(value) && !this.isMetaRiskyGeneratedImageUrl(value)
-        );
+        const safeUrls = resolved.filter((value) => this.isAcceptedMetaPublishImageUrl(value));
         if (safeUrls.length > 0) {
             return safeUrls;
         }
 
         if (orderedRawUrls.length > 0) {
-            throw new Error('Meta publish requires at least one valid Screndly-hosted image asset');
+            throw new Error('Meta publish requires at least one valid Meta-safe image asset');
         }
 
         return [];

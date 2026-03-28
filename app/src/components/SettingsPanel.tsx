@@ -1,5 +1,5 @@
 import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, LogOut, Auction, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
+import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
@@ -11,7 +11,6 @@ import { useBackNavigation } from '../contexts/BackNavigationContext';
 import { useTransientHistoryState } from '../hooks/useTransientHistoryState';
 import { useScrollLock } from '../hooks/useScrollLock';
 import { PageLoader } from './PageLoader';
-import settingsRowArrowIcon from '../public/icons/icons/hugeroundedicons/arrow-right-01-stroke-rounded.svg';
 
 const VideoSettings = lazyWithRetry(() => import('./settings/VideoSettings').then((module) => ({ default: module.VideoSettings })), 'VideoSettings');
 const CommentReplySettings = lazyWithRetry(() => import('./settings/CommentReplySettings').then((module) => ({ default: module.CommentReplySettings })), 'CommentReplySettings');
@@ -618,12 +617,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
                   <item.icon className="w-5 h-5 text-[#ec1e24]" />
                   <span className="text-gray-900 dark:text-white">{item.label}</span>
                 </div>
-                <img
-                  src={settingsRowArrowIcon}
-                  alt=""
-                  aria-hidden="true"
-                  className="h-5 w-5 object-contain opacity-70 dark:opacity-80"
-                />
+                <ChevronRight className="h-5 w-5 text-gray-400" />
               </button>
             ))}
           </div>
