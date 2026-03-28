@@ -1,8 +1,6 @@
 import {
   ArrowRight,
   CalendarClock,
-  ClipboardList,
-  Film,
   Lock,
   PenTool,
   Rss,
@@ -146,6 +144,7 @@ const PREVIEWS = [
 
 const HERO_VIDEO = "/marketing/video/hero-nebula.mp4";
 const HERO_VIDEO_POSTER = "/marketing/video/hero-nebula-poster.jpg";
+const HERO_DEVICE_MOCKUP = "/marketing/devices/samsung-galaxy-s25-hero.png";
 
 export function MarketingLandingPage() {
   return (
@@ -200,73 +199,17 @@ export function MarketingLandingPage() {
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, delay: 0.2 }}
             viewport={{ once: true }}
-            className="relative"
+            className="relative flex justify-center md:justify-end"
           >
-            <div className="relative overflow-hidden rounded-[32px] border border-white/12 bg-black/55 shadow-[0_30px_60px_rgba(0,0,0,0.28)] backdrop-blur-md">
-              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(15,15,15,0.82),rgba(15,15,15,0.54)_42%,rgba(236,30,36,0.12)_100%)]" />
-              <div className="relative p-5">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs uppercase tracking-[0.25em] text-white/65">
-                  <span>Screndly Dashboard</span>
-                  <span className="rounded-full bg-[#ec1e24]/20 px-3 py-1 text-[10px] font-semibold text-white">
-                    Private
-                  </span>
-                </div>
-                <div className="mt-4 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
-                  <div className="space-y-3">
-                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-                        Queue
-                      </p>
-                      <div className="mt-3 space-y-2">
-                        <div className="h-2 w-full rounded-full bg-white/15" />
-                        <div className="h-2 w-4/5 rounded-full bg-white/20" />
-                        <div className="h-2 w-2/3 rounded-full bg-white/10" />
-                      </div>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-                        Channels
-                      </p>
-                      <div className="mt-3 space-y-2 text-xs font-medium text-white/75">
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-[#ec1e24]" />
-                          Pinterest Boards
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-white/50" />
-                          TikTok Studio
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="h-2 w-2 rounded-full bg-white/40" />
-                          Editorial Feed
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
-                        Compose
-                      </p>
-                      <Film size={16} className="text-[#ec1e24]" />
-                    </div>
-                    <div className="mt-3 space-y-3">
-                      <div className="h-28 rounded-xl bg-white/8" />
-                      <div className="h-2 w-full rounded-full bg-white/15" />
-                      <div className="h-2 w-4/5 rounded-full bg-white/20" />
-                      <div className="h-2 w-3/4 rounded-full bg-white/10" />
-                      <div className="flex items-center gap-2 pt-2 text-xs font-medium text-white/75">
-                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ec1e24]/20 text-[#ff6b6f]">
-                          <ClipboardList size={14} />
-                        </span>
-                        Review + schedule before publishing
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+            <div className="relative w-full max-w-[680px]">
+              <img
+                src={HERO_DEVICE_MOCKUP}
+                alt="Samsung Galaxy mockup showing the Screndly dashboard."
+                className="relative z-10 ml-auto w-full max-w-[560px] object-contain drop-shadow-[0_35px_70px_rgba(0,0,0,0.38)]"
+              />
+              <div className="pointer-events-none absolute right-6 top-10 h-44 w-44 rounded-full bg-[#ec1e24]/18 blur-3xl" />
+              <div className="pointer-events-none absolute bottom-8 left-8 h-36 w-36 rounded-full bg-white/8 blur-3xl" />
             </div>
-            <div className="pointer-events-none absolute -bottom-6 -left-6 h-32 w-32 rounded-full bg-[#ec1e24]/10 blur-2xl" />
           </motion.div>
         </div>
       </section>
