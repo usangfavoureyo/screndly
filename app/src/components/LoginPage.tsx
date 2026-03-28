@@ -251,7 +251,7 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
               </a>
               {' '}and{' '}
               <a
-                href="/privacy"
+                href="/privacy-policy"
                 className="text-gray-900 dark:text-white hover:underline"
                 onClick={() => haptics.light()}
               >

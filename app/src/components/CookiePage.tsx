@@ -7,7 +7,7 @@ interface CookiePageProps {
 }
 
 export function CookiePage({ onNavigate, isAuthenticated = true }: CookiePageProps) {
-  const SUPPORT_EMAIL = 'screndlyapp@gmail.com';
+const SUPPORT_EMAIL = 'support@screndly.com';
 
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -105,7 +105,7 @@ export function CookiePage({ onNavigate, isAuthenticated = true }: CookiePagePro
       <footer className="border-t border-gray-200 dark:border-[#374151] py-8 px-6 mt-12">
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex flex-wrap gap-2 justify-center text-sm text-gray-600 dark:text-[#9CA3AF]">
-            <a href="/privacy" className="hover:text-[#ec1e24]">Privacy</a>
+            <a href="/privacy-policy" className="hover:text-[#ec1e24]">Privacy</a>
             <span>•</span>
             <a href="/terms" className="hover:text-[#ec1e24]">Terms</a>
             <span>•</span>

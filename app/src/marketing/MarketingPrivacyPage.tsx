@@ -33,7 +33,7 @@ export function MarketingPrivacyPage() {
               <div>
                 <h2 className="text-lg font-semibold text-[var(--marketing-text)]">1. Who We Are</h2>
                 <p className="mt-2">Screndly is operated by Screen Render, located at Business address available upon verified request.</p>
-                <p className="mt-2">Contact email: screndlyapp@gmail.com</p>
+                <p className="mt-2">Contact email: support@screndly.com</p>
                 <p className="mt-2">Website: https://screndly.vercel.app</p>
               </div>
 
@@ -228,7 +228,7 @@ export function MarketingPrivacyPage() {
                 </p>
                 <p className="mt-2">
                   You may request deletion of your Screndly account and associated personal data by contacting:
-                  screndlyapp@gmail.com.
+                  support@screndly.com.
                 </p>
                 <p className="mt-2">Upon a valid deletion request, we will take reasonable steps to:</p>
                 <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -254,7 +254,7 @@ export function MarketingPrivacyPage() {
                   If you connected a Meta account and want your data deleted from Screndly, you may request deletion by:
                 </p>
                 <ul className="mt-2 list-disc space-y-1 pl-5">
-                  <li>emailing screndlyapp@gmail.com with the subject line: Meta Data Deletion Request, or</li>
+                  <li>emailing support@screndly.com with the subject line: Meta Data Deletion Request, or</li>
                   <li>using the in-app account deletion process if available.</li>
                 </ul>
                 <p className="mt-2">
@@ -304,7 +304,7 @@ export function MarketingPrivacyPage() {
                   <li>request portability of your data;</li>
                   <li>lodge a complaint with a data protection authority.</li>
                 </ul>
-                <p className="mt-2">To exercise these rights, contact screndlyapp@gmail.com.</p>
+                <p className="mt-2">To exercise these rights, contact support@screndly.com.</p>
               </div>
 
               <div>
@@ -339,8 +339,8 @@ export function MarketingPrivacyPage() {
                 <p className="mt-2">Business address available upon verified request.</p>
                 <p className="mt-2">
                   Email:{" "}
-                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:screndlyapp@gmail.com">
-                    screndlyapp@gmail.com
+                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:support@screndly.com">
+                    support@screndly.com
                   </a>
                 </p>
               </div>

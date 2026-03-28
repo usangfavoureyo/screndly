@@ -34,8 +34,14 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 import { useTMDbModalStore } from '../stores/tmdbModalStore';
 import { BackIconButton } from './BackIconButton';
-import { TMDbStyledImage } from './tmdb/TMDbStyledImage';
-import { getTMDbImageBadgeLabel, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
+import {
+  deriveTMDbImageStyle,
+  getTMDbAssetUrl,
+  getTMDbImageBadgeLabel,
+  isTMDbLogoCardUrl,
+  type TMDbFeedImageStyle,
+  type TMDbImageAssetType,
+} from '../lib/tmdb/feedImageSelection';
 
 interface TMDbActivityItem {
   id: string;
@@ -599,6 +605,14 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           filteredItems.map((item) => {
             const statusConfig = getStatusConfig(item.status);
             const StatusIcon = statusConfig.icon;
+            const imageCount = Array.isArray(item.imageUrls) && item.imageUrls.length > 0 ? item.imageUrls.length : 1;
+            const imageStyle = item.imageStyle || deriveTMDbImageStyle(item.imageType, item.imageTypes);
+            const rawLogoPreviewUrl = getTMDbAssetUrl(item.imageUrls, item.imageTypes, 'logo');
+            const logoPreviewUrl = isTMDbLogoCardUrl(rawLogoPreviewUrl) ? undefined : rawLogoPreviewUrl;
+            const cardPreviewImageUrl = imageStyle === 'backdrop_logo'
+              ? (logoPreviewUrl || item.imageUrl || item.imageUrls?.[0])
+              : (item.imageUrl || item.imageUrls?.[0]);
+            const useSquareLogoThumbnail = imageStyle === 'backdrop_logo' && Boolean(logoPreviewUrl);
 
             return (
               <SwipeableActivityCard
@@ -614,7 +628,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
               >
                 <div className="flex gap-4">
                   {/* Thumbnail */}
-                  {item.imageUrl && (
+                  {cardPreviewImageUrl && (
                     <button
                       type="button"
                       data-prevent-card-selection="true"
@@ -622,18 +636,27 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                         event.stopPropagation();
                         handleImagePreview(item.id);
                       }}
-                      className="w-20 h-28 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] transition-opacity hover:opacity-90"
+                      className="relative w-20 h-28 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-[#1A1A1A] transition-opacity hover:opacity-90"
                       aria-label={`Expand ${getTMDbImageBadgeLabel(item.imageType, item.imageTypes)} for ${item.title}`}
                     >
-                      <TMDbStyledImage
-                        title={item.title}
-                        imageUrl={item.imageUrl}
-                        imageUrls={item.imageUrls}
-                        imageType={item.imageType}
-                        imageTypes={item.imageTypes}
-                        imageStyle={item.imageStyle}
-                        className="h-full w-full"
-                      />
+                      {useSquareLogoThumbnail ? (
+                        <div className="flex h-full w-full items-center justify-center bg-[#050505] p-2">
+                          <img
+                            src={cardPreviewImageUrl}
+                            alt={`${item.title} logo`}
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <img
+                          src={cardPreviewImageUrl}
+                          alt={item.title}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                      <div className="absolute bottom-2 right-2 min-w-7 rounded-full bg-black/80 px-2 py-1 text-center text-xs font-medium text-white">
+                        {imageCount}
+                      </div>
                     </button>
                   )}
 

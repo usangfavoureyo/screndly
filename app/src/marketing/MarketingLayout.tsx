@@ -212,7 +212,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
               </a>
             </div>
             <a
-              href="mailto:screndlyapp@gmail.com"
+              href="mailto:support@screndly.com"
               className="inline-flex items-center gap-2 font-medium text-[var(--marketing-text)] transition hover:text-[#ec1e24]"
             >
               Contact <ArrowUpRight size={16} />

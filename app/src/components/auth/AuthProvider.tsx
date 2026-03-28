@@ -23,11 +23,9 @@ const ContactPage = lazyWithRetry(() => import('../ContactPage').then(m => ({ de
 
 // Public routes that don't require authentication
 const PUBLIC_ROUTES: Record<string, React.ComponentType<any>> = {
-    '/privacy': PrivacyPage,
+    '/privacy-policy': PrivacyPage,
     '/terms': TermsPage,
     '/data-deletion': DataDeletionPage,
-    '/legal/privacy': PrivacyPage,
-    '/legal/terms': TermsPage,
     '/legal/data-deletion': DataDeletionPage,
     '/cookies': CookiePage,
     '/disclaimer': DisclaimerPage,
@@ -45,8 +43,8 @@ export default function AuthProvider({ children }: AuthProviderProps) {
             return;
         }
 
-        if (window.location.pathname !== '/') {
-            window.history.replaceState({ page: 'dashboard' }, '', '/');
+        if (window.location.pathname !== '/app') {
+            window.history.replaceState({ page: 'dashboard' }, '', '/app');
         }
     };
 
@@ -91,7 +89,7 @@ export default function AuthProvider({ children }: AuthProviderProps) {
     if (PublicComponent && !isAuthenticated) {
         return (
             <Suspense fallback={<PageLoader fullScreen />}>
-                <PublicComponent onNavigate={() => window.location.href = '/'} />
+                <PublicComponent onNavigate={() => window.location.href = '/app'} />
             </Suspense>
         );
     }

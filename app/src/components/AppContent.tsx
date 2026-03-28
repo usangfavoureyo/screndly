@@ -36,6 +36,7 @@ const DESKTOP_SIDEBAR_EXPANDED_WIDTH = "16rem";
 const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = "5rem";
 const APP_STATE_STORAGE_KEY = "screndly_app_state";
 const RSS_ACTIVITY_TARGET_STORAGE_KEY = "screndly_rss_activity_target";
+const APP_BASE_PATH = "/app";
 
 // Lazy load heavy components for better performance
 const ChannelsPage = lazyWithRetry(() => import("./ChannelsPage").then(m => ({ default: m.ChannelsPage })), "ChannelsPage");
@@ -299,7 +300,7 @@ export function AppContent() {
   const updateCurrentPage = useCallback((page: string, historyMode: "push" | "replace" = "push") => {
     setCurrentPageState(page);
 
-    const newUrl = page === 'dashboard' ? '/' : `/${page}`;
+    const newUrl = page === 'dashboard' ? APP_BASE_PATH : `${APP_BASE_PATH}/${page}`;
     if (window.location.pathname !== newUrl) {
       if (historyMode === "replace") {
         window.history.replaceState({ page }, "", newUrl);
@@ -371,7 +372,7 @@ export function AppContent() {
   }, [isNotificationsOpen, registerModalWithCloseHandler, unregisterModal]);
   // Push initial history state on mount (for URL support, not back navigation)
   useEffect(() => {
-    const basePath = `/${currentPage === 'dashboard' ? '' : currentPage}`;
+    const basePath = currentPage === 'dashboard' ? APP_BASE_PATH : `${APP_BASE_PATH}/${currentPage}`;
     const preservedSuffix = `${window.location.search || ''}${window.location.hash || ''}`;
 
     if (window.location.pathname !== basePath) {

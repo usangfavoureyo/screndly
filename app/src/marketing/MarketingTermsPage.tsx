@@ -62,8 +62,8 @@ export function MarketingTermsPage() {
                 </ul>
                 <p className="mt-2">
                   You must notify us promptly at{" "}
-                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:screndlyapp@gmail.com">
-                    screndlyapp@gmail.com
+                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:support@screndly.com">
+                    support@screndly.com
                   </a>{" "}
                   if you believe your account has been accessed without authorization.
                 </p>
@@ -327,8 +327,8 @@ export function MarketingTermsPage() {
                 <p className="mt-2">Business address available upon verified request.</p>
                 <p className="mt-2">
                   Email:{" "}
-                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:screndlyapp@gmail.com">
-                    screndlyapp@gmail.com
+                  <a className="font-medium text-[var(--marketing-text)] underline" href="mailto:support@screndly.com">
+                    support@screndly.com
                   </a>
                 </p>
               </div>

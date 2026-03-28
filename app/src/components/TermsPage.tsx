@@ -10,7 +10,7 @@ const EFFECTIVE_DATE = 'March 7, 2026';
 const LAST_UPDATED = 'March 7, 2026';
 const BUSINESS_NAME = 'Screen Render';
 const BUSINESS_ADDRESS = 'Business address available upon verified request.';
-const SUPPORT_EMAIL = 'screndlyapp@gmail.com';
+const SUPPORT_EMAIL = 'support@screndly.com';
 
 export function TermsPage({ onNavigate, isAuthenticated = true }: TermsPageProps) {
   const [isDesktop, setIsDesktop] = useState(false);
@@ -256,8 +256,8 @@ export function TermsPage({ onNavigate, isAuthenticated = true }: TermsPageProps
             <h2 className="text-lg text-gray-900 dark:text-white mb-3">13. Privacy</h2>
             <p>
               Your use of the Services is also governed by our Privacy Policy:{' '}
-              <a href="/privacy" className="text-[#ec1e24] hover:underline">
-                /privacy
+              <a href="/privacy-policy" className="text-[#ec1e24] hover:underline">
+                /privacy-policy
               </a>
               .
             </p>
@@ -391,7 +391,7 @@ export function TermsPage({ onNavigate, isAuthenticated = true }: TermsPageProps
       <footer className="border-t border-gray-200 dark:border-[#374151] py-8 px-6 mt-12">
         <div className="max-w-4xl mx-auto space-y-4">
           <div className="flex flex-wrap gap-2 justify-center text-sm text-gray-600 dark:text-[#9CA3AF]">
-            <a href="/privacy" className="hover:text-[#ec1e24]">Privacy</a>
+            <a href="/privacy-policy" className="hover:text-[#ec1e24]">Privacy</a>
             <span>|</span>
             <a href="/terms" className="hover:text-[#ec1e24]">Terms</a>
             <span>|</span>

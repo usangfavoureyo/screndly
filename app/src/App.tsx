@@ -164,18 +164,29 @@ export default function App() {
   // }, []);
 
   const pathname = typeof window !== "undefined" ? window.location.pathname : "/";
+  const legacyMarketingRedirects: Record<string, string> = {
+    "/privacy": "/privacy-policy",
+    "/legal/privacy": "/privacy-policy",
+    "/legal/terms": "/terms",
+  };
+  const legacyMarketingPath = legacyMarketingRedirects[pathname];
   const isMarketingRoute = pathname === "/" || pathname === "/privacy-policy" || pathname === "/terms";
   const isAppRoute = pathname === "/app" || pathname.startsWith("/app/");
-  const shouldRedirectToApp = !isMarketingRoute && !isAppRoute;
+  const shouldRedirectToApp = !legacyMarketingPath && !isMarketingRoute && !isAppRoute;
 
   useEffect(() => {
+    if (legacyMarketingPath && typeof window !== "undefined") {
+      window.location.replace(`${legacyMarketingPath}${window.location.search}${window.location.hash}`);
+      return;
+    }
+
     if (!shouldRedirectToApp || typeof window === "undefined") {
       return;
     }
 
     const nextPath = `/app${window.location.pathname}${window.location.search}${window.location.hash}`;
     window.location.replace(nextPath);
-  }, [shouldRedirectToApp]);
+  }, [legacyMarketingPath, shouldRedirectToApp]);
 
   if (isMarketingRoute) {
     if (pathname === "/privacy-policy") {
