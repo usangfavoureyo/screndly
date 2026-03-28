@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RefreshCw, ChevronDown, ChevronUp, CheckCircle, Volume2, VolumeX, X, MoreVertical, Edit2, Monitor, Smartphone, Square } from 'lucide-react';
+import { Play, Pause, RefreshCw, ChevronDownIcon, ChevronUp, CheckCircle, Volume2, VolumeX, X, MoreVertical, Edit2, Monitor, Smartphone, Square } from 'lucide-react';
 import { toast } from "sonner";
 import { Label } from './ui/label';
 import { Separator } from './ui/separator';
@@ -2422,7 +2422,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
               }}
               className="text-gray-600 dark:text-[#9CA3AF] hover:text-gray-900 dark:hover:text-white transition-colors duration-200"
             >
-              {showAnalysisSettings ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              {showAnalysisSettings ? <ChevronUp className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
             </button>
           </div>
 
@@ -2457,7 +2457,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
                   <div className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity" onClick={() => onNavigate('video-studio-activity', 'video-studio')}>
                     <span className="text-gray-900 dark:text-white">View Training Progress</span>
                   </div>
-                  {showTrainingDashboard ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                  {showTrainingDashboard ? <ChevronUp className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
                 </button>
                 {showTrainingDashboard && (
                   <div className="mt-4">
@@ -2490,7 +2490,7 @@ Do not include any other text or explanation. Only return the JSON object.`;
                   <div>
                     <span className="text-gray-900 dark:text-white">Review & Correct Scenes</span>
                   </div>
-                  {showCorrectionInterface ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                  {showCorrectionInterface ? <ChevronUp className="w-5 h-5" /> : <ChevronDownIcon className="w-5 h-5" />}
                 </button>
                 {showCorrectionInterface && reviewTrailerAnalysis && (
                   <div className="mt-4">

@@ -252,7 +252,7 @@ export function ComposeEditorPage({
     formState.threadsXCropVideo?.sourceAssetId === primaryVideoAsset?.id &&
     formState.threadsXCropVideo?.sourceSignature === (primaryVideoAsset ? buildComposeAssetSignature(primaryVideoAsset) : '') &&
     formState.threadsXCropVideo?.focusYPercent === formState.videoCropFocusYPercent &&
-    formState.threadsXCropVideo?.uploadStatus !== 'failed';
+    formState.threadsXCropVideo?.uploadStatus === 'uploaded';
   const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
   const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]

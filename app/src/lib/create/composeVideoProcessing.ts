@@ -52,7 +52,7 @@ export function isThreadsXCropVariantReady(item: ComposeItem, asset: ComposeMedi
     variant.sourceSignature === buildComposeAssetSignature(asset) &&
     variant.focusYPercent === (settings.focusYPercent ?? 50) &&
     Boolean(variant.storageUrl || variant.previewUrl) &&
-    variant.uploadStatus !== 'failed'
+    variant.uploadStatus === 'uploaded'
   );
 }
 
@@ -77,11 +77,33 @@ export function getVideoUrlForComposePlatform(item: ComposeItem, platform: Compo
 }
 
 export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | undefined {
-  const preferredCandidates = [asset.storageUrl, asset.previewUrl];
-  const publishedUrl = preferredCandidates.find(
-    (value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()),
-  );
-  if (publishedUrl) return publishedUrl;
+  const publishedPreviewUrl = typeof asset.previewUrl === 'string' && /^https?:\/\//i.test(asset.previewUrl.trim())
+    ? asset.previewUrl
+    : undefined;
+  if (publishedPreviewUrl) {
+    return publishedPreviewUrl;
+  }
+
+  const publishedStorageUrl = typeof asset.storageUrl === 'string' && /^https?:\/\//i.test(asset.storageUrl.trim())
+    ? asset.storageUrl
+    : undefined;
+  if (publishedStorageUrl) {
+    return publishedStorageUrl;
+  }
+
+  const localPreviewUrl = typeof asset.previewUrl === 'string' && asset.previewUrl.trim().length > 0
+    ? asset.previewUrl
+    : undefined;
+  if (localPreviewUrl) {
+    return localPreviewUrl;
+  }
+
+  const localStorageUrl = typeof asset.storageUrl === 'string' && asset.storageUrl.trim().length > 0
+    ? asset.storageUrl
+    : undefined;
+  if (localStorageUrl) {
+    return localStorageUrl;
+  }
 
   return asset.previewUrl || asset.storageUrl;
 }

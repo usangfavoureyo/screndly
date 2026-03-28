@@ -91,13 +91,13 @@ describe('composeVideoProcessing', () => {
     expect(getVideoUrlForComposePlatform(item, 'facebook_feed')).toBe('https://cdn.example.com/trailer.mp4');
   });
 
-  it('prefers the uploaded source video over blob preview urls for crop generation', () => {
+  it('prefers the browser-safe preview url over the raw storage url for crop generation', () => {
     const asset = buildVideoAsset({
       storageUrl: 'https://cdn.example.com/trailer.mp4',
-      previewUrl: 'blob:https://app.example.com/local-preview',
+      previewUrl: 'https://cdn.example.com/trailer-authorized.mp4?token=abc123',
     });
 
-    expect(getThreadsXCropSourceUrl(asset)).toBe('https://cdn.example.com/trailer.mp4');
+    expect(getThreadsXCropSourceUrl(asset)).toBe('https://cdn.example.com/trailer-authorized.mp4?token=abc123');
   });
 
   it('falls back to preview url when no uploaded source video exists yet', () => {
@@ -107,5 +107,31 @@ describe('composeVideoProcessing', () => {
     });
 
     expect(getThreadsXCropSourceUrl(asset)).toBe('blob:https://app.example.com/local-preview');
+  });
+
+  it('does not treat an in-flight crop upload as ready', () => {
+    const asset = buildVideoAsset();
+    const item: ComposeItem = {
+      ...buildItem(asset),
+      platformFields: {
+        videoProcessing: {
+          cropMode: 'threads_x_3_4',
+          focusYPercent: 50,
+          threadsXCrop: {
+            fileName: 'trailer-3x4.mp4',
+            mimeType: 'video/mp4',
+            size: 2048,
+            storageUrl: 'https://cdn.example.com/trailer-3x4.mp4',
+            sourceAssetId: asset.id,
+            sourceSignature: buildComposeAssetSignature(asset),
+            focusYPercent: 50,
+            aspectRatioLabel: '3:4',
+            uploadStatus: 'uploading',
+          },
+        },
+      },
+    };
+
+    expect(isThreadsXCropVariantReady(item, asset)).toBe(false);
   });
 });

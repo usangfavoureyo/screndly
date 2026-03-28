@@ -89,9 +89,59 @@ const PREVIEWS = [
       },
     ],
   },
-  { title: "Scheduling page", label: "Timeline view for queued and scheduled posts." },
-  { title: "Pinterest publishing workflow", label: "Board selection, title, description, and preview." },
-  { title: "TikTok video publishing flow", label: "Video upload, caption editing, and publish status." },
+  {
+    title: "Scheduling page",
+    label: "Activity view for drafts, scheduled posts, published items, and failures.",
+    image: "/marketing/screenshots/scheduling-page-mobile.jpg",
+    imageAlt: "Screndly post activity screen showing scheduling and publishing status tabs.",
+  },
+  {
+    title: "Pinterest publishing workflow",
+    label:
+      "Representative cross-platform publishing flow showing media selection, captioning, scheduling, and publish controls used before Pinterest board delivery.",
+    badge: "Representative",
+    images: [
+      {
+        src: "/marketing/screenshots/tiktok-flow-2.jpg",
+        alt: "Screndly publishing flow showing a media upload step with a selected video asset.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-1.jpg",
+        alt: "Screndly publishing flow showing TikTok selected within platform targeting controls.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-3.jpg",
+        alt: "Screndly publishing flow showing shared caption and publish controls.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-4.jpg",
+        alt: "Screndly publishing flow showing the schedule post modal.",
+      },
+    ],
+  },
+  {
+    title: "TikTok video publishing flow",
+    label: "Sandbox-tested TikTok posting flow with video upload, caption editing, schedule controls, and publish actions.",
+    badge: "Sandbox flow",
+    images: [
+      {
+        src: "/marketing/screenshots/tiktok-flow-2.jpg",
+        alt: "Screndly TikTok flow showing a selected video asset in the media upload step.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-1.jpg",
+        alt: "Screndly TikTok flow showing TikTok selected among supported publishing targets.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-3.jpg",
+        alt: "Screndly TikTok flow showing the shared caption and publish controls.",
+      },
+      {
+        src: "/marketing/screenshots/tiktok-flow-4.jpg",
+        alt: "Screndly TikTok flow showing date and time scheduling before publish.",
+      },
+    ],
+  },
 ];
 
 const HERO_VIDEO = "/marketing/video/hero-nebula.mp4";
@@ -364,7 +414,7 @@ export function MarketingLandingPage() {
                     <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
                       <span>{preview.title}</span>
                       <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[10px] font-semibold text-[#ec1e24]">
-                        Preview
+                        {preview.badge ?? "Preview"}
                       </span>
                     </div>
                     {preview.images ? (

@@ -305,6 +305,21 @@ const HARD_REJECT_KEYWORDS = [
   'aliexpress',
   'temu',
 ];
+const COMPOSITE_KEYWORDS = [
+  'collage',
+  'composite',
+  'split image',
+  'side by side',
+  'side-by-side',
+  'comparison',
+  'compare',
+  'versus',
+  'vs.',
+  ' vs ',
+  'then and now',
+  'montage',
+  'roundup',
+];
 const FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [];
 const FEED_FALLBACK_BLOCKED_URL_KEYWORDS: string[] = [];
 const MIN_FEED_FALLBACK_WIDTH = 200;
@@ -2301,14 +2316,14 @@ function determineSmartImagePlan(
     centralTitlePerson &&
     titleAnchor
   ) {
-    primary = buildImageSlotPlan(centralTitlePerson, 'actor', 'person_portrait', analysis, false);
-    secondary = buildImageSlotPlan(
+    primary = buildImageSlotPlan(
       titleAnchor,
       inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
       'poster',
       analysis,
       false
     );
+    secondary = buildImageSlotPlan(centralTitlePerson, 'actor', 'person_portrait', analysis, false);
     useTwoImages = true;
   }
 
@@ -2351,7 +2366,26 @@ function shouldFallbackToFeedImageForSecondary(slot: ImageSlotPlan | null): bool
     return true;
   }
 
-  return slot.intent !== 'logo' && slot.intent !== 'brand_backdrop';
+  return false;
+}
+
+function shouldAppendFeedFallbackImages(
+  analysis: RSSSubjectAnalysis,
+  resolved: RSSResolvedImage[]
+): boolean {
+  if (resolved.length === 0) {
+    return true;
+  }
+
+  if (analysis.imageIntent === 'person_portrait') {
+    return false;
+  }
+
+  return resolved.every((image) => image.source === 'feed');
+}
+
+function isCompositeLikeText(text: string): boolean {
+  return containsKeyword(text, COMPOSITE_KEYWORDS);
 }
 
 function getImageRole(text: string, analysis: RSSSubjectAnalysis): ImageRole {
@@ -2463,6 +2497,10 @@ function shouldKeepSecondaryCarouselImage(
   }
 
   if (isBrandedEditorialFrame(secondaryImage)) {
+    return false;
+  }
+
+  if (isCompositeLikeText(normalizeText(`${secondaryImage.reason || ''} ${secondaryImage.url || ''}`))) {
     return false;
   }
 
@@ -2753,14 +2791,16 @@ async function resolveSingleSlotImages(
   }
 
   if (resolved.length < limit) {
-    resolved = mergeResolvedImages(
-      resolved,
-      buildFeedFallbackImages(
-        fallbackImages.filter((url) => !resolved.some((image) => image.url === url)),
-        limit - resolved.length
-      ),
-      limit
-    );
+    if (shouldAppendFeedFallbackImages(analysis, resolved)) {
+      resolved = mergeResolvedImages(
+        resolved,
+        buildFeedFallbackImages(
+          fallbackImages.filter((url) => !resolved.some((image) => image.url === url)),
+          limit - resolved.length
+        ),
+        limit
+      );
+    }
   }
 
   if (resolved[0] && fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(analysis, resolved[0])) {
@@ -3225,6 +3265,7 @@ function scoreImage(
   const looksLikeMovieResult = containsKeyword(text, ['movie', 'film', 'feature film', 'theatrical']);
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || getDomainScore(image.domain || '') >= 15;
   const suppressStudioOnlyResults = !isContainerSubjectType(analysis.primarySubject.type) && analysis.relevantStudios.length > 0;
+  const compositeLikeResult = isCompositeLikeText(text);
 
   if (!mentionsRelevantEntity && !projectAnchorMatch && !relevantStudioMatch && contextMatchCount === 0) {
     return null;
@@ -3250,6 +3291,10 @@ function scoreImage(
   }
 
   if (isLogo && !looksOfficial && !relevantStudioMatch) {
+    return null;
+  }
+
+  if (compositeLikeResult && analysis.imageIntent !== 'logo' && analysis.imageIntent !== 'brand_backdrop') {
     return null;
   }
 

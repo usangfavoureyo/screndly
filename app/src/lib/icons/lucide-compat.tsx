@@ -217,6 +217,7 @@ export const ArrowLeft = createRoundedIcon(`${base}/arrow-left-02-stroke-rounded
 export const ArrowRight = createRoundedIcon(`${base}/arrow-right-02-stroke-rounded.svg`);
 export const ArrowUp = createRoundedIcon(`${base}/arrow-up-02-stroke-rounded.svg`);
 export const ArrowDown = createRoundedIcon(`${base}/arrow-down-02-stroke-rounded.svg`);
+export const ChevronDownIcon = createRoundedIcon(`${base}/arrow-down-01-stroke-rounded.svg`);
 export const ArrowDownWideNarrow = createRoundedIcon(`${base}/filter-stroke-rounded.svg`);
 export const Activity = createRoundedIcon(`${base}/chat-feedback-stroke-rounded.svg`);
 export const Bell = createRoundedIcon(`${base}/notification-01-stroke-rounded.svg`);

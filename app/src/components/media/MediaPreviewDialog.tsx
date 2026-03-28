@@ -378,7 +378,7 @@ export function MediaPreviewDialog({
           <button
             type="button"
             onClick={handleClose}
-            className="absolute right-4 top-4 z-50 rounded-full bg-black/80 p-2 text-white transition-colors hover:bg-black"
+            className="absolute right-4 top-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-black/80 text-white transition-colors hover:bg-black"
             aria-label="Close preview"
           >
             <X className="h-6 w-6" />

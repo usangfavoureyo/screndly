@@ -1,4 +1,3 @@
-import { Calendar } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 
@@ -108,9 +107,6 @@ export function TMDbStatsPanel({ feeds, onFilterChange }: TMDbStatsPanelProps) {
       <div 
         className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-xl dark:hover:shadow-[0_8px_24px_rgba(255,255,255,0.12)] transition-all text-left"
       >
-        <div className="flex items-center justify-between mb-2">
-          <Calendar className="w-5 h-5 text-[#ec1e24]" />
-        </div>
         <div className="text-2xl text-gray-900 dark:text-white mb-1">
           {stats.readyCount}
         </div>
