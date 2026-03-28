@@ -629,6 +629,20 @@ function getRevealDrivenArticleMode(article: RSSImageSelectionArticle): RevealDr
   return null;
 }
 
+function isMemorialStory(article: RSSImageSelectionArticle): boolean {
+  const articleText = [article.title, article.description, article.author]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  if (!articleText) {
+    return false;
+  }
+
+  return /\b(has died|died at|dies at|dead at|passed away|passes away|death of|obituary|remembering|remembered for|mourns?|mourning|tribute to|tributes to|r\.?i\.?p\.?)\b/i
+    .test(articleText);
+}
+
 function isRevealDrivenArticle(article: RSSImageSelectionArticle): boolean {
   return getRevealDrivenArticleMode(article) !== null;
 }
@@ -2132,6 +2146,7 @@ function determineSmartImagePlan(
     ? titleAnchor
     : null;
   const isListArticle = isListLikeArticle(article);
+  const memorialStory = isMemorialStory(article);
 
   let primary = buildImageSlotPlan(
     analysis.visualSubject,
@@ -2173,6 +2188,42 @@ function determineSmartImagePlan(
       secondary: null,
       useTwoImages: false,
     };
+  }
+
+  if (memorialStory) {
+    const memorialPersonSubject = (
+      analysis.primarySubject.type === 'actor' ||
+      analysis.primarySubject.type === 'director' ||
+      analysis.primarySubject.type === 'producer'
+    )
+      ? analysis.primarySubject.name
+      : preferredPersonSubject || leadPerson;
+    const memorialPersonType: SubjectType = (
+      analysis.primarySubject.type === 'actor' ||
+      analysis.primarySubject.type === 'director' ||
+      analysis.primarySubject.type === 'producer'
+    )
+      ? analysis.primarySubject.type
+      : 'actor';
+    const memorialProjectSubject = projectAnchorForPersonStory || inferredLeadProjectSubject || titleAnchor;
+
+    if (
+      memorialPersonSubject &&
+      memorialProjectSubject &&
+      normalizeText(memorialPersonSubject) !== normalizeText(memorialProjectSubject)
+    ) {
+      return {
+        primary: buildImageSlotPlan(memorialPersonSubject, memorialPersonType, 'person_portrait', analysis, false),
+        secondary: buildImageSlotPlan(
+          memorialProjectSubject,
+          inferSlotType(memorialProjectSubject, articleText, 'franchise', analysis),
+          'poster',
+          analysis,
+          false
+        ),
+        useTwoImages: true,
+      };
+    }
   }
 
   if (leadPerson && inferredLeadProjectSubject) {
@@ -3416,7 +3467,7 @@ export async function resolveRelevantRSSImages(
   }
 
   const shouldUseStructuredPairing = limit >= 2 &&
-    (options.smartCount || isStreamingAvailabilityStory(article, analysis));
+    (options.smartCount || isStreamingAvailabilityStory(article, analysis) || isMemorialStory(article));
 
   if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);

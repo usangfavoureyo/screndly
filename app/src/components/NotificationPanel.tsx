@@ -372,7 +372,7 @@ export function NotificationPanel({
                 filterSource || filterType ? 'text-[#ec1e24]' : 'text-[#9CA3AF]'
               } hover:text-[#ec1e24]`}
             >
-              <ArrowDownWideNarrow className="h-3 w-3" />
+              <ArrowDownWideNarrow className="h-2.5 w-2.5" />
               Filter
             </button>
 
@@ -386,7 +386,7 @@ export function NotificationPanel({
                 type="button"
                 aria-label="Notification actions"
               >
-                <MoreVertical className="h-4 w-4" />
+                <MoreVertical className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>

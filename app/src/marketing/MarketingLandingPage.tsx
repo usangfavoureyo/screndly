@@ -72,6 +72,9 @@ const PREVIEWS = [
   { title: "TikTok video publishing flow", label: "Video upload, caption editing, and publish status." },
 ];
 
+const HERO_VIDEO = "/marketing/video/hero-nebula.mp4";
+const HERO_VIDEO_POSTER = "/marketing/video/hero-nebula-poster.jpg";
+
 export function MarketingLandingPage() {
   return (
     <MarketingLayout>
@@ -111,62 +114,77 @@ export function MarketingLandingPage() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="rounded-[32px] border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5 shadow-[0_30px_60px_rgba(0,0,0,0.08)]">
-              <div className="flex items-center justify-between border-b border-[color:var(--marketing-border)] pb-3 text-xs uppercase tracking-[0.25em] text-[var(--marketing-muted-strong)]">
-                <span>Screndly Dashboard</span>
-                <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[10px] font-semibold text-[#ec1e24]">
-                  Private
-                </span>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
-                <div className="space-y-3">
-                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
-                      Queue
-                    </p>
-                    <div className="mt-3 space-y-2">
-                      <div className="h-2 w-full rounded-full bg-[color:var(--marketing-border)]" />
-                      <div className="h-2 w-4/5 rounded-full bg-[color:var(--marketing-border)]" />
-                      <div className="h-2 w-2/3 rounded-full bg-[color:var(--marketing-border)]" />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
-                      Channels
-                    </p>
-                    <div className="mt-3 space-y-2 text-xs font-medium text-[var(--marketing-muted)]">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[#ec1e24]" />
-                        Pinterest Boards
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[color:var(--marketing-muted-strong)]" />
-                        TikTok Studio
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-[color:var(--marketing-muted-strong)]" />
-                        Editorial Feed
-                      </div>
-                    </div>
-                  </div>
+            <div className="relative overflow-hidden rounded-[32px] border border-black/10 bg-black shadow-[0_30px_60px_rgba(0,0,0,0.18)]">
+              <video
+                className="absolute inset-0 h-full w-full object-cover"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                poster={HERO_VIDEO_POSTER}
+                aria-hidden="true"
+              >
+                <source src={HERO_VIDEO} type="video/mp4" />
+              </video>
+              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,0,0,0.66),rgba(0,0,0,0.35)_45%,rgba(236,30,36,0.16)_100%)]" />
+              <div className="relative p-5">
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs uppercase tracking-[0.25em] text-white/65">
+                  <span>Screndly Dashboard</span>
+                  <span className="rounded-full bg-[#ec1e24]/20 px-3 py-1 text-[10px] font-semibold text-white">
+                    Private
+                  </span>
                 </div>
-                <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
-                      Compose
-                    </p>
-                    <Film size={16} className="text-[#ec1e24]" />
+                <div className="mt-4 grid gap-4 md:grid-cols-[0.9fr_1.1fr]">
+                  <div className="space-y-3">
+                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
+                        Queue
+                      </p>
+                      <div className="mt-3 space-y-2">
+                        <div className="h-2 w-full rounded-full bg-white/15" />
+                        <div className="h-2 w-4/5 rounded-full bg-white/20" />
+                        <div className="h-2 w-2/3 rounded-full bg-white/10" />
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
+                        Channels
+                      </p>
+                      <div className="mt-3 space-y-2 text-xs font-medium text-white/75">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-[#ec1e24]" />
+                          Pinterest Boards
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-white/50" />
+                          TikTok Studio
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-white/40" />
+                          Editorial Feed
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-3 space-y-3">
-                    <div className="h-28 rounded-xl bg-[color:var(--marketing-surface-alt)]" />
-                    <div className="h-2 w-full rounded-full bg-[color:var(--marketing-border)]" />
-                    <div className="h-2 w-4/5 rounded-full bg-[color:var(--marketing-border)]" />
-                    <div className="h-2 w-3/4 rounded-full bg-[color:var(--marketing-border)]" />
-                    <div className="flex items-center gap-2 pt-2 text-xs font-medium text-[var(--marketing-muted-strong)]">
-                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
-                        <ClipboardList size={14} />
-                      </span>
-                      Review + schedule before publishing
+                  <div className="rounded-2xl border border-white/10 bg-black/45 p-4 backdrop-blur-sm">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/60">
+                        Compose
+                      </p>
+                      <Film size={16} className="text-[#ec1e24]" />
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      <div className="h-28 rounded-xl bg-white/8" />
+                      <div className="h-2 w-full rounded-full bg-white/15" />
+                      <div className="h-2 w-4/5 rounded-full bg-white/20" />
+                      <div className="h-2 w-3/4 rounded-full bg-white/10" />
+                      <div className="flex items-center gap-2 pt-2 text-xs font-medium text-white/75">
+                        <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#ec1e24]/20 text-[#ff6b6f]">
+                          <ClipboardList size={14} />
+                        </span>
+                        Review + schedule before publishing
+                      </div>
                     </div>
                   </div>
                 </div>
