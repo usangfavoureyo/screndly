@@ -1019,7 +1019,7 @@ export function ComposeEditorPage({
                           <button
                             type="button"
                             onClick={() => removeAsset(asset.id)}
-                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
                             aria-label={`Remove ${asset.fileName}`}
                           >
                             <X className="h-4 w-4" />
@@ -1119,7 +1119,7 @@ export function ComposeEditorPage({
                           <button
                             type="button"
                             onClick={() => removeThumbnail(key)}
-                            className="rounded-lg border border-gray-200 p-2 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
                             aria-label={`Remove ${label}`}
                           >
                             <X className="h-4 w-4" />

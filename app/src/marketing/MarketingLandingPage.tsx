@@ -71,7 +71,24 @@ const PREVIEWS = [
     image: "/marketing/screenshots/dashboard-overview-mobile.jpg",
     imageAlt: "Screndly dashboard overview showing log metrics and recent post activity.",
   },
-  { title: "Post creation interface", label: "Compose posts with media, captions, and metadata." },
+  {
+    title: "Post creation interface",
+    label: "Compose posts with media, captions, platform targeting, and publishing actions.",
+    images: [
+      {
+        src: "/marketing/screenshots/post-creation-1.jpg",
+        alt: "Screndly add post screen showing media upload and platform selection.",
+      },
+      {
+        src: "/marketing/screenshots/post-creation-2.jpg",
+        alt: "Screndly post creation screen showing platform cards and shared caption settings.",
+      },
+      {
+        src: "/marketing/screenshots/post-creation-3.jpg",
+        alt: "Screndly post creation screen showing save, publish, and schedule actions.",
+      },
+    ],
+  },
   { title: "Scheduling page", label: "Timeline view for queued and scheduled posts." },
   { title: "Pinterest publishing workflow", label: "Board selection, title, description, and preview." },
   { title: "TikTok video publishing flow", label: "Video upload, caption editing, and publish status." },
@@ -350,7 +367,25 @@ export function MarketingLandingPage() {
                         Preview
                       </span>
                     </div>
-                    {preview.image ? (
+                    {preview.images ? (
+                      <div className="mt-4 overflow-hidden rounded-xl bg-[var(--marketing-surface)] p-3">
+                        <div className="flex gap-3 overflow-x-auto pb-1">
+                          {preview.images.map((image) => (
+                            <div
+                              key={image.src}
+                              className="min-w-[150px] max-w-[150px] overflow-hidden rounded-[1.3rem] border border-black/10 bg-black shadow-[0_20px_40px_rgba(0,0,0,0.18)]"
+                            >
+                              <img
+                                src={image.src}
+                                alt={image.alt}
+                                className="block h-auto w-full"
+                                loading="lazy"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : preview.image ? (
                       <div className="mt-4 flex justify-center rounded-xl bg-[var(--marketing-surface)] p-3">
                         <div className="w-full max-w-[210px] overflow-hidden rounded-[1.6rem] border border-black/10 bg-black shadow-[0_20px_40px_rgba(0,0,0,0.18)]">
                           <img
