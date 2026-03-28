@@ -65,7 +65,12 @@ const WORKFLOW_STEPS = [
 ];
 
 const PREVIEWS = [
-  { title: "Dashboard overview", label: "Workspace overview with queues, activity, and channels." },
+  {
+    title: "Dashboard overview",
+    label: "Workspace overview with queues, activity, and channels.",
+    image: "/marketing/screenshots/dashboard-overview-mobile.jpg",
+    imageAlt: "Screndly dashboard overview showing log metrics and recent post activity.",
+  },
   { title: "Post creation interface", label: "Compose posts with media, captions, and metadata." },
   { title: "Scheduling page", label: "Timeline view for queued and scheduled posts." },
   { title: "Pinterest publishing workflow", label: "Board selection, title, description, and preview." },
@@ -345,7 +350,20 @@ export function MarketingLandingPage() {
                         Preview
                       </span>
                     </div>
-                    <div className="mt-4 h-36 rounded-xl bg-[var(--marketing-surface)]" />
+                    {preview.image ? (
+                      <div className="mt-4 flex justify-center rounded-xl bg-[var(--marketing-surface)] p-3">
+                        <div className="w-full max-w-[210px] overflow-hidden rounded-[1.6rem] border border-black/10 bg-black shadow-[0_20px_40px_rgba(0,0,0,0.18)]">
+                          <img
+                            src={preview.image}
+                            alt={preview.imageAlt}
+                            className="block h-auto w-full"
+                            loading="lazy"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-4 h-36 rounded-xl bg-[var(--marketing-surface)]" />
+                    )}
                   </div>
                   <p className="mt-4 text-sm text-[var(--marketing-muted)]">{preview.label}</p>
                 </div>
