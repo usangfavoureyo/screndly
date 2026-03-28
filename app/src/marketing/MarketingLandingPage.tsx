@@ -352,17 +352,32 @@ export function MarketingLandingPage() {
           <div className="mt-10 grid gap-6 md:grid-cols-2">
             {PREVIEWS.map((preview, index) => (
               <FadeIn key={preview.title} delay={index * 0.05}>
-                <div className="rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-5">
-                  <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
-                      <span>{preview.title}</span>
+                <div className="min-w-0 rounded-3xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface)] p-5">
+                  <div className="min-w-0 rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
+                      <span className="min-w-0 flex-1 text-pretty">{preview.title}</span>
                       <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[10px] font-semibold text-[#ec1e24]">
                         {preview.badge ?? "Preview"}
                       </span>
                     </div>
                     {preview.images ? (
                       <div className="mt-4 w-full overflow-hidden rounded-xl bg-[var(--marketing-surface)] p-3">
-                        <div className="flex max-w-full gap-3 overflow-x-auto pb-1">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
+                          {preview.images.map((image) => (
+                            <div
+                              key={`${image.src}-stack`}
+                              className="mx-auto w-full max-w-[180px] overflow-hidden rounded-[1.3rem] border border-black/10 bg-black shadow-[0_20px_40px_rgba(0,0,0,0.18)]"
+                            >
+                              <img
+                                src={image.src}
+                                alt={image.alt}
+                                className="block h-auto w-full"
+                                loading="lazy"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="hidden max-w-full gap-3 overflow-x-auto pb-1 lg:flex">
                           {preview.images.map((image) => (
                             <div
                               key={image.src}

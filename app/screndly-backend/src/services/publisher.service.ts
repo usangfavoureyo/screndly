@@ -598,6 +598,7 @@ export class PublisherService {
                 ...content,
                 ...(content.platformOverrides?.[platform] || {})
             };
+            const platformMaxRetries = platform === 'X' ? 0 : maxRetries;
 
             // Get platform connection
             let connection = await findPlatformConnection(platform);
@@ -620,9 +621,9 @@ export class PublisherService {
             let attempts = 0;
             let success = false;
 
-            while (attempts <= maxRetries && !success) {
+            while (attempts <= platformMaxRetries && !success) {
                 if (attempts > 0) {
-                    console.log(`[Publisher] Retrying ${platform} (Attempt ${attempts + 1}/${maxRetries + 1})...`);
+                    console.log(`[Publisher] Retrying ${platform} (Attempt ${attempts + 1}/${platformMaxRetries + 1})...`);
                     await new Promise(res => setTimeout(res, retryDelay));
                 }
 

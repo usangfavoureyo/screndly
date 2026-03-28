@@ -51,6 +51,11 @@ const API_USAGE_LABELS: Record<ApiUsageService, string> = {
     googleVideo: 'Google Video Intelligence API',
 };
 
+const DB_DEGRADED_LOG_COOLDOWN_MS = 5 * 60 * 1000;
+
+let lastApiUsageWriteWarningAt = 0;
+let lastApiUsageReadWarningAt = 0;
+
 function daysAgo(days: number): Date {
     const date = new Date();
     date.setHours(0, 0, 0, 0);
@@ -89,6 +94,32 @@ function toCards(counts: Record<ApiUsageService, number>): ApiUsageCards {
     };
 }
 
+function isPrismaConnectivityError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') {
+        return false;
+    }
+
+    const maybeError = error as { code?: string; message?: string };
+
+    if (maybeError.code === 'P1001') {
+        return true;
+    }
+
+    const message = typeof maybeError.message === 'string' ? maybeError.message.toLowerCase() : '';
+    return (
+        message.includes("can't reach database server") ||
+        message.includes('cant reach database server') ||
+        message.includes('database server') && message.includes('timed out') ||
+        message.includes('connection refused') ||
+        message.includes('connection terminated') ||
+        message.includes('failed to connect')
+    );
+}
+
+function shouldLogDbDegradedWarning(lastLoggedAt: number): boolean {
+    return Date.now() - lastLoggedAt >= DB_DEGRADED_LOG_COOLDOWN_MS;
+}
+
 export async function trackApiUsage(input: TrackApiUsageInput): Promise<void> {
     try {
         await prisma.apiUsage.create({
@@ -101,6 +132,14 @@ export async function trackApiUsage(input: TrackApiUsageInput): Promise<void> {
             },
         });
     } catch (error) {
+        if (isPrismaConnectivityError(error)) {
+            if (shouldLogDbDegradedWarning(lastApiUsageWriteWarningAt)) {
+                lastApiUsageWriteWarningAt = Date.now();
+                console.warn('[ApiUsage] Usage tracking temporarily unavailable because the database is unreachable. Continuing without recording usage until connectivity recovers.');
+            }
+            return;
+        }
+
         console.error('[ApiUsage] Failed to record usage:', error);
     }
 }
@@ -117,7 +156,15 @@ export async function getApiUsageActivitySummary(): Promise<ApiUsageActivitySumm
             getCountsSince(daysAgo(29)),
         ]);
     } catch (error) {
-        console.error('[ApiUsage] Failed to load usage summary, returning empty stats:', error);
+        if (isPrismaConnectivityError(error)) {
+            if (shouldLogDbDegradedWarning(lastApiUsageReadWarningAt)) {
+                lastApiUsageReadWarningAt = Date.now();
+                console.warn('[ApiUsage] API usage summary unavailable because the database is unreachable. Returning empty usage stats until connectivity recovers.');
+            }
+        } else {
+            console.error('[ApiUsage] Failed to load usage summary, returning empty stats:', error);
+        }
+
         dailyCounts = emptyCounts();
         weeklyCounts = emptyCounts();
         monthlyCounts = emptyCounts();
