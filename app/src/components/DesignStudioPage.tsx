@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Upload, Cloud, X } from 'lucide-react';
+import { Upload, CloudRounded, X } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -551,7 +551,7 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
           onClick={handleLoadFromBackblaze}
           className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
         >
-          <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+          <CloudRounded className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
           <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
         </button>
       </div>
