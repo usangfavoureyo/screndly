@@ -16,6 +16,9 @@ export function MarketingPrivacyPage() {
               explains how we collect, use, store, disclose, and delete information when you access or use our website,
               application, and related services (collectively, the "Services").
             </p>
+            <p className="mt-4 text-xs uppercase tracking-[0.2em] text-[var(--marketing-muted-strong)]">
+              Effective Date: March 7, 2026 · Last Updated: March 7, 2026
+            </p>
             <p className="mt-4 text-sm text-[var(--marketing-muted)] md:text-base">
               By using the Services, you agree to this Privacy Policy.
             </p>
