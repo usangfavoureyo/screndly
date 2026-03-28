@@ -2011,7 +2011,7 @@ function buildRSSActivityItemFromFeedRecord(record: {
   title: string;
   link: string;
   status: string;
-  itemData: Prisma.JsonValue | null;
+  itemData: Prisma.JsonValue | Prisma.InputJsonValue | null;
   firstSeenAt: Date;
   publishedAt: Date | null;
   errorMessage: string | null;
@@ -2021,7 +2021,7 @@ function buildRSSActivityItemFromFeedRecord(record: {
     platformsEnabled: Prisma.JsonValue;
   };
 }): RSSActivityItem {
-  const item = deserializeRSSItem(record.itemData);
+  const item = deserializeRSSItem(record.itemData as Prisma.JsonValue | null);
   const platforms = getEnabledPlatforms(record.feed.platformsEnabled as Record<string, boolean> | null);
   const normalizedStatus: RSSActivityItem['status'] =
     record.status === 'published' || record.status === 'pending' || record.status === 'failed' || record.status === 'filtered'

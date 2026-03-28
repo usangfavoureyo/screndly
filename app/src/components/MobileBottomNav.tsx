@@ -149,7 +149,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
     }
   };
 
-  const scrollDirection = useScrollDirection();
+  const { scrollDirection } = useScrollDirection();
 
   return (
     <nav

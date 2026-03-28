@@ -7,6 +7,7 @@ const IDLE_REVEAL_DELAY_MS = 180;
 
 export function useScrollDirection() {
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
+  const [isNearTop, setIsNearTop] = useState(true);
   const lastScrollYRef = useRef(0);
   const accumulatedDeltaRef = useRef(0);
   const tickingRef = useRef(false);
@@ -23,9 +24,12 @@ export function useScrollDirection() {
 
       if (scrollY <= TOP_REVEAL_OFFSET) {
         accumulatedDeltaRef.current = 0;
+        setIsNearTop(true);
         setScrollDirection('up');
         return;
       }
+
+      setIsNearTop(false);
 
       if (Math.abs(delta) < 2) {
         return;
@@ -86,5 +90,5 @@ export function useScrollDirection() {
     };
   }, []);
 
-  return scrollDirection;
+  return { scrollDirection, isNearTop };
 }

@@ -436,8 +436,9 @@ export class PublisherService {
             throw new Error('Failed to create a Meta-safe hosted image URL');
         }
 
-        cache.set(cacheKey, hostedUrl);
-        return hostedUrl;
+        const authorizedHostedUrl = await getBackblazeAuthorizedDownloadUrl(hostedUrl, 7 * 24 * 60 * 60);
+        cache.set(cacheKey, authorizedHostedUrl);
+        return authorizedHostedUrl;
     }
 
     private async getResolvedMetaPublishImageUrls(

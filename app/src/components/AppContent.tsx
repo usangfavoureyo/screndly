@@ -7,6 +7,7 @@ import { NotFoundPage } from "./NotFoundPage";
 import { UndoToast } from "./UndoToast";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
+import { SettingsPanel } from "./SettingsPanel";
 import { ComposeScheduler } from "./create/ComposeScheduler";
 import { ComposeSync } from "./create/ComposeSync";
 import { PostFlowSheet, type PostFlowView } from "./create/PostFlowSheet";
@@ -55,7 +56,6 @@ const VideoStudioPage = lazyWithRetry(() => import("./VideoStudioPage").then(m =
 const VideoStudioActivityPage = lazyWithRetry(() => import("./VideoStudioActivityPage").then(m => ({ default: m.VideoStudioActivityPage })), "VideoStudioActivityPage");
 const DesignStudioPage = lazyWithRetry(() => import("./DesignStudioPage").then(m => ({ default: m.default })), "DesignStudioPage");
 const DesignStudioActivityPage = lazyWithRetry(() => import("./DesignStudioActivityPage").then(m => ({ default: m.DesignStudioActivityPage })), "DesignStudioActivityPage");
-const SettingsPanel = lazyWithRetry(() => import("./SettingsPanel").then(m => ({ default: m.SettingsPanel })), "SettingsPanel");
 const PrivacyPage = lazyWithRetry(() => import("./PrivacyPage").then(m => ({ default: m.PrivacyPage })), "PrivacyPage");
 const TermsPage = lazyWithRetry(() => import("./TermsPage").then(m => ({ default: m.TermsPage })), "TermsPage");
 const DisclaimerPage = lazyWithRetry(() => import("./DisclaimerPage").then(m => ({ default: m.DisclaimerPage })), "DisclaimerPage");

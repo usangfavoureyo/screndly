@@ -21,7 +21,7 @@ export function CreateFab({
   onOpenPostFlow,
 }: CreateFabProps) {
   const { isInputFocused } = useKeyboard();
-  const scrollDirection = useScrollDirection();
+  const { scrollDirection } = useScrollDirection();
 
   const isHidden =
     HIDDEN_PAGES.has(currentPage) ||

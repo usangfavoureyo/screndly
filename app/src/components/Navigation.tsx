@@ -37,7 +37,7 @@ export function Navigation({
   onToggleDesktopSidebar,
 }: NavigationProps) {
   const pendingPointerActivationRef = useRef<string | null>(null);
-  const scrollDirection = useScrollDirection();
+  const { scrollDirection, isNearTop } = useScrollDirection();
   const desktopSidebarWidth = isDesktopSidebarCollapsed ? '5rem' : '16rem';
   const floatingSurfaceClasses = 'border border-black/10 bg-white/90 shadow-[0_14px_34px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-[#050505]/88 dark:shadow-[0_16px_38px_rgba(0,0,0,0.46)]';
   const handleNavClick = (page: string) => {
@@ -207,37 +207,24 @@ export function Navigation({
         style={{ top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', ['--desktop-sidebar-width' as string]: desktopSidebarWidth }}
       >
         <div className="relative h-14">
-          <div className="pointer-events-auto absolute left-4 lg:hidden">
-            <button
-              type="button"
-              onClick={() => {
-                haptics.light();
-                handleNavClick('dashboard');
-              }}
-              className="flex items-center justify-center transition-transform duration-200 hover:scale-[1.03] active:scale-95"
-              aria-label="Go to dashboard"
-            >
-              <img src={brandIcon} alt="Screndly" className="h-9.5 w-9.5 rounded-md object-contain" />
-            </button>
-          </div>
-
-          <div className="pointer-events-auto absolute left-4 hidden lg:left-[calc(var(--desktop-sidebar-width)+1.5rem)] lg:block">
-            <button
-              type="button"
-              onClick={() => {
-                haptics.light();
-                onToggleDesktopSidebar();
-              }}
-              className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-full text-gray-900 transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white',
-                floatingSurfaceClasses,
-              )}
-              aria-label={isDesktopSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-              aria-pressed={isDesktopSidebarCollapsed}
-            >
-              {isDesktopSidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-            </button>
-          </div>
+          {isNearTop && (
+            <div className="pointer-events-auto absolute left-4 lg:hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.light();
+                  handleNavClick('dashboard');
+                }}
+                className={cn(
+                  'flex items-center justify-center rounded-full px-2 py-1.5 transition-[transform,opacity] duration-200 hover:scale-[1.03] active:scale-95',
+                  floatingSurfaceClasses,
+                )}
+                aria-label="Go to dashboard"
+              >
+                <img src={brandIcon} alt="Screndly" className="h-8 w-8 rounded-md object-contain" />
+              </button>
+            </div>
+          )}
 
           <div className="pointer-events-auto absolute right-4 lg:right-8">
             <div className={cn('flex items-center gap-1 rounded-full p-1', floatingSurfaceClasses)}>
