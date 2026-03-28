@@ -127,7 +127,8 @@ export function MarketingLandingPage() {
               >
                 <source src={HERO_VIDEO} type="video/mp4" />
               </video>
-              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,0,0,0.66),rgba(0,0,0,0.35)_45%,rgba(236,30,36,0.16)_100%)]" />
+              <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(0,0,0,0.5),rgba(0,0,0,0.2)_42%,rgba(236,30,36,0.12)_100%)]" />
+              <div className="absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,0.38))]" />
               <div className="relative p-5">
                 <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs uppercase tracking-[0.25em] text-white/65">
                   <span>Screndly Dashboard</span>
