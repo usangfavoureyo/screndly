@@ -13,6 +13,7 @@ export type BrandedOverlayAssetKey =
 
 export type BrandedOverlayAssets = Partial<Record<BrandedOverlayAssetKey, string>>;
 export type ThumbnailLogoDisplayMode = 'boxed' | 'logo-only' | 'branded';
+export type BrandedOverlayAppearanceMode = 'adaptive' | 'fixed';
 
 export type LogoPosition =
   | 'top-left'
@@ -36,6 +37,8 @@ export interface ThumbnailConfig {
   autoContrastOverlay: boolean;
   showTrailerTypeText: boolean;
   brandedOverlayAssets?: BrandedOverlayAssets;
+  brandedOverlayAppearanceMode?: BrandedOverlayAppearanceMode;
+  brandedOverlayFixedVariant?: BrandedOverlayVariant;
 }
 
 export interface ThumbnailRenderOptions {
@@ -69,6 +72,8 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
+    brandedOverlayAppearanceMode: 'adaptive',
+    brandedOverlayFixedVariant: 'white',
   },
   x: {
     platform: 'x',
@@ -80,6 +85,8 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
+    brandedOverlayAppearanceMode: 'adaptive',
+    brandedOverlayFixedVariant: 'white',
   },
 };
 
@@ -475,7 +482,7 @@ function resolveOverlayAsset(
   assets: BrandedOverlayAssets | undefined,
   type: BrandedOverlayType,
   variant: BrandedOverlayVariant
-): { key?: BrandedOverlayAssetKey; src?: string } {
+): { key?: BrandedOverlayAssetKey; src?: string; variant?: BrandedOverlayVariant } {
   if (!assets) {
     return {};
   }
@@ -491,7 +498,11 @@ function resolveOverlayAsset(
   for (const key of candidates) {
     const src = assets[key];
     if (src) {
-      return { key, src };
+      return {
+        key,
+        src,
+        variant: key.endsWith('_black') ? 'black' : 'white',
+      };
     }
   }
 
@@ -605,11 +616,14 @@ export async function renderThumbnailPreviewResult(
   const brandedAssets = options.brandedOverlayAssets || config.brandedOverlayAssets;
   if (config.logoDisplayMode === 'branded') {
     const detectedType = detectOverlayType(options.title || options.trailerLabel || '');
-    const detectedVariant = await detectOverlayContrast(ctx, width, height);
+    const adaptiveVariant = await detectOverlayContrast(ctx, width, height);
+    const preferredVariant = config.brandedOverlayAppearanceMode === 'fixed'
+      ? (config.brandedOverlayFixedVariant || 'white')
+      : adaptiveVariant;
     const manualOverlayUrl = options.manualOverlayUrl;
     const resolvedOverlay = manualOverlayUrl
-      ? { key: undefined, src: manualOverlayUrl }
-      : resolveOverlayAsset(brandedAssets, detectedType, detectedVariant);
+      ? { key: undefined, src: manualOverlayUrl, variant: preferredVariant }
+      : resolveOverlayAsset(brandedAssets, detectedType, preferredVariant);
 
     if (resolvedOverlay.src) {
       try {
@@ -623,7 +637,7 @@ export async function renderThumbnailPreviewResult(
     return {
       dataUrl: canvas.toDataURL(format === 'jpeg' ? 'image/jpeg' : 'image/png', format === 'jpeg' ? quality : undefined),
       detectedType,
-      detectedVariant,
+      detectedVariant: manualOverlayUrl ? preferredVariant : (resolvedOverlay.variant || preferredVariant),
       resolvedAssetKey: resolvedOverlay.key,
     };
   }

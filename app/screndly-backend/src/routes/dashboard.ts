@@ -531,8 +531,7 @@ router.get('/api-usage', authenticate, async (_req, res) => {
       success: true,
       data: summary,
     });
-  } catch (error) {
-    console.error('Dashboard API Usage Error:', error);
+  } catch {
     res.status(500).json({ success: false, error: { message: 'Failed to fetch API usage activity' } });
   }
 });

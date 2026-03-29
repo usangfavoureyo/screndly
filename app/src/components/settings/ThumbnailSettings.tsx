@@ -22,6 +22,8 @@ import {
   type LogoPosition,
   type BrandedOverlayAssetKey,
   type BrandedOverlayAssets,
+  type BrandedOverlayAppearanceMode,
+  type BrandedOverlayVariant,
 } from '../../utils/thumbnailRenderer';
 
 interface ThumbnailSettingsProps {
@@ -85,6 +87,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [downloadFormat, setDownloadFormat] = useState<'png' | 'jpeg'>('png');
   const [isDownloadSheetOpen, setIsDownloadSheetOpen] = useState(false);
   const [isLogoStyleSheetOpen, setIsLogoStyleSheetOpen] = useState(false);
+  const [isBrandedAppearanceSheetOpen, setIsBrandedAppearanceSheetOpen] = useState(false);
   const [isExpandedPreviewOpen, setIsExpandedPreviewOpen] = useState(false);
   const [expandedPreviewSrc, setExpandedPreviewSrc] = useState<string | null>(null);
   const [isGeneratingExpandedPreview, setIsGeneratingExpandedPreview] = useState(false);
@@ -115,6 +118,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     autoContrastOverlay: true,
     showTrailerTypeText: false,
     brandedOverlayAssets: {},
+    brandedOverlayAppearanceMode: 'adaptive',
+    brandedOverlayFixedVariant: 'white',
   };
 
   const defaultXConfig: ThumbnailConfig = {
@@ -128,6 +133,8 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     autoContrastOverlay: true,
     showTrailerTypeText: false,
     brandedOverlayAssets: {},
+    brandedOverlayAppearanceMode: 'adaptive',
+    brandedOverlayFixedVariant: 'white',
   };
 
   const [youtubeConfig, setYoutubeConfig] = useState<ThumbnailConfig>(defaultYoutubeConfig);
@@ -167,6 +174,9 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
   const usesStandardLogoControls = !isBrandedStyle;
   const brandedAssetEntries = Object.entries(currentConfig.brandedOverlayAssets || {}) as Array<[BrandedOverlayAssetKey, string]>;
+  const brandedAppearanceLabel = currentConfig.brandedOverlayAppearanceMode === 'fixed'
+    ? `Fixed ${currentConfig.brandedOverlayFixedVariant === 'black' ? 'Black' : 'White'}`
+    : 'Adaptive';
   const resolvedManualOverlayUrl = currentAssets.manualOverlayUrl
     || (currentAssets.manualSavedOverlayKey
       ? currentBrandedPreviewUrls[currentAssets.manualSavedOverlayKey] || currentConfig.brandedOverlayAssets?.[currentAssets.manualSavedOverlayKey]
@@ -362,6 +372,16 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     });
 
     return result;
+  };
+
+  const handleBrandedAppearanceUpdate = async (
+    mode: BrandedOverlayAppearanceMode,
+    fixedVariant?: BrandedOverlayVariant
+  ) => {
+    await handleUpdate({
+      brandedOverlayAppearanceMode: mode,
+      brandedOverlayFixedVariant: fixedVariant ?? currentConfig.brandedOverlayFixedVariant ?? 'white',
+    });
   };
 
   const openExpandedPreview = async () => {
@@ -640,6 +660,27 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
 
         {isBrandedStyle && (
           <>
+            <div>
+              <Label className="text-gray-900 dark:text-white mb-2 block">Appearance</Label>
+              <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
+                Adaptive picks the best white or black branded asset automatically. Fixed always uses the selected variant when available.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  haptics.light();
+                  setIsBrandedAppearanceSheetOpen(true);
+                }}
+                className="w-full justify-between border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
+              >
+                <span>{brandedAppearanceLabel}</span>
+                <ChevronDownIcon className="h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </div>
+
+            <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
             <div className="space-y-4">
               <div>
                 <Label className="text-gray-900 dark:text-white mb-2 block">Branded Overlay Assets</Label>
@@ -1232,6 +1273,60 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             </Button>
           </div>
         </BottomSheetFooter>
+      </BottomSheet>
+
+      <BottomSheet open={isBrandedAppearanceSheetOpen} onOpenChange={setIsBrandedAppearanceSheetOpen}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Appearance</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="space-y-4">
+          <button
+            type="button"
+            onClick={() => {
+              haptics.medium();
+              void handleBrandedAppearanceUpdate('adaptive').then(() => {
+                setIsBrandedAppearanceSheetOpen(false);
+              });
+            }}
+            className={`w-full rounded-2xl border p-4 text-left transition-all ${currentConfig.brandedOverlayAppearanceMode === 'adaptive' ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+          >
+            <p className="mb-1">Adaptive</p>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Let the system choose the white or black branded overlay asset based on the backdrop.
+            </p>
+          </button>
+
+          <div className="rounded-2xl border border-gray-200 p-4 dark:border-[#333333]">
+            <p className="mb-1 text-gray-900 dark:text-white">Fixed</p>
+            <p className="mb-4 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Always use a single branded overlay variant for this platform.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {(['white', 'black'] as const).map((variant) => {
+                const isSelected = currentConfig.brandedOverlayAppearanceMode === 'fixed'
+                  && currentConfig.brandedOverlayFixedVariant === variant;
+                return (
+                  <button
+                    key={variant}
+                    type="button"
+                    onClick={() => {
+                      haptics.medium();
+                      void handleBrandedAppearanceUpdate('fixed', variant).then(() => {
+                        setIsBrandedAppearanceSheetOpen(false);
+                      });
+                    }}
+                    className={`rounded-2xl border p-4 text-left transition-all ${isSelected ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white' : 'border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white'}`}
+                  >
+                    <p className="mb-1">{variant === 'white' ? 'White' : 'Black'}</p>
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      {variant === 'white' ? 'Only use `_white` branded overlay assets.' : 'Only use `_black` branded overlay assets.'}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </BottomSheetBody>
       </BottomSheet>
 
       <MediaPreviewDialog
