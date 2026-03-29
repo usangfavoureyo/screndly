@@ -481,19 +481,26 @@ async function detectOverlayContrast(
 function resolveOverlayAsset(
   assets: BrandedOverlayAssets | undefined,
   type: BrandedOverlayType,
-  variant: BrandedOverlayVariant
+  variant: BrandedOverlayVariant,
+  options: { allowOppositeVariantFallback?: boolean } = {}
 ): { key?: BrandedOverlayAssetKey; src?: string; variant?: BrandedOverlayVariant } {
   if (!assets) {
     return {};
   }
 
+  const allowOppositeVariantFallback = options.allowOppositeVariantFallback ?? true;
   const oppositeVariant: BrandedOverlayVariant = variant === 'white' ? 'black' : 'white';
-  const candidates: BrandedOverlayAssetKey[] = [
+  const candidates: BrandedOverlayAssetKey[] = allowOppositeVariantFallback
+    ? [
     getBrandedAssetKey(type, variant),
     getBrandedAssetKey(type, oppositeVariant),
     getBrandedAssetKey('trailer', variant),
     getBrandedAssetKey('trailer', oppositeVariant),
-  ];
+      ]
+    : [
+      getBrandedAssetKey(type, variant),
+      getBrandedAssetKey('trailer', variant),
+      ];
 
   for (const key of candidates) {
     const src = assets[key];
@@ -623,7 +630,9 @@ export async function renderThumbnailPreviewResult(
     const manualOverlayUrl = options.manualOverlayUrl;
     const resolvedOverlay = manualOverlayUrl
       ? { key: undefined, src: manualOverlayUrl, variant: preferredVariant }
-      : resolveOverlayAsset(brandedAssets, detectedType, preferredVariant);
+      : resolveOverlayAsset(brandedAssets, detectedType, preferredVariant, {
+        allowOppositeVariantFallback: config.brandedOverlayAppearanceMode !== 'fixed',
+      });
 
     if (resolvedOverlay.src) {
       try {
