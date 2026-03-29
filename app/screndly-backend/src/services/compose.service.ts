@@ -1,0 +1,397 @@
+import prisma from '../lib/prisma';
+import { publisherService, type PublishContent, type PublishResult } from './publisher.service';
+
+const COMPOSE_STATE_KEY = 'composeState.v1';
+const THREADS_X_PLATFORMS = new Set(['threads', 'x']);
+
+type ComposeStateItem = Record<string, any>;
+
+export interface ComposeStateSnapshot {
+  items: ComposeStateItem[];
+  updatedAt: string | null;
+}
+
+export interface ComposePublishOutcome {
+  postedPlatforms: string[];
+  failedResults: Array<{ platform: string; error: string }>;
+  errorMessage?: string;
+}
+
+const COMPOSE_PLATFORM_TO_BACKEND: Record<string, string> = {
+  instagram_feed: 'InstagramFeed',
+  instagram_reels: 'InstagramReels',
+  instagram_stories: 'InstagramStories',
+  facebook_feed: 'FacebookFeed',
+  facebook_stories: 'FacebookStories',
+  tiktok: 'TikTok',
+  threads: 'Threads',
+  x: 'X',
+  youtube_longform: 'YouTubeLongform',
+  youtube_shorts: 'YouTubeShorts',
+  pinterest: 'Pinterest',
+};
+
+const COMPOSE_PLATFORM_LABELS: Record<string, string> = {
+  instagram_feed: 'Instagram Feed',
+  instagram_reels: 'Instagram Reels',
+  instagram_stories: 'Instagram Stories',
+  facebook_feed: 'Facebook Feed',
+  facebook_stories: 'Facebook Stories',
+  tiktok: 'TikTok',
+  threads: 'Threads',
+  x: 'X',
+  youtube_longform: 'YouTube Long-form',
+  youtube_shorts: 'YouTube Shorts',
+  pinterest: 'Pinterest',
+};
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function toTimestamp(value?: string | null): number {
+  if (!value || typeof value !== 'string') return 0;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function cloneItem<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function normalizeComposeItem(item: unknown): ComposeStateItem | null {
+  if (!isRecord(item)) return null;
+  if (typeof item.id !== 'string' || !item.id.trim()) return null;
+
+  const normalized = cloneItem(item);
+  normalized.id = item.id.trim();
+  normalized.updatedAt =
+    typeof item.updatedAt === 'string' && item.updatedAt.trim().length > 0
+      ? item.updatedAt
+      : new Date().toISOString();
+  normalized.createdAt =
+    typeof item.createdAt === 'string' && item.createdAt.trim().length > 0
+      ? item.createdAt
+      : normalized.updatedAt;
+  normalized.platformFields = isRecord(item.platformFields) ? cloneItem(item.platformFields) : {};
+  normalized.mediaAssets = Array.isArray(item.mediaAssets) ? cloneItem(item.mediaAssets) : [];
+  normalized.platforms = Array.isArray(item.platforms) ? cloneItem(item.platforms) : [];
+
+  return normalized;
+}
+
+function sortComposeItems(items: ComposeStateItem[]): ComposeStateItem[] {
+  return [...items].sort((left, right) => {
+    const rightTimestamp = Math.max(toTimestamp(right.updatedAt), toTimestamp(right.createdAt));
+    const leftTimestamp = Math.max(toTimestamp(left.updatedAt), toTimestamp(left.createdAt));
+    return rightTimestamp - leftTimestamp;
+  });
+}
+
+function getComposeStateValueItems(rawValue: unknown): ComposeStateItem[] {
+  if (!isRecord(rawValue)) return [];
+  const items = Array.isArray(rawValue.items) ? rawValue.items : [];
+  return sortComposeItems(items.map(normalizeComposeItem).filter((item): item is ComposeStateItem => Boolean(item)));
+}
+
+export async function getComposeState(): Promise<ComposeStateSnapshot> {
+  const savedState = await prisma.setting.findUnique({
+    where: { key: COMPOSE_STATE_KEY },
+  });
+
+  return {
+    items: getComposeStateValueItems(savedState?.value),
+    updatedAt: savedState?.updatedAt?.toISOString() ?? null,
+  };
+}
+
+async function persistComposeState(items: ComposeStateItem[]): Promise<ComposeStateSnapshot> {
+  const sortedItems = sortComposeItems(items);
+  const savedState = await prisma.setting.upsert({
+    where: { key: COMPOSE_STATE_KEY },
+    update: {
+      value: {
+        version: 1,
+        items: sortedItems,
+      },
+    },
+    create: {
+      key: COMPOSE_STATE_KEY,
+      value: {
+        version: 1,
+        items: sortedItems,
+      },
+    },
+  });
+
+  return {
+    items: sortedItems,
+    updatedAt: savedState.updatedAt.toISOString(),
+  };
+}
+
+export async function saveComposeState(items: ComposeStateItem[]): Promise<ComposeStateSnapshot> {
+  const normalizedItems = items
+    .map(normalizeComposeItem)
+    .filter((item): item is ComposeStateItem => Boolean(item));
+
+  return persistComposeState(normalizedItems);
+}
+
+export async function mergeComposeState(incomingItems: unknown[], clientUpdatedAt?: string | null): Promise<ComposeStateSnapshot> {
+  const existingState = await getComposeState();
+  const existingById = new Map(existingState.items.map((item) => [item.id, item]));
+  const normalizedIncoming = incomingItems
+    .map(normalizeComposeItem)
+    .filter((item): item is ComposeStateItem => Boolean(item));
+
+  const incomingMaxUpdatedAt = Math.max(
+    toTimestamp(clientUpdatedAt ?? undefined),
+    normalizedIncoming.reduce(
+    (latest, item) => Math.max(latest, toTimestamp(item.updatedAt)),
+    0,
+    ),
+  );
+
+  const mergedById = new Map<string, ComposeStateItem>();
+
+  for (const incomingItem of normalizedIncoming) {
+    const existingItem = existingById.get(incomingItem.id);
+    if (existingItem && toTimestamp(existingItem.updatedAt) > toTimestamp(incomingItem.updatedAt)) {
+      mergedById.set(existingItem.id, existingItem);
+      continue;
+    }
+
+    mergedById.set(incomingItem.id, incomingItem);
+  }
+
+  for (const existingItem of existingState.items) {
+    if (mergedById.has(existingItem.id)) {
+      continue;
+    }
+
+    if (toTimestamp(existingItem.updatedAt) > incomingMaxUpdatedAt) {
+      mergedById.set(existingItem.id, existingItem);
+    }
+  }
+
+  return persistComposeState(Array.from(mergedById.values()));
+}
+
+export async function mutateComposeItem(
+  itemId: string,
+  updater: (item: ComposeStateItem) => ComposeStateItem | null,
+): Promise<ComposeStateSnapshot> {
+  const state = await getComposeState();
+  const nextItems = state.items
+    .map((item) => {
+      if (item.id !== itemId) {
+        return item;
+      }
+
+      const updated = updater(cloneItem(item));
+      return updated ? normalizeComposeItem(updated) : null;
+    })
+    .filter((item): item is ComposeStateItem => Boolean(item));
+
+  return persistComposeState(nextItems);
+}
+
+function getPrimaryAsset(item: ComposeStateItem): Record<string, any> | null {
+  const mediaAssets = Array.isArray(item.mediaAssets) ? item.mediaAssets : [];
+  const firstAsset = mediaAssets[0];
+  return isRecord(firstAsset) ? firstAsset : null;
+}
+
+function getAssetUrl(asset?: Record<string, any> | null): string | undefined {
+  if (!asset) return undefined;
+  const candidates = [asset.storageUrl, asset.previewUrl];
+  return candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+}
+
+function buildAssetSignature(asset?: Record<string, any> | null): string {
+  if (!asset) return '';
+  return [
+    asset.id || '',
+    asset.fileName || '',
+    asset.size || '',
+    asset.storageFileId || '',
+    asset.storageUrl || '',
+    asset.previewUrl || '',
+    asset.aspectRatioLabel || '',
+  ].join('|');
+}
+
+function getThreadsXCropVideoUrl(item: ComposeStateItem, primaryAsset: Record<string, any>): string | undefined {
+  const settings = isRecord(item.platformFields?.videoProcessing) ? item.platformFields.videoProcessing : null;
+  const cropVariant = isRecord(settings?.threadsXCrop) ? settings.threadsXCrop : null;
+  if (!settings || settings.cropMode !== 'threads_x_3_4' || !cropVariant) {
+    return undefined;
+  }
+
+  if (
+    cropVariant.sourceAssetId !== primaryAsset.id ||
+    cropVariant.sourceSignature !== buildAssetSignature(primaryAsset) ||
+    cropVariant.focusYPercent !== (settings.focusYPercent ?? 50) ||
+    cropVariant.uploadStatus !== 'uploaded'
+  ) {
+    return undefined;
+  }
+
+  return getAssetUrl(cropVariant);
+}
+
+function getVideoUrlForPlatform(item: ComposeStateItem, platform: string, primaryAsset: Record<string, any>): string | undefined {
+  if (THREADS_X_PLATFORMS.has(platform)) {
+    const croppedUrl = getThreadsXCropVideoUrl(item, primaryAsset);
+    if (croppedUrl) {
+      return croppedUrl;
+    }
+  }
+
+  return getAssetUrl(primaryAsset);
+}
+
+function getThumbnailUrl(item: ComposeStateItem, platform: string): string | undefined {
+  const thumbnails = isRecord(item.platformFields?.thumbnails) ? item.platformFields.thumbnails : null;
+  if (!thumbnails) return undefined;
+
+  if (platform === 'x') {
+    return getAssetUrl(isRecord(thumbnails.x) ? thumbnails.x : null)
+      || getAssetUrl(isRecord(thumbnails.shared) ? thumbnails.shared : null);
+  }
+
+  return getAssetUrl(isRecord(thumbnails.shared) ? thumbnails.shared : null);
+}
+
+function getYouTubePlaylistIds(item: ComposeStateItem): string[] | undefined {
+  const playlist = item.platformFields?.youtube?.playlist;
+  return typeof playlist === 'string' && playlist.trim().length > 0 ? [playlist.trim()] : undefined;
+}
+
+function getPinterestBoardId(item: ComposeStateItem): string | undefined {
+  const board = item.platformFields?.pinterest?.board;
+  return typeof board === 'string' && board.trim().length > 0 ? board.trim() : undefined;
+}
+
+function validateScheduledComposeItem(item: ComposeStateItem): string | undefined {
+  const platforms = Array.isArray(item.platforms) ? item.platforms : [];
+  if (platforms.length === 0) {
+    return 'Select at least one platform before scheduling.';
+  }
+
+  const mediaAssets = Array.isArray(item.mediaAssets) ? item.mediaAssets : [];
+  if (mediaAssets.length !== 1) {
+    return 'Scheduled publishing currently supports one media item per post.';
+  }
+
+  const primaryAsset = getPrimaryAsset(item);
+  if (!primaryAsset) {
+    return 'Upload one media item before scheduling.';
+  }
+
+  if (!getAssetUrl(primaryAsset)) {
+    return 'Upload the media asset before scheduling.';
+  }
+
+  if (primaryAsset.kind === 'video') {
+    for (const platform of platforms) {
+      if (THREADS_X_PLATFORMS.has(platform) && !getVideoUrlForPlatform(item, platform, primaryAsset)) {
+        return 'Generate the 3:4 Threads/X crop before scheduling.';
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function buildPublishContent(item: ComposeStateItem, platform: string, primaryAsset: Record<string, any>): PublishContent {
+  const caption = typeof item.sharedCaption === 'string' && item.sharedCaption.trim().length > 0
+    ? item.sharedCaption.trim()
+    : (typeof item.title === 'string' ? item.title : 'Untitled post');
+  const videoUrl = primaryAsset.kind === 'video' ? getVideoUrlForPlatform(item, platform, primaryAsset) : undefined;
+  const imageUrl = primaryAsset.kind === 'image' ? getAssetUrl(primaryAsset) : getThumbnailUrl(item, platform);
+
+  return {
+    text: caption,
+    title:
+      item.platformFields?.youtube?.title
+      || item.platformFields?.pinterest?.title
+      || (typeof item.title === 'string' ? item.title : caption),
+    description:
+      item.platformFields?.youtube?.description
+      || caption,
+    imageUrl,
+    imageUrls: primaryAsset.kind === 'image' && getAssetUrl(primaryAsset) ? [getAssetUrl(primaryAsset)!] : undefined,
+    videoUrl,
+  };
+}
+
+function formatFailedResults(results: PublishResult[] = []): Array<{ platform: string; error: string }> {
+  return results
+    .filter((result) => result.status !== 'posted')
+    .map((result) => ({
+      platform: result.platform,
+      error: result.error || 'Publish failed',
+    }));
+}
+
+export async function publishComposeItemFromState(item: ComposeStateItem): Promise<ComposePublishOutcome> {
+  const validationError = validateScheduledComposeItem(item);
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
+  const primaryAsset = getPrimaryAsset(item);
+  if (!primaryAsset) {
+    throw new Error('No media asset available for publish.');
+  }
+
+  const platforms = Array.from(new Set(Array.isArray(item.platforms) ? item.platforms : []))
+    .filter((platform): platform is string => typeof platform === 'string' && Boolean(COMPOSE_PLATFORM_TO_BACKEND[platform]));
+
+  const results: PublishResult[] = [];
+  for (const platform of platforms) {
+    const publishContent = buildPublishContent(item, platform, primaryAsset);
+    const platformResults = await publisherService.publish(
+      [COMPOSE_PLATFORM_TO_BACKEND[platform]],
+      publishContent,
+      undefined,
+      {
+        youtubePlaylistIds: getYouTubePlaylistIds(item),
+        pinterestBoardId: getPinterestBoardId(item),
+      },
+    );
+
+    if (platformResults.length === 0) {
+      results.push({
+        platform: COMPOSE_PLATFORM_LABELS[platform] || platform,
+        status: 'failed',
+        error: 'No publish result returned',
+        postedAt: new Date().toISOString(),
+      });
+      continue;
+    }
+
+    for (const result of platformResults) {
+      results.push({
+        ...result,
+        platform: result.platform || COMPOSE_PLATFORM_LABELS[platform] || platform,
+      });
+    }
+  }
+
+  const postedPlatforms = results
+    .filter((result) => result.status === 'posted')
+    .map((result) => result.platform);
+  const failedResults = formatFailedResults(results);
+  const errorMessage = failedResults.length > 0
+    ? failedResults.map((result) => `${result.platform}: ${result.error}`).join('; ')
+    : undefined;
+
+  return {
+    postedPlatforms,
+    failedResults,
+    errorMessage,
+  };
+}

@@ -6,7 +6,7 @@ import { apiClient } from '../lib/api/client';
 import { captionOptimizer } from '../lib/optimization';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 import { getCachedAIResponse } from '../lib/ai/cache';
-import { getDaysUntilCalendarDate } from './calendarDate';
+import { getDaysUntilCalendarDate, parseCalendarDate } from './calendarDate';
 import { tmdbPromptDefaults } from '../config/cultureCravePromptDefaults';
 
 export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
@@ -50,7 +50,7 @@ function getTemporalTag(feedType: FeedType) {
     case 'weekly':
       return 'releasing_this_week' as const;
     case 'monthly':
-      return 'releasing_this_month' as const;
+      return 'releasing_next_month' as const;
     case 'anniversary':
       return 'anniversary' as const;
     default:
@@ -77,7 +77,71 @@ function buildSystemPrompt(options: CaptionGenerationOptions): string {
     options.includeDate
       ? '- You may mention the release date or year when helpful.'
       : '- Do not mention the exact release date or year unless absolutely necessary.',
+    '- Never include URLs, website names, citations, source attributions, or markdown links.',
+    '- Return plain caption text only.',
   ].join('\n');
+}
+
+function stripCaptionLinks(value: string): string {
+  return value
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi, '$1')
+    .replace(/\((https?:\/\/[^)]+|www\.[^)]+)\)/gi, '')
+    .replace(/\bhttps?:\/\/\S+/gi, '')
+    .replace(/\bwww\.\S+/gi, '')
+    .replace(/\(([a-z0-9-]+\.)+[a-z]{2,}[^)]*\)/gi, '');
+}
+
+function getMonthlyTimingReplacement(releaseDate: string, referenceDate = new Date()): string | null {
+  const target = parseCalendarDate(releaseDate);
+  if (!target) {
+    return null;
+  }
+
+  const referenceYear = referenceDate.getFullYear();
+  const referenceMonth = referenceDate.getMonth();
+  const targetYear = target.getFullYear();
+  const targetMonth = target.getMonth();
+  const monthDelta = (targetYear - referenceYear) * 12 + (targetMonth - referenceMonth);
+
+  if (monthDelta === 1) {
+    return 'next month';
+  }
+
+  if (monthDelta > 1 && targetYear === referenceYear) {
+    return `in ${target.toLocaleString('en-US', { month: 'long' })}`;
+  }
+
+  if (monthDelta > 1) {
+    return `in ${target.toLocaleString('en-US', { month: 'long', year: 'numeric' })}`;
+  }
+
+  return null;
+}
+
+function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGenerationOptions): string {
+  let sanitized = stripCaptionLinks(caption)
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\(\s*\)/g, '')
+    .trim();
+
+  if (options.feedType === 'monthly') {
+    const monthlyReplacement = getMonthlyTimingReplacement(item.releaseDate);
+    if (monthlyReplacement) {
+      sanitized = sanitized.replace(/\bthis month\b/gi, monthlyReplacement);
+    }
+  }
+
+  sanitized = sanitized
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  if (sanitized.length > options.maxLength) {
+    sanitized = sanitized.slice(0, options.maxLength).trimEnd();
+  }
+
+  return sanitized;
 }
 
 function getTMDbCaptionCacheTtlMs(): number {
@@ -157,7 +221,7 @@ export async function generateTMDbCaption(
       throw new Error(response.error?.message || 'Failed to generate TMDb caption');
     }
 
-    const caption = response.data.content.trim();
+    const caption = sanitizeTMDbCaption(response.data.content.trim(), item, options);
     const itemId = `tmdb_${item.title.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30)}`;
     captionOptimizer.recordCaptionMetadata(
       itemId,

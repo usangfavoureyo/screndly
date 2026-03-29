@@ -11,6 +11,11 @@ import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
 import { renderTMDbLogoCard } from './rss-logo-render.service';
+import {
+    getComposeState,
+    mutateComposeItem,
+    publishComposeItemFromState,
+} from './compose.service';
 
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
@@ -550,6 +555,96 @@ export async function initCronJobs() {
             }
         } catch (error) {
             await logCron('error', `Post scheduler failed: ${error}`);
+        }
+    }, cronOptions);
+
+    // Compose Post Scheduler - Every 1 minute
+    cron.schedule('* * * * *', async () => {
+        try {
+            const now = Date.now();
+            const state = await getComposeState();
+            const postsToPublish = state.items
+                .filter((item) =>
+                    item.status === 'scheduled'
+                    && typeof item.scheduledAt === 'string'
+                    && new Date(item.scheduledAt).getTime() <= now
+                    && (!item.publishLockExpiresAt || new Date(item.publishLockExpiresAt).getTime() <= now)
+                )
+                .sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime())
+                .slice(0, 5);
+
+            if (postsToPublish.length === 0) {
+                return;
+            }
+
+            await logCron('info', `Found ${postsToPublish.length} compose posts to publish`, 'compose-cron');
+
+            for (const item of postsToPublish) {
+                const attemptStartedAt = new Date().toISOString();
+                const publishLockExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+                await mutateComposeItem(item.id, (currentItem) => ({
+                    ...currentItem,
+                    publishLockExpiresAt,
+                    lastPublishAttemptAt: attemptStartedAt,
+                    error: undefined,
+                    updatedAt: new Date().toISOString(),
+                }));
+
+                try {
+                    const refreshedState = await getComposeState();
+                    const latestItem = refreshedState.items.find((entry) => entry.id === item.id);
+                    if (!latestItem || latestItem.status !== 'scheduled' || latestItem.scheduledAt !== item.scheduledAt) {
+                        continue;
+                    }
+
+                    const result = await publishComposeItemFromState(latestItem);
+                    const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
+                    const nextError =
+                        nextStatus === 'failed'
+                            ? result.errorMessage || 'Failed to publish scheduled post.'
+                            : result.failedResults.length > 0
+                                ? result.errorMessage
+                                : undefined;
+
+                    await mutateComposeItem(item.id, (currentItem) => ({
+                        ...currentItem,
+                        status: nextStatus,
+                        scheduledAt: nextStatus === 'published' ? undefined : currentItem.scheduledAt,
+                        publishLockExpiresAt: undefined,
+                        lastPublishAttemptAt: attemptStartedAt,
+                        publishRetryCount: nextStatus === 'failed' ? (currentItem.publishRetryCount ?? 0) + 1 : 0,
+                        error: nextError,
+                        updatedAt: new Date().toISOString(),
+                    }));
+
+                    if (result.postedPlatforms.length > 0) {
+                        await logCron(
+                            result.failedResults.length > 0 ? 'warn' : 'info',
+                            result.failedResults.length > 0
+                                ? `Compose post partially published to ${result.postedPlatforms.join(', ')} with errors: ${result.errorMessage}`
+                                : `Compose post published to ${result.postedPlatforms.join(', ')}`,
+                            'compose-cron',
+                        );
+                    } else {
+                        await logCron('error', `Compose publish failed: ${nextError}`, 'compose-cron');
+                    }
+                } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Failed to publish scheduled compose post';
+                    await mutateComposeItem(item.id, (currentItem) => ({
+                        ...currentItem,
+                        status: 'failed',
+                        publishLockExpiresAt: undefined,
+                        lastPublishAttemptAt: attemptStartedAt,
+                        publishRetryCount: (currentItem.publishRetryCount ?? 0) + 1,
+                        error: message,
+                        updatedAt: new Date().toISOString(),
+                    }));
+                    await logCron('error', `Compose post scheduler failed: ${message}`, 'compose-cron');
+                }
+            }
+        } catch (error) {
+            await logCron('error', `Compose scheduler failed: ${error}`, 'compose-cron');
         }
     }, cronOptions);
 

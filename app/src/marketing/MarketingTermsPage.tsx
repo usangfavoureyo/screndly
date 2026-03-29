@@ -9,12 +9,12 @@ export function MarketingTermsPage() {
           <FadeIn>
             <a
               href="/"
-              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] px-4 py-2 text-sm font-medium text-[var(--marketing-text)] transition hover:border-[var(--marketing-text)]"
+              aria-label="Back to home"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[color:var(--marketing-border)] text-[var(--marketing-text)] transition hover:border-[var(--marketing-text)]"
             >
               <ArrowLeft size={16} />
-              Back to Home
             </a>
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">Terms of Service</p>
+            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.3em] text-[#ec1e24]">Terms of Service</p>
             <h1 className="marketing-heading mt-5 text-3xl font-semibold text-[var(--marketing-text)] md:text-4xl">
               Screndly Terms of Service
             </h1>

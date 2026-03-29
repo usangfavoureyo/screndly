@@ -18,6 +18,15 @@ const DEFAULT_VIDEO_AGE_GATE = '24';
 const VIDEO_BACKLOG_MODE_PROCESS = 'process-backlog';
 const VIDEO_BACKLOG_MODE_FUTURE_ONLY = 'future-only';
 const VIDEO_AGE_GATE_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index + 1));
+const TRAILER_KEYWORD_PLATFORM_OPTIONS = [
+  { id: 'youtube', name: 'YouTube' },
+  { id: 'tiktok', name: 'TikTok' },
+  { id: 'instagram', name: 'Instagram' },
+  { id: 'facebook', name: 'Facebook' },
+  { id: 'threads', name: 'Threads' },
+  { id: 'x', name: 'X' },
+  { id: 'pinterest', name: 'Pinterest' },
+] as const;
 
 interface VideoSettingsProps {
   settings: any;
@@ -31,6 +40,51 @@ interface TrustedChannelOption {
   channelId: string;
   name: string;
   status: string;
+}
+
+function parseTrailerKeywords(value: unknown): string[] {
+  if (typeof value !== 'string') {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+
+  for (const part of value.split(',')) {
+    const trimmed = part.trim();
+    const normalized = trimmed.toLowerCase();
+    if (!trimmed || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    keywords.push(trimmed);
+  }
+
+  return keywords;
+}
+
+function normalizeSelectedTrailerKeywords(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+
+  for (const item of value) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+    const trimmed = item.trim();
+    const normalized = trimmed.toLowerCase();
+    if (!trimmed || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    keywords.push(trimmed);
+  }
+
+  return keywords;
 }
 
 export function VideoSettings({ settings, updateSetting, updateSettings, onBack }: VideoSettingsProps) {
@@ -158,12 +212,73 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
 
   const handleKeywordsChange = (value: string) => {
     haptics.light();
-    updateSetting('advancedFilters', value);
+    const activeKeywords = parseTrailerKeywords(value);
+    const activeKeywordLookup = new Map(
+      activeKeywords.map((keyword) => [keyword.toLowerCase(), keyword])
+    );
+
+    const nextPlatformSettings = Object.fromEntries(
+      Object.entries(platformSettings).map(([platformId, platformValue]) => {
+        const currentValue = platformValue && typeof platformValue === 'object' ? platformValue : {};
+        const currentSelections = normalizeSelectedTrailerKeywords((currentValue as any).selectedTrailerKeywords);
+        const nextSelections = currentSelections
+          .map((keyword) => activeKeywordLookup.get(keyword.toLowerCase()))
+          .filter((keyword): keyword is string => Boolean(keyword));
+
+        return [
+          platformId,
+          {
+            ...currentValue,
+            selectedTrailerKeywords: nextSelections,
+          },
+        ];
+      })
+    );
+
+    updateSettings({
+      advancedFilters: value,
+      platformSettings: nextPlatformSettings,
+    });
 
     // Update the poller's custom keywords
     // NOTE: youtubePoller would be implemented in backend
     // youtubePoller.setCustomKeywords(value);
     toast.success('Trailer keywords updated');
+  };
+
+  const handlePlatformTrailerKeywordToggle = (platformId: string, keyword: string, checked: boolean) => {
+    haptics.light();
+
+    const currentPlatformSettings =
+      platformSettings[platformId] && typeof platformSettings[platformId] === 'object'
+        ? platformSettings[platformId]
+        : {};
+    const currentSelections = normalizeSelectedTrailerKeywords((currentPlatformSettings as any).selectedTrailerKeywords);
+    const currentSelectionSet = new Set(currentSelections.map((value) => value.toLowerCase()));
+    const normalizedKeyword = keyword.toLowerCase();
+
+    if (checked) {
+      currentSelectionSet.add(normalizedKeyword);
+    } else {
+      currentSelectionSet.delete(normalizedKeyword);
+    }
+
+    const nextSelections = trailerKeywordOptions.filter((option) => currentSelectionSet.has(option.toLowerCase()));
+    const platformName = TRAILER_KEYWORD_PLATFORM_OPTIONS.find((platform) => platform.id === platformId)?.name || platformId;
+
+    updateSetting('platformSettings', {
+      ...platformSettings,
+      [platformId]: {
+        ...currentPlatformSettings,
+        selectedTrailerKeywords: nextSelections,
+      },
+    });
+
+    toast.success(
+      checked
+        ? `${keyword} added to ${platformName} routing`
+        : `${keyword} removed from ${platformName} routing`
+    );
   };
 
   const handlePostIntervalChange = (value: string) => {
@@ -254,6 +369,14 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
   const trustedSupportingChannels = Array.isArray(settings.trustedSupportingChannels)
     ? settings.trustedSupportingChannels
     : [];
+  const trailerKeywordOptions = parseTrailerKeywords(settings.advancedFilters);
+  const trailerKeywordLookup = new Map(
+    trailerKeywordOptions.map((keyword) => [keyword.toLowerCase(), keyword])
+  );
+  const platformSettings =
+    settings.platformSettings && typeof settings.platformSettings === 'object'
+      ? settings.platformSettings
+      : {};
 
   const toggleTrustedChannel = (channelId: string, checked: boolean) => {
     const nextTrusted = checked
@@ -339,6 +462,69 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
               />
               <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
                 Only saved keyword values are sent to the backend poller. Placeholder text is not treated as an active rule.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Platform Trailer Keyword Routing</Label>
+              <div className="mt-2 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 space-y-3">
+                {trailerKeywordOptions.length === 0 ? (
+                  <p className="text-sm text-gray-500 dark:text-[#9CA3AF]">
+                    Add trailer keywords above to choose which keyword types each platform is allowed to publish.
+                  </p>
+                ) : (
+                  TRAILER_KEYWORD_PLATFORM_OPTIONS.map((platform) => {
+                    const selectedKeywords = normalizeSelectedTrailerKeywords(
+                      platformSettings[platform.id]?.selectedTrailerKeywords
+                    )
+                      .map((keyword) => trailerKeywordLookup.get(keyword.toLowerCase()) || keyword)
+                      .filter((keyword, index, values) =>
+                        values.findIndex((value) => value.toLowerCase() === keyword.toLowerCase()) === index
+                      );
+
+                    return (
+                      <div
+                        key={platform.id}
+                        className="rounded-xl border border-gray-200 dark:border-[#333333] px-3 py-3"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-gray-900 dark:text-white">{platform.name}</span>
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
+                            {selectedKeywords.length} selected
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {trailerKeywordOptions.map((keyword) => {
+                            const checked = selectedKeywords.some((value) => value.toLowerCase() === keyword.toLowerCase());
+
+                            return (
+                              <label
+                                key={`${platform.id}-${keyword}`}
+                                className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-[#333333] px-3 py-2 cursor-pointer"
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={(value) => handlePlatformTrailerKeywordToggle(platform.id, keyword, value === true)}
+                                />
+                                <span className="text-xs text-gray-700 dark:text-[#E5E7EB]">{keyword}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+
+                        <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-3">
+                          {selectedKeywords.length > 0
+                            ? `Only videos with ${selectedKeywords.join(', ')} in the title can publish to ${platform.name}.`
+                            : `No videos will publish to ${platform.name} until at least one keyword is selected.`}
+                        </p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-2">
+                Each platform is opt-in. If a platform has no selected keywords, it will not receive any videos.
               </p>
             </div>
 

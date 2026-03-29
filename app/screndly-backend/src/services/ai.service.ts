@@ -1094,6 +1094,7 @@ export interface RSSContext {
     summary: string;
     platform: 'X' | 'Threads' | 'Facebook' | 'LinkedIn';
     tone?: string;
+    selectedVisuals?: string[];
 }
 
 export async function generateRSSCaption(
@@ -1108,15 +1109,21 @@ Goal: Summarize the value prop and encourage a click (without saying "click here
 - Tone: Professional but engaging (LinkedIn/X style).
 - Length: Under 280 chars.
 - NO hashtags unless asked.
+- If selected visuals are provided, only name titles, characters, or people that are clearly represented by those visuals.
+- If the article mentions more examples than the visual set can support, generalize instead of listing unsupported titles.
 `;
 
     const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const visualContext = Array.isArray(context.selectedVisuals) && context.selectedVisuals.length > 0
+        ? `Selected visuals:\n${context.selectedVisuals.map((entry) => `- ${entry}`).join('\n')}\n`
+        : '';
 
     const prompt = `Generate a caption for this article:
 Feed: ${context.feedName}
 Title: ${context.articleTitle}
 Summary: ${context.summary.slice(0, 500)}...
 Platform: ${context.platform}
+${visualContext}
 
 Write ONLY the caption.`;
 

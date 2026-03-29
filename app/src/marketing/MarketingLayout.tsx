@@ -49,6 +49,7 @@ function getInitialMarketingTheme(): "light" | "dark" {
 export function MarketingLayout({ children }: MarketingLayoutProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">(getInitialMarketingTheme);
   const [logoFailed, setLogoFailed] = useState(false);
   const initialThemeRef = useRef<{
@@ -112,7 +113,23 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
   }, [theme]);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 12);
+    let lastScrollY = window.scrollY;
+
+    const handleScroll = () => {
+      const nextScrollY = window.scrollY;
+      setScrolled(nextScrollY > 12);
+
+      if (nextScrollY <= 16) {
+        setHeaderVisible(true);
+      } else if (nextScrollY > lastScrollY) {
+        setHeaderVisible(false);
+      } else if (nextScrollY < lastScrollY) {
+        setHeaderVisible(true);
+      }
+
+      lastScrollY = nextScrollY;
+    };
+
     handleScroll();
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
@@ -126,10 +143,18 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
   }, [scrolled]);
 
   return (
-    <div className="marketing-root overflow-x-hidden bg-[var(--marketing-bg)] text-[var(--marketing-text)]" data-marketing-theme={theme}>
-      <header className={`sticky top-0 z-50 backdrop-blur ${headerClasses}`}>
+    <div
+      id="top"
+      className="marketing-root overflow-x-hidden bg-[var(--marketing-bg)] text-[var(--marketing-text)]"
+      data-marketing-theme={theme}
+    >
+      <header
+        className={`fixed inset-x-0 top-0 z-50 backdrop-blur transition-transform duration-300 ${headerClasses} ${
+          headerVisible ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4 lg:px-10">
-          <a href="/" className="flex items-center gap-3">
+          <a href="/#top" className="flex items-center gap-3">
             {!logoFailed ? (
               <img
                 src={theme === "dark" ? logoDark : logoLight}
@@ -218,7 +243,7 @@ export function MarketingLayout({ children }: MarketingLayoutProps) {
         )}
       </header>
 
-      <main>{children}</main>
+      <main className="pt-[76px] md:pt-[84px]">{children}</main>
 
       <footer id="contact" className="border-t border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-12 text-sm text-[var(--marketing-muted)] lg:px-10">

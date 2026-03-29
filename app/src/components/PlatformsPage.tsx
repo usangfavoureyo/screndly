@@ -259,8 +259,21 @@ export function PlatformsPage() {
 
       // Save platform settings to localStorage and Backend
       const platformSettings: Record<string, any> = {};
+      let existingPlatformSettings: Record<string, any> = {};
+      try {
+        const savedSettings = localStorage.getItem('screndly_platformSettings');
+        existingPlatformSettings = savedSettings ? JSON.parse(savedSettings) : {};
+      } catch {
+        existingPlatformSettings = {};
+      }
       updated.forEach(platform => {
+        const existingSaved =
+          existingPlatformSettings[platform.id] && typeof existingPlatformSettings[platform.id] === 'object'
+            ? existingPlatformSettings[platform.id]
+            : {};
+
         platformSettings[platform.id] = {
+          ...existingSaved,
           autoPost: platform.autoPost,
           autoThumbnail: platform.autoThumbnail,
           autoCaption: platform.autoCaption,

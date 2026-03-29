@@ -1798,6 +1798,8 @@ function buildRSSCaptionSystemPrompt(
     '- Focus on the single strongest lead angle from the headline rather than summarizing every sub-story in the article.',
     '- If the article is a roundup, mention secondary items only when they are essential to the lead angle.',
     '- Keep the wording aligned with the selected image so the caption and visual feel like the same story.',
+    '- Only name titles, characters, or people that are actually represented by the selected visuals.',
+    '- If the selected visuals cover fewer examples than the headline or article summary mentions, use broader wording instead of listing unsupported examples.',
   ].filter(Boolean).join('\n');
 
   if (!basePrompt && !constraints) {
@@ -1805,6 +1807,21 @@ function buildRSSCaptionSystemPrompt(
   }
 
   return [basePrompt, constraints].filter(Boolean).join('\n\nAdditional Constraints:\n');
+}
+
+function buildRSSCaptionVisualContext(images: RSSResolvedImage[]): string[] | undefined {
+  const entries = images
+    .map((image, index) => {
+      const reason = sanitizeRSSPlainText(image.reason || '').replace(/\s+/g, ' ').trim();
+      if (!reason) {
+        return null;
+      }
+
+      return `Visual ${index + 1}: ${reason}`;
+    })
+    .filter((entry): entry is string => Boolean(entry));
+
+  return entries.length > 0 ? entries : undefined;
 }
 
 async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
@@ -2390,6 +2407,7 @@ async function attemptRSSPublish(
         feedName: feed.name,
         summary: sanitizeRSSPlainText(item.description),
         platform: 'X',
+        selectedVisuals: buildRSSCaptionVisualContext(publishImages),
       },
       normalizeAIModel(runtimeSettings.rssCaptionModel),
       systemPrompt,
@@ -3697,6 +3715,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       feedName: feed.name,
       summary: sanitizeRSSPlainText(previewItem.description),
       platform: 'X',
+      selectedVisuals: buildRSSCaptionVisualContext(resolvedImages),
     },
     normalizeAIModel(runtimeSettings.rssCaptionModel),
     systemPrompt,

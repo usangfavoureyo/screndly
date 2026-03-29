@@ -55,14 +55,45 @@ function normalizePlatformName(platform: string): string {
         x: 'X',
         twitter: 'X',
         facebook: 'Facebook',
+        facebookfeed: 'FacebookFeed',
+        facebook_feed: 'FacebookFeed',
+        facebookstories: 'FacebookStories',
+        facebook_stories: 'FacebookStories',
         instagram: 'Instagram',
+        instagramfeed: 'InstagramFeed',
+        instagram_feed: 'InstagramFeed',
+        instagramreels: 'InstagramReels',
+        instagram_reels: 'InstagramReels',
+        instagramstories: 'InstagramStories',
+        instagram_stories: 'InstagramStories',
         threads: 'Threads',
         youtube: 'YouTube',
+        youtubelongform: 'YouTubeLongform',
+        youtube_longform: 'YouTubeLongform',
+        youtubeshorts: 'YouTubeShorts',
+        youtube_shorts: 'YouTubeShorts',
         tiktok: 'TikTok',
         pinterest: 'Pinterest'
     };
 
     return platformMap[normalized] || platform;
+}
+
+function getConnectionPlatformName(platform: string): string {
+    switch (platform) {
+        case 'InstagramFeed':
+        case 'InstagramReels':
+        case 'InstagramStories':
+            return 'Instagram';
+        case 'FacebookFeed':
+        case 'FacebookStories':
+            return 'Facebook';
+        case 'YouTubeLongform':
+        case 'YouTubeShorts':
+            return 'YouTube';
+        default:
+            return platform;
+    }
 }
 
 function describePublishItem(content: PublishContent, localVideoFile?: string | null): string {
@@ -154,11 +185,20 @@ export class PublisherService {
     private getInvalidConnectionMessage(platform: string): string {
         switch (platform) {
             case 'Facebook':
+            case 'FacebookFeed':
+            case 'FacebookStories':
                 return 'Facebook connection is invalid or incomplete. Reconnect Facebook from Platforms.';
             case 'Instagram':
+            case 'InstagramFeed':
+            case 'InstagramReels':
+            case 'InstagramStories':
                 return 'Instagram connection is invalid or incomplete. Reconnect Instagram from Platforms.';
             case 'Threads':
                 return 'Threads connection is invalid or incomplete. Reconnect Threads from Platforms.';
+            case 'YouTube':
+            case 'YouTubeLongform':
+            case 'YouTubeShorts':
+                return 'YouTube connection is invalid or incomplete. Reconnect YouTube from Platforms.';
             default:
                 return 'Platform not configured';
         }
@@ -601,7 +641,8 @@ export class PublisherService {
             const platformMaxRetries = platform === 'X' ? 0 : maxRetries;
 
             // Get platform connection
-            let connection = await findPlatformConnection(platform);
+            const connectionPlatform = getConnectionPlatformName(platform);
+            let connection = await findPlatformConnection(connectionPlatform);
             connection = await ensureFreshPlatformConnection(connection);
 
             let result: PublishResult = {
@@ -706,6 +747,7 @@ export class PublisherService {
                             break;
 
                         case 'Facebook':
+                        case 'FacebookFeed':
                             if (hasPublishablePlatformConnection(connection)) {
                                 const facebookUserId = connection.userId as string;
                                 const facebookAccessToken = connection.accessToken as string;
@@ -739,25 +781,101 @@ export class PublisherService {
                             }
                             break;
 
+                        case 'FacebookStories':
+                            if (hasPublishablePlatformConnection(connection)) {
+                                const facebookUserId = connection.userId as string;
+                                const facebookAccessToken = connection.accessToken as string;
+                                const mediaKind = localVideoFile || this.isDirectVideoUrl(directVideoUrl) ? 'video' : 'image';
+                                const mediaUrl = mediaKind === 'video'
+                                    ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
+                                    : primaryImageUrl;
+
+                                if (!mediaUrl) {
+                                    result = {
+                                        platform,
+                                        status: 'failed',
+                                        error: 'Facebook Stories requires an image or video.',
+                                        postedAt: new Date().toISOString()
+                                    };
+                                    break;
+                                }
+
+                                const fbStoryResult = await metaService.postToFacebookStory(
+                                    facebookUserId,
+                                    mediaUrl,
+                                    facebookAccessToken,
+                                    mediaKind,
+                                );
+                                result = {
+                                    platform,
+                                    ...fbStoryResult,
+                                    status: fbStoryResult.success ? 'posted' : 'failed',
+                                    postedAt: new Date().toISOString()
+                                };
+                            } else {
+                                result = {
+                                    platform,
+                                    status: 'failed',
+                                    error: this.getInvalidConnectionMessage(platform),
+                                    postedAt: new Date().toISOString()
+                                };
+                            }
+                            break;
+
                         case 'Instagram':
+                        case 'InstagramFeed':
+                        case 'InstagramReels':
+                        case 'InstagramStories':
                             if (hasUsablePlatformAccessToken(connection) && connection.userId) {
                                 const instagramAccessToken = connection.accessToken as string;
-                                const igResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
-                                    ? await metaService.postVideoToInstagramReel(
-                                        connection.userId,
-                                        platformContent.text,
-                                        await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
-                                        instagramAccessToken,
-                                        remoteCoverImageUrl
-                                    )
-                                        : primaryImageUrl
-                                        ? await metaService.postToInstagram(
+                                const mediaKind = localVideoFile || this.isDirectVideoUrl(directVideoUrl) ? 'video' : 'image';
+
+                                if (platform === 'InstagramFeed' && mediaKind !== 'image') {
+                                    result = {
+                                        platform,
+                                        status: 'failed',
+                                        error: 'Instagram Feed publishing currently requires a single image.',
+                                        postedAt: new Date().toISOString()
+                                    };
+                                    break;
+                                }
+
+                                if (platform === 'InstagramReels' && mediaKind !== 'video') {
+                                    result = {
+                                        platform,
+                                        status: 'failed',
+                                        error: 'Instagram Reels publishing requires a video.',
+                                        postedAt: new Date().toISOString()
+                                    };
+                                    break;
+                                }
+
+                                const igResult =
+                                    platform === 'InstagramStories'
+                                        ? await metaService.postToInstagramStory(
                                             connection.userId,
-                                            platformContent.text,
-                                            primaryImageUrl,
-                                            instagramAccessToken
+                                            mediaKind === 'video'
+                                                ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
+                                                : (primaryImageUrl || ''),
+                                            instagramAccessToken,
+                                            mediaKind,
                                         )
-                                        : { success: false as const, error: 'Instagram requires an image or video' };
+                                        : mediaKind === 'video'
+                                            ? await metaService.postVideoToInstagramReel(
+                                                connection.userId,
+                                                platformContent.text,
+                                                await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                                instagramAccessToken,
+                                                remoteCoverImageUrl
+                                            )
+                                            : primaryImageUrl
+                                                ? await metaService.postToInstagram(
+                                                    connection.userId,
+                                                    platformContent.text,
+                                                    primaryImageUrl,
+                                                    instagramAccessToken
+                                                )
+                                                : { success: false as const, error: 'Instagram requires an image or video' };
                                 result = {
                                     platform,
                                     ...igResult,
@@ -833,6 +951,8 @@ export class PublisherService {
                             break;
 
                         case 'YouTube':
+                        case 'YouTubeLongform':
+                        case 'YouTubeShorts':
                             if (connection.accessToken && mediaFilePath && !this.isImage(mediaFilePath)) {
                                 const ytResult = await youtubeService.uploadVideo(
                                     connection.accessToken,

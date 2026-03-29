@@ -2,10 +2,9 @@ import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
-import prisma from '../lib/prisma';
+import { getComposeState, mergeComposeState } from '../services/compose.service';
 
 const router = Router();
-const COMPOSE_STATE_KEY = 'composeState.v1';
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -15,18 +14,13 @@ const upload = multer({
 
 router.get('/state', authenticate, async (_req, res) => {
   try {
-    const savedState = await prisma.setting.findUnique({
-      where: { key: COMPOSE_STATE_KEY },
-    });
-
-    const rawValue = savedState?.value as { items?: unknown } | null | undefined;
-    const items = Array.isArray(rawValue?.items) ? rawValue.items : [];
+    const state = await getComposeState();
 
     res.json({
       success: true,
       data: {
-        items,
-        updatedAt: savedState?.updatedAt?.toISOString() ?? null,
+        items: state.items,
+        updatedAt: state.updatedAt,
       },
     });
   } catch (error) {
@@ -48,28 +42,14 @@ router.put('/state', authenticate, async (req, res) => {
       });
     }
 
-    const savedState = await prisma.setting.upsert({
-      where: { key: COMPOSE_STATE_KEY },
-      update: {
-        value: {
-          version: 1,
-          items,
-        },
-      },
-      create: {
-        key: COMPOSE_STATE_KEY,
-        value: {
-          version: 1,
-          items,
-        },
-      },
-    });
+    const lastModifiedAt = typeof req.body?.lastModifiedAt === 'string' ? req.body.lastModifiedAt : null;
+    const savedState = await mergeComposeState(items, lastModifiedAt);
 
     res.json({
       success: true,
       data: {
-        items,
-        updatedAt: savedState.updatedAt.toISOString(),
+        items: savedState.items,
+        updatedAt: savedState.updatedAt,
       },
     });
   } catch (error) {

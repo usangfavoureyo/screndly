@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, ReactNode } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
@@ -61,7 +61,6 @@ interface FeedCardProps {
   onToggleEnabled: (feedId: string, enabled: boolean) => void;
   onRunNow: (feedId: string) => Promise<void>;
   touchSwipeEnabled?: boolean;
-  dragHandle?: ReactNode;
   isReorderMode?: boolean;
 }
 
@@ -105,7 +104,6 @@ export function FeedCard({
   onToggleEnabled,
   onRunNow,
   touchSwipeEnabled = true,
-  dragHandle,
   isReorderMode = false,
 }: FeedCardProps) {
   const [isRefreshRunning, setIsRefreshRunning] = useState(false);
@@ -329,7 +327,6 @@ export function FeedCard({
           </div>
 
           <div className="flex items-center gap-2 flex-shrink-0">
-            {dragHandle}
             {!isReorderMode ? (
               <>
                 <button

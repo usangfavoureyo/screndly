@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { RefreshCw, GripVertical } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -16,6 +16,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useRSSFeeds, RSSActivityItem, PlatformsEnabled } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
 import { PageLoader } from './PageLoader';
+import reorderIcon from '../public/icons/icons/hugeroundedicons/arrow-all-direction-stroke-rounded.svg';
 
 interface RSSPageProps {
   onNavigate?: (page: string, fromPage?: string | null) => void;
@@ -428,20 +429,6 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
             <div className="flex items-center justify-between mb-3 gap-3">
               <h3 className="text-gray-900 dark:text-white">Feeds ({feeds.length})</h3>
               <div className="flex items-center gap-2">
-                {feeds.length > 1 ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleToggleReorderMode}
-                    className={`!text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333] ${
-                      isReorderMode
-                        ? '!bg-[#ec1e24] !text-white border-[#ec1e24] hover:!bg-[#d01a20]'
-                        : '!bg-white dark:!bg-[#000000]'
-                    }`}
-                  >
-                    {isReorderMode ? 'Done' : 'Reorder'}
-                  </Button>
-                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -453,6 +440,26 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
                 >
                   <RefreshCw className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
                 </Button>
+                {feeds.length > 1 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleToggleReorderMode}
+                    aria-label={isReorderMode ? 'Finish reordering RSS feeds' : 'Reorder RSS feeds'}
+                    className={`h-9 w-9 p-0 border-gray-300 dark:border-[#333333] ${
+                      isReorderMode
+                        ? '!bg-[#ec1e24] border-[#ec1e24] hover:!bg-[#d01a20]'
+                        : '!bg-white dark:!bg-[#000000]'
+                    }`}
+                  >
+                    <img
+                      src={reorderIcon}
+                      alt=""
+                      className={`h-4 w-4 ${isReorderMode ? 'brightness-0 invert' : 'dark:invert'}`}
+                    />
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   onClick={() => {
@@ -479,7 +486,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
               <div className="space-y-3">
                 {isReorderMode ? (
                   <div className="rounded-2xl border border-dashed border-[#ec1e24]/30 bg-[#ec1e24]/5 px-4 py-3 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                    Hold the grip handle on a feed card, drag it into place, and release to save the new order automatically.
+                    Drag any feed card into place and release to save the new order automatically.
                   </div>
                 ) : null}
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -566,23 +573,12 @@ function SortableFeedCard({
     transition,
   };
 
-  const dragHandle = isReorderMode ? (
-    <button
-      type="button"
-      aria-label={`Reorder ${feed.name}`}
-      className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:border-[#333333] dark:bg-[#111111] dark:text-[#9CA3AF] dark:hover:bg-[#1a1a1a] dark:hover:text-white cursor-grab active:cursor-grabbing"
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical className="h-4 w-4" />
-    </button>
-  ) : null;
-
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={isDragging ? 'z-20 scale-[1.01] opacity-90' : undefined}
+      className={`${isDragging ? 'z-20 scale-[1.01] opacity-90' : ''} ${isReorderMode ? 'cursor-grab active:cursor-grabbing' : ''}`.trim()}
+      {...(isReorderMode ? { ...attributes, ...listeners } : {})}
     >
       <FeedCard
         feed={feed}
@@ -594,7 +590,6 @@ function SortableFeedCard({
         onToggleEnabled={onToggleEnabled}
         onRunNow={onRunNow}
         touchSwipeEnabled={!isReorderMode}
-        dragHandle={dragHandle}
         isReorderMode={isReorderMode}
       />
     </div>

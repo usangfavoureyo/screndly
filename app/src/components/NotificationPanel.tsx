@@ -351,7 +351,8 @@ export function NotificationPanel({
           </div>
           <button
             className={`flex h-12 w-12 items-center justify-center rounded-full text-black transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white ${floatingSurfaceClasses}`}
-            onClick={() => {
+            onClick={(event) => {
+              event.stopPropagation();
               haptics.light();
               onClose();
             }}
@@ -530,7 +531,8 @@ export function NotificationPanel({
             </div>
             <button
               className={`flex h-12 w-12 items-center justify-center rounded-full text-black transition-[transform,background-color,color] duration-200 hover:scale-[1.03] active:scale-95 dark:text-white ${floatingSurfaceClasses}`}
-              onClick={() => {
+              onClick={(event) => {
+                event.stopPropagation();
                 haptics.light();
                 onClose();
               }}
@@ -650,7 +652,10 @@ export function NotificationPanel({
     <>
       <div className="fixed inset-0 bg-black/50 z-50 lg:pl-64" onClick={onClose} />
 
-      <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[450px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
+      <div
+        className="fixed top-0 right-0 bottom-0 w-full lg:w-[450px] bg-white dark:bg-[#000000] z-50 overflow-y-auto"
+        onClick={(event) => event.stopPropagation()}
+      >
         {selectedNotification ? renderDetailView() : renderListView()}
       </div>
 

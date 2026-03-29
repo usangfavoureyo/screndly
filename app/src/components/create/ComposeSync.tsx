@@ -39,13 +39,19 @@ export function ComposeSync() {
   const hydratedRef = useRef(false);
   const lastSyncedSignatureRef = useRef<string | null>(null);
   const syncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRefreshingRef = useRef(false);
 
   const itemsSignature = useMemo(() => buildSignature(items), [items]);
 
   useEffect(() => {
     let cancelled = false;
 
-    const hydrate = async () => {
+    const pullLatestState = async () => {
+      if (isRefreshingRef.current) {
+        return;
+      }
+
+      isRefreshingRef.current = true;
       const { items: localStoreItems, lastModifiedAt } = useComposeStore.getState();
       const localItems = normalizeItems(localStoreItems);
       const localSignature = buildSignature(localItems);
@@ -89,16 +95,40 @@ export function ComposeSync() {
         console.warn('[ComposeSync] Failed to hydrate compose drafts:', error);
         lastSyncedSignatureRef.current = localSignature;
         hydratedRef.current = true;
+      } finally {
+        isRefreshingRef.current = false;
       }
     };
 
-    void hydrate();
+    void pullLatestState();
+
+    const intervalId = window.setInterval(() => {
+      void pullLatestState();
+    }, 30000);
+
+    const handleFocus = () => {
+      void pullLatestState();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void pullLatestState();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('online', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       cancelled = true;
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('online', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [replaceItems]);
 

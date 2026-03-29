@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { Switch } from '../ui/switch';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDownIcon } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
 import { analyticsIngester } from '../../lib/optimization/analyticsIngester';
 
@@ -175,7 +175,7 @@ export function AnalyticsSelfOptimization({
                     </p>
                 </div>
 
-                <ChevronDown
+                <ChevronDownIcon
                     className={`w-5 h-5 text-gray-500 dark:text-[#6B7280] transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
                 />
             </button>

@@ -504,7 +504,7 @@ export class YouTubePollerService {
                     ? `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}; future-only cutoff ${futureOnlySince.toISOString()}`
                     : `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}${effectiveAgeGateHours !== null ? ` (effective ${effectiveAgeGateHours.toFixed(2)} hours)` : ''}; backlog mode ${settings.videoBacklogMode}`
             );
-            const targetPlatforms = this.getTargetPlatforms(settings);
+            const autoPostPlatforms = this.getAutoPostPlatforms(settings);
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
 
@@ -518,7 +518,7 @@ export class YouTubePollerService {
                     options,
                     supportsFeedItemStatus,
                     trailerKeywords,
-                    targetPlatforms,
+                    autoPostPlatforms,
                     effectiveAgeGateHours
                 );
                 processedVideos += 1;
@@ -1199,7 +1199,7 @@ export class YouTubePollerService {
         options: PollOptions,
         supportsFeedItemStatus: boolean,
         trailerKeywords: string[],
-        targetPlatforms: string[],
+        autoPostPlatforms: string[],
         effectiveAgeGateHours: number | null
     ): Promise<FeedVideoProcessingResult> {
         const videoTitle = video.title || 'Untitled YouTube upload';
@@ -1262,6 +1262,20 @@ export class YouTubePollerService {
                     sawFreshVideo: true,
                 };
             }
+        }
+
+        const platformRouting = this.getTargetPlatformsForVideo(titleLower, settings, autoPostPlatforms);
+        const targetPlatforms = platformRouting.platforms;
+        if (targetPlatforms.length === 0) {
+            const configuredAutoPostPlatforms = autoPostPlatforms.length > 0
+                ? autoPostPlatforms.join(', ')
+                : 'none';
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: no platform keyword routing matched (auto-post platforms: ${configuredAutoPostPlatforms})`,
+                sawFreshVideo: true,
+            };
         }
 
         if (settings.excludeShorts && this.isExplicitShort(video, titleLower, feedDescriptionLower)) {
@@ -1868,7 +1882,7 @@ export class YouTubePollerService {
         return { publishedPlatforms, failedPlatforms };
     }
 
-    private getTargetPlatforms(settings: LoadedVideoSettings): string[] {
+    private getAutoPostPlatforms(settings: LoadedVideoSettings): string[] {
         const platformMap: Record<string, string> = {
             x: 'X',
             facebook: 'Facebook',
@@ -1882,6 +1896,50 @@ export class YouTubePollerService {
         return Object.entries(platformMap)
             .filter(([key]) => settings.platformSettings[key]?.autoPost === true)
             .map(([, platform]) => platform);
+    }
+
+    private getPlatformSelectedTrailerKeywords(platform: string, settings: LoadedVideoSettings): string[] {
+        const platformSettings = this.getPlatformAutomationSettings(platform, settings) as PlatformAutomationSettings & {
+            selectedTrailerKeywords?: string[];
+        };
+
+        if (!Array.isArray(platformSettings.selectedTrailerKeywords)) {
+            return [];
+        }
+
+        return Array.from(
+            new Set(
+                platformSettings.selectedTrailerKeywords
+                    .map((keyword) => (typeof keyword === 'string' ? keyword.trim().toLowerCase() : ''))
+                    .filter(Boolean)
+            )
+        );
+    }
+
+    private getMatchedPlatformKeywords(titleLower: string, selectedKeywords: string[]): string[] {
+        return selectedKeywords.filter((keyword) => this.titleMatchesKeyword(titleLower, keyword));
+    }
+
+    private getTargetPlatformsForVideo(
+        titleLower: string,
+        settings: LoadedVideoSettings,
+        autoPostPlatforms: string[]
+    ): { platforms: string[]; matchedKeywordsByPlatform: Record<string, string[]> } {
+        const matchedKeywordsByPlatform: Record<string, string[]> = {};
+
+        const platforms = autoPostPlatforms.filter((platform) => {
+            const selectedKeywords = this.getPlatformSelectedTrailerKeywords(platform, settings);
+            if (selectedKeywords.length === 0) {
+                matchedKeywordsByPlatform[platform] = [];
+                return false;
+            }
+
+            const matchedKeywords = this.getMatchedPlatformKeywords(titleLower, selectedKeywords);
+            matchedKeywordsByPlatform[platform] = matchedKeywords;
+            return matchedKeywords.length > 0;
+        });
+
+        return { platforms, matchedKeywordsByPlatform };
     }
 
     private async passesAiValidation(

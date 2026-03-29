@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import type { ComposeItem } from '../../types/compose';
+import { useComposeStore } from '../../store/useComposeStore';
 
 interface ComposeStateResponse {
   items: ComposeItem[];
@@ -12,7 +13,10 @@ class ComposeApi {
   }
 
   async saveState(items: ComposeItem[]) {
-    return apiClient.put<ComposeStateResponse>('/api/create/state', { items });
+    return apiClient.put<ComposeStateResponse>('/api/create/state', {
+      items,
+      lastModifiedAt: useComposeStore.getState().lastModifiedAt,
+    });
   }
 }
 

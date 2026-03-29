@@ -49,6 +49,7 @@ interface PlatformSettingsValue {
     autoCaption?: boolean;
     autoHashtag?: boolean;
     commentAutomation?: boolean;
+    selectedTrailerKeywords?: string[];
 }
 
 interface SelectedYouTubePlaylist {
