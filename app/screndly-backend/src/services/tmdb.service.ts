@@ -893,7 +893,7 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     }
 
     return makeSelection([
-        { imageUrl: poster || rankedBackdrop, imageType: poster ? 'poster' : 'backdrop' },
+        { imageUrl: poster || fallbackBackdrop, imageType: poster ? 'poster' : 'backdrop' },
     ]);
 }
 
