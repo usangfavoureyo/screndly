@@ -308,6 +308,60 @@ const RSS_TOPIC_ENTITY_STOP_WORDS = new Set([
   'official',
   'new',
 ]);
+const RSS_TOPIC_TOKEN_NORMALIZATIONS: Record<string, string> = {
+  films: 'film',
+  film: 'film',
+  movies: 'movie',
+  movie: 'movie',
+  shows: 'series',
+  show: 'series',
+  series: 'series',
+  seasons: 'season',
+  season: 'season',
+  updates: 'update',
+  updated: 'update',
+  update: 'update',
+  confirms: 'confirm',
+  confirmed: 'confirm',
+  confirming: 'confirm',
+  lands: 'release',
+  landing: 'release',
+  gets: 'release',
+  getting: 'release',
+  release: 'release',
+  releases: 'release',
+  released: 'release',
+  date: 'date',
+  dates: 'date',
+  dated: 'date',
+  renewed: 'renew',
+  renews: 'renew',
+  renewal: 'renew',
+  returns: 'return',
+  returning: 'return',
+  returned: 'return',
+  comeback: 'return',
+  revives: 'revival',
+  revived: 'revival',
+  revival: 'revival',
+  reboots: 'reboot',
+  rebooted: 'reboot',
+  rebooting: 'reboot',
+  announces: 'announce',
+  announced: 'announce',
+  announcing: 'announce',
+  announcement: 'announce',
+  details: 'detail',
+  detailed: 'detail',
+};
+const RSS_TOPIC_CUE_PATTERNS: Array<{ key: string; pattern: RegExp }> = [
+  { key: 'release_date', pattern: /\b(release date|dated|sets? .*release|lands? .*release|gets? .*release)\b/i },
+  { key: 'renewal', pattern: /\b(renewed|renewal|season \d+ renewal|picked up for season)\b/i },
+  { key: 'casting', pattern: /\b(cast|casting|joins?|boards?|lead role|lead cast|confirmed .*cast)\b/i },
+  { key: 'reboot', pattern: /\b(reboot|revival|return|returns?|comeback)\b/i },
+  { key: 'trailer', pattern: /\b(trailer|teaser|first look|new look|poster drop|poster reveal)\b/i },
+  { key: 'production', pattern: /\b(production|filming|shooting|wraps?|wrapped|begins? filming)\b/i },
+];
 
 type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
@@ -1496,6 +1550,11 @@ function getRSSItemDedupeKey(item: RSSItem): string {
   return `title:${normalizeRSSDedupeValue(item.title)}`;
 }
 
+function normalizeRSSTopicToken(token: string): string {
+  const normalized = normalizeRSSDedupeValue(token);
+  return RSS_TOPIC_TOKEN_NORMALIZATIONS[normalized] || normalized;
+}
+
 function getRSSTopicSignature(title?: string | null): string {
   const normalizedTitle = normalizeRSSDedupeValue(title);
   if (!normalizedTitle) {
@@ -1504,6 +1563,7 @@ function getRSSTopicSignature(title?: string | null): string {
 
   const tokens = normalizedTitle
     .split(' ')
+    .map((token) => normalizeRSSTopicToken(token))
     .filter((token) => token && !RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token))
     .filter((token) => token.length > 2 || /^\d+$/.test(token));
   const uniqueTokens = Array.from(new Set(tokens)).sort();
@@ -1518,6 +1578,7 @@ function getRSSTopicTokens(title?: string | null): string[] {
 
   return normalizedTitle
     .split(' ')
+    .map((token) => normalizeRSSTopicToken(token))
     .filter((token) => token && !RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token))
     .filter((token) => token.length > 2 || /^\d+$/.test(token));
 }
@@ -1541,12 +1602,16 @@ function buildRSSTopicFingerprint(title?: string | null): {
   signature: string;
   tokens: Set<string>;
   entityTokens: Set<string>;
+  cueTokens: Set<string>;
 } {
   const signature = getRSSTopicSignature(title);
   return {
     signature,
     tokens: new Set(getRSSTopicTokens(title)),
     entityTokens: new Set(extractRSSEntityTokens(title)),
+    cueTokens: new Set(
+      RSS_TOPIC_CUE_PATTERNS.filter(({ pattern }) => pattern.test(String(title || ''))).map(({ key }) => key)
+    ),
   };
 }
 
@@ -1561,8 +1626,8 @@ function getSetIntersectionCount(left: Set<string>, right: Set<string>): number 
 }
 
 function areRSSTopicFingerprintsSimilar(
-  left: { signature: string; tokens: Set<string>; entityTokens: Set<string> },
-  right: { signature: string; tokens: Set<string>; entityTokens: Set<string> }
+  left: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string> },
+  right: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string> }
 ): boolean {
   if (!left.signature || !right.signature) {
     return false;
@@ -1574,12 +1639,18 @@ function areRSSTopicFingerprintsSimilar(
 
   const sharedTokens = getSetIntersectionCount(left.tokens, right.tokens);
   const sharedEntities = getSetIntersectionCount(left.entityTokens, right.entityTokens);
+  const sharedCues = getSetIntersectionCount(left.cueTokens, right.cueTokens);
   const minTokenSize = Math.min(left.tokens.size, right.tokens.size);
   const entityHeavyMatch = sharedEntities >= 2 && sharedTokens >= 4;
   const highTokenOverlap = minTokenSize >= 4 && sharedTokens >= Math.max(4, minTokenSize - 1);
+  const cueAnchoredMatch =
+    sharedCues >= 1 &&
+    sharedTokens >= 4 &&
+    (sharedEntities >= 1 || minTokenSize <= 6);
+  const franchiseEventMatch = sharedEntities >= 1 && sharedTokens >= 5;
   const weightedScore = sharedTokens + sharedEntities * 2;
 
-  return entityHeavyMatch || highTokenOverlap || weightedScore >= 8;
+  return entityHeavyMatch || highTokenOverlap || cueAnchoredMatch || franchiseEventMatch || weightedScore >= 8;
 }
 
 function getRSSItemTopicDedupeKey(item: RSSItem): string {

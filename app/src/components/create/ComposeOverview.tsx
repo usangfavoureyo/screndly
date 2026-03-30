@@ -504,6 +504,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                         <div className="col-start-2">
                           <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[26rem] grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
                             <Button
+                              type="button"
+                              data-prevent-card-selection="true"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
@@ -520,6 +522,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               ) : 'Publish'}
                             </Button>
                             <Button
+                              type="button"
+                              data-prevent-card-selection="true"
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -531,6 +535,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               Schedule
                             </Button>
                             <Button
+                              type="button"
+                              data-prevent-card-selection="true"
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -548,6 +554,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                         <div className="col-start-2">
                           <div className={isCompactLayout ? 'w-full' : 'max-w-[9rem]'}>
                             <Button
+                              type="button"
+                              data-prevent-card-selection="true"
                               variant="outline"
                               size="sm"
                               className="h-10 w-full px-3 text-sm"

@@ -240,6 +240,11 @@ const WATERMARK_KEYWORDS = [
   'network bug',
   'publisher bug',
   'lower third',
+  'exclusive banner',
+  'exclusive frame',
+  'exclusive bug',
+  'comicbook exclusive',
+  'cb exclusive',
 ];
 const BLOCKED_KEYWORDS = [
   'fan art',
@@ -390,6 +395,33 @@ const BACKDROP_KEYWORDS = [
   'wide shot',
   'production still',
   'press still',
+];
+const OUTLET_BRANDED_FRAME_OUTLETS = [
+  'comicbook',
+  'comicbook.com',
+  'screenrant',
+  'collider',
+  'cbr',
+  'movieweb',
+  'comingsoon',
+  'digitalspy',
+  'gamesradar',
+  'bloody disgusting',
+  'inverse',
+  'theplaylist',
+];
+const OUTLET_BRANDED_FRAME_SIGNALS = [
+  'exclusive',
+  'review',
+  'review frame',
+  'review screengrab',
+  'preview',
+  'watermark',
+  'lower third',
+  'network bug',
+  'publisher bug',
+  'banner',
+  'bug',
 ];
 
 type FeedFallbackProbeResult = {
@@ -823,6 +855,10 @@ function isBlockedFeedFallbackUrl(url: string): boolean {
     return true;
   }
 
+  if (isOutletBrandedFrameText(normalizedUrl)) {
+    return true;
+  }
+
   if (containsKeyword(normalizedUrl, FEED_FALLBACK_BLOCKED_URL_KEYWORDS)) {
     return true;
   }
@@ -998,6 +1034,15 @@ function getSerperImageText(image: SerperImageResult): string {
 
 function containsKeyword(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(normalizeText(keyword)));
+}
+
+function isOutletBrandedFrameText(text: string): boolean {
+  if (!text) {
+    return false;
+  }
+
+  return containsKeyword(text, OUTLET_BRANDED_FRAME_OUTLETS) &&
+    containsKeyword(text, OUTLET_BRANDED_FRAME_SIGNALS);
 }
 
 function entityMatches(text: string, entity: string): boolean {
@@ -2475,32 +2520,7 @@ function isBrandedEditorialFrame(image: Pick<RSSResolvedImage, 'url' | 'reason' 
     return false;
   }
 
-  const outletSignals = [
-    'comicbook review',
-    'screenrant',
-    'collider',
-    'cbr',
-    'movieweb',
-    'comingsoon',
-    'digitalspy',
-    'gamesradar',
-    'bloody disgusting',
-    'inverse',
-    'theplaylist',
-  ];
-  const frameSignals = [
-    'review',
-    'review frame',
-    'review screengrab',
-    'exclusive',
-    'preview',
-    'watermark',
-    'lower third',
-    'network bug',
-    'publisher bug',
-  ];
-
-  return containsKeyword(text, outletSignals) && containsKeyword(text, frameSignals);
+  return isOutletBrandedFrameText(text);
 }
 
 function shouldKeepSecondaryCarouselImage(
@@ -3115,6 +3135,10 @@ function isBlockedResultForIntent(image: SerperImageResult, intent: ImageIntent 
   }
 
   if (STOCK_IMAGE_DOMAINS.some((blocked) => domain.includes(normalizeText(blocked)))) {
+    return true;
+  }
+
+  if (isOutletBrandedFrameText(text)) {
     return true;
   }
 
