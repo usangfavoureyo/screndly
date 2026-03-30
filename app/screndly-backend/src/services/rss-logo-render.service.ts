@@ -5,10 +5,17 @@ import { uploadBufferToBackblaze } from './backblaze';
 type LogoCardIntent = 'logo' | 'brand_backdrop';
 
 type RGB = { r: number; g: number; b: number };
+type LogoBounds = { left: number; top: number; width: number; height: number };
 
 const DARK_DEFAULT: RGB = { r: 14, g: 14, b: 16 };
 const LIGHT_DEFAULT: RGB = { r: 245, g: 245, b: 242 };
 const TRANSPARENT_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 0 };
+const LOGO_ALPHA_BORDER_THRESHOLD = 14;
+const LOGO_NEAR_WHITE_THRESHOLD = 242;
+const LOGO_COLOR_VARIANCE_THRESHOLD = 20;
+const LOGO_BORDER_ROW_RATIO = 0.985;
+const LOGO_BORDER_COLUMN_RATIO = 0.985;
+const LOGO_MAX_TRIM_RATIO = 0.35;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -109,6 +116,146 @@ async function trimLogoBuffer(originalBuffer: Buffer): Promise<Buffer> {
   return transparentlyTrimmed;
 }
 
+function isNearWhiteBorderPixel(red: number, green: number, blue: number, alpha: number): boolean {
+  if (alpha <= LOGO_ALPHA_BORDER_THRESHOLD) {
+    return true;
+  }
+
+  const minChannel = Math.min(red, green, blue);
+  const maxChannel = Math.max(red, green, blue);
+  return minChannel >= LOGO_NEAR_WHITE_THRESHOLD && (maxChannel - minChannel) <= LOGO_COLOR_VARIANCE_THRESHOLD;
+}
+
+function isBorderRow(
+  data: Buffer,
+  width: number,
+  height: number,
+  y: number,
+): boolean {
+  let borderPixels = 0;
+
+  for (let x = 0; x < width; x += 1) {
+    const index = ((y * width) + x) * 4;
+    if (isNearWhiteBorderPixel(data[index] ?? 0, data[index + 1] ?? 0, data[index + 2] ?? 0, data[index + 3] ?? 0)) {
+      borderPixels += 1;
+    }
+  }
+
+  return (borderPixels / Math.max(1, width)) >= LOGO_BORDER_ROW_RATIO;
+}
+
+function isBorderColumn(
+  data: Buffer,
+  width: number,
+  height: number,
+  x: number,
+): boolean {
+  let borderPixels = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    const index = ((y * width) + x) * 4;
+    if (isNearWhiteBorderPixel(data[index] ?? 0, data[index + 1] ?? 0, data[index + 2] ?? 0, data[index + 3] ?? 0)) {
+      borderPixels += 1;
+    }
+  }
+
+  return (borderPixels / Math.max(1, height)) >= LOGO_BORDER_COLUMN_RATIO;
+}
+
+function detectLogoContentBounds(
+  data: Buffer,
+  width: number,
+  height: number,
+): LogoBounds | null {
+  let top = 0;
+  let bottom = height - 1;
+  let left = 0;
+  let right = width - 1;
+
+  while (top < height && isBorderRow(data, width, height, top)) {
+    top += 1;
+  }
+
+  while (bottom > top && isBorderRow(data, width, height, bottom)) {
+    bottom -= 1;
+  }
+
+  while (left < width && isBorderColumn(data, width, height, left)) {
+    left += 1;
+  }
+
+  while (right > left && isBorderColumn(data, width, height, right)) {
+    right -= 1;
+  }
+
+  if (left >= right || top >= bottom) {
+    return null;
+  }
+
+  const trimmedWidth = right - left + 1;
+  const trimmedHeight = bottom - top + 1;
+  const trimLeftRatio = left / Math.max(1, width);
+  const trimRightRatio = (width - 1 - right) / Math.max(1, width);
+  const trimTopRatio = top / Math.max(1, height);
+  const trimBottomRatio = (height - 1 - bottom) / Math.max(1, height);
+
+  if (
+    trimLeftRatio > LOGO_MAX_TRIM_RATIO ||
+    trimRightRatio > LOGO_MAX_TRIM_RATIO ||
+    trimTopRatio > LOGO_MAX_TRIM_RATIO ||
+    trimBottomRatio > LOGO_MAX_TRIM_RATIO
+  ) {
+    return null;
+  }
+
+  return {
+    left,
+    top,
+    width: trimmedWidth,
+    height: trimmedHeight,
+  };
+}
+
+export async function trimTMDbLogoOuterBorderBuffer(originalBuffer: Buffer): Promise<Buffer> {
+  const base = await trimLogoBuffer(originalBuffer);
+  const { data, info } = await sharp(base, { animated: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const bounds = detectLogoContentBounds(data, info.width, info.height);
+  if (!bounds) {
+    return base;
+  }
+
+  return sharp(base, { animated: false })
+    .extract(bounds)
+    .png()
+    .toBuffer();
+}
+
+export async function prepareTMDbLogoAsset(sourceUrl: string): Promise<string> {
+  const originalBuffer = await fetchBuffer(sourceUrl);
+  const trimmedBuffer = await trimTMDbLogoOuterBorderBuffer(originalBuffer);
+  const hash = createHash('sha1')
+    .update(sourceUrl)
+    .update('trimmed-logo')
+    .digest('hex')
+    .slice(0, 12);
+
+  const uploaded = await uploadBufferToBackblaze(
+    trimmedBuffer,
+    `${hash}-trimmed-logo.png`,
+    {
+      bucketTypes: ['general', 'design'],
+      prefix: 'tmdb/logo-assets',
+      contentType: 'image/png',
+    }
+  );
+
+  return uploaded.url;
+}
+
 function buildGradientSvg(width: number, height: number, start: RGB, end: RGB): Buffer {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -147,7 +294,7 @@ export async function renderTMDbLogoCard(
   intent: LogoCardIntent
 ): Promise<string> {
   const originalBuffer = await fetchBuffer(sourceUrl);
-  const trimmedBuffer = await trimLogoBuffer(originalBuffer);
+  const trimmedBuffer = await trimTMDbLogoOuterBorderBuffer(originalBuffer);
   const accent = await analyzeVisibleColor(trimmedBuffer);
   const dimensions = intent === 'brand_backdrop'
     ? { width: 1600, height: 900, maxWidth: 1120, maxHeight: 360 }

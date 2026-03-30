@@ -37,6 +37,7 @@ import {
     selectBestPoster,
     type TMDbImageAsset,
 } from './tmdb-image-selection.service';
+import { prepareTMDbLogoAsset } from './rss-logo-render.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -875,7 +876,15 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
             preferredLanguage: 'en',
             debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:logo`,
         });
-        const logoUrl = logoSelection?.url || '';
+        let logoUrl = logoSelection?.url || '';
+
+        if (logoUrl) {
+            try {
+                logoUrl = await prepareTMDbLogoAsset(logoUrl);
+            } catch (error) {
+                console.warn(`[TMDb] Failed to trim TMDb logo for ${candidate.mediaType}:${candidate.tmdbId}`, error);
+            }
+        }
 
         return makeSelection([
             { imageUrl: backdropUrl || poster, imageType: backdropUrl ? 'backdrop' : 'poster' },
