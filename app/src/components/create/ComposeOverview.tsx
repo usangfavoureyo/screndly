@@ -79,6 +79,16 @@ function toIsoSchedule(date?: Date, time?: string) {
   return scheduled.toISOString();
 }
 
+function toLocalTimeInputValue(value?: string) {
+  if (!value) return '09:00';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '09:00';
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 export function ComposeOverview({ onNavigate, isCompactLayout = false }: ComposeOverviewProps) {
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
@@ -217,7 +227,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     haptics.light();
     setScheduleItemId(item.id);
     setScheduleDate(item.scheduledAt ? new Date(item.scheduledAt) : new Date());
-    setScheduleTime(item.scheduledAt ? new Date(item.scheduledAt).toISOString().slice(11, 16) : '09:00');
+    setScheduleTime(toLocalTimeInputValue(item.scheduledAt));
   };
 
   const handleScheduleSheetOpenChange = (open: boolean) => {

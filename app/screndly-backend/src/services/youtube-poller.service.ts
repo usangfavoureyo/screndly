@@ -199,6 +199,7 @@ const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 8;
 const MAX_COLLAB_KEYWORD_QUERIES = 2;
 const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 1;
 const MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL = 20 * 1000;
+const COLLAB_DISCOVERY_403_COOLDOWN_MS = 15 * 60 * 1000;
 const FEED_FRESHNESS_HOURS = 24;
 const AGE_GATE_OVERDUE_BUFFER_HOURS = 0.25;
 const MAX_EFFECTIVE_AGE_GATE_HOURS = 24;
@@ -263,6 +264,7 @@ export class YouTubePollerService {
     private currentChannelName: string | null = null;
     private lastPollStartedAt: Date | null = null;
     private lastPollFinishedAt: Date | null = null;
+    private collaborativeDiscoveryCooldownUntilByChannel = new Map<string, number>();
 
     getPollStatus(): PollStatus {
         const now = Date.now();
@@ -808,6 +810,18 @@ export class YouTubePollerService {
 
     private async fetchCollaborativeVideosForChannel(channel: any, trailerKeywords: string[]): Promise<any[]> {
         const collabStartedAtMs = Date.now();
+        const cooldownKey = this.getCollaborativeDiscoveryCooldownKey(channel);
+        const cooldownUntilMs = this.collaborativeDiscoveryCooldownUntilByChannel.get(cooldownKey);
+
+        if (typeof cooldownUntilMs === 'number' && cooldownUntilMs > collabStartedAtMs) {
+            console.warn(
+                `[YouTubePoller] ${channel.name}: skipping collaborative discovery until ${new Date(cooldownUntilMs).toISOString()} after a YouTube 403`
+            );
+            return [];
+        }
+
+        this.collaborativeDiscoveryCooldownUntilByChannel.delete(cooldownKey);
+
         const prioritizedKeywords = [
             ...trailerKeywords.filter((keyword) => ['trailer', 'teaser'].includes(String(keyword).toLowerCase())),
             ...trailerKeywords,
@@ -896,11 +910,25 @@ export class YouTubePollerService {
                             discoveredVia: 'collab_association',
                         });
                     } catch (error) {
-                        console.warn(`[YouTubePoller] ${channel.name}: failed to inspect collaborative candidate ${videoId}`, error);
+                        console.warn(
+                            `[YouTubePoller] ${channel.name}: failed to inspect collaborative candidate ${videoId}: ${this.summarizeYtDlpError(error)}`
+                        );
                     }
                 }
             } catch (error) {
-                console.warn(`[YouTubePoller] ${channel.name}: collaborative discovery query failed for "${keyword}"`, error);
+                if (this.isCollaborativeDiscovery403Error(error)) {
+                    const nextAttemptAtMs = Date.now() + COLLAB_DISCOVERY_403_COOLDOWN_MS;
+                    this.collaborativeDiscoveryCooldownUntilByChannel.set(cooldownKey, nextAttemptAtMs);
+                    console.warn(
+                        `[YouTubePoller] ${channel.name}: collaborative discovery skipped after YouTube 403 for "${keyword}". ` +
+                        `Retrying after ${new Date(nextAttemptAtMs).toISOString()}. ${this.summarizeYtDlpError(error)}`
+                    );
+                    break;
+                }
+
+                console.warn(
+                    `[YouTubePoller] ${channel.name}: collaborative discovery query failed for "${keyword}": ${this.summarizeYtDlpError(error)}`
+                );
             }
 
             if (candidateMap.size >= MAX_RECENT_FEED_ITEMS) {
@@ -910,6 +938,35 @@ export class YouTubePollerService {
 
         return this.sortRecentChannelVideos([...candidateMap.values()].filter((video) => Boolean(video?.pubDate)))
             .slice(0, MAX_COLLAB_CANDIDATES);
+    }
+
+    private getCollaborativeDiscoveryCooldownKey(channel: any): string {
+        const channelId = typeof channel?.channelId === 'string' ? channel.channelId.trim() : '';
+        const channelName = typeof channel?.name === 'string' ? channel.name.trim().toLowerCase() : '';
+        return channelId || channelName || 'unknown-channel';
+    }
+
+    private isCollaborativeDiscovery403Error(error: unknown): boolean {
+        const message = this.summarizeYtDlpError(error).toLowerCase();
+        return message.includes('http error 403') || message.includes('forbidden');
+    }
+
+    private summarizeYtDlpError(error: unknown): string {
+        const fallback = 'Unknown yt-dlp error';
+        const rawMessage = error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+                ? error
+                : fallback;
+        const normalized = rawMessage.replace(/\s+/g, ' ').trim();
+
+        if (!normalized) {
+            return fallback;
+        }
+
+        return normalized.length > 280
+            ? `${normalized.slice(0, 280)}...`
+            : normalized;
     }
 
     private async completeChannelCheck(

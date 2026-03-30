@@ -14,6 +14,15 @@ import { useUndo } from './UndoContext';
 import { BackIconButton } from './BackIconButton';
 import { OptimizedImage } from './ui/optimized-image';
 import { saveRSSActivitySnapshot } from '../utils/rssOfflineStore';
+import {
+  deriveRSSActivityStatus,
+  deriveRSSPlatformStates,
+  getRetryableRSSPlatforms,
+  getRetryFailedLabel,
+  getRSSPublishSummary,
+  type RSSActivityDerivedStatus,
+  type RSSDerivedPlatformState,
+} from '../lib/rss/activityStatus';
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
@@ -64,11 +73,22 @@ function formatSelectionConfidence(value?: RSSActivityItem['imageSelectionConfid
 function buildActivitySummary(items: RSSActivityItem[]) {
   return {
     total: items.length,
-    published: items.filter((item) => item.status === 'published').length,
-    pending: items.filter((item) => item.status === 'pending').length,
-    failed: items.filter((item) => item.status === 'failed').length,
+    published: items.filter((item) => deriveRSSActivityStatus(item, deriveRSSPlatformStates(item)) === 'published').length,
+    pending: items.filter((item) => deriveRSSActivityStatus(item, deriveRSSPlatformStates(item)) === 'publishing').length,
+    failed: items.filter((item) => {
+      const status = deriveRSSActivityStatus(item, deriveRSSPlatformStates(item));
+      return status === 'failed' || status === 'partial_failed';
+    }).length,
     filtered: items.filter((item) => item.status === 'filtered').length,
   };
+}
+
+interface RSSActivityViewModel {
+  item: RSSActivityItem;
+  derivedStatus: RSSActivityDerivedStatus;
+  platformStates: RSSDerivedPlatformState[];
+  retryablePlatforms: RSSDerivedPlatformState[];
+  publishSummary: string | null;
 }
 
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
@@ -141,35 +161,52 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     });
   }, [items, retentionMs]);
 
-  const logLevelItems = retainedItems.filter((item) => {
-    if (logLevel === 'minimal') return item.status === 'failed';
-    if (logLevel === 'standard') return item.status === 'published' || item.status === 'failed';
+  const activityViewModels = useMemo<RSSActivityViewModel[]>(() => (
+    retainedItems.map((item) => {
+      const platformStates = deriveRSSPlatformStates(item);
+      const derivedStatus = deriveRSSActivityStatus(item, platformStates);
+      const retryablePlatforms = getRetryableRSSPlatforms(platformStates);
+
+      return {
+        item,
+        derivedStatus,
+        platformStates,
+        retryablePlatforms,
+        publishSummary: getRSSPublishSummary(platformStates),
+      };
+    })
+  ), [retainedItems]);
+
+  const logLevelItems = activityViewModels.filter(({ derivedStatus }) => {
+    if (logLevel === 'minimal') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
+    if (logLevel === 'standard') return derivedStatus === 'published' || derivedStatus === 'failed' || derivedStatus === 'partial_failed';
     return true;
   });
 
-  const filteredItems = logLevelItems.filter((item) => {
-    if (filter === 'failures') return item.status === 'failed';
-    if (filter === 'published') return item.status === 'published';
-    if (filter === 'pending') return item.status === 'pending';
+  const filteredItems = logLevelItems.filter(({ derivedStatus }) => {
+    if (filter === 'failures') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
+    if (filter === 'published') return derivedStatus === 'published';
+    if (filter === 'pending') return derivedStatus === 'publishing' || derivedStatus === 'scheduled';
     return true;
   });
-  const selection = useBulkSelection(filteredItems.map((item) => item.id));
+  const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const summary = {
     total: logLevelItems.length,
-    published: logLevelItems.filter((item) => item.status === 'published').length,
-    pending: logLevelItems.filter((item) => item.status === 'pending').length,
-    failed: logLevelItems.filter((item) => item.status === 'failed').length,
+    published: logLevelItems.filter((entry) => entry.derivedStatus === 'published').length,
+    pending: logLevelItems.filter((entry) => entry.derivedStatus === 'publishing' || entry.derivedStatus === 'scheduled').length,
+    failed: logLevelItems.filter((entry) => entry.derivedStatus === 'failed' || entry.derivedStatus === 'partial_failed').length,
   };
 
-  const getStatusConfig = (status: RSSActivityItem['status']) => {
+  const getStatusConfig = (status: RSSActivityDerivedStatus) => {
     switch (status) {
-      case 'pending':
+      case 'scheduled':
+      case 'publishing':
         return {
           icon: Clock,
           color: 'text-gray-700 dark:text-[#9CA3AF]',
           bg: 'bg-gray-200 dark:bg-[#1f1f1f]',
-          label: 'Pending',
+          label: 'Publishing',
         };
       case 'published':
         return {
@@ -177,6 +214,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           color: 'text-gray-700 dark:text-[#9CA3AF]',
           bg: 'bg-gray-200 dark:bg-[#1f1f1f]',
           label: 'Published',
+        };
+      case 'partial_failed':
+        return {
+          icon: AlertTriangle,
+          color: 'text-[#D97706]',
+          bg: 'bg-[#FEF3C7] dark:bg-[#78350F]',
+          label: 'Partially Failed',
         };
       case 'failed':
         return {
@@ -397,8 +441,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
               No RSS activity within the configured retention window.
             </div>
           ) : (
-            filteredItems.map((item) => {
-              const statusConfig = getStatusConfig(item.status);
+            filteredItems.map(({ item, derivedStatus, platformStates, retryablePlatforms, publishSummary }) => {
+              const statusConfig = getStatusConfig(derivedStatus);
               const StatusIcon = statusConfig.icon;
               const primaryImageUrl = item.imageUrl || item.imageUrls?.[0];
               const imageSourceLabel = formatImageSource(item.imageSource);
@@ -462,6 +506,11 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             {item.imageReason && <span>{item.imageReason}</span>}
                           </div>
                         )}
+                        {publishSummary && (
+                          <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            {publishSummary}
+                          </p>
+                        )}
                         {alternateImages.length > 0 && (
                           <div className="mb-3">
                             <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected alternates</p>
@@ -496,15 +545,33 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             <p className="line-clamp-3">{stripHtml(item.contentHtml)}</p>
                           </div>
                         ) : null}
-                        {item.platforms.length > 0 && (
+                        {platformStates.length > 0 && (
                           <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                            {item.platforms.map((platform) => (
-                              <span
-                                key={platform}
-                                className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]"
+                            {platformStates.map((platformState) => (
+                              <a
+                                key={platformState.platform}
+                                href={platformState.url}
+                                target={platformState.url ? '_blank' : undefined}
+                                rel={platformState.url ? 'noopener noreferrer' : undefined}
+                                className={`text-xs px-2 py-1 rounded ${
+                                  platformState.status === 'posted'
+                                    ? 'bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#D1D5DB]'
+                                    : platformState.status === 'failed'
+                                      ? 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
+                                      : 'bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]'
+                                } ${platformState.url ? 'underline decoration-transparent hover:decoration-current underline-offset-2' : ''}`}
+                                onClick={(event) => {
+                                  if (!platformState.url) {
+                                    event.preventDefault();
+                                  }
+                                }}
                               >
-                                {platform}
-                              </span>
+                                {platformState.label}: {platformState.status === 'posted'
+                                  ? 'Posted'
+                                  : platformState.status === 'failed'
+                                    ? 'Failed'
+                                    : 'Publishing'}
+                              </a>
                             ))}
                           </div>
                         )}
@@ -523,7 +590,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                           <StatusIcon className="w-4 h-4" />
                           {statusConfig.label}
                         </span>
-                        {!selection.selectionMode && item.status === 'failed' && item.feedId && (
+                        {!selection.selectionMode && retryablePlatforms.length > 0 && item.feedId && (
                           <Button
                             variant="outline"
                             size="sm"
@@ -531,7 +598,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             disabled={retryingItemId === item.id}
                             className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
                           >
-                            {retryingItemId === item.id ? 'Retrying...' : 'Retry'}
+                            {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
                           </Button>
                         )}
                       </div>

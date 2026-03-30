@@ -316,13 +316,13 @@ export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
 export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {
   if (!asset) return undefined;
 
-  const candidates = [asset.storageUrl, asset.previewUrl];
+  const candidates = [asset.previewUrl, asset.storageUrl];
   return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
 }
 
 export function getComposeThumbnailPublishUrl(thumbnail?: ComposeThumbnailAsset) {
   if (!thumbnail) return undefined;
-  const candidates = [thumbnail.storageUrl, thumbnail.previewUrl];
+  const candidates = [thumbnail.previewUrl, thumbnail.storageUrl];
   return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
 }
 

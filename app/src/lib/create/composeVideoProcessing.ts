@@ -73,7 +73,7 @@ export function getVideoUrlForComposePlatform(item: ComposeItem, platform: Compo
     return variant.storageUrl || variant.previewUrl;
   }
 
-  return primaryAsset.storageUrl || primaryAsset.previewUrl;
+  return primaryAsset.previewUrl || primaryAsset.storageUrl;
 }
 
 export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | undefined {

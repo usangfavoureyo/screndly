@@ -205,7 +205,7 @@ function getPrimaryAsset(item: ComposeStateItem): Record<string, any> | null {
 
 function getAssetUrl(asset?: Record<string, any> | null): string | undefined {
   if (!asset) return undefined;
-  const candidates = [asset.storageUrl, asset.previewUrl];
+  const candidates = [asset.previewUrl, asset.storageUrl];
   return candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
 }
 

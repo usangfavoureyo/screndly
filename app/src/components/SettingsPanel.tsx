@@ -1,6 +1,5 @@
 import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, WifiNoSignal } from 'lucide-react';
-import { Album01 } from '../lib/icons/lucide-compat';
+import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, Album01, Image, WifiNoSignal } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';

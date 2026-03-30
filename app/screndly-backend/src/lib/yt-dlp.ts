@@ -9,6 +9,7 @@ const LOCAL_COOKIE_FILE_PATH = path.join(process.cwd(), 'temp', 'yt-dlp-cookies.
 const DEFAULT_BINARY_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 90 * 1000;
+const MAX_ERROR_OUTPUT_CHARS = 2000;
 
 type YtDlpArrayValue = Array<string | number>;
 export type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
@@ -146,6 +147,14 @@ function resolveTimeoutMs(): number {
     return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS;
 }
 
+function truncateErrorOutput(value: string): string {
+    if (value.length <= MAX_ERROR_OUTPUT_CHARS) {
+        return value;
+    }
+
+    return `${value.slice(0, MAX_ERROR_OUTPUT_CHARS)}\n...[truncated ${value.length - MAX_ERROR_OUTPUT_CHARS} chars]`;
+}
+
 export default async function ytDlp(url: string, options: YtDlpOptions = {}): Promise<any> {
     const args = buildArgs(url, options);
 
@@ -164,12 +173,14 @@ export default async function ytDlp(url: string, options: YtDlpOptions = {}): Pr
     } catch (error) {
         const message = error instanceof Error ? error.message : 'yt-dlp command failed';
         const stdout = typeof (error as { stdout?: unknown })?.stdout === 'string'
-            ? (error as { stdout: string }).stdout
+            ? truncateErrorOutput((error as { stdout: string }).stdout)
             : '';
         const stderr = typeof (error as { stderr?: unknown })?.stderr === 'string'
-            ? (error as { stderr: string }).stderr
+            ? truncateErrorOutput((error as { stderr: string }).stderr)
             : '';
-        const combined = [stderr, stdout, message].filter((value) => value && value.trim().length > 0).join('\n');
+        const combined = [stderr, stdout, truncateErrorOutput(message)]
+            .filter((value) => value && value.trim().length > 0)
+            .join('\n');
         const wrappedError = new Error(combined || message);
         (wrappedError as Error & { stdout?: string; stderr?: string }).stdout = stdout;
         (wrappedError as Error & { stdout?: string; stderr?: string }).stderr = stderr;

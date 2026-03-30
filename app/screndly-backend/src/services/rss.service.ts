@@ -913,6 +913,35 @@ function mergePlatformResults(
   return values.length > 0 ? values : undefined;
 }
 
+function normalizeRSSPublishPlatformKey(platform: string): string {
+  const normalized = platform.trim().toLowerCase();
+  if (normalized === 'twitter') {
+    return 'x';
+  }
+
+  return normalized;
+}
+
+function getFailedRSSPlatforms(
+  item: RSSItem,
+  enabledPlatforms: string[]
+): string[] {
+  const failedPlatforms = Array.from(
+    new Set(
+      (item.platformResults || [])
+        .filter((result) => result.status === 'failed')
+        .map((result) => normalizeRSSPublishPlatformKey(result.platform))
+        .filter(Boolean)
+    )
+  );
+
+  if (failedPlatforms.length > 0) {
+    return enabledPlatforms.filter((platform) => failedPlatforms.includes(normalizeRSSPublishPlatformKey(platform)));
+  }
+
+  return enabledPlatforms.filter((platform) => !item.platformPostIds?.[platform]);
+}
+
 function getEnabledPlatforms(platforms: PlatformsEnabled | Record<string, boolean> | null | undefined): string[] {
   const platformMap = platforms ?? {};
   return Object.entries(platformMap)
@@ -2068,6 +2097,8 @@ function buildRSSActivityItemFromFeedRecord(record: {
     timestamp: (record.publishedAt || record.firstSeenAt).toISOString(),
     publishedAt: record.publishedAt?.toISOString(),
     platforms,
+    platformPostIds: item?.platformPostIds,
+    platformResults: item?.platformResults,
     error: record.errorMessage || undefined,
   };
 }
@@ -2415,10 +2446,32 @@ async function attemptRSSPublish(
     );
     const caption = sanitizeRSSCaptionText(captionSource, runtimeSettings.rssCaptionMaxLength);
 
+    console.log('[RSS][Publish] Starting platform publish batch', {
+      feedId: feed.id,
+      title: item.title,
+      requestedPlatforms: platforms,
+      retryTargets: remainingPlatforms,
+      previousPlatformPostIds,
+      previousPlatformResults,
+    });
     const publishResults = await publisherService.publish(
       remainingPlatforms,
       buildRSSPublishPayload(item, caption, publishImageUrls, feed, remainingPlatforms)
     );
+    console.log('[RSS][Publish] Completed platform publish batch', {
+      feedId: feed.id,
+      title: item.title,
+      results: publishResults.map((result) => ({
+        platform: result.platform,
+        previousStatus: previousPlatformResults.find(
+          (entry) => normalizeRSSPublishPlatformKey(entry.platform) === normalizeRSSPublishPlatformKey(result.platform)
+        )?.status,
+        newStatus: result.status,
+        postId: result.id,
+        error: result.error,
+        postedAt: result.postedAt,
+      })),
+    });
 
     const newlySuccessfulPlatforms = publishResults
       .filter((result) => result.status === 'posted')
@@ -3838,9 +3891,9 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
     throw new Error('This RSS feed has no enabled publishing platforms.');
   }
 
-  const remainingPlatforms = platforms.filter((platform) => !item.platformPostIds?.[platform]);
-  if (remainingPlatforms.length === 0) {
-    throw new Error('This RSS activity item has already been published to all enabled platforms.');
+  const retryPlatforms = getFailedRSSPlatforms(item, platforms);
+  if (retryPlatforms.length === 0) {
+    throw new Error('This RSS activity item has no failed platforms to retry.');
   }
 
   if (!acquireRSSPublishClaim(feed.id, item)) {
@@ -3849,8 +3902,14 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
 
   try {
     const runtimeSettings = await getRuntimeSettings();
+    console.log('[RSS][Retry] Retrying failed platforms', {
+      feedId: feed.id,
+      activityId: id,
+      retryPlatforms,
+      previousPlatformResults: item.platformResults || [],
+    });
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
-    const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+    const publishAttempt = await attemptRSSPublish(feed as any, item, retryPlatforms, imagePlan, runtimeSettings);
     const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
     resolvedActivityItem.generatedCaption = publishAttempt.caption;
     resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;

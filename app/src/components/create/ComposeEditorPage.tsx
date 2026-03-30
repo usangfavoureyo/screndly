@@ -152,6 +152,16 @@ function toIsoSchedule(date?: Date, time?: string) {
   return scheduled.toISOString();
 }
 
+function toLocalTimeInputValue(value?: string) {
+  if (!value) return '09:00';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '09:00';
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
 function formatBytes(size: number) {
   return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
@@ -230,7 +240,7 @@ export function ComposeEditorPage({
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
   );
   const [scheduleTime, setScheduleTime] = useState(
-    existingItem?.scheduledAt ? new Date(existingItem.scheduledAt).toISOString().slice(11, 16) : '09:00',
+    toLocalTimeInputValue(existingItem?.scheduledAt),
   );
 
   const connectedPlatforms = useMemo(
@@ -347,9 +357,7 @@ export function ComposeEditorPage({
   useEffect(() => {
     setFormState(createInitialForm(existingItem));
     setScheduleDate(existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined);
-    setScheduleTime(
-      existingItem?.scheduledAt ? new Date(existingItem.scheduledAt).toISOString().slice(11, 16) : '09:00',
-    );
+    setScheduleTime(toLocalTimeInputValue(existingItem?.scheduledAt));
   }, [activeItemId, existingItem]);
 
   useEffect(() => {
