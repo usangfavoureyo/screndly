@@ -211,6 +211,7 @@ const VideoShape = (
 
 export const AlertCircle = createRoundedIcon(`${base}/alert-01-stroke-rounded.svg`);
 export const AlertTriangle = createRoundedIcon(`${base}/alert-01-stroke-rounded.svg`);
+export const Album01 = createRoundedIcon(`${base}/album-01-stroke-rounded.svg`);
 export const Archive = createRoundedIcon(`${base}/archive-04-stroke-rounded.svg`);
 export const Auction = createRoundedIcon(`${base}/auction-stroke-rounded.svg`);
 export const ArrowLeft = createRoundedIcon(`${base}/arrow-left-02-stroke-rounded.svg`);

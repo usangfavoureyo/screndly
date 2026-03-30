@@ -1,5 +1,5 @@
 import { Suspense, useState, useRef, useEffect, type ReactNode } from 'react';
-import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, Image, WifiNoSignal } from 'lucide-react';
+import { X, Video02, MessageSquare, Rss, Globe, Clock01, AlertTriangle, Trash2, Smartphone03, Palette, Bell, Download, Search, ChevronRight, LogOut, Auction, Mail, Film, Album01, WifiNoSignal } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 import { useSettings } from '../contexts/SettingsContext';
 import { Button } from './ui/button';
@@ -170,7 +170,7 @@ export function SettingsPanel({ isOpen, onClose, onLogout, onNavigate, onNewNoti
     {
       id: 'thumbnail',
       label: 'Thumbnail Overlay',
-      icon: Image,
+      icon: Album01,
       keywords: [
         'thumbnail', 'template', 'logo', 'position', 'overlay', 'image',
         'youtube', 'twitter', 'x', 'facebook', 'instagram', 'tiktok', 'platform',

@@ -10,6 +10,7 @@ import { getTmdbApiKey } from './tmdb.service';
 type LandscapePlatform = 'youtube' | 'x';
 type BrandedOverlayType = 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
 type BrandedOverlayVariant = 'white' | 'black';
+type BrandedOverlayAppearanceMode = 'adaptive' | 'fixed';
 type BrandedOverlayAssetKey =
     | 'trailer_white'
     | 'trailer_black'
@@ -181,6 +182,8 @@ interface ThumbnailConfig {
     autoContrastOverlay: boolean;
     showTrailerTypeText: boolean;
     brandedOverlayAssets?: BrandedOverlayAssets;
+    brandedOverlayAppearanceMode?: BrandedOverlayAppearanceMode;
+    brandedOverlayFixedVariant?: BrandedOverlayVariant;
 }
 
 export interface LoadedVideoSettings {
@@ -381,6 +384,8 @@ const DEFAULT_THUMBNAIL_CONFIG: Record<LandscapePlatform, ThumbnailConfig> = {
         autoContrastBackdrop: true,
         autoContrastOverlay: true,
         showTrailerTypeText: false,
+        brandedOverlayAppearanceMode: 'adaptive',
+        brandedOverlayFixedVariant: 'white',
     },
     x: {
         platform: 'x',
@@ -392,6 +397,8 @@ const DEFAULT_THUMBNAIL_CONFIG: Record<LandscapePlatform, ThumbnailConfig> = {
         autoContrastBackdrop: true,
         autoContrastOverlay: true,
         showTrailerTypeText: false,
+        brandedOverlayAppearanceMode: 'adaptive',
+        brandedOverlayFixedVariant: 'white',
     },
 };
 
@@ -845,19 +852,26 @@ function getBrandedOverlayAssetKey(type: BrandedOverlayType, variant: BrandedOve
 function resolveBrandedOverlayAsset(
     assets: BrandedOverlayAssets | undefined,
     type: BrandedOverlayType,
-    variant: BrandedOverlayVariant
+    variant: BrandedOverlayVariant,
+    options?: { allowOppositeVariantFallback?: boolean }
 ): { key?: BrandedOverlayAssetKey; url?: string } {
     if (!assets) {
         return {};
     }
 
     const oppositeVariant: BrandedOverlayVariant = variant === 'white' ? 'black' : 'white';
-    const candidates: BrandedOverlayAssetKey[] = [
-        getBrandedOverlayAssetKey(type, variant),
-        getBrandedOverlayAssetKey(type, oppositeVariant),
-        getBrandedOverlayAssetKey('trailer', variant),
-        getBrandedOverlayAssetKey('trailer', oppositeVariant),
-    ];
+    const allowOppositeVariantFallback = options?.allowOppositeVariantFallback !== false;
+    const candidates: BrandedOverlayAssetKey[] = [getBrandedOverlayAssetKey(type, variant)];
+
+    if (allowOppositeVariantFallback) {
+        candidates.push(getBrandedOverlayAssetKey(type, oppositeVariant));
+    }
+
+    candidates.push(getBrandedOverlayAssetKey('trailer', variant));
+
+    if (allowOppositeVariantFallback) {
+        candidates.push(getBrandedOverlayAssetKey('trailer', oppositeVariant));
+    }
 
     for (const key of candidates) {
         const url = assets[key];
@@ -1694,15 +1708,20 @@ export async function generateLandscapeThumbnail(
         if (config.logoDisplayMode === 'branded') {
             const resizedBackdrop = await image.png().toBuffer();
             const overlayType = detectBrandedOverlayType(originalTitle);
-            const overlayVariant = await detectBrandedOverlayContrast(
-                resizedBackdrop,
-                dimensions.width,
-                dimensions.height
-            );
+            const overlayVariant = config.brandedOverlayAppearanceMode === 'fixed'
+                ? (config.brandedOverlayFixedVariant || 'white')
+                : await detectBrandedOverlayContrast(
+                    resizedBackdrop,
+                    dimensions.width,
+                    dimensions.height
+                );
             const resolvedOverlay = resolveBrandedOverlayAsset(
                 config.brandedOverlayAssets,
                 overlayType,
-                overlayVariant
+                overlayVariant,
+                {
+                    allowOppositeVariantFallback: config.brandedOverlayAppearanceMode !== 'fixed',
+                }
             );
 
             if (resolvedOverlay.url) {

@@ -572,6 +572,7 @@ export const metaService = {
             }
 
             const creationId = containerRes.data.id;
+            await waitForInstagramMediaReady(creationId, accessToken);
 
             // Step 2: Publish Container
             const publishRes = await axios.post(`${BASE_URL}/${igUserId}/media_publish`, {

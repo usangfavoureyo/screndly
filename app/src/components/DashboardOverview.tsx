@@ -364,6 +364,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
           title="Posts"
           subtitle="Drafts, scheduled items, and published post activity"
           onViewAll={() => handleNavigate('compose-activity', 'dashboard')}
+          className="sm:col-span-2 lg:col-span-4"
         >
           <div className="grid grid-cols-2 gap-4 mb-4">
             <MetricCard
@@ -871,15 +872,17 @@ function SectionCard({
   subtitle,
   onViewAll,
   children,
+  className,
 }: {
   icon?: ReactNode;
   title: string;
   subtitle: string;
   onViewAll: () => void;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-shadow duration-200">
+    <div className={`bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-shadow duration-200 ${className ?? ''}`}>
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           {icon}

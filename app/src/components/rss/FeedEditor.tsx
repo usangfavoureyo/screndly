@@ -6,7 +6,7 @@ import { Label } from '../ui/label';
 import { Switch } from '../ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Separator } from '../ui/separator';
-import { Globe, Plus, Trash2, Upload, X } from 'lucide-react';
+import { ImageIcon, Plus, Trash2, Upload, X } from 'lucide-react';
 import { Feed } from './FeedCard';
 import { haptics } from '../../utils/haptics';
 import { Checkbox } from '../ui/checkbox';
@@ -223,6 +223,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
     }}>
       <SheetContent
         className="w-full sm:max-w-2xl bg-white dark:bg-[#000000] overflow-y-auto"
+        closeButtonClassName="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white/90 p-0 opacity-100 shadow-sm hover:bg-white dark:border-[#333333] dark:bg-[#050505]/90 dark:hover:bg-[#111111]"
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
         <SheetHeader>
@@ -282,7 +283,7 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                     </div>
                   ) : (
                     <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-gray-200 bg-gray-100 dark:border-[#333333] dark:bg-[#111111]">
-                      <Globe className="h-4 w-4 text-gray-500 dark:text-[#6B7280]" />
+                      <ImageIcon className="h-4 w-4 text-gray-500 dark:text-[#6B7280]" />
                     </div>
                   )}
 

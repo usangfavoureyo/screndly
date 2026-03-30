@@ -11,6 +11,8 @@ const MIN_TMDB_PERSON_SCORE = 170;
 const MIN_TMDB_COMPANY_SCORE = 150;
 const PERSON_CROP_WIDTH = 1080;
 const PERSON_CROP_HEIGHT = 1350;
+const MIN_TMDB_BACKDROP_WIDTH = 800;
+const MIN_TMDB_BACKDROP_HEIGHT = 450;
 
 type RSSImageIntent =
   | 'poster'
@@ -155,12 +157,23 @@ interface TMDbCompanySearchResult {
 }
 
 interface ResolvedTMDbTitleCandidate {
+  entityKey: string;
   title: string;
   score: number;
   backdropUrl?: string;
+  backdropUrls: string[];
   posterUrl?: string;
   logoUrl?: string;
 }
+
+interface BackdropRotationState {
+  poolKey: string;
+  orderedUrls: string[];
+  nextIndex: number;
+  lastUsedUrl?: string;
+}
+
+const backdropRotationStateByEntity = new Map<string, BackdropRotationState>();
 
 function normalizeText(value: string): string {
   return value
@@ -244,6 +257,123 @@ function selectBestImageAsset(
     });
 
   return buildImageUrl(ranked[0]?.file_path);
+}
+
+function scoreImageAsset(
+  asset: TMDbImageAsset,
+  preferredLanguages: Array<string | null>
+): number {
+  const languageRank = preferredLanguages.indexOf(asset.iso_639_1 ?? null);
+  return (languageRank === -1 ? 0 : 200 - languageRank * 50)
+    + (asset.vote_average || 0) * 10
+    + (asset.vote_count || 0)
+    + ((asset.width || 0) * (asset.height || 0)) / 100000;
+}
+
+function shuffleBackdropUrls(urls: string[]): string[] {
+  const shuffled = [...urls];
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+  return shuffled;
+}
+
+function collectBackdropCandidates(
+  primaryPath: string | null | undefined,
+  assets: TMDbImageAsset[] | undefined,
+  preferredLanguages: Array<string | null>
+): string[] {
+  const ranked = new Map<string, { url: string; score: number }>();
+
+  if (primaryPath) {
+    const primaryUrl = buildImageUrl(primaryPath);
+    if (primaryUrl) {
+      ranked.set(primaryPath, {
+        url: primaryUrl,
+        score: 1000000,
+      });
+    }
+  }
+
+  for (const asset of assets || []) {
+    const filePath = asset.file_path?.trim();
+    if (!filePath) {
+      continue;
+    }
+
+    if (
+      (typeof asset.width === 'number' && asset.width < MIN_TMDB_BACKDROP_WIDTH)
+      || (typeof asset.height === 'number' && asset.height < MIN_TMDB_BACKDROP_HEIGHT)
+    ) {
+      continue;
+    }
+
+    const url = buildImageUrl(filePath);
+    if (!url) {
+      continue;
+    }
+
+    const nextScore = scoreImageAsset(asset, preferredLanguages);
+    const existing = ranked.get(filePath);
+    if (!existing || nextScore > existing.score) {
+      ranked.set(filePath, { url, score: nextScore });
+    }
+  }
+
+  return [...ranked.values()]
+    .sort((left, right) => right.score - left.score)
+    .map((entry) => entry.url);
+}
+
+function rotateBackdropCandidates(entityKey: string, urls: string[]): string[] {
+  if (urls.length <= 1) {
+    return urls;
+  }
+
+  const poolKey = urls.join('|');
+  let state = backdropRotationStateByEntity.get(entityKey);
+
+  // Keep a lightweight per-entity rotation so RSS posts don't pin to one backdrop forever.
+  if (
+    !state
+    || state.poolKey !== poolKey
+    || state.orderedUrls.length !== urls.length
+    || state.orderedUrls.some((url) => !urls.includes(url))
+  ) {
+    const orderedUrls = shuffleBackdropUrls(urls);
+    if (state?.lastUsedUrl && orderedUrls[0] === state.lastUsedUrl) {
+      const alternateIndex = orderedUrls.findIndex((url) => url !== state?.lastUsedUrl);
+      if (alternateIndex > 0) {
+        [orderedUrls[0], orderedUrls[alternateIndex]] = [orderedUrls[alternateIndex], orderedUrls[0]];
+      }
+    }
+
+    state = {
+      poolKey,
+      orderedUrls,
+      nextIndex: 0,
+      lastUsedUrl: state?.lastUsedUrl,
+    };
+  }
+
+  let selectedIndex = state.nextIndex % state.orderedUrls.length;
+  if (state.lastUsedUrl && state.orderedUrls[selectedIndex] === state.lastUsedUrl) {
+    const alternateIndex = state.orderedUrls.findIndex((url) => url !== state?.lastUsedUrl);
+    if (alternateIndex >= 0) {
+      selectedIndex = alternateIndex;
+    }
+  }
+
+  const selectedUrl = state.orderedUrls[selectedIndex];
+  state.nextIndex = (selectedIndex + 1) % state.orderedUrls.length;
+  state.lastUsedUrl = selectedUrl;
+  backdropRotationStateByEntity.set(entityKey, state);
+
+  return [
+    selectedUrl,
+    ...state.orderedUrls.filter((url) => url !== selectedUrl),
+  ];
 }
 
 async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
@@ -532,10 +662,18 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
         continue;
       }
 
+      const entityKey = `${candidate.media_type}:${candidate.id}`;
+      const backdropUrls = rotateBackdropCandidates(
+        entityKey,
+        collectBackdropCandidates(details.backdrop_path, details.images?.backdrops, [null, 'en'])
+      );
+
       return {
+        entityKey,
         title,
         score: enrichedScore,
-        backdropUrl: selectBestImageAsset(details.backdrop_path, details.images?.backdrops, [null, 'en']),
+        backdropUrls,
+        backdropUrl: backdropUrls[0],
         posterUrl: selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]),
         logoUrl: selectBestImageAsset(undefined, details.images?.logos, ['en', null]),
       };
@@ -766,7 +904,7 @@ export async function resolveStructuredTMDbImages(
       ? titleCandidate.posterUrl
       : titleRole === 'logo' || titleRole === 'brand_backdrop'
         ? titleCandidate.logoUrl
-        : titleCandidate.backdropUrl || titleCandidate.posterUrl;
+        : titleCandidate.backdropUrls[0] || titleCandidate.posterUrl;
 
     if (preferredUrl) {
       candidates.push({
@@ -775,6 +913,21 @@ export async function resolveStructuredTMDbImages(
         role: titleRole,
         reason: `TMDb ${titleRole === 'poster' ? 'poster' : titleRole === 'logo' || titleRole === 'brand_backdrop' ? 'logo' : 'backdrop'} for ${titleCandidate.title}`,
       });
+    }
+
+    if (titleRole !== 'poster' && titleRole !== 'logo' && titleRole !== 'brand_backdrop' && titleCandidate.backdropUrls.length > 1) {
+      for (const [index, url] of titleCandidate.backdropUrls.entries()) {
+        if (index === 0 || url === preferredUrl) {
+          continue;
+        }
+
+        candidates.push({
+          url,
+          score: titleCandidate.score - (index * 2 + 1),
+          role: titleRole,
+          reason: `TMDb backdrop variant for ${titleCandidate.title}`,
+        });
+      }
     }
 
     if (input.limit > 1 && titleCandidate.logoUrl && preferredUrl !== titleCandidate.logoUrl) {

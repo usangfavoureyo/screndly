@@ -8,6 +8,7 @@ type RGB = { r: number; g: number; b: number };
 
 const DARK_DEFAULT: RGB = { r: 14, g: 14, b: 16 };
 const LIGHT_DEFAULT: RGB = { r: 245, g: 245, b: 242 };
+const TRANSPARENT_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 0 };
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -76,6 +77,38 @@ async function analyzeVisibleColor(buffer: Buffer): Promise<RGB> {
   };
 }
 
+async function trimLogoBuffer(originalBuffer: Buffer): Promise<Buffer> {
+  const transparentlyTrimmed = await sharp(originalBuffer, { animated: false })
+    .ensureAlpha()
+    .trim({ background: TRANSPARENT_BACKGROUND, threshold: 8 })
+    .png()
+    .toBuffer();
+
+  const transparentMetadata = await sharp(transparentlyTrimmed, { animated: false }).metadata();
+  const whiteBorderTrimmed = await sharp(transparentlyTrimmed, { animated: false })
+    .trim({
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
+      threshold: 12,
+    })
+    .png()
+    .toBuffer();
+  const whiteTrimMetadata = await sharp(whiteBorderTrimmed, { animated: false }).metadata();
+
+  const transparentWidth = transparentMetadata.width ?? 0;
+  const transparentHeight = transparentMetadata.height ?? 0;
+  const whiteTrimWidth = whiteTrimMetadata.width ?? transparentWidth;
+  const whiteTrimHeight = whiteTrimMetadata.height ?? transparentHeight;
+  const widthDelta = transparentWidth > 0 ? (transparentWidth - whiteTrimWidth) / transparentWidth : 0;
+  const heightDelta = transparentHeight > 0 ? (transparentHeight - whiteTrimHeight) / transparentHeight : 0;
+
+  // Remove only a shallow white matte/frame so we don't cut into legitimate white logo artwork.
+  if (widthDelta <= 0.12 && heightDelta <= 0.12) {
+    return whiteBorderTrimmed;
+  }
+
+  return transparentlyTrimmed;
+}
+
 function buildGradientSvg(width: number, height: number, start: RGB, end: RGB): Buffer {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
@@ -114,10 +147,7 @@ export async function renderTMDbLogoCard(
   intent: LogoCardIntent
 ): Promise<string> {
   const originalBuffer = await fetchBuffer(sourceUrl);
-  const trimmedBuffer = await sharp(originalBuffer, { animated: false })
-    .trim()
-    .png()
-    .toBuffer();
+  const trimmedBuffer = await trimLogoBuffer(originalBuffer);
   const accent = await analyzeVisibleColor(trimmedBuffer);
   const dimensions = intent === 'brand_backdrop'
     ? { width: 1600, height: 900, maxWidth: 1120, maxHeight: 360 }
@@ -130,6 +160,7 @@ export async function renderTMDbLogoCard(
       height: dimensions.maxHeight,
       fit: 'inside',
       withoutEnlargement: true,
+      background: TRANSPARENT_BACKGROUND,
     })
     .png()
     .toBuffer();

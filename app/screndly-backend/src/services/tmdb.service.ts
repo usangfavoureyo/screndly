@@ -31,11 +31,12 @@ import {
     type TMDbPostStatus,
 } from './tmdb-feed.domain';
 import {
-    pickDistinctImageUrl,
-    rankBackdropImageUrls,
+    selectBestBackdropForLogo,
+    selectBestBackdropForPoster,
+    selectBestLogo,
+    selectBestPoster,
     type TMDbImageAsset,
 } from './tmdb-image-selection.service';
-import { renderTMDbLogoCard } from './rss-logo-render.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -45,7 +46,7 @@ const TMDB_DISCOVER_MIN_POOL_SIZE = 8;
 const TMDB_THEATRICAL_RELEASE_TYPES = [3, 2] as const;
 const NON_NARRATIVE_GENRE_IDS = new Set([99, 10763, 10764, 10767]);
 const NON_NARRATIVE_TITLE_PATTERN = /\b(wwe|wrestlemania|smackdown|monday night raw|royal rumble|nxt|ufc|fight night|boxing|stand-up|standup|comedy special|docuseries|docu-series|behind the scenes|aftershow|after show|reunion special)\b/i;
-const tmdbBackdropCandidatesCache = new Map<string, Promise<string[]>>();
+const tmdbImageSetsCache = new Map<string, Promise<TMDbImagesResponse>>();
 
 type MediaType = 'movie' | 'tv';
 type TMDbImageMode = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
@@ -773,87 +774,42 @@ function buildTMDbImageUrl(path: string | null | undefined): string {
     return path ? `${TMDB_IMAGE_BASE}${path}` : '';
 }
 
-async function fetchRankedBackdropUrls(candidate: TMDbCandidate): Promise<string[]> {
-    const cacheKey = `${candidate.mediaType}:${candidate.tmdbId}:${candidate.backdropPath || ''}`;
-    const cached = tmdbBackdropCandidatesCache.get(cacheKey);
+async function fetchTMDbImages(candidate: TMDbCandidate): Promise<TMDbImagesResponse> {
+    const cacheKey = `${candidate.mediaType}:${candidate.tmdbId}`;
+    const cached = tmdbImageSetsCache.get(cacheKey);
     if (cached) {
         return cached;
     }
 
     const pending = (async () => {
-        const preferredBackdropUrl = buildTMDbImageUrl(candidate.backdropPath);
-
         try {
-            const details = await tmdbFetch<TMDbImagesResponse>(
+            return await tmdbFetch<TMDbImagesResponse>(
                 `/${candidate.mediaType === 'movie' ? 'movie' : 'tv'}/${candidate.tmdbId}/images`,
                 { include_image_language: 'en,null' },
             );
-
-            const ranked = rankBackdropImageUrls(details.backdrops, {
-                baseUrl: TMDB_IMAGE_BASE,
-                preferredPath: candidate.backdropPath,
-            });
-
-            return ranked.length > 0
-                ? ranked
-                : (preferredBackdropUrl ? [preferredBackdropUrl] : []);
         } catch (error) {
-            console.warn(`[TMDb] Failed to fetch alternate backdrops for ${candidate.mediaType}:${candidate.tmdbId}`, error);
-            return preferredBackdropUrl ? [preferredBackdropUrl] : [];
+            console.warn(`[TMDb] Failed to fetch TMDb images for ${candidate.mediaType}:${candidate.tmdbId}`, error);
+            return {
+                posters: [],
+                backdrops: [],
+                logos: [],
+            };
         }
     })();
 
-    tmdbBackdropCandidatesCache.set(cacheKey, pending);
+    tmdbImageSetsCache.set(cacheKey, pending);
     return pending;
 }
 
-async function resolveBackdropUrl(candidate: TMDbCandidate, posterUrl: string): Promise<string> {
-    const rankedBackdrops = await fetchRankedBackdropUrls(candidate);
-    if (rankedBackdrops.length === 0) {
-        return '';
-    }
-
-    if (!posterUrl) {
-        return rankedBackdrops[0] || '';
-    }
-
-    return pickDistinctImageUrl(posterUrl, rankedBackdrops);
-}
-
-async function fetchBestLogoUrl(mediaType: MediaType, tmdbId: number): Promise<string> {
-    try {
-        const details = await tmdbFetch<TMDbImagesResponse>(
-            `/${mediaType === 'movie' ? 'movie' : 'tv'}/${tmdbId}/images`,
-            { include_image_language: 'en,null' },
-        );
-        const logos = (details.logos || []).filter((logo) => typeof logo.file_path === 'string' && logo.file_path.length > 0);
-        if (logos.length === 0) {
-            return '';
-        }
-
-        logos.sort((left, right) => {
-            const leftLanguage = left.iso_639_1 === 'en' ? 1 : left.iso_639_1 === null ? 0.5 : 0;
-            const rightLanguage = right.iso_639_1 === 'en' ? 1 : right.iso_639_1 === null ? 0.5 : 0;
-            if (leftLanguage !== rightLanguage) {
-                return rightLanguage - leftLanguage;
-            }
-
-            const leftScore = (left.vote_average || 0) + (((left.width || 0) * (left.height || 0)) / 1_000_000);
-            const rightScore = (right.vote_average || 0) + (((right.width || 0) * (right.height || 0)) / 1_000_000);
-            return rightScore - leftScore;
-        });
-
-        return buildTMDbImageUrl(logos[0]?.file_path);
-    } catch (error) {
-        console.warn(`[TMDb] Failed to fetch logo for ${mediaType}:${tmdbId}`, error);
-        return '';
-    }
-}
-
 async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
-    const poster = candidate.posterPath ? `${TMDB_IMAGE_BASE}${candidate.posterPath}` : '';
+    const imageSet = await fetchTMDbImages(candidate);
+    const posterSelection = selectBestPoster(imageSet.posters, {
+        baseUrl: TMDB_IMAGE_BASE,
+        preferredPath: candidate.posterPath,
+        debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:poster`,
+    });
+    const poster = posterSelection?.url || (candidate.posterPath ? `${TMDB_IMAGE_BASE}${candidate.posterPath}` : '');
     const fallbackBackdrop = candidate.backdropPath ? `${TMDB_IMAGE_BASE}${candidate.backdropPath}` : '';
-    const rankedBackdrop = (await fetchRankedBackdropUrls(candidate))[0] || fallbackBackdrop;
     const selectedModes = normalizePreferredImageModes(config);
     const selectedMode = selectedModes[Math.floor(Math.random() * selectedModes.length)] || 'poster';
 
@@ -870,13 +826,27 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     };
 
     if (selectedMode === 'backdrop') {
+        const backdropSelection = await selectBestBackdropForPoster(imageSet.backdrops, {
+            baseUrl: TMDB_IMAGE_BASE,
+            posterUrl: poster,
+            preferredPath: candidate.backdropPath,
+            debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:backdrop`,
+        });
+        const rankedBackdrop = backdropSelection.selected?.url || fallbackBackdrop;
+
         return makeSelection([
             { imageUrl: rankedBackdrop || poster, imageType: rankedBackdrop ? 'backdrop' : 'poster' },
         ]);
     }
 
     if (selectedMode === 'poster_backdrop') {
-        const distinctBackdrop = await resolveBackdropUrl(candidate, poster);
+        const backdropSelection = await selectBestBackdropForPoster(imageSet.backdrops, {
+            baseUrl: TMDB_IMAGE_BASE,
+            posterUrl: poster,
+            preferredPath: candidate.backdropPath,
+            debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:poster_backdrop`,
+        });
+        const distinctBackdrop = backdropSelection.selected?.url || '';
 
         if (poster && !distinctBackdrop) {
             console.log(`[TMDb] No distinct backdrop still found for ${candidate.mediaType}:${candidate.tmdbId}; using poster only.`);
@@ -892,20 +862,24 @@ async function selectImages(candidate: TMDbCandidate, config: RefreshSettings) {
     }
 
     if (selectedMode === 'backdrop_logo') {
-        const logoUrl = await fetchBestLogoUrl(candidate.mediaType, candidate.tmdbId);
-        let renderedLogoUrl = '';
-
-        if (logoUrl) {
-            try {
-                renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
-            } catch (error) {
-                console.warn(`[TMDb] Failed to render logo card for ${candidate.mediaType}:${candidate.tmdbId}`, error);
-            }
-        }
+        const backdropSelection = await selectBestBackdropForLogo(imageSet.backdrops, {
+            baseUrl: TMDB_IMAGE_BASE,
+            posterUrl: poster,
+            preferredPath: candidate.backdropPath,
+            rotationSeed: `${candidate.mediaType}:${candidate.tmdbId}:${new Date().toISOString().slice(0, 10)}`,
+            debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:backdrop_logo`,
+        });
+        const backdropUrl = backdropSelection.selected?.url || fallbackBackdrop;
+        const logoSelection = selectBestLogo(imageSet.logos, {
+            baseUrl: TMDB_IMAGE_BASE,
+            preferredLanguage: 'en',
+            debugLabel: `${candidate.mediaType}:${candidate.tmdbId}:logo`,
+        });
+        const logoUrl = logoSelection?.url || '';
 
         return makeSelection([
-            { imageUrl: rankedBackdrop || poster, imageType: rankedBackdrop ? 'backdrop' : 'poster' },
-            ...(renderedLogoUrl ? [{ imageUrl: renderedLogoUrl, imageType: 'logo' as const }] : []),
+            { imageUrl: backdropUrl || poster, imageType: backdropUrl ? 'backdrop' : 'poster' },
+            ...(logoUrl ? [{ imageUrl: logoUrl, imageType: 'logo' as const }] : []),
         ]);
     }
 

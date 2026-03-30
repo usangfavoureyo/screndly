@@ -429,17 +429,6 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
             <div className="flex items-center justify-between mb-3 gap-3">
               <h3 className="text-gray-900 dark:text-white">Feeds ({feeds.length})</h3>
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleRefreshAllFeeds}
-                  disabled={isRefreshingAll}
-                  aria-label="Refresh all RSS feeds"
-                  className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
-                </Button>
                 {feeds.length > 1 ? (
                   <Button
                     type="button"
@@ -460,6 +449,17 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
                     />
                   </Button>
                 ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRefreshAllFeeds}
+                  disabled={isRefreshingAll}
+                  aria-label="Refresh all RSS feeds"
+                  className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshingAll ? 'animate-spin' : ''}`} />
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => {

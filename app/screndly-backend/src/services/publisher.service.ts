@@ -513,7 +513,12 @@ export class PublisherService {
             if (/^https?:\/\//i.test(trimmed) || this.isImage(trimmed)) {
                 try {
                     if (this.isDirectMetaSafeRemoteImageSource(trimmed) && !this.isRiskyGeneratedImageSource(trimmed)) {
-                        resolved.push(this.normalizeRemoteMediaUrl(trimmed));
+                        resolved.push(
+                            await getBackblazeAuthorizedDownloadUrl(
+                                this.normalizeRemoteMediaUrl(trimmed),
+                                7 * 24 * 60 * 60
+                            )
+                        );
                     } else {
                         resolved.push(await this.prepareHostedMetaImageUrl(trimmed, cache));
                     }
@@ -601,7 +606,7 @@ export class PublisherService {
             }
         );
 
-        const hostedUrl = uploaded.url;
+        const hostedUrl = await getBackblazeAuthorizedDownloadUrl(uploaded.url, 7 * 24 * 60 * 60);
         cache.set(cacheKey, hostedUrl);
         return hostedUrl;
     }

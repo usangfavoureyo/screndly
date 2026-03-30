@@ -14,7 +14,6 @@ import { toast } from "sonner";
 import { uploadToBackblaze } from '../../utils/backblaze';
 import { apiClient } from '../../lib/api/client';
 import {
-  detectOverlayType,
   getLogoFrameMetrics,
   getTrailerLabelMetrics,
   renderThumbnailPreviewResult,
@@ -185,26 +184,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const resolvedManualOverlayLabel = currentAssets.manualOverlayName
     || currentAssets.manualSavedOverlayKey
     || null;
-  const fixedPreviewAssetKey = isBrandedStyle && currentConfig.brandedOverlayAppearanceMode === 'fixed'
-    ? ((() => {
-      const type = detectOverlayType(previewTitle);
-      const preferredVariant = currentConfig.brandedOverlayFixedVariant || 'white';
-      const typedKey = `${type}_${preferredVariant}` as BrandedOverlayAssetKey;
-      const trailerKey = `trailer_${preferredVariant}` as BrandedOverlayAssetKey;
-      if (currentConfig.brandedOverlayAssets?.[typedKey]) {
-        return typedKey;
-      }
-      if (currentConfig.brandedOverlayAssets?.[trailerKey]) {
-        return trailerKey;
-      }
-      return undefined;
-    })())
-    : undefined;
   const brandedPreviewFallbackUrl = resolvedManualOverlayUrl
-    || (fixedPreviewAssetKey
-      ? currentBrandedPreviewUrls[fixedPreviewAssetKey]
-        || currentConfig.brandedOverlayAssets?.[fixedPreviewAssetKey]
-      : undefined)
     || (previewResolvedAssetKey
       ? currentBrandedPreviewUrls[previewResolvedAssetKey as BrandedOverlayAssetKey]
         || currentConfig.brandedOverlayAssets?.[previewResolvedAssetKey as BrandedOverlayAssetKey]
