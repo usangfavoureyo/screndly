@@ -78,8 +78,12 @@ export function hasPublishablePlatformConnection(
 }
 
 function needsRefresh(connection: PlatformConnection): boolean {
-    if (!connection.accessToken || !connection.expiresAt) {
+    if (!connection.refreshToken) {
         return false;
+    }
+
+    if (!connection.accessToken || !connection.expiresAt) {
+        return true;
     }
 
     return connection.expiresAt.getTime() <= Date.now() + REFRESH_WINDOW_MS;
@@ -204,6 +208,13 @@ async function refreshTikTokConnection(connection: PlatformConnection): Promise<
         scope?: string;
         token_type?: string;
     };
+
+    if (!tokenData.access_token) {
+        const errorDescription = typeof response.data?.error_description === 'string'
+            ? response.data.error_description
+            : 'TikTok did not return a refreshed access token.';
+        throw new Error(errorDescription);
+    }
 
     return persistConnectionUpdate(connection, {
         accessToken: tokenData.access_token,
