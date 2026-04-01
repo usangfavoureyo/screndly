@@ -675,39 +675,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
               ...getDefaultSettings(),
               ...mergeSettings(response.data, localSettings),
             }) as Settings;
-            const merged = shouldInjectCultureCravePrompts
-              ? { ...mergedSettings, ...settingsPromptDefaults }
-              : mergedSettings;
-            setSettings(merged);
-            syncThemeSetting(merged.darkMode);
+            setSettings(mergedSettings);
+            syncThemeSetting(mergedSettings.darkMode);
           } else {
             // Backend failed, use local only
             console.warn('[Settings] Failed to fetch settings, using defaults');
-            const fallbackSettings = normalizeSettingsModels(
-              shouldInjectCultureCravePrompts
-                ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-                : { ...getDefaultSettings(), ...localSettings },
-            ) as Settings;
+            const fallbackSettings = normalizeSettingsModels({ ...getDefaultSettings(), ...localSettings }) as Settings;
             setSettings(fallbackSettings);
             syncThemeSetting(fallbackSettings.darkMode);
           }
         } catch (err) {
           console.error('[Settings] Unexpected error fetching settings', err);
-          const fallbackSettings = normalizeSettingsModels(
-            shouldInjectCultureCravePrompts
-              ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-              : { ...getDefaultSettings(), ...localSettings },
-          ) as Settings;
+          const fallbackSettings = normalizeSettingsModels({ ...getDefaultSettings(), ...localSettings }) as Settings;
           setSettings(fallbackSettings);
           syncThemeSetting(fallbackSettings.darkMode);
         }
       } else {
         // Backend offline, use local only (this is normal for frontend-only PWA)
-        const fallbackSettings = normalizeSettingsModels(
-          shouldInjectCultureCravePrompts
-            ? { ...getDefaultSettings(), ...localSettings, ...settingsPromptDefaults }
-            : { ...getDefaultSettings(), ...localSettings },
-        ) as Settings;
+        const fallbackSettings = normalizeSettingsModels({ ...getDefaultSettings(), ...localSettings }) as Settings;
         setSettings(fallbackSettings);
         syncThemeSetting(fallbackSettings.darkMode);
       }

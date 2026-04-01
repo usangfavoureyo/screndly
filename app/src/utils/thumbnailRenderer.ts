@@ -1,19 +1,12 @@
 export type ThumbnailPlatformConfig = 'youtube' | 'x';
-export type BrandedOverlayType = 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
+export type BrandedOverlayType = string;
 export type BrandedOverlayVariant = 'white' | 'black';
-export type BrandedOverlayAssetKey =
-  | 'trailer_white'
-  | 'trailer_black'
-  | 'teaser_white'
-  | 'teaser_black'
-  | 'clip_white'
-  | 'clip_black'
-  | 'sneak_peek_white'
-  | 'sneak_peek_black';
+export type BrandedOverlayAssetKey = `${string}_${BrandedOverlayVariant}`;
 
 export type BrandedOverlayAssets = Partial<Record<BrandedOverlayAssetKey, string>>;
 export type ThumbnailLogoDisplayMode = 'boxed' | 'logo-only' | 'branded';
 export type BrandedOverlayAppearanceMode = 'adaptive' | 'fixed';
+export const STANDARD_BRANDED_OVERLAY_TYPES = ['trailer', 'teaser', 'clip', 'sneak_peek'] as const;
 
 export type LogoPosition =
   | 'top-left'
@@ -37,6 +30,7 @@ export interface ThumbnailConfig {
   autoContrastOverlay: boolean;
   showTrailerTypeText: boolean;
   brandedOverlayAssets?: BrandedOverlayAssets;
+  brandedOverlayCustomTypes?: string[];
   brandedOverlayAppearanceMode?: BrandedOverlayAppearanceMode;
   brandedOverlayFixedVariant?: BrandedOverlayVariant;
 }
@@ -72,6 +66,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
+    brandedOverlayCustomTypes: [],
     brandedOverlayAppearanceMode: 'adaptive',
     brandedOverlayFixedVariant: 'white',
   },
@@ -85,6 +80,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
     autoContrastBackdrop: true,
     autoContrastOverlay: true,
     showTrailerTypeText: false,
+    brandedOverlayCustomTypes: [],
     brandedOverlayAppearanceMode: 'adaptive',
     brandedOverlayFixedVariant: 'white',
   },
@@ -370,8 +366,71 @@ function normalizeOverlayTitle(title: string): string {
     .trim();
 }
 
-export function detectOverlayType(title: string): BrandedOverlayType {
+function normalizeBrandedOverlayType(type: string): string {
+  return type
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s]+/g, ' ')
+    .replace(/\s+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function getOverlayTypeFromAssetKey(key: string): string | null {
+  if (key.endsWith('_white')) {
+    return key.slice(0, -'_white'.length);
+  }
+  if (key.endsWith('_black')) {
+    return key.slice(0, -'_black'.length);
+  }
+  return null;
+}
+
+function getCustomOverlayTypes(
+  customTypes: string[] | undefined,
+  assets: BrandedOverlayAssets | undefined
+): string[] {
+  const derivedTypes = Object.keys(assets || {})
+    .map((key) => getOverlayTypeFromAssetKey(key))
+    .filter((value): value is string => Boolean(value));
+  const merged = [...(customTypes || []), ...derivedTypes]
+    .map((value) => normalizeBrandedOverlayType(value))
+    .filter(Boolean);
+
+  return [...new Set(merged)].filter(
+    (value) => !(STANDARD_BRANDED_OVERLAY_TYPES as readonly string[]).includes(value)
+  );
+}
+
+export function sanitizeBrandedOverlayTypeLabel(label: string): string {
+  return normalizeBrandedOverlayType(label);
+}
+
+export function formatBrandedOverlayTypeLabel(type: string): string {
+  const normalized = normalizeBrandedOverlayType(type);
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .split('_')
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+export function detectOverlayType(
+  title: string,
+  assets?: BrandedOverlayAssets,
+  customTypes?: string[]
+): BrandedOverlayType {
   const normalized = normalizeOverlayTitle(title);
+  const matchingCustomType = getCustomOverlayTypes(customTypes, assets)
+    .sort((left, right) => right.length - left.length)
+    .find((type) => normalized.includes(type.replace(/_/g, ' ')));
+
+  if (matchingCustomType) {
+    return matchingCustomType;
+  }
   if (normalized.includes('sneak peek')) {
     return 'sneak_peek';
   }
@@ -490,17 +549,19 @@ function resolveOverlayAsset(
 
   const allowOppositeVariantFallback = options.allowOppositeVariantFallback ?? true;
   const oppositeVariant: BrandedOverlayVariant = variant === 'white' ? 'black' : 'white';
-  const candidates: BrandedOverlayAssetKey[] = allowOppositeVariantFallback
-    ? [
-    getBrandedAssetKey(type, variant),
-    getBrandedAssetKey(type, oppositeVariant),
-    getBrandedAssetKey('trailer', variant),
-    getBrandedAssetKey('trailer', oppositeVariant),
-      ]
-    : [
-      getBrandedAssetKey(type, variant),
-      getBrandedAssetKey('trailer', variant),
-      ];
+  const candidates: BrandedOverlayAssetKey[] = [getBrandedAssetKey(type, variant)];
+
+  if (allowOppositeVariantFallback) {
+    candidates.push(getBrandedAssetKey(type, oppositeVariant));
+  }
+
+  if (type !== 'trailer') {
+    candidates.push(getBrandedAssetKey('trailer', variant));
+
+    if (allowOppositeVariantFallback) {
+      candidates.push(getBrandedAssetKey('trailer', oppositeVariant));
+    }
+  }
 
   for (const key of candidates) {
     const src = assets[key];
@@ -622,7 +683,11 @@ export async function renderThumbnailPreviewResult(
 
   const brandedAssets = options.brandedOverlayAssets || config.brandedOverlayAssets;
   if (config.logoDisplayMode === 'branded') {
-    const detectedType = detectOverlayType(options.title || options.trailerLabel || '');
+    const detectedType = detectOverlayType(
+      options.title || options.trailerLabel || '',
+      brandedAssets,
+      config.brandedOverlayCustomTypes
+    );
     const adaptiveVariant = await detectOverlayContrast(ctx, width, height);
     const preferredVariant = config.brandedOverlayAppearanceMode === 'fixed'
       ? (config.brandedOverlayFixedVariant || 'white')

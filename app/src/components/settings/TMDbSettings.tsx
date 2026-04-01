@@ -637,7 +637,6 @@ export function TMDbSettings() {
       }
 
       if (shouldInjectCultureCravePrompts) {
-        merged = normalizeTMDbSettings({ ...merged, ...tmdbPromptDefaults });
         localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
       }
       if (typeof merged.minPopularityThreshold !== 'number') {

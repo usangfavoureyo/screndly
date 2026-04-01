@@ -268,9 +268,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     if (savedSettings) {
       try {
         const parsed = normalizeDesignStudioSettings(JSON.parse(savedSettings));
-        const nextSettings = shouldInjectCultureCravePrompts
-          ? { ...defaultSettings, ...sharedSettings, ...parsed, ...designStudioPromptDefaults }
-          : { ...defaultSettings, ...sharedSettings, ...parsed };
+        const nextSettings = { ...defaultSettings, ...sharedSettings, ...parsed };
         setSettings(normalizeDesignStudioSettings(nextSettings));
       } catch (error) {
         console.error('Error loading Design Studio settings:', error);

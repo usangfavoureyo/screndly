@@ -58,7 +58,7 @@ const WORKFLOW_STEPS = [
   },
   {
     title: "Publish through authorized platforms",
-    description: "Send content to connected platforms including Pinterest and TikTok.",
+    description: "Send content to connected platforms including Pinterest, TikTok, Meta platforms, YouTube, and X.",
   },
 ];
 
@@ -245,7 +245,7 @@ export function MarketingLandingPage() {
         </div>
       </section>
 
-      <section id="pinterest" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
+      <section id="integrations" className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
         <div className="mx-auto grid w-full max-w-6xl gap-10 px-6 py-16 md:grid-cols-[1.1fr_0.9fr] lg:px-10 lg:py-20">
           <FadeIn>
             <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
@@ -311,6 +311,36 @@ export function MarketingLandingPage() {
               <p>Users upload videos, write captions, and publish from the Screndly dashboard.</p>
               <p>Videos are transferred through the official TikTok Content Posting API.</p>
               <p>Publishing only occurs after user authorization.</p>
+            </div>
+          </FadeIn>
+        </div>
+      </section>
+
+      <section className="border-b border-[color:var(--marketing-border)] bg-[var(--marketing-surface)]">
+        <div className="mx-auto w-full max-w-6xl px-6 py-16 lg:px-10 lg:py-20">
+          <FadeIn>
+            <h2 className="marketing-heading text-2xl font-semibold text-[var(--marketing-text)] md:text-3xl">
+              Additional Platform Coverage
+            </h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                <p className="text-sm font-semibold text-[var(--marketing-text)]">Meta platforms</p>
+                <p className="mt-2 text-sm text-[var(--marketing-muted)]">
+                  Screndly also supports publishing workflows for Facebook, Instagram, and Threads through connected platform access.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                <p className="text-sm font-semibold text-[var(--marketing-text)]">YouTube</p>
+                <p className="mt-2 text-sm text-[var(--marketing-muted)]">
+                  Users can prepare media, captions, and delivery settings for YouTube publishing inside the dashboard.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-[color:var(--marketing-border)] bg-[var(--marketing-surface-alt)] p-5">
+                <p className="text-sm font-semibold text-[var(--marketing-text)]">X</p>
+                <p className="mt-2 text-sm text-[var(--marketing-muted)]">
+                  Screndly includes publishing support for X as part of its broader authorized multi-platform workflow.
+                </p>
+              </div>
             </div>
           </FadeIn>
         </div>

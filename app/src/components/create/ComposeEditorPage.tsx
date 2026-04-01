@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
+import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -1563,37 +1563,41 @@ export function ComposeEditorPage({
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-            <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="mb-4">
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Source Metadata</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
                   Paste trailer, teaser, movie, or studio information here. AI will generate the shared caption, YouTube title, description, and suggest the best playlist.
                 </p>
               </div>
-              <Button
+            </div>
+
+            <div className="relative">
+              <Textarea
+                value={formState.sourceMetadata}
+                onChange={(event) => {
+                  setFormState((current) => ({ ...current, sourceMetadata: event.target.value }));
+                  if (metadataGenerationError) {
+                    setMetadataGenerationError(null);
+                  }
+                }}
+                placeholder="Paste trailer text, synopsis, release info, cast, platform, studio text, or promotional metadata..."
+                className="min-h-[200px] border-gray-200 bg-white pb-16 dark:border-[#333333] dark:bg-[#000000]"
+              />
+              <button
                 type="button"
                 onClick={handleGenerateMetadata}
                 disabled={isGeneratingMetadata || !normalizeMetadataInput(formState.sourceMetadata)}
+                aria-label={isGeneratingMetadata ? 'Generating content' : 'Generate content'}
+                className="absolute bottom-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-full bg-[#ec1e24] text-white transition-colors hover:bg-[#d81920] disabled:cursor-not-allowed disabled:bg-[#7f1d1d] disabled:text-white/70"
               >
-                {isGeneratingMetadata
-                  ? 'Generating...'
-                  : hasExistingGeneratedTargets
-                    ? 'Regenerate'
-                    : 'Generate Content'}
-              </Button>
+                {isGeneratingMetadata ? (
+                  <RedSpinner size="sm" label="Generating metadata content..." />
+                ) : (
+                  <ArrowUp className="h-5 w-5" />
+                )}
+              </button>
             </div>
-
-            <Textarea
-              value={formState.sourceMetadata}
-              onChange={(event) => {
-                setFormState((current) => ({ ...current, sourceMetadata: event.target.value }));
-                if (metadataGenerationError) {
-                  setMetadataGenerationError(null);
-                }
-              }}
-              placeholder="Paste trailer text, synopsis, release info, cast, platform, studio text, or promotional metadata..."
-              className="min-h-[180px] border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
-            />
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">

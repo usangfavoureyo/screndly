@@ -6,8 +6,7 @@ import logoDark from "../assets/screndly-logo-red-white.png";
 
 const NAV_ITEMS = [
   { label: "Features", href: "/#features" },
-  { label: "Pinterest Integration", href: "/#pinterest" },
-  { label: "TikTok Integration", href: "/#tiktok" },
+  { label: "Integrations", href: "/#integrations" },
   { label: "Workflow", href: "/#workflow" },
   { label: "Privacy", href: "/#privacy" },
   { label: "Contact", href: "/#contact" },

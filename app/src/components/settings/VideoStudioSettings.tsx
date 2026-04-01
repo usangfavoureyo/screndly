@@ -237,9 +237,7 @@ export function VideoStudioSettings({ onSave, onBack }: VideoStudioSettingsProps
     if (savedSettings) {
       try {
         const parsed = normalizeVideoStudioSettings(JSON.parse(savedSettings));
-        const nextSettings = shouldInjectCultureCravePrompts
-          ? { ...defaultSettings, ...sharedSettings, ...parsed, ...videoStudioPromptDefaults }
-          : { ...defaultSettings, ...sharedSettings, ...parsed };
+        const nextSettings = { ...defaultSettings, ...sharedSettings, ...parsed };
         setSettings(normalizeVideoStudioSettings(nextSettings));
       } catch (error) {
         console.error('Error loading Video Studio settings:', error);

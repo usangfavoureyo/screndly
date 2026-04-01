@@ -99,34 +99,10 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
     }
   };
 
-  const updateActivityRecord = async (activityId: string, updates: Partial<VideoStudioActivity>) => {
-    const response = await apiClient.put(`/api/video-studio/activity/${activityId}`, updates);
-    if (!response.success) {
-      throw new Error(response.error?.message || 'Failed to update video studio activity');
-    }
-  };
-
   const deleteActivityRecord = async (activityId: string) => {
     const response = await apiClient.delete(`/api/video-studio/activity/${activityId}`);
     if (!response.success) {
       throw new Error(response.error?.message || 'Failed to delete video studio activity');
-    }
-  };
-
-  const createVideoStudioLog = async (title: string, platform: string) => {
-    const response = await apiClient.post('/api/logs', {
-      level: 'info',
-      message: `Video studio publish: ${title}`,
-      service: 'video-studio',
-      metadata: {
-        videoTitle: title,
-        platform,
-        type: 'videostudio',
-      },
-    });
-
-    if (!response.success) {
-      throw new Error(response.error?.message || 'Failed to write activity log');
     }
   };
 
@@ -740,8 +716,6 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
 
                   if (!selectedActivity) return;
 
-                  setIsPublishDialogOpen(false);
-
                   const platforms: string[] = [];
                   if (selectedPlatforms.x) platforms.push('X');
                   if (selectedPlatforms.threads) platforms.push('Threads');
@@ -751,34 +725,25 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                   if (selectedPlatforms.tiktok) platforms.push('TikTok');
                   if (selectedPlatforms.pinterest) platforms.push('Pinterest');
 
-                  const updatedActivity = {
-                    ...selectedActivity,
-                    published: true,
-                    platforms
-                  };
+                  if (platforms.length === 0) {
+                    toast.error('Select at least one platform before publishing.');
+                    return;
+                  }
 
                   try {
-                    await updateActivityRecord(selectedActivity.id, {
-                      published: true,
-                      platforms,
-                    });
-
-                    setActivities(prev => prev.map(a =>
-                      a.id === selectedActivity.id ? updatedActivity : a
-                    ));
-
-                    await createVideoStudioLog(selectedActivity.title, platforms.join(', '));
-
-                    toast.success(selectedActivity.published ? 'Republished' : 'Published', {
-                      description: `"${selectedActivity.title}" published to ${platforms.join(', ')}`,
-                    });
+                    throw new Error(
+                      'Video Studio activity history does not yet keep the rendered video source needed for a real publish. Publish the video from the Video Studio page instead.'
+                    );
                   } catch (error) {
                     console.error('Failed to update video studio publish state:', error);
-                    toast.error('Failed to update publish state');
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : 'Failed to publish from activity history'
+                    );
                   } finally {
                     setGeneratedCaption('');
                     setCaptionEditMode(false);
-                    setSelectedActivity(null);
                   }
                 }}
                 className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white shadow-none hover:shadow-none active:shadow-none focus:shadow-none hover:scale-100 active:scale-100"

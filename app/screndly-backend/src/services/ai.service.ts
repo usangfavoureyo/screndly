@@ -163,7 +163,7 @@ function writeCachedAIResponse(cacheKey: string, response: AIResponse, ttlMs: nu
 
 function resolveReasoningEffort(request: AIRequest): AIReasoningEffort | undefined {
     if (request.reasoningEffort) {
-        if (request.model.startsWith('gpt-5') && request.reasoningEffort === 'minimal') {
+        if (request.reasoningEffort === 'minimal') {
             return 'low';
         }
 
@@ -174,7 +174,7 @@ function resolveReasoningEffort(request: AIRequest): AIReasoningEffort | undefin
         return undefined;
     }
 
-    return 'minimal';
+    return 'low';
 }
 
 export interface ValidationResult {
@@ -1735,6 +1735,10 @@ Goals:
 - Write a YouTube title.
 - Write a YouTube description.
 - Suggest the best matching YouTube playlist from the exact available playlists below.
+
+Input format note:
+- The pasted metadata may look like studio press-release copy, trailer copy, teaser copy, marketing blurbs, synopsis paragraphs, release-date announcements, cast blocks, or platform/studio promo text.
+- Extract the key facts from dense prose without copying it word-for-word unless a short phrase is clearly useful.
 
 Rules:
 - Never invent a playlist ID or playlist name.

@@ -14,7 +14,9 @@ import { toast } from "sonner";
 import { uploadToBackblaze } from '../../utils/backblaze';
 import { apiClient } from '../../lib/api/client';
 import {
+  formatBrandedOverlayTypeLabel,
   getLogoFrameMetrics,
+  sanitizeBrandedOverlayTypeLabel,
   getTrailerLabelMetrics,
   renderThumbnailPreviewResult,
   shouldUseThumbnailLogoShadow,
@@ -59,13 +61,19 @@ interface ThumbnailAssetOverride {
 
 const BRANDED_ASSET_GROUPS: Array<{
   label: string;
-  type: 'trailer' | 'teaser' | 'clip' | 'sneak_peek';
+  type: string;
 }> = [
   { label: 'Trailer', type: 'trailer' },
   { label: 'Teaser', type: 'teaser' },
   { label: 'Clip', type: 'clip' },
   { label: 'Sneak Peek', type: 'sneak_peek' },
 ];
+
+interface BrandedAssetGroup {
+  label: string;
+  type: string;
+  isCustom: boolean;
+}
 
 const LOGO_POSITIONS: Record<LogoPosition, string> = {
   'top-left': 'Top Left',
@@ -88,6 +96,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [isDownloadSheetOpen, setIsDownloadSheetOpen] = useState(false);
   const [isLogoStyleSheetOpen, setIsLogoStyleSheetOpen] = useState(false);
   const [isBrandedAppearanceSheetOpen, setIsBrandedAppearanceSheetOpen] = useState(false);
+  const [isAddBrandedAssetSheetOpen, setIsAddBrandedAssetSheetOpen] = useState(false);
   const [isExpandedPreviewOpen, setIsExpandedPreviewOpen] = useState(false);
   const [expandedPreviewSrc, setExpandedPreviewSrc] = useState<string | null>(null);
   const [isGeneratingExpandedPreview, setIsGeneratingExpandedPreview] = useState(false);
@@ -97,6 +106,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const [previewDetectedType, setPreviewDetectedType] = useState<string | null>(null);
   const [previewDetectedVariant, setPreviewDetectedVariant] = useState<string | null>(null);
   const [previewResolvedAssetKey, setPreviewResolvedAssetKey] = useState<string | null>(null);
+  const [newBrandedAssetName, setNewBrandedAssetName] = useState('');
   const [brandedAssetPreviewUrls, setBrandedAssetPreviewUrls] = useState<Record<Platform, Partial<Record<BrandedOverlayAssetKey, string>>>>({
     youtube: {},
     x: {},
@@ -118,6 +128,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     autoContrastOverlay: true,
     showTrailerTypeText: false,
     brandedOverlayAssets: {},
+    brandedOverlayCustomTypes: [],
     brandedOverlayAppearanceMode: 'adaptive',
     brandedOverlayFixedVariant: 'white',
   };
@@ -133,6 +144,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     autoContrastOverlay: true,
     showTrailerTypeText: false,
     brandedOverlayAssets: {},
+    brandedOverlayCustomTypes: [],
     brandedOverlayAppearanceMode: 'adaptive',
     brandedOverlayFixedVariant: 'white',
   };
@@ -174,6 +186,15 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
   const isBrandedStyle = currentConfig.logoDisplayMode === 'branded';
   const usesStandardLogoControls = !isBrandedStyle;
   const brandedAssetEntries = Object.entries(currentConfig.brandedOverlayAssets || {}) as Array<[BrandedOverlayAssetKey, string]>;
+  const customBrandedAssetTypes = [...new Set((currentConfig.brandedOverlayCustomTypes || []).map((type) => sanitizeBrandedOverlayTypeLabel(type)).filter(Boolean))];
+  const brandedAssetGroups: BrandedAssetGroup[] = [
+    ...BRANDED_ASSET_GROUPS.map((group) => ({ ...group, isCustom: false })),
+    ...customBrandedAssetTypes.map((type) => ({
+      type,
+      label: formatBrandedOverlayTypeLabel(type),
+      isCustom: true,
+    })),
+  ];
   const brandedAppearanceLabel = currentConfig.brandedOverlayAppearanceMode === 'fixed'
     ? `Fixed ${currentConfig.brandedOverlayFixedVariant === 'black' ? 'Black' : 'White'}`
     : 'Adaptive';
@@ -238,6 +259,28 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
 
   const updateBrandedAssets = async (nextAssets: BrandedOverlayAssets) => {
     await handleUpdate({ brandedOverlayAssets: nextAssets });
+  };
+
+  const handleAddCustomBrandedAsset = async () => {
+    const normalizedType = sanitizeBrandedOverlayTypeLabel(newBrandedAssetName);
+    if (!normalizedType) {
+      toast.error('Enter a branded asset name');
+      return;
+    }
+
+    const alreadyExists = brandedAssetGroups.some((group) => group.type === normalizedType);
+    if (alreadyExists) {
+      toast.error('That branded asset already exists');
+      return;
+    }
+
+    await handleUpdate({
+      brandedOverlayCustomTypes: [...customBrandedAssetTypes, normalizedType],
+    });
+    setNewBrandedAssetName('');
+    setIsAddBrandedAssetSheetOpen(false);
+    haptics.medium();
+    toast.success('Branded asset added');
   };
 
   const handleManualOverlayUpload = (file?: File | null) => {
@@ -356,6 +399,32 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     });
     haptics.light();
     toast.success('Branded overlay removed');
+  };
+
+  const handleRemoveBrandedAssetGroup = async (groupType: string) => {
+    const normalizedType = sanitizeBrandedOverlayTypeLabel(groupType);
+    const nextAssets = { ...(currentConfig.brandedOverlayAssets || {}) };
+    const whiteKey = `${normalizedType}_white` as BrandedOverlayAssetKey;
+    const blackKey = `${normalizedType}_black` as BrandedOverlayAssetKey;
+    delete nextAssets[whiteKey];
+    delete nextAssets[blackKey];
+
+    await handleUpdate({
+      brandedOverlayAssets: nextAssets,
+      brandedOverlayCustomTypes: customBrandedAssetTypes.filter((type) => type !== normalizedType),
+    });
+
+    setBrandedAssetPreviewUrls((prev) => {
+      const nextPlatformPreviews = { ...(prev[activePlatform] || {}) };
+      delete nextPlatformPreviews[whiteKey];
+      delete nextPlatformPreviews[blackKey];
+      return {
+        ...prev,
+        [activePlatform]: nextPlatformPreviews,
+      };
+    });
+    haptics.light();
+    toast.success('Branded asset removed');
   };
 
   const renderThumbnailToCanvas = async (format: 'png' | 'jpeg') => {
@@ -682,17 +751,42 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
 
             <div className="space-y-4">
-              <div>
-                <Label className="text-gray-900 dark:text-white mb-2 block">Branded Overlay Assets</Label>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Label className="text-gray-900 dark:text-white mb-2 block">Branded Overlay Assets</Label>
                 <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-4">
                   Upload full-frame 1280×720 overlay PNGs for each content type and contrast variant.
                 </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    haptics.light();
+                    setNewBrandedAssetName('');
+                    setIsAddBrandedAssetSheetOpen(true);
+                  }}
+                  className="h-10 min-w-10 rounded-full border-gray-300 px-0 text-lg leading-none text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                  aria-label="Add branded asset"
+                >
+                  +
+                </Button>
               </div>
 
-              {BRANDED_ASSET_GROUPS.map((group) => (
+              {brandedAssetGroups.map((group) => (
                 <div key={group.type} className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4 space-y-4">
-                  <div>
+                  <div className="flex items-center justify-between gap-3">
                     <p className="text-gray-900 dark:text-white">{group.label}</p>
+                    {group.isCustom ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="border-gray-300 dark:border-[#333333] text-gray-900 dark:text-white bg-white dark:bg-[#000000]"
+                        onClick={() => void handleRemoveBrandedAssetGroup(group.type)}
+                      >
+                        Remove Asset
+                      </Button>
+                    ) : null}
                   </div>
                   {(['white', 'black'] as const).map((variant) => {
                      const assetKey = `${group.type}_${variant}` as BrandedOverlayAssetKey;
@@ -1327,6 +1421,46 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
             </div>
           </div>
         </BottomSheetBody>
+      </BottomSheet>
+
+      <BottomSheet open={isAddBrandedAssetSheetOpen} onOpenChange={setIsAddBrandedAssetSheetOpen}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>Add Branded Asset</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-gray-900 dark:text-white">Keyword Name</Label>
+            <Input
+              value={newBrandedAssetName}
+              onChange={(e) => setNewBrandedAssetName(e.target.value)}
+              placeholder="Title Reveal"
+              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+            />
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              We&apos;ll create two upload slots for this asset: `{sanitizeBrandedOverlayTypeLabel(newBrandedAssetName || 'title_reveal')}_white` and `{sanitizeBrandedOverlayTypeLabel(newBrandedAssetName || 'title_reveal')}_black`.
+            </p>
+          </div>
+        </BottomSheetBody>
+        <BottomSheetFooter>
+          <div className="flex w-full gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setIsAddBrandedAssetSheetOpen(false);
+                setNewBrandedAssetName('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 bg-[#ec1e24] text-white hover:bg-[#c81a1f]"
+              onClick={() => void handleAddCustomBrandedAsset()}
+            >
+              Add
+            </Button>
+          </div>
+        </BottomSheetFooter>
       </BottomSheet>
 
       <MediaPreviewDialog
