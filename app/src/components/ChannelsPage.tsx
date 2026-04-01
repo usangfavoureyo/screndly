@@ -598,14 +598,6 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">Monitor YouTube channels for new 16:9 landscape trailers.</p>
           </div>
         )}
-        <div className="flex gap-2">
-          <Button
-            onClick={openAddChannel}
-            className="bg-[#ec1e24] hover:bg-[#d11b20] text-white rounded-xl gap-2"
-          >
-            Add Channel
-          </Button>
-        </div>
       </div>
 
       <BottomSheet
@@ -675,19 +667,27 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
         </BottomSheetFooter>
       </BottomSheet>
 
-      <div className="flex items-center justify-between mb-2 mt-2">
+      <div className="flex items-center justify-between mb-2 mt-2 gap-3">
         <h3 className="text-gray-900 dark:text-white font-medium">
           Channels ({channels.length})
         </h3>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void fetchChannels()}
-          disabled={isLoading}
-          className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-        >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchChannels()}
+            disabled={isLoading}
+            className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button
+            onClick={openAddChannel}
+            className="bg-[#ec1e24] hover:bg-[#d11b20] text-white rounded-xl gap-2"
+          >
+            Add Channel
+          </Button>
+        </div>
       </div>
 
       {selection.selectionMode && (
