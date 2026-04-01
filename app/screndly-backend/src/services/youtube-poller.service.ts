@@ -1652,7 +1652,8 @@ export class YouTubePollerService {
             };
         }
 
-        const thumbnailUrl = this.getThumbnailUrl(details, videoId);
+        const thumbnailCandidates = this.getThumbnailCandidates(details, videoId);
+        const thumbnailUrl = thumbnailCandidates[0];
         const enrichedMetadata = await enrichYouTubeVideoMetadata(
             videoId,
             video.title || '',
@@ -1940,10 +1941,10 @@ export class YouTubePollerService {
                     )
                     : this.buildDefaultYouTubeMetadata(video, details, enrichedMetadata);
             youtubeThumbnail = targetPlatforms.includes('YouTube') && this.isAutoThumbnailEnabled('YouTube', settings)
-                ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailUrl, settings)
+                ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailCandidates, settings)
                 : null;
             xThumbnail = targetPlatforms.includes('X') && this.isAutoThumbnailEnabled('X', settings)
-                ? await generateLandscapeThumbnail('x', video.title || '', enrichedMetadata, thumbnailUrl, settings)
+                ? await generateLandscapeThumbnail('x', video.title || '', enrichedMetadata, thumbnailCandidates, settings)
                 : null;
             socialPoster = targetPlatforms.some((platform) => SOCIAL_THUMBNAIL_PLATFORMS.has(platform) && this.isAutoThumbnailEnabled(platform, settings))
                 ? await generateSocialPosterThumbnail(video.title || '', enrichedMetadata, thumbnailUrl, settings)
@@ -2536,14 +2537,23 @@ Respond ONLY as strict JSON:
         }
     }
 
-    private getThumbnailUrl(details: any, videoId?: string): string | undefined {
+    private getThumbnailCandidates(details: any, videoId?: string): string[] {
         const thumbnails = details?.thumbnails;
         if (Array.isArray(thumbnails) && thumbnails.length > 0) {
-            return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
+            return [...new Set(
+                thumbnails
+                    .map((thumbnail: { url?: string }) => thumbnail?.url)
+                    .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+            )];
         }
 
-        const fallbackThumbnails = this.buildFallbackThumbnails(videoId || details?.videoId);
-        return fallbackThumbnails[fallbackThumbnails.length - 1]?.url || fallbackThumbnails[0]?.url;
+        return this.buildFallbackThumbnails(videoId || details?.videoId)
+            .map((thumbnail) => thumbnail.url)
+            .filter((url): url is string => typeof url === 'string' && url.trim().length > 0);
+    }
+
+    private getThumbnailUrl(details: any, videoId?: string): string | undefined {
+        return this.getThumbnailCandidates(details, videoId)[0];
     }
 
     private buildFallbackThumbnails(videoId: string): Array<{ url?: string }> {

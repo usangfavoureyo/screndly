@@ -2292,9 +2292,9 @@ function determineSmartImagePlan(
         secondary: buildImageSlotPlan(
           memorialProjectSubject,
           inferSlotType(memorialProjectSubject, articleText, 'franchise', analysis),
-          'poster',
+          'logo',
           analysis,
-          false
+          true
         ),
         useTwoImages: true,
       };
@@ -2546,6 +2546,10 @@ function shouldKeepSecondaryCarouselImage(
   }
 
   return true;
+}
+
+function isMemorialNeutralProjectRole(role: ImageRole): boolean {
+  return role === 'logo' || role === 'brand_backdrop';
 }
 
 async function collectScoredImages(
@@ -2978,7 +2982,7 @@ async function resolveSmartSecondaryCandidate(
   primaryImage: RSSResolvedImage,
   primaryRole: ImageRole,
   sources: RSSImageSource[]
-): Promise<RSSResolvedImage | null> {
+): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
   const primaryIdentity = getImageIdentity(primaryImage.url);
 
   for (const source of sources) {
@@ -2989,7 +2993,10 @@ async function resolveSmartSecondaryCandidate(
         areImageRolesComplementary(primaryRole, item.role)
       );
       if (candidate) {
-        return candidate;
+        return {
+          image: candidate,
+          role: candidate.role,
+        };
       }
       continue;
     }
@@ -3012,10 +3019,13 @@ async function resolveSmartSecondaryCandidate(
 
     if (candidate?.image.imageUrl) {
       return {
-        url: candidate.image.imageUrl,
-        reason: candidate.reason,
-        source: 'serper',
-        score: candidate.score,
+        image: {
+          url: candidate.image.imageUrl,
+          reason: candidate.reason,
+          source: 'serper',
+          score: candidate.score,
+        },
+        role: getImageRole(getSerperImageText(candidate.image), analysis),
       };
     }
   }
@@ -3571,9 +3581,21 @@ export async function resolveRelevantRSSImages(
     const plan = determineSmartImagePlan(article, analysis);
     const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
     const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources, fallbackImages);
+    const memorialStory = isMemorialStory(article);
 
     if (!primaryResolved) {
       return buildFeedFallbackImages(fallbackImages, limit);
+    }
+
+    if (memorialStory && plan.primary.intent === 'person_portrait' && primaryResolved.role !== 'person') {
+      if (!plan.secondary) {
+        return [];
+      }
+
+      const memorialSecondaryAnalysis = buildAnalysisForSlot(analysis, plan.secondary);
+      const memorialProjectOnly = await collectStructuredTMDbImages(memorialSecondaryAnalysis, 1);
+      const neutralProjectImage = memorialProjectOnly.find((item) => isMemorialNeutralProjectRole(item.role));
+      return neutralProjectImage ? [neutralProjectImage] : [];
     }
 
     if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(primaryAnalysis, primaryResolved.image, primaryResolved.role)) {
@@ -3607,10 +3629,14 @@ export async function resolveRelevantRSSImages(
         : [primaryResolved.image];
     }
 
-    return shouldKeepSecondaryCarouselImage(primaryResolved.image, secondaryResolved)
+    if (memorialStory && !isMemorialNeutralProjectRole(secondaryResolved.role)) {
+      return [primaryResolved.image];
+    }
+
+    return shouldKeepSecondaryCarouselImage(primaryResolved.image, secondaryResolved.image)
       ? [
           primaryResolved.image,
-          secondaryResolved,
+          secondaryResolved.image,
         ]
       : [primaryResolved.image];
   }

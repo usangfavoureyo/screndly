@@ -833,10 +833,23 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                     </div>
 
                     {/* Platforms */}
-                    {publishSummary && (
+                    {derivedStatus !== 'scheduled' && publishSummary && (
                       <p className="mb-2 text-xs text-gray-500 dark:text-[#9CA3AF]">{publishSummary}</p>
                     )}
-                    {platformStates.length > 0 && (
+                    {derivedStatus === 'scheduled' && item.platforms && item.platforms.length > 0 ? (
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.platforms.map((platform) => (
+                            <span
+                              key={platform}
+                              className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]"
+                            >
+                              {platform}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ) : platformStates.length > 0 && (
                       <div className="flex items-center gap-2 mb-3">
                         <div className="flex flex-wrap gap-1.5">
                           {platformStates.map((platformState) => (

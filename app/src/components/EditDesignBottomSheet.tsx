@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dial
 import { VisuallyHidden } from './ui/visually-hidden';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
+import { useSettings } from '../contexts/SettingsContext';
 import ColorPickerPopup from './ColorPickerPopup';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 import type { DesignContentType } from '../utils/designStudioCaptionGenerator';
@@ -68,6 +69,7 @@ export function EditDesignBottomSheet({
   onChange,
   isRendering = false,
 }: EditDesignBottomSheetProps) {
+  const { settings: persistedSettings } = useSettings();
   const [headerText, setHeaderText] = useState(initialData?.headerText || '');
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#000000');
@@ -915,7 +917,7 @@ export function EditDesignBottomSheet({
                       title: headerText,
                       tagline: subtext,
                       context: templateName,
-                    });
+                    }, persistedSettings);
                     
                     setCaption(result.caption);
                     toast.success(`Caption generated! (${result.charCount} characters)`);

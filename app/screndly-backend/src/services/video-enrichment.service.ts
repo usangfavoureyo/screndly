@@ -1003,6 +1003,33 @@ async function fetchBuffer(sourceUrl: string): Promise<Buffer> {
     return Buffer.from(await response.arrayBuffer());
 }
 
+function normalizeRemoteAssetCandidates(value: string | string[] | undefined): string[] {
+    if (Array.isArray(value)) {
+        return [...new Set(value.map((entry) => asString(entry)).filter((entry): entry is string => Boolean(entry)))];
+    }
+
+    const single = asString(value);
+    return single ? [single] : [];
+}
+
+async function fetchFirstAvailableBuffer(
+    urls: string[]
+): Promise<{ url: string; buffer: Buffer } | null> {
+    for (const url of urls) {
+        try {
+            const buffer = await fetchBuffer(url);
+            return { url, buffer };
+        } catch (error) {
+            console.warn('[VideoEnrichment] Failed to fetch candidate asset, trying next option:', {
+                url,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+
+    return null;
+}
+
 async function detectBrandedOverlayContrast(
     backdropBuffer: Buffer,
     width: number,
@@ -1703,7 +1730,7 @@ export async function generateLandscapeThumbnail(
     platform: LandscapePlatform,
     originalTitle: string,
     metadata: EnrichedVideoMetadata,
-    sourceThumbnailUrl: string | undefined,
+    sourceThumbnailUrl: string | string[] | undefined,
     settings: LoadedVideoSettings
 ): Promise<PlatformThumbnailAsset | null> {
     try {
@@ -1711,36 +1738,62 @@ export async function generateLandscapeThumbnail(
         const config = platform === 'youtube' ? settings.thumbnailConfigYoutube : settings.thumbnailConfigX;
         const match = metadata.tmdbMatch;
         const shouldRenderLogoBox = config.logoDisplayMode === 'boxed';
+        const sourceThumbnailCandidates = normalizeRemoteAssetCandidates(sourceThumbnailUrl);
 
         let baseUrl = match?.backdropUrl;
         let logoUrl = match?.logoUrl;
+        let baseBuffer: Buffer | undefined;
 
-        if (!baseUrl) {
+        if (baseUrl) {
+            try {
+                baseBuffer = await fetchBuffer(baseUrl);
+            } catch (error) {
+                console.warn('[VideoEnrichment] Failed to fetch TMDb backdrop, falling back:', {
+                    title: originalTitle,
+                    baseUrl,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+                baseUrl = undefined;
+                logoUrl = undefined;
+            }
+        }
+
+        if (!baseBuffer) {
             switch (settings.videoTmdbFallback) {
                 case 'poster-only':
                     baseUrl = match?.posterUrl;
                     logoUrl = undefined;
+                    if (baseUrl) {
+                        baseBuffer = await fetchBuffer(baseUrl);
+                    }
                     break;
                 case 'use-youtube-thumbnail':
-                    baseUrl = sourceThumbnailUrl;
+                    {
+                        const fallbackThumbnail = await fetchFirstAvailableBuffer(sourceThumbnailCandidates);
+                        baseUrl = fallbackThumbnail?.url;
+                        baseBuffer = fallbackThumbnail?.buffer;
+                    }
                     logoUrl = undefined;
                     break;
                 case 'backdrop-only':
                     baseUrl = match?.backdropUrl;
                     logoUrl = undefined;
+                    if (baseUrl) {
+                        baseBuffer = await fetchBuffer(baseUrl);
+                    }
                     break;
                 case 'skip-upload':
                     return null;
             }
         } else if (!logoUrl && settings.videoTmdbFallback === 'poster-only' && match?.posterUrl) {
             baseUrl = match.posterUrl;
+            baseBuffer = await fetchBuffer(baseUrl);
         }
 
-        if (!baseUrl) {
+        if (!baseUrl || !baseBuffer) {
             return null;
         }
 
-        const baseBuffer = await fetchBuffer(baseUrl);
         let image = sharp(baseBuffer).resize(dimensions.width, dimensions.height, {
             fit: 'cover',
             position: 'centre',

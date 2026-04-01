@@ -81,6 +81,21 @@ function serializeRenderedDesigns(renderedDesigns: RenderedDesign[]) {
   }));
 }
 
+async function inspectTemplateFromUrl(url: string) {
+  const photopeaService = getPhotopeaService();
+  await photopeaService.initialize();
+  try {
+    await photopeaService.loadPSDFromURL(url);
+    return await photopeaService.analyzeLayers();
+  } finally {
+    try {
+      await photopeaService.closeDocument();
+    } catch (closeError) {
+      console.warn('Failed to close inspected PSD document:', closeError);
+    }
+  }
+}
+
 function dataUrlToFile(dataUrl: string, fileName: string): File {
   const [meta, content] = dataUrl.split(',');
   if (!meta || !content) {
@@ -244,21 +259,38 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handleLoadSelectedTemplates = async (selectedFiles: any[]) => {
-    const b2Templates: Template[] = selectedFiles.map(file => ({
-      id: `bb-${file.fileId}-${Date.now()}`,
-      name: file.fileName.replace('.psd', '').replace('templates/', ''),
-      previewUrl: file.url.replace('.psd', '_preview.jpg'),
-      aspectRatio: '4:5',
-      width: 1080,
-      height: 1350,
-      source: 'backblaze',
-      lastEdited: file.lastModified,
-      hasSubtext: true,
-      psdData: {
-        b2Url: file.url,
-        fileName: file.fileName,
-      },
-    }));
+    const b2Templates: Template[] = [];
+
+    for (const [index, file] of selectedFiles.entries()) {
+      let width = 1080;
+      let height = 1350;
+      let hasSubtext = true;
+
+      try {
+        const analysis = await inspectTemplateFromUrl(file.url);
+        width = analysis.width;
+        height = analysis.height;
+        hasSubtext = analysis.detectedLayers.hasSubtext;
+      } catch (error) {
+        console.warn('Failed to inspect Backblaze template metadata, falling back to default canvas size:', file.fileName, error);
+      }
+
+      b2Templates.push({
+        id: `bb-${file.fileId}-${Date.now()}-${index}`,
+        name: file.fileName.replace('.psd', '').replace('templates/', ''),
+        previewUrl: file.url.replace('.psd', '_preview.jpg'),
+        aspectRatio: calculateAspectRatio(width, height),
+        width,
+        height,
+        source: 'backblaze',
+        lastEdited: new Date(file.lastModified),
+        hasSubtext,
+        psdData: {
+          b2Url: file.url,
+          fileName: file.fileName,
+        },
+      });
+    }
 
     const nextTemplates = [...b2Templates, ...templates];
     await persistState(nextTemplates, renderedDesigns);
@@ -354,36 +386,40 @@ export default function DesignStudioPage({ onNavigate, previousPage }: DesignStu
       setRenderedDesigns(nextRenderedDesigns);
       setIsRendering(false);
 
-      await createDesignStudioActivity('design_rendered', {
-        templateName: selectedTemplate.name,
-        designId: renderedDesign.id,
-      });
-
-      addRecentActivity({
-        title: selectedTemplate.name,
-        platform: 'Design Studio',
-        status: 'success',
-        type: 'designstudio',
-      });
-
-      addLogEntry({
-        videoTitle: selectedTemplate.name,
-        platform: 'Design Studio',
-        status: 'success',
-        type: 'designstudio',
-      });
-
-      addNotification({
-        type: 'success',
-        title: 'Design Rendered',
-        message: `"${selectedTemplate.name}" rendered successfully`,
-        source: 'design_studio',
-        actionPage: 'design-studio-activity',
-      });
-
       await photopeaService.closeDocument();
       toast.success('Design rendered successfully!');
       haptics.success();
+
+      try {
+        await createDesignStudioActivity('design_rendered', {
+          templateName: selectedTemplate.name,
+          designId: renderedDesign.id,
+        });
+
+        addRecentActivity({
+          title: selectedTemplate.name,
+          platform: 'Design Studio',
+          status: 'success',
+          type: 'designstudio',
+        });
+
+        addLogEntry({
+          videoTitle: selectedTemplate.name,
+          platform: 'Design Studio',
+          status: 'success',
+          type: 'designstudio',
+        });
+
+        addNotification({
+          type: 'success',
+          title: 'Design Rendered',
+          message: `"${selectedTemplate.name}" rendered successfully`,
+          source: 'design_studio',
+          actionPage: 'design-studio-activity',
+        });
+      } catch (postRenderError) {
+        console.error('Design rendered, but failed to record Design Studio activity:', postRenderError);
+      }
     } catch (error) {
       console.error('Photopea rendering error:', error);
       setIsRendering(false);

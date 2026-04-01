@@ -3,6 +3,7 @@
  * Generates captions for design content using Design Studio Settings
  */
 
+import type { Settings } from '../contexts/SettingsContext';
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS, normalizeAIModelId } from '../lib/ai/models';
 import { getCachedAIResponse } from '../lib/ai/cache';
@@ -31,18 +32,24 @@ interface DesignContent {
 }
 
 /**
- * Get Design Studio caption generation settings from localStorage
+ * Get Design Studio caption generation settings from the shared settings snapshot
+ * when available, with localStorage as a fallback for legacy page-local state.
  */
-export function getDesignStudioCaptionSettings(contentType: DesignContentType): CaptionGenerationOptions {
-  let settings: any = {};
+export function getDesignStudioCaptionSettings(
+  contentType: DesignContentType,
+  persistedSettings?: Partial<Settings>,
+): CaptionGenerationOptions {
+  let settings: Partial<Settings> = persistedSettings ?? {};
 
-  try {
-    const saved = localStorage.getItem('screndly_design_studio_settings');
-    if (saved) {
-      settings = JSON.parse(saved);
+  if (!persistedSettings) {
+    try {
+      const saved = localStorage.getItem('screndly_design_studio_settings');
+      if (saved) {
+        settings = JSON.parse(saved) as Partial<Settings>;
+      }
+    } catch (error) {
+      console.error('Failed to load Design Studio settings:', error);
     }
-  } catch (error) {
-    console.error('Failed to load Design Studio settings:', error);
   }
 
   const promptKeys: Record<DesignContentType, string> = {
@@ -86,9 +93,10 @@ function getDefaultPrompt(contentType: DesignContentType): string {
  * Generate caption for design content using backend AI route
  */
 export async function generateDesignStudioCaption(
-  content: DesignContent
+  content: DesignContent,
+  persistedSettings?: Partial<Settings>,
 ): Promise<{ caption: string; charCount: number; settings: CaptionGenerationOptions }> {
-  const options = getDesignStudioCaptionSettings(content.contentType);
+  const options = getDesignStudioCaptionSettings(content.contentType, persistedSettings);
   const descriptionParts = [
     content.tagline,
     content.releaseInfo,

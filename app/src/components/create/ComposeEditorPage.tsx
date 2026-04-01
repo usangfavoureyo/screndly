@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
+import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -62,7 +62,7 @@ import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
-import { generateComposeMetadata } from '../../lib/api/ai';
+import { generateComposeMetadata, generateComposeThumbnail } from '../../lib/api/ai';
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
@@ -251,6 +251,13 @@ export function ComposeEditorPage({
   const [isGeneratingMetadata, setIsGeneratingMetadata] = useState(false);
   const [metadataGenerationError, setMetadataGenerationError] = useState<string | null>(null);
   const [isReplaceGeneratedContentOpen, setIsReplaceGeneratedContentOpen] = useState(false);
+  const [thumbnailGenerationState, setThumbnailGenerationState] = useState<
+    Partial<Record<'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail', boolean>>
+  >({});
+  const [pendingThumbnailGenerationKey, setPendingThumbnailGenerationKey] = useState<
+    'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail' | null
+  >(null);
+  const [isReplaceGeneratedThumbnailOpen, setIsReplaceGeneratedThumbnailOpen] = useState(false);
   const threadsXAutoGenerateTimeoutRef = useRef<number | null>(null);
   const lastThreadsXAutoGenerateKeyRef = useRef<string>('');
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
@@ -282,6 +289,7 @@ export function ComposeEditorPage({
     formState.threadsXCropVideo?.uploadStatus === 'uploaded';
   const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
+  const hasGeneratingThumbnails = Object.values(thumbnailGenerationState).some(Boolean);
   const hasFailedThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'failed');
   const isYouTubeLongformSelected = formState.platforms.includes('youtube_longform');
@@ -310,7 +318,11 @@ export function ComposeEditorPage({
   }, [previewAsset]);
   const isMediaPreviewOpen = Boolean(activePreviewAssetUrl || previewThumbnail);
   const isScheduleInteractionActive =
-    isScheduleOpen || isScheduleDatePickerOpen || isScheduleTimePickerOpen || isReplaceGeneratedContentOpen;
+    isScheduleOpen
+    || isScheduleDatePickerOpen
+    || isScheduleTimePickerOpen
+    || isReplaceGeneratedContentOpen
+    || isReplaceGeneratedThumbnailOpen;
   const unsavedChangesGuard = useUnsavedBackGuard({
     isDirty: hasUnsavedChanges,
     title: 'Discard post changes?',
@@ -337,6 +349,12 @@ export function ComposeEditorPage({
       return true;
     }
 
+    if (isReplaceGeneratedThumbnailOpen) {
+      setIsReplaceGeneratedThumbnailOpen(false);
+      setPendingThumbnailGenerationKey(null);
+      return true;
+    }
+
     if (isScheduleDatePickerOpen || isScheduleTimePickerOpen) {
       return true;
     }
@@ -354,6 +372,7 @@ export function ComposeEditorPage({
     isScheduleOpen,
     isScheduleTimePickerOpen,
     isReplaceGeneratedContentOpen,
+    isReplaceGeneratedThumbnailOpen,
     onNavigate,
     previousPage,
     previewAsset,
@@ -390,6 +409,9 @@ export function ComposeEditorPage({
     setScheduleTime(toLocalTimeInputValue(existingItem?.scheduledAt));
     setMetadataGenerationError(null);
     setIsReplaceGeneratedContentOpen(false);
+    setThumbnailGenerationState({});
+    setPendingThumbnailGenerationKey(null);
+    setIsReplaceGeneratedThumbnailOpen(false);
   }, [activeItemId, existingItem]);
 
   useEffect(() => {
@@ -932,6 +954,76 @@ export function ComposeEditorPage({
     void runMetadataGeneration();
   };
 
+  const runThumbnailGeneration = useCallback(async (
+    key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail',
+    forceReplace = false,
+  ) => {
+    const normalizedMetadata = normalizeMetadataInput(formState.sourceMetadata);
+    if (!normalizedMetadata) {
+      toast.error('Paste source metadata before generating thumbnails.');
+      return;
+    }
+
+    if (formState[key] && !forceReplace) {
+      setPendingThumbnailGenerationKey(key);
+      setIsReplaceGeneratedThumbnailOpen(true);
+      return;
+    }
+
+    setThumbnailGenerationState((current) => ({ ...current, [key]: true }));
+
+    try {
+      const response = await generateComposeThumbnail({
+        metadataText: normalizedMetadata,
+        thumbnailType:
+          key === 'sharedThumbnail'
+            ? 'shared'
+            : key === 'youtubeThumbnail'
+              ? 'youtube'
+              : 'x',
+        titleHint: formState.youtubeTitle || buildItemTitle(formState),
+        sharedCaption: formState.sharedCaption,
+        youtubeTitle: formState.youtubeTitle,
+      });
+
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to generate thumbnail.');
+      }
+
+      updateThumbnail(key, () => ({
+        fileName: response.data.fileName,
+        mimeType: response.data.mimeType,
+        size: response.data.size || 0,
+        previewUrl: response.data.previewUrl,
+        storageUrl: response.data.storageUrl,
+        uploadStatus: 'uploaded',
+        uploadError: undefined,
+      }));
+
+      setIsReplaceGeneratedThumbnailOpen(false);
+      setPendingThumbnailGenerationKey(null);
+      toast.success(
+        key === 'sharedThumbnail'
+          ? 'Shared thumbnail generated.'
+          : key === 'youtubeThumbnail'
+            ? 'YouTube thumbnail generated.'
+            : 'X thumbnail generated.',
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to generate thumbnail.';
+      toast.error(message);
+    } finally {
+      setThumbnailGenerationState((current) => ({ ...current, [key]: false }));
+    }
+  }, [
+    formState,
+    updateThumbnail,
+  ]);
+
+  const handleGenerateThumbnail = (key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail') => {
+    void runThumbnailGeneration(key);
+  };
+
   const buildItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string): ComposeItem => {
     const now = new Date().toISOString();
     return {
@@ -1255,20 +1347,24 @@ export function ComposeEditorPage({
                     key: 'sharedThumbnail' as const,
                     label: 'Shared Thumbnail',
                     description: 'Facebook, Instagram, Threads, TikTok',
+                    supportsGeneration: true,
                   },
                   {
                     key: 'youtubeThumbnail' as const,
                     label: 'YouTube Thumbnail',
                     description: 'YouTube only',
+                    supportsGeneration: true,
                   },
                   {
                     key: 'xThumbnail' as const,
                     label: 'X Thumbnail',
                     description: 'X only',
+                    supportsGeneration: false,
                   },
-                ].map(({ key, label, description }) => {
+                ].map(({ key, label, description, supportsGeneration }) => {
                   const thumbnail = formState[key];
                   const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
+                  const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
 
                   return (
                     <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
@@ -1301,6 +1397,22 @@ export function ComposeEditorPage({
                             Upload
                           </div>
                         </Label>
+                        {supportsGeneration ? (
+                          <button
+                            type="button"
+                            onClick={() => handleGenerateThumbnail(key)}
+                            disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                            aria-label={`Generate ${label}`}
+                            title={`Generate ${label}`}
+                          >
+                            {isGeneratingThisThumbnail ? (
+                              <RedSpinner size="sm" label={`Generating ${label}...`} />
+                            ) : (
+                              <Sparkles className="h-4 w-4 text-[#ec1e24]" />
+                            )}
+                          </button>
+                        ) : null}
                         <input
                           id={`compose-thumbnail-${key}`}
                           type="file"
@@ -1319,7 +1431,11 @@ export function ComposeEditorPage({
                                   : 'Uploading...'}
                           </p>
                         ) : (
-                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">PNG or JPG recommended</p>
+                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                            {supportsGeneration
+                              ? 'Upload manually or generate from Source Metadata'
+                              : 'PNG or JPG recommended'}
+                          </p>
                         )}
                       </div>
 
@@ -1731,8 +1847,8 @@ export function ComposeEditorPage({
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
-              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>Save</Button>
-              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata || isPublishing}>
+              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>Save</Button>
+              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata || isPublishing}>
                 {isPublishing ? (
                   <>
                     <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
@@ -1740,7 +1856,7 @@ export function ComposeEditorPage({
                   </>
                 ) : 'Publish'}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>
+              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>
                 {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
               </Button>
             </div>
@@ -1860,6 +1976,50 @@ export function ComposeEditorPage({
               }}
             >
               Replace Generated Fields
+            </Button>
+          </div>
+        </BottomSheetFooter>
+      </BottomSheet>
+
+      <BottomSheet
+        open={isReplaceGeneratedThumbnailOpen}
+        onOpenChange={(open) => {
+          setIsReplaceGeneratedThumbnailOpen(open);
+          if (!open) {
+            setPendingThumbnailGenerationKey(null);
+          }
+        }}
+      >
+        <BottomSheetHeader>
+          <BottomSheetTitle>Replace Current Thumbnail?</BottomSheetTitle>
+          <BottomSheetDescription>
+            Generating again will replace the current thumbnail in this slot.
+          </BottomSheetDescription>
+        </BottomSheetHeader>
+        <BottomSheetFooter>
+          <div className="flex w-full gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setIsReplaceGeneratedThumbnailOpen(false);
+                setPendingThumbnailGenerationKey(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                const targetKey = pendingThumbnailGenerationKey;
+                setIsReplaceGeneratedThumbnailOpen(false);
+                setPendingThumbnailGenerationKey(null);
+                if (targetKey) {
+                  void runThumbnailGeneration(targetKey, true);
+                }
+              }}
+            >
+              Replace Thumbnail
             </Button>
           </div>
         </BottomSheetFooter>

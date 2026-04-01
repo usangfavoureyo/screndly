@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ChevronDownIcon, Info } from 'lucide-react';
+import { ChevronDownIcon, Info, Plus } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Switch } from '../ui/switch';
 import { Label } from '../ui/label';
@@ -769,7 +769,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
                   className="h-10 min-w-10 rounded-full border-gray-300 px-0 text-lg leading-none text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
                   aria-label="Add branded asset"
                 >
-                  +
+                  <Plus className="h-5 w-5" />
                 </Button>
               </div>
 

@@ -129,6 +129,14 @@ export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDe
       };
     }
 
+    if (item.status === 'scheduled') {
+      return {
+        platform,
+        label: formatTMDbPlatformLabel(platform),
+        status: 'skipped',
+      };
+    }
+
     if (item.status === 'queued' || item.status === 'dispatched') {
       return {
         platform,

@@ -32,6 +32,44 @@ const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'designStudioPinterestBoardPrompt',
 ]);
 
+const DESIGN_STUDIO_CAPTION_PROMPTS = [
+  {
+    key: 'captionPosterPrompt',
+    id: 'caption-poster-prompt',
+    label: 'Poster Caption Prompt',
+    description: 'Prompt used for movie and TV poster reveals, promo art, and key art announcements.',
+    placeholder: 'Enter caption prompt for poster content...',
+  },
+  {
+    key: 'captionCarouselPrompt',
+    id: 'caption-carousel-prompt',
+    label: 'Carousel Caption Prompt',
+    description: 'Prompt used for multi-image carousel posts such as cast slides, stills, and BTS content.',
+    placeholder: 'Enter caption prompt for carousel content...',
+  },
+  {
+    key: 'captionStoryPrompt',
+    id: 'caption-story-prompt',
+    label: 'Story Caption Prompt',
+    description: 'Prompt used for vertical story-style graphics and fast, short-form updates.',
+    placeholder: 'Enter caption prompt for story content...',
+  },
+  {
+    key: 'captionAnnouncementPrompt',
+    id: 'caption-announcement-prompt',
+    label: 'Announcement Caption Prompt',
+    description: 'Prompt used for release dates, cast reveals, awards, milestones, and other major announcements.',
+    placeholder: 'Enter caption prompt for announcement content...',
+  },
+  {
+    key: 'captionGeneralPrompt',
+    id: 'caption-general-prompt',
+    label: 'General Caption Prompt',
+    description: 'Prompt used for general movie and TV content that does not fit another design category.',
+    placeholder: 'Enter caption prompt for general content...',
+  },
+] as const;
+
 function normalizeDesignStudioSettings<T extends Record<string, any>>(settings: T): T {
   return {
     ...settings,
@@ -515,23 +553,25 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="caption-general-prompt" className="text-[#9CA3AF]">General Caption Prompt</Label>
-            <Textarea
-              id="caption-general-prompt"
-              value={settings.captionGeneralPrompt}
-              onFocus={() => haptics.light()}
-              onChange={(e) => {
-                haptics.light();
-                updateSetting('captionGeneralPrompt', e.target.value);
-              }}
-              className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 min-h-[200px] font-mono text-xs"
-              placeholder="Enter caption prompt for general content..."
-            />
-            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
-              Prompt used for generating captions for general movie/TV content
-            </p>
-          </div>
+          {DESIGN_STUDIO_CAPTION_PROMPTS.map((promptConfig) => (
+            <div key={promptConfig.key}>
+              <Label htmlFor={promptConfig.id} className="text-[#9CA3AF]">{promptConfig.label}</Label>
+              <Textarea
+                id={promptConfig.id}
+                value={settings[promptConfig.key] || ''}
+                onFocus={() => haptics.light()}
+                onChange={(e) => {
+                  haptics.light();
+                  updateSetting(promptConfig.key, e.target.value);
+                }}
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 min-h-[200px] font-mono text-xs"
+                placeholder={promptConfig.placeholder}
+              />
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
+                {promptConfig.description}
+              </p>
+            </div>
+          ))}
         </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
@@ -580,6 +620,25 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             />
             <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
               SEO-optimized descriptions with visual-focused hooks and design hashtags
+            </p>
+          </div>
+
+          {/* Pinterest Board Generation Prompt */}
+          <div>
+            <Label htmlFor="design-studio-pinterest-board-prompt" className="text-[#9CA3AF]">Pinterest Board Generation Prompt</Label>
+            <textarea
+              id="design-studio-pinterest-board-prompt"
+              value={settings.designStudioPinterestBoardPrompt || ''}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('designStudioPinterestBoardPrompt', e.target.value);
+              }}
+              rows={16}
+              className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
+            />
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+              Prompt used to suggest the most appropriate Pinterest board name for each design post.
             </p>
           </div>
 

@@ -2,6 +2,7 @@
  * AI Routes - Model Inference and Validation
  */
 
+import fs from 'fs/promises';
 import { Router, Request, Response } from 'express';
 import aiService, {
     AIModel,
@@ -10,6 +11,12 @@ import aiService, {
     normalizeAIModel,
 } from '../services/ai.service';
 import { authenticate } from '../middleware/auth';
+import {
+    enrichYouTubeVideoMetadata,
+    generateLandscapeThumbnail,
+    generateSocialPosterThumbnail,
+    getYouTubeRuntimeSettings,
+} from '../services/video-enrichment.service';
 
 const router = Router();
 router.use(authenticate);
@@ -282,6 +289,120 @@ router.post('/generate/compose-metadata', async (req: Request, res: Response) =>
             success: false,
             error: {
                 message: error instanceof Error ? error.message : 'Failed to generate compose metadata',
+            },
+        });
+    }
+});
+
+router.post('/generate/compose-thumbnail', async (req: Request, res: Response) => {
+    try {
+        const {
+            metadataText,
+            thumbnailType,
+            titleHint,
+            sharedCaption,
+            youtubeTitle,
+        } = req.body ?? {};
+
+        if (typeof metadataText !== 'string' || metadataText.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'Metadata text is required' },
+            });
+        }
+
+        if (thumbnailType !== 'shared' && thumbnailType !== 'youtube' && thumbnailType !== 'x') {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'A valid thumbnail type is required' },
+            });
+        }
+
+        const settings = await getYouTubeRuntimeSettings();
+        const composeDraft = await aiService.generateComposeMetadataDraft(
+            {
+                metadataText,
+                sharedCaptionPrompt: settings.videoUniversalCaptionPrompt,
+                youtubeTitlePrompt: settings.videoYoutubeTitlePrompt,
+                youtubeDescriptionPrompt: settings.videoYoutubeDescriptionPrompt,
+                youtubePlaylistPrompt: settings.videoYoutubePlaylistPrompt,
+                availablePlaylists: [],
+            },
+            settings.videoOpenaiModel || normalizeAIModel(undefined),
+        );
+
+        const resolvedTitle =
+            (typeof titleHint === 'string' && titleHint.trim())
+            || (typeof youtubeTitle === 'string' && youtubeTitle.trim())
+            || composeDraft.youtubeTitle
+            || (typeof sharedCaption === 'string' && sharedCaption.trim())
+            || composeDraft.sharedCaption
+            || metadataText.split(/\r?\n/).find((line: string) => line.trim().length > 0)
+            || 'Untitled';
+
+        const enrichedMetadata = await enrichYouTubeVideoMetadata(
+            `compose-thumbnail-${thumbnailType}`,
+            resolvedTitle,
+            metadataText,
+            settings,
+        );
+
+        const generatedAsset = thumbnailType === 'shared'
+            ? await generateSocialPosterThumbnail(
+                resolvedTitle,
+                enrichedMetadata,
+                undefined,
+                settings,
+            )
+            : await generateLandscapeThumbnail(
+                thumbnailType === 'x' ? 'x' : 'youtube',
+                resolvedTitle,
+                enrichedMetadata,
+                undefined,
+                settings,
+            );
+
+        if (!generatedAsset?.publicUrl) {
+            return res.status(422).json({
+                success: false,
+                error: {
+                    message:
+                        thumbnailType === 'shared'
+                            ? 'Unable to generate a shared thumbnail from this metadata right now.'
+                            : 'Unable to generate a platform thumbnail from this metadata right now.',
+                },
+            });
+        }
+
+        let size = 0;
+        if (generatedAsset.localPath) {
+            try {
+                const stats = await fs.stat(generatedAsset.localPath);
+                size = stats.size;
+            } catch {
+                size = 0;
+            }
+        }
+
+        res.json({
+            success: true,
+            data: {
+                fileName: `${resolvedTitle.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'thumbnail'}-${thumbnailType}.jpg`,
+                mimeType: 'image/jpeg',
+                size,
+                previewUrl: generatedAsset.publicUrl,
+                storageUrl: generatedAsset.publicUrl,
+                uploadStatus: 'uploaded',
+                strategy: generatedAsset.strategy,
+                resolvedTitle,
+            },
+        });
+    } catch (error) {
+        console.error('[AI Route] Compose thumbnail generation error:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                message: error instanceof Error ? error.message : 'Failed to generate compose thumbnail',
             },
         });
     }
