@@ -12,6 +12,7 @@ import {
   unmarkTMDbPostDeleted,
 } from '../utils/tmdbOfflineStore';
 import { deriveTMDbImageStyle, normalizeTMDbImageTypes, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
+import { type TMDbPlatformResultRecord } from '../lib/tmdb/activityStatus';
 
 interface FetchPostsOptions {
   silent?: boolean;
@@ -38,6 +39,8 @@ export interface TMDbPost {
   cacheHit: boolean;
   status: 'queued' | 'scheduled' | 'dispatched' | 'published' | 'failed' | 'unscheduled' | 'skipped';
   platforms?: string[];
+  platformPostIds?: Record<string, string>;
+  platformResults?: TMDbPlatformResultRecord[];
   runId?: string;
   captionContextHash?: string;
   overflowPolicy?: string;
@@ -112,6 +115,8 @@ function normalizeTMDbPostRecord(post: any): TMDbPost {
     cacheHit: post.cacheHit || false,
     status: post.status,
     platforms: Array.isArray(post.platforms) ? post.platforms : [],
+    platformPostIds: post.platformPostIds && typeof post.platformPostIds === 'object' ? post.platformPostIds : {},
+    platformResults: Array.isArray(post.platformResults) ? post.platformResults : [],
     runId: post.runId,
     captionContextHash: post.captionContextHash,
     overflowPolicy: post.overflowPolicy,

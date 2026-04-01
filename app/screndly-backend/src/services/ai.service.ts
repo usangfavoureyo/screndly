@@ -1095,6 +1095,7 @@ export interface RSSContext {
     platform: 'X' | 'Threads' | 'Facebook' | 'LinkedIn';
     tone?: string;
     selectedVisuals?: string[];
+    allowedEntities?: string[];
 }
 
 export async function generateRSSCaption(
@@ -1111,11 +1112,16 @@ Goal: Summarize the value prop and encourage a click (without saying "click here
 - NO hashtags unless asked.
 - If selected visuals are provided, only name titles, characters, or people that are clearly represented by those visuals.
 - If the article mentions more examples than the visual set can support, generalize instead of listing unsupported titles.
+- Do not invent, swap, or substitute a movie/show/person name that is not grounded in the provided article context and allowed entities list.
+- If you are not confident about a named title or person, use generic wording instead of guessing.
 `;
 
     const systemPrompt = customSystemPrompt || defaultSystemPrompt;
     const visualContext = Array.isArray(context.selectedVisuals) && context.selectedVisuals.length > 0
         ? `Selected visuals:\n${context.selectedVisuals.map((entry) => `- ${entry}`).join('\n')}\n`
+        : '';
+    const allowedEntitiesContext = Array.isArray(context.allowedEntities) && context.allowedEntities.length > 0
+        ? `Allowed named entities for the caption:\n${context.allowedEntities.map((entry) => `- ${entry}`).join('\n')}\n`
         : '';
 
     const prompt = `Generate a caption for this article:
@@ -1124,6 +1130,11 @@ Title: ${context.articleTitle}
 Summary: ${context.summary.slice(0, 500)}...
 Platform: ${context.platform}
 ${visualContext}
+${allowedEntitiesContext}
+
+Rules:
+- Do not mention a movie, series, character, or person that is not supported by the article title/summary or the allowed named entities list.
+- If the selected visuals clearly represent one title, keep the caption anchored to that title instead of substituting a different one.
 
 Write ONLY the caption.`;
 
@@ -1389,6 +1400,33 @@ export interface YouTubePlaylistDetectionContext {
     productionNames?: string[];
 }
 
+export interface ComposeMetadataGenerationInput {
+    metadataText: string;
+    selectedPlatforms?: string[];
+    availablePlaylists?: YouTubePlaylistOption[];
+    sharedCaptionPrompt?: string;
+    youtubeTitlePrompt?: string;
+    youtubeDescriptionPrompt?: string;
+    youtubePlaylistPrompt?: string;
+    mediaContext?: {
+        fileName?: string;
+        mimeType?: string;
+        mediaKind?: 'image' | 'video';
+    };
+}
+
+export interface ComposeMetadataGenerationResult {
+    sharedCaption: string;
+    youtubeTitle: string;
+    youtubeDescription: string;
+    playlistSelection: {
+        playlistId: string | null;
+        playlistName: string | null;
+        reason: string;
+        confidence: number;
+    };
+}
+
 function normalizePlaylistKey(value: string): string {
     return value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
@@ -1601,6 +1639,212 @@ ${customPrompt || defaultPrompt}`;
     return detectPlaylistHeuristicFallback(context, availablePlaylists);
 }
 
+function normalizeComposeMetadataText(value: string): string {
+    return value.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
+}
+
+function coerceComposePlaylistSelection(
+    selection: unknown,
+    availablePlaylists: YouTubePlaylistOption[]
+): { playlistId: string | null; playlistName: string | null; reason: string; confidence: number } {
+    const byId = new Map(availablePlaylists.map((playlist) => [playlist.id, playlist]));
+    const byTitle = new Map(
+        availablePlaylists.map((playlist) => [normalizePlaylistKey(playlist.title), playlist])
+    );
+
+    const normalizeConfidence = (value: unknown) => {
+        const numeric = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(numeric)) {
+            return 0;
+        }
+
+        return Math.max(0, Math.min(1, numeric));
+    };
+
+    const baseReason =
+        selection && typeof selection === 'object' && typeof (selection as Record<string, unknown>).reason === 'string'
+            ? String((selection as Record<string, unknown>).reason).trim()
+            : '';
+    const confidence =
+        selection && typeof selection === 'object'
+            ? normalizeConfidence((selection as Record<string, unknown>).confidence)
+            : 0;
+
+    if (!selection || typeof selection !== 'object') {
+        return {
+            playlistId: null,
+            playlistName: null,
+            reason: baseReason || 'No playlist suggestion returned.',
+            confidence,
+        };
+    }
+
+    const record = selection as Record<string, unknown>;
+    const rawPlaylistId = typeof record.playlistId === 'string' ? record.playlistId.trim() : '';
+    const rawPlaylistName = typeof record.playlistName === 'string' ? record.playlistName.trim() : '';
+
+    const matchedById = rawPlaylistId ? byId.get(rawPlaylistId) : undefined;
+    if (matchedById) {
+        return {
+            playlistId: matchedById.id,
+            playlistName: matchedById.title,
+            reason: baseReason || 'Matched the exact playlist ID from the available channel playlists.',
+            confidence,
+        };
+    }
+
+    const matchedByTitle =
+        (rawPlaylistName ? byTitle.get(normalizePlaylistKey(rawPlaylistName)) : undefined)
+        || (rawPlaylistId ? byTitle.get(normalizePlaylistKey(rawPlaylistId)) : undefined);
+
+    if (matchedByTitle) {
+        return {
+            playlistId: matchedByTitle.id,
+            playlistName: matchedByTitle.title,
+            reason: baseReason || 'Matched the suggested playlist name to an available channel playlist.',
+            confidence,
+        };
+    }
+
+    return {
+        playlistId: null,
+        playlistName: null,
+        reason: baseReason || 'No valid playlist match was found in the available channel playlists.',
+        confidence,
+    };
+}
+
+export async function generateComposeMetadataDraft(
+    input: ComposeMetadataGenerationInput,
+    model: AIModel = DEFAULT_OPENAI_MODEL
+): Promise<ComposeMetadataGenerationResult> {
+    const normalizedMetadata = normalizeComposeMetadataText(input.metadataText || '');
+    if (!normalizedMetadata) {
+        throw new Error('Metadata text is required.');
+    }
+
+    const availablePlaylists = Array.isArray(input.availablePlaylists) ? input.availablePlaylists : [];
+    const truncatedMetadata = normalizedMetadata.slice(0, 12000);
+    const selectedPlatforms = Array.isArray(input.selectedPlatforms) ? input.selectedPlatforms : [];
+
+    const prompt = `You are generating a social post draft for Screen Render from pasted source metadata.
+Return ONLY valid JSON.
+
+Goals:
+- Write a single shared caption for social publishing.
+- Write a YouTube title.
+- Write a YouTube description.
+- Suggest the best matching YouTube playlist from the exact available playlists below.
+
+Rules:
+- Never invent a playlist ID or playlist name.
+- Only select a playlist when it is a strong fit.
+- If no playlist clearly fits, return null for playlistId and playlistName.
+- Keep the shared caption ready for the existing shared caption box.
+- Keep YouTube title concise and publish-ready.
+- Keep the YouTube description informative and clean.
+- Respect the saved prompt guidance below.
+
+Saved Prompt Guidance:
+Shared Caption Prompt:
+${input.sharedCaptionPrompt || 'N/A'}
+
+YouTube Title Prompt:
+${input.youtubeTitlePrompt || 'N/A'}
+
+YouTube Description Prompt:
+${input.youtubeDescriptionPrompt || 'N/A'}
+
+YouTube Playlist Prompt:
+${input.youtubePlaylistPrompt || 'N/A'}
+
+Selected Platforms:
+${selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : 'None selected'}
+
+Media Context:
+- File Name: ${input.mediaContext?.fileName || 'N/A'}
+- MIME Type: ${input.mediaContext?.mimeType || 'N/A'}
+- Media Kind: ${input.mediaContext?.mediaKind || 'N/A'}
+
+Available YouTube Playlists:
+${availablePlaylists.length > 0
+        ? availablePlaylists.map((playlist) => `- ${playlist.id}: ${playlist.title}`).join('\n')
+        : '- None available'}
+
+Pasted Source Metadata:
+${truncatedMetadata}
+
+Return this exact JSON shape:
+{
+  "sharedCaption": "string",
+  "youtubeTitle": "string",
+  "youtubeDescription": "string",
+  "playlistSelection": {
+    "playlistId": "string | null",
+    "playlistName": "string | null",
+    "reason": "string",
+    "confidence": 0.0
+  }
+}`;
+
+    const response = await generateCompletion({
+        model,
+        prompt,
+        jsonMode: true,
+        temperature: 0.3,
+        enableWebSearch: true,
+    });
+
+    if (!response.success) {
+        throw new Error(response.error || 'Failed to generate post content from metadata.');
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+        parsed = JSON.parse(response.content) as Record<string, unknown>;
+    } catch {
+        throw new Error('The AI response could not be parsed as structured JSON.');
+    }
+
+    const sharedCaption = typeof parsed.sharedCaption === 'string' ? parsed.sharedCaption.trim() : '';
+    const youtubeTitle = typeof parsed.youtubeTitle === 'string' ? parsed.youtubeTitle.trim() : '';
+    const youtubeDescription = typeof parsed.youtubeDescription === 'string' ? parsed.youtubeDescription.trim() : '';
+
+    let playlistSelection = coerceComposePlaylistSelection(parsed.playlistSelection, availablePlaylists);
+
+    if (!playlistSelection.playlistId && availablePlaylists.length > 0) {
+        const fallbackIds = await detectYouTubePlaylists(
+            {
+                videoTitle: youtubeTitle || sharedCaption || truncatedMetadata.slice(0, 160),
+                description: `${youtubeDescription}\n\n${truncatedMetadata}`,
+            },
+            availablePlaylists,
+            model,
+            input.youtubePlaylistPrompt,
+        );
+
+        const fallbackPlaylist = fallbackIds.length > 0
+            ? availablePlaylists.find((playlist) => playlist.id === fallbackIds[0])
+            : undefined;
+
+        if (fallbackPlaylist) {
+            playlistSelection = {
+                playlistId: fallbackPlaylist.id,
+                playlistName: fallbackPlaylist.title,
+                reason: playlistSelection.reason || 'Matched a fallback playlist from the existing channel playlists.',
+                confidence: playlistSelection.confidence > 0 ? playlistSelection.confidence : 0.55,
+            };
+        }
+    }
+
+    return {
+        sharedCaption,
+        youtubeTitle,
+        youtubeDescription,
+        playlistSelection,
+    };
+}
+
 // ============================================
 // PINTEREST METADATA GENERATOR
 // ============================================
@@ -1672,6 +1916,7 @@ export default {
     generateCommentReply,
     generateStudioCaption,
     detectYouTubePlaylists,
+    generateComposeMetadataDraft,
     generatePinterestMetadata,
     getOpenAIKey,
     getFlash3Key

@@ -1,6 +1,7 @@
 import { publishContent, type PlatformSelection, type PublishResult } from '../api/platforms';
 import { getEnabledPlatforms } from './tmdbSettingsService';
 import { getFeedTypeFromSource } from '../../utils/tmdbCaptionGenerator';
+import { type TMDbPlatformResultRecord } from './activityStatus';
 
 export type TMDbSource = 'tmdb_today' | 'tmdb_weekly' | 'tmdb_monthly' | 'tmdb_anniversary';
 export type TMDbPlatformKey = 'x' | 'threads' | 'facebook' | 'youtube' | 'pinterest';
@@ -20,6 +21,7 @@ export interface TMDbPublishOutcome {
     platformNames: string[];
     postedPlatforms: string[];
     failedResults: Array<{ platform: string; error: string }>;
+    platformResults: TMDbPlatformResultRecord[];
     errorMessage?: string;
 }
 
@@ -105,6 +107,31 @@ function formatFailedResults(results: any[] = []): Array<{ platform: string; err
         }));
 }
 
+function normalizeResultPlatformName(platform: unknown): string {
+    return typeof platform === 'string' && platform.trim().length > 0 ? platform.trim() : 'Unknown';
+}
+
+function formatPlatformResults(results: any[] = []): TMDbPlatformResultRecord[] {
+    return results
+        .filter((result) => typeof result?.platform === 'string' && typeof result?.status === 'string')
+        .map((result) => {
+            const normalizedStatus = String(result.status).trim().toLowerCase();
+
+            return {
+                platform: normalizeResultPlatformName(result.platform),
+                status: normalizedStatus === 'posted'
+                    ? 'posted'
+                    : normalizedStatus === 'skipped'
+                        ? 'skipped'
+                        : 'failed',
+                error: typeof result?.error === 'string' ? result.error : undefined,
+                id: typeof result?.id === 'string' ? result.id : undefined,
+                url: typeof result?.url === 'string' ? result.url : undefined,
+                postedAt: typeof result?.postedAt === 'string' ? result.postedAt : new Date().toISOString(),
+            };
+        });
+}
+
 export async function publishTMDbPost(
     post: TMDbPublishablePost,
     selectedPlatformKeys?: string[]
@@ -138,6 +165,7 @@ export async function publishTMDbPost(
         .filter((result: any) => result?.status === 'posted' && typeof result?.platform === 'string')
         .map((result: any) => result.platform);
     const failedResults = formatFailedResults(results);
+    const platformResults = formatPlatformResults(results);
     const errorMessage = failedResults.length > 0
         ? failedResults.map((result) => `${result.platform}: ${result.error}`).join('; ')
         : undefined;
@@ -148,6 +176,7 @@ export async function publishTMDbPost(
         platformNames: toTMDbPlatformNames(platformKeys),
         postedPlatforms,
         failedResults,
+        platformResults,
         errorMessage,
     };
 }

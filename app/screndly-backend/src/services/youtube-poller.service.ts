@@ -79,6 +79,17 @@ export interface PollStatus {
     lastFinishedAt?: string;
     staleAfterMs: number;
     stale: boolean;
+    activeWorkerCount: number;
+    activeChannels: Array<{
+        channelId: string;
+        channelName: string;
+        startedAt: string;
+        mode: 'scheduled' | 'manual';
+    }>;
+    schedulerRunning: boolean;
+    schedulerStartedAt?: string;
+    schedulerLastStartedAt?: string;
+    schedulerLastFinishedAt?: string;
 }
 
 export interface ChannelDiscoveryPreviewItem {
@@ -181,6 +192,23 @@ interface ChannelVideoSourceResult {
     source: 'rss' | 'yt-dlp' | 'merged';
 }
 
+interface ActiveChannelPollState {
+    channelDbId: string;
+    channelId: string;
+    channelName: string;
+    startedAt: Date;
+    mode: 'scheduled' | 'manual';
+}
+
+interface SchedulerTickSummary {
+    startedAt: string;
+    finishedAt: string;
+    dueChannels: number;
+    claimedChannels: number;
+    skippedLockedChannels: number;
+    activeWorkerCount: number;
+}
+
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
     Facebook: 'facebook',
@@ -208,6 +236,12 @@ const MIN_TRAILER_WIDTH = 1920;
 const DEFAULT_TRAILER_KEYWORDS = ['trailer', 'teaser', 'official', 'first look', 'sneak peek'];
 const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
 const POLL_STALE_AFTER_MS = 30 * 60 * 1000;
+const SCHEDULER_STALE_AFTER_MS = 2 * 60 * 1000;
+const CHANNEL_POLL_LOCK_MS = 10 * 60 * 1000;
+const POLL_CLAIM_BATCH_SIZE = 15;
+const MAX_CONCURRENT_CHANNEL_POLLS = 5;
+const POLLING_JITTER_MAX_MS = 10 * 1000;
+const BACKOFF_CAP_MINUTES = 15;
 const SLOW_STAGE_WARN_MS = 15 * 1000;
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
@@ -258,37 +292,58 @@ function escapeRegexValue(value: string): string {
 }
 
 export class YouTubePollerService {
-    private isPolling = false;
-    private pollStartedAt: Date | null = null;
-    private currentChannelId: string | null = null;
-    private currentChannelName: string | null = null;
+    private activeChannelJobs = new Map<string, ActiveChannelPollState>();
+    private schedulerRunning = false;
+    private schedulerStartedAt: Date | null = null;
+    private lastSchedulerStartedAt: Date | null = null;
+    private lastSchedulerFinishedAt: Date | null = null;
     private lastPollStartedAt: Date | null = null;
     private lastPollFinishedAt: Date | null = null;
     private collaborativeDiscoveryCooldownUntilByChannel = new Map<string, number>();
 
     getPollStatus(): PollStatus {
         const now = Date.now();
-        const stale = this.isPolling &&
-            this.pollStartedAt instanceof Date &&
-            now - this.pollStartedAt.getTime() > POLL_STALE_AFTER_MS;
+        const activeChannels = Array.from(this.activeChannelJobs.values())
+            .sort((left, right) => left.startedAt.getTime() - right.startedAt.getTime());
+        const oldestActiveChannel = activeChannels[0];
+        const activeChannelStale = activeChannels.some((channel) => now - channel.startedAt.getTime() > POLL_STALE_AFTER_MS);
+        const schedulerStale = this.schedulerRunning
+            && this.schedulerStartedAt instanceof Date
+            && now - this.schedulerStartedAt.getTime() > SCHEDULER_STALE_AFTER_MS;
+        const stale = activeChannelStale || schedulerStale;
 
         return {
-            isPolling: this.isPolling,
-            currentChannelId: this.currentChannelId || undefined,
-            currentChannelName: this.currentChannelName || undefined,
-            pollStartedAt: this.pollStartedAt?.toISOString(),
+            isPolling: activeChannels.length > 0,
+            currentChannelId: oldestActiveChannel?.channelId,
+            currentChannelName: oldestActiveChannel?.channelName,
+            pollStartedAt: oldestActiveChannel?.startedAt.toISOString(),
             lastStartedAt: this.lastPollStartedAt?.toISOString(),
             lastFinishedAt: this.lastPollFinishedAt?.toISOString(),
             staleAfterMs: POLL_STALE_AFTER_MS,
             stale,
+            activeWorkerCount: activeChannels.length,
+            activeChannels: activeChannels.map((channel) => ({
+                channelId: channel.channelId,
+                channelName: channel.channelName,
+                startedAt: channel.startedAt.toISOString(),
+                mode: channel.mode,
+            })),
+            schedulerRunning: this.schedulerRunning,
+            schedulerStartedAt: this.schedulerStartedAt?.toISOString(),
+            schedulerLastStartedAt: this.lastSchedulerStartedAt?.toISOString(),
+            schedulerLastFinishedAt: this.lastSchedulerFinishedAt?.toISOString(),
         };
     }
 
-    private resetPollState(): void {
-        this.isPolling = false;
-        this.pollStartedAt = null;
-        this.currentChannelId = null;
-        this.currentChannelName = null;
+    private registerActiveChannelJob(state: ActiveChannelPollState): void {
+        this.activeChannelJobs.set(state.channelDbId, state);
+        this.lastPollStartedAt = state.startedAt;
+    }
+
+    private clearActiveChannelJob(channelDbId: string): void {
+        if (this.activeChannelJobs.delete(channelDbId)) {
+            this.lastPollFinishedAt = new Date();
+        }
     }
 
     private logStageDuration(context: string, stage: string, startedAtMs: number, extra?: Record<string, unknown>) {
@@ -330,46 +385,270 @@ export class YouTubePollerService {
         return (Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24);
     }
 
-    async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
-        const startedAt = new Date();
+    private getDefaultPollIntervalMinutes(settings: LoadedVideoSettings): number {
+        return settings.fetchInterval && Number(settings.fetchInterval) > 0
+            ? Number(settings.fetchInterval)
+            : 10;
+    }
 
-        if (
-            this.isPolling &&
-            this.pollStartedAt instanceof Date &&
-            startedAt.getTime() - this.pollStartedAt.getTime() > POLL_STALE_AFTER_MS
-        ) {
-            console.warn('[YouTubePoller] Resetting stale in-memory poll lock', this.getPollStatus());
-            this.resetPollState();
+    private getChannelPollIntervalMinutes(channel: any, settings: LoadedVideoSettings): number {
+        const override = Number(channel?.pollIntervalMinutesOverride);
+        if (Number.isFinite(override) && override > 0) {
+            return override;
         }
 
-        if (this.isPolling) {
+        return this.getDefaultPollIntervalMinutes(settings);
+    }
+
+    private computeBackoffIntervalMinutes(baseIntervalMinutes: number, failureCount: number): number {
+        if (failureCount <= 1) {
+            return baseIntervalMinutes;
+        }
+
+        if (failureCount === 2) {
+            return Math.min(baseIntervalMinutes * 2, BACKOFF_CAP_MINUTES);
+        }
+
+        return Math.min(baseIntervalMinutes * 5, BACKOFF_CAP_MINUTES);
+    }
+
+    private computeNextPollAt(baseIntervalMinutes: number, failureCount = 0): Date {
+        const effectiveIntervalMinutes = this.computeBackoffIntervalMinutes(baseIntervalMinutes, failureCount);
+        const jitterMs = Math.floor(Math.random() * POLLING_JITTER_MAX_MS);
+        return new Date(Date.now() + (effectiveIntervalMinutes * 60 * 1000) + jitterMs);
+    }
+
+    private buildChannelLockUntil(): Date {
+        return new Date(Date.now() + CHANNEL_POLL_LOCK_MS);
+    }
+
+    private async tryClaimChannel(
+        channel: any,
+        settings: LoadedVideoSettings,
+        options: { force?: boolean } = {}
+    ): Promise<boolean> {
+        const now = new Date();
+        const claimWhere: Record<string, any> = {
+            id: channel.id,
+            status: 'active',
+            OR: [
+                { lockUntil: null },
+                { lockUntil: { lt: now } },
+            ],
+        };
+
+        if (!options.force) {
+            claimWhere.AND = [
+                {
+                    OR: [
+                        { nextPollAt: null },
+                        { nextPollAt: { lte: now } },
+                    ],
+                },
+            ];
+        }
+
+        const baseIntervalMinutes = this.getChannelPollIntervalMinutes(channel, settings);
+        const claimed = await prisma.channel.updateMany({
+            where: claimWhere,
+            data: {
+                lockUntil: this.buildChannelLockUntil(),
+                lastPollStartedAt: now,
+                nextPollAt: options.force ? channel.nextPollAt ?? this.computeNextPollAt(baseIntervalMinutes, channel.failureCount ?? 0) : channel.nextPollAt,
+            },
+        });
+
+        return claimed.count > 0;
+    }
+
+    private async finishChannelPoll(
+        channel: any,
+        settings: LoadedVideoSettings,
+        result: ChannelPollResult
+    ): Promise<void> {
+        const baseIntervalMinutes = this.getChannelPollIntervalMinutes(channel, settings);
+        const nextFailureCount = result.failed ? (Number(channel.failureCount) || 0) + 1 : 0;
+        const updateData: Record<string, any> = {
+            lockUntil: null,
+            nextPollAt: this.computeNextPollAt(baseIntervalMinutes, nextFailureCount),
+            failureCount: nextFailureCount,
+        };
+
+        if (!result.failed) {
+            updateData.lastCheck = new Date();
+        }
+
+        await prisma.channel.update({
+            where: { id: channel.id },
+            data: updateData,
+        }).catch(() => undefined);
+
+        console.log('[YouTubePoller] Channel finalized', {
+            channelId: channel.channelId,
+            channelName: channel.name,
+            failed: result.failed,
+            nextPollAt: updateData.nextPollAt instanceof Date ? updateData.nextPollAt.toISOString() : updateData.nextPollAt,
+            failureCount: nextFailureCount,
+        });
+    }
+
+    private async runClaimedChannelPoll(
+        channel: any,
+        settings: LoadedVideoSettings,
+        options: PollOptions,
+        mode: 'scheduled' | 'manual'
+    ): Promise<ChannelPollResult> {
+        this.registerActiveChannelJob({
+            channelDbId: channel.id,
+            channelId: channel.channelId,
+            channelName: channel.name,
+            startedAt: new Date(),
+            mode,
+        });
+
+        try {
+            console.log('[YouTubePoller] Channel worker started', {
+                mode,
+                channelId: channel.channelId,
+                channelName: channel.name,
+            });
+
+            const result = await this.processChannel(channel, settings, options);
+            await this.finishChannelPoll(channel, settings, result);
+
+            console.log('[YouTubePoller] Channel worker finished', {
+                mode,
+                channelId: channel.channelId,
+                channelName: channel.name,
+                checked: result.checked,
+                skipped: result.skipped,
+                failed: result.failed,
+                published: result.published,
+                newVideoDetected: result.newVideoDetected,
+            });
+
+            return result;
+        } catch (error: any) {
+            const failedResult: ChannelPollResult = {
+                channelId: channel.channelId,
+                channelName: channel.name,
+                checked: true,
+                skipped: false,
+                newVideoDetected: false,
+                published: false,
+                failed: true,
+                message: error?.message || 'Unknown channel polling failure',
+            };
+            await this.finishChannelPoll(channel, settings, failedResult);
+            console.error('[YouTubePoller] Channel worker failed', {
+                mode,
+                channelId: channel.channelId,
+                channelName: channel.name,
+                error: failedResult.message,
+            });
+            return failedResult;
+        } finally {
+            this.clearActiveChannelJob(channel.id);
+        }
+    }
+
+    async runSchedulerTick(): Promise<SchedulerTickSummary> {
+        const startedAt = new Date();
+
+        if (this.schedulerRunning) {
             return {
                 startedAt: startedAt.toISOString(),
                 finishedAt: new Date().toISOString(),
-                channelsChecked: 0,
-                channelsSkipped: 0,
-                newVideosDetected: 0,
-                successfulPublishes: 0,
-                failedPublishes: 0,
-                results: [{
-                    channelId: '',
-                    channelName: 'Poller',
-                    checked: false,
-                    skipped: true,
-                    newVideoDetected: false,
-                    published: false,
-                    failed: false,
-                    message: 'Polling already in progress'
-                }]
+                dueChannels: 0,
+                claimedChannels: 0,
+                skippedLockedChannels: 0,
+                activeWorkerCount: this.activeChannelJobs.size,
             };
         }
 
-        this.isPolling = true;
-        this.pollStartedAt = startedAt;
-        this.lastPollStartedAt = startedAt;
-        this.currentChannelId = null;
-        this.currentChannelName = null;
-        console.log('[YouTubePoller] Starting poll...');
+        this.schedulerRunning = true;
+        this.schedulerStartedAt = startedAt;
+        this.lastSchedulerStartedAt = startedAt;
+
+        try {
+            const settings = await getYouTubeRuntimeSettings();
+            const availableSlots = Math.max(0, MAX_CONCURRENT_CHANNEL_POLLS - this.activeChannelJobs.size);
+
+            if (availableSlots === 0) {
+                console.log('[YouTubePoller] Scheduler tick skipped because all worker slots are busy', {
+                    activeWorkerCount: this.activeChannelJobs.size,
+                });
+                return {
+                    startedAt: startedAt.toISOString(),
+                    finishedAt: new Date().toISOString(),
+                    dueChannels: 0,
+                    claimedChannels: 0,
+                    skippedLockedChannels: 0,
+                    activeWorkerCount: this.activeChannelJobs.size,
+                };
+            }
+
+            const now = new Date();
+            const dueChannels = await prisma.channel.findMany({
+                where: {
+                    status: 'active',
+                    OR: [
+                        { nextPollAt: null },
+                        { nextPollAt: { lte: now } },
+                    ],
+                },
+                orderBy: [
+                    { nextPollAt: 'asc' },
+                    { lastCheck: 'asc' },
+                ],
+                take: Math.max(availableSlots * 3, POLL_CLAIM_BATCH_SIZE),
+            });
+
+            const claimedChannels: any[] = [];
+            let skippedLockedChannels = 0;
+
+            for (const channel of dueChannels) {
+                if (claimedChannels.length >= availableSlots) {
+                    break;
+                }
+
+                const claimed = await this.tryClaimChannel(channel, settings);
+                if (claimed) {
+                    claimedChannels.push(channel);
+                } else {
+                    skippedLockedChannels += 1;
+                }
+            }
+
+            console.log('[YouTubePoller] Scheduler tick', {
+                dueChannels: dueChannels.length,
+                claimedChannels: claimedChannels.length,
+                skippedLockedChannels,
+                activeWorkerCount: this.activeChannelJobs.size,
+            });
+
+            for (const channel of claimedChannels) {
+                void this.runClaimedChannelPoll(channel, settings, {}, 'scheduled');
+            }
+
+            return {
+                startedAt: startedAt.toISOString(),
+                finishedAt: new Date().toISOString(),
+                dueChannels: dueChannels.length,
+                claimedChannels: claimedChannels.length,
+                skippedLockedChannels,
+                activeWorkerCount: this.activeChannelJobs.size,
+            };
+        } finally {
+            this.schedulerRunning = false;
+            this.schedulerStartedAt = null;
+            this.lastSchedulerFinishedAt = new Date();
+        }
+    }
+
+    async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
+        const startedAt = new Date();
+        console.log('[YouTubePoller] Starting manual poll...');
         console.log(`[YouTubePoller] yt-dlp auth mode: ${describeYtDlpAuthConfiguration()}`);
 
         try {
@@ -380,40 +659,31 @@ export class YouTubePollerService {
             }
 
             const channels = await prisma.channel.findMany({ where });
-            console.log(`[YouTubePoller] Found ${channels.length} active channels`);
-
-            const intervalMinutes = settings.fetchInterval && Number(settings.fetchInterval) > 0
-                ? Number(settings.fetchInterval)
-                : 10;
-            const intervalMs = intervalMinutes * 60 * 1000;
-            const now = Date.now();
+            console.log(`[YouTubePoller] Found ${channels.length} active channels for manual poll`);
 
             const results: ChannelPollResult[] = [];
 
             for (const channel of channels) {
-                this.currentChannelId = channel.channelId;
-                this.currentChannelName = channel.name;
-
-                if (!options.force && channel.lastCheck) {
-                    const lastCheckTime = new Date(channel.lastCheck).getTime();
-                    if (now - lastCheckTime < intervalMs) {
-                        const skippedResult = {
-                            channelId: channel.channelId,
-                            channelName: channel.name,
-                            checked: false,
-                            skipped: true,
-                            newVideoDetected: false,
-                            published: false,
-                            failed: false,
-                            message: 'Skipped until next polling window'
-                        };
-                        console.log(`[YouTubePoller] ${channel.name}: ${skippedResult.message}`);
-                        results.push(skippedResult);
-                        continue;
-                    }
+                const claimed = await this.tryClaimChannel(channel, settings, { force: options.force });
+                if (!claimed) {
+                    const skippedResult = {
+                        channelId: channel.channelId,
+                        channelName: channel.name,
+                        checked: false,
+                        skipped: true,
+                        newVideoDetected: false,
+                        published: false,
+                        failed: false,
+                        message: options.force
+                            ? 'Skipped because the channel is already being processed'
+                            : 'Skipped until next polling window or channel lock release'
+                    };
+                    console.log(`[YouTubePoller] ${channel.name}: ${skippedResult.message}`);
+                    results.push(skippedResult);
+                    continue;
                 }
 
-                const channelResult = await this.processChannel(channel, settings, options);
+                const channelResult = await this.runClaimedChannelPoll(channel, settings, options, 'manual');
                 console.log(`[YouTubePoller] ${channelResult.channelName}: ${channelResult.message}`);
                 results.push(channelResult);
             }
@@ -450,9 +720,7 @@ export class YouTubePollerService {
                 }]
             };
         } finally {
-            this.lastPollFinishedAt = new Date();
-            this.resetPollState();
-            console.log('[YouTubePoller] Poll finished');
+            console.log('[YouTubePoller] Manual poll finished');
         }
     }
 
@@ -974,12 +1242,12 @@ export class YouTubePollerService {
         result: ChannelPollResult,
         incrementVideoCount = false
     ): Promise<ChannelPollResult> {
-        await prisma.channel.update({
-            where: { id: channelDbId },
-            data: incrementVideoCount
-                ? { lastCheck: new Date(), videoCount: { increment: 1 } }
-                : { lastCheck: new Date() }
-        }).catch(() => undefined);
+        if (incrementVideoCount) {
+            await prisma.channel.update({
+                where: { id: channelDbId },
+                data: { videoCount: { increment: 1 } }
+            }).catch(() => undefined);
+        }
 
         return result;
     }
@@ -1384,7 +1652,7 @@ export class YouTubePollerService {
             };
         }
 
-        const thumbnailUrl = this.getThumbnailUrl(details);
+        const thumbnailUrl = this.getThumbnailUrl(details, videoId);
         const enrichedMetadata = await enrichYouTubeVideoMetadata(
             videoId,
             video.title || '',
@@ -2268,13 +2536,14 @@ Respond ONLY as strict JSON:
         }
     }
 
-    private getThumbnailUrl(details: any): string | undefined {
+    private getThumbnailUrl(details: any, videoId?: string): string | undefined {
         const thumbnails = details?.thumbnails;
-        if (!Array.isArray(thumbnails) || thumbnails.length === 0) {
-            return undefined;
+        if (Array.isArray(thumbnails) && thumbnails.length > 0) {
+            return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
         }
 
-        return thumbnails[thumbnails.length - 1]?.url || thumbnails[0]?.url;
+        const fallbackThumbnails = this.buildFallbackThumbnails(videoId || details?.videoId);
+        return fallbackThumbnails[fallbackThumbnails.length - 1]?.url || fallbackThumbnails[0]?.url;
     }
 
     private buildFallbackThumbnails(videoId: string): Array<{ url?: string }> {
@@ -2321,7 +2590,7 @@ Respond ONLY as strict JSON:
                     url: typeof thumbnail?.url === 'string' ? thumbnail.url : undefined,
                 }))
                 .filter((thumbnail: { url?: string }) => Boolean(thumbnail.url))
-            : [];
+            : this.buildFallbackThumbnails(videoId);
         const keywords = Array.isArray(raw?.tags)
             ? raw.tags.filter((tag: unknown): tag is string => typeof tag === 'string' && tag.trim().length > 0)
             : [];

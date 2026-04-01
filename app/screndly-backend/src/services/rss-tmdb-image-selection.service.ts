@@ -498,6 +498,36 @@ function collectCrewNames(crew: Array<{ name?: string; job?: string; department?
     .filter((name): name is string => Boolean(name));
 }
 
+function isPersonLedInput(input: StructuredRSSTMDbSelectionInput): boolean {
+  return input.imageIntent === 'person_portrait'
+    || input.primarySubject.type === 'actor'
+    || input.primarySubject.type === 'director'
+    || input.primarySubject.type === 'producer';
+}
+
+function hasGenericShortProjectAnchor(anchor: string): boolean {
+  const tokens = normalizeText(anchor).split(' ').filter(Boolean);
+  if (tokens.length === 0 || tokens.length > 3) {
+    return false;
+  }
+
+  const genericTokens = new Set([
+    'drama',
+    'series',
+    'movie',
+    'film',
+    'story',
+    'show',
+    'project',
+    'thriller',
+    'comedy',
+    'romance',
+    'mystery',
+  ]);
+
+  return tokens.every((token) => genericTokens.has(token) || token.length <= 4);
+}
+
 function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string | null {
   if (
     input.primarySubject.type === 'movie' ||
@@ -509,6 +539,10 @@ function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string 
 
   const contextProject = input.contextProject?.trim();
   if (contextProject) {
+    if (isPersonLedInput(input) && hasGenericShortProjectAnchor(contextProject)) {
+      return null;
+    }
+
     const normalizedContextProject = normalizeText(contextProject);
     const contextMatchesStudio = input.relevantStudios.some(
       (studio) => normalizeText(studio) === normalizedContextProject
@@ -525,6 +559,49 @@ function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string 
   }
 
   return null;
+}
+
+function titleCandidateMatchesPersonContext(
+  input: StructuredRSSTMDbSelectionInput,
+  title: string,
+  overview: string,
+  castNames: string[],
+  crewNames: string[]
+): boolean {
+  if (!isPersonLedInput(input)) {
+    return true;
+  }
+
+  const personName = input.primarySubject.name.trim();
+  if (!personName) {
+    return true;
+  }
+
+  const personMatchScore = scoreAliasMatch(personName, [
+    ...castNames,
+    ...crewNames,
+    title,
+    overview,
+    input.visualSubject,
+  ]);
+
+  if (personMatchScore >= 220) {
+    return true;
+  }
+
+  const contextTerms = uniqueStrings([
+    input.contextProject || null,
+    ...input.requiredContextTerms,
+  ]);
+  const contextMatchScore = scoreContextTerms(
+    [title, overview].join(' '),
+    contextTerms,
+    []
+  );
+
+  // For person-led stories, only trust title assets when the title matches context strongly
+  // and the primary person is actually tied to that TMDb result.
+  return contextMatchScore >= 55 && personMatchScore >= 120;
 }
 
 async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Promise<ResolvedTMDbTitleCandidate | null> {
@@ -659,6 +736,10 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
         + scoreAliasMatch(anchor, [title]);
 
       if (enrichedScore < MIN_TMDB_TITLE_SCORE) {
+        continue;
+      }
+
+      if (!titleCandidateMatchesPersonContext(input, title, overview, castNames, crewNames)) {
         continue;
       }
 
@@ -886,6 +967,7 @@ export async function resolveStructuredTMDbImages(
   ) {
     const personProfile = await resolvePersonProfile(input);
     if (personProfile) {
+      personProfile.score += 24;
       candidates.push(personProfile);
     }
   }

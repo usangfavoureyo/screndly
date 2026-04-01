@@ -6,6 +6,7 @@ import {
   Calendar,
   RefreshCw,
   MoreVertical,
+  AlertTriangle,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
@@ -42,6 +43,18 @@ import {
   type TMDbFeedImageStyle,
   type TMDbImageAssetType,
 } from '../lib/tmdb/feedImageSelection';
+import {
+  deriveTMDbActivityStatus,
+  deriveTMDbPlatformStates,
+  formatTMDbPlatformLabel,
+  getRetryFailedLabel,
+  getRetryableTMDbPlatforms,
+  getTMDbPublishSummary,
+  normalizeTMDbPlatformKey,
+  type TMDbActivityDerivedStatus,
+  type TMDbPlatformResultRecord,
+} from '../lib/tmdb/activityStatus';
+import { publishTMDbPost, toTMDbPlatformNames } from '../lib/tmdb/tmdbPublish';
 
 interface TMDbActivityItem {
   id: string;
@@ -51,6 +64,8 @@ interface TMDbActivityItem {
   status: 'queued' | 'published' | 'failed' | 'scheduled' | 'dispatched' | 'unscheduled' | 'skipped';
   timestamp: string;
   platforms?: string[];
+  platformPostIds?: Record<string, string>;
+  platformResults?: TMDbPlatformResultRecord[];
   error?: string;
   errorMessage?: string;
   imageUrl?: string;
@@ -64,6 +79,14 @@ interface TMDbActivityItem {
   year?: number;
   releaseDate?: string;
   cast?: string[];
+}
+
+interface TMDbActivityViewModel {
+  item: TMDbActivityItem;
+  derivedStatus: TMDbActivityDerivedStatus;
+  retryablePlatforms: ReturnType<typeof getRetryableTMDbPlatforms>;
+  publishSummary: string | null;
+  platformStates: ReturnType<typeof deriveTMDbPlatformStates>;
 }
 
 interface TMDbActivityPageProps {
@@ -129,6 +152,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const [selectedTime, setSelectedTime] = useState('');
   const [editedCaption, setEditedCaption] = useState('');
   const [openMenuItemId, setOpenMenuItemId] = useState<string | null>(null);
+  const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
   const pendingMenuActionRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -163,6 +187,23 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     [posts]
   );
 
+  const activityViewModels = useMemo<TMDbActivityViewModel[]>(
+    () =>
+      activityItems.map((item) => {
+        const platformStates = deriveTMDbPlatformStates(item);
+        const derivedStatus = deriveTMDbActivityStatus(item, platformStates);
+
+        return {
+          item,
+          derivedStatus,
+          platformStates,
+          retryablePlatforms: getRetryableTMDbPlatforms(platformStates),
+          publishSummary: getTMDbPublishSummary(platformStates),
+        };
+      }),
+    [activityItems]
+  );
+
   // Helper function to check if an item should be filtered based on retention
   const shouldKeepItem = (item: TMDbActivityItem): boolean => {
     // Always keep scheduled and queued items regardless of age
@@ -190,15 +231,15 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     return true;
   };
 
-  const logLevelItems = activityItems
-    .filter(item => shouldKeepItem(item))
-    .filter((item) => {
-      if (item.status === 'queued' || item.status === 'scheduled' || item.status === 'failed') {
+  const logLevelItems = activityViewModels
+    .filter(({ item }) => shouldKeepItem(item))
+    .filter(({ derivedStatus }) => {
+      if (derivedStatus === 'publishing' || derivedStatus === 'scheduled' || derivedStatus === 'failed' || derivedStatus === 'partial_failed') {
         return true;
       }
 
       if (logLevel === 'minimal') return false;
-      if (logLevel === 'standard') return item.status === 'published';
+      if (logLevel === 'standard') return derivedStatus === 'published';
       return true;
     });
 
@@ -206,14 +247,14 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
   // Filter posts by retention period first, then by log level, then by status filter
   const filteredItems = visibleItems
-    .filter((item) => {
-      if (filter === 'failures') return item.status === 'failed';
-      if (filter === 'published') return item.status === 'published';
-      if (filter === 'pending') return item.status === 'queued';
-      if (filter === 'scheduled') return item.status === 'scheduled';
+    .filter(({ derivedStatus }) => {
+      if (filter === 'failures') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
+      if (filter === 'published') return derivedStatus === 'published';
+      if (filter === 'pending') return derivedStatus === 'publishing';
+      if (filter === 'scheduled') return derivedStatus === 'scheduled';
       return true;
     });
-  const selection = useBulkSelection(filteredItems.map((item) => item.id));
+  const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const generateTmdbCaption = async (post: Pick<TMDbPost, 'title' | 'mediaType' | 'releaseDate' | 'cast' | 'year' | 'platforms' | 'source'>) => {
     const result = await generateTMDbCaptionWithSettings({
@@ -228,22 +269,20 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     return result.caption;
   };
 
-  const getStatusConfig = (status: TMDbActivityItem['status']) => {
+  const getStatusConfig = (status: TMDbActivityDerivedStatus) => {
     switch (status) {
-      case 'queued':
-        return { icon: Clock, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Queued' };
+      case 'publishing':
+        return { icon: Clock, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Publishing' };
       case 'published':
         return { icon: CheckCircle, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Published' };
+      case 'partial_failed':
+        return { icon: AlertTriangle, color: 'text-[#D97706]', bg: 'bg-[#FEF3C7] dark:bg-[#78350F]', label: 'Partially Failed' };
       case 'failed':
         return { icon: XCircle, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]', label: 'Failed' };
       case 'scheduled':
         return { icon: Calendar, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Scheduled' };
-      case 'dispatched':
-        return { icon: RefreshCw, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Dispatched' };
-      case 'unscheduled':
-        return { icon: XCircle, color: 'text-[#EF4444]', bg: 'bg-[#FEE2E2] dark:bg-[#991B1B]', label: 'Unscheduled' };
-      case 'skipped':
-        return { icon: XCircle, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Skipped' };
+      default:
+        return { icon: Clock, color: 'text-gray-700 dark:text-[#9CA3AF]', bg: 'bg-gray-200 dark:bg-[#1f1f1f]', label: 'Publishing' };
     }
   };
 
@@ -260,23 +299,118 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     }
   };
 
-  const handleRetry = async (e: React.MouseEvent, id: string, title: string) => {
+  const handleRetry = async (e: React.MouseEvent, item: TMDbActivityItem) => {
     e.stopPropagation();
     haptics.medium();
 
+    const retryablePlatforms = getRetryableTMDbPlatforms(deriveTMDbPlatformStates(item)).map((platform) => platform.platform);
+    if (retryablePlatforms.length === 0) {
+      toast.info('No failed platforms to retry');
+      return;
+    }
+
+    const retryPlatformNames = toTMDbPlatformNames(retryablePlatforms);
+    const retryingAt = new Date().toISOString();
+    const optimisticResults = (item.platformResults || []).map((result) => {
+      const platformKey = normalizeTMDbPlatformKey(result.platform);
+      if (!retryablePlatforms.includes(platformKey)) {
+        return result;
+      }
+
+      return {
+        ...result,
+        platform: formatTMDbPlatformLabel(platformKey),
+        status: 'retrying' as const,
+        error: undefined,
+        lastAttemptAt: retryingAt,
+        retryCount: (result.retryCount || 0) + 1,
+      };
+    });
+
+    setRetryingItemId(item.id);
+
     try {
-      await updatePost(id, {
+      await updatePost(item.id, {
         status: 'queued',
+        platformResults: optimisticResults,
         errorMessage: undefined,
-        publishedTime: undefined,
       });
 
-      toast.success('Retry Initiated', {
-        description: `Retrying TMDb feed: \"${title}\"`,
+      const publishResult = await publishTMDbPost(item, retryablePlatforms);
+      const mergedResultsMap = new Map(
+        (item.platformResults || []).map((result) => [normalizeTMDbPlatformKey(result.platform), result] as const)
+      );
+      const platformPostIds: Record<string, string> = { ...(item.platformPostIds || {}) };
+
+      publishResult.platformResults.forEach((result) => {
+        const platformKey = normalizeTMDbPlatformKey(result.platform);
+        const previous = mergedResultsMap.get(platformKey);
+
+        mergedResultsMap.set(platformKey, {
+          ...previous,
+          ...result,
+          platform: formatTMDbPlatformLabel(platformKey),
+          lastAttemptAt: retryingAt,
+          retryCount: (previous?.retryCount || 0) + 1,
+        });
+
+        if (result.status === 'posted' && result.id) {
+          platformPostIds[platformKey] = result.id;
+        }
+      });
+
+      const mergedPlatforms = Array.from(new Set([...(item.platforms || []), ...retryPlatformNames]));
+      const platformResults = Array.from(mergedResultsMap.values());
+      const platformStates = deriveTMDbPlatformStates({
+        ...item,
+        platforms: mergedPlatforms,
+        platformPostIds,
+        platformResults,
+      });
+      const derivedStatus = deriveTMDbActivityStatus(
+        {
+          ...item,
+          platforms: mergedPlatforms,
+          platformPostIds,
+          platformResults,
+        },
+        platformStates
+      );
+      const latestPublishedAt = platformStates
+        .filter((state) => state.status === 'posted')
+        .map((state) => state.publishedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1);
+      const failedStates = platformStates.filter((state) => state.status === 'failed');
+      const persistedStatus: TMDbPost['status'] =
+        derivedStatus === 'failed' ? 'failed' : derivedStatus === 'publishing' ? 'queued' : 'published';
+
+      await updatePost(item.id, {
+        status: persistedStatus,
+        platforms: mergedPlatforms,
+        platformPostIds,
+        platformResults,
+        publishedTime: latestPublishedAt,
+        errorMessage: failedStates.length > 0
+          ? failedStates.map((state) => `${state.label}: ${state.errorMessage || 'Publish failed'}`).join('; ')
+          : undefined,
+      });
+      await fetchPosts({ silent: true });
+
+      toast.success('Retry complete', {
+        description: derivedStatus === 'published'
+          ? `Published "${item.title}" on ${publishResult.postedPlatforms.join(', ')}.`
+          : failedStates.length > 0
+            ? `Retried ${item.title}. Remaining failures: ${failedStates.map((state) => state.label).join(', ')}.`
+            : `Retried "${item.title}".`,
       });
     } catch (error) {
       console.error('Failed to retry TMDb item:', error);
       toast.error('Failed to retry TMDb feed');
+      await fetchPosts({ silent: true });
+    } finally {
+      setRetryingItemId(null);
     }
   };
 
@@ -498,25 +632,25 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Published</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {visibleItems.filter(item => item.status === 'published').length}
+              {visibleItems.filter(({ derivedStatus }) => derivedStatus === 'published').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Scheduled</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {visibleItems.filter(item => item.status === 'scheduled').length}
+              {visibleItems.filter(({ derivedStatus }) => derivedStatus === 'scheduled').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Pending</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {visibleItems.filter(item => item.status === 'queued').length}
+              {visibleItems.filter(({ derivedStatus }) => derivedStatus === 'publishing').length}
             </p>
           </div>
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5">
             <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failures</p>
             <p className="text-gray-900 dark:text-white text-2xl">
-              {visibleItems.filter(item => item.status === 'failed').length}
+              {visibleItems.filter(({ derivedStatus }) => derivedStatus === 'failed' || derivedStatus === 'partial_failed').length}
             </p>
           </div>
         </div>
@@ -602,8 +736,8 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           />
         )}
         {filteredItems.length > 0 ? (
-          filteredItems.map((item) => {
-            const statusConfig = getStatusConfig(item.status);
+          filteredItems.map(({ item, derivedStatus, retryablePlatforms, publishSummary, platformStates }) => {
+            const statusConfig = getStatusConfig(derivedStatus);
             const StatusIcon = statusConfig.icon;
             const imageCount = Array.isArray(item.imageUrls) && item.imageUrls.length > 0 ? item.imageUrls.length : 1;
             const imageStyle = item.imageStyle || deriveTMDbImageStyle(item.imageType, item.imageTypes);
@@ -619,7 +753,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                 key={item.id}
                 id={item.id}
                 onDelete={(id) => handleDelete(id ?? item.id, item.title)}
-                isScheduled={item.status === 'scheduled'}
+                isScheduled={derivedStatus === 'scheduled'}
                 selectionMode={selection.selectionMode}
                 selected={selection.isSelected(item.id)}
                 onEnterSelectionMode={selection.enterSelectionMode}
@@ -679,35 +813,57 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                       {/* Status Badge and Retry Button */}
                       <div className="flex flex-col items-end gap-2">
                         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${statusConfig.bg} flex-shrink-0`}>
-                          {item.status !== 'scheduled' && item.status !== 'published' && <StatusIcon className={`w-4 h-4 ${statusConfig.color}`} />}
+                          {derivedStatus !== 'scheduled' && derivedStatus !== 'published' && <StatusIcon className={`w-4 h-4 ${statusConfig.color}`} />}
                           <span className={`text-sm ${statusConfig.color}`}>
                             {statusConfig.label}
                           </span>
                         </div>
-                        {!selection.selectionMode && item.status === 'failed' && (
+                        {!selection.selectionMode && retryablePlatforms.length > 0 && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={(e) => handleRetry(e, item.id, item.title)}
+                            onClick={(e) => handleRetry(e, item)}
+                            disabled={retryingItemId === item.id}
                             className="gap-2 bg-white dark:bg-black"
                           >
-                            Retry
+                            {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
                           </Button>
                         )}
                       </div>
                     </div>
 
                     {/* Platforms */}
-                    {item.platforms && item.platforms.length > 0 && (
+                    {publishSummary && (
+                      <p className="mb-2 text-xs text-gray-500 dark:text-[#9CA3AF]">{publishSummary}</p>
+                    )}
+                    {platformStates.length > 0 && (
                       <div className="flex items-center gap-2 mb-3">
                         <div className="flex flex-wrap gap-1.5">
-                          {item.platforms.map((platform) => (
-                            <span
-                              key={platform}
-                              className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]"
+                          {platformStates.map((platformState) => (
+                            <a
+                              key={platformState.platform}
+                              href={platformState.url}
+                              target={platformState.url ? '_blank' : undefined}
+                              rel={platformState.url ? 'noopener noreferrer' : undefined}
+                              className={`text-xs px-2 py-1 rounded ${
+                                platformState.status === 'posted'
+                                  ? 'bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#D1D5DB]'
+                                  : platformState.status === 'failed'
+                                    ? 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
+                                    : 'bg-gray-200 dark:bg-[#1F1F1F] text-gray-700 dark:text-[#9CA3AF]'
+                              } ${platformState.url ? 'underline decoration-transparent hover:decoration-current underline-offset-2' : ''}`}
+                              onClick={(event) => {
+                                if (!platformState.url) {
+                                  event.preventDefault();
+                                }
+                              }}
                             >
-                              {platform}
-                            </span>
+                              {platformState.label}: {platformState.status === 'posted'
+                                ? 'Posted'
+                                : platformState.status === 'failed'
+                                  ? 'Failed'
+                                  : 'Publishing'}
+                            </a>
                           ))}
                         </div>
                       </div>

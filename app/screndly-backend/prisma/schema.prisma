@@ -180,20 +180,27 @@ model RSSFeedItem {
 // CHANNELS (YouTube monitoring)
 // ============================================
 model Channel {
-  id              String   @id @default(uuid())
-  channelId       String   @unique // YouTube channel ID
-  name            String
-  subscriberCount Int      @default(0)
-  videoCount      Int      @default(0)
-  status          String   // "active", "inactive", "error"
-  lastCheck       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  feedItems       FeedItem[]
+    id              String   @id @default(uuid())
+    channelId       String   @unique // YouTube channel ID
+    name            String
+    subscriberCount Int      @default(0)
+    videoCount      Int      @default(0)
+    status          String   // "active", "inactive", "error"
+    lastCheck       DateTime?
+    pollIntervalMinutesOverride Int?
+    nextPollAt      DateTime?
+    lockUntil       DateTime?
+    failureCount    Int      @default(0)
+    lastPollStartedAt DateTime?
+    createdAt       DateTime @default(now())
+    updatedAt       DateTime @updatedAt
+    feedItems       FeedItem[]
 
-  @@index([channelId])
-  @@index([status])
-}
+    @@index([channelId])
+    @@index([status])
+    @@index([status, nextPollAt])
+    @@index([lockUntil])
+  }
 
 // ============================================
 // FEED ITEMS (YouTube Polling History)

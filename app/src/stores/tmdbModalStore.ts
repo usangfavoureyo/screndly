@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
+import { type TMDbPlatformResultRecord } from '../lib/tmdb/activityStatus';
 
 /**
  * TMDb Modal Store
@@ -29,6 +30,8 @@ export interface TMDbFeed {
     popularity: number;
     cacheHit: boolean;
     platforms?: string[];
+    platformPostIds?: Record<string, string>;
+    platformResults?: TMDbPlatformResultRecord[];
     status?: 'queued' | 'scheduled' | 'dispatched' | 'published' | 'failed' | 'unscheduled' | 'skipped';
     runId?: string;
     captionContextHash?: string;

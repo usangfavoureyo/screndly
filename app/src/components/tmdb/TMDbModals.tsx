@@ -8,7 +8,7 @@ import { TimePicker } from '../ui/time-picker';
 import { haptics } from '../../utils/haptics';
 import { useUndo } from '../UndoContext';
 import { useTMDbModalStore } from '../../stores/tmdbModalStore';
-import { useTMDbPosts } from '../../contexts/TMDbPostsContext';
+import { useTMDbPosts, type TMDbPost } from '../../contexts/TMDbPostsContext';
 import { XIcon } from '../icons/XIcon';
 import { ThreadsIcon } from '../icons/ThreadsIcon';
 import { FacebookIcon } from '../icons/FacebookIcon';
@@ -17,6 +17,13 @@ import { PinterestIcon } from '../icons/PinterestIcon';
 import { generateTMDbCaption, getFeedTypeFromSource } from '../../utils/tmdbCaptionGenerator';
 import { logFeedUpdate, logFeedDeletion } from '../../utils/tmdbLogger';
 import { getInitialTMDbPlatformKeys, publishTMDbPost, toTMDbPlatformNames } from '../../lib/tmdb/tmdbPublish';
+import {
+    deriveTMDbActivityStatus,
+    deriveTMDbPlatformStates,
+    formatTMDbPlatformLabel,
+    normalizeTMDbPlatformKey,
+    type TMDbPlatformResultRecord,
+} from '../../lib/tmdb/activityStatus';
 import { ChangeImageBottomSheet } from './ChangeImageBottomSheet';
 import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import {
@@ -44,7 +51,7 @@ import { RedSpinner } from '../PageLoader';
  * - Re-renders cascading to feed cards
  */
 export function TMDbModals() {
-    const { posts, fetchPosts, updatePost, updatePostStatus, deletePost, schedulePost, restorePost } = useTMDbPosts();
+    const { posts, fetchPosts, updatePost, deletePost, schedulePost, restorePost } = useTMDbPosts();
     const { showUndo } = useUndo();
 
     // Modal states from store
@@ -71,6 +78,81 @@ export function TMDbModals() {
     const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
     const [scheduledTime, setScheduledTime] = useState('');
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+
+    const mergePublishResults = (
+        feed: NonNullable<typeof platformSelectModal.feed>,
+        selectedPlatformNames: string[],
+        publishResult: Awaited<ReturnType<typeof publishTMDbPost>>,
+    ) => {
+        const existingResults = new Map(
+            (feed.platformResults || []).map((result) => [normalizeTMDbPlatformKey(result.platform), result] as const)
+        );
+        const platformPostIds: Record<string, string> = { ...(feed.platformPostIds || {}) };
+        const attemptedAt = new Date().toISOString();
+
+        selectedPlatformNames.forEach((platformName) => {
+            const platformKey = normalizeTMDbPlatformKey(platformName);
+            const previous = existingResults.get(platformKey);
+            const nextResult = publishResult.platformResults.find(
+                (result) => normalizeTMDbPlatformKey(result.platform) === platformKey
+            );
+
+            if (nextResult) {
+                existingResults.set(platformKey, {
+                    ...previous,
+                    ...nextResult,
+                    platform: formatTMDbPlatformLabel(platformKey),
+                    lastAttemptAt: attemptedAt,
+                    retryCount: (previous?.retryCount || 0) + 1,
+                });
+
+                if (nextResult.status === 'posted' && nextResult.id) {
+                    platformPostIds[platformKey] = nextResult.id;
+                }
+            }
+        });
+
+        const platformResults = Array.from(existingResults.values()) as TMDbPlatformResultRecord[];
+        const platformStates = deriveTMDbPlatformStates({
+            status: feed.status,
+            platforms: selectedPlatformNames,
+            platformPostIds,
+            platformResults,
+            publishedTime: feed.publishedTime,
+            errorMessage: feed.errorMessage,
+        });
+        const derivedStatus = deriveTMDbActivityStatus(
+            {
+                status: feed.status,
+                platforms: selectedPlatformNames,
+                platformPostIds,
+                platformResults,
+                publishedTime: feed.publishedTime,
+                errorMessage: feed.errorMessage,
+            },
+            platformStates,
+        );
+        const publishedAt = platformStates
+            .filter((state) => state.status === 'posted')
+            .map((state) => state.publishedAt)
+            .filter((value): value is string => Boolean(value))
+            .sort()
+            .at(-1);
+        const failedStates = platformStates.filter((state) => state.status === 'failed');
+        const persistedStatus: TMDbPost['status'] =
+            derivedStatus === 'failed' ? 'failed' : derivedStatus === 'publishing' ? 'queued' : 'published';
+
+        return {
+            platforms: selectedPlatformNames,
+            platformPostIds,
+            platformResults,
+            status: persistedStatus,
+            publishedTime: publishedAt,
+            errorMessage: failedStates.length > 0
+                ? failedStates.map((state) => `${state.label}: ${state.errorMessage || 'Publish failed'}`).join('; ')
+                : undefined,
+        };
+    };
 
     // Sync form state when modal opens
     useEffect(() => {
@@ -276,25 +358,14 @@ export function TMDbModals() {
         try {
             if (isPublishNow) {
                 const publishResult = await publishTMDbPost(platformSelectModal.feed, selectedPlatforms);
+                const mergedState = mergePublishResults(platformSelectModal.feed, publishResult.platformNames, publishResult);
 
                 if (publishResult.postedPlatforms.length === 0) {
-                    await updatePost(platformSelectModal.feed.id, {
-                        platforms: publishResult.platformNames,
-                    });
-                    await updatePostStatus(
-                        platformSelectModal.feed.id,
-                        'failed',
-                        undefined,
-                        publishResult.errorMessage || 'Failed to publish TMDb post',
-                    );
+                    await updatePost(platformSelectModal.feed.id, mergedState);
                     throw new Error(publishResult.errorMessage || 'Failed to publish TMDb post');
                 }
 
-                const publishedTime = new Date().toISOString();
-                await updatePost(platformSelectModal.feed.id, {
-                    platforms: publishResult.platformNames,
-                });
-                await updatePostStatus(platformSelectModal.feed.id, 'published', publishedTime);
+                await updatePost(platformSelectModal.feed.id, mergedState);
                 await fetchPosts({ silent: true });
 
                 haptics.success();

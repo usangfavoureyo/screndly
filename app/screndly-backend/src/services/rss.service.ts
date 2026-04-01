@@ -1900,6 +1900,7 @@ function buildRSSCaptionSystemPrompt(
     '- Keep the wording aligned with the selected image so the caption and visual feel like the same story.',
     '- Only name titles, characters, or people that are actually represented by the selected visuals.',
     '- If the selected visuals cover fewer examples than the headline or article summary mentions, use broader wording instead of listing unsupported examples.',
+    '- Never substitute a different movie, show, character, or person name than the one grounded by the article context and selected visuals.',
   ].filter(Boolean).join('\n');
 
   if (!basePrompt && !constraints) {
@@ -1922,6 +1923,56 @@ function buildRSSCaptionVisualContext(images: RSSResolvedImage[]): string[] | un
     .filter((entry): entry is string => Boolean(entry));
 
   return entries.length > 0 ? entries : undefined;
+}
+
+function extractQuotedRSSCaptionEntities(value: string): string[] {
+  return Array.from(value.matchAll(/["'“”]([^"'“”]{2,100})["'“”]/g))
+    .map((match) => sanitizeRSSPlainText(match[1] || '').trim())
+    .filter(Boolean);
+}
+
+function extractReasonAnchoredEntity(value: string): string[] {
+  const text = sanitizeRSSPlainText(value).replace(/\s+/g, ' ').trim();
+  if (!text) {
+    return [];
+  }
+
+  const matches = Array.from(
+    text.matchAll(/\b(?:for|profile for|backdrop for|poster for|logo for)\s+([^.,;|]+?)(?:\s+cropped to|\s+rendered as|$)/gi)
+  )
+    .map((match) => sanitizeRSSPlainText(match[1] || '').trim())
+    .filter(Boolean);
+
+  return matches;
+}
+
+function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[]): string[] | undefined {
+  const seen = new Set<string>();
+  const entities: string[] = [];
+
+  const pushEntity = (value?: string | null): void => {
+    const cleaned = sanitizeRSSPlainText(String(value || '')).replace(/\s+/g, ' ').trim();
+    if (!cleaned) {
+      return;
+    }
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    entities.push(cleaned);
+  };
+
+  [
+    ...extractQuotedRSSCaptionEntities(item.title || ''),
+    ...extractQuotedRSSCaptionEntities(item.description || ''),
+  ].forEach(pushEntity);
+
+  for (const image of images) {
+    extractReasonAnchoredEntity(image.reason || '').forEach(pushEntity);
+  }
+
+  return entities.length > 0 ? entities : undefined;
 }
 
 async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
@@ -2499,6 +2550,18 @@ async function attemptRSSPublish(
     );
     const publishImageUrls = publishImages.map((image) => image.url);
     const publishImageUrl = publishImageUrls[0];
+    if (publishImageUrls.length === 0) {
+      return {
+        status: 'failed',
+        imageUrl: undefined,
+        imageUrls: [],
+        resolvedImages: [],
+        platformPostIds: previousPlatformPostIds,
+        platformResults: previousPlatformResults,
+        errorMessage: 'Publishing blocked because no resolved images were available for this RSS item.',
+      };
+    }
+
     const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
       tone: runtimeSettings.rssCaptionTone,
       maxLength: runtimeSettings.rssCaptionMaxLength,
@@ -2510,6 +2573,7 @@ async function attemptRSSPublish(
         summary: sanitizeRSSPlainText(item.description),
         platform: 'X',
         selectedVisuals: buildRSSCaptionVisualContext(publishImages),
+        allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
       },
       normalizeAIModel(runtimeSettings.rssCaptionModel),
       systemPrompt,
@@ -3840,6 +3904,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       summary: sanitizeRSSPlainText(previewItem.description),
       platform: 'X',
       selectedVisuals: buildRSSCaptionVisualContext(resolvedImages),
+      allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),
     },
     normalizeAIModel(runtimeSettings.rssCaptionModel),
     systemPrompt,

@@ -405,8 +405,8 @@ export async function initCronJobs() {
         }
     }, cronOptions);
 
-    // YouTube Polling - Every 2 minutes
-    cron.schedule('*/2 * * * *', async () => {
+    // YouTube Polling Scheduler - Every 10 seconds
+    cron.schedule('*/10 * * * * *', async () => {
         try {
             const pauseStatus = getYouTubePollingPauseStatus();
             if (pauseStatus.paused) {
@@ -416,9 +416,15 @@ export async function initCronJobs() {
                 );
                 return;
             }
-            await youtubePollerService.pollChannels();
+            const summary = await youtubePollerService.runSchedulerTick();
+            if (summary.claimedChannels > 0 || summary.skippedLockedChannels > 0) {
+                await logCron(
+                    'info',
+                    `YouTube scheduler tick: ${summary.claimedChannels}/${summary.dueChannels} channels claimed, ${summary.skippedLockedChannels} locked, ${summary.activeWorkerCount} active workers`
+                );
+            }
         } catch (error) {
-            await logCron('error', `YouTube polling cycle failed: ${error}`);
+            await logCron('error', `YouTube scheduler tick failed: ${error}`);
         }
     }, cronOptions);
 

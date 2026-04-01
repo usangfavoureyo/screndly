@@ -3,7 +3,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import aiService, { AIModel, LEGACY_OPENAI_MODELS, SUPPORTED_OPENAI_MODELS } from '../services/ai.service';
+import aiService, {
+    AIModel,
+    LEGACY_OPENAI_MODELS,
+    SUPPORTED_OPENAI_MODELS,
+    normalizeAIModel,
+} from '../services/ai.service';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -219,6 +224,66 @@ router.post('/generate/youtube-caption', async (req: Request, res: Response) => 
         res.json({ success: true, data: { content: caption } });
     } catch (e) {
         res.status(500).json({ success: false, error: { message: 'Failed to generate YouTube caption' } });
+    }
+});
+
+router.post('/generate/compose-metadata', async (req: Request, res: Response) => {
+    try {
+        const {
+            metadataText,
+            selectedPlatforms,
+            availablePlaylists,
+            sharedCaptionPrompt,
+            youtubeTitlePrompt,
+            youtubeDescriptionPrompt,
+            youtubePlaylistPrompt,
+            mediaContext,
+            model,
+        } = req.body ?? {};
+
+        if (typeof metadataText !== 'string' || metadataText.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'Metadata text is required' },
+            });
+        }
+
+        const result = await aiService.generateComposeMetadataDraft(
+            {
+                metadataText,
+                selectedPlatforms: Array.isArray(selectedPlatforms) ? selectedPlatforms : [],
+                availablePlaylists: Array.isArray(availablePlaylists) ? availablePlaylists : [],
+                sharedCaptionPrompt: typeof sharedCaptionPrompt === 'string' ? sharedCaptionPrompt : undefined,
+                youtubeTitlePrompt: typeof youtubeTitlePrompt === 'string' ? youtubeTitlePrompt : undefined,
+                youtubeDescriptionPrompt: typeof youtubeDescriptionPrompt === 'string' ? youtubeDescriptionPrompt : undefined,
+                youtubePlaylistPrompt: typeof youtubePlaylistPrompt === 'string' ? youtubePlaylistPrompt : undefined,
+                mediaContext:
+                    mediaContext && typeof mediaContext === 'object'
+                        ? {
+                            fileName: typeof mediaContext.fileName === 'string' ? mediaContext.fileName : undefined,
+                            mimeType: typeof mediaContext.mimeType === 'string' ? mediaContext.mimeType : undefined,
+                            mediaKind:
+                                mediaContext.mediaKind === 'image' || mediaContext.mediaKind === 'video'
+                                    ? mediaContext.mediaKind
+                                    : undefined,
+                        }
+                        : undefined,
+            },
+            normalizeAIModel(typeof model === 'string' ? model : undefined),
+        );
+
+        res.json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        console.error('[AI Route] Compose metadata generation error:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                message: error instanceof Error ? error.message : 'Failed to generate compose metadata',
+            },
+        });
     }
 });
 

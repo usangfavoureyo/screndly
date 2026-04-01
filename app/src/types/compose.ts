@@ -118,6 +118,7 @@ export interface ComposeItem {
   status: ComposeStatus;
   mediaAssets: ComposeMediaAsset[];
   media?: ComposeMedia;
+  sourceMetadata?: string;
   platforms: ComposePlatformKey[];
   sharedCaption: string;
   platformFields: ComposePlatformFields;
