@@ -9,6 +9,8 @@
  * IMPORTANT: Uses dynamic imports to prevent WebAssembly loading until needed.
  */
 
+import { extractVideoMetadata } from './videoMetadata';
+
 // Type imports only (these don't execute any code)
 type FFmpeg = any;
 type FFmpegModuleBundle = {
@@ -387,8 +389,7 @@ export async function cropVideoToAspectRatio(options: CropVideoOptions): Promise
     if (onProgress) onProgress(30, 'Reading video dimensions...');
     const targetRatioValue = targetAspectRatio === '3:4' ? 3 / 4 : 3 / 4;
     const even = (value: number) => Math.max(2, Math.floor(value / 2) * 2);
-    const metadata = await import('./videoMetadata');
-    const sourceMetadata = await metadata.extractVideoMetadata(input);
+    const sourceMetadata = await extractVideoMetadata(input);
     const cropWidth = even(sourceMetadata.width);
     const cropHeight = even(Math.min(sourceMetadata.height, Math.floor(cropWidth / targetRatioValue)));
     const maxYOffset = Math.max(sourceMetadata.height - cropHeight, 0);

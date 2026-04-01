@@ -349,7 +349,11 @@ function ChannelCard({
   );
 }
 
-export function ChannelsPage() {
+interface ChannelsTabContentProps {
+  showHeader?: boolean;
+}
+
+export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentProps) {
   const addSheet = useBottomSheet();
   const editSheet = useBottomSheet();
   const { showUndo } = useUndo();
@@ -587,11 +591,13 @@ export function ChannelsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[#111827] dark:text-white mb-2">Channels</h1>
-          <p className="text-[#6B7280] dark:text-[#9CA3AF]">Monitor YouTube channels for new 16:9 landscape trailers.</p>
-        </div>
+      <div className={`flex gap-2 ${showHeader ? 'items-center justify-between' : 'justify-end'}`}>
+        {showHeader && (
+          <div>
+            <h1 className="text-[#111827] dark:text-white mb-2">Channels</h1>
+            <p className="text-[#6B7280] dark:text-[#9CA3AF]">Monitor YouTube channels for new 16:9 landscape trailers.</p>
+          </div>
+        )}
         <div className="flex gap-2">
           <Button
             onClick={openAddChannel}
@@ -790,4 +796,8 @@ export function ChannelsPage() {
       {editSheetGuard.prompt}
     </div>
   );
+}
+
+export function ChannelsPage() {
+  return <ChannelsTabContent showHeader />;
 }

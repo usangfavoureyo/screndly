@@ -37,10 +37,10 @@ const DESKTOP_SIDEBAR_COLLAPSED_WIDTH = "5rem";
 const APP_STATE_STORAGE_KEY = "screndly_app_state";
 const RSS_ACTIVITY_TARGET_STORAGE_KEY = "screndly_rss_activity_target";
 const APP_BASE_PATH = "/app";
+const CONNECTIONS_TAB_STORAGE_KEY = "connectionsActiveTab";
 
 // Lazy load heavy components for better performance
-const ChannelsPage = lazyWithRetry(() => import("./ChannelsPage").then(m => ({ default: m.ChannelsPage })), "ChannelsPage");
-const PlatformsPage = lazyWithRetry(() => import("./PlatformsPage").then(m => ({ default: m.PlatformsPage })), "PlatformsPage");
+const ConnectionsPage = lazyWithRetry(() => import("./ConnectionsPage").then(m => ({ default: m.ConnectionsPage })), "ConnectionsPage");
 const LogsPage = lazyWithRetry(() => import("./LogsPage").then(m => ({ default: m.LogsPage })), "LogsPage");
 const RecentActivityPage = lazyWithRetry(() => import("./RecentActivityPage").then(m => ({ default: m.RecentActivityPage })), "RecentActivityPage");
 const DesignSystemPage = lazyWithRetry(() => import("./DesignSystemPage").then(m => ({ default: m.DesignSystemPage })), "DesignSystemPage");
@@ -85,11 +85,12 @@ function getPageFromURL(): string {
   const strippedPath = rawPath.startsWith('/app') ? rawPath.slice(4) : rawPath;
   const pathname = strippedPath.replace(/^\//, '');
   if (pathname === 'callback') return 'platforms/callback';
+  if (pathname === 'channels' || pathname === 'platforms') return pathname;
   return pathname || 'dashboard';
 }
 
 const VALID_PAGES = [
-  'dashboard', 'channels', 'platforms', 'logs', 'activity', 'design-system',
+  'dashboard', 'channels', 'platforms', 'connections', 'logs', 'activity', 'design-system',
   'feeds', 'rss', 'rss-activity', 'tmdb', 'tmdb-activity', 'video-details', 'video-activity',
   'create', 'compose-editor', 'compose-activity', 'pad-workspace',
   'video-studio', 'video-studio-activity', 'design-studio', 'design-studio-activity',
@@ -104,8 +105,9 @@ type ValidPage = typeof VALID_PAGES[number];
 
 const ROOT_PAGE_MAP: Record<string, string> = {
   dashboard: 'dashboard',
-  channels: 'channels',
-  platforms: 'platforms',
+  channels: 'connections',
+  platforms: 'connections',
+  connections: 'connections',
   logs: 'dashboard',
   activity: 'dashboard',
   'video-activity': 'dashboard',
@@ -149,16 +151,41 @@ function normalizeShellPage(page: string): string {
 
 const ROOT_DESTINATIONS = new Set([
   'dashboard',
-  'channels',
-  'platforms',
+  'connections',
   'feeds',
   'create',
   'design-studio',
   'video-studio',
 ]);
 
+function persistConnectionsTab(tab: 'channels' | 'platforms') {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(CONNECTIONS_TAB_STORAGE_KEY, tab);
+  } catch {
+    // Ignore storage errors and continue navigation.
+  }
+}
+
+function normalizeConnectionsPage(page: string): string {
+  if (page === 'channels') {
+    persistConnectionsTab('channels');
+    return 'connections';
+  }
+
+  if (page === 'platforms') {
+    persistConnectionsTab('platforms');
+    return 'connections';
+  }
+
+  return page;
+}
+
 function isRootDestination(page: string): boolean {
-  return ROOT_DESTINATIONS.has(normalizeShellPage(page));
+  return ROOT_DESTINATIONS.has(normalizeConnectionsPage(normalizeShellPage(page)));
 }
 
 function getBackSourcePage(currentPage: string, fromPage?: string): string {
@@ -202,8 +229,10 @@ function getPersistedAppState(): PersistedAppState | null {
       return null;
     }
 
+    const normalizedCurrentPage = normalizeConnectionsPage(parsedState.currentPage);
+
     return {
-      currentPage: parsedState.currentPage,
+      currentPage: isValidPage(normalizedCurrentPage) ? normalizedCurrentPage : "dashboard",
       previousPage: typeof parsedState.previousPage === "string" ? parsedState.previousPage : null,
       createSourcePage: typeof parsedState.createSourcePage === "string" ? parsedState.createSourcePage : "dashboard",
       pageBeforeSettings: typeof parsedState.pageBeforeSettings === "string" ? parsedState.pageBeforeSettings : "dashboard",
@@ -220,8 +249,9 @@ function getInitialNavigationState(): PersistedAppState {
   const persistedState = getPersistedAppState();
 
   if (pageFromUrl !== "dashboard" && isValidPage(pageFromUrl)) {
+    const normalizedPage = normalizeConnectionsPage(pageFromUrl);
     return {
-      currentPage: pageFromUrl,
+      currentPage: isValidPage(normalizedPage) ? normalizedPage : "dashboard",
       previousPage: persistedState?.previousPage ?? null,
       createSourcePage: persistedState?.createSourcePage ?? "dashboard",
       pageBeforeSettings: persistedState?.pageBeforeSettings ?? "dashboard",
@@ -312,7 +342,7 @@ export function AppContent() {
   }, []);
 
   // Check if current page is valid, if not show 404
-  const normalizedDisplayPage = normalizeShellPage(currentPage);
+  const normalizedDisplayPage = normalizeConnectionsPage(normalizeShellPage(currentPage));
   const displayPage = isValidPage(normalizedDisplayPage) ? normalizedDisplayPage : 'not-found';
 
   // NOTE: URL-based routing implemented. Refresh preserves current page.
@@ -403,7 +433,7 @@ export function AppContent() {
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent) => {
-      const nextPage = normalizeShellPage(getPageFromURL());
+      const nextPage = normalizeConnectionsPage(normalizeShellPage(getPageFromURL()));
       if (nextPage !== currentPage) {
         setCurrentPageState(nextPage);
       }
@@ -448,6 +478,8 @@ export function AppContent() {
     if (page === 'rss' || page === 'tmdb') {
       page = 'feeds';
     }
+
+    page = normalizeConnectionsPage(page);
 
     const postFlowView = getPostFlowView(page);
     if (postFlowView) {
@@ -720,8 +752,7 @@ export function AppContent() {
             {displayPage === "dashboard" && (
               <DashboardOverview onNavigate={handleNavigate} />
             )}
-            {displayPage === "channels" && <Suspense fallback={<PageLoader />}><ChannelsPage /></Suspense>}
-            {displayPage === "platforms" && <Suspense fallback={<PageLoader />}><PlatformsPage /></Suspense>}
+            {displayPage === "connections" && <Suspense fallback={<PageLoader />}><ConnectionsPage /></Suspense>}
             {displayPage === "logs" && <Suspense fallback={<PageLoader />}><LogsPage onNewNotification={addNotification} onNavigate={handleNavigate} /></Suspense>}
             {displayPage === "activity" && (
               <Suspense fallback={<PageLoader />}><RecentActivityPage onNavigate={handleNavigate} previousPage={previousPage} /></Suspense>

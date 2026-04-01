@@ -1,4 +1,4 @@
-import { LayoutDashboard, ChannelsIcon, Share2, Rss, Film, GripVertical, Image } from 'lucide-react';
+import { LayoutDashboard, Share2, Rss, Film, GripVertical, Image } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { useScrollDirection } from '../utils/useScrollDirection';
 import { useState, useEffect, useRef } from 'react';
@@ -18,8 +18,7 @@ interface NavItem {
 export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: MobileBottomNavProps) {
   const defaultNavItems: NavItem[] = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'channels', icon: ChannelsIcon, label: 'Channels' },
-    { id: 'platforms', icon: Share2, label: 'Platforms' },
+    { id: 'connections', icon: Share2, label: 'Connections' },
     { id: 'feeds', icon: Rss, label: 'Feeds' },
     { id: 'design-studio', icon: Image, label: 'Design Studio' },
     { id: 'video-studio', icon: Film, label: 'Video Studio' },
@@ -28,6 +27,13 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
   const reconcileNavItems = (orderIds: string[]): NavItem[] => {
     const seen = new Set<string>();
     const orderedItems = orderIds
+      .map((id) => {
+        if (id === 'channels' || id === 'platforms') {
+          return 'connections';
+        }
+
+        return id;
+      })
       .map((id) => defaultNavItems.find((item) => item.id === id))
       .filter((item): item is NavItem => Boolean(item))
       .filter((item) => {
@@ -196,7 +202,7 @@ export function MobileBottomNav({ currentPage, onNavigate, onDragStateChange }: 
               )}
 
               <Icon
-                size={item.id === 'channels' ? 32 : 28}
+                size={28}
                 className={`stroke-1 shrink-0 transition-all duration-300 ${isActive
                   ? 'text-[#ec1e24]'
                   : 'text-gray-700 dark:text-gray-200'

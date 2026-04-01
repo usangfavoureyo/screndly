@@ -34,3 +34,13 @@ export async function uploadComposeAsset(file: File): Promise<{ url: string; pre
     fileId: response.data.fileId || response.data.fileName,
   };
 }
+
+export async function resolveComposeAssetPreview(url: string): Promise<string> {
+  const response = await apiClient.post<{ url: string; previewUrl: string }>('/api/create/asset-preview', { url });
+
+  if (!response.success || !response.data?.previewUrl) {
+    throw new Error(response.error?.message || 'Failed to resolve asset preview.');
+  }
+
+  return response.data.previewUrl;
+}

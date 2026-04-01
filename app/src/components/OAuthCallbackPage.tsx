@@ -221,7 +221,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     sessionStorage.removeItem(callbackLockKey);
                     setStatus('success');
                     // Auto redirect after a few seconds
-                    setTimeout(() => onNavigate('platforms'), 2000);
+                    setTimeout(() => onNavigate('connections'), 2000);
                 } else {
                     throw new Error(response?.error?.message || response?.message || 'Authentication failed');
                 }
@@ -250,7 +250,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     </div>
                     <h2 className="text-xl font-semibold dark:text-white mb-2">Connection Successful!</h2>
                     <p className="text-gray-500 mb-6 text-center">Your account has been connected. You will be redirected shortly.</p>
-                    <Button onClick={() => onNavigate('platforms')}>Return to Platforms</Button>
+                    <Button onClick={() => onNavigate('connections')}>Return to Connections</Button>
                 </>
             )}
 
@@ -261,7 +261,7 @@ export function OAuthCallbackPage({ onNavigate }: { onNavigate: (page: string) =
                     </div>
                     <h2 className="text-xl font-semibold dark:text-white mb-2">Connection Failed</h2>
                     <p className="text-red-500 mb-6 text-center max-w-md">{errorMsg}</p>
-                    <Button onClick={() => onNavigate('platforms')} variant="outline" className="border-gray-200 dark:border-[#333] dark:text-white">Back to Platforms</Button>
+                    <Button onClick={() => onNavigate('connections')} variant="outline" className="border-gray-200 dark:border-[#333] dark:text-white">Back to Connections</Button>
                 </>
             )}
         </div>

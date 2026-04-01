@@ -41,7 +41,11 @@ interface BackendPlatformStatus {
 
 const OAUTH_REFRESH_KEY = 'screndly_oauth_refresh_platform';
 
-export function PlatformsPage() {
+interface PlatformsTabContentProps {
+  showHeader?: boolean;
+}
+
+export function PlatformsTabContent({ showHeader = false }: PlatformsTabContentProps) {
   const [connectionModalOpen, setConnectionModalOpen] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformType | null>(null);
   const [testPublishModalOpen, setTestPublishModalOpen] = useState(false);
@@ -347,10 +351,12 @@ export function PlatformsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-gray-900 dark:text-white mb-2">Platforms</h1>
-        <p className="text-[#6B7280] dark:text-[#9CA3AF]">Connect and manage your social media platforms.</p>
-      </div>
+      {showHeader && (
+        <div>
+          <h1 className="text-gray-900 dark:text-white mb-2">Platforms</h1>
+          <p className="text-[#6B7280] dark:text-[#9CA3AF]">Connect and manage your social media platforms.</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {platforms.map((platform) => (
@@ -383,4 +389,8 @@ export function PlatformsPage() {
       )}
     </div>
   );
+}
+
+export function PlatformsPage() {
+  return <PlatformsTabContent showHeader />;
 }

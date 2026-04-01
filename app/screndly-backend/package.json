@@ -10,6 +10,8 @@
         "preinstall": "node scripts/ensure-python-shim.js",
         "dev": "tsx watch src/index.ts",
         "build": "node scripts/prepare-build-artifacts.js && prisma generate && tsc",
+        "verify:server": "node --import tsx src/verify/server.ts",
+        "verify:backend": "node --import tsx src/verify/backend-flow.ts",
         "test:tmdb": "node --import tsx --test src/tests/tmdb-feed.reliability.test.ts",
         "start": "node dist/index.js",
         "migrate": "prisma migrate deploy",

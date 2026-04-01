@@ -137,6 +137,15 @@ export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDe
       };
     }
 
+    if (item.status === 'published') {
+      return {
+        platform,
+        label: formatTMDbPlatformLabel(platform),
+        status: 'posted',
+        publishedAt: item.publishedTime,
+      };
+    }
+
     if (item.status === 'queued' || item.status === 'dispatched') {
       return {
         platform,
@@ -161,7 +170,15 @@ export function deriveTMDbActivityStatus(
   const activeStates = platformStates.filter((state) => state.status !== 'skipped');
 
   if (activeStates.length === 0) {
-    return item.status === 'scheduled' ? 'scheduled' : 'publishing';
+    if (item.status === 'scheduled') {
+      return 'scheduled';
+    }
+
+    if (item.status === 'published') {
+      return 'published';
+    }
+
+    return 'publishing';
   }
 
   if (activeStates.every((state) => state.status === 'posted')) {
@@ -183,7 +200,15 @@ export function deriveTMDbActivityStatus(
     return 'failed';
   }
 
-  return item.status === 'scheduled' ? 'scheduled' : 'publishing';
+  if (item.status === 'scheduled') {
+    return 'scheduled';
+  }
+
+  if (item.status === 'published') {
+    return 'published';
+  }
+
+  return 'publishing';
 }
 
 export function getRetryableTMDbPlatforms(platformStates: TMDbDerivedPlatformState[]): TMDbDerivedPlatformState[] {

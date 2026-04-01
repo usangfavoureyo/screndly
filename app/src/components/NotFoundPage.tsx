@@ -18,7 +18,6 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
   return (
     <div className="min-h-[calc(100vh-200px)] flex items-center justify-center px-6">
       <div className="text-center max-w-md">
-        {/* 404 Number with cinematic styling */}
         <div className="relative mb-8">
           <h1 className="text-[120px] lg:text-[160px] text-[#ec1e24] opacity-20 select-none">
             404
@@ -30,16 +29,14 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
           </div>
         </div>
 
-        {/* Error Message */}
         <h2 className="text-gray-900 dark:text-white mb-4">
           Page Not Found
         </h2>
-        
+
         <p className="text-[#6B7280] dark:text-[#9CA3AF] mb-8">
           The page you're looking for doesn't exist or has been moved. Let's get you back on track.
         </p>
 
-        {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button
             onClick={handleGoHome}
@@ -47,7 +44,7 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
           >
             Go to Dashboard
           </Button>
-          
+
           <Button
             onClick={() => {
               haptics.light();
@@ -60,7 +57,6 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
           </Button>
         </div>
 
-        {/* Additional Help */}
         <div className="mt-12 pt-8 border-t border-gray-200 dark:border-[#333333]">
           <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-4">
             Need help finding something?
@@ -69,23 +65,13 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
             <button
               onClick={() => {
                 haptics.light();
-                onNavigate('channels');
+                onNavigate('connections');
               }}
               className="text-[#ec1e24] hover:underline"
             >
-              Channels
+              Connections
             </button>
-            <span className="text-gray-400">•</span>
-            <button
-              onClick={() => {
-                haptics.light();
-                onNavigate('platforms');
-              }}
-              className="text-[#ec1e24] hover:underline"
-            >
-              Platforms
-            </button>
-            <span className="text-gray-400">•</span>
+            <span className="text-gray-400">&middot;</span>
             <button
               onClick={() => {
                 haptics.light();
@@ -95,7 +81,7 @@ export function NotFoundPage({ onNavigate }: NotFoundPageProps) {
             >
               RSS Feeds
             </button>
-            <span className="text-gray-400">•</span>
+            <span className="text-gray-400">&middot;</span>
             <button
               onClick={() => {
                 haptics.light();

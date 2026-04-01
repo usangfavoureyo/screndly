@@ -3,6 +3,7 @@ import { haptics } from '../utils/haptics';
 import { lazyWithRetry } from '../utils/performance';
 import { useBackEntry } from '../hooks/useBackEntry';
 import { PageLoader } from './PageLoader';
+import { SegmentedTabSwitcher } from './SegmentedTabSwitcher';
 
 // Lazy load the feed pages
 const RSSPage = lazyWithRetry(() => import('./RSSPage').then(m => ({ default: m.RSSPage })), 'RSSPage');
@@ -71,31 +72,14 @@ export function FeedsPage({ onNavigate, previousPage }: FeedsPageProps) {
         </p>
       </div>
 
-      {/* Tab Selector - Matching Video Studio Style */}
-      <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-2">
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={() => handleTabChange('rss')}
-            className={`px-4 py-3 rounded-xl transition-all duration-300 flex items-center justify-center ${
-              activeTab === 'rss'
-                ? 'bg-[#ec1e24] text-white'
-                : 'text-gray-600 dark:text-[#9CA3AF] hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'
-            }`}
-          >
-            <span>RSS Feeds</span>
-          </button>
-          <button
-            onClick={() => handleTabChange('tmdb')}
-            className={`px-4 py-3 rounded-xl transition-all duration-300 flex items-center justify-center ${
-              activeTab === 'tmdb'
-                ? 'bg-[#ec1e24] text-white'
-                : 'text-gray-600 dark:text-[#9CA3AF] hover:bg-gray-100 dark:hover:bg-[#1A1A1A]'
-            }`}
-          >
-            <span>TMDb Feeds</span>
-          </button>
-        </div>
-      </div>
+      <SegmentedTabSwitcher
+        tabs={[
+          { id: 'rss', label: 'RSS Feeds' },
+          { id: 'tmdb', label: 'TMDb Feeds' },
+        ]}
+        activeTab={activeTab}
+        onChange={handleTabChange}
+      />
 
       {/* Content Area - Conditional Rendering */}
       <Suspense fallback={<PageLoader />}>

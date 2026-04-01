@@ -12,7 +12,7 @@ interface DesktopShortcutsConfig {
   onCloseNotifications: () => void;
 }
 
-const mainPages = ['dashboard', 'channels', 'platforms', 'feeds', 'design-studio', 'video-studio'] as const;
+const mainPages = ['dashboard', 'connections', 'feeds', 'design-studio', 'video-studio'] as const;
 
 export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
   const {
@@ -126,25 +126,20 @@ export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
             break;
           case '2':
             haptics.light();
-            onNavigate('channels');
+            onNavigate('connections');
             e.preventDefault();
             break;
           case '3':
             haptics.light();
-            onNavigate('platforms');
+            onNavigate('feeds');
             e.preventDefault();
             break;
           case '4':
             haptics.light();
-            onNavigate('feeds');
-            e.preventDefault();
-            break;
-          case '5':
-            haptics.light();
             onNavigate('design-studio');
             e.preventDefault();
             break;
-          case '6':
+          case '5':
             haptics.light();
             onNavigate('video-studio');
             e.preventDefault();
@@ -213,11 +208,11 @@ export function useDesktopShortcuts(config: DesktopShortcutsConfig) {
             ev.preventDefault();
           } else if (ev.key === 'c') {
             haptics.light();
-            onNavigate('channels');
+            onNavigate('connections');
             ev.preventDefault();
           } else if (ev.key === 'p') {
             haptics.light();
-            onNavigate('platforms');
+            onNavigate('connections');
             ev.preventDefault();
           } else if (ev.key === 'r') {
             haptics.light();

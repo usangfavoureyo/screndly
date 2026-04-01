@@ -17,6 +17,7 @@ import {
     generateSocialPosterThumbnail,
     getYouTubeRuntimeSettings,
 } from '../services/video-enrichment.service';
+import { getBackblazeAuthorizedDownloadUrl } from '../services/backblaze';
 
 const router = Router();
 router.use(authenticate);
@@ -384,13 +385,15 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
             }
         }
 
+        const previewUrl = await getBackblazeAuthorizedDownloadUrl(generatedAsset.publicUrl, 7 * 24 * 60 * 60);
+
         res.json({
             success: true,
             data: {
                 fileName: `${resolvedTitle.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'thumbnail'}-${thumbnailType}.jpg`,
                 mimeType: 'image/jpeg',
                 size,
-                previewUrl: generatedAsset.publicUrl,
+                previewUrl,
                 storageUrl: generatedAsset.publicUrl,
                 uploadStatus: 'uploaded',
                 strategy: generatedAsset.strategy,

@@ -49,7 +49,7 @@ import {
   buildComposePublishSuccessNotification,
   buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
-import { uploadComposeAsset } from '../../lib/create/composeStorage';
+import { resolveComposeAssetPreview, uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type {
   ComposeItem,
@@ -1024,6 +1024,30 @@ export function ComposeEditorPage({
     void runThumbnailGeneration(key);
   };
 
+  const recoverThumbnailPreview = useCallback(async (key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail') => {
+    const currentThumbnail = formState[key];
+    if (!currentThumbnail?.storageUrl || currentThumbnail.previewUrl?.startsWith('data:')) {
+      return;
+    }
+
+    try {
+      const resolvedPreviewUrl = await resolveComposeAssetPreview(currentThumbnail.storageUrl);
+      updateThumbnail(key, (thumbnail) => {
+        if (!thumbnail || thumbnail.storageUrl !== currentThumbnail.storageUrl) {
+          return thumbnail;
+        }
+
+        return {
+          ...thumbnail,
+          previewUrl: resolvedPreviewUrl,
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load thumbnail preview.';
+      console.warn(`[ComposeEditorPage] ${message}`);
+    }
+  }, [formState, updateThumbnail]);
+
   const buildItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string): ComposeItem => {
     const now = new Date().toISOString();
     return {
@@ -1451,6 +1475,9 @@ export function ComposeEditorPage({
                               src={previewUrl}
                               alt={thumbnail?.fileName || label}
                               className="h-36 w-full object-cover"
+                              onError={() => {
+                                void recoverThumbnailPreview(key);
+                              }}
                             />
                             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
                               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">

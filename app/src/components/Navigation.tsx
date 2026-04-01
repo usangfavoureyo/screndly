@@ -1,4 +1,4 @@
-import { LayoutDashboard, ChannelsIcon, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { LayoutDashboard, Share2, Bell, Settings, LogOut, Rss, Film, Image, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from './ui/button';
 import { useRef } from 'react';
 import { haptics } from '../utils/haptics';
@@ -8,8 +8,7 @@ import { cn } from './ui/utils';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'channels', label: 'Channels', icon: ChannelsIcon },
-  { id: 'platforms', label: 'Platforms', icon: Share2 },
+  { id: 'connections', label: 'Connections', icon: Share2 },
   { id: 'feeds', label: 'Feeds', icon: Rss },
   { id: 'design-studio', label: 'Design Studio', icon: Image },
   { id: 'video-studio', label: 'Video Studio', icon: Film },
@@ -163,7 +162,7 @@ export function Navigation({
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
               <Icon
-                size={item.id === 'channels' ? 26 : 22}
+                size={22}
                 className={cn(
                   'shrink-0 transition-transform duration-200',
                   !isActive && 'group-hover:scale-110',

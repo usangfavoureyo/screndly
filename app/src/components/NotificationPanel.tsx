@@ -104,7 +104,9 @@ function getTargetLabel(target?: NotificationActionTarget | null) {
   if (target.page === 'rss-activity') return 'Open RSS Activity';
   if (target.page === 'feeds' && target.tab === 'tmdb') return 'Open TMDb Feeds';
   if (target.page === 'feeds' && target.tab === 'rss') return 'Open RSS Feeds';
-  if (target.page === 'channels') return 'Open Channels';
+  if (target.page === 'channels' || target.page === 'platforms' || target.page === 'connections') {
+    return 'Open Connections';
+  }
   if (target.page === 'create') return 'Open Post';
   if (target.page === 'logs') return 'Open Logs';
   return 'Open Page';
