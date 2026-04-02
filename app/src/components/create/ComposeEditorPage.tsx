@@ -1550,7 +1550,7 @@ export function ComposeEditorPage({
                               {isGeneratingThisThumbnail ? (
                                 <RedSpinner size="sm" label={`Generating ${label}...`} />
                               ) : (
-                                <RotateCcw className="h-4 w-4 text-[#ec1e24]" />
+                                <RotateCcw className="h-4 w-4 text-white" />
                               )}
                             </button>
                           ) : null}

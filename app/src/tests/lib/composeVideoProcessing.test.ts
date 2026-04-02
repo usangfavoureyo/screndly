@@ -88,7 +88,7 @@ describe('composeVideoProcessing', () => {
 
     expect(getVideoUrlForComposePlatform(item, 'threads')).toBe('https://cdn.example.com/trailer-3x4.mp4');
     expect(getVideoUrlForComposePlatform(item, 'x')).toBe('https://cdn.example.com/trailer-3x4.mp4');
-    expect(getVideoUrlForComposePlatform(item, 'facebook_feed')).toBe('https://cdn.example.com/trailer.mp4');
+    expect(getVideoUrlForComposePlatform(item, 'facebook_feed')).toBe('https://cdn.example.com/trailer-preview.mp4');
   });
 
   it('prefers the browser-safe preview url over the raw storage url for crop generation', () => {
@@ -98,6 +98,15 @@ describe('composeVideoProcessing', () => {
     });
 
     expect(getThreadsXCropSourceUrl(asset)).toBe('https://cdn.example.com/trailer-authorized.mp4?token=abc123');
+  });
+
+  it('prefers the local preview url when it is still available in the browser', () => {
+    const asset = buildVideoAsset({
+      storageUrl: 'https://cdn.example.com/trailer.mp4',
+      previewUrl: 'blob:https://app.example.com/local-preview',
+    });
+
+    expect(getThreadsXCropSourceUrl(asset)).toBe('blob:https://app.example.com/local-preview');
   });
 
   it('falls back to preview url when no uploaded source video exists yet', () => {

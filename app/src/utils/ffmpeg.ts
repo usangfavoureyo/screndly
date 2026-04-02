@@ -23,6 +23,42 @@ let ffmpegInstance: FFmpeg | null = null;
 let isLoading = false;
 let loadAbortController: AbortController | null = null;
 
+const FFMPEG_LOAD_TIMEOUT_MS = 25000;
+const FFMPEG_FETCH_TIMEOUT_MS = 25000;
+const FFMPEG_EXEC_TIMEOUT_MS = 45000;
+const FFMPEG_READ_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        window.clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        window.clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
+}
+
+function getExtensionFromInput(input: string): string {
+  try {
+    const parsed = new URL(input, window.location.origin);
+    const lastSegment = parsed.pathname.split('/').pop() || '';
+    const extension = lastSegment.split('.').pop();
+    return extension || 'mp4';
+  } catch {
+    const sanitized = input.split('?')[0] || input;
+    const extension = sanitized.split('.').pop();
+    return extension || 'mp4';
+  }
+}
+
 /**
  * Dynamically import FFmpeg modules (only when needed)
  * Uses runtime script loading to completely bypass Vite
@@ -370,17 +406,52 @@ export async function cropVideoToAspectRatio(options: CropVideoOptions): Promise
   try {
     const { fetchFile } = await importFFmpegModules();
     if (onProgress) onProgress(5, 'Loading FFmpeg.wasm...');
-    const ffmpeg = await loadFFmpeg();
+    const ffmpeg = await withTimeout(
+      loadFFmpeg(),
+      FFMPEG_LOAD_TIMEOUT_MS,
+      'FFmpeg took too long to load. Please try again.',
+    );
 
     if (onProgress) onProgress(15, 'Loading source video...');
     let inputFileName = 'input.mp4';
     let inputData: Uint8Array;
 
     if (typeof input === 'string') {
-      inputData = await fetchFile(input);
-      inputFileName = `input.${input.split('.').pop() || 'mp4'}`;
+      if (/^https?:\/\//i.test(input.trim())) {
+        const response = await withTimeout(
+          fetch(input),
+          FFMPEG_FETCH_TIMEOUT_MS,
+          'Downloading the source video took too long. Please try again.',
+        );
+        if (!response.ok) {
+          throw new Error(`Failed to download the source video (${response.status}).`);
+        }
+
+        const sourceBlob = await withTimeout(
+          response.blob(),
+          FFMPEG_FETCH_TIMEOUT_MS,
+          'Reading the source video took too long. Please try again.',
+        );
+        inputData = await withTimeout(
+          fetchFile(sourceBlob),
+          FFMPEG_FETCH_TIMEOUT_MS,
+          'Preparing the source video took too long. Please try again.',
+        );
+        inputFileName = `input.${getExtensionFromInput(input)}`;
+      } else {
+        inputData = await withTimeout(
+          fetchFile(input),
+          FFMPEG_FETCH_TIMEOUT_MS,
+          'Preparing the source video took too long. Please try again.',
+        );
+        inputFileName = `input.${getExtensionFromInput(input)}`;
+      }
     } else {
-      inputData = await fetchFile(input);
+      inputData = await withTimeout(
+        fetchFile(input),
+        FFMPEG_FETCH_TIMEOUT_MS,
+        'Preparing the source video took too long. Please try again.',
+      );
       inputFileName = `input.${input.name.split('.').pop() || 'mp4'}`;
     }
 
@@ -399,19 +470,27 @@ export async function cropVideoToAspectRatio(options: CropVideoOptions): Promise
     const filter = `crop=${cropWidth}:${cropHeight}:0:${cropY},setsar=1`;
 
     if (onProgress) onProgress(45, 'Rendering 3:4 crop...');
-    await ffmpeg.exec([
-      '-i', inputFileName,
-      '-vf', filter,
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-crf', '22',
-      '-c:a', 'aac',
-      '-movflags', '+faststart',
-      outputFileName,
-    ]);
+    await withTimeout(
+      ffmpeg.exec([
+        '-i', inputFileName,
+        '-vf', filter,
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-crf', '22',
+        '-c:a', 'aac',
+        '-movflags', '+faststart',
+        outputFileName,
+      ]),
+      FFMPEG_EXEC_TIMEOUT_MS,
+      'Rendering the 3:4 crop took too long. Please try again.',
+    );
 
     if (onProgress) onProgress(90, 'Reading cropped video...');
-    const outputData = await ffmpeg.readFile(outputFileName);
+    const outputData = await withTimeout(
+      ffmpeg.readFile(outputFileName),
+      FFMPEG_READ_TIMEOUT_MS,
+      'Reading the cropped video took too long. Please try again.',
+    );
     const outputBlob = new Blob([outputData], { type: `video/${outputFormat}` });
     const outputUrl = URL.createObjectURL(outputBlob);
 

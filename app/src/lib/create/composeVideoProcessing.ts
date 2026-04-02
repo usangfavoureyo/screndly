@@ -77,6 +77,20 @@ export function getVideoUrlForComposePlatform(item: ComposeItem, platform: Compo
 }
 
 export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | undefined {
+  const localPreviewUrl = typeof asset.previewUrl === 'string' && asset.previewUrl.trim().length > 0 && !/^https?:\/\//i.test(asset.previewUrl.trim())
+    ? asset.previewUrl
+    : undefined;
+  if (localPreviewUrl) {
+    return localPreviewUrl;
+  }
+
+  const localStorageUrl = typeof asset.storageUrl === 'string' && asset.storageUrl.trim().length > 0 && !/^https?:\/\//i.test(asset.storageUrl.trim())
+    ? asset.storageUrl
+    : undefined;
+  if (localStorageUrl) {
+    return localStorageUrl;
+  }
+
   const publishedPreviewUrl = typeof asset.previewUrl === 'string' && /^https?:\/\//i.test(asset.previewUrl.trim())
     ? asset.previewUrl
     : undefined;
@@ -89,20 +103,6 @@ export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | und
     : undefined;
   if (publishedStorageUrl) {
     return publishedStorageUrl;
-  }
-
-  const localPreviewUrl = typeof asset.previewUrl === 'string' && asset.previewUrl.trim().length > 0
-    ? asset.previewUrl
-    : undefined;
-  if (localPreviewUrl) {
-    return localPreviewUrl;
-  }
-
-  const localStorageUrl = typeof asset.storageUrl === 'string' && asset.storageUrl.trim().length > 0
-    ? asset.storageUrl
-    : undefined;
-  if (localStorageUrl) {
-    return localStorageUrl;
   }
 
   return asset.previewUrl || asset.storageUrl;
