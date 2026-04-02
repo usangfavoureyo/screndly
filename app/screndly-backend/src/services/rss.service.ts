@@ -1975,6 +1975,10 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
   return entities.length > 0 ? entities : undefined;
 }
 
+function prunePlatformResultsForPrePublishFailure(results: PublishResult[] | undefined): PublishResult[] {
+  return (results || []).filter((result) => result.status === 'posted' || result.status === 'skipped');
+}
+
 async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
   const settings = await prisma.setting.findMany({
     where: { key: { in: [...RSS_SETTINGS_KEYS] } },
@@ -2291,8 +2295,8 @@ async function resolveRSSActivityItemImages(item: RSSActivityItem): Promise<RSSA
   return {
     ...item,
     imageUrl,
-    imageUrls: imageUrls.length > 0 ? imageUrls.filter((url): url is string => Boolean(url)) : item.imageUrls,
-    selectedImages: selectedImages.length > 0 ? selectedImages : item.selectedImages,
+    imageUrls: imageUrls.filter((url): url is string => Boolean(url)),
+    selectedImages,
   };
 }
 
@@ -2557,7 +2561,7 @@ async function attemptRSSPublish(
         imageUrls: [],
         resolvedImages: [],
         platformPostIds: previousPlatformPostIds,
-        platformResults: previousPlatformResults,
+        platformResults: prunePlatformResultsForPrePublishFailure(previousPlatformResults),
         errorMessage: 'Publishing blocked because no resolved images were available for this RSS item.',
       };
     }

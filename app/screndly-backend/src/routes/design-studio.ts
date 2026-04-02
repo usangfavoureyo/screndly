@@ -6,7 +6,12 @@ import { z } from 'zod';
 import { readPsd } from 'ag-psd';
 import { authenticate } from '../middleware/auth';
 import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
-import { getDesignStudioStateSnapshot, saveDesignStudioStateSnapshot } from '../services/design-studio.service';
+import {
+  getDesignStudioRenderJobs,
+  getDesignStudioStateSnapshot,
+  queueManualDesignStudioRender,
+  saveDesignStudioStateSnapshot,
+} from '../services/design-studio.service';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -133,7 +138,9 @@ const designStudioActivitySchema = z.object({
   type: z.enum([
     'template_uploaded',
     'templates_loaded',
+    'design_render_queued',
     'design_rendered',
+    'design_render_failed',
     'design_published',
     'template_deleted',
     'auto_editorial_generated',
@@ -143,6 +150,39 @@ const designStudioActivitySchema = z.object({
     'auto_editorial_deleted',
   ]),
   details: z.any(),
+});
+
+const renderJobSchema = z.object({
+  id: z.string(),
+  templateId: z.string(),
+  templateName: z.string(),
+  status: z.enum(['queued', 'rendering', 'completed', 'failed']),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  renderedDesignId: z.string().nullable().optional(),
+  outputUrl: z.string().nullable().optional(),
+  failureReason: z.string().nullable().optional(),
+});
+
+const manualRenderRequestSchema = z.object({
+  template: templateSchema,
+  data: z.object({
+    headerText: z.string(),
+    subtext: z.string().optional(),
+    headerTextColor: z.string().optional(),
+    subtextColor: z.string().optional(),
+    backgroundImage: z.string().optional(),
+    imageFocalPoint: z.object({
+      x: z.number(),
+      y: z.number(),
+    }).optional(),
+    imageZoom: z.number().optional(),
+    overlayColor: z.string().optional(),
+    overlayOpacity: z.number().optional(),
+    gradientPosition: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+    caption: z.string().optional(),
+    contentType: z.enum(['poster', 'carousel', 'story', 'announcement', 'general']).optional(),
+  }),
 });
 
 router.get('/state', authenticate, async (_req, res) => {
@@ -293,6 +333,37 @@ router.get('/activity', authenticate, async (_req, res) => {
   } catch (error) {
     console.error('Error fetching design studio activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch design studio activity' } });
+  }
+});
+
+router.get('/render-jobs', authenticate, async (_req, res) => {
+  try {
+    const jobs = await getDesignStudioRenderJobs();
+    res.json({
+      success: true,
+      data: jobs.map((job) => renderJobSchema.parse(job)),
+    });
+  } catch (error) {
+    console.error('Error fetching design studio render jobs:', error);
+    res.status(500).json({ success: false, error: { message: 'Failed to fetch render jobs' } });
+  }
+});
+
+router.post('/render-jobs', authenticate, async (req, res) => {
+  try {
+    const payload = manualRenderRequestSchema.parse(req.body);
+    const job = await queueManualDesignStudioRender(payload);
+    res.status(202).json({
+      success: true,
+      data: renderJobSchema.parse(job),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid render request', details: error.errors } });
+    }
+
+    console.error('Error queueing design studio render job:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to queue render job' } });
   }
 });
 

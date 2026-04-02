@@ -993,10 +993,10 @@ export function EditDesignBottomSheet({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={isRendering || !headerText.trim()}
+            disabled={isRendering || (hasHeader && !headerText.trim())}
             className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white disabled:opacity-50"
           >
-            {isRendering ? 'Rendering...' : 'Save & Render'}
+            {isRendering ? 'Queueing...' : 'Save & Queue Render'}
           </Button>
         </div>
       </BottomSheetFooter>

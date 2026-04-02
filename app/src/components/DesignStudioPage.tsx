@@ -22,12 +22,15 @@ import { Label } from './ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import {
   createDesignStudioActivity,
+  fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
   saveDesignStudioState,
+  startDesignStudioManualRender,
   uploadDesignStudioAsset,
   uploadDesignStudioTemplate,
   type DesignStudioAutoEditorialRecord,
   type DesignStudioLayoutVariant,
+  type DesignStudioManualRenderJob,
 } from '../lib/api/designStudio';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
@@ -90,6 +93,7 @@ interface RenderedDesign {
 type DesignStudioTab = 'manual' | 'auto';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
+type ManualRenderJob = DesignStudioManualRenderJob;
 
 type AutoEditorialAction =
   | 'caption'
@@ -302,6 +306,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   });
   const [templates, setTemplates] = useState<Template[]>([]);
   const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>([]);
+  const [manualRenderJobs, setManualRenderJobs] = useState<ManualRenderJob[]>([]);
   const [autoEditorials, setAutoEditorials] = useState<AutoEditorial[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -326,17 +331,64 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [editorialOverlayStrength, setEditorialOverlayStrength] = useState(75);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const renderJobStatusRef = useRef<Map<string, ManualRenderJob['status']>>(new Map());
 
   useEffect(() => {
     localStorage.setItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
 
   useEffect(() => {
+    for (const job of manualRenderJobs) {
+      const previousStatus = renderJobStatusRef.current.get(job.id);
+      if (previousStatus && previousStatus !== job.status) {
+        if (job.status === 'completed') {
+          toast.success(`"${job.templateName}" render completed`);
+          addRecentActivity({
+            title: job.templateName,
+            platform: 'Design Studio',
+            status: 'success',
+            type: 'designstudio',
+          });
+          addLogEntry({
+            videoTitle: job.templateName,
+            platform: 'Design Studio',
+            status: 'success',
+            type: 'designstudio',
+          });
+          addNotification({
+            type: 'success',
+            title: 'Design Rendered',
+            message: `"${job.templateName}" finished rendering`,
+            source: 'design_studio',
+            actionPage: 'design-studio-activity',
+          });
+        }
+
+        if (job.status === 'failed') {
+          toast.error(job.failureReason || `Failed to render "${job.templateName}"`);
+          addNotification({
+            type: 'error',
+            title: 'Design Render Failed',
+            message: job.failureReason || `Failed to render "${job.templateName}"`,
+            source: 'design_studio',
+            actionPage: 'design-studio-activity',
+          });
+        }
+      }
+
+      renderJobStatusRef.current.set(job.id, job.status);
+    }
+  }, [addNotification, manualRenderJobs]);
+
+  useEffect(() => {
     let mounted = true;
 
     const loadState = async () => {
       try {
-        const state = await fetchDesignStudioState();
+        const [state, jobs] = await Promise.all([
+          fetchDesignStudioState(),
+          fetchDesignStudioRenderJobs(),
+        ]);
         if (!mounted) {
           return;
         }
@@ -344,6 +396,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         setTemplates((state.templates || []).map(parseTemplate));
         setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
         setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
+        setManualRenderJobs(jobs);
       } catch (error) {
         console.error('Failed to load Design Studio state:', error);
         if (mounted) {
@@ -364,21 +417,28 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   }, []);
 
   useEffect(() => {
+    const hasActiveManualRender = manualRenderJobs.some(
+      (job) => job.status === 'queued' || job.status === 'rendering',
+    );
     const interval = window.setInterval(async () => {
       try {
-        const state = await fetchDesignStudioState();
+        const [state, jobs] = await Promise.all([
+          fetchDesignStudioState(),
+          fetchDesignStudioRenderJobs(),
+        ]);
         setTemplates((state.templates || []).map(parseTemplate));
         setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
         setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
+        setManualRenderJobs(jobs);
       } catch (error) {
         console.error('Failed to refresh Design Studio state:', error);
       }
-    }, 60000);
+    }, hasActiveManualRender ? 5000 : 30000);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, []);
+  }, [manualRenderJobs]);
 
   // Calculate aspect ratio from dimensions
   const calculateAspectRatio = (width: number, height: number): string => {
@@ -653,10 +713,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     
     // Check if there's a rendered design for this template
     const existingDesign = renderedDesigns.find(d => d.templateId === template.id);
+    const activeRenderJob = manualRenderJobs.find(
+      (job) => job.templateId === template.id && (job.status === 'queued' || job.status === 'rendering'),
+    );
     
     if (existingDesign) {
       setPublishTarget(existingDesign);
       setIsPublishSheetOpen(true);
+    } else if (activeRenderJob) {
+      toast('Render in progress', {
+        description: 'This PSD is still rendering in the background.',
+      });
     } else {
       // If no rendered design exists, open edit sheet first
       setSelectedTemplate(template);
@@ -674,86 +741,39 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setIsRendering(true);
     setIsEditSheetOpen(false);
 
-    toast.success('Rendering PSD to JPEG...');
+    toast.success('Render queued. You can leave this page while it finishes.');
 
     try {
-      const photopeaService = getPhotopeaService();
-      await photopeaService.initialize();
-      const psdUrl = selectedTemplate.psdData?.b2Url || selectedTemplate.psdData?.fileUrl;
-      if (!psdUrl) {
-        throw new Error('Template source file is missing');
-      }
-
-      await photopeaService.loadPSDFromURL(psdUrl);
-      const renderedBlob = await photopeaService.renderDesign(data, {
-        width: selectedTemplate.width,
-        height: selectedTemplate.height,
-        hasSubtext: selectedTemplate.hasSubtext || false,
-        hasOverlay: selectedTemplate.hasOverlay || false,
+      const job = await startDesignStudioManualRender({
+        template: {
+          ...selectedTemplate,
+          lastEdited: selectedTemplate.lastEdited.toISOString(),
+          createdAt: selectedTemplate.createdAt?.toISOString(),
+          updatedAt: selectedTemplate.updatedAt?.toISOString(),
+        },
+        data: {
+          headerText: data.headerText,
+          subtext: data.subtext,
+          headerTextColor: data.headerTextColor,
+          subtextColor: data.subtextColor,
+          backgroundImage: data.backgroundImage,
+          imageFocalPoint: data.imageFocalPoint,
+          imageZoom: data.imageZoom,
+          overlayColor: data.overlayColor,
+          overlayOpacity: data.overlayOpacity,
+          gradientPosition: data.gradientPosition,
+          caption: data.caption,
+          contentType: data.contentType,
+        },
       });
-
-      const renderedFile = new File(
-        [renderedBlob],
-        `${selectedTemplate.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}.jpg`,
-        { type: 'image/jpeg' }
-      );
-      const renderedUpload = await uploadDesignStudioAsset(renderedFile, 'renders');
-
-      const renderedDesign: RenderedDesign = {
-        id: `design-${Date.now()}`,
-        templateId: selectedTemplate.id,
-        templateName: selectedTemplate.name,
-        outputUrl: renderedUpload.url,
-        data,
-        createdAt: new Date(),
-        aspectRatio: selectedTemplate.aspectRatio,
-        caption: data.caption,
-        contentType: data.contentType,
-      };
-
-      const nextRenderedDesigns = [renderedDesign, ...renderedDesigns];
-      await persistState(templates, nextRenderedDesigns);
-      setRenderedDesigns(nextRenderedDesigns);
+      setManualRenderJobs((currentJobs) => [job, ...currentJobs.filter((currentJob) => currentJob.id !== job.id)]);
       setIsRendering(false);
-
-      await photopeaService.closeDocument();
-      toast.success('Rendered JPEG saved to Design Studio activity');
+      toast.success('PSD render queued in the background');
       haptics.success();
-
-      try {
-        await createDesignStudioActivity('design_rendered', {
-          templateName: selectedTemplate.name,
-          designId: renderedDesign.id,
-        });
-
-        addRecentActivity({
-          title: selectedTemplate.name,
-          platform: 'Design Studio',
-          status: 'success',
-          type: 'designstudio',
-        });
-
-        addLogEntry({
-          videoTitle: selectedTemplate.name,
-          platform: 'Design Studio',
-          status: 'success',
-          type: 'designstudio',
-        });
-
-        addNotification({
-          type: 'success',
-          title: 'Design Rendered',
-          message: `"${selectedTemplate.name}" rendered successfully`,
-          source: 'design_studio',
-          actionPage: 'design-studio-activity',
-        });
-      } catch (postRenderError) {
-        console.error('Design rendered, but failed to record Design Studio activity:', postRenderError);
-      }
     } catch (error) {
-      console.error('Photopea rendering error:', error);
+      console.error('Failed to queue Design Studio render:', error);
       setIsRendering(false);
-      toast.error(error instanceof Error ? error.message : 'Failed to render design');
+      toast.error(error instanceof Error ? error.message : 'Failed to queue render');
     }
   };
 

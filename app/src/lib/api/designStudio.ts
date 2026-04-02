@@ -25,7 +25,10 @@ export interface DesignStudioTemplateRecord {
   height: number;
   source: 'upload' | 'backblaze';
   lastEdited: string;
+  hasHeader?: boolean;
+  hasBackground?: boolean;
   hasSubtext: boolean;
+  hasOverlay?: boolean;
   hasCategory?: boolean;
   hasSource?: boolean;
   psdData?: Record<string, any> | null;
@@ -54,6 +57,24 @@ export interface DesignStudioRenderedDesignRecord {
   aspectRatio: string;
   caption?: string;
   contentType?: DesignStudioContentType;
+}
+
+export type DesignStudioManualRenderJobStatus =
+  | 'queued'
+  | 'rendering'
+  | 'completed'
+  | 'failed';
+
+export interface DesignStudioManualRenderJob {
+  id: string;
+  templateId: string;
+  templateName: string;
+  status: DesignStudioManualRenderJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  renderedDesignId?: string | null;
+  outputUrl?: string | null;
+  failureReason?: string | null;
 }
 
 export interface DesignStudioAutoEditorialRecord {
@@ -94,7 +115,9 @@ export interface DesignStudioStateResponse {
 export type DesignStudioActivityType =
   | 'template_uploaded'
   | 'templates_loaded'
+  | 'design_render_queued'
   | 'design_rendered'
+  | 'design_render_failed'
   | 'design_published'
   | 'template_deleted'
   | 'auto_editorial_generated'
@@ -180,6 +203,45 @@ export async function uploadDesignStudioTemplate(file: File): Promise<{
 
   if (!response.success || !response.data) {
     throw new Error(response.error?.message || 'Failed to upload Design Studio template');
+  }
+
+  return response.data;
+}
+
+export async function fetchDesignStudioRenderJobs(): Promise<DesignStudioManualRenderJob[]> {
+  const response = await apiClient.get<DesignStudioManualRenderJob[]>('/api/design-studio/render-jobs');
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Failed to load Design Studio render jobs');
+  }
+
+  return response.data;
+}
+
+export async function startDesignStudioManualRender(payload: {
+  template: DesignStudioTemplateRecord;
+  data: {
+    headerText: string;
+    subtext?: string;
+    headerTextColor?: string;
+    subtextColor?: string;
+    backgroundImage?: string;
+    imageFocalPoint?: { x: number; y: number };
+    imageZoom?: number;
+    overlayColor?: string;
+    overlayOpacity?: number;
+    gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
+    caption?: string;
+    contentType?: DesignStudioContentType;
+  };
+}): Promise<DesignStudioManualRenderJob> {
+  const response = await apiClient.post<DesignStudioManualRenderJob>(
+    '/api/design-studio/render-jobs',
+    payload,
+    { timeout: 15000 },
+  );
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Failed to queue Design Studio render');
   }
 
   return response.data;

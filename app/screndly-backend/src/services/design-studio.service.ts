@@ -8,6 +8,7 @@ import { serverPhotopeaRenderer } from './server-photopea-renderer';
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
 const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
 const DESIGN_STUDIO_AUTO_EDITORIALS_KEY = 'designStudioAutoEditorials';
+const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
@@ -72,6 +73,36 @@ interface DesignStudioTemplateRecord {
   updatedAt?: string;
 }
 
+type DesignStudioManualRenderJobStatus =
+  | 'queued'
+  | 'rendering'
+  | 'completed'
+  | 'failed';
+
+interface DesignStudioRenderedDesignRecord {
+  id: string;
+  templateId: string;
+  templateName: string;
+  outputUrl: string;
+  data: Record<string, any>;
+  createdAt: string;
+  aspectRatio: string;
+  caption?: string;
+  contentType?: DesignStudioContentType;
+}
+
+interface DesignStudioManualRenderJob {
+  id: string;
+  templateId: string;
+  templateName: string;
+  status: DesignStudioManualRenderJobStatus;
+  createdAt: string;
+  updatedAt: string;
+  renderedDesignId?: string | null;
+  outputUrl?: string | null;
+  failureReason?: string | null;
+}
+
 interface DesignStudioAutoEditorialRecord {
   id: string;
   sourceFeedItemId: string;
@@ -125,6 +156,24 @@ interface DesignStudioRunResult {
   generated: number;
   published: number;
   failed: number;
+}
+
+interface QueueManualRenderInput {
+  template: DesignStudioTemplateRecord;
+  data: {
+    headerText: string;
+    subtext?: string;
+    headerTextColor?: string;
+    subtextColor?: string;
+    backgroundImage?: string;
+    imageFocalPoint?: { x: number; y: number };
+    imageZoom?: number;
+    overlayColor?: string;
+    overlayOpacity?: number;
+    gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
+    caption?: string;
+    contentType?: DesignStudioContentType;
+  };
 }
 
 function asStringArray(value: unknown): string[] {
@@ -346,6 +395,48 @@ async function saveAutoEditorials(editorials: DesignStudioAutoEditorialRecord[])
   await writeJsonSetting(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, editorials);
 }
 
+async function getRenderedDesigns(): Promise<DesignStudioRenderedDesignRecord[]> {
+  const renderedDesigns = await readJsonSetting<unknown[]>(DESIGN_STUDIO_RENDERED_KEY, []);
+  return Array.isArray(renderedDesigns)
+    ? renderedDesigns.filter((item): item is DesignStudioRenderedDesignRecord => Boolean(item && typeof item === 'object'))
+    : [];
+}
+
+async function saveRenderedDesigns(renderedDesigns: DesignStudioRenderedDesignRecord[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, renderedDesigns);
+}
+
+export async function getDesignStudioRenderJobs(): Promise<DesignStudioManualRenderJob[]> {
+  const renderJobs = await readJsonSetting<unknown[]>(DESIGN_STUDIO_RENDER_JOBS_KEY, []);
+  return Array.isArray(renderJobs)
+    ? renderJobs.filter((item): item is DesignStudioManualRenderJob => Boolean(item && typeof item === 'object'))
+    : [];
+}
+
+async function saveDesignStudioRenderJobs(renderJobs: DesignStudioManualRenderJob[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_RENDER_JOBS_KEY, renderJobs);
+}
+
+async function updateManualRenderJob(
+  jobId: string,
+  patch: Partial<DesignStudioManualRenderJob>,
+): Promise<DesignStudioManualRenderJob | null> {
+  const jobs = await getDesignStudioRenderJobs();
+  const index = jobs.findIndex((job) => job.id === jobId);
+  if (index === -1) {
+    return null;
+  }
+
+  const nextJob: DesignStudioManualRenderJob = {
+    ...jobs[index],
+    ...patch,
+    updatedAt: new Date().toISOString(),
+  };
+  jobs[index] = nextJob;
+  await saveDesignStudioRenderJobs(jobs);
+  return nextJob;
+}
+
 function getAutoTemplatePool(
   templates: DesignStudioTemplateRecord[],
   defaultTemplateId: string | null,
@@ -453,6 +544,143 @@ async function renderAutoEditorialImage(
   } catch {
     return selectRenderedImage(item, template);
   }
+}
+
+async function fetchBackgroundBytes(backgroundUrl?: string): Promise<{ bytes?: Buffer; fileName?: string }> {
+  if (!backgroundUrl) {
+    return {};
+  }
+
+  try {
+    const imageResponse = await fetch(backgroundUrl);
+    if (!imageResponse.ok) {
+      return {};
+    }
+
+    const bytes = Buffer.from(await imageResponse.arrayBuffer());
+    const parsedUrl = new URL(backgroundUrl);
+    return {
+      bytes,
+      fileName: parsedUrl.pathname.split('/').pop() || 'background.jpg',
+    };
+  } catch {
+    return {};
+  }
+}
+
+async function processManualRenderJob(
+  jobId: string,
+  input: QueueManualRenderInput,
+): Promise<void> {
+  const { template, data } = input;
+
+  await updateManualRenderJob(jobId, {
+    status: 'rendering',
+    failureReason: null,
+  });
+
+  try {
+    const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
+    if (!psdUrl || typeof psdUrl !== 'string') {
+      throw new Error('Template source file is missing');
+    }
+
+    const background = await fetchBackgroundBytes(data.backgroundImage);
+    const renderedBuffer = await serverPhotopeaRenderer.renderTemplate({
+      psdUrl,
+      headerText: data.headerText,
+      subtext: template.hasSubtext ? data.subtext : undefined,
+      backgroundBytes: background.bytes,
+      backgroundFileName: background.fileName,
+      width: template.width,
+      height: template.height,
+      hasSubtext: template.hasSubtext,
+      overlayDirection: data.gradientPosition || template.overlayDirection || 'top',
+      overlayStrength: data.overlayOpacity ?? template.overlayStrength ?? 75,
+      backgroundOffsetX: data.imageFocalPoint?.x ?? template.imageAnchor?.x ?? 50,
+      backgroundOffsetY: data.imageFocalPoint?.y ?? template.imageAnchor?.y ?? 50,
+      zoomLevel: data.imageZoom ?? 1,
+      headerTextColor: data.headerTextColor || '#ffffff',
+      subtextColor: data.subtextColor || '#ffffff',
+    });
+
+    const uploaded = await uploadBufferToBackblaze(
+      renderedBuffer,
+      `${template.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}-${Date.now()}.jpg`,
+      {
+        bucketTypes: ['design', 'general'],
+        prefix: 'design-studio/renders',
+        contentType: 'image/jpeg',
+      },
+    );
+
+    const renderedDesign: DesignStudioRenderedDesignRecord = {
+      id: `design-${Date.now()}`,
+      templateId: template.id,
+      templateName: template.name,
+      outputUrl: uploaded.url,
+      data,
+      createdAt: new Date().toISOString(),
+      aspectRatio: template.aspectRatio,
+      caption: data.caption,
+      contentType: data.contentType,
+    };
+
+    const renderedDesigns = await getRenderedDesigns();
+    await saveRenderedDesigns([renderedDesign, ...renderedDesigns]);
+
+    await updateManualRenderJob(jobId, {
+      status: 'completed',
+      renderedDesignId: renderedDesign.id,
+      outputUrl: renderedDesign.outputUrl,
+      failureReason: null,
+    });
+
+    await createDesignStudioActivity('design_rendered', {
+      templateName: template.name,
+      designId: renderedDesign.id,
+      renderJobId: jobId,
+    });
+  } catch (error) {
+    const failureReason = error instanceof Error ? error.message : 'Failed to render design';
+    await updateManualRenderJob(jobId, {
+      status: 'failed',
+      failureReason,
+    });
+    await createDesignStudioActivity('design_render_failed', {
+      templateName: template.name,
+      renderJobId: jobId,
+      reason: failureReason,
+    });
+  }
+}
+
+export async function queueManualDesignStudioRender(input: QueueManualRenderInput): Promise<DesignStudioManualRenderJob> {
+  const now = new Date().toISOString();
+  const job: DesignStudioManualRenderJob = {
+    id: `manual-render-${Date.now()}`,
+    templateId: input.template.id,
+    templateName: input.template.name,
+    status: 'queued',
+    createdAt: now,
+    updatedAt: now,
+    renderedDesignId: null,
+    outputUrl: null,
+    failureReason: null,
+  };
+
+  const jobs = await getDesignStudioRenderJobs();
+  await saveDesignStudioRenderJobs([job, ...jobs].slice(0, 100));
+  await createDesignStudioActivity('design_render_queued', {
+    templateName: input.template.name,
+    renderJobId: job.id,
+  });
+
+  setTimeout(() => {
+    void processManualRenderJob(job.id, input);
+  }, 0);
+
+  return job;
 }
 
 export async function generateDesignStudioAutoEditorials(): Promise<DesignStudioRunResult> {

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertCircle, Calendar, Clock3, Image, Send } from 'lucide-react';
+import { AlertCircle, Calendar, Clock3, Image, LoaderCircle, Send } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
+import {
+  fetchDesignStudioRenderJobs,
+  fetchDesignStudioState,
+  type DesignStudioManualRenderJob,
+} from '../lib/api/designStudio';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
@@ -25,6 +30,8 @@ interface DesignStudioActivityRecord {
     matchedKeyword?: string;
     status?: string;
     field?: string;
+    failureReason?: string | null;
+    previewUrl?: string;
   };
   createdAt: string;
 }
@@ -39,7 +46,9 @@ type DesignStudioActivityTab = 'manual' | 'auto';
 const MANUAL_ACTIVITY_TYPES = new Set([
   'template_uploaded',
   'templates_loaded',
+  'design_render_queued',
   'design_rendered',
+  'design_render_failed',
   'design_published',
   'template_deleted',
 ]);
@@ -64,8 +73,12 @@ function activityTitle(type: string): string {
       return 'Template Uploaded';
     case 'templates_loaded':
       return 'Templates Loaded';
+    case 'design_render_queued':
+      return 'Design Rendering';
     case 'design_rendered':
       return 'Design Rendered';
+    case 'design_render_failed':
+      return 'Design Render Failed';
     case 'design_published':
       return 'Design Published';
     case 'template_deleted':
@@ -94,6 +107,12 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
       const count = Number(activity.details?.count || 0);
       return `${count} template${count === 1 ? '' : 's'} loaded from ${activity.details?.source || 'storage'}`;
     }
+    case 'design_render_queued':
+      return activity.details?.status === 'rendering'
+        ? `${templateName} is rendering in the background`
+        : `${templateName} is queued for rendering`;
+    case 'design_render_failed':
+      return activity.details?.failureReason || `${templateName} failed to render`;
     case 'design_published':
       return `${templateName}${activity.details?.platforms ? ` -> ${activity.details.platforms}` : ''}`;
     case 'auto_editorial_generated':
@@ -120,6 +139,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
+  const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>([]);
+  const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const retentionHours = settings.designStudioActivityRetention || 24;
@@ -129,15 +150,27 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const loadActivities = async () => {
     setIsLoading(true);
     try {
-      const response = await apiClient.get<DesignStudioActivityRecord[]>('/api/design-studio/activity');
+      const [response, renderJobs, designStudioState] = await Promise.all([
+        apiClient.get<DesignStudioActivityRecord[]>('/api/design-studio/activity'),
+        fetchDesignStudioRenderJobs(),
+        fetchDesignStudioState(),
+      ]);
       if (response.success && Array.isArray(response.data)) {
         setActivities(response.data);
       } else {
         setActivities([]);
       }
+      setManualRenderJobs(renderJobs);
+      setTemplatePreviewUrls(
+        Object.fromEntries(
+          (designStudioState.templates || []).map((template) => [template.id, template.previewUrl]),
+        ),
+      );
     } catch (error) {
       console.error('Failed to fetch design studio activity:', error);
       setActivities([]);
+      setManualRenderJobs([]);
+      setTemplatePreviewUrls({});
     } finally {
       setIsLoading(false);
     }
@@ -148,20 +181,46 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   }, []);
 
   useEffect(() => {
+    const interval = window.setInterval(() => {
+      void loadActivities();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
     localStorage.setItem('designStudioActivityTab', activeTab);
   }, [activeTab]);
 
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
+    const manualRenderActivityRecords: DesignStudioActivityRecord[] = manualRenderJobs
+      .filter((job) => job.status === 'queued' || job.status === 'rendering')
+      .map((job) => ({
+        id: `render-job-${job.id}`,
+        type: 'design_render_queued',
+        details: {
+          templateName: job.templateName,
+          status: job.status,
+          previewUrl: templatePreviewUrls[job.templateId],
+        },
+        createdAt: job.createdAt,
+      }));
 
-    return activities
+    return [...manualRenderActivityRecords, ...activities]
       .filter((activity) => {
         const timestamp = new Date(activity.createdAt).getTime();
         return Number.isNaN(timestamp) || timestamp >= cutoff;
       })
       .filter((activity) => {
         if (logLevel === 'minimal') return activity.type === 'design_published';
-        if (logLevel === 'standard') return activity.type === 'design_rendered' || activity.type === 'design_published';
+        if (logLevel === 'standard') {
+          return activity.type === 'design_rendered'
+            || activity.type === 'design_render_queued'
+            || activity.type === 'design_published';
+        }
         return true;
       })
       .filter((activity) => (
@@ -169,7 +228,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           ? MANUAL_ACTIVITY_TYPES.has(activity.type)
           : AUTO_ACTIVITY_TYPES.has(activity.type)
       ));
-  }, [activeTab, activities, logLevel, retentionMs]);
+  }, [activeTab, activities, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
 
   const selection = useBulkSelection(visibleActivities.map((activity) => activity.id));
 
@@ -259,11 +318,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     switch (type) {
       case 'design_published':
         return <Send className="w-5 h-5 text-[#ec1e24]" />;
+      case 'design_render_queued':
+        return <LoaderCircle className="w-5 h-5 text-[#ec1e24] animate-spin" />;
       case 'design_rendered':
       case 'template_uploaded':
       case 'templates_loaded':
       case 'template_deleted':
         return <Image className="w-5 h-5 text-[#ec1e24]" />;
+      case 'design_render_failed':
+        return <AlertCircle className="w-5 h-5 text-[#ec1e24]" />;
       case 'auto_editorial_generated':
       case 'auto_editorial_updated':
         return <Image className="w-5 h-5 text-[#ec1e24]" />;
@@ -361,16 +424,41 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 onToggleSelection={selection.toggleSelection}
                 className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <div className="mt-1">{getIcon(activity.type)}</div>
-                    <div className="min-w-0">
-                      <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
-                      <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+                {activity.type === 'design_render_queued' && activity.details?.previewUrl ? (
+                  <div className="flex items-start gap-4">
+                    <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 dark:border-[#333333]">
+                      <img
+                        src={activity.details.previewUrl}
+                        alt={activity.details.templateName || 'Template preview'}
+                        className="h-full w-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="mt-1">{getIcon(activity.type)}</div>
+                          <div className="min-w-0">
+                            <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
+                            <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
-                </div>
+                ) : (
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <div className="mt-1">{getIcon(activity.type)}</div>
+                      <div className="min-w-0">
+                        <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
+                        <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
+                  </div>
+                )}
               </SwipeableActivityCard>
             ))}
           </>

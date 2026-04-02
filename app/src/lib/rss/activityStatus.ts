@@ -26,6 +26,11 @@ export interface RSSDerivedPlatformState {
   errorMessage?: string;
 }
 
+function isNoResolvedImageFailure(item: RSSActivityItem): boolean {
+  return typeof item.error === 'string'
+    && item.error.toLowerCase().includes('no resolved images were available');
+}
+
 function normalizePlatformKey(value: string): string {
   const normalized = value.trim().toLowerCase();
   return normalized === 'twitter' ? 'x' : normalized;
@@ -47,6 +52,10 @@ function formatPlatformLabel(platform: string): string {
 }
 
 export function deriveRSSPlatformStates(item: RSSActivityItem): RSSDerivedPlatformState[] {
+  if (isNoResolvedImageFailure(item)) {
+    return [];
+  }
+
   const selectedPlatforms = Array.from(
     new Set([
       ...(item.platforms || []).map((platform) => normalizePlatformKey(platform)),
@@ -117,6 +126,10 @@ export function deriveRSSActivityStatus(
 ): RSSActivityDerivedStatus {
   if (item.status === 'filtered') {
     return 'filtered';
+  }
+
+  if (isNoResolvedImageFailure(item)) {
+    return 'failed';
   }
 
   const activeStates = platformStates.filter((state) => state.status !== 'skipped');

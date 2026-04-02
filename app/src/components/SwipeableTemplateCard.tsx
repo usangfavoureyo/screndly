@@ -98,7 +98,6 @@ export function SwipeableTemplateCard({
   };
 
   const previewImageUrl = renderedPreviewUrl || template.previewUrl;
-
   return (
     <div className="relative overflow-hidden rounded-2xl">
       <div className="absolute inset-0 flex items-center justify-end rounded-2xl bg-[#ec1e24]">
@@ -157,18 +156,12 @@ export function SwipeableTemplateCard({
             </div>
           ) : null}
 
-          {isBeingEdited ? (
-            <div className="pointer-events-none absolute top-3 left-3 flex items-center gap-1 rounded bg-[#ec1e24] px-2 py-1 text-xs text-white backdrop-blur-sm">
-              <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
-              Editing
-            </div>
-          ) : null}
         </div>
 
         <div className="p-4">
           <h3 className="mb-1 truncate text-gray-900 dark:text-white">{template.name}</h3>
           <p className="mb-3 text-sm capitalize text-gray-600 dark:text-[#9CA3AF]">
-            {template.source} · {template.width}×{template.height}
+            {template.source} - {template.width}x{template.height}
           </p>
 
           <div className="flex gap-2">
