@@ -21,6 +21,8 @@ const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', 
 const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
 const LOCAL_CLEANUP_DIRECTORIES = ['temp', 'uploads'];
 const GLOBAL_CLEANUP_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'never']);
+const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 30;
+const YOUTUBE_POLLING_STALE_BUFFER_MINUTES = 5;
 
 const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
     {
@@ -44,6 +46,7 @@ const VIDEO_STUDIO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; 
 ];
 
 let youtubePollingPausedUntil: Date | null = null;
+let lastYouTubePollingHealthNotificationAt: Date | null = null;
 
 async function resolveTMDbPublishImageUrls(post: {
     id?: string | null;
@@ -248,6 +251,69 @@ async function logCron(level: string, message: string, service: string = 'cron')
     }
 }
 
+async function checkYouTubePollingHealth() {
+    const fetchIntervalSetting = await prisma.setting.findUnique({ where: { key: 'fetchInterval' } });
+    const defaultPollingIntervalMinutes = parsePositiveIntSettingValue(fetchIntervalSetting?.value, 2);
+    const staleThresholdMinutes = Math.max((defaultPollingIntervalMinutes * 3) + YOUTUBE_POLLING_STALE_BUFFER_MINUTES, 10);
+    const staleBefore = new Date(Date.now() - staleThresholdMinutes * 60 * 1000);
+
+    const overdueChannels = await prisma.channel.findMany({
+        where: {
+            status: 'active',
+            OR: [
+                { nextPollAt: { lt: staleBefore } },
+                {
+                    nextPollAt: null,
+                    lastCheck: { lt: staleBefore },
+                },
+            ],
+        },
+        orderBy: [
+            { nextPollAt: 'asc' },
+            { lastCheck: 'asc' },
+        ],
+        take: 5,
+        select: {
+            name: true,
+            nextPollAt: true,
+            lastCheck: true,
+        },
+    });
+
+    if (overdueChannels.length === 0) {
+        lastYouTubePollingHealthNotificationAt = null;
+        return;
+    }
+
+    const now = new Date();
+    if (
+        lastYouTubePollingHealthNotificationAt
+        && now.getTime() - lastYouTubePollingHealthNotificationAt.getTime() < YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES * 60 * 1000
+    ) {
+        return;
+    }
+
+    const overdueLabels = overdueChannels.map((channel) => {
+        const reference = channel.nextPollAt || channel.lastCheck;
+        return reference
+            ? `${channel.name} (overdue since ${reference.toISOString()})`
+            : channel.name;
+    });
+
+    await notificationService.notifyUserOnceWithinWindow({
+        title: 'YouTube Polling Delayed',
+        message: `Some YouTube channels are overdue for polling: ${overdueLabels.join(', ')}. Check the backend process and poll status.`,
+        type: 'warning',
+        source: 'youtube',
+        actionPage: '/channels'
+    }, YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES);
+    await logCron(
+        'warn',
+        `YouTube polling health warning: ${overdueChannels.length} active channels are overdue by more than ${staleThresholdMinutes} minutes`
+    );
+    lastYouTubePollingHealthNotificationAt = now;
+}
+
 function quoteItem(value: string): string {
     return `"${value.replace(/\s+/g, ' ').trim()}"`;
 }
@@ -425,6 +491,19 @@ export async function initCronJobs() {
             }
         } catch (error) {
             await logCron('error', `YouTube scheduler tick failed: ${error}`);
+        }
+    }, cronOptions);
+
+    cron.schedule('* * * * *', async () => {
+        try {
+            const pauseStatus = getYouTubePollingPauseStatus();
+            if (pauseStatus.paused) {
+                return;
+            }
+
+            await checkYouTubePollingHealth();
+        } catch (error) {
+            await logCron('error', `YouTube polling health check failed: ${error}`);
         }
     }, cronOptions);
 

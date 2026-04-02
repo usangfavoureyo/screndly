@@ -1,6 +1,20 @@
 import { apiClient } from './client';
 
 export type DesignStudioContentType = 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
+export type DesignStudioLayoutVariant =
+  | 'top_left'
+  | 'top_right'
+  | 'top_center'
+  | 'bottom_left'
+  | 'bottom_right'
+  | 'bottom_center';
+
+export type DesignStudioAutoEditorialStatus =
+  | 'draft'
+  | 'queued'
+  | 'scheduled'
+  | 'posted'
+  | 'failed';
 
 export interface DesignStudioTemplateRecord {
   id: string;
@@ -15,6 +29,19 @@ export interface DesignStudioTemplateRecord {
   hasCategory?: boolean;
   hasSource?: boolean;
   psdData?: Record<string, any> | null;
+  layoutVariant?: DesignStudioLayoutVariant;
+  mappedLayers?: string[];
+  textZone?: { horizontal: 'left' | 'center' | 'right'; vertical: 'top' | 'bottom' };
+  imageAnchor?: { x: number; y: number };
+  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
+  overlayStrength?: number;
+  safeMargin?: number;
+  isValidated?: boolean;
+  validationState?: 'valid' | 'warning' | 'invalid';
+  isDefaultManual?: boolean;
+  isDefaultAuto?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface DesignStudioRenderedDesignRecord {
@@ -29,9 +56,39 @@ export interface DesignStudioRenderedDesignRecord {
   contentType?: DesignStudioContentType;
 }
 
+export interface DesignStudioAutoEditorialRecord {
+  id: string;
+  sourceFeedItemId: string;
+  sourceFeedId?: string;
+  sourceFeedName?: string;
+  sourceTitle: string;
+  sourceUrl?: string;
+  matchedKeyword?: string;
+  templateId: string;
+  templateName?: string;
+  renderedImage: string;
+  headerText: string;
+  subheaderText?: string;
+  caption: string;
+  backgroundSource?: string;
+  backgroundOffsetX?: number;
+  backgroundOffsetY?: number;
+  zoomLevel?: number;
+  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
+  overlayStrength?: number;
+  scheduleTime?: string | null;
+  targetPlatforms: string[];
+  status: DesignStudioAutoEditorialStatus;
+  createdAt: string;
+  updatedAt: string;
+  postedAt?: string | null;
+  failureReason?: string | null;
+}
+
 export interface DesignStudioStateResponse {
   templates: DesignStudioTemplateRecord[];
   renderedDesigns: DesignStudioRenderedDesignRecord[];
+  autoEditorials?: DesignStudioAutoEditorialRecord[];
 }
 
 export type DesignStudioActivityType =
@@ -39,7 +96,12 @@ export type DesignStudioActivityType =
   | 'templates_loaded'
   | 'design_rendered'
   | 'design_published'
-  | 'template_deleted';
+  | 'template_deleted'
+  | 'auto_editorial_generated'
+  | 'auto_editorial_updated'
+  | 'auto_editorial_posted'
+  | 'auto_editorial_failed'
+  | 'auto_editorial_deleted';
 
 export interface DesignStudioTMDbSearchResult {
   id: number;

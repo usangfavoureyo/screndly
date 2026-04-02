@@ -119,6 +119,18 @@ const DESIGN_STUDIO_BACKEND_KEYS = [
   'designStudioPinterestTitlePrompt',
   'designStudioPinterestDescriptionPrompt',
   'designStudioPinterestBoardPrompt',
+  'designStudioAutoEnabled',
+  'designStudioAutoPost',
+  'designStudioDefaultAutoTemplateId',
+  'designStudioPostingInterval',
+  'designStudioTriggerKeywords',
+  'designStudioBannedKeywords',
+  'designStudioSelectedRssFeedIds',
+  'designStudioMaxEditorialsPerRun',
+  'designStudioCaptionLengthMode',
+  'designStudioMinimumScoreThreshold',
+  'designStudioTargetPlatforms',
+  'designStudioAutoUpdatedAt',
 ] as const;
 
 const VIDEO_STUDIO_BACKEND_KEYS = [
@@ -573,6 +585,10 @@ function hasMeaningfulValue(value: unknown): boolean {
  */
 export function isSensitiveSetting(key: string): boolean {
   return SENSITIVE_KEYS.includes(key);
+}
+
+export function isBackendPersistedSetting(key: string): boolean {
+  return BACKEND_PERSISTED_KEYS.includes(key);
 }
 
 /**

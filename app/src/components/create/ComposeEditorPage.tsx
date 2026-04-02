@@ -1350,7 +1350,7 @@ export function ComposeEditorPage({
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-gray-200 p-8 text-center dark:border-[#333333]">
-                <p className="mb-1 text-gray-900 dark:text-white">No media added yet</p>
+                <p className="mb-1 text-[#6B7280] dark:text-[#9CA3AF]">No media added yet</p>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Upload images, videos, or a mixed set to prepare platform-specific delivery.</p>
               </div>
             )}

@@ -220,7 +220,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
           />
         )}
 
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+        <div className="mb-6 flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {FILTERS.map((option) => (
             <button
               key={option.id}

@@ -216,19 +216,91 @@ function detectLogoContentBounds(
   };
 }
 
+async function stripEdgeConnectedWhiteMatte(buffer: Buffer): Promise<Buffer> {
+  const { data, info } = await sharp(buffer, { animated: false })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const width = info.width;
+  const height = info.height;
+  const visited = new Uint8Array(width * height);
+  const queue: number[] = [];
+
+  const enqueueIfBorderPixel = (x: number, y: number): void => {
+    if (x < 0 || y < 0 || x >= width || y >= height) {
+      return;
+    }
+
+    const pixelIndex = y * width + x;
+    if (visited[pixelIndex]) {
+      return;
+    }
+
+    const dataIndex = pixelIndex * 4;
+    if (!isNearWhiteBorderPixel(
+      data[dataIndex] ?? 0,
+      data[dataIndex + 1] ?? 0,
+      data[dataIndex + 2] ?? 0,
+      data[dataIndex + 3] ?? 0
+    )) {
+      return;
+    }
+
+    visited[pixelIndex] = 1;
+    queue.push(pixelIndex);
+  };
+
+  for (let x = 0; x < width; x += 1) {
+    enqueueIfBorderPixel(x, 0);
+    enqueueIfBorderPixel(x, height - 1);
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    enqueueIfBorderPixel(0, y);
+    enqueueIfBorderPixel(width - 1, y);
+  }
+
+  // Clear only white matte that is physically connected to the outer edge,
+  // so interior white logo artwork stays intact.
+  while (queue.length > 0) {
+    const pixelIndex = queue.shift()!;
+    const x = pixelIndex % width;
+    const y = Math.floor(pixelIndex / width);
+    const dataIndex = pixelIndex * 4;
+    data[dataIndex + 3] = 0;
+
+    enqueueIfBorderPixel(x - 1, y);
+    enqueueIfBorderPixel(x + 1, y);
+    enqueueIfBorderPixel(x, y - 1);
+    enqueueIfBorderPixel(x, y + 1);
+  }
+
+  return sharp(data, {
+    raw: {
+      width,
+      height,
+      channels: 4,
+    },
+  })
+    .png()
+    .toBuffer();
+}
+
 export async function trimTMDbLogoOuterBorderBuffer(originalBuffer: Buffer): Promise<Buffer> {
   const base = await trimLogoBuffer(originalBuffer);
-  const { data, info } = await sharp(base, { animated: false })
+  const edgeCleaned = await stripEdgeConnectedWhiteMatte(base);
+  const { data, info } = await sharp(edgeCleaned, { animated: false })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
 
   const bounds = detectLogoContentBounds(data, info.width, info.height);
   if (!bounds) {
-    return base;
+    return edgeCleaned;
   }
 
-  return sharp(base, { animated: false })
+  return sharp(edgeCleaned, { animated: false })
     .extract(bounds)
     .png()
     .toBuffer();

@@ -1,4 +1,5 @@
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
+export {};
 
 async function main() {
     const { default: app } = await import('../index');

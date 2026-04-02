@@ -5,7 +5,7 @@ import {
   deleteSettings as deleteSettingsFromBackend,
   checkBackendHealth,
   mergeSettings,
-  isSensitiveSetting,
+  isBackendPersistedSetting,
 } from '../lib/api/settings';
 import { toast } from "sonner";
 import { analyticsIngester } from '../lib/optimization/analyticsIngester';
@@ -261,6 +261,18 @@ export interface Settings {
   designStudioPinterestTitlePrompt?: string;
   designStudioPinterestDescriptionPrompt?: string;
   designStudioPinterestBoardPrompt?: string;
+  designStudioAutoEnabled?: boolean;
+  designStudioAutoPost?: boolean;
+  designStudioDefaultAutoTemplateId?: string | null;
+  designStudioPostingInterval?: string;
+  designStudioTriggerKeywords?: string[];
+  designStudioBannedKeywords?: string[];
+  designStudioSelectedRssFeedIds?: string[];
+  designStudioMaxEditorialsPerRun?: number;
+  designStudioCaptionLengthMode?: 'short' | 'medium';
+  designStudioMinimumScoreThreshold?: number;
+  designStudioTargetPlatforms?: string[];
+  designStudioAutoUpdatedAt?: string;
   designStudioLogLevel?: string;
 
   // Video Studio
@@ -590,6 +602,29 @@ function getDefaultSettings(): Settings {
     designStudioPinterestTitlePrompt: '',
     designStudioPinterestDescriptionPrompt: '',
     designStudioPinterestBoardPrompt: '',
+    designStudioAutoEnabled: false,
+    designStudioAutoPost: false,
+    designStudioDefaultAutoTemplateId: null,
+    designStudioPostingInterval: '5',
+    designStudioTriggerKeywords: [
+      'renewed',
+      'renewal',
+      'canceled',
+      'cancelled',
+      'confirmed',
+      'release date',
+      'releasing',
+      'premiere',
+      'premieres',
+      'in development',
+    ],
+    designStudioBannedKeywords: [],
+    designStudioSelectedRssFeedIds: [],
+    designStudioMaxEditorialsPerRun: 5,
+    designStudioCaptionLengthMode: 'medium',
+    designStudioMinimumScoreThreshold: 55,
+    designStudioTargetPlatforms: ['x', 'threads'],
+    designStudioAutoUpdatedAt: new Date().toISOString(),
 
     // Video Studio
     systemPrompt: '',
@@ -750,8 +785,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
     setSettings(prev => normalizeSettingsModels({ ...prev, [key]: normalizeSettingValue(key, value) }) as Settings);
 
-    // If it's a sensitive setting, try to save immediately to backend
-    if (isSensitiveSetting(key) && backendAvailable) {
+    // Save backend-required settings immediately so pollers/jobs do not depend on a later debounce.
+    if (isBackendPersistedSetting(key) && backendAvailable) {
       const result = await saveSettingsToBackend({ [key]: normalizeSettingValue(key, value) } as Partial<Settings>);
       if (result.success) {
         toast.success(result.meta?.notificationTitle || 'Setting saved', result.meta?.notificationMessage ? {
@@ -779,16 +814,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     ) as Partial<Settings>;
     setSettings(prev => normalizeSettingsModels({ ...prev, ...normalizedUpdates }) as Settings);
 
-    // Check if any sensitive settings are being updated
-    const hasSensitiveUpdates = Object.keys(updates).some(key => isSensitiveSetting(key));
+    // Save backend-required settings immediately so backend workers see the latest configuration.
+    const hasBackendPersistedUpdates = Object.keys(updates).some(key => isBackendPersistedSetting(key));
 
-    if (hasSensitiveUpdates && backendAvailable) {
+    if (hasBackendPersistedUpdates && backendAvailable) {
       const result = await saveSettingsToBackend(normalizedUpdates);
-      if (result.success) {
-        toast.success(result.meta?.notificationTitle || 'Settings saved securely', result.meta?.notificationMessage ? {
-          description: result.meta.notificationMessage,
-        } : undefined);
-      } else {
+      if (!result.success) {
         toast.error('Failed to save some settings');
       }
     }

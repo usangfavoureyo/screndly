@@ -35,3 +35,20 @@ test('applies the expected polling backoff multipliers', () => {
     assert.equal(service.computeBackoffIntervalMinutes(4, 3), 15);
     assert.equal(service.computeBackoffIntervalMinutes(10, 4), 15);
 });
+
+test('classifies YouTube access issues by retryability', () => {
+    const service = new YouTubePollerService() as any;
+
+    assert.equal(
+        service.getYouTubeAccessIssueKind(new Error('ERROR: [youtube] abc123: This video is not available')),
+        'unavailable'
+    );
+    assert.equal(
+        service.getYouTubeAccessIssueKind(new Error('Please sign in to continue')),
+        'bot_challenge'
+    );
+    assert.equal(
+        service.getYouTubeAccessIssueKind(new Error('Playback on other websites has been disabled by the video owner')),
+        'restricted'
+    );
+});

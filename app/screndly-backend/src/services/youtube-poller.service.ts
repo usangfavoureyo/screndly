@@ -176,7 +176,7 @@ interface ProbedDownloadedVideo {
     durationSeconds?: number;
 }
 
-type FeedItemStatus = 'accepted' | 'ignored' | 'failed';
+type FeedItemStatus = 'accepted' | 'ignored' | 'failed' | 'queued';
 
 interface FeedVideoProcessingResult {
     kind: 'continue' | 'return';
@@ -191,6 +191,8 @@ interface ChannelVideoSourceResult {
     items: any[];
     source: 'rss' | 'yt-dlp' | 'merged';
 }
+
+type YouTubeAccessIssueKind = 'bot_challenge' | 'unavailable' | 'restricted' | 'other';
 
 interface ActiveChannelPollState {
     channelDbId: string;
@@ -243,6 +245,8 @@ const MAX_CONCURRENT_CHANNEL_POLLS = 5;
 const POLLING_JITTER_MAX_MS = 10 * 1000;
 const BACKOFF_CAP_MINUTES = 15;
 const SLOW_STAGE_WARN_MS = 15 * 1000;
+const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 30;
+const YOUTUBE_POLLING_STALE_BUFFER_MINUTES = 5;
 const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
@@ -740,9 +744,10 @@ export class YouTubePollerService {
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
             const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel));
             const collaborativeVideos = await this.timeStage(activeChannel.name, 'discover_collab_uploads', stageDurations, () => this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords));
-            const latestVideos = await this.timeStage(activeChannel.name, 'merge_candidates', stageDurations, async () =>
-                this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]).slice(0, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL)
-            );
+            const latestVideos = await this.timeStage(activeChannel.name, 'merge_candidates', stageDurations, async () => {
+                const mergedCandidates = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]);
+                return this.prioritizeQueuedCandidates(mergedCandidates, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL);
+            });
             if (source === 'yt-dlp') {
                 console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
             }
@@ -778,7 +783,8 @@ export class YouTubePollerService {
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
 
-            for (const video of latestVideos) {
+            for (let index = 0; index < latestVideos.length; index += 1) {
+                const video = latestVideos[index];
                 const videoLabel = `${video.title || 'Untitled YouTube upload'} (${this.extractVideoId(video.link || '', video.id || '') || 'unknown'})`;
                 const videoStartedAtMs = Date.now();
                 const processed = await this.processFeedVideo(
@@ -808,6 +814,14 @@ export class YouTubePollerService {
                 }
 
                 if (processed.kind === 'return' && processed.result) {
+                    if (processed.result.published) {
+                        const suppressedCount = await this.suppressOlderUnseenCandidates(latestVideos, index, activeChannel);
+                        if (suppressedCount > 0) {
+                            console.log(
+                                `[YouTubePoller] ${activeChannel.name}: suppressed ${suppressedCount} older unseen upload(s) after publishing a newer video in the same poll`
+                            );
+                        }
+                    }
                     return this.completeChannelCheck(
                         activeChannel.id,
                         processed.result,
@@ -1261,6 +1275,130 @@ export class YouTubePollerService {
         return `Checked ${scannedCount} recent uploads and found no new eligible trailers. Latest outcomes: ${recentReasons}`;
     }
 
+    private async prioritizeQueuedCandidates(videos: any[], limit: number): Promise<any[]> {
+        if (videos.length <= 1) {
+            return videos.slice(0, Math.max(1, limit));
+        }
+
+        const entries = videos.map((video, index) => ({
+            video,
+            index,
+            videoId: this.extractVideoId(video?.link || '', video?.id || ''),
+            publishedAtMs: new Date(video?.pubDate || 0).getTime(),
+        }));
+
+        const candidateIds = entries
+            .map((entry) => entry.videoId)
+            .filter((videoId): videoId is string => Boolean(videoId));
+
+        if (candidateIds.length === 0) {
+            return videos.slice(0, Math.max(1, limit));
+        }
+
+        const existingItems = await prisma.feedItem.findMany({
+            where: {
+                videoId: { in: candidateIds },
+                status: 'queued',
+            },
+            select: {
+                videoId: true,
+                publishedAt: true,
+            },
+        });
+
+        if (existingItems.length === 0) {
+            return videos.slice(0, Math.max(1, limit));
+        }
+
+        const queuedByVideoId = new Map(
+            existingItems.map((item) => [item.videoId, item])
+        );
+
+        const prioritized = [...entries].sort((left, right) => {
+            const leftQueued = left.videoId ? queuedByVideoId.get(left.videoId) : undefined;
+            const rightQueued = right.videoId ? queuedByVideoId.get(right.videoId) : undefined;
+
+            if (leftQueued && rightQueued) {
+                const publishedDiff = leftQueued.publishedAt.getTime() - rightQueued.publishedAt.getTime();
+                if (publishedDiff !== 0) {
+                    return publishedDiff;
+                }
+                return left.index - right.index;
+            }
+
+            if (leftQueued) {
+                return -1;
+            }
+
+            if (rightQueued) {
+                return 1;
+            }
+
+            return left.index - right.index;
+        });
+
+        return prioritized
+            .slice(0, Math.max(1, limit))
+            .map((entry) => entry.video);
+    }
+
+    private async suppressOlderUnseenCandidates(
+        videos: any[],
+        startIndex: number,
+        activeChannel: any
+    ): Promise<number> {
+        const olderCandidates = videos.slice(startIndex + 1);
+        if (olderCandidates.length === 0) {
+            return 0;
+        }
+
+        const pendingCandidates = olderCandidates
+            .map((video) => ({
+                video,
+                videoId: this.extractVideoId(video?.link || '', video?.id || ''),
+                title: video?.title || 'Untitled YouTube upload',
+                publishedAt: new Date(video?.pubDate || Date.now()),
+            }))
+            .filter((entry) => Boolean(entry.videoId));
+
+        if (pendingCandidates.length === 0) {
+            return 0;
+        }
+
+        const existingItems = await prisma.feedItem.findMany({
+            where: {
+                videoId: {
+                    in: pendingCandidates.map((entry) => entry.videoId),
+                },
+            },
+            select: { videoId: true },
+        });
+        const existingVideoIds = new Set(existingItems.map((item) => item.videoId));
+
+        let suppressedCount = 0;
+        for (const candidate of pendingCandidates) {
+            if (existingVideoIds.has(candidate.videoId)) {
+                continue;
+            }
+
+            await this.recordFeedItem(
+                candidate.videoId,
+                activeChannel.channelId,
+                candidate.title,
+                candidate.publishedAt,
+                'ignored',
+                {
+                    decisionLog: {
+                        suppressionReason: 'older_than_already_published_upload_in_same_poll',
+                    },
+                }
+            );
+            suppressedCount += 1;
+        }
+
+        return suppressedCount;
+    }
+
     private isExplicitShort(video: any, titleLower: string, descriptionLower: string): boolean {
         return (
             (typeof video.link === 'string' && video.link.includes('/shorts/')) ||
@@ -1499,6 +1637,34 @@ export class YouTubePollerService {
         ].some((fragment) => errorText.includes(fragment));
     }
 
+    private getYouTubeAccessIssueKind(error: unknown): YouTubeAccessIssueKind {
+        const errorText = this.getYouTubeErrorText(error);
+
+        if (this.isYouTubeBotChallengeError(error)) {
+            return 'bot_challenge';
+        }
+
+        if (
+            errorText.includes('video is not available')
+            || errorText.includes('this video is unavailable')
+            || errorText.includes('requested format is not available')
+            || errorText.includes('premieres in')
+        ) {
+            return 'unavailable';
+        }
+
+        if (
+            errorText.includes('playback on other websites has been disabled')
+            || errorText.includes('sign in to confirm your age')
+            || errorText.includes('private video')
+            || errorText.includes('members-only')
+        ) {
+            return 'restricted';
+        }
+
+        return 'other';
+    }
+
     private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
         if (downloadPath && fs.existsSync(downloadPath)) {
             fs.unlinkSync(downloadPath);
@@ -1547,8 +1713,12 @@ export class YouTubePollerService {
             supportsFeedItemStatus
             && existing?.status === 'failed'
         );
+        const canRetryQueuedVideo = Boolean(
+            supportsFeedItemStatus
+            && existing?.status === 'queued'
+        );
 
-        if (existing && !canRetryIgnoredVideo && !canRetryFailedVideo) {
+        if (existing && !canRetryIgnoredVideo && !canRetryFailedVideo && !canRetryQueuedVideo) {
             return {
                 kind: 'continue',
                 reason: `${videoTitle}: already processed`,
@@ -1831,25 +2001,29 @@ export class YouTubePollerService {
 
         const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
         if (recentPublishBlock) {
+            await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'queued', {
+                decisionPath: decisionResult.decisionPath,
+                promoFingerprint: dedupResult.dedupFingerprint,
+                decisionLog: {
+                    ...decisionResult.decisionLog,
+                    sourceAttribution,
+                    dedup: dedupResult,
+                    queueReason: 'post_interval_active',
+                    queueDelayMinutes: settings.postInterval,
+                    queueBlockedAt: new Date().toISOString(),
+                },
+            });
             return {
-                kind: 'return',
+                kind: 'continue',
+                reason: `${videoTitle}: queued until the ${settings.postInterval}-minute post interval clears`,
                 sawFreshVideo: true,
-                result: {
-                    channelId: activeChannel.channelId,
-                    channelName: activeChannel.name,
-                    checked: true,
-                    skipped: true,
-                    newVideoDetected: true,
-                    published: false,
-                    failed: false,
-                    message: `${recentPublishBlock}. ${videoTitle} will retry on the next polling cycle`
-                }
             };
         }
 
         console.log(`[YouTubePoller] Downloading ${videoId}...`);
         let downloadPath: string | null = null;
-        let downloadBlockedByYouTube = false;
+        let youtubeAccessIssueKind: YouTubeAccessIssueKind | null = null;
+        let youtubeAccessIssueMessage: string | null = null;
         let youtubeThumbnail: PlatformThumbnailAsset | null = null;
         let xThumbnail: PlatformThumbnailAsset | null = null;
         let socialPoster: PlatformThumbnailAsset | null = null;
@@ -1860,28 +2034,63 @@ export class YouTubePollerService {
                     ? await this.downloadVideoWithoutMetadata(videoId, videoUrl)
                     : await this.downloadVideoWithInfo(videoInfo);
             } catch (error) {
-                if (error instanceof YouTubeDownloadBlockedError || this.isYouTubeBotChallengeError(error)) {
-                    downloadBlockedByYouTube = true;
-                    console.error('[YouTubePoller] YouTube blocked automated trailer download:', error);
+                const accessIssueKind = error instanceof YouTubeDownloadBlockedError
+                    ? 'bot_challenge'
+                    : this.getYouTubeAccessIssueKind(error);
+                if (accessIssueKind !== 'other') {
+                    youtubeAccessIssueKind = accessIssueKind;
+                    youtubeAccessIssueMessage = error instanceof Error ? error.message : String(error);
+                    console.error('[YouTubePoller] YouTube prevented automated trailer download:', {
+                        videoId,
+                        videoTitle,
+                        accessIssueKind,
+                        error: youtubeAccessIssueMessage,
+                    });
                 } else {
                     throw error;
                 }
             }
 
             if (!downloadPath) {
-                const shouldPauseRetries = downloadBlockedByYouTube && !hasYtDlpAuthConfiguration();
+                const shouldPauseRetries = youtubeAccessIssueKind === 'bot_challenge' && !hasYtDlpAuthConfiguration();
+                const failedStatus: FeedItemStatus = shouldPauseRetries ? 'ignored' : 'failed';
                 await this.recordFeedItem(
                     videoId,
                     activeChannel.channelId,
                     videoTitle,
                     pubDate,
-                    shouldPauseRetries ? 'ignored' : 'failed'
+                    failedStatus,
+                    {
+                        decisionPath: decisionResult.decisionPath,
+                        promoFingerprint: dedupResult.dedupFingerprint,
+                        decisionLog: {
+                            ...decisionResult.decisionLog,
+                            sourceAttribution,
+                            dedup: dedupResult,
+                            downloadFailure: {
+                                kind: youtubeAccessIssueKind || 'other',
+                                message: youtubeAccessIssueMessage,
+                                shouldPauseRetries,
+                                authConfigured: hasYtDlpAuthConfiguration(),
+                            },
+                        },
+                    }
                 );
                 await notificationService.notifyUserOnceWithinWindow({
-                    title: downloadBlockedByYouTube ? 'YouTube Download Blocked' : 'Trailer Download Failed',
-                    message: downloadBlockedByYouTube
+                    title: youtubeAccessIssueKind === 'bot_challenge'
+                        ? 'YouTube Download Blocked'
+                        : youtubeAccessIssueKind === 'unavailable'
+                            ? 'YouTube Video Unavailable'
+                            : youtubeAccessIssueKind === 'restricted'
+                                ? 'YouTube Download Restricted'
+                                : 'Trailer Download Failed',
+                    message: youtubeAccessIssueKind === 'bot_challenge'
                         ? `${videoTitle} matched detection rules but YouTube blocked the production downloader. Configure authenticated yt-dlp access, then force a reprocess for this video.`
-                        : `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
+                        : youtubeAccessIssueKind === 'unavailable'
+                            ? `${videoTitle} matched detection rules but YouTube reported the video as unavailable to the production downloader. The item will stay retryable for future polls or a forced reprocess.`
+                            : youtubeAccessIssueKind === 'restricted'
+                                ? `${videoTitle} matched detection rules but YouTube restricted direct downloader access to the video. The item will remain retryable.`
+                                : `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
                     type: 'error',
                     source: 'youtube',
                     actionPage: '/channels'
@@ -1897,8 +2106,12 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: false,
                         failed: true,
-                        message: downloadBlockedByYouTube && shouldPauseRetries
+                        message: youtubeAccessIssueKind === 'bot_challenge' && shouldPauseRetries
                             ? `YouTube blocked automated download for ${videoTitle}; retries are paused until authenticated yt-dlp access is configured`
+                            : youtubeAccessIssueKind === 'unavailable'
+                                ? `YouTube reported ${videoTitle} as unavailable to the downloader; it will retry on the next polling cycle`
+                                : youtubeAccessIssueKind === 'restricted'
+                                    ? `YouTube restricted downloader access for ${videoTitle}; it will retry on the next polling cycle`
                             : `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
                     }
                 };

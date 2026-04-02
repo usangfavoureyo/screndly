@@ -42,6 +42,10 @@ export function Navigation({
   const handleNavClick = (page: string) => {
     onNavigate(page);
   };
+  const navigateToLandingPage = () => {
+    haptics.light();
+    window.location.href = '/';
+  };
 
   const armPointerActivation = (activationId: string, callback: () => void) => (event: React.PointerEvent<HTMLElement>) => {
     if (event.pointerType === 'touch' || event.button !== 0) {
@@ -78,18 +82,16 @@ export function Navigation({
                   return;
                 }
 
-                if (!isCollapsed || !isDesktop) {
-                  handleNavClick('dashboard');
-                }
+                navigateToLandingPage();
               }}
-              onPointerUp={!isCollapsed || !isDesktop ? armPointerActivation('brand-dashboard', () => handleNavClick('dashboard')) : undefined}
+              onPointerUp={!isCollapsed || !isDesktop ? armPointerActivation('brand-dashboard', navigateToLandingPage) : undefined}
               className={cn(
                 'relative z-10 flex cursor-pointer items-center touch-manipulation transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop
                   ? 'h-10 w-10 justify-center opacity-100 pointer-events-none group-hover/sidebar:opacity-0'
                   : 'gap-3',
               )}
-              aria-label="Go to dashboard"
+              aria-label="Go to landing page"
             >
               <img src={brandIcon} alt="Screndly" className="h-9 w-9 rounded-md object-contain transition-transform duration-300" />
             </button>
@@ -211,11 +213,10 @@ export function Navigation({
               <button
                 type="button"
                 onClick={() => {
-                  haptics.light();
-                  handleNavClick('dashboard');
+                  navigateToLandingPage();
                 }}
                 className="flex items-center justify-center transition-transform duration-200 hover:scale-[1.03] active:scale-95"
-                aria-label="Go to dashboard"
+                aria-label="Go to landing page"
               >
                 <img src={brandIcon} alt="Screndly" className="h-10 w-10 object-contain" />
               </button>

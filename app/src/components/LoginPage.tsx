@@ -22,6 +22,17 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  const navigateToLandingPage = () => {
+    haptics.light();
+
+    if (onNavigate) {
+      onNavigate('landing');
+      return;
+    }
+
+    window.location.href = '/';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -73,10 +84,15 @@ export function LoginPage({ onLogin, onNavigate }: LoginPageProps) {
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-8 w-full">
           {/* Logo Area */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center">
+            <button
+              type="button"
+              onClick={navigateToLandingPage}
+              className="inline-flex items-center justify-center rounded-xl transition-transform duration-200 hover:scale-[1.02] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40"
+              aria-label="Go to landing page"
+            >
               <img src={logoLoginLight} alt="Screndly Logo" className="h-24 w-auto dark:hidden mb-4 object-contain" />
               <img src={logoLoginDark} alt="Screndly Logo" className="h-24 w-auto hidden dark:block mb-4 object-contain" />
-            </div>
+            </button>
           </div>
 
           {/* Rate Limit Warning */}

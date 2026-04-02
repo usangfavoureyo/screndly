@@ -9,19 +9,34 @@ import { PinterestBoardSelect } from '../ui/pinterest-board-select';
 import { haptics } from '../../utils/haptics';
 import { toast } from "sonner";
 import { useSettings } from '../../contexts/SettingsContext';
+import { useRSSFeeds } from '../../contexts/RSSFeedsContext';
 import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } from '../../lib/ai/models';
 import { AnalyticsSelfOptimization } from './AnalyticsSelfOptimization';
 import { designStudioPromptDefaults } from '../../config/cultureCravePromptDefaults';
 import { BackIconButton } from '../BackIconButton';
+import { fetchDesignStudioState } from '../../lib/api/designStudio';
 
 interface DesignStudioSettingsProps {
-  onSave?: () => void;
+  onSavex: () => void;
   onBack: () => void;
 }
 
 const DESIGN_STUDIO_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_design_studio_prompts_v1';
 
-const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
+const DEFAULT_AUTO_TRIGGER_KEYWORDS = [
+  'renewed',
+  'renewal',
+  'canceled',
+  'cancelled',
+  'confirmed',
+  'release date',
+  'releasing',
+  'premiere',
+  'premieres',
+  'in development',
+];
+
+const DESIGN_STUDIO_SHARED_SETTING_KEYS = new Set([
   'captionPosterPrompt',
   'captionCarouselPrompt',
   'captionStoryPrompt',
@@ -30,6 +45,18 @@ const DESIGN_STUDIO_SHARED_PROMPT_KEYS = new Set([
   'designStudioPinterestTitlePrompt',
   'designStudioPinterestDescriptionPrompt',
   'designStudioPinterestBoardPrompt',
+  'designStudioAutoEnabled',
+  'designStudioAutoPost',
+  'designStudioDefaultAutoTemplateId',
+  'designStudioPostingInterval',
+  'designStudioTriggerKeywords',
+  'designStudioBannedKeywords',
+  'designStudioSelectedRssFeedIds',
+  'designStudioMaxEditorialsPerRun',
+  'designStudioCaptionLengthMode',
+  'designStudioMinimumScoreThreshold',
+  'designStudioTargetPlatforms',
+  'designStudioAutoUpdatedAt',
 ]);
 
 const DESIGN_STUDIO_CAPTION_PROMPTS = [
@@ -117,7 +144,7 @@ Guidelines:
 - Use line breaks for readability when necessary
 - Match the tone to the content type
 - Examples of style:
-  * "Swipe through for the full [TITLE] cast reveal. Thoughts?"
+  * "Swipe through for the full [TITLE] cast reveal. Thoughts|"
   * "The evolution of [CHARACTER] across all [NUMBER] films."
   * "Behind the scenes of [TITLE]. Slide to see the transformation."`,
 
@@ -281,19 +308,42 @@ Tone: Clear, category-focused, SEO-friendly`,
   renderQuality: 'high', // low, medium, high, maximum
   exportFormat: 'jpeg', // jpeg, png
   jpegQuality: 90,
+  designStudioAutoEnabled: false,
+  designStudioAutoPost: false,
+  designStudioDefaultAutoTemplateId: null,
+  designStudioPostingInterval: '5',
+  designStudioTriggerKeywords: [...DEFAULT_AUTO_TRIGGER_KEYWORDS],
+  designStudioBannedKeywords: [] as string[],
+  designStudioSelectedRssFeedIds: [] as string[],
+  designStudioMaxEditorialsPerRun: 5,
+  designStudioCaptionLengthMode: 'medium',
+  designStudioMinimumScoreThreshold: 55,
+  designStudioTargetPlatforms: ['x', 'threads'],
+  designStudioAutoUpdatedAt: new Date().toISOString(),
   ...designStudioPromptDefaults,
+};
+
+type DesignTemplateOption = {
+  id: string;
+  name: string;
+  layoutVariantx: string;
+  isValidatedx: boolean;
 };
 
 export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsProps) {
   const { settings: globalSettings, updateSetting: updateGlobalSetting } = useSettings();
+  const { feeds } = useRSSFeeds();
   const [settings, setSettings] = useState(defaultSettings);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [newTriggerKeyword, setNewTriggerKeyword] = useState('');
+  const [newBannedKeyword, setNewBannedKeyword] = useState('');
+  const [templateOptions, setTemplateOptions] = useState<DesignTemplateOption[]>([]);
   const initialSharedSettingsRef = useRef<Record<string, any> | null>(null);
 
   if (initialSharedSettingsRef.current === null) {
     initialSharedSettingsRef.current = Object.fromEntries(
       Object.entries(globalSettings as Record<string, any>).filter(([key]) =>
-        DESIGN_STUDIO_SHARED_PROMPT_KEYS.has(key)
+        DESIGN_STUDIO_SHARED_SETTING_KEYS.has(key)
       )
     );
   }
@@ -328,6 +378,40 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     }
   }, [settings, isLoaded]);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTemplates = async () => {
+      try {
+        const state = await fetchDesignStudioState();
+        if (!isMounted) {
+          return;
+        }
+
+        const nextTemplates = (state.templates || [])
+          .filter((template) => template.isValidated !== false)
+          .map((template) => ({
+            id: template.id,
+            name: template.name,
+            layoutVariant: template.layoutVariant,
+            isValidated: template.isValidated !== false,
+          }));
+        setTemplateOptions(nextTemplates);
+      } catch (error) {
+        console.error('Failed to load Design Studio templates for settings:', error);
+        if (isMounted) {
+          setTemplateOptions([]);
+        }
+      }
+    };
+
+    void loadTemplates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const updateSetting = (key: string, value: any) => {
     setSettings(prev => {
       const next = normalizeDesignStudioSettings({ ...prev, [key]: value });
@@ -335,7 +419,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
       return next;
     });
 
-    if (DESIGN_STUDIO_SHARED_PROMPT_KEYS.has(key)) {
+    if (DESIGN_STUDIO_SHARED_SETTING_KEYS.has(key)) {
       updateGlobalSetting(key, value);
     }
 
@@ -369,6 +453,97 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     }
   };
 
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    const existingIds = new Set(feeds.map((feed) => feed.id));
+    const selectedIds = Array.isArray(settings.designStudioSelectedRssFeedIds)
+      | settings.designStudioSelectedRssFeedIds
+      : [];
+    const prunedIds = selectedIds.filter((id) => existingIds.has(id));
+
+    if (selectedIds.length !== prunedIds.length) {
+      updateSetting('designStudioSelectedRssFeedIds', prunedIds);
+    }
+  }, [feeds, isLoaded, settings.designStudioSelectedRssFeedIds]);
+
+  const toggleRssFeedSelection = (feedId: string) => {
+    const selectedIds = Array.isArray(settings.designStudioSelectedRssFeedIds)
+      | settings.designStudioSelectedRssFeedIds
+      : [];
+    const nextSelectedIds = selectedIds.includes(feedId)
+      | selectedIds.filter((id) => id !== feedId)
+      : [...selectedIds, feedId];
+    updateSetting('designStudioSelectedRssFeedIds', nextSelectedIds);
+    updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+  };
+
+  const addTriggerKeyword = () => {
+    const trimmed = newTriggerKeyword.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const currentKeywords = Array.isArray(settings.designStudioTriggerKeywords)
+      | settings.designStudioTriggerKeywords
+      : [];
+    const exists = currentKeywords.some((keyword) => keyword.toLowerCase() === trimmed.toLowerCase());
+
+    if (exists) {
+      toast.info('Keyword already added');
+      return;
+    }
+
+    updateSetting('designStudioTriggerKeywords', [...currentKeywords, trimmed]);
+    updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+    setNewTriggerKeyword('');
+  };
+
+  const removeTriggerKeyword = (keywordToRemove: string) => {
+    const currentKeywords = Array.isArray(settings.designStudioTriggerKeywords)
+      | settings.designStudioTriggerKeywords
+      : [];
+    updateSetting(
+      'designStudioTriggerKeywords',
+      currentKeywords.filter((keyword) => keyword !== keywordToRemove),
+    );
+    updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+  };
+
+  const addBannedKeyword = () => {
+    const trimmed = newBannedKeyword.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    const currentKeywords = Array.isArray(settings.designStudioBannedKeywords)
+      | settings.designStudioBannedKeywords
+      : [];
+    const exists = currentKeywords.some((keyword) => keyword.toLowerCase() === trimmed.toLowerCase());
+
+    if (exists) {
+      toast.info('Banned keyword already added');
+      return;
+    }
+
+    updateSetting('designStudioBannedKeywords', [...currentKeywords, trimmed]);
+    updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+    setNewBannedKeyword('');
+  };
+
+  const removeBannedKeyword = (keywordToRemove: string) => {
+    const currentKeywords = Array.isArray(settings.designStudioBannedKeywords)
+      | settings.designStudioBannedKeywords
+      : [];
+    updateSetting(
+      'designStudioBannedKeywords',
+      currentKeywords.filter((keyword) => keyword !== keywordToRemove),
+    );
+    updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+  };
+
   const resetToDefaults = () => {
     setSettings(normalizeDesignStudioSettings(defaultSettings));
     toast.success('Reset to recommended settings');
@@ -392,6 +567,37 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
           storageKey="design_studio_settings"
           description="Enable AI-powered optimization to automatically improve captions and model selection for design content based on performance analytics."
         />
+
+        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+        {/* General Settings */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-gray-900 dark:text-white">General</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+              Configure output defaults, rendering quality, and storage-friendly export behavior.
+            </p>
+          </div>
+        </div>
+
+        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+        {/* Manual Settings */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-gray-900 dark:text-white">Manual</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+              Configure PSD-driven manual template handling, prompt behavior, and reusable design workflows.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4">
+            <p className="text-sm text-gray-900 dark:text-white">Template Source Behavior</p>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Manual mode keeps using PSD templates from device uploads and Backblaze imports. Validated templates can also be reused by Auto mode.
+            </p>
+          </div>
+        </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
 
@@ -442,7 +648,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
               />
               <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap min-w-[100px]">
-                {settings.captionTemperature < 0.5 ? 'Focused' : settings.captionTemperature < 1 ? 'Balanced' : 'Creative'}
+                {settings.captionTemperature < 0.5 | 'Focused' : settings.captionTemperature < 1 | 'Balanced' : 'Creative'}
               </span>
             </div>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
@@ -572,6 +778,366 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               </p>
             </div>
           ))}
+        </div>
+
+        <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
+
+        {/* Auto Settings */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-gray-900 dark:text-white">Auto</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+              Generate selective editorial cards automatically from chosen RSS feed sources and trigger keywords.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4">
+            <div>
+              <Label htmlFor="design-studio-auto-enabled" className="text-[#9CA3AF]">Enable Auto Editorials</Label>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Turn on selective editorial generation for matching entertainment-news updates.
+              </p>
+            </div>
+            <Switch
+              id="design-studio-auto-enabled"
+              checked={settings.designStudioAutoEnabled}
+              onCheckedChange={(checked) => {
+                haptics.light();
+                updateSetting('designStudioAutoEnabled', checked);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm text-gray-900 dark:text-white">RSS Feed Sources</h4>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                  Choose which RSS feeds can generate auto editorials
+                </p>
+              </div>
+              {feeds.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateSetting('designStudioSelectedRssFeedIds', feeds.map((feed) => feed.id));
+                      updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                    }}
+                    className="rounded-full border border-gray-200 dark:border-[#333333] px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateSetting('designStudioSelectedRssFeedIds', []);
+                      updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                    }}
+                    className="rounded-full border border-gray-200 dark:border-[#333333] px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {feeds.length === 0 | (
+              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 text-center">
+                <p className="text-sm text-gray-900 dark:text-white">No RSS feeds available</p>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                  Add RSS feeds in the Feeds page to use them for Auto editorials
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {feeds.map((feed) => {
+                  const selected = (settings.designStudioSelectedRssFeedIds || []).includes(feed.id);
+                  return (
+                    <button
+                      key={feed.id}
+                      type="button"
+                      onClick={() => toggleRssFeedSelection(feed.id)}
+                      className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 text-left"
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-gray-900 dark:text-white">{feed.name}</p>
+                          <p className="truncate text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">{feed.url}</p>
+                        </div>
+                        <Switch
+                          checked={selected}
+                          onCheckedChange={() => toggleRssFeedSelection(feed.id)}
+                        />
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm text-gray-900 dark:text-white">Editorial Trigger Keywords</h4>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Titles from selected feeds must match one of these keywords or phrases before an editorial is generated.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={newTriggerKeyword}
+                onFocus={() => haptics.light()}
+                onChange={(e) => setNewTriggerKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addTriggerKeyword();
+                  }
+                }}
+                placeholder="Add keyword or phrase"
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+              />
+              <button
+                type="button"
+                onClick={addTriggerKeyword}
+                className="rounded-xl bg-[#ec1e24] px-4 py-2 text-sm text-white hover:bg-[#d01a20]"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {(settings.designStudioTriggerKeywords || []).map((keyword) => (
+                <button
+                  key={keyword}
+                  type="button"
+                  onClick={() => removeTriggerKeyword(keyword)}
+                  className="rounded-full border border-gray-200 dark:border-[#333333] px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                >
+                  {keyword} ×
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                updateSetting('designStudioTriggerKeywords', [...DEFAULT_AUTO_TRIGGER_KEYWORDS]);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+              className="rounded-full border border-gray-200 dark:border-[#333333] px-4 py-2 text-sm text-gray-900 dark:text-white"
+            >
+              Reset to Defaults
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <h4 className="text-sm text-gray-900 dark:text-white">Banned Keywords</h4>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Titles from selected feeds will be skipped if they contain any banned keyword or phrase.
+              </p>
+            </div>
+
+            <div className="flex gap-2">
+              <Input
+                value={newBannedKeyword}
+                onFocus={() => haptics.light()}
+                onChange={(e) => setNewBannedKeyword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addBannedKeyword();
+                  }
+                }}
+                placeholder="Add banned keyword or phrase"
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
+              />
+              <button
+                type="button"
+                onClick={addBannedKeyword}
+                className="rounded-xl bg-[#ec1e24] px-4 py-2 text-sm text-white hover:bg-[#d01a20]"
+              >
+                Add
+              </button>
+            </div>
+
+            {(settings.designStudioBannedKeywords || []).length > 0 | (
+              <div className="flex flex-wrap gap-2">
+                {(settings.designStudioBannedKeywords || []).map((keyword) => (
+                  <button
+                    key={keyword}
+                    type="button"
+                    onClick={() => removeBannedKeyword(keyword)}
+                    className="rounded-full border border-gray-200 dark:border-[#333333] px-3 py-1.5 text-xs text-gray-900 dark:text-white"
+                  >
+                    {keyword} x
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                No banned keywords added yet.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="design-studio-default-auto-template" className="text-[#9CA3AF]">Default Auto Template</Label>
+            <Select
+              value={settings.designStudioDefaultAutoTemplateId || 'none'}
+              onValueChange={(value) => {
+                updateSetting('designStudioDefaultAutoTemplateId', value === 'none' | null : value);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+            >
+              <SelectTrigger id="design-studio-default-auto-template" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No default template</SelectItem>
+                {templateOptions.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name}{template.layoutVariant | ` • ${template.layoutVariant}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Only validated templates appear here for Auto editorial generation.
+            </p>
+          </div>
+
+          <div>
+            <Label className="text-[#9CA3AF]">Posting Platforms</Label>
+            <div className="mt-2 grid grid-cols-2 gap-3">
+              {[
+                { id: 'x', label: 'X' },
+                { id: 'threads', label: 'Threads' },
+                { id: 'facebook', label: 'Facebook' },
+                { id: 'pinterest', label: 'Pinterest' },
+              ].map((platform) => {
+                const activePlatforms = settings.designStudioTargetPlatforms || [];
+                const checked = activePlatforms.includes(platform.id);
+                return (
+                  <button
+                    key={platform.id}
+                    type="button"
+                    onClick={() => {
+                      const nextPlatforms = checked
+                        | activePlatforms.filter((entry) => entry !== platform.id)
+                        : [...activePlatforms, platform.id];
+                      updateSetting('designStudioTargetPlatforms', nextPlatforms);
+                      updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                    }}
+                    className={`rounded-2xl border px-4 py-3 text-sm ${
+                      checked
+                        | 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                        : 'border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white'
+                    }`}
+                  >
+                    {platform.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="design-studio-posting-interval" className="text-[#9CA3AF]">Posting Interval</Label>
+              <Select
+                value={settings.designStudioPostingInterval || '5'}
+                onValueChange={(value) => {
+                  updateSetting('designStudioPostingInterval', value);
+                  updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                }}
+              >
+                <SelectTrigger id="design-studio-posting-interval" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {['1', '2', '3', '4', '5', '10', '15', '20'].map((value) => (
+                    <SelectItem key={value} value={value}>{value} min</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="design-studio-caption-length" className="text-[#9CA3AF]">Caption Length</Label>
+              <Select
+                value={settings.designStudioCaptionLengthMode || 'medium'}
+                onValueChange={(value) => {
+                  updateSetting('designStudioCaptionLengthMode', value);
+                  updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                }}
+              >
+                <SelectTrigger id="design-studio-caption-length" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="short">Short</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="design-studio-max-editorials" className="text-[#9CA3AF]">Max Editorials Per Run</Label>
+              <Input
+                id="design-studio-max-editorials"
+                type="number"
+                min="1"
+                max="20"
+                value={settings.designStudioMaxEditorialsPerRun || 5}
+                onFocus={() => haptics.light()}
+                onChange={(e) => {
+                  updateSetting('designStudioMaxEditorialsPerRun', Math.min(20, Math.max(1, Number.parseInt(e.target.value || '5', 10) || 5)));
+                  updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                }}
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="design-studio-score-threshold" className="text-[#9CA3AF]">Minimum Score Threshold</Label>
+              <Input
+                id="design-studio-score-threshold"
+                type="number"
+                min="0"
+                max="100"
+                value={settings.designStudioMinimumScoreThreshold || 55}
+                onFocus={() => haptics.light()}
+                onChange={(e) => {
+                  updateSetting('designStudioMinimumScoreThreshold', Math.min(100, Math.max(0, Number.parseInt(e.target.value || '55', 10) || 55)));
+                  updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                }}
+                className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4">
+            <div>
+              <Label htmlFor="design-studio-auto-post" className="text-[#9CA3AF]">Auto Post</Label>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Automatically publish scheduled editorials to the selected platforms.
+              </p>
+            </div>
+            <Switch
+              id="design-studio-auto-post"
+              checked={settings.designStudioAutoPost}
+              onCheckedChange={(checked) => {
+                haptics.light();
+                updateSetting('designStudioAutoPost', checked);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+            />
+          </div>
         </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
@@ -805,7 +1371,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
               />
               <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap min-w-[100px]">
-                {settings.jpegQuality >= 90 ? 'Excellent' : settings.jpegQuality >= 75 ? 'Good' : 'Compressed'}
+                {settings.jpegQuality >= 90 | 'Excellent' : settings.jpegQuality >= 75 | 'Good' : 'Compressed'}
               </span>
             </div>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">

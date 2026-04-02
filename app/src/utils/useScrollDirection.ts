@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 const TOP_REVEAL_OFFSET = 24;
 const HIDE_START_OFFSET = 80;
 const DIRECTION_THRESHOLD = 12;
-const IDLE_REVEAL_DELAY_MS = 180;
 
 export function useScrollDirection() {
   const [scrollDirection, setScrollDirection] = useState<'up' | 'down'>('up');
@@ -11,7 +10,6 @@ export function useScrollDirection() {
   const lastScrollYRef = useRef(0);
   const accumulatedDeltaRef = useRef(0);
   const tickingRef = useRef(false);
-  const idleRevealTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     lastScrollYRef.current = window.scrollY;
@@ -60,17 +58,6 @@ export function useScrollDirection() {
     };
 
     const onScroll = () => {
-      if (idleRevealTimerRef.current !== null) {
-        window.clearTimeout(idleRevealTimerRef.current);
-      }
-
-      idleRevealTimerRef.current = window.setTimeout(() => {
-        if (window.scrollY > TOP_REVEAL_OFFSET) {
-          accumulatedDeltaRef.current = 0;
-          setScrollDirection('up');
-        }
-      }, IDLE_REVEAL_DELAY_MS);
-
       if (tickingRef.current) {
         return;
       }
@@ -82,10 +69,6 @@ export function useScrollDirection() {
     window.addEventListener('scroll', onScroll, { passive: true });
 
     return () => {
-      if (idleRevealTimerRef.current !== null) {
-        window.clearTimeout(idleRevealTimerRef.current);
-      }
-
       window.removeEventListener('scroll', onScroll);
     };
   }, []);

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { Calendar, Image, Send } from 'lucide-react';
+import { AlertCircle, Calendar, Clock3, Image, Send } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
@@ -10,16 +10,21 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { BackIconButton } from './BackIconButton';
+import { SegmentedTabSwitcher } from './SegmentedTabSwitcher';
 
 interface DesignStudioActivityRecord {
   id: string;
   type: string;
   details: {
     templateName?: string;
+    sourceTitle?: string;
     designId?: string;
     platforms?: string;
     source?: string;
     count?: number;
+    matchedKeyword?: string;
+    status?: string;
+    field?: string;
   };
   createdAt: string;
 }
@@ -28,6 +33,24 @@ interface DesignStudioActivityPageProps {
   onNavigate: (page: string) => void;
   previousPage?: string | null;
 }
+
+type DesignStudioActivityTab = 'manual' | 'auto';
+
+const MANUAL_ACTIVITY_TYPES = new Set([
+  'template_uploaded',
+  'templates_loaded',
+  'design_rendered',
+  'design_published',
+  'template_deleted',
+]);
+
+const AUTO_ACTIVITY_TYPES = new Set([
+  'auto_editorial_generated',
+  'auto_editorial_updated',
+  'auto_editorial_posted',
+  'auto_editorial_failed',
+  'auto_editorial_deleted',
+]);
 
 function formatTime(value: string): string {
   const date = new Date(value);
@@ -47,6 +70,16 @@ function activityTitle(type: string): string {
       return 'Design Published';
     case 'template_deleted':
       return 'Template Deleted';
+    case 'auto_editorial_generated':
+      return 'Auto Editorial Generated';
+    case 'auto_editorial_updated':
+      return 'Auto Editorial Updated';
+    case 'auto_editorial_posted':
+      return 'Auto Editorial Posted';
+    case 'auto_editorial_failed':
+      return 'Auto Editorial Failed';
+    case 'auto_editorial_deleted':
+      return 'Auto Editorial Deleted';
     default:
       return 'Design Activity';
   }
@@ -54,6 +87,7 @@ function activityTitle(type: string): string {
 
 function activityDescription(activity: DesignStudioActivityRecord): string {
   const templateName = activity.details?.templateName || 'Untitled design';
+  const sourceTitle = activity.details?.sourceTitle || 'Editorial item';
 
   switch (activity.type) {
     case 'templates_loaded': {
@@ -62,6 +96,16 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
     }
     case 'design_published':
       return `${templateName}${activity.details?.platforms ? ` -> ${activity.details.platforms}` : ''}`;
+    case 'auto_editorial_generated':
+      return `${sourceTitle}${activity.details?.matchedKeyword ? ` | ${activity.details.matchedKeyword}` : ''}`;
+    case 'auto_editorial_updated':
+      return `${sourceTitle}${activity.details?.field ? ` | ${activity.details.field}` : ''}`;
+    case 'auto_editorial_posted':
+      return `${sourceTitle}${activity.details?.platforms ? ` -> ${activity.details.platforms}` : ''}`;
+    case 'auto_editorial_failed':
+      return sourceTitle;
+    case 'auto_editorial_deleted':
+      return sourceTitle;
     default:
       return templateName;
   }
@@ -70,6 +114,11 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
   const { settings } = useSettings();
   const { showUndo } = useUndo();
+  const [activeTab, setActiveTab] = useState<DesignStudioActivityTab>(() => {
+    if (typeof window === 'undefined') return 'manual';
+    const savedTab = localStorage.getItem('designStudioActivityTab');
+    return savedTab === 'auto' ? 'auto' : 'manual';
+  });
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
@@ -98,6 +147,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     loadActivities();
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem('designStudioActivityTab', activeTab);
+  }, [activeTab]);
+
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
 
@@ -110,16 +163,25 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         if (logLevel === 'minimal') return activity.type === 'design_published';
         if (logLevel === 'standard') return activity.type === 'design_rendered' || activity.type === 'design_published';
         return true;
-      });
-  }, [activities, logLevel, retentionMs]);
+      })
+      .filter((activity) => (
+        activeTab === 'manual'
+          ? MANUAL_ACTIVITY_TYPES.has(activity.type)
+          : AUTO_ACTIVITY_TYPES.has(activity.type)
+      ));
+  }, [activeTab, activities, logLevel, retentionMs]);
 
   const selection = useBulkSelection(visibleActivities.map((activity) => activity.id));
 
   const summary = useMemo(() => ({
     total: visibleActivities.length,
-    rendered: visibleActivities.filter((activity) => activity.type === 'design_rendered').length,
-    published: visibleActivities.filter((activity) => activity.type === 'design_published').length,
-  }), [visibleActivities]);
+    primary: activeTab === 'manual'
+      ? visibleActivities.filter((activity) => activity.type === 'design_rendered').length
+      : visibleActivities.filter((activity) => activity.type === 'auto_editorial_generated').length,
+    secondary: activeTab === 'manual'
+      ? visibleActivities.filter((activity) => activity.type === 'design_published').length
+      : visibleActivities.filter((activity) => activity.type === 'auto_editorial_posted').length,
+  }), [activeTab, visibleActivities]);
 
   const handleDelete = async (id: string) => {
     haptics.medium();
@@ -202,6 +264,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       case 'templates_loaded':
       case 'template_deleted':
         return <Image className="w-5 h-5 text-[#ec1e24]" />;
+      case 'auto_editorial_generated':
+      case 'auto_editorial_updated':
+        return <Image className="w-5 h-5 text-[#ec1e24]" />;
+      case 'auto_editorial_posted':
+        return <Send className="w-5 h-5 text-[#ec1e24]" />;
+      case 'auto_editorial_failed':
+        return <AlertCircle className="w-5 h-5 text-[#ec1e24]" />;
+      case 'auto_editorial_deleted':
+        return <Clock3 className="w-5 h-5 text-[#ec1e24]" />;
       default:
         return <Calendar className="w-5 h-5 text-[#ec1e24]" />;
     }
@@ -216,14 +287,38 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         />
         <div>
           <h1 className="text-gray-900 dark:text-white mb-2">Design Studio Activity</h1>
-          <p className="text-[#6B7280] dark:text-[#9CA3AF]">Track rendered, uploaded, and published design activity.</p>
+          <p className="text-[#6B7280] dark:text-[#9CA3AF]">
+            {activeTab === 'manual'
+              ? 'Track rendered, uploaded, and published manual design activity.'
+              : 'Track generated, scheduled, posted, and failed auto editorial activity.'}
+          </p>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SegmentedTabSwitcher
+          tabs={[
+            { id: 'manual', label: 'Manual' },
+            { id: 'auto', label: 'Auto' },
+          ]}
+          activeTab={activeTab}
+          onChange={(tab) => {
+            haptics.light();
+            setActiveTab(tab);
+          }}
+        />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
         <SummaryCard label="Total Activity" value={summary.total} />
-        <SummaryCard label="Designs Rendered" value={summary.rendered} />
-        <SummaryCard label="Designs Published" value={summary.published} />
+        <SummaryCard
+          label={activeTab === 'manual' ? 'Designs Rendered' : 'Auto Generated'}
+          value={summary.primary}
+        />
+        <SummaryCard
+          label={activeTab === 'manual' ? 'Designs Published' : 'Auto Posted'}
+          value={summary.secondary}
+        />
       </div>
 
       <div className="space-y-4 mt-6">
@@ -233,8 +328,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           ))
         ) : visibleActivities.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
-            <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No design activity yet</p>
-            <p className="text-sm text-gray-500 dark:text-[#6B7280]">Rendered and published design events will appear here.</p>
+            <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">
+              {activeTab === 'manual' ? 'No manual design activity yet' : 'No auto editorial activity yet'}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-[#6B7280]">
+              {activeTab === 'manual'
+                ? 'Rendered and published manual design events will appear here.'
+                : 'Generated, queued, scheduled, posted, and failed auto editorials will appear here.'}
+            </p>
           </div>
         ) : (
           <>
