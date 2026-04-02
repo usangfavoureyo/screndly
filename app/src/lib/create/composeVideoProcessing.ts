@@ -5,7 +5,6 @@ import type {
   ComposeProcessedVideoAsset,
 } from '../../types/compose';
 import { cropVideoToAspectRatio } from '../../utils/ffmpeg';
-import { uploadComposeAsset } from './composeStorage';
 
 const THREADS_X_PLATFORMS: ComposePlatformKey[] = ['threads', 'x'];
 const NINE_BY_SIXTEEN_RATIO = 9 / 16;
@@ -108,11 +107,11 @@ export function getThreadsXCropSourceUrl(asset: ComposeMediaAsset): string | und
   return asset.previewUrl || asset.storageUrl;
 }
 
-export async function generateThreadsXCropVariant(
+export async function buildThreadsXCropVariant(
   asset: ComposeMediaAsset,
   focusYPercent: number,
   onProgress?: (progress: number, message: string) => void,
-): Promise<ComposeProcessedVideoAsset> {
+): Promise<{ file: File; variant: ComposeProcessedVideoAsset }> {
   const source = getThreadsXCropSourceUrl(asset);
   if (!source) {
     throw new Error('Upload the source video before generating a 3:4 crop.');
@@ -135,19 +134,19 @@ export async function generateThreadsXCropVariant(
     asset.fileName.replace(/\.[^.]+$/, '') + '-threads-x-3x4.mp4',
     { type: 'video/mp4', lastModified: Date.now() },
   );
-  const uploaded = await uploadComposeAsset(outputFile);
 
   return {
-    fileName: outputFile.name,
-    mimeType: outputFile.type,
-    size: outputFile.size,
-    previewUrl: uploaded.previewUrl || result.outputUrl,
-    storageUrl: uploaded.url,
-    storageFileId: uploaded.fileId,
-    uploadStatus: 'uploaded',
-    sourceAssetId: asset.id,
-    sourceSignature: buildComposeAssetSignature(asset),
-    focusYPercent,
-    aspectRatioLabel: '3:4',
+    file: outputFile,
+    variant: {
+      fileName: outputFile.name,
+      mimeType: outputFile.type,
+      size: outputFile.size,
+      previewUrl: result.outputUrl,
+      uploadStatus: 'uploading',
+      sourceAssetId: asset.id,
+      sourceSignature: buildComposeAssetSignature(asset),
+      focusYPercent,
+      aspectRatioLabel: '3:4',
+    },
   };
 }

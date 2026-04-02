@@ -37,7 +37,7 @@ import {
 } from '../../lib/create/composeMedia';
 import {
   buildComposeAssetSignature,
-  generateThreadsXCropVariant,
+  buildThreadsXCropVariant,
   shouldOfferThreadsXCrop,
 } from '../../lib/create/composeVideoProcessing';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
@@ -325,13 +325,16 @@ export function ComposeEditorPage({
   const primaryVideoAsset = isSingleVideo ? formState.mediaAssets[0] : undefined;
   const canOfferThreadsXCrop = shouldOfferThreadsXCrop(primaryVideoAsset, formState.platforms);
   const isThreadsXCropEnabled = canOfferThreadsXCrop && formState.videoCropMode === 'threads_x_3_4';
-  const isThreadsXCropReady =
+  const hasThreadsXCropPreviewReady =
     isThreadsXCropEnabled &&
-    Boolean(formState.threadsXCropVideo) &&
+    Boolean(formState.threadsXCropVideo?.previewUrl) &&
     formState.threadsXCropVideo?.sourceAssetId === primaryVideoAsset?.id &&
     formState.threadsXCropVideo?.sourceSignature === (primaryVideoAsset ? buildComposeAssetSignature(primaryVideoAsset) : '') &&
-    formState.threadsXCropVideo?.focusYPercent === formState.videoCropFocusYPercent &&
+    formState.threadsXCropVideo?.focusYPercent === formState.videoCropFocusYPercent;
+  const isThreadsXCropReady =
+    hasThreadsXCropPreviewReady &&
     formState.threadsXCropVideo?.uploadStatus === 'uploaded';
+  const isThreadsXCropBlockingActions = isThreadsXCropEnabled && isGeneratingThreadsXCrop;
   const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
   const hasGeneratingThumbnails = Object.values(thumbnailGenerationState).some(Boolean);
@@ -508,7 +511,7 @@ export function ComposeEditorPage({
       threadsXAutoGenerateTimeoutRef.current = null;
     }
 
-    if (!isThreadsXCropEnabled || !primaryVideoAsset || isThreadsXCropReady || isGeneratingThreadsXCrop) {
+    if (!isThreadsXCropEnabled || !primaryVideoAsset || hasThreadsXCropPreviewReady || isGeneratingThreadsXCrop) {
       return;
     }
 
@@ -539,7 +542,7 @@ export function ComposeEditorPage({
     formState.videoCropMode,
     isGeneratingThreadsXCrop,
     isThreadsXCropEnabled,
-    isThreadsXCropReady,
+    hasThreadsXCropPreviewReady,
     primaryVideoAsset,
   ]);
 
@@ -818,7 +821,7 @@ export function ComposeEditorPage({
     }));
 
     try {
-      const variant = await generateThreadsXCropVariant(asset, focusYPercent, (_, message) => {
+      const { file, variant } = await buildThreadsXCropVariant(asset, focusYPercent, (_, message) => {
         if (message && !options?.silent) {
           toast.dismiss('threads-x-crop-progress');
           toast.loading(message, { id: 'threads-x-crop-progress' });
@@ -832,7 +835,36 @@ export function ComposeEditorPage({
       }));
 
       if (!options?.silent) {
-        toast.success('3:4 video prepared for Threads and X.');
+        toast.success('3:4 crop preview is ready. Uploading for Threads and X...');
+      }
+
+      const uploaded = await uploadComposeAsset(file);
+      setFormState((current) => {
+        const currentVariant = current.threadsXCropVideo;
+        if (
+          !currentVariant
+          || currentVariant.sourceAssetId !== variant.sourceAssetId
+          || currentVariant.sourceSignature !== variant.sourceSignature
+          || currentVariant.focusYPercent !== variant.focusYPercent
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          threadsXCropVideo: {
+            ...currentVariant,
+            previewUrl: currentVariant.previewUrl || uploaded.previewUrl,
+            storageUrl: uploaded.url,
+            storageFileId: uploaded.fileId,
+            uploadStatus: 'uploaded',
+            uploadError: undefined,
+          },
+        };
+      });
+
+      if (!options?.silent) {
+        toast.success('3:4 crop uploaded for Threads and X.');
       }
     } catch (error) {
       toast.dismiss('threads-x-crop-progress');
@@ -1725,14 +1757,18 @@ export function ComposeEditorPage({
                             ? 'Generating the 3:4 crop for Threads and X...'
                             : isThreadsXCropReady
                               ? '3:4 crop is ready for Threads and X.'
-                              : 'The 3:4 crop generates automatically when you enable it or change the framing.'}
+                              : hasThreadsXCropPreviewReady
+                                ? '3:4 crop preview is ready. Uploading for Threads and X...'
+                                : 'The 3:4 crop generates automatically when you enable it or change the framing.'}
                         </p>
                         <p className="mt-1 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                           {formState.threadsXCropVideo?.uploadError
                             ? formState.threadsXCropVideo.uploadError
                             : isThreadsXCropReady
                               ? `Prepared as ${formState.threadsXCropVideo?.fileName}`
-                              : 'Wait for the auto-generated variant before scheduling or publishing with this crop enabled.'}
+                              : hasThreadsXCropPreviewReady
+                                ? 'Preview is available now. Keep this sheet open while the cropped file uploads for publishing.'
+                                : 'Wait for the auto-generated variant before scheduling or publishing with this crop enabled.'}
                         </p>
                       </div>
 
@@ -1741,7 +1777,7 @@ export function ComposeEditorPage({
                         onClick={() => void handleGenerateThreadsXCrop()}
                         disabled={isGeneratingThreadsXCrop || !primaryVideoAsset}
                       >
-                        {isGeneratingThreadsXCrop ? 'Generating 3:4 Video...' : isThreadsXCropReady ? 'Regenerate 3:4 Video' : 'Generate Again'}
+                        {isGeneratingThreadsXCrop ? 'Generating 3:4 Video...' : (isThreadsXCropReady || hasThreadsXCropPreviewReady) ? 'Regenerate 3:4 Video' : 'Generate Again'}
                       </Button>
                     </div>
                   </div>
@@ -2129,8 +2165,8 @@ export function ComposeEditorPage({
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <h3 className="mb-4 text-gray-900 dark:text-white">Save State</h3>
             <div className="space-y-3">
-              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>Save</Button>
-              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata || isPublishing}>
+              <Button className="w-full" onClick={handleSaveDraft} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isThreadsXCropBlockingActions || isGeneratingMetadata}>Save</Button>
+              <Button className="w-full" onClick={handlePublish} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isThreadsXCropBlockingActions || isGeneratingMetadata || isPublishing}>
                 {isPublishing ? (
                   <>
                     <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
@@ -2138,7 +2174,7 @@ export function ComposeEditorPage({
                   </>
                 ) : 'Publish'}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isGeneratingThreadsXCrop || isGeneratingMetadata}>
+              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isThreadsXCropBlockingActions || isGeneratingMetadata}>
                 {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
               </Button>
             </div>
