@@ -326,8 +326,8 @@ Tone: Clear, category-focused, SEO-friendly`,
 type DesignTemplateOption = {
   id: string;
   name: string;
-  layoutVariantx: string;
-  isValidatedx: boolean;
+  layoutVariant?: string;
+  isValidated?: boolean;
 };
 
 export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsProps) {
@@ -460,7 +460,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
     const existingIds = new Set(feeds.map((feed) => feed.id));
     const selectedIds = Array.isArray(settings.designStudioSelectedRssFeedIds)
-      | settings.designStudioSelectedRssFeedIds
+      ? settings.designStudioSelectedRssFeedIds
       : [];
     const prunedIds = selectedIds.filter((id) => existingIds.has(id));
 
@@ -471,10 +471,10 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
   const toggleRssFeedSelection = (feedId: string) => {
     const selectedIds = Array.isArray(settings.designStudioSelectedRssFeedIds)
-      | settings.designStudioSelectedRssFeedIds
+      ? settings.designStudioSelectedRssFeedIds
       : [];
     const nextSelectedIds = selectedIds.includes(feedId)
-      | selectedIds.filter((id) => id !== feedId)
+      ? selectedIds.filter((id) => id !== feedId)
       : [...selectedIds, feedId];
     updateSetting('designStudioSelectedRssFeedIds', nextSelectedIds);
     updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
@@ -487,7 +487,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     }
 
     const currentKeywords = Array.isArray(settings.designStudioTriggerKeywords)
-      | settings.designStudioTriggerKeywords
+      ? settings.designStudioTriggerKeywords
       : [];
     const exists = currentKeywords.some((keyword) => keyword.toLowerCase() === trimmed.toLowerCase());
 
@@ -503,7 +503,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
   const removeTriggerKeyword = (keywordToRemove: string) => {
     const currentKeywords = Array.isArray(settings.designStudioTriggerKeywords)
-      | settings.designStudioTriggerKeywords
+      ? settings.designStudioTriggerKeywords
       : [];
     updateSetting(
       'designStudioTriggerKeywords',
@@ -519,7 +519,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
     }
 
     const currentKeywords = Array.isArray(settings.designStudioBannedKeywords)
-      | settings.designStudioBannedKeywords
+      ? settings.designStudioBannedKeywords
       : [];
     const exists = currentKeywords.some((keyword) => keyword.toLowerCase() === trimmed.toLowerCase());
 
@@ -535,7 +535,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
   const removeBannedKeyword = (keywordToRemove: string) => {
     const currentKeywords = Array.isArray(settings.designStudioBannedKeywords)
-      | settings.designStudioBannedKeywords
+      ? settings.designStudioBannedKeywords
       : [];
     updateSetting(
       'designStudioBannedKeywords',
@@ -648,7 +648,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
               />
               <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap min-w-[100px]">
-                {settings.captionTemperature < 0.5 | 'Focused' : settings.captionTemperature < 1 | 'Balanced' : 'Creative'}
+                {settings.captionTemperature < 0.5 ? 'Focused' : settings.captionTemperature < 1 ? 'Balanced' : 'Creative'}
               </span>
             </div>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">
@@ -843,7 +843,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               )}
             </div>
 
-            {feeds.length === 0 | (
+            {feeds.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 text-center">
                 <p className="text-sm text-gray-900 dark:text-white">No RSS feeds available</p>
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
@@ -965,7 +965,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               </button>
             </div>
 
-            {(settings.designStudioBannedKeywords || []).length > 0 | (
+            {(settings.designStudioBannedKeywords || []).length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {(settings.designStudioBannedKeywords || []).map((keyword) => (
                   <button
@@ -990,7 +990,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             <Select
               value={settings.designStudioDefaultAutoTemplateId || 'none'}
               onValueChange={(value) => {
-                updateSetting('designStudioDefaultAutoTemplateId', value === 'none' | null : value);
+                updateSetting('designStudioDefaultAutoTemplateId', value === 'none' ? null : value);
                 updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
               }}
             >
@@ -1001,7 +1001,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 <SelectItem value="none">No default template</SelectItem>
                 {templateOptions.map((template) => (
                   <SelectItem key={template.id} value={template.id}>
-                    {template.name}{template.layoutVariant | ` • ${template.layoutVariant}` : ''}
+                    {template.name}{template.layoutVariant ? ` | ${template.layoutVariant}` : ''}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1028,14 +1028,14 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                     type="button"
                     onClick={() => {
                       const nextPlatforms = checked
-                        | activePlatforms.filter((entry) => entry !== platform.id)
+                        ? activePlatforms.filter((entry) => entry !== platform.id)
                         : [...activePlatforms, platform.id];
                       updateSetting('designStudioTargetPlatforms', nextPlatforms);
                       updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
                     }}
                     className={`rounded-2xl border px-4 py-3 text-sm ${
                       checked
-                        | 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                        ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
                         : 'border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white'
                     }`}
                   >
@@ -1371,7 +1371,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
               />
               <span className="text-sm text-[#6B7280] dark:text-[#9CA3AF] whitespace-nowrap min-w-[100px]">
-                {settings.jpegQuality >= 90 | 'Excellent' : settings.jpegQuality >= 75 | 'Good' : 'Compressed'}
+                {settings.jpegQuality >= 90 ? 'Excellent' : settings.jpegQuality >= 75 ? 'Good' : 'Compressed'}
               </span>
             </div>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-2">

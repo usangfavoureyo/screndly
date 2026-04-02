@@ -32,8 +32,8 @@ import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 
 interface DesignStudioPageProps {
-  onNavigate: (page: string, fromPagex: string | null) => void;
-  previousPagex: string | null;
+  onNavigate: (page: string, fromPage?: string | null) => void;
+  previousPage?: string | null;
 }
 
 interface Template {
@@ -46,22 +46,22 @@ interface Template {
   source: 'upload' | 'backblaze';
   lastEdited: Date;
   hasSubtext: boolean;
-  hasCategoryx: boolean;
-  hasSourcex: boolean;
-  psdDatax: any; // Will store actual PSD data in production
-  layoutVariantx: DesignStudioLayoutVariant;
-  mappedLayersx: string[];
-  textZonex: { horizontal: 'left' | 'center' | 'right'; vertical: 'top' | 'bottom' };
-  imageAnchorx: { x: number; y: number };
-  overlayDirectionx: 'top' | 'bottom' | 'left' | 'right';
-  overlayStrengthx: number;
-  safeMarginx: number;
-  isValidatedx: boolean;
-  validationStatex: 'valid' | 'warning' | 'invalid';
-  isDefaultManualx: boolean;
-  isDefaultAutox: boolean;
-  createdAtx: Date;
-  updatedAtx: Date;
+  hasCategory?: boolean;
+  hasSource?: boolean;
+  psdData?: any; // Will store actual PSD data in production
+  layoutVariant?: DesignStudioLayoutVariant;
+  mappedLayers?: string[];
+  textZone?: { horizontal: 'left' | 'center' | 'right'; vertical: 'top' | 'bottom' };
+  imageAnchor?: { x: number; y: number };
+  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
+  overlayStrength?: number;
+  safeMargin?: number;
+  isValidated?: boolean;
+  validationState?: 'valid' | 'warning' | 'invalid';
+  isDefaultManual?: boolean;
+  isDefaultAuto?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 interface RenderedDesign {
@@ -72,8 +72,8 @@ interface RenderedDesign {
   data: DesignData;
   createdAt: Date;
   aspectRatio: string;
-  captionx: string; // AI-generated caption
-  contentTypex: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
+  caption?: string; // AI-generated caption
+  contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
 }
 
 type DesignStudioTab = 'manual' | 'auto';
@@ -93,8 +93,8 @@ function parseTemplate(template: any): Template {
   return {
     ...template,
     lastEdited: new Date(template.lastEdited),
-    createdAt: template.createdAt | new Date(template.createdAt) : undefined,
-    updatedAt: template.updatedAt | new Date(template.updatedAt) : undefined,
+    createdAt: template.createdAt ? new Date(template.createdAt) : undefined,
+    updatedAt: template.updatedAt ? new Date(template.updatedAt) : undefined,
   };
 }
 
@@ -109,8 +109,8 @@ function serializeTemplates(templates: Template[]) {
   return templates.map((template) => ({
     ...template,
     lastEdited: template.lastEdited.toISOString(),
-    createdAt: template.createdAt|.toISOString(),
-    updatedAt: template.updatedAt|.toISOString(),
+    createdAt: template.createdAt?.toISOString(),
+    updatedAt: template.updatedAt?.toISOString(),
   }));
 }
 
@@ -178,7 +178,7 @@ function defaultLayoutMetadata(layoutVariant: DesignStudioLayoutVariant = 'top_l
 function parseAutoEditorial(editorial: any): AutoEditorial {
   return {
     ...editorial,
-    targetPlatforms: Array.isArray(editorial.targetPlatforms) | editorial.targetPlatforms : [],
+    targetPlatforms: Array.isArray(editorial.targetPlatforms) ? editorial.targetPlatforms : [],
     createdAt: editorial.createdAt || new Date().toISOString(),
     updatedAt: editorial.updatedAt || editorial.createdAt || new Date().toISOString(),
   };
@@ -210,7 +210,7 @@ function dataUrlToFile(dataUrl: string, fileName: string): File {
   }
 
   const mimeMatch = meta.match(/data:(.*|);base64/);
-  const mimeType = mimeMatch|.[1] || 'image/png';
+  const mimeType = mimeMatch?.[1] || 'image/png';
   const binary = atob(content);
   const bytes = new Uint8Array(binary.length);
 
@@ -228,7 +228,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const { showUndo } = useUndo();
   const [activeTab, setActiveTab] = useState<DesignStudioTab>(() => {
     const savedTab = localStorage.getItem('designStudioActiveTab');
-    return savedTab === 'auto' | 'auto' : 'manual';
+    return savedTab === 'auto' ? 'auto' : 'manual';
   });
   const [templates, setTemplates] = useState<Template[]>([]);
   const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>([]);
@@ -295,7 +295,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
   // Calculate aspect ratio from dimensions
   const calculateAspectRatio = (width: number, height: number): string => {
-    const gcd = (a: number, b: number): number => b === 0 | a : gcd(b, a % b);
+    const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
     const divisor = gcd(width, height);
     const w = width / divisor;
     const h = height / divisor;
@@ -325,7 +325,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   };
 
   const handleUploadPSD = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files|.[0];
+    const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.name.endsWith('.psd')) {
@@ -350,7 +350,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       ]);
       const layoutMetadata = defaultLayoutMetadata('top_left');
       const mappedLayers = Array.isArray(analysis.layers)
-        | analysis.layers.map((layer: { namex: string }) => layer.name).filter((name): name is string => Boolean(name))
+        ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
         : [];
       const isValidated = Boolean(analysis.detectedLayers.hasHeader && analysis.detectedLayers.hasBackground);
 
@@ -374,7 +374,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         overlayStrength: layoutMetadata.overlayStrength,
         safeMargin: layoutMetadata.safeMargin,
         isValidated,
-        validationState: isValidated | 'valid' : 'warning',
+        validationState: isValidated ? 'valid' : 'warning',
         isDefaultManual: templates.length === 0,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -398,7 +398,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       await photopeaService.closeDocument();
     } catch (error) {
       console.error('Photopea analysis error:', error);
-      toast.error(error instanceof Error | error.message : 'Failed to process PSD template');
+      toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
     } finally {
       e.target.value = '';
     }
@@ -425,7 +425,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         height = analysis.height;
         hasSubtext = analysis.detectedLayers.hasSubtext;
         mappedLayers = Array.isArray(analysis.layers)
-          | analysis.layers.map((layer: { namex: string }) => layer.name).filter((name): name is string => Boolean(name))
+          ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
           : [];
         isValidated = Boolean(analysis.detectedLayers.hasHeader && analysis.detectedLayers.hasBackground);
       } catch (error) {
@@ -451,7 +451,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         overlayStrength: layoutMetadata.overlayStrength,
         safeMargin: layoutMetadata.safeMargin,
         isValidated,
-        validationState: isValidated | 'valid' : 'warning',
+        validationState: isValidated ? 'valid' : 'warning',
         createdAt: new Date(),
         updatedAt: new Date(),
         psdData: {
@@ -469,7 +469,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       count: b2Templates.length,
     });
 
-    toast.success(`${b2Templates.length} template${b2Templates.length !== 1 | 's' : ''} loaded from Backblaze`);
+    toast.success(`${b2Templates.length} template${b2Templates.length !== 1 ? 's' : ''} loaded from Backblaze`);
     haptics.success();
     setShowBackblazeBrowser(false);
   };
@@ -518,7 +518,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     try {
       const photopeaService = getPhotopeaService();
       await photopeaService.initialize();
-      const psdUrl = selectedTemplate.psdData|.b2Url || selectedTemplate.psdData|.fileUrl;
+      const psdUrl = selectedTemplate.psdData?.b2Url || selectedTemplate.psdData?.fileUrl;
       if (!psdUrl) {
         throw new Error('Template source file is missing');
       }
@@ -592,7 +592,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     } catch (error) {
       console.error('Photopea rendering error:', error);
       setIsRendering(false);
-      toast.error(error instanceof Error | error.message : 'Failed to render design');
+      toast.error(error instanceof Error ? error.message : 'Failed to render design');
     }
   };
 
@@ -608,7 +608,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       });
 
       if (!result.success || !result.data) {
-        toast.error(result.error|.message || 'Failed to publish design');
+        toast.error(result.error?.message || 'Failed to publish design');
         return;
       }
 
@@ -617,7 +617,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         .map((item: any) => item.platform);
       const failedPlatforms = result.data.results
         .filter((item: any) => item.status === 'failed')
-        .map((item: any) => `${item.platform}${item.error | `: ${item.error}` : ''}`);
+        .map((item: any) => `${item.platform}${item.error ? `: ${item.error}` : ''}`);
 
       if (successfulPlatforms.length === 0) {
         toast.error(failedPlatforms[0] || 'Failed to publish design');
@@ -626,7 +626,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       const nextRenderedDesigns = renderedDesigns.map((design) =>
         design.id === publishTarget.id
-          | { ...design, caption: caption || design.caption }
+          ? { ...design, caption: caption || design.caption }
           : design
       );
       await persistState(templates, nextRenderedDesigns);
@@ -652,7 +652,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         platform: platformsList,
         status: 'success',
         type: 'designstudio',
-        errorDetails: failedPlatforms.length > 0 | failedPlatforms.join(' | ') : undefined,
+        errorDetails: failedPlatforms.length > 0 ? failedPlatforms.join(' | ') : undefined,
       });
 
       addNotification({
@@ -673,7 +673,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       toast.success('Design published to selected platforms!');
     } catch (error) {
       console.error('Failed to finish Design Studio publish flow:', error);
-      toast.error(error instanceof Error | error.message : 'Failed to publish design');
+      toast.error(error instanceof Error ? error.message : 'Failed to publish design');
     }
   };
 
@@ -710,7 +710,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       });
     } catch (error) {
       console.error('Failed to delete template:', error);
-      toast.error(error instanceof Error | error.message : 'Failed to delete template');
+      toast.error(error instanceof Error ? error.message : 'Failed to delete template');
     }
   };
 
@@ -739,7 +739,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const defaultAutoTemplate = useMemo(() => {
     const requestedTemplate = templates.find((template) => template.id === settings.designStudioDefaultAutoTemplateId);
     return requestedTemplate && requestedTemplate.isValidated !== false
-      | requestedTemplate
+      ? requestedTemplate
       : validatedTemplates[0] || null;
   }, [templates, validatedTemplates, settings.designStudioDefaultAutoTemplateId]);
 
@@ -792,7 +792,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return `${title.slice(0, 85).trim()}...`;
   };
 
-  const deriveSubheaderText = (feedNamex: string, matchedKeywordx: string) => {
+  const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
       return '';
     }
@@ -812,14 +812,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const renderAutoEditorialImage = async (
     template: Template,
     headerText: string,
-    subheaderText: string,
-    backgroundSourcex: string,
+    subtext: string,
+    backgroundSource?: string,
   ) => {
     const photopeaService = getPhotopeaService();
     await photopeaService.initialize();
 
     try {
-      const psdUrl = template.psdData|.b2Url || template.psdData|.fileUrl;
+      const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
       if (!psdUrl) {
         throw new Error('Template source file is missing');
       }
@@ -828,7 +828,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       const renderBlob = await photopeaService.renderDesign(
         {
           headerText,
-          subtext: subheaderText || undefined,
+          subtext: subtext || undefined,
           backgroundImage: backgroundSource,
           overlayColor: '#000000',
           overlayOpacity: template.overlayStrength || 75,
@@ -888,7 +888,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     try {
       const activity = await getActivity(200);
-      const activityItems = activity|.items || [];
+      const activityItems = activity?.items || [];
       const existingSourceIds = new Set(autoEditorials.map((item) => item.sourceFeedItemId));
       const seenTitles = new Set<string>();
       const bannedKeywords = settings.designStudioBannedKeywords || [];
@@ -911,7 +911,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           }
           seenTitles.add(normalizedTitle);
 
-          const backgroundSource = item.imageUrl || item.imageUrls|.[0] || item.selectedImages|.[0]|.url;
+          const backgroundSource = item.imageUrl || item.imageUrls?.[0] || item.selectedImages?.[0]?.url;
           const score = deriveEditorialScore(item.title, matchedKeyword, Boolean(backgroundSource));
           return { item, matchedKeyword, score, backgroundSource };
         })
@@ -930,12 +930,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       for (const [index, candidate] of candidates.entries()) {
         const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
         const headerText = deriveHeaderText(candidate.item.title);
-        const subheaderText = deriveSubheaderText(candidate.item.feedName, candidate.matchedKeyword);
+        const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
         const captionResult = await generateDesignStudioCaption(
           {
             contentType,
             title: candidate.item.title,
-            tagline: subheaderText,
+            tagline: subtext,
             context: candidate.item.description || candidate.item.feedName || 'Editorial update',
           },
           settings,
@@ -943,7 +943,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         const renderedImage = await renderAutoEditorialImage(
           defaultAutoTemplate,
           headerText,
-          subheaderText,
+          subtext,
           candidate.backgroundSource,
         );
         const scheduleTime = buildScheduledTime(index);
@@ -959,17 +959,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           templateName: defaultAutoTemplate.name,
           renderedImage,
           headerText,
-          subheaderText,
+          subheaderText: subtext,
           caption: captionResult.caption,
           backgroundSource: candidate.backgroundSource,
-          backgroundOffsetX: defaultAutoTemplate.imageAnchor|.x x 50,
-          backgroundOffsetY: defaultAutoTemplate.imageAnchor|.y x 50,
+          backgroundOffsetX: defaultAutoTemplate.imageAnchor?.x ?? 50,
+          backgroundOffsetY: defaultAutoTemplate.imageAnchor?.y ?? 50,
           zoomLevel: 1,
           overlayDirection: defaultAutoTemplate.overlayDirection || 'top',
           overlayStrength: defaultAutoTemplate.overlayStrength || 75,
           scheduleTime,
           targetPlatforms: settings.designStudioTargetPlatforms || [],
-          status: settings.designStudioAutoPost | 'scheduled' : 'draft',
+          status: settings.designStudioAutoPost ? 'scheduled' : 'draft',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           postedAt: null,
@@ -993,10 +993,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         ),
       );
 
-      toast.success(`${nextAutoEditorials.length} auto editorial${nextAutoEditorials.length === 1 | '' : 's'} generated`);
+      toast.success(`${nextAutoEditorials.length} auto editorial${nextAutoEditorials.length === 1 ? '' : 's'} generated`);
     } catch (error) {
       console.error('Failed to generate auto editorials:', error);
-      toast.error(error instanceof Error | error.message : 'Failed to generate auto editorials');
+      toast.error(error instanceof Error ? error.message : 'Failed to generate auto editorials');
     } finally {
       setIsGeneratingAutoEditorials(false);
     }
@@ -1005,7 +1005,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const updateEditorial = async (editorialId: string, updates: Partial<AutoEditorial>) => {
     const nextAutoEditorials = autoEditorials.map((item) =>
       item.id === editorialId
-        | { ...item, ...updates, updatedAt: new Date().toISOString() }
+        ? { ...item, ...updates, updatedAt: new Date().toISOString() }
         : item,
     );
     await persistState(templates, renderedDesigns, nextAutoEditorials);
@@ -1026,20 +1026,20 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       });
 
       if (!result.success || !result.data) {
-        throw new Error(result.error|.message || 'Failed to publish auto editorial');
+        throw new Error(result.error?.message || 'Failed to publish auto editorial');
       }
 
       const nextStatus: AutoEditorial['status'] = result.data.results.some((entry: { status: string }) => entry.status === 'posted')
-        | 'posted'
+        ? 'posted'
         : 'failed';
 
       await updateEditorial(editorial.id, {
         status: nextStatus,
-        postedAt: nextStatus === 'posted' | new Date().toISOString() : editorial.postedAt || null,
-        failureReason: nextStatus === 'failed' | 'No platform accepted the editorial' : null,
+        postedAt: nextStatus === 'posted' ? new Date().toISOString() : editorial.postedAt || null,
+        failureReason: nextStatus === 'failed' ? 'No platform accepted the editorial' : null,
       });
 
-      await createDesignStudioActivity(nextStatus === 'posted' | 'auto_editorial_posted' : 'auto_editorial_failed', {
+      await createDesignStudioActivity(nextStatus === 'posted' ? 'auto_editorial_posted' : 'auto_editorial_failed', {
         sourceTitle: editorial.sourceTitle,
         templateName: editorial.templateName,
         platforms: (editorial.targetPlatforms || []).join(', '),
@@ -1054,9 +1054,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       console.error('Failed to publish auto editorial:', error);
       await updateEditorial(editorial.id, {
         status: 'failed',
-        failureReason: error instanceof Error | error.message : 'Failed to publish auto editorial',
+        failureReason: error instanceof Error ? error.message : 'Failed to publish auto editorial',
       });
-      toast.error(error instanceof Error | error.message : 'Failed to publish auto editorial');
+      toast.error(error instanceof Error ? error.message : 'Failed to publish auto editorial');
     }
   };
 
@@ -1082,17 +1082,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setEditorialEditorMode(mode);
     setEditorialDraftValue(
       mode === 'caption'
-        | editorial.caption
+        ? editorial.caption
         : mode === 'header'
-          | editorial.headerText
+          ? editorial.headerText
           : mode === 'subheader'
-            | editorial.subheaderText || ''
+            ? editorial.subheaderText || ''
             : mode === 'background'
-              | editorial.backgroundSource || ''
+              ? editorial.backgroundSource || ''
               : mode === 'schedule'
-                | editorial.scheduleTime || ''
+                ? editorial.scheduleTime || ''
                 : mode === 'template'
-                  | editorial.templateId
+                  ? editorial.templateId
                   : '',
     );
     setEditorialOverlayDirection(editorial.overlayDirection || 'top');
@@ -1123,7 +1123,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         break;
       case 'schedule':
         updates.scheduleTime = editorialDraftValue;
-        updates.status = editorialDraftValue | 'scheduled' : 'queued';
+        updates.status = editorialDraftValue ? 'scheduled' : 'queued';
         break;
       case 'template': {
         const nextTemplate = templates.find((template) => template.id === editorialDraftValue);
@@ -1170,7 +1170,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           <h1 className="text-gray-900 dark:text-white mb-2">Design Studio</h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
             {activeTab === 'manual'
-              | 'Create and edit PSD templates manually'
+              ? 'Create and edit PSD templates manually'
               : 'Generate editorial designs automatically from selected news updates'}
           </p>
         </div>
@@ -1200,7 +1200,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         }}
       />
 
-      {activeTab === 'manual' | (
+      {activeTab === 'manual' ? (
         <>
           {/* Template Ingestion Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1227,7 +1227,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             </button>
           </div>
 
-          {isLoadingState | (
+          {isLoadingState ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3].map((item) => (
                 <div
@@ -1236,7 +1236,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 />
               ))}
             </div>
-          ) : templates.length === 0 | (
+          ) : templates.length === 0 ? (
             <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
               <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No templates yet</p>
               <p className="text-sm text-gray-500 dark:text-[#6B7280]">
@@ -1252,7 +1252,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   onDelete={handleDeleteTemplate}
                   onEdit={handleEditTemplate}
                   onExpand={handleExpandTemplate}
-                  livePreviewData={editingTemplateId === template.id | livePreviewData : null}
+                  livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
                   isBeingEdited={editingTemplateId === template.id}
                 />
               ))}
@@ -1289,7 +1289,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   onClick={() => void handleGenerateAutoEditorials()}
                   className="bg-[#ec1e24] hover:bg-[#d01a20] text-white"
                 >
-                  {isGeneratingAutoEditorials | 'Generating...' : 'Generate Auto Editorials'}
+                  {isGeneratingAutoEditorials ? 'Generating...' : 'Generate Auto Editorials'}
                 </Button>
                 <Button
                   type="button"
@@ -1313,7 +1313,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Editorials</p>
                 <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {settings.designStudioAutoEnabled | 'Enabled' : 'Disabled'}
+                  {settings.designStudioAutoEnabled ? 'Enabled' : 'Disabled'}
                 </p>
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
@@ -1322,22 +1322,22 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Default Template</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">{defaultAutoTemplate|.name || 'None selected'}</p>
+                <p className="mt-2 text-sm text-gray-900 dark:text-white">{defaultAutoTemplate?.name || 'None selected'}</p>
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Post</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioAutoPost | 'On' : 'Off'}</p>
+                <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioAutoPost ? 'On' : 'Off'}</p>
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4 col-span-2 lg:col-span-1">
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected Feeds</p>
                 <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {settings.designStudioSelectedRssFeedIds|.length || 0} of {feeds.length}
+                  {settings.designStudioSelectedRssFeedIds?.length || 0} of {feeds.length}
                 </p>
               </div>
             </div>
           </div>
 
-          {autoEditorials.length === 0 | (
+          {autoEditorials.length === 0 ? (
             <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
               <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No auto editorials yet</p>
               <p className="text-sm text-gray-500 dark:text-[#6B7280]">
@@ -1390,7 +1390,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                       <span className="rounded-full bg-gray-100 px-3 py-1 text-gray-700 dark:bg-[#111111] dark:text-[#9CA3AF]">
                         {editorial.templateName || 'Template'}
                       </span>
-                      {editorial.matchedKeyword | (
+                      {editorial.matchedKeyword ? (
                         <span className="rounded-full bg-[#ec1e24]/10 px-3 py-1 text-[#ec1e24]">
                           {editorial.matchedKeyword}
                         </span>
@@ -1398,9 +1398,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     </div>
 
                     <div className="grid grid-cols-1 gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF] sm:grid-cols-2">
-                      <p>Platforms: {(editorial.targetPlatforms || []).length > 0 | editorial.targetPlatforms.join(', ') : 'None'}</p>
+                      <p>Platforms: {(editorial.targetPlatforms || []).length > 0 ? editorial.targetPlatforms.join(', ') : 'None'}</p>
                       <p>
-                        Schedule: {editorial.scheduleTime | new Date(editorial.scheduleTime).toLocaleString() : 'Not scheduled'}
+                        Schedule: {editorial.scheduleTime ? new Date(editorial.scheduleTime).toLocaleString() : 'Not scheduled'}
                       </p>
                     </div>
 
@@ -1484,7 +1484,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         onSelectTemplate={(file) => {
           handleLoadSelectedTemplates([file]).catch((error) => {
             console.error('Failed to load template from Backblaze:', error);
-            toast.error(error instanceof Error | error.message : 'Failed to load template');
+            toast.error(error instanceof Error ? error.message : 'Failed to load template');
           });
         }}
         onClose={() => {
@@ -1504,7 +1504,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         </BottomSheetHeader>
         <BottomSheetBody>
           <div className="space-y-2">
-            {selectedEditorial | (
+            {selectedEditorial ? (
               <>
                 <button
                   type="button"
@@ -1525,7 +1525,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   onClick={() => openEditorialEditor(selectedEditorial, 'subheader')}
                   className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
                 >
-                  Edit Subheader
+                  Edit Subtext
                 </button>
                 <button
                   type="button"
@@ -1588,7 +1588,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           <BottomSheetTitle>
             {editorialEditorMode === 'caption' && 'Edit Caption'}
             {editorialEditorMode === 'header' && 'Edit Header'}
-            {editorialEditorMode === 'subheader' && 'Edit Subheader'}
+            {editorialEditorMode === 'subheader' && 'Edit Subtext'}
             {editorialEditorMode === 'background' && 'Change Background'}
             {editorialEditorMode === 'overlay' && 'Adjust Overlay'}
             {editorialEditorMode === 'template' && 'Change Template'}
@@ -1597,7 +1597,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         </BottomSheetHeader>
         <BottomSheetBody>
           <div className="space-y-4">
-            {editorialEditorMode === 'template' | (
+            {editorialEditorMode === 'template' ? (
               <div className="space-y-2">
                 <Label>Validated Template</Label>
                 <Select value={editorialDraftValue} onValueChange={setEditorialDraftValue}>
@@ -1613,7 +1613,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   </SelectContent>
                 </Select>
               </div>
-            ) : editorialEditorMode === 'overlay' | (
+            ) : editorialEditorMode === 'overlay' ? (
               <div className="space-y-4">
                 <div className="space-y-2">
                   <Label>Overlay Direction</Label>
@@ -1645,13 +1645,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <div className="space-y-2">
                 <Label>
                   {editorialEditorMode === 'schedule'
-                    | 'Schedule Time'
+                    ? 'Schedule Time'
                     : editorialEditorMode === 'background'
-                      | 'Background URL'
+                      ? 'Background URL'
                       : 'Value'}
                 </Label>
                 <Input
-                  type={editorialEditorMode === 'schedule' | 'datetime-local' : 'text'}
+                  type={editorialEditorMode === 'schedule' ? 'datetime-local' : 'text'}
                   value={editorialDraftValue}
                   onChange={(event) => setEditorialDraftValue(event.target.value)}
                   className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
@@ -1692,12 +1692,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       >
         <DialogContent className="max-w-5xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
           <VisuallyHidden>
-            <DialogTitle>{previewEditorial|.headerText || 'Auto editorial preview'}</DialogTitle>
+            <DialogTitle>{previewEditorial?.headerText || 'Auto editorial preview'}</DialogTitle>
             <DialogDescription>
               Preview and inspect the generated editorial render.
             </DialogDescription>
           </VisuallyHidden>
-          {previewEditorial | (
+          {previewEditorial ? (
             <div className="relative">
               <div className="absolute right-4 top-4 z-50 flex items-center gap-2">
                 <button
