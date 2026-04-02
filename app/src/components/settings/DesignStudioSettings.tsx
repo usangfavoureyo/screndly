@@ -809,6 +809,24 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             />
           </div>
 
+          <div className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4">
+            <div>
+              <Label htmlFor="design-studio-auto-post" className="text-[#9CA3AF]">Auto Post</Label>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Automatically publish scheduled editorials to the selected platforms.
+              </p>
+            </div>
+            <Switch
+              id="design-studio-auto-post"
+              checked={settings.designStudioAutoPost}
+              onCheckedChange={(checked) => {
+                haptics.light();
+                updateSetting('designStudioAutoPost', checked);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+            />
+          </div>
+
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div>
@@ -1018,6 +1036,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 { id: 'x', label: 'X' },
                 { id: 'threads', label: 'Threads' },
                 { id: 'facebook', label: 'Facebook' },
+                { id: 'instagram', label: 'Instagram' },
                 { id: 'pinterest', label: 'Pinterest' },
               ].map((platform) => {
                 const activePlatforms = settings.designStudioTargetPlatforms || [];
@@ -1121,23 +1140,6 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4">
-            <div>
-              <Label htmlFor="design-studio-auto-post" className="text-[#9CA3AF]">Auto Post</Label>
-              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                Automatically publish scheduled editorials to the selected platforms.
-              </p>
-            </div>
-            <Switch
-              id="design-studio-auto-post"
-              checked={settings.designStudioAutoPost}
-              onCheckedChange={(checked) => {
-                haptics.light();
-                updateSetting('designStudioAutoPost', checked);
-                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
-              }}
-            />
-          </div>
         </div>
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />

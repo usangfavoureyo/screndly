@@ -62,7 +62,12 @@ import { getConnectedPlatforms } from '../../utils/platformConnections';
 import { haptics } from '../../utils/haptics';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { fetchYouTubePlaylists, type YouTubePlaylist } from '../../lib/api/youtube';
-import { generateComposeMetadata, generateComposeThumbnail } from '../../lib/api/ai';
+import {
+  generateComposeContent,
+  generateComposeThumbnail,
+  type ComposeContentGenerationResult,
+  type ComposeMediaMetadata,
+} from '../../lib/api/ai';
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
@@ -94,6 +99,20 @@ type FormState = {
   videoCropFocusYPercent: number;
   threadsXCropVideo: ComposeProcessedVideoAsset | null;
 };
+
+type EditableComposeField = 'sharedCaption' | 'youtubeTitle' | 'youtubeDescription' | 'youtubePlaylist';
+
+type PendingGeneratedContentAction =
+  | {
+      kind: 'direct-fill';
+      fields: Partial<Record<EditableComposeField, string>>;
+      playlistReason?: string;
+    }
+  | {
+      kind: 'editorial-apply';
+      targetField: Extract<EditableComposeField, 'sharedCaption' | 'youtubeDescription'>;
+      text: string;
+    };
 
 const PLATFORM_ICONS = {
   instagram_feed: InstagramIcon,
@@ -225,6 +244,22 @@ function getPlatformCardTone(isSelected: boolean, supported: boolean, connected:
   return 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]';
 }
 
+function getIntentBadgeLabel(intentResult: ComposeContentGenerationResult['intentResult'] | null) {
+  if (!intentResult) return '';
+
+  const intentMap: Record<string, string> = {
+    post_generation: 'Post generation',
+    review_generation: 'Review',
+    summary_generation: 'Summary',
+    promo_caption_generation: 'Promo caption',
+    metadata_extraction: 'Metadata extraction',
+    mixed_request: 'Mixed request',
+  };
+
+  const outputLabel = intentResult.outputMode === 'preview_only' ? 'Preview' : 'Direct fill';
+  return `${intentMap[intentResult.intent] || 'AI'} • ${outputLabel}`;
+}
+
 export function ComposeEditorPage({
   isCompactLayout = false,
   onNavigate,
@@ -251,6 +286,16 @@ export function ComposeEditorPage({
   const [isGeneratingMetadata, setIsGeneratingMetadata] = useState(false);
   const [metadataGenerationError, setMetadataGenerationError] = useState<string | null>(null);
   const [isReplaceGeneratedContentOpen, setIsReplaceGeneratedContentOpen] = useState(false);
+  const [latestDetectedIntent, setLatestDetectedIntent] = useState<ComposeContentGenerationResult['intentResult'] | null>(null);
+  const [latestExtractedMetadata, setLatestExtractedMetadata] = useState<ComposeMediaMetadata | null>(null);
+  const [editorialPreview, setEditorialPreview] = useState<ComposeContentGenerationResult['editorialResult'] | null>(null);
+  const [pendingGeneratedContentAction, setPendingGeneratedContentAction] = useState<PendingGeneratedContentAction | null>(null);
+  const [fieldManualEdits, setFieldManualEdits] = useState<Record<EditableComposeField, boolean>>({
+    sharedCaption: false,
+    youtubeTitle: false,
+    youtubeDescription: false,
+    youtubePlaylist: false,
+  });
   const [thumbnailGenerationState, setThumbnailGenerationState] = useState<
     Partial<Record<'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail', boolean>>
   >({});
@@ -298,12 +343,6 @@ export function ComposeEditorPage({
   const isPinterestSelected = formState.platforms.includes('pinterest');
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.id === formState.youtubePlaylist);
-  const hasExistingGeneratedTargets = Boolean(
-    formState.sharedCaption.trim()
-      || formState.youtubeTitle.trim()
-      || formState.youtubeDescription.trim()
-      || formState.youtubePlaylist,
-  );
   const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
   const hasUnsavedChanges = useMemo(
     () => JSON.stringify(formState) !== initialFormSnapshot,
@@ -409,6 +448,16 @@ export function ComposeEditorPage({
     setScheduleTime(toLocalTimeInputValue(existingItem?.scheduledAt));
     setMetadataGenerationError(null);
     setIsReplaceGeneratedContentOpen(false);
+    setLatestDetectedIntent(null);
+    setLatestExtractedMetadata(null);
+    setEditorialPreview(null);
+    setPendingGeneratedContentAction(null);
+    setFieldManualEdits({
+      sharedCaption: false,
+      youtubeTitle: false,
+      youtubeDescription: false,
+      youtubePlaylist: false,
+    });
     setThumbnailGenerationState({});
     setPendingThumbnailGenerationKey(null);
     setIsReplaceGeneratedThumbnailOpen(false);
@@ -849,46 +898,99 @@ export function ComposeEditorPage({
     }));
   };
 
-  const applyGeneratedMetadata = useCallback((generated: {
-    sharedCaption: string;
-    youtubeTitle: string;
-    youtubeDescription: string;
-    playlistId: string;
-    playlistReason: string;
-  }) => {
-    setFormState((current) => ({
-      ...current,
-      sharedCaption: generated.sharedCaption,
-      youtubeTitle: generated.youtubeTitle,
-      youtubeDescription: generated.youtubeDescription,
-      youtubePlaylist: generated.playlistId,
-    }));
+  const applyPendingGeneratedContentAction = useCallback((action: PendingGeneratedContentAction) => {
+    if (action.kind === 'direct-fill') {
+      setFormState((current) => ({
+        ...current,
+        ...(typeof action.fields.sharedCaption === 'string' ? { sharedCaption: action.fields.sharedCaption } : {}),
+        ...(typeof action.fields.youtubeTitle === 'string' ? { youtubeTitle: action.fields.youtubeTitle } : {}),
+        ...(typeof action.fields.youtubeDescription === 'string' ? { youtubeDescription: action.fields.youtubeDescription } : {}),
+        ...(typeof action.fields.youtubePlaylist === 'string' ? { youtubePlaylist: action.fields.youtubePlaylist } : {}),
+      }));
+      setFieldManualEdits((current) => ({
+        ...current,
+        ...(typeof action.fields.sharedCaption === 'string' ? { sharedCaption: false } : {}),
+        ...(typeof action.fields.youtubeTitle === 'string' ? { youtubeTitle: false } : {}),
+        ...(typeof action.fields.youtubeDescription === 'string' ? { youtubeDescription: false } : {}),
+        ...(typeof action.fields.youtubePlaylist === 'string' ? { youtubePlaylist: false } : {}),
+      }));
+      setEditorialPreview(null);
+      setIsReplaceGeneratedContentOpen(false);
+      setPendingGeneratedContentAction(null);
+      setMetadataGenerationError(null);
 
-    setIsReplaceGeneratedContentOpen(false);
-    setMetadataGenerationError(null);
+      if (action.fields.youtubePlaylist) {
+        toast.success(
+          action.playlistReason
+            ? `Content generated. Playlist matched: ${action.playlistReason}`
+            : 'Content generated and playlist selected.',
+        );
+        return;
+      }
 
-    if (generated.playlistId) {
-      toast.success(
-        generated.playlistReason
-          ? `Content generated. Playlist matched: ${generated.playlistReason}`
-          : 'Content generated and playlist selected.',
-      );
+      toast.success('Content generated.');
       return;
     }
 
-    toast.success('Content generated.');
+    setFormState((current) => ({
+      ...current,
+      ...(action.targetField === 'sharedCaption'
+        ? { sharedCaption: action.text }
+        : { youtubeDescription: action.text }),
+    }));
+    setFieldManualEdits((current) => ({
+      ...current,
+      [action.targetField]: false,
+    }));
+    setIsReplaceGeneratedContentOpen(false);
+    setPendingGeneratedContentAction(null);
+    toast.success(
+      action.targetField === 'sharedCaption'
+        ? 'Preview applied to Shared Caption.'
+        : 'Preview applied to YouTube Description.',
+    );
   }, []);
+
+  const queueGeneratedContentAction = useCallback((action: PendingGeneratedContentAction) => {
+    const requiresConfirmation = action.kind === 'direct-fill'
+      ? (
+          (typeof action.fields.sharedCaption === 'string' && action.fields.sharedCaption.trim().length > 0 && formState.sharedCaption.trim().length > 0 && fieldManualEdits.sharedCaption)
+          || (typeof action.fields.youtubeTitle === 'string' && action.fields.youtubeTitle.trim().length > 0 && formState.youtubeTitle.trim().length > 0 && fieldManualEdits.youtubeTitle)
+          || (typeof action.fields.youtubeDescription === 'string' && action.fields.youtubeDescription.trim().length > 0 && formState.youtubeDescription.trim().length > 0 && fieldManualEdits.youtubeDescription)
+          || (typeof action.fields.youtubePlaylist === 'string' && action.fields.youtubePlaylist.trim().length > 0 && formState.youtubePlaylist.trim().length > 0 && fieldManualEdits.youtubePlaylist)
+        )
+      : (
+          action.text.trim().length > 0
+          && (
+            (action.targetField === 'sharedCaption' && formState.sharedCaption.trim().length > 0 && fieldManualEdits.sharedCaption)
+            || (action.targetField === 'youtubeDescription' && formState.youtubeDescription.trim().length > 0 && fieldManualEdits.youtubeDescription)
+          )
+        );
+
+    if (requiresConfirmation) {
+      setPendingGeneratedContentAction(action);
+      setIsReplaceGeneratedContentOpen(true);
+      return;
+    }
+
+    applyPendingGeneratedContentAction(action);
+  }, [
+    applyPendingGeneratedContentAction,
+    fieldManualEdits.sharedCaption,
+    fieldManualEdits.youtubeDescription,
+    fieldManualEdits.youtubePlaylist,
+    fieldManualEdits.youtubeTitle,
+    formState.sharedCaption,
+    formState.youtubeDescription,
+    formState.youtubePlaylist,
+    formState.youtubeTitle,
+  ]);
 
   const runMetadataGeneration = useCallback(async (forceReplace = false) => {
     const normalizedMetadata = normalizeMetadataInput(formState.sourceMetadata);
     if (!normalizedMetadata) {
-      setMetadataGenerationError('Paste trailer or video metadata before generating.');
-      toast.error('Paste trailer or video metadata before generating.');
-      return;
-    }
-
-    if (hasExistingGeneratedTargets && !forceReplace) {
-      setIsReplaceGeneratedContentOpen(true);
+      setMetadataGenerationError('Paste media metadata or type a request before generating.');
+      toast.error('Paste media metadata or type a request before generating.');
       return;
     }
 
@@ -898,8 +1000,8 @@ export function ComposeEditorPage({
     const primaryAssetForContext = formState.mediaAssets[0];
 
     try {
-      const response = await generateComposeMetadata({
-        metadataText: normalizedMetadata,
+      const response = await generateComposeContent({
+        requestText: normalizedMetadata,
         model: settings.videoOpenaiModel || 'gpt-5-mini',
         selectedPlatforms: formState.platforms,
         availablePlaylists: youtubePlaylists,
@@ -907,6 +1009,8 @@ export function ComposeEditorPage({
         youtubeTitlePrompt: settings.videoYoutubeTitlePrompt || undefined,
         youtubeDescriptionPrompt: settings.videoYoutubeDescriptionPrompt || undefined,
         youtubePlaylistPrompt: settings.videoYoutubePlaylistPrompt || undefined,
+        reviewPrompt: settings.videoReviewPrompt || undefined,
+        summaryPrompt: settings.videoSummaryPrompt || undefined,
         mediaContext: primaryAssetForContext
           ? {
               fileName: primaryAssetForContext.fileName,
@@ -920,15 +1024,53 @@ export function ComposeEditorPage({
         throw new Error(response.error?.message || 'Failed to generate post content.');
       }
 
-      const generated = {
-        sharedCaption: response.data.sharedCaption || '',
-        youtubeTitle: response.data.youtubeTitle || '',
-        youtubeDescription: response.data.youtubeDescription || '',
-        playlistId: response.data.playlistSelection?.playlistId || '',
-        playlistReason: response.data.playlistSelection?.reason || '',
+      setLatestDetectedIntent(response.data.intentResult);
+      setLatestExtractedMetadata(response.data.mediaMetadata);
+
+      if (response.data.intentResult.outputMode === 'preview_only') {
+        setEditorialPreview(response.data.editorialResult);
+        setPendingGeneratedContentAction(null);
+        setIsReplaceGeneratedContentOpen(false);
+
+        if (!response.data.editorialResult.text.trim()) {
+          throw new Error('AI did not return preview content for this request.');
+        }
+
+        toast.success('Preview generated.');
+        return;
+      }
+
+      setEditorialPreview(null);
+
+      const generatedFields: Partial<Record<EditableComposeField, string>> = {};
+      if (response.data.postFields.sharedCaption.trim()) {
+        generatedFields.sharedCaption = response.data.postFields.sharedCaption;
+      }
+      if (response.data.postFields.youtubeTitle.trim()) {
+        generatedFields.youtubeTitle = response.data.postFields.youtubeTitle;
+      }
+      if (response.data.postFields.youtubeDescription.trim()) {
+        generatedFields.youtubeDescription = response.data.postFields.youtubeDescription;
+      }
+      if (response.data.postFields.playlistSelection.playlistId) {
+        generatedFields.youtubePlaylist = response.data.postFields.playlistSelection.playlistId;
+      }
+
+      if (Object.keys(generatedFields).length === 0) {
+        throw new Error('AI did not return any post fields for this request.');
+      }
+
+      const action: PendingGeneratedContentAction = {
+        kind: 'direct-fill',
+        fields: generatedFields,
+        playlistReason: response.data.postFields.playlistSelection.reason || '',
       };
 
-      applyGeneratedMetadata(generated);
+      if (forceReplace) {
+        applyPendingGeneratedContentAction(action);
+      } else {
+        queueGeneratedContentAction(action);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to generate post content.';
       setMetadataGenerationError(message);
@@ -937,12 +1079,14 @@ export function ComposeEditorPage({
       setIsGeneratingMetadata(false);
     }
   }, [
-    applyGeneratedMetadata,
+    applyPendingGeneratedContentAction,
     formState.mediaAssets,
     formState.platforms,
     formState.sourceMetadata,
-    hasExistingGeneratedTargets,
+    queueGeneratedContentAction,
     settings.videoOpenaiModel,
+    settings.videoReviewPrompt,
+    settings.videoSummaryPrompt,
     settings.videoUniversalCaptionPrompt,
     settings.videoYoutubeDescriptionPrompt,
     settings.videoYoutubePlaylistPrompt,
@@ -975,6 +1119,7 @@ export function ComposeEditorPage({
     try {
       const response = await generateComposeThumbnail({
         metadataText: normalizedMetadata,
+        model: settings.videoOpenaiModel || 'gpt-5-mini',
         thumbnailType:
           key === 'sharedThumbnail'
             ? 'shared'
@@ -1017,6 +1162,7 @@ export function ComposeEditorPage({
     }
   }, [
     formState,
+    settings.videoOpenaiModel,
     updateThumbnail,
   ]);
 
@@ -1708,9 +1854,9 @@ export function ComposeEditorPage({
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <div className="mb-4">
               <div>
-                <h3 className="mb-1 text-gray-900 dark:text-white">Source Metadata</h3>
+                <h3 className="mb-1 text-gray-900 dark:text-white">Source or Prompt Input</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Paste trailer, teaser, movie, or studio information here. AI will generate the shared caption, YouTube title, description, and suggest the best playlist.
+                  Paste trailer, teaser, movie, or TV metadata here, or type a request like “write a review for The Matrix for 60 seconds video.” AI will generate post content and, when relevant, YouTube details.
                 </p>
               </div>
             </div>
@@ -1724,7 +1870,7 @@ export function ComposeEditorPage({
                     setMetadataGenerationError(null);
                   }
                 }}
-                placeholder="Paste trailer text, synopsis, release info, cast, platform, studio text, or promotional metadata..."
+                placeholder="Paste metadata or type a request like “Generate a caption for this trailer” or “Write a review for The Matrix for 60 seconds video”..."
                 className="min-h-[200px] border-gray-200 bg-white pb-16 dark:border-[#333333] dark:bg-[#000000]"
               />
               <button
@@ -1743,13 +1889,116 @@ export function ComposeEditorPage({
             </div>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Uses the selected Video Settings model and saved prompts for caption, YouTube title, description, and playlist matching.
-              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                  Uses the selected Video Settings model and saved prompts for caption, YouTube title, description, playlist, review, and summary generation.
+                </p>
+                {latestDetectedIntent ? (
+                  <span className="rounded-full border border-[#333333] bg-[#111111] px-2.5 py-1 text-[11px] uppercase tracking-[0.12em] text-[#9CA3AF]">
+                    {getIntentBadgeLabel(latestDetectedIntent)}
+                  </span>
+                ) : null}
+              </div>
               {metadataGenerationError ? (
                 <p className="text-xs text-[#EF4444]">{metadataGenerationError}</p>
               ) : null}
             </div>
+
+            {latestExtractedMetadata && (latestExtractedMetadata.title || latestExtractedMetadata.platform || latestExtractedMetadata.releaseDate || latestExtractedMetadata.mediaType) ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {latestExtractedMetadata.title ? (
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 dark:bg-[#111111] dark:text-[#9CA3AF]">
+                    {latestExtractedMetadata.title}
+                  </span>
+                ) : null}
+                {latestExtractedMetadata.mediaType ? (
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 capitalize dark:bg-[#111111] dark:text-[#9CA3AF]">
+                    {latestExtractedMetadata.mediaType.replace(/_/g, ' ')}
+                  </span>
+                ) : null}
+                {latestExtractedMetadata.platform ? (
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 dark:bg-[#111111] dark:text-[#9CA3AF]">
+                    {latestExtractedMetadata.platform}
+                  </span>
+                ) : null}
+                {latestExtractedMetadata.releaseDate ? (
+                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-700 dark:bg-[#111111] dark:text-[#9CA3AF]">
+                    {latestExtractedMetadata.releaseDate}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+
+            {editorialPreview?.text ? (
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm text-gray-900 dark:text-white">
+                      {editorialPreview.type === 'review'
+                        ? 'Generated Review'
+                        : editorialPreview.type === 'summary'
+                          ? 'Generated Summary'
+                          : 'Generated Result'}
+                    </h4>
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      Preview-only request. Apply it only where you want it.
+                    </p>
+                  </div>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-[#E5E7EB]">{editorialPreview.text}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => queueGeneratedContentAction({
+                      kind: 'editorial-apply',
+                      targetField: 'sharedCaption',
+                      text: editorialPreview.text,
+                    })}
+                  >
+                    Use as Shared Caption
+                  </Button>
+                  {isYouTubeSelected ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => queueGeneratedContentAction({
+                        kind: 'editorial-apply',
+                        targetField: 'youtubeDescription',
+                        text: editorialPreview.text,
+                      })}
+                    >
+                      Use as YouTube Description
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(editorialPreview.text);
+                        toast.success('Copied generated text.');
+                      } catch {
+                        toast.error('Failed to copy generated text.');
+                      }
+                    }}
+                  >
+                    Copy
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateMetadata}
+                    disabled={isGeneratingMetadata}
+                  >
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
@@ -1763,6 +2012,7 @@ export function ComposeEditorPage({
               value={formState.sharedCaption}
               onChange={(event) => {
                 setFormState((current) => ({ ...current, sharedCaption: event.target.value }));
+                setFieldManualEdits((current) => ({ ...current, sharedCaption: true }));
                 haptics.selection();
               }}
               onFocus={() => haptics.light()}
@@ -1808,17 +2058,26 @@ export function ComposeEditorPage({
               <div className="space-y-4">
                 <div>
                   <Label className="text-gray-600 dark:text-[#9CA3AF]">Title</Label>
-                  <Input value={formState.youtubeTitle} onChange={(event) => setFormState((current) => ({ ...current, youtubeTitle: event.target.value }))} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
+                  <Input value={formState.youtubeTitle} onChange={(event) => {
+                    setFormState((current) => ({ ...current, youtubeTitle: event.target.value }));
+                    setFieldManualEdits((current) => ({ ...current, youtubeTitle: true }));
+                  }} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
                 </div>
                 {isYouTubeLongformSelected ? (
                   <>
                     <div>
                       <Label className="text-gray-600 dark:text-[#9CA3AF]">Description</Label>
-                      <Textarea value={formState.youtubeDescription} onChange={(event) => setFormState((current) => ({ ...current, youtubeDescription: event.target.value }))} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
+                      <Textarea value={formState.youtubeDescription} onChange={(event) => {
+                        setFormState((current) => ({ ...current, youtubeDescription: event.target.value }));
+                        setFieldManualEdits((current) => ({ ...current, youtubeDescription: true }));
+                      }} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
                     </div>
                     <div>
                       <Label className="text-gray-600 dark:text-[#9CA3AF]">Playlist</Label>
-                      <Select value={formState.youtubePlaylist} onValueChange={(value) => setFormState((current) => ({ ...current, youtubePlaylist: value }))}>
+                      <Select value={formState.youtubePlaylist} onValueChange={(value) => {
+                        setFormState((current) => ({ ...current, youtubePlaylist: value }));
+                        setFieldManualEdits((current) => ({ ...current, youtubePlaylist: true }));
+                      }}>
                         <SelectTrigger className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]">
                           <SelectValue placeholder="Select a playlist" />
                         </SelectTrigger>
@@ -1978,12 +2237,21 @@ export function ComposeEditorPage({
 
       <BottomSheet
         open={isReplaceGeneratedContentOpen}
-        onOpenChange={setIsReplaceGeneratedContentOpen}
+        onOpenChange={(open) => {
+          setIsReplaceGeneratedContentOpen(open);
+          if (!open) {
+            setPendingGeneratedContentAction(null);
+          }
+        }}
       >
         <BottomSheetHeader>
           <BottomSheetTitle>Replace Existing Content?</BottomSheetTitle>
           <BottomSheetDescription>
-            Generating again will replace the current shared caption, YouTube title, YouTube description, and playlist selection.
+            {pendingGeneratedContentAction?.kind === 'editorial-apply'
+              ? pendingGeneratedContentAction.targetField === 'sharedCaption'
+                ? 'Applying this preview will replace the current Shared Caption.'
+                : 'Applying this preview will replace the current YouTube Description.'
+              : 'Generating again will replace the current manually edited fields that match this AI result.'}
           </BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetFooter>
@@ -1991,18 +2259,28 @@ export function ComposeEditorPage({
             <Button
               variant="outline"
               className="flex-1"
-              onClick={() => setIsReplaceGeneratedContentOpen(false)}
+              onClick={() => {
+                setIsReplaceGeneratedContentOpen(false);
+                setPendingGeneratedContentAction(null);
+              }}
             >
               Cancel
             </Button>
             <Button
               className="flex-1"
               onClick={() => {
-                setIsReplaceGeneratedContentOpen(false);
-                void runMetadataGeneration(true);
+                const action = pendingGeneratedContentAction;
+                if (!action) {
+                  setIsReplaceGeneratedContentOpen(false);
+                  return;
+                }
+
+                applyPendingGeneratedContentAction(action);
               }}
             >
-              Replace Generated Fields
+              {pendingGeneratedContentAction?.kind === 'editorial-apply'
+                ? 'Replace Field'
+                : 'Replace Generated Fields'}
             </Button>
           </div>
         </BottomSheetFooter>

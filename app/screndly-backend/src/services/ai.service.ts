@@ -1408,6 +1408,8 @@ export interface ComposeMetadataGenerationInput {
     youtubeTitlePrompt?: string;
     youtubeDescriptionPrompt?: string;
     youtubePlaylistPrompt?: string;
+    reviewPrompt?: string;
+    summaryPrompt?: string;
     mediaContext?: {
         fileName?: string;
         mimeType?: string;
@@ -1424,6 +1426,57 @@ export interface ComposeMetadataGenerationResult {
         playlistName: string | null;
         reason: string;
         confidence: number;
+    };
+}
+
+export interface ComposeContentIntentResult {
+    intent: 'post_generation' | 'review_generation' | 'summary_generation' | 'promo_caption_generation' | 'metadata_extraction' | 'mixed_request';
+    outputMode: 'post_fields' | 'preview_only';
+    format: 'general' | 'short_form_video' | 'social_post' | 'youtube_metadata';
+    durationSeconds: number | null;
+    directFieldFillAllowed: boolean;
+    detectedTitle: string;
+    containsMetadata: boolean;
+}
+
+export interface ComposeMediaMetadata {
+    title: string;
+    year: number | null;
+    mediaType: string;
+    cast: string[];
+    director: string;
+    creator: string;
+    studio: string;
+    platform: string;
+    releaseDate: string;
+    synopsis: string;
+    producers: string[];
+    franchise: string;
+    tone: string;
+    sourceType: string;
+}
+
+export interface ComposeContentGenerationInput extends ComposeMetadataGenerationInput {
+    requestText: string;
+}
+
+export interface ComposeContentGenerationResult {
+    intentResult: ComposeContentIntentResult;
+    mediaMetadata: ComposeMediaMetadata;
+    postFields: {
+        sharedCaption: string;
+        youtubeTitle: string;
+        youtubeDescription: string;
+        playlistSelection: {
+            playlistId: string | null;
+            playlistName: string | null;
+            reason: string;
+            confidence: number;
+        };
+    };
+    editorialResult: {
+        type: 'review' | 'summary' | 'editorial' | null;
+        text: string;
     };
 }
 
@@ -1643,7 +1696,343 @@ function normalizeComposeMetadataText(value: string): string {
     return value.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
 }
 
-function coerceComposePlaylistSelection(
+function parseDurationSeconds(value: string): number | null {
+    const secondMatch = value.match(/\b(\d{1,3})\s*(?:second|seconds|sec)\b/i);
+    if (secondMatch) {
+        const seconds = Number(secondMatch[1]);
+        return Number.isFinite(seconds) ? seconds : null;
+    }
+
+    const minuteMatch = value.match(/\b(\d{1,2})\s*(?:minute|minutes|min)\b/i);
+    if (minuteMatch) {
+        const minutes = Number(minuteMatch[1]);
+        return Number.isFinite(minutes) ? minutes * 60 : null;
+    }
+
+    return null;
+}
+
+function inferContainsComposeMetadata(value: string): boolean {
+    if (value.includes('\n')) {
+        return true;
+    }
+
+    return /\b(premieres?|starring|cast|synopsis|official trailer|teaser|release date|coming to|streaming on|apple tv\+|netflix|hbo|max|paramount\+|prime video|studio|creator|directed by|produced by)\b/i.test(value);
+}
+
+function inferDetectedTitle(value: string): string {
+    const quoted = value.match(/["“]([^"”]{2,80})["”]/);
+    if (quoted?.[1]) {
+        return quoted[1].trim();
+    }
+
+    const forMatch = value.match(/\bfor\s+([A-Z][A-Za-z0-9:'&.-]*(?:\s+[A-Z][A-Za-z0-9:'&.-]*){0,5})/);
+    if (forMatch?.[1]) {
+        return forMatch[1].trim();
+    }
+
+    const ofMatch = value.match(/\b(?:review|summary|summarize)\s+(?:of|for)\s+([A-Z][A-Za-z0-9:'&.-]*(?:\s+[A-Z][A-Za-z0-9:'&.-]*){0,5})/i);
+    if (ofMatch?.[1]) {
+        return ofMatch[1].trim();
+    }
+
+    const titleLead = value.match(/^([A-Z][A-Za-z0-9:'&.-]*(?:\s+[A-Z][A-Za-z0-9:'&.-]*){0,6})\s+(?:premieres?|is|returns|arrives|official|trailer|teaser)\b/m);
+    if (titleLead?.[1]) {
+        return titleLead[1].trim();
+    }
+
+    return '';
+}
+
+export function buildDefaultComposeIntentResult(requestText: string): ComposeContentIntentResult {
+    const normalized = normalizeComposeMetadataText(requestText);
+    const lower = normalized.toLowerCase();
+    const durationSeconds = parseDurationSeconds(lower);
+    const detectedTitle = inferDetectedTitle(normalized);
+    const containsMetadata = inferContainsComposeMetadata(normalized);
+    const asksForReview = /\breview\b/i.test(normalized);
+    const asksForSummary = /\bsummar(?:y|ize)\b/i.test(normalized);
+    const postReadyLanguage = /\b(caption|post|instagram|threads|tiktok|youtube|description|title|teaser post|for posting|short review|short-form|short form|video)\b/i.test(normalized);
+
+    if (asksForReview) {
+        const directFieldFillAllowed = postReadyLanguage || durationSeconds !== null;
+        return {
+            intent: 'review_generation',
+            outputMode: directFieldFillAllowed ? 'post_fields' : 'preview_only',
+            format: directFieldFillAllowed
+                ? (durationSeconds !== null ? 'short_form_video' : 'social_post')
+                : 'general',
+            durationSeconds,
+            directFieldFillAllowed,
+            detectedTitle,
+            containsMetadata,
+        };
+    }
+
+    if (asksForSummary) {
+        const directFieldFillAllowed = /\bcaption|post|instagram|threads|tiktok|youtube\b/i.test(normalized);
+        return {
+            intent: 'summary_generation',
+            outputMode: directFieldFillAllowed ? 'post_fields' : 'preview_only',
+            format: directFieldFillAllowed ? 'social_post' : 'general',
+            durationSeconds,
+            directFieldFillAllowed,
+            detectedTitle,
+            containsMetadata,
+        };
+    }
+
+    return {
+        intent: containsMetadata ? 'post_generation' : 'mixed_request',
+        outputMode: 'post_fields',
+        format: /\byoutube\b/i.test(normalized) ? 'youtube_metadata' : 'social_post',
+        durationSeconds,
+        directFieldFillAllowed: true,
+        detectedTitle,
+        containsMetadata,
+    };
+}
+
+function createEmptyComposeMediaMetadata(): ComposeMediaMetadata {
+    return {
+        title: '',
+        year: null,
+        mediaType: '',
+        cast: [],
+        director: '',
+        creator: '',
+        studio: '',
+        platform: '',
+        releaseDate: '',
+        synopsis: '',
+        producers: [],
+        franchise: '',
+        tone: '',
+        sourceType: '',
+    };
+}
+
+function sanitizeStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .slice(0, 12);
+}
+
+function coerceComposeMediaMetadata(value: unknown, fallbackTitle = '', fallbackSourceType = ''): ComposeMediaMetadata {
+    if (!value || typeof value !== 'object') {
+        return {
+            ...createEmptyComposeMediaMetadata(),
+            title: fallbackTitle,
+            sourceType: fallbackSourceType,
+        };
+    }
+
+    const record = value as Record<string, unknown>;
+    const numericYear = typeof record.year === 'number' ? record.year : Number(record.year);
+
+    return {
+        title: typeof record.title === 'string' ? record.title.trim() : fallbackTitle,
+        year: Number.isFinite(numericYear) ? numericYear : null,
+        mediaType: typeof record.mediaType === 'string' ? record.mediaType.trim() : '',
+        cast: sanitizeStringArray(record.cast),
+        director: typeof record.director === 'string' ? record.director.trim() : '',
+        creator: typeof record.creator === 'string' ? record.creator.trim() : '',
+        studio: typeof record.studio === 'string' ? record.studio.trim() : '',
+        platform: typeof record.platform === 'string' ? record.platform.trim() : '',
+        releaseDate: typeof record.releaseDate === 'string' ? record.releaseDate.trim() : '',
+        synopsis: typeof record.synopsis === 'string' ? record.synopsis.trim() : '',
+        producers: sanitizeStringArray(record.producers),
+        franchise: typeof record.franchise === 'string' ? record.franchise.trim() : '',
+        tone: typeof record.tone === 'string' ? record.tone.trim() : '',
+        sourceType: typeof record.sourceType === 'string' ? record.sourceType.trim() : fallbackSourceType,
+    };
+}
+
+async function classifyComposeInput(
+    requestText: string,
+    model: AIModel
+): Promise<ComposeContentIntentResult> {
+    const fallback = buildDefaultComposeIntentResult(requestText);
+    const prompt = `Classify the following Add/Edit Post AI request for a media publishing workflow.
+Return ONLY valid JSON.
+
+Allowed intents:
+- post_generation
+- review_generation
+- summary_generation
+- promo_caption_generation
+- metadata_extraction
+- mixed_request
+
+Allowed outputMode values:
+- post_fields
+- preview_only
+
+Allowed format values:
+- general
+- short_form_video
+- social_post
+- youtube_metadata
+
+Direct-fill rule:
+- Requests clearly meant for publishing, captions, social posts, or short-form video should use post_fields.
+- Standalone review or summary requests with no publishing intent should use preview_only.
+
+Input:
+${requestText.slice(0, 6000)}
+
+Return this exact JSON shape:
+{
+  "intent": "post_generation",
+  "outputMode": "post_fields",
+  "format": "social_post",
+  "durationSeconds": null,
+  "directFieldFillAllowed": true,
+  "detectedTitle": "",
+  "containsMetadata": false
+}`;
+
+    try {
+        const response = await generateCompletion({
+            model,
+            prompt,
+            jsonMode: true,
+            temperature: 0.1,
+            enableWebSearch: false,
+        });
+
+        if (!response.success) {
+            return fallback;
+        }
+
+        const parsed = JSON.parse(response.content) as Record<string, unknown>;
+        const intent = typeof parsed.intent === 'string' ? parsed.intent : fallback.intent;
+        const outputMode = parsed.outputMode === 'preview_only' ? 'preview_only' : 'post_fields';
+        const format = typeof parsed.format === 'string' ? parsed.format : fallback.format;
+        const durationCandidate = typeof parsed.durationSeconds === 'number' ? parsed.durationSeconds : Number(parsed.durationSeconds);
+
+        return {
+            intent:
+                intent === 'review_generation'
+                || intent === 'summary_generation'
+                || intent === 'promo_caption_generation'
+                || intent === 'metadata_extraction'
+                || intent === 'mixed_request'
+                    ? intent
+                    : 'post_generation',
+            outputMode,
+            format:
+                format === 'short_form_video' || format === 'social_post' || format === 'youtube_metadata'
+                    ? format
+                    : 'general',
+            durationSeconds: Number.isFinite(durationCandidate) ? durationCandidate : fallback.durationSeconds,
+            directFieldFillAllowed:
+                typeof parsed.directFieldFillAllowed === 'boolean'
+                    ? parsed.directFieldFillAllowed
+                    : outputMode === 'post_fields',
+            detectedTitle:
+                typeof parsed.detectedTitle === 'string' && parsed.detectedTitle.trim()
+                    ? parsed.detectedTitle.trim()
+                    : fallback.detectedTitle,
+            containsMetadata:
+                typeof parsed.containsMetadata === 'boolean'
+                    ? parsed.containsMetadata
+                    : fallback.containsMetadata,
+        };
+    } catch {
+        return fallback;
+    }
+}
+
+async function extractComposeMediaMetadata(
+    requestText: string,
+    model: AIModel,
+    detectedTitle = ''
+): Promise<ComposeMediaMetadata> {
+    const normalized = normalizeComposeMetadataText(requestText);
+    const fallbackTitle = detectedTitle || inferDetectedTitle(normalized);
+    const prompt = `Extract normalized media metadata from the input below for a movie/TV post builder.
+Return ONLY valid JSON.
+
+Rules:
+- If a field is missing, use an empty string, [] or null.
+- Do not invent facts.
+- Keep cast and producers concise.
+- sourceType should reflect the input style such as promotional_metadata, natural_language_request, mixed_input, or title_only_request.
+
+Input:
+${normalized.slice(0, 8000)}
+
+Return this exact JSON shape:
+{
+  "title": "",
+  "year": null,
+  "mediaType": "",
+  "cast": [],
+  "director": "",
+  "creator": "",
+  "studio": "",
+  "platform": "",
+  "releaseDate": "",
+  "synopsis": "",
+  "producers": [],
+  "franchise": "",
+  "tone": "",
+  "sourceType": ""
+}`;
+
+    try {
+        const response = await generateCompletion({
+            model,
+            prompt,
+            jsonMode: true,
+            temperature: 0.1,
+            enableWebSearch: true,
+        });
+
+        if (!response.success) {
+            return coerceComposeMediaMetadata(undefined, fallbackTitle, inferContainsComposeMetadata(normalized) ? 'promotional_metadata' : 'natural_language_request');
+        }
+
+        const parsed = JSON.parse(response.content);
+        const metadata = coerceComposeMediaMetadata(
+            parsed,
+            fallbackTitle,
+            inferContainsComposeMetadata(normalized) ? 'promotional_metadata' : 'natural_language_request'
+        );
+
+        if (!metadata.title) {
+            metadata.title = fallbackTitle;
+        }
+
+        if (!metadata.sourceType) {
+            metadata.sourceType = inferContainsComposeMetadata(normalized) ? 'promotional_metadata' : 'natural_language_request';
+        }
+
+        return metadata;
+    } catch {
+        return coerceComposeMediaMetadata(undefined, fallbackTitle, inferContainsComposeMetadata(normalized) ? 'promotional_metadata' : 'natural_language_request');
+    }
+}
+
+function buildComposeSourceContextLabel(metadata: ComposeMediaMetadata, intentResult: ComposeContentIntentResult): string {
+    const parts = [
+        metadata.title || intentResult.detectedTitle,
+        metadata.mediaType,
+        metadata.platform,
+        metadata.releaseDate,
+    ].filter(Boolean);
+
+    return parts.join(' | ');
+}
+
+export function coerceComposePlaylistSelection(
     selection: unknown,
     availablePlaylists: YouTubePlaylistOption[]
 ): { playlistId: string | null; playlistName: string | null; reason: string; confidence: number } {
@@ -1714,40 +2103,102 @@ function coerceComposePlaylistSelection(
     };
 }
 
-export async function generateComposeMetadataDraft(
-    input: ComposeMetadataGenerationInput,
-    model: AIModel = DEFAULT_OPENAI_MODEL
-): Promise<ComposeMetadataGenerationResult> {
-    const normalizedMetadata = normalizeComposeMetadataText(input.metadataText || '');
-    if (!normalizedMetadata) {
-        throw new Error('Metadata text is required.');
-    }
+async function generateComposeEditorialResult(
+    requestText: string,
+    intentResult: ComposeContentIntentResult,
+    mediaMetadata: ComposeMediaMetadata,
+    input: ComposeContentGenerationInput,
+    model: AIModel
+): Promise<{ type: 'review' | 'summary' | 'editorial' | null; text: string }> {
+    const editorialType =
+        intentResult.intent === 'review_generation'
+            ? 'review'
+            : intentResult.intent === 'summary_generation'
+                ? 'summary'
+                : 'editorial';
+    const promptGuide =
+        editorialType === 'review'
+            ? input.reviewPrompt || 'Write a sharp, publishable review that sounds natural and specific.'
+            : editorialType === 'summary'
+                ? input.summaryPrompt || 'Write a concise, informative summary grounded in the source context.'
+                : input.sharedCaptionPrompt || 'Write a clean editorial paragraph grounded in the source context.';
 
-    const availablePlaylists = Array.isArray(input.availablePlaylists) ? input.availablePlaylists : [];
-    const truncatedMetadata = normalizedMetadata.slice(0, 12000);
-    const selectedPlatforms = Array.isArray(input.selectedPlatforms) ? input.selectedPlatforms : [];
-
-    const prompt = `You are generating a social post draft for Screen Render from pasted source metadata.
+    const prompt = `You are generating a standalone ${editorialType} result for the Add/Edit Post page.
 Return ONLY valid JSON.
 
-Goals:
-- Write a single shared caption for social publishing.
-- Write a YouTube title.
-- Write a YouTube description.
-- Suggest the best matching YouTube playlist from the exact available playlists below.
+Goal:
+- Generate a polished ${editorialType} that the user can preview first before applying.
+- Do not include playlist IDs or field-routing commentary.
 
-Input format note:
-- The pasted metadata may look like studio press-release copy, trailer copy, teaser copy, marketing blurbs, synopsis paragraphs, release-date announcements, cast blocks, or platform/studio promo text.
-- Extract the key facts from dense prose without copying it word-for-word unless a short phrase is clearly useful.
+Saved Prompt Guidance:
+${promptGuide}
+
+Intent:
+${JSON.stringify(intentResult, null, 2)}
+
+Extracted Media Metadata:
+${JSON.stringify(mediaMetadata, null, 2)}
+
+User Source or Prompt Input:
+${requestText.slice(0, 8000)}
+
+Return this exact JSON shape:
+{
+  "type": "${editorialType}",
+  "text": "string"
+}`;
+
+    try {
+        const response = await generateCompletion({
+            model,
+            prompt,
+            jsonMode: true,
+            temperature: 0.5,
+            enableWebSearch: true,
+        });
+
+        if (!response.success) {
+            return { type: editorialType, text: '' };
+        }
+
+        const parsed = JSON.parse(response.content) as Record<string, unknown>;
+        return {
+            type: editorialType,
+            text: typeof parsed.text === 'string' ? parsed.text.trim() : '',
+        };
+    } catch {
+        return { type: editorialType, text: '' };
+    }
+}
+
+async function generateComposePostFields(
+    requestText: string,
+    intentResult: ComposeContentIntentResult,
+    mediaMetadata: ComposeMediaMetadata,
+    input: ComposeContentGenerationInput,
+    model: AIModel
+): Promise<ComposeMetadataGenerationResult> {
+    const availablePlaylists = Array.isArray(input.availablePlaylists) ? input.availablePlaylists : [];
+    const selectedPlatforms = Array.isArray(input.selectedPlatforms) ? input.selectedPlatforms : [];
+    const includeYouTube = selectedPlatforms.some((platform) => platform === 'youtube_longform' || platform === 'youtube_shorts');
+    const requestModeDescription =
+        intentResult.intent === 'review_generation'
+            ? `Generate a publish-ready review${intentResult.durationSeconds ? ` that fits roughly ${intentResult.durationSeconds} seconds of narration/caption timing` : ''}.`
+            : intentResult.intent === 'summary_generation'
+                ? 'Generate a publish-ready summary for social posting.'
+                : 'Generate publish-ready social post content.';
+
+    const prompt = `You are generating Add/Edit Post field content for Screen Render.
+Return ONLY valid JSON.
+
+Task:
+${requestModeDescription}
 
 Rules:
+- Shared caption must be publish-ready and concise enough for the current post workflow.
+- Only generate YouTube title, description, and playlist reasoning when includeYouTube is true.
 - Never invent a playlist ID or playlist name.
-- Only select a playlist when it is a strong fit.
 - If no playlist clearly fits, return null for playlistId and playlistName.
-- Keep the shared caption ready for the existing shared caption box.
-- Keep YouTube title concise and publish-ready.
-- Keep the YouTube description informative and clean.
-- Respect the saved prompt guidance below.
 
 Saved Prompt Guidance:
 Shared Caption Prompt:
@@ -1762,21 +2213,34 @@ ${input.youtubeDescriptionPrompt || 'N/A'}
 YouTube Playlist Prompt:
 ${input.youtubePlaylistPrompt || 'N/A'}
 
+Review Prompt:
+${input.reviewPrompt || 'N/A'}
+
+Summary Prompt:
+${input.summaryPrompt || 'N/A'}
+
+includeYouTube:
+${includeYouTube ? 'true' : 'false'}
+
 Selected Platforms:
 ${selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : 'None selected'}
 
+Source Context:
+${buildComposeSourceContextLabel(mediaMetadata, intentResult) || 'N/A'}
+
+Media Metadata:
+${JSON.stringify(mediaMetadata, null, 2)}
+
 Media Context:
-- File Name: ${input.mediaContext?.fileName || 'N/A'}
-- MIME Type: ${input.mediaContext?.mimeType || 'N/A'}
-- Media Kind: ${input.mediaContext?.mediaKind || 'N/A'}
+${JSON.stringify(input.mediaContext || {}, null, 2)}
+
+User Source or Prompt Input:
+${requestText.slice(0, 8000)}
 
 Available YouTube Playlists:
-${availablePlaylists.length > 0
+${includeYouTube && availablePlaylists.length > 0
         ? availablePlaylists.map((playlist) => `- ${playlist.id}: ${playlist.title}`).join('\n')
         : '- None available'}
-
-Pasted Source Metadata:
-${truncatedMetadata}
 
 Return this exact JSON shape:
 {
@@ -1795,32 +2259,42 @@ Return this exact JSON shape:
         model,
         prompt,
         jsonMode: true,
-        temperature: 0.3,
+        temperature: 0.35,
         enableWebSearch: true,
     });
 
     if (!response.success) {
-        throw new Error(response.error || 'Failed to generate post content from metadata.');
+        throw new Error(response.error || 'Failed to generate compose post fields.');
     }
 
-    let parsed: Record<string, unknown>;
-    try {
-        parsed = JSON.parse(response.content) as Record<string, unknown>;
-    } catch {
-        throw new Error('The AI response could not be parsed as structured JSON.');
-    }
-
+    const parsed = JSON.parse(response.content) as Record<string, unknown>;
     const sharedCaption = typeof parsed.sharedCaption === 'string' ? parsed.sharedCaption.trim() : '';
-    const youtubeTitle = typeof parsed.youtubeTitle === 'string' ? parsed.youtubeTitle.trim() : '';
-    const youtubeDescription = typeof parsed.youtubeDescription === 'string' ? parsed.youtubeDescription.trim() : '';
+    const youtubeTitle = includeYouTube && typeof parsed.youtubeTitle === 'string' ? parsed.youtubeTitle.trim() : '';
+    const youtubeDescription = includeYouTube && typeof parsed.youtubeDescription === 'string' ? parsed.youtubeDescription.trim() : '';
+    let playlistSelection = includeYouTube
+        ? coerceComposePlaylistSelection(parsed.playlistSelection, availablePlaylists)
+        : {
+            playlistId: null,
+            playlistName: null,
+            reason: 'YouTube is not selected for this compose item.',
+            confidence: 0,
+        };
 
-    let playlistSelection = coerceComposePlaylistSelection(parsed.playlistSelection, availablePlaylists);
-
-    if (!playlistSelection.playlistId && availablePlaylists.length > 0) {
+    if (includeYouTube && !playlistSelection.playlistId && availablePlaylists.length > 0) {
         const fallbackIds = await detectYouTubePlaylists(
             {
-                videoTitle: youtubeTitle || sharedCaption || truncatedMetadata.slice(0, 160),
-                description: `${youtubeDescription}\n\n${truncatedMetadata}`,
+                videoTitle: youtubeTitle || mediaMetadata.title || intentResult.detectedTitle || sharedCaption || requestText.slice(0, 160),
+                description: `${youtubeDescription}\n\n${mediaMetadata.synopsis}\n\n${requestText}`.trim(),
+                cleanedTitle: mediaMetadata.title || intentResult.detectedTitle || undefined,
+                mediaType: mediaMetadata.mediaType === 'tv_series' || mediaMetadata.mediaType === 'tv'
+                    ? 'tv'
+                    : mediaMetadata.mediaType === 'movie'
+                        ? 'movie'
+                        : undefined,
+                year: mediaMetadata.year ?? undefined,
+                releaseDate: mediaMetadata.releaseDate || undefined,
+                cast: mediaMetadata.cast,
+                productionNames: [mediaMetadata.studio, ...mediaMetadata.producers].filter(Boolean),
             },
             availablePlaylists,
             model,
@@ -1847,6 +2321,86 @@ Return this exact JSON shape:
         youtubeDescription,
         playlistSelection,
     };
+}
+
+export async function generateComposeContent(
+    input: ComposeContentGenerationInput,
+    model: AIModel = DEFAULT_OPENAI_MODEL
+): Promise<ComposeContentGenerationResult> {
+    const requestText = normalizeComposeMetadataText(input.requestText || input.metadataText || '');
+    if (!requestText) {
+        throw new Error('Source or prompt input is required.');
+    }
+
+    const intentResult = await classifyComposeInput(requestText, model);
+    const mediaMetadata = await extractComposeMediaMetadata(requestText, model, intentResult.detectedTitle);
+
+    if (!intentResult.detectedTitle && mediaMetadata.title) {
+        intentResult.detectedTitle = mediaMetadata.title;
+    }
+
+    if (intentResult.outputMode === 'preview_only') {
+        const editorialResult = await generateComposeEditorialResult(requestText, intentResult, mediaMetadata, input, model);
+        return {
+            intentResult,
+            mediaMetadata,
+            postFields: {
+                sharedCaption: '',
+                youtubeTitle: '',
+                youtubeDescription: '',
+                playlistSelection: {
+                    playlistId: null,
+                    playlistName: null,
+                    reason: 'Preview-only request; no direct playlist mapping applied.',
+                    confidence: 0,
+                },
+            },
+            editorialResult,
+        };
+    }
+
+    const postFields = await generateComposePostFields(requestText, intentResult, mediaMetadata, input, model);
+
+    return {
+        intentResult,
+        mediaMetadata,
+        postFields,
+        editorialResult: {
+            type: null,
+            text: '',
+        },
+    };
+}
+
+export async function resolveComposeSourceTitle(
+    requestText: string,
+    model: AIModel = DEFAULT_OPENAI_MODEL,
+    fallbackTitle = ''
+): Promise<string> {
+    const normalized = normalizeComposeMetadataText(requestText || '');
+    if (!normalized) {
+        return fallbackTitle.trim();
+    }
+
+    const intentResult = await classifyComposeInput(normalized, model);
+    const mediaMetadata = await extractComposeMediaMetadata(normalized, model, intentResult.detectedTitle || fallbackTitle);
+
+    return mediaMetadata.title || intentResult.detectedTitle || inferDetectedTitle(normalized) || fallbackTitle.trim();
+}
+
+export async function generateComposeMetadataDraft(
+    input: ComposeMetadataGenerationInput,
+    model: AIModel = DEFAULT_OPENAI_MODEL
+): Promise<ComposeMetadataGenerationResult> {
+    const result = await generateComposeContent(
+        {
+            ...input,
+            requestText: input.metadataText,
+        },
+        model
+    );
+
+    return result.postFields;
 }
 
 // ============================================
@@ -1920,8 +2474,10 @@ export default {
     generateCommentReply,
     generateStudioCaption,
     detectYouTubePlaylists,
+    generateComposeContent,
     generateComposeMetadataDraft,
     generatePinterestMetadata,
     getOpenAIKey,
-    getFlash3Key
+    getFlash3Key,
+    resolveComposeSourceTitle,
 };

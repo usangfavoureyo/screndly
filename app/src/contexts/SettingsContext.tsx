@@ -105,6 +105,8 @@ export interface Settings {
   videoYoutubeTitlePrompt?: string;
   videoYoutubeDescriptionPrompt?: string;
   videoYoutubePlaylistPrompt?: string;
+  videoReviewPrompt?: string;
+  videoSummaryPrompt?: string;
   videoYoutubePlaylists?: string;
   videoFilterPrompt?: string;
   videoFilterCache?: boolean;
@@ -444,6 +446,8 @@ function getDefaultSettings(): Settings {
     videoYoutubeTitlePrompt: '',
     videoYoutubeDescriptionPrompt: '',
     videoYoutubePlaylistPrompt: '',
+    videoReviewPrompt: '',
+    videoSummaryPrompt: '',
     videoYoutubePlaylists: '',
     videoYoutubeSelectedPlaylists: [],
     videoFilterPrompt: '',

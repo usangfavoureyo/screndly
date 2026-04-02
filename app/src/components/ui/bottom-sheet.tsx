@@ -424,7 +424,7 @@ export function BottomSheet({
         <div
           ref={contentRef}
           className={cn(
-            "bg-white dark:bg-[#000000] rounded-t-3xl pointer-events-auto",
+            "bg-white dark:bg-[#000000] rounded-t-3xl pointer-events-auto flex flex-col overflow-hidden",
             !disableAnimations && "will-change-transform",
             "border-t border-l border-r border-gray-200 dark:border-[#333333]",
             getHeightClass(),
@@ -451,9 +451,8 @@ export function BottomSheet({
           {/* Content */}
           <div
             className={cn(
-              "overflow-y-auto",
-              heightMode === 'full' && 'flex flex-col',
-              heightMode === 'auto' ? 'max-h-[calc(90dvh-4rem)]' : 'h-[calc(100%-4rem)]'
+              "min-h-0 overflow-y-auto overscroll-contain",
+              heightMode === 'auto' ? 'max-h-[calc(90dvh-4rem)]' : 'flex-1'
             )}
             data-scrollable
           >

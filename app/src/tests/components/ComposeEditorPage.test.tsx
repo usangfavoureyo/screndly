@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ComposeEditorPage } from '../../components/create/ComposeEditorPage';
 import { useComposeStore } from '../../store/useComposeStore';
@@ -17,6 +17,22 @@ vi.mock('sonner', () => ({
 vi.mock('../../contexts/NotificationsContext', () => ({
   useNotifications: () => ({
     addNotification: vi.fn(),
+  }),
+}));
+
+const settingsMock = {
+  videoOpenaiModel: 'gpt-5-mini',
+  videoUniversalCaptionPrompt: 'caption prompt',
+  videoYoutubeTitlePrompt: 'youtube title prompt',
+  videoYoutubeDescriptionPrompt: 'youtube description prompt',
+  videoYoutubePlaylistPrompt: 'playlist prompt',
+  videoReviewPrompt: 'review prompt',
+  videoSummaryPrompt: 'summary prompt',
+};
+
+vi.mock('../../contexts/SettingsContext', () => ({
+  useSettings: () => ({
+    settings: settingsMock,
   }),
 }));
 
@@ -45,6 +61,20 @@ vi.mock('../../hooks/useUnsavedBackGuard', () => ({
     },
     prompt: null,
   }),
+}));
+
+const generateComposeContentMock = vi.fn();
+const generateComposeThumbnailMock = vi.fn();
+
+vi.mock('../../lib/api/ai', () => ({
+  generateComposeContent: (...args: unknown[]) => generateComposeContentMock(...args),
+  generateComposeThumbnail: (...args: unknown[]) => generateComposeThumbnailMock(...args),
+}));
+
+const fetchYouTubePlaylistsMock = vi.fn();
+
+vi.mock('../../lib/api/youtube', () => ({
+  fetchYouTubePlaylists: () => fetchYouTubePlaylistsMock(),
 }));
 
 vi.mock('../../components/BackIconButton', () => ({
@@ -246,6 +276,10 @@ describe('ComposeEditorPage scheduling', () => {
     });
     toastMock.success.mockReset();
     toastMock.error.mockReset();
+    generateComposeContentMock.mockReset();
+    generateComposeThumbnailMock.mockReset();
+    fetchYouTubePlaylistsMock.mockReset();
+    fetchYouTubePlaylistsMock.mockResolvedValue([]);
   });
 
   it('keeps the schedule sheet open while a nested picker is active and saves the updated schedule', () => {
@@ -399,4 +433,193 @@ describe('ComposeEditorPage scheduling', () => {
     expect(toastMock.error).toHaveBeenCalledWith('Enter a caption before scheduling or publishing to the selected platforms');
     expect(useComposeStore.getState().items[0]?.status).toBe('draft');
   }, 60000);
+
+  it('fills shared and youtube fields from a direct AI request when YouTube is selected', async () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'youtube-post',
+          title: 'Matrix review',
+          status: 'draft',
+          mediaAssets: [],
+          sourceMetadata: '',
+          platforms: ['youtube_longform'],
+          sharedCaption: '',
+          platformFields: {
+            youtube: {
+              title: '',
+              description: '',
+              playlist: '',
+            },
+          },
+          createdAt: '2026-04-01T09:00:00.000Z',
+          updatedAt: '2026-04-01T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'youtube-post',
+      lastModifiedAt: '2026-04-01T09:00:00.000Z',
+    });
+
+    fetchYouTubePlaylistsMock.mockResolvedValue([
+      { id: 'playlist-1', title: 'Movie Reviews' },
+    ]);
+
+    generateComposeContentMock.mockResolvedValue({
+      success: true,
+      data: {
+        intentResult: {
+          intent: 'review_generation',
+          outputMode: 'post_fields',
+          format: 'short_form_video',
+          durationSeconds: 60,
+          directFieldFillAllowed: true,
+          detectedTitle: 'The Matrix',
+          containsMetadata: false,
+        },
+        mediaMetadata: {
+          title: 'The Matrix',
+          year: 1999,
+          mediaType: 'movie',
+          cast: ['Keanu Reeves'],
+          director: '',
+          creator: '',
+          studio: '',
+          platform: '',
+          releaseDate: '',
+          synopsis: '',
+          producers: [],
+          franchise: 'The Matrix',
+          tone: 'sci-fi',
+          sourceType: 'title_only_request',
+        },
+        postFields: {
+          sharedCaption: 'The Matrix still feels razor-sharp 60 seconds later.',
+          youtubeTitle: 'The Matrix Review in 60 Seconds',
+          youtubeDescription: 'A quick review of The Matrix.',
+          playlistSelection: {
+            playlistId: 'playlist-1',
+            playlistName: 'Movie Reviews',
+            reason: 'Best fit',
+            confidence: 0.91,
+          },
+        },
+        editorialResult: {
+          type: null,
+          text: '',
+        },
+      },
+    });
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByLabelText(/Paste metadata or type a request/i),
+      { target: { value: 'Give me a review for The Matrix for 60 seconds video' } },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate content' }));
+
+    await waitFor(() => {
+      expect(generateComposeContentMock).toHaveBeenCalled();
+    });
+
+    expect(screen.getByDisplayValue('The Matrix still feels razor-sharp 60 seconds later.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('The Matrix Review in 60 Seconds')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('A quick review of The Matrix.')).toBeInTheDocument();
+    expect(screen.getByText('Review • Direct fill')).toBeInTheDocument();
+    expect(toastMock.success).toHaveBeenCalledWith('Content generated. Playlist matched: Best fit');
+  });
+
+  it('shows a preview card for standalone review requests instead of overwriting the shared caption', async () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'preview-post',
+          title: 'Preview mode',
+          status: 'draft',
+          mediaAssets: [],
+          sourceMetadata: '',
+          platforms: ['instagram_feed'],
+          sharedCaption: 'Keep this caption',
+          platformFields: {},
+          createdAt: '2026-04-01T09:00:00.000Z',
+          updatedAt: '2026-04-01T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'preview-post',
+      lastModifiedAt: '2026-04-01T09:00:00.000Z',
+    });
+
+    generateComposeContentMock.mockResolvedValue({
+      success: true,
+      data: {
+        intentResult: {
+          intent: 'review_generation',
+          outputMode: 'preview_only',
+          format: 'general',
+          durationSeconds: null,
+          directFieldFillAllowed: false,
+          detectedTitle: 'The Matrix',
+          containsMetadata: false,
+        },
+        mediaMetadata: {
+          title: 'The Matrix',
+          year: 1999,
+          mediaType: 'movie',
+          cast: [],
+          director: '',
+          creator: '',
+          studio: '',
+          platform: '',
+          releaseDate: '',
+          synopsis: '',
+          producers: [],
+          franchise: '',
+          tone: 'sci-fi',
+          sourceType: 'title_only_request',
+        },
+        postFields: {
+          sharedCaption: '',
+          youtubeTitle: '',
+          youtubeDescription: '',
+          playlistSelection: {
+            playlistId: null,
+            playlistName: null,
+            reason: 'Preview-only request; no direct playlist mapping applied.',
+            confidence: 0,
+          },
+        },
+        editorialResult: {
+          type: 'review',
+          text: 'The Matrix is still one of the cleanest sci-fi action movies ever made.',
+        },
+      },
+    });
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    fireEvent.change(
+      screen.getByLabelText(/Paste metadata or type a request/i),
+      { target: { value: 'Write me a review of The Matrix' } },
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generate content' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Generated Review')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('The Matrix is still one of the cleanest sci-fi action movies ever made.')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Keep this caption')).toBeInTheDocument();
+  });
 });

@@ -192,7 +192,7 @@ export function PostFlowSheet({
       heightMode="full"
       sheetId="post-flow-sheet"
     >
-      <div className="min-h-full overflow-x-hidden bg-white px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] dark:bg-[#000000] sm:px-6">
+      <div className="h-full min-h-0 overflow-x-hidden bg-white px-4 pb-4 dark:bg-[#000000] sm:px-6">
         {flowContent}
       </div>
     </BottomSheet>

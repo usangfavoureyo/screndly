@@ -16,13 +16,17 @@ import {
     mutateComposeItem,
     publishComposeItemFromState,
 } from './compose.service';
+import {
+    generateDesignStudioAutoEditorials,
+    publishScheduledDesignStudioAutoEditorials,
+} from './design-studio.service';
 
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
 const LOCAL_CLEANUP_DIRECTORIES = ['temp', 'uploads'];
 const GLOBAL_CLEANUP_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'never']);
-const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 30;
-const YOUTUBE_POLLING_STALE_BUFFER_MINUTES = 5;
+const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 60;
+const YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES = 45;
 
 const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
     {
@@ -252,27 +256,17 @@ async function logCron(level: string, message: string, service: string = 'cron')
 }
 
 async function checkYouTubePollingHealth() {
-    const fetchIntervalSetting = await prisma.setting.findUnique({ where: { key: 'fetchInterval' } });
-    const defaultPollingIntervalMinutes = parsePositiveIntSettingValue(fetchIntervalSetting?.value, 2);
-    const staleThresholdMinutes = Math.max((defaultPollingIntervalMinutes * 3) + YOUTUBE_POLLING_STALE_BUFFER_MINUTES, 10);
-    const staleBefore = new Date(Date.now() - staleThresholdMinutes * 60 * 1000);
+    const now = new Date();
+    const staleBefore = new Date(now.getTime() - YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES * 60 * 1000);
 
-    const overdueChannels = await prisma.channel.findMany({
+    const activeChannels = await prisma.channel.findMany({
         where: {
             status: 'active',
-            OR: [
-                { nextPollAt: { lt: staleBefore } },
-                {
-                    nextPollAt: null,
-                    lastCheck: { lt: staleBefore },
-                },
-            ],
         },
         orderBy: [
             { nextPollAt: 'asc' },
             { lastCheck: 'asc' },
         ],
-        take: 5,
         select: {
             name: true,
             nextPollAt: true,
@@ -280,12 +274,36 @@ async function checkYouTubePollingHealth() {
         },
     });
 
+    if (activeChannels.length === 0) {
+        lastYouTubePollingHealthNotificationAt = null;
+        return;
+    }
+
+    const overdueChannels = activeChannels.filter((channel) => {
+        if (channel.nextPollAt) {
+            return channel.nextPollAt < staleBefore;
+        }
+
+        if (channel.lastCheck) {
+            return channel.lastCheck < staleBefore;
+        }
+
+        return true;
+    });
+
     if (overdueChannels.length === 0) {
         lastYouTubePollingHealthNotificationAt = null;
         return;
     }
 
-    const now = new Date();
+    if (overdueChannels.length < activeChannels.length) {
+        await logCron(
+            'warn',
+            `YouTube polling self-heal: ${overdueChannels.length}/${activeChannels.length} active channels are overdue by more than ${YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES} minutes`
+        );
+        return;
+    }
+
     if (
         lastYouTubePollingHealthNotificationAt
         && now.getTime() - lastYouTubePollingHealthNotificationAt.getTime() < YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES * 60 * 1000
@@ -293,23 +311,25 @@ async function checkYouTubePollingHealth() {
         return;
     }
 
-    const overdueLabels = overdueChannels.map((channel) => {
-        const reference = channel.nextPollAt || channel.lastCheck;
-        return reference
-            ? `${channel.name} (overdue since ${reference.toISOString()})`
-            : channel.name;
-    });
+    const overdueLabels = overdueChannels
+        .slice(0, 5)
+        .map((channel) => {
+            const reference = channel.nextPollAt || channel.lastCheck;
+            return reference
+                ? `${channel.name} (overdue since ${reference.toISOString()})`
+                : channel.name;
+        });
 
     await notificationService.notifyUserOnceWithinWindow({
-        title: 'YouTube Polling Delayed',
-        message: `Some YouTube channels are overdue for polling: ${overdueLabels.join(', ')}. Check the backend process and poll status.`,
+        title: 'YouTube Polling Fully Delayed',
+        message: `All active YouTube channels are overdue for polling by more than ${YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES} minutes. Example channels: ${overdueLabels.join(', ')}.`,
         type: 'warning',
         source: 'youtube',
         actionPage: '/channels'
     }, YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES);
     await logCron(
         'warn',
-        `YouTube polling health warning: ${overdueChannels.length} active channels are overdue by more than ${staleThresholdMinutes} minutes`
+        `YouTube polling global health warning: all ${activeChannels.length} active channels are overdue by more than ${YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES} minutes`
     );
     lastYouTubePollingHealthNotificationAt = now;
 }
@@ -545,6 +565,38 @@ export async function initCronJobs() {
             }
         } catch (error) {
             await logCron('error', `RSS Feed refresh failed: ${error}`);
+        }
+    }, cronOptions);
+
+    // Design Studio Auto Editorial Generation - Every minute
+    cron.schedule('* * * * *', async () => {
+        try {
+            const result = await generateDesignStudioAutoEditorials();
+            if (result.generated > 0) {
+                await logCron(
+                    'info',
+                    `Generated ${result.generated} Design Studio auto editorial${result.generated === 1 ? '' : 's'}.`,
+                    'design-studio-cron',
+                );
+            }
+        } catch (error) {
+            await logCron('error', `Design Studio auto generation failed: ${error}`, 'design-studio-cron');
+        }
+    }, cronOptions);
+
+    // Design Studio Auto Editorial Publisher - Every minute
+    cron.schedule('* * * * *', async () => {
+        try {
+            const result = await publishScheduledDesignStudioAutoEditorials();
+            if (result.published > 0 || result.failed > 0) {
+                await logCron(
+                    result.failed > 0 ? 'warn' : 'info',
+                    `Design Studio auto publish run: ${result.published} published, ${result.failed} failed.`,
+                    'design-studio-cron',
+                );
+            }
+        } catch (error) {
+            await logCron('error', `Design Studio auto publishing failed: ${error}`, 'design-studio-cron');
         }
     }, cronOptions);
 

@@ -293,6 +293,23 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     };
   }, []);
 
+  useEffect(() => {
+    const interval = window.setInterval(async () => {
+      try {
+        const state = await fetchDesignStudioState();
+        setTemplates((state.templates || []).map(parseTemplate));
+        setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
+        setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
+      } catch (error) {
+        console.error('Failed to refresh Design Studio state:', error);
+      }
+    }, 60000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, []);
+
   // Calculate aspect ratio from dimensions
   const calculateAspectRatio = (width: number, height: number): string => {
     const gcd = (a: number, b: number): number => b === 0 ? a : gcd(b, a % b);
@@ -743,10 +760,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       : validatedTemplates[0] || null;
   }, [templates, validatedTemplates, settings.designStudioDefaultAutoTemplateId]);
 
-  const autoActivityBadgeCount = useMemo(
-    () => autoEditorials.filter((item) => item.status === 'queued' || item.status === 'scheduled' || item.status === 'failed').length,
-    [autoEditorials],
-  );
+  const autoTemplatePool = useMemo(() => {
+    if (validatedTemplates.length > 0) {
+      return validatedTemplates;
+    }
+
+    return defaultAutoTemplate ? [defaultAutoTemplate] : [];
+  }, [defaultAutoTemplate, validatedTemplates]);
 
   const getContentTypeForKeyword = (keyword: string | undefined): AutoEditorial['contentType'] => {
     const normalized = normalizeKeyword(keyword || '');
@@ -858,29 +878,37 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
   };
 
-  const handleGenerateAutoEditorials = async () => {
+  const handleGenerateAutoEditorials = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (isGeneratingAutoEditorials) {
       return;
     }
 
     if (!settings.designStudioAutoEnabled) {
-      toast.info('Enable Auto Editorials in Design Studio settings first');
+      if (!silent) {
+        toast.info('Enable Auto Editorials in Design Studio settings first');
+      }
       return;
     }
 
     if (selectedFeedIds.size === 0) {
-      toast.info('Select at least one RSS feed source in Design Studio settings');
+      if (!silent) {
+        toast.info('Select at least one RSS feed source in Design Studio settings');
+      }
       return;
     }
 
-    if (!defaultAutoTemplate) {
-      toast.info('Select a validated default Auto template in Design Studio settings');
+    if (autoTemplatePool.length === 0) {
+      if (!silent) {
+        toast.info('Upload or load at least one validated PSD template first');
+      }
       return;
     }
 
     const triggerKeywords = settings.designStudioTriggerKeywords || [];
     if (triggerKeywords.length === 0) {
-      toast.info('Add at least one editorial trigger keyword first');
+      if (!silent) {
+        toast.info('Add at least one editorial trigger keyword first');
+      }
       return;
     }
 
@@ -921,13 +949,19 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         .slice(0, settings.designStudioMaxEditorialsPerRun || 5);
 
       if (candidates.length === 0) {
-        toast.info('No matching editorial candidates found yet');
+        if (!silent) {
+          toast.info('No matching editorial candidates found yet');
+        }
         return;
       }
 
       const nextAutoEditorials: AutoEditorial[] = [];
+      const startingTemplateIndex = autoTemplatePool.length > 1
+        ? Math.floor(Math.random() * autoTemplatePool.length)
+        : 0;
 
       for (const [index, candidate] of candidates.entries()) {
+        const selectedTemplateForEditorial = autoTemplatePool[(startingTemplateIndex + index) % autoTemplatePool.length];
         const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
         const headerText = deriveHeaderText(candidate.item.title);
         const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
@@ -941,7 +975,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           settings,
         );
         const renderedImage = await renderAutoEditorialImage(
-          defaultAutoTemplate,
+          selectedTemplateForEditorial,
           headerText,
           subtext,
           candidate.backgroundSource,
@@ -955,18 +989,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           sourceTitle: candidate.item.title,
           sourceUrl: candidate.item.link,
           matchedKeyword: candidate.matchedKeyword,
-          templateId: defaultAutoTemplate.id,
-          templateName: defaultAutoTemplate.name,
+          templateId: selectedTemplateForEditorial.id,
+          templateName: selectedTemplateForEditorial.name,
           renderedImage,
           headerText,
           subheaderText: subtext,
           caption: captionResult.caption,
           backgroundSource: candidate.backgroundSource,
-          backgroundOffsetX: defaultAutoTemplate.imageAnchor?.x ?? 50,
-          backgroundOffsetY: defaultAutoTemplate.imageAnchor?.y ?? 50,
+          backgroundOffsetX: selectedTemplateForEditorial.imageAnchor?.x ?? 50,
+          backgroundOffsetY: selectedTemplateForEditorial.imageAnchor?.y ?? 50,
           zoomLevel: 1,
-          overlayDirection: defaultAutoTemplate.overlayDirection || 'top',
-          overlayStrength: defaultAutoTemplate.overlayStrength || 75,
+          overlayDirection: selectedTemplateForEditorial.overlayDirection || 'top',
+          overlayStrength: selectedTemplateForEditorial.overlayStrength || 75,
           scheduleTime,
           targetPlatforms: settings.designStudioTargetPlatforms || [],
           status: settings.designStudioAutoPost ? 'scheduled' : 'draft',
@@ -993,10 +1027,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         ),
       );
 
-      toast.success(`${nextAutoEditorials.length} auto editorial${nextAutoEditorials.length === 1 ? '' : 's'} generated`);
+      if (!silent) {
+        toast.success(`${nextAutoEditorials.length} auto editorial${nextAutoEditorials.length === 1 ? '' : 's'} generated`);
+      }
     } catch (error) {
       console.error('Failed to generate auto editorials:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to generate auto editorials');
+      if (!silent) {
+        toast.error(error instanceof Error ? error.message : 'Failed to generate auto editorials');
+      }
     } finally {
       setIsGeneratingAutoEditorials(false);
     }
@@ -1059,23 +1097,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       toast.error(error instanceof Error ? error.message : 'Failed to publish auto editorial');
     }
   };
-
-  useEffect(() => {
-    if (!settings.designStudioAutoEnabled || !settings.designStudioAutoPost) {
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      const dueEditorial = autoEditorials.find((item) => item.status === 'scheduled' && item.scheduleTime && new Date(item.scheduleTime).getTime() <= Date.now());
-      if (dueEditorial) {
-        void handlePublishAutoEditorial(dueEditorial);
-      }
-    }, 30000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [autoEditorials, settings.designStudioAutoEnabled, settings.designStudioAutoPost]);
 
   const openEditorialEditor = (editorial: AutoEditorial, mode: AutoEditorialAction) => {
     setSelectedEditorial(editorial);
@@ -1276,36 +1297,24 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           </div>
 
           <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 lg:p-6 space-y-4">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-3">
               <div>
                 <p className="text-gray-900 dark:text-white">Auto Editorial Controls</p>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mt-1 max-w-2xl">
-                  Selected RSS feeds + trigger keywords {'->'} candidate filtering {'->'} template render {'->'} queue or auto post.
+                  Auto watches your selected RSS feeds, filters matching titles, and rotates through your validated PSD templates automatically.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  onClick={() => void handleGenerateAutoEditorials()}
-                  className="bg-[#ec1e24] hover:bg-[#d01a20] text-white"
-                >
-                  {isGeneratingAutoEditorials ? 'Generating...' : 'Generate Auto Editorials'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white gap-2"
-                  onClick={() => {
-                    haptics.light();
-                    localStorage.setItem('designStudioActivityTab', 'auto');
-                    onNavigate('design-studio-activity', 'design-studio');
-                  }}
-                >
-                  View Activity
-                  <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-[#ec1e24] px-2 py-0.5 text-[11px] text-white">
-                    {autoActivityBadgeCount}
-                  </span>
-                </Button>
+              <div className="rounded-2xl border border-dashed border-gray-200 dark:border-[#333333] px-4 py-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-[#6B7280] dark:text-[#9CA3AF]">
+                  Current behavior
+                </p>
+                <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                  {settings.designStudioAutoEnabled
+                    ? isGeneratingAutoEditorials
+                      ? 'Auto is scanning selected feeds and preparing editorials now.'
+                      : 'Auto is enabled and will generate editorials in the background when matching feed updates arrive.'
+                    : 'Auto is off. Turn it on in Design Studio settings to let the system run automatically.'}
+                </p>
               </div>
             </div>
 
@@ -1321,8 +1330,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioPostingInterval || '5'} min</p>
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Default Template</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">{defaultAutoTemplate?.name || 'None selected'}</p>
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Templates</p>
+                <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                  {autoTemplatePool.length === 0
+                    ? 'None loaded'
+                    : autoTemplatePool.length === 1
+                      ? '1 template'
+                      : `${autoTemplatePool.length} templates`}
+                </p>
               </div>
               <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Post</p>

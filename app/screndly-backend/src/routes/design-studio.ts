@@ -5,12 +5,10 @@ import prisma from '../lib/prisma';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
+import { getDesignStudioStateSnapshot, saveDesignStudioStateSnapshot } from '../services/design-studio.service';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
-
-const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
-const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
 
 const templateSchema = z.object({
   id: z.string(),
@@ -25,6 +23,25 @@ const templateSchema = z.object({
   hasCategory: z.boolean().optional(),
   hasSource: z.boolean().optional(),
   psdData: z.record(z.any()).optional().nullable(),
+  layoutVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
+  mappedLayers: z.array(z.string()).optional(),
+  textZone: z.object({
+    horizontal: z.enum(['left', 'center', 'right']),
+    vertical: z.enum(['top', 'bottom']),
+  }).optional(),
+  imageAnchor: z.object({
+    x: z.number(),
+    y: z.number(),
+  }).optional(),
+  overlayDirection: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+  overlayStrength: z.number().optional(),
+  safeMargin: z.number().optional(),
+  isValidated: z.boolean().optional(),
+  validationState: z.enum(['valid', 'warning', 'invalid']).optional(),
+  isDefaultManual: z.boolean().optional(),
+  isDefaultAuto: z.boolean().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
 });
 
 const renderedDesignSchema = z.object({
@@ -39,9 +56,39 @@ const renderedDesignSchema = z.object({
   contentType: z.enum(['poster', 'carousel', 'story', 'announcement', 'general']).optional(),
 });
 
+const autoEditorialSchema = z.object({
+  id: z.string(),
+  sourceFeedItemId: z.string(),
+  sourceFeedId: z.string().optional(),
+  sourceFeedName: z.string().optional(),
+  sourceTitle: z.string(),
+  sourceUrl: z.string().optional(),
+  matchedKeyword: z.string().optional(),
+  templateId: z.string(),
+  templateName: z.string().optional(),
+  renderedImage: z.string(),
+  headerText: z.string(),
+  subheaderText: z.string().optional(),
+  caption: z.string(),
+  backgroundSource: z.string().optional(),
+  backgroundOffsetX: z.number().optional(),
+  backgroundOffsetY: z.number().optional(),
+  zoomLevel: z.number().optional(),
+  overlayDirection: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+  overlayStrength: z.number().optional(),
+  scheduleTime: z.string().nullable().optional(),
+  targetPlatforms: z.array(z.string()),
+  status: z.enum(['draft', 'queued', 'scheduled', 'posted', 'failed']),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  postedAt: z.string().nullable().optional(),
+  failureReason: z.string().nullable().optional(),
+});
+
 const designStudioStateSchema = z.object({
   templates: z.array(templateSchema),
   renderedDesigns: z.array(renderedDesignSchema),
+  autoEditorials: z.array(autoEditorialSchema).optional().default([]),
 });
 
 const designStudioActivitySchema = z.object({
@@ -51,37 +98,23 @@ const designStudioActivitySchema = z.object({
     'design_rendered',
     'design_published',
     'template_deleted',
+    'auto_editorial_generated',
+    'auto_editorial_updated',
+    'auto_editorial_posted',
+    'auto_editorial_failed',
+    'auto_editorial_deleted',
   ]),
   details: z.any(),
 });
 
-async function readJsonSetting<T>(key: string, fallback: T): Promise<T> {
-  const setting = await prisma.setting.findUnique({ where: { key } });
-  if (!setting) {
-    return fallback;
-  }
-
-  return (setting.value as T) ?? fallback;
-}
-
-async function writeJsonSetting(key: string, value: unknown): Promise<void> {
-  await prisma.setting.upsert({
-    where: { key },
-    update: { value: value as any },
-    create: { key, value: value as any },
-  });
-}
-
 router.get('/state', authenticate, async (_req, res) => {
   try {
-    const [templates, renderedDesigns] = await Promise.all([
-      readJsonSetting(DESIGN_STUDIO_TEMPLATES_KEY, []),
-      readJsonSetting(DESIGN_STUDIO_RENDERED_KEY, []),
-    ]);
+    const { templates, renderedDesigns, autoEditorials } = await getDesignStudioStateSnapshot();
 
     const data = designStudioStateSchema.parse({
       templates: Array.isArray(templates) ? templates : [],
       renderedDesigns: Array.isArray(renderedDesigns) ? renderedDesigns : [],
+      autoEditorials: Array.isArray(autoEditorials) ? autoEditorials : [],
     });
 
     res.json({ success: true, data });
@@ -95,10 +128,7 @@ router.put('/state', authenticate, async (req, res) => {
   try {
     const validatedState = designStudioStateSchema.parse(req.body);
 
-    await Promise.all([
-      writeJsonSetting(DESIGN_STUDIO_TEMPLATES_KEY, validatedState.templates),
-      writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, validatedState.renderedDesigns),
-    ]);
+    await saveDesignStudioStateSnapshot(validatedState);
 
     res.json({ success: true, data: validatedState });
   } catch (error) {

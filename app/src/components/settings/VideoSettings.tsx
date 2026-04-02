@@ -1057,6 +1057,63 @@ Output format:
             </p>
           </div>
 
+          <div>
+            <Label htmlFor="video-review-prompt" className="text-[#9CA3AF]">Review Generation Prompt</Label>
+            <textarea
+              id="video-review-prompt"
+              value={settings.videoReviewPrompt || `You are writing short, specific movie and TV reviews for Screen Render.
+
+Goal:
+- sound like a sharp human editor, not a generic AI summary
+- focus on what makes the title worth watching or discussing
+- stay grounded in the provided metadata or prompt
+
+Rules:
+- no fake quotes or invented reception
+- no generic filler
+- keep it concise unless the request clearly asks for more depth
+- when the request is for posting, make it publish-ready for a short-form caption or narration`}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('videoReviewPrompt', e.target.value);
+              }}
+              rows={14}
+              className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
+            />
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+              Used when the Add/Edit Post input is asking for a review.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="video-summary-prompt" className="text-[#9CA3AF]">Summary Generation Prompt</Label>
+            <textarea
+              id="video-summary-prompt"
+              value={settings.videoSummaryPrompt || `You are writing clear media summaries for Screen Render.
+
+Goal:
+- summarize the movie, show, trailer, or teaser clearly
+- preserve the most useful factual context for publishing or editorial preview
+
+Rules:
+- do not invent plot details
+- keep it concise and readable
+- if the request is for posting, shape it into a post-ready summary
+- if the request is general, write it as a clean standalone summary`}
+              onFocus={() => haptics.light()}
+              onChange={(e) => {
+                haptics.light();
+                updateSetting('videoSummaryPrompt', e.target.value);
+              }}
+              rows={14}
+              className="w-full bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg p-3 text-sm text-gray-900 dark:text-white font-mono mt-1 resize-none"
+            />
+            <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+              Used when the Add/Edit Post input is asking for a summary.
+            </p>
+          </div>
+
           {/* YouTube Playlist Management */}
           <div>
             <div className="flex items-center justify-between gap-3">

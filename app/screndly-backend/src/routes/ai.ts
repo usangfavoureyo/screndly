@@ -8,7 +8,9 @@ import aiService, {
     AIModel,
     LEGACY_OPENAI_MODELS,
     SUPPORTED_OPENAI_MODELS,
+    generateComposeContent,
     normalizeAIModel,
+    resolveComposeSourceTitle,
 } from '../services/ai.service';
 import { authenticate } from '../middleware/auth';
 import {
@@ -295,6 +297,71 @@ router.post('/generate/compose-metadata', async (req: Request, res: Response) =>
     }
 });
 
+router.post('/generate/compose-content', async (req: Request, res: Response) => {
+    try {
+        const {
+            requestText,
+            selectedPlatforms,
+            availablePlaylists,
+            sharedCaptionPrompt,
+            youtubeTitlePrompt,
+            youtubeDescriptionPrompt,
+            youtubePlaylistPrompt,
+            reviewPrompt,
+            summaryPrompt,
+            mediaContext,
+            model,
+        } = req.body ?? {};
+
+        if (typeof requestText !== 'string' || requestText.trim().length === 0) {
+            return res.status(400).json({
+                success: false,
+                error: { message: 'Source or prompt input is required' },
+            });
+        }
+
+        const result = await generateComposeContent(
+            {
+                requestText,
+                metadataText: requestText,
+                selectedPlatforms: Array.isArray(selectedPlatforms) ? selectedPlatforms : [],
+                availablePlaylists: Array.isArray(availablePlaylists) ? availablePlaylists : [],
+                sharedCaptionPrompt: typeof sharedCaptionPrompt === 'string' ? sharedCaptionPrompt : undefined,
+                youtubeTitlePrompt: typeof youtubeTitlePrompt === 'string' ? youtubeTitlePrompt : undefined,
+                youtubeDescriptionPrompt: typeof youtubeDescriptionPrompt === 'string' ? youtubeDescriptionPrompt : undefined,
+                youtubePlaylistPrompt: typeof youtubePlaylistPrompt === 'string' ? youtubePlaylistPrompt : undefined,
+                reviewPrompt: typeof reviewPrompt === 'string' ? reviewPrompt : undefined,
+                summaryPrompt: typeof summaryPrompt === 'string' ? summaryPrompt : undefined,
+                mediaContext:
+                    mediaContext && typeof mediaContext === 'object'
+                        ? {
+                            fileName: typeof mediaContext.fileName === 'string' ? mediaContext.fileName : undefined,
+                            mimeType: typeof mediaContext.mimeType === 'string' ? mediaContext.mimeType : undefined,
+                            mediaKind:
+                                mediaContext.mediaKind === 'image' || mediaContext.mediaKind === 'video'
+                                    ? mediaContext.mediaKind
+                                    : undefined,
+                        }
+                        : undefined,
+            },
+            normalizeAIModel(typeof model === 'string' ? model : undefined),
+        );
+
+        res.json({
+            success: true,
+            data: result,
+        });
+    } catch (error) {
+        console.error('[AI Route] Compose content generation error:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                message: error instanceof Error ? error.message : 'Failed to generate compose content',
+            },
+        });
+    }
+});
+
 router.post('/generate/compose-thumbnail', async (req: Request, res: Response) => {
     try {
         const {
@@ -303,6 +370,7 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
             titleHint,
             sharedCaption,
             youtubeTitle,
+            model,
         } = req.body ?? {};
 
         if (typeof metadataText !== 'string' || metadataText.trim().length === 0) {
@@ -320,24 +388,15 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
         }
 
         const settings = await getYouTubeRuntimeSettings();
-        const composeDraft = await aiService.generateComposeMetadataDraft(
-            {
-                metadataText,
-                sharedCaptionPrompt: settings.videoUniversalCaptionPrompt,
-                youtubeTitlePrompt: settings.videoYoutubeTitlePrompt,
-                youtubeDescriptionPrompt: settings.videoYoutubeDescriptionPrompt,
-                youtubePlaylistPrompt: settings.videoYoutubePlaylistPrompt,
-                availablePlaylists: [],
-            },
-            settings.videoOpenaiModel || normalizeAIModel(undefined),
+        const resolvedModel = normalizeAIModel(
+            typeof model === 'string' ? model : settings.videoOpenaiModel || undefined,
         );
 
         const resolvedTitle =
             (typeof titleHint === 'string' && titleHint.trim())
             || (typeof youtubeTitle === 'string' && youtubeTitle.trim())
-            || composeDraft.youtubeTitle
             || (typeof sharedCaption === 'string' && sharedCaption.trim())
-            || composeDraft.sharedCaption
+            || await resolveComposeSourceTitle(metadataText, resolvedModel)
             || metadataText.split(/\r?\n/).find((line: string) => line.trim().length > 0)
             || 'Untitled';
 
