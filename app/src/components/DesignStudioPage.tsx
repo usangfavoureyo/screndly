@@ -245,6 +245,44 @@ function isPsdLikeFile(file: File): boolean {
   ].includes(normalizedType);
 }
 
+async function hasPsdSignature(file: File): Promise<boolean> {
+  const signature = await readPsdSignature(file);
+  return signature === '8BPS';
+}
+
+async function readPsdSignature(file: File): Promise<string | null> {
+  try {
+    const headerBuffer = await file.slice(0, 4).arrayBuffer();
+    return Array.from(new Uint8Array(headerBuffer))
+      .map((value) => String.fromCharCode(value))
+      .join('');
+  } catch {
+    return null;
+  }
+}
+
+function createTemplateFallbackPreview(fileName: string, width?: number, height?: number): string {
+  const safeName = fileName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const dimensions = width && height ? `${width} x ${height}` : 'PSD Template';
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#121212" />
+          <stop offset="100%" stop-color="#050505" />
+        </linearGradient>
+      </defs>
+      <rect width="1080" height="720" rx="32" fill="url(#bg)" />
+      <rect x="56" y="56" width="968" height="608" rx="28" fill="none" stroke="#ec1e24" stroke-opacity="0.5" stroke-width="4" />
+      <text x="540" y="290" fill="#ffffff" font-size="44" text-anchor="middle" font-family="Arial, sans-serif">PSD Template</text>
+      <text x="540" y="360" fill="#ec1e24" font-size="32" text-anchor="middle" font-family="Arial, sans-serif">${safeName}</text>
+      <text x="540" y="420" fill="#9CA3AF" font-size="24" text-anchor="middle" font-family="Arial, sans-serif">${dimensions}</text>
+    </svg>
+  `.trim();
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
 export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) {
   const { addNotification } = useNotifications();
   const { settings } = useSettings();
@@ -366,7 +404,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   };
 
   const processPsdFile = async (file: File) => {
-    if (!isPsdLikeFile(file)) {
+    const signature = await readPsdSignature(file);
+    const validPsd = isPsdLikeFile(file) || signature === '8BPS';
+
+    if (!validPsd) {
       toast.error('Please choose a PSD file from your Files/Documents app');
       return;
     }
@@ -379,13 +420,43 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       await photopeaService.initialize();
       await photopeaService.loadPSD(file);
       const analysis = await photopeaService.analyzeLayers();
-      const previewDataUrl = await photopeaService.getPreview();
-      const previewFile = dataUrlToFile(previewDataUrl, `${file.name.replace(/\.psd$/i, '')}-preview.png`);
+      const detectedHeader = Boolean(analysis.detectedLayers.hasHeader);
+      const detectedBackground = Boolean(analysis.detectedLayers.hasBackground);
+      const detectedOverlay = Boolean(analysis.detectedLayers.hasOverlay);
+      const detectedSubtext = Boolean(analysis.detectedLayers.hasSubtext);
 
-      const [templateUpload, previewUpload] = await Promise.all([
-        uploadDesignStudioAsset(file, 'templates'),
-        uploadDesignStudioAsset(previewFile, 'template-previews'),
-      ]);
+      toast.info('PSD Debug', {
+        description: [
+          `Filename: ${file.name}`,
+          `Signature: ${signature || 'Unknown'}`,
+          `Header: ${detectedHeader ? 'Yes' : 'No'}`,
+          `Background: ${detectedBackground ? 'Yes' : 'No'}`,
+          `Overlay: ${detectedOverlay ? 'Yes' : 'No'}`,
+          `Subtext: ${detectedSubtext ? 'Yes' : 'No'}`,
+        ].join('\n'),
+        duration: 8000,
+      });
+
+      let previewUrl = createTemplateFallbackPreview(file.name.replace(/\.psd$/i, ''), analysis.width, analysis.height);
+      let previewFileName: string | undefined;
+
+      try {
+        const previewDataUrl = await photopeaService.getPreview();
+        if (previewDataUrl) {
+          const previewFile = dataUrlToFile(previewDataUrl, `${file.name.replace(/\.psd$/i, '')}-preview.png`);
+          const previewUpload = await uploadDesignStudioAsset(previewFile, 'template-previews');
+          previewUrl = previewUpload.url;
+          previewFileName = previewUpload.fileName;
+        }
+      } catch (previewError) {
+        console.warn('Failed to generate PSD preview, using fallback preview card:', previewError);
+        toast.warning('PSD preview fallback', {
+          description: 'Template saved with a fallback preview card because the live PSD preview could not be generated on this device.',
+          duration: 5000,
+        });
+      }
+
+      const templateUpload = await uploadDesignStudioAsset(file, 'templates');
       const layoutMetadata = defaultLayoutMetadata('top_left');
       const mappedLayers = Array.isArray(analysis.layers)
         ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
@@ -395,7 +466,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       const template: Template = {
         id: `template-${Date.now()}`,
         name: file.name.replace('.psd', ''),
-        previewUrl: previewUpload.url,
+        previewUrl,
         aspectRatio: calculateAspectRatio(analysis.width, analysis.height),
         width: analysis.width,
         height: analysis.height,
@@ -421,7 +492,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           detectedLayers: analysis.detectedLayers,
           b2Url: templateUpload.url,
           fileName: templateUpload.fileName,
-          previewFileName: previewUpload.fileName,
+          previewFileName,
         },
       };
 
