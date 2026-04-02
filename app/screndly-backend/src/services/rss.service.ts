@@ -499,7 +499,7 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
       ? feed.tmdbEnabled
       : typeof storedImageSourceSettings.tmdbEnabled === 'boolean'
         ? storedImageSourceSettings.tmdbEnabled
-        : false,
+        : true,
   };
 }
 
@@ -1877,7 +1877,7 @@ async function resolveRSSItemImages(
     },
     {
       serperEnabled: feed.serperEnabled ?? true,
-      tmdbEnabled: feed.tmdbEnabled ?? false,
+      tmdbEnabled: feed.tmdbEnabled ?? true,
       serperPriority: feed.serperPriority,
       limit,
       smartCount: feed.imageCount === 'random',
@@ -2840,7 +2840,7 @@ async function createFeed(data: RSSFeedInput) {
   });
   const persistedImageSourceSettings = {
     serperEnabled: data.serperEnabled ?? true,
-    tmdbEnabled: data.tmdbEnabled ?? false,
+    tmdbEnabled: data.tmdbEnabled ?? true,
   };
   const support = await getRSSFeedColumnSupport();
   const select = await getRSSFeedSelect();
@@ -2876,7 +2876,7 @@ async function createFeed(data: RSSFeedInput) {
   }
 
   if (support.tmdbEnabled) {
-    createData.tmdbEnabled = data.tmdbEnabled ?? false;
+    createData.tmdbEnabled = data.tmdbEnabled ?? true;
   }
 
   if (support.platformImageCounts) {
@@ -2981,7 +2981,7 @@ async function updateFeed(
     tmdbEnabled: data.tmdbEnabled ??
       (typeof (existingFeed as Record<string, unknown>).tmdbEnabled === 'boolean'
         ? (existingFeed as Record<string, unknown>).tmdbEnabled as boolean
-        : existingStoredImageSourceSettings.tmdbEnabled ?? false),
+        : existingStoredImageSourceSettings.tmdbEnabled ?? true),
   };
 
   if (shouldResolveFilters || shouldPersistImageSourceSettings) {

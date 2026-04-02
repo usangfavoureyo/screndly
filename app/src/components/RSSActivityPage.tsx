@@ -466,23 +466,50 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                     selected={selection.isSelected(item.id)}
                     onEnterSelectionMode={selection.enterSelectionMode}
                     onToggleSelection={selection.toggleSelection}
-                    className="w-full text-left p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
+                    className="w-full text-left p-4 sm:p-5 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
                     deleteLabel="Delete"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-gray-900 dark:text-white mb-1">{item.title}</p>
-                        <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] mb-2 flex-wrap">
-                          <span>{item.feedName}</span>
-                          <span>&bull;</span>
-                          <span>{formatActivityTimestamp(item.timestamp)}</span>
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-gray-900 dark:text-white mb-1 text-[15px] leading-6 sm:text-base">{item.title}</p>
+                          <div className="flex items-center gap-2 text-sm text-[#6B7280] dark:text-[#9CA3AF] flex-wrap">
+                            <span className="truncate max-w-[180px] sm:max-w-none">{item.feedName}</span>
+                            <span>&bull;</span>
+                            <span>{formatActivityTimestamp(item.timestamp)}</span>
+                            {publishSummary && (
+                              <>
+                                <span>&bull;</span>
+                                <span>{publishSummary}</span>
+                              </>
+                            )}
+                          </div>
                         </div>
+                        <div className="flex items-center justify-between gap-2 sm:flex-col sm:items-end sm:justify-start">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${statusConfig.bg} ${statusConfig.color}`}>
+                            <StatusIcon className="w-4 h-4" />
+                            {statusConfig.label}
+                          </span>
+                          {!selection.selectionMode && retryablePlatforms.length > 0 && item.feedId && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(event) => handleRetry(event, item)}
+                              disabled={retryingItemId === item.id}
+                              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                            >
+                              {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="min-w-0">
                         {primaryImageUrl && (
                           <div className="mb-3 overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-[#333333] dark:bg-[#050505]">
                             <OptimizedImage
                               src={primaryImageUrl}
                               alt={item.title}
-                              className="h-40 w-full"
+                              className="h-48 w-full sm:h-44"
                             />
                           </div>
                         )}
@@ -505,11 +532,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             )}
                             {item.imageReason && <span>{item.imageReason}</span>}
                           </div>
-                        )}
-                        {publishSummary && (
-                          <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                            {publishSummary}
-                          </p>
                         )}
                         {alternateImages.length > 0 && (
                           <div className="mb-3">
@@ -566,11 +588,11 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                                   }
                                 }}
                               >
-                                {platformState.label}: {platformState.status === 'posted'
-                                  ? 'Posted'
+                                {platformState.status === 'posted'
+                                  ? platformState.label
                                   : platformState.status === 'failed'
-                                    ? 'Failed'
-                                    : 'Publishing'}
+                                    ? `${platformState.label} failed`
+                                    : `${platformState.label} publishing`}
                               </a>
                             ))}
                           </div>
@@ -583,23 +605,6 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                           }`}>
                             {item.error}
                           </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        <span className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm ${statusConfig.bg} ${statusConfig.color}`}>
-                          <StatusIcon className="w-4 h-4" />
-                          {statusConfig.label}
-                        </span>
-                        {!selection.selectionMode && retryablePlatforms.length > 0 && item.feedId && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={(event) => handleRetry(event, item)}
-                            disabled={retryingItemId === item.id}
-                            className="!bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-                          >
-                            {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
-                          </Button>
                         )}
                       </div>
                     </div>

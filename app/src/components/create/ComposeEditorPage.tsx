@@ -273,6 +273,7 @@ export function ComposeEditorPage({
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isGeneratingThreadsXCrop, setIsGeneratingThreadsXCrop] = useState(false);
+  const [isUploadingThreadsXCrop, setIsUploadingThreadsXCrop] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isScheduleDatePickerOpen, setIsScheduleDatePickerOpen] = useState(false);
@@ -464,6 +465,7 @@ export function ComposeEditorPage({
     setThumbnailGenerationState({});
     setPendingThumbnailGenerationKey(null);
     setIsReplaceGeneratedThumbnailOpen(false);
+    setIsUploadingThreadsXCrop(false);
   }, [activeItemId, existingItem]);
 
   useEffect(() => {
@@ -813,6 +815,7 @@ export function ComposeEditorPage({
     options?: { silent?: boolean },
   ) => {
     setIsGeneratingThreadsXCrop(true);
+    setIsUploadingThreadsXCrop(false);
     setFormState((current) => ({
       ...current,
       threadsXCropVideo: current.threadsXCropVideo
@@ -833,39 +836,58 @@ export function ComposeEditorPage({
         ...current,
         threadsXCropVideo: variant,
       }));
+      setIsGeneratingThreadsXCrop(false);
+      setIsUploadingThreadsXCrop(true);
 
       if (!options?.silent) {
         toast.success('3:4 crop preview is ready. Uploading for Threads and X...');
       }
 
-      const uploaded = await uploadComposeAsset(file);
-      setFormState((current) => {
-        const currentVariant = current.threadsXCropVideo;
-        if (
-          !currentVariant
-          || currentVariant.sourceAssetId !== variant.sourceAssetId
-          || currentVariant.sourceSignature !== variant.sourceSignature
-          || currentVariant.focusYPercent !== variant.focusYPercent
-        ) {
-          return current;
-        }
+      void uploadComposeAsset(file)
+        .then((uploaded) => {
+          setFormState((current) => {
+            const currentVariant = current.threadsXCropVideo;
+            if (
+              !currentVariant
+              || currentVariant.sourceAssetId !== variant.sourceAssetId
+              || currentVariant.sourceSignature !== variant.sourceSignature
+              || currentVariant.focusYPercent !== variant.focusYPercent
+            ) {
+              return current;
+            }
 
-        return {
-          ...current,
-          threadsXCropVideo: {
-            ...currentVariant,
-            previewUrl: currentVariant.previewUrl || uploaded.previewUrl,
-            storageUrl: uploaded.url,
-            storageFileId: uploaded.fileId,
-            uploadStatus: 'uploaded',
-            uploadError: undefined,
-          },
-        };
-      });
+            return {
+              ...current,
+              threadsXCropVideo: {
+                ...currentVariant,
+                previewUrl: currentVariant.previewUrl || uploaded.previewUrl,
+                storageUrl: uploaded.url,
+                storageFileId: uploaded.fileId,
+                uploadStatus: 'uploaded',
+                uploadError: undefined,
+              },
+            };
+          });
 
-      if (!options?.silent) {
-        toast.success('3:4 crop uploaded for Threads and X.');
-      }
+          if (!options?.silent) {
+            toast.success('3:4 crop uploaded for Threads and X.');
+          }
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : 'Failed to upload the 3:4 crop.';
+          setFormState((current) => ({
+            ...current,
+            threadsXCropVideo: current.threadsXCropVideo
+              ? { ...current.threadsXCropVideo, uploadStatus: 'failed', uploadError: message }
+              : null,
+          }));
+          toast.error(message);
+        })
+        .finally(() => {
+          setIsUploadingThreadsXCrop(false);
+        });
+
+      return;
     } catch (error) {
       toast.dismiss('threads-x-crop-progress');
       const message = error instanceof Error ? error.message : 'Failed to generate the 3:4 crop.';
@@ -875,6 +897,7 @@ export function ComposeEditorPage({
           ? { ...current.threadsXCropVideo, uploadStatus: 'failed', uploadError: message }
           : null,
       }));
+      setIsUploadingThreadsXCrop(false);
       toast.error(message);
     } finally {
       setIsGeneratingThreadsXCrop(false);
@@ -1283,6 +1306,11 @@ export function ComposeEditorPage({
   const validate = (mode: 'draft' | 'scheduled' | 'published') => {
     if (isGeneratingThreadsXCrop) {
       toast.error('Wait for the Threads/X 3:4 crop to finish generating.');
+      return false;
+    }
+
+    if (isThreadsXCropEnabled && isUploadingThreadsXCrop && !isThreadsXCropReady && mode !== 'draft') {
+      toast.error('Wait for the Threads/X 3:4 crop to finish uploading.');
       return false;
     }
 
@@ -1757,7 +1785,7 @@ export function ComposeEditorPage({
                             ? 'Generating the 3:4 crop for Threads and X...'
                             : isThreadsXCropReady
                               ? '3:4 crop is ready for Threads and X.'
-                              : hasThreadsXCropPreviewReady
+                              : isUploadingThreadsXCrop && hasThreadsXCropPreviewReady
                                 ? '3:4 crop preview is ready. Uploading for Threads and X...'
                                 : 'The 3:4 crop generates automatically when you enable it or change the framing.'}
                         </p>
@@ -1766,7 +1794,7 @@ export function ComposeEditorPage({
                             ? formState.threadsXCropVideo.uploadError
                             : isThreadsXCropReady
                               ? `Prepared as ${formState.threadsXCropVideo?.fileName}`
-                              : hasThreadsXCropPreviewReady
+                              : isUploadingThreadsXCrop && hasThreadsXCropPreviewReady
                                 ? 'Preview is available now. Keep this sheet open while the cropped file uploads for publishing.'
                                 : 'Wait for the auto-generated variant before scheduling or publishing with this crop enabled.'}
                         </p>
@@ -1775,9 +1803,15 @@ export function ComposeEditorPage({
                       <Button
                         type="button"
                         onClick={() => void handleGenerateThreadsXCrop()}
-                        disabled={isGeneratingThreadsXCrop || !primaryVideoAsset}
+                        disabled={isGeneratingThreadsXCrop || isUploadingThreadsXCrop || !primaryVideoAsset}
                       >
-                        {isGeneratingThreadsXCrop ? 'Generating 3:4 Video...' : (isThreadsXCropReady || hasThreadsXCropPreviewReady) ? 'Regenerate 3:4 Video' : 'Generate Again'}
+                        {isGeneratingThreadsXCrop
+                          ? 'Generating 3:4 Video...'
+                          : isUploadingThreadsXCrop
+                            ? 'Uploading 3:4 Video...'
+                            : (isThreadsXCropReady || hasThreadsXCropPreviewReady)
+                              ? 'Regenerate 3:4 Video'
+                              : 'Generate Again'}
                       </Button>
                     </div>
                   </div>
