@@ -53,7 +53,10 @@ interface Template {
   height: number;
   source: 'upload' | 'backblaze';
   lastEdited: Date;
+  hasHeader: boolean;
+  hasBackground: boolean;
   hasSubtext: boolean;
+  hasOverlay: boolean;
   hasCategory?: boolean;
   hasSource?: boolean;
   psdData?: any; // Will store actual PSD data in production
@@ -100,6 +103,10 @@ type AutoEditorialAction =
 function parseTemplate(template: any): Template {
   return {
     ...template,
+    hasHeader: template.hasHeader ?? true,
+    hasBackground: template.hasBackground ?? true,
+    hasSubtext: template.hasSubtext ?? false,
+    hasOverlay: template.hasOverlay ?? Boolean(template.psdData?.detectedLayers?.hasOverlay),
     lastEdited: new Date(template.lastEdited),
     createdAt: template.createdAt ? new Date(template.createdAt) : undefined,
     updatedAt: template.updatedAt ? new Date(template.updatedAt) : undefined,
@@ -449,7 +456,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         height: uploadedTemplate.height,
         source: 'upload',
         lastEdited: new Date(),
+        hasHeader: detectedHeader,
+        hasBackground: detectedBackground,
         hasSubtext: uploadedTemplate.detectedLayers.hasSubtext,
+        hasOverlay: detectedOverlay,
         hasCategory: false,
         hasSource: false,
         layoutVariant: 'top_left',
@@ -557,7 +567,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     for (const [index, file] of selectedFiles.entries()) {
       let width = 1080;
       let height = 1350;
+      let hasHeader = false;
+      let hasBackground = false;
       let hasSubtext = true;
+      let hasOverlay = false;
       let mappedLayers: string[] = [];
       let isValidated = false;
 
@@ -565,7 +578,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         const analysis = await inspectTemplateFromUrl(file.url);
         width = analysis.width;
         height = analysis.height;
+        hasHeader = analysis.detectedLayers.hasHeader;
+        hasBackground = analysis.detectedLayers.hasBackground;
         hasSubtext = analysis.detectedLayers.hasSubtext;
+        hasOverlay = analysis.detectedLayers.hasOverlay;
         mappedLayers = Array.isArray(analysis.layers)
           ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
           : [];
@@ -584,7 +600,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         height,
         source: 'backblaze',
         lastEdited: new Date(file.lastModified),
+        hasHeader,
+        hasBackground,
         hasSubtext,
+        hasOverlay,
         layoutVariant: 'top_left',
         mappedLayers,
         textZone: layoutMetadata.textZone,
@@ -655,7 +674,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setIsRendering(true);
     setIsEditSheetOpen(false);
 
-    toast.success('Rendering design with Photopea...');
+    toast.success('Rendering PSD to JPEG...');
 
     try {
       const photopeaService = getPhotopeaService();
@@ -670,7 +689,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         width: selectedTemplate.width,
         height: selectedTemplate.height,
         hasSubtext: selectedTemplate.hasSubtext || false,
-        hasOverlay: true,
+        hasOverlay: selectedTemplate.hasOverlay || false,
       });
 
       const renderedFile = new File(
@@ -698,7 +717,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       setIsRendering(false);
 
       await photopeaService.closeDocument();
-      toast.success('Design rendered successfully!');
+      toast.success('Rendered JPEG saved to Design Studio activity');
       haptics.success();
 
       try {
@@ -737,6 +756,16 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       toast.error(error instanceof Error ? error.message : 'Failed to render design');
     }
   };
+
+  const latestRenderedDesignByTemplateId = useMemo(() => {
+    const latestById = new Map<string, RenderedDesign>();
+    for (const design of renderedDesigns) {
+      if (!latestById.has(design.templateId)) {
+        latestById.set(design.templateId, design);
+      }
+    }
+    return latestById;
+  }, [renderedDesigns]);
 
   const handlePublish = async (caption: string, platforms: PlatformSelection) => {
     if (!publishTarget) return;
@@ -983,7 +1012,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           width: template.width,
           height: template.height,
           hasSubtext: template.hasSubtext,
-          hasOverlay: true,
+          hasOverlay: template.hasOverlay,
         },
       );
 
@@ -1398,17 +1427,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {templates.map((template) => (
-                <SwipeableTemplateCard
-                  key={template.id}
-                  template={template}
-                  onDelete={handleDeleteTemplate}
-                  onEdit={handleEditTemplate}
-                  onExpand={handleExpandTemplate}
-                  livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
-                  isBeingEdited={editingTemplateId === template.id}
-                />
-              ))}
+                {templates.map((template) => (
+                  <SwipeableTemplateCard
+                    key={template.id}
+                    template={template}
+                    onDelete={handleDeleteTemplate}
+                    onEdit={handleEditTemplate}
+                    onExpand={handleExpandTemplate}
+                    livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
+                    isBeingEdited={editingTemplateId === template.id}
+                    renderedPreviewUrl={latestRenderedDesignByTemplateId.get(template.id)?.outputUrl ?? null}
+                  />
+                ))}
             </div>
           )}
         </>
@@ -1572,8 +1602,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             }
           }}
           templateName={selectedTemplate.name}
+          hasHeader={selectedTemplate.hasHeader}
+          hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}
-          hasOverlay={true} // Assume templates have overlay adjustment layers
+          hasOverlay={selectedTemplate.hasOverlay}
           onSave={handleSaveDesign}
           onChange={(data) => setLivePreviewData(data)}
           isRendering={isRendering}
@@ -1616,7 +1648,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <X className="w-6 h-6" />
               </button>
               <img
-                src={expandedTemplate.previewUrl}
+                src={latestRenderedDesignByTemplateId.get(expandedTemplate.id)?.outputUrl || expandedTemplate.previewUrl}
                 alt={expandedTemplate.name}
                 className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
               />

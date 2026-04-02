@@ -1019,7 +1019,7 @@ async function filterRenderableFeedFallbackUrls(urls: string[]): Promise<string[
 }
 
 function shouldUseFeedFallbackImages(_article: RSSImageSelectionArticle): boolean {
-  return true;
+  return getRevealDrivenArticleMode(_article) !== null;
 }
 
 function getSerperImageText(image: SerperImageResult): string {
@@ -2682,7 +2682,7 @@ function getEnabledImageSources(options: {
   const tmdbEnabled = options.tmdbEnabled === true;
 
   if (serperEnabled && tmdbEnabled) {
-    return options.serperPriority === false ? ['tmdb', 'serper'] : ['serper', 'tmdb'];
+    return ['tmdb', 'serper'];
   }
 
   if (tmdbEnabled) {

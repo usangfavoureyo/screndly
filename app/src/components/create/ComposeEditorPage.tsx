@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Sparkles, Upload, X } from 'lucide-react';
+import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -1525,12 +1525,6 @@ export function ComposeEditorPage({
                     description: 'YouTube only',
                     supportsGeneration: true,
                   },
-                  {
-                    key: 'xThumbnail' as const,
-                    label: 'X Thumbnail',
-                    description: 'X only',
-                    supportsGeneration: false,
-                  },
                 ].map(({ key, label, description, supportsGeneration }) => {
                   const thumbnail = formState[key];
                   const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
@@ -1543,16 +1537,34 @@ export function ComposeEditorPage({
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
                           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{description}</p>
                         </div>
-                        {thumbnail ? (
-                          <button
-                            type="button"
-                            onClick={() => removeThumbnail(key)}
-                            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
-                            aria-label={`Remove ${label}`}
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        ) : null}
+                        <div className="flex items-center gap-2">
+                          {supportsGeneration ? (
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateThumbnail(key)}
+                              disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                              aria-label={`Generate ${label}`}
+                              title={`Generate ${label}`}
+                            >
+                              {isGeneratingThisThumbnail ? (
+                                <RedSpinner size="sm" label={`Generating ${label}...`} />
+                              ) : (
+                                <RotateCcw className="h-4 w-4 text-[#ec1e24]" />
+                              )}
+                            </button>
+                          ) : null}
+                          {thumbnail ? (
+                            <button
+                              type="button"
+                              onClick={() => removeThumbnail(key)}
+                              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                              aria-label={`Remove ${label}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="mt-3 flex items-center gap-3">
@@ -1567,22 +1579,6 @@ export function ComposeEditorPage({
                             Upload
                           </div>
                         </Label>
-                        {supportsGeneration ? (
-                          <button
-                            type="button"
-                            onClick={() => handleGenerateThumbnail(key)}
-                            disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
-                            aria-label={`Generate ${label}`}
-                            title={`Generate ${label}`}
-                          >
-                            {isGeneratingThisThumbnail ? (
-                              <RedSpinner size="sm" label={`Generating ${label}...`} />
-                            ) : (
-                              <Sparkles className="h-4 w-4 text-[#ec1e24]" />
-                            )}
-                          </button>
-                        ) : null}
                         <input
                           id={`compose-thumbnail-${key}`}
                           type="file"

@@ -127,7 +127,7 @@ export function Navigation({
                 onToggleDesktopSidebar();
               }}
               onPointerUp={armPointerActivation('toggle-sidebar-expanded', onToggleDesktopSidebar)}
-              className="hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 transition-colors duration-200 hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
+              className="hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 opacity-0 transition-[color,opacity] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
               aria-label="Collapse sidebar"
               aria-pressed={false}
             >

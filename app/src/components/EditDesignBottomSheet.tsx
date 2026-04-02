@@ -34,6 +34,8 @@ interface EditDesignBottomSheetProps {
     overlayOpacity?: number; // 0-100
     gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
   };
+  hasHeader?: boolean;
+  hasBackground?: boolean;
   hasSubtext?: boolean;
   hasOverlay?: boolean; // Whether template has a gradient overlay adjustment layer
   onSave: (data: DesignData) => void;
@@ -63,6 +65,8 @@ export function EditDesignBottomSheet({
   templateName,
   aspectRatio,
   initialData,
+  hasHeader = true,
+  hasBackground = true,
   hasSubtext = false,
   hasOverlay = false,
   onSave,
@@ -193,18 +197,18 @@ export function EditDesignBottomSheet({
   };
 
   const handleSave = () => {
-    if (!headerText.trim()) {
+    if (hasHeader && !headerText.trim()) {
       toast.error('Header text is required');
       return;
     }
 
     haptics.medium();
     onSave({
-      headerText,
+      headerText: hasHeader ? headerText : '',
       subtext: hasSubtext ? subtext : undefined,
       headerTextColor,
       subtextColor,
-      backgroundImage,
+      backgroundImage: hasBackground ? backgroundImage : undefined,
       imageFocalPoint,
       imageZoom,
       overlayEnabled,
@@ -245,13 +249,14 @@ export function EditDesignBottomSheet({
       <BottomSheetHeader>
         <BottomSheetTitle className="text-gray-900 dark:text-white">Edit Design</BottomSheetTitle>
         <p className="text-xs text-[#6B7280] mt-1">
-          Customize text, colors, and images for your design
+          PSD layer changes are applied during render and exported as a JPEG.
         </p>
       </BottomSheetHeader>
 
       <BottomSheetBody>
         <div className="space-y-4" data-scrollable>
           {/* Header Text (Required) */}
+          {hasHeader && (
           <div>
             <div className="flex justify-between items-center mb-2">
               <Label className="text-gray-900 dark:text-white">
@@ -324,6 +329,7 @@ export function EditDesignBottomSheet({
               </div>
             </div>
           </div>
+          )}
 
           {/* Subtext (Optional, conditional) */}
           {hasSubtext && (
@@ -401,6 +407,7 @@ export function EditDesignBottomSheet({
           )}
 
           {/* Image Replacement Section */}
+          {hasBackground && (
           <div>
             <Label className="text-gray-900 dark:text-white mb-2 block">Background Image</Label>
             
@@ -666,6 +673,7 @@ export function EditDesignBottomSheet({
               </div>
             )}
           </div>
+          )}
 
           {/* Text Overlay Gradient Controls (Conditional) */}
           {hasOverlay && (
