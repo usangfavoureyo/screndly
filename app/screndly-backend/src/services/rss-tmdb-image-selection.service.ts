@@ -164,6 +164,7 @@ interface ResolvedTMDbTitleCandidate {
   backdropUrls: string[];
   posterUrl?: string;
   logoUrl?: string;
+  projectContextOnly?: boolean;
 }
 
 interface BackdropRotationState {
@@ -174,6 +175,22 @@ interface BackdropRotationState {
 }
 
 const backdropRotationStateByEntity = new Map<string, BackdropRotationState>();
+const TITLE_ANCHOR_STOPWORDS = new Set([
+  'a',
+  'an',
+  'and',
+  'as',
+  'at',
+  'for',
+  'from',
+  'in',
+  'of',
+  'on',
+  'or',
+  'the',
+  'to',
+  'with',
+]);
 
 function normalizeText(value: string): string {
   return value
@@ -207,6 +224,12 @@ function extractYearTokens(value: string): string[] {
 
 function buildImageUrl(path?: string | null): string | undefined {
   return path ? `${TMDB_IMAGE_BASE_URL}${path}` : undefined;
+}
+
+function getMeaningfulTitleTokens(value: string): string[] {
+  return normalizeText(value)
+    .split(' ')
+    .filter((token) => token && !TITLE_ANCHOR_STOPWORDS.has(token) && token.length > 2);
 }
 
 function slugifyTmdbImageName(value: string): string {
@@ -528,37 +551,112 @@ function hasGenericShortProjectAnchor(anchor: string): boolean {
   return tokens.every((token) => genericTokens.has(token) || token.length <= 4);
 }
 
+function scoreTitleAnchorCandidate(value: string, preferPrimary = false): number {
+  const tokens = getMeaningfulTitleTokens(value);
+  return (preferPrimary ? 60 : 0)
+    + tokens.length * 40
+    + value.trim().length
+    + Math.min(tokens.join(' ').length, 60);
+}
+
 function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string | null {
+  const candidates: Array<{ value: string; preferPrimary?: boolean }> = [];
+  const primaryName = input.primarySubject.name.trim();
+
   if (
-    input.primarySubject.type === 'movie' ||
-    input.primarySubject.type === 'tv_show' ||
-    input.primarySubject.type === 'franchise'
+    primaryName &&
+    (
+      input.primarySubject.type === 'movie' ||
+      input.primarySubject.type === 'tv_show' ||
+      input.primarySubject.type === 'franchise'
+    )
   ) {
-    return input.primarySubject.name;
+    candidates.push({ value: primaryName, preferPrimary: true });
   }
 
   const contextProject = input.contextProject?.trim();
   if (contextProject) {
-    if (isPersonLedInput(input) && hasGenericShortProjectAnchor(contextProject)) {
-      return null;
-    }
-
     const normalizedContextProject = normalizeText(contextProject);
     const contextMatchesStudio = input.relevantStudios.some(
       (studio) => normalizeText(studio) === normalizedContextProject
     );
 
-    if (!contextMatchesStudio) {
-      return contextProject;
+    if (!contextMatchesStudio && !(isPersonLedInput(input) && hasGenericShortProjectAnchor(contextProject))) {
+      candidates.push({ value: contextProject });
     }
   }
 
   const visualSubject = input.visualSubject.trim();
-  if (visualSubject && normalizeText(visualSubject) !== normalizeText(input.primarySubject.name)) {
-    return visualSubject;
+  if (visualSubject && normalizeText(visualSubject) !== normalizeText(primaryName)) {
+    candidates.push({ value: visualSubject });
   }
 
-  return null;
+  for (const query of input.queries) {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    candidates.push({
+      value: trimmed,
+      preferPrimary: normalizeText(trimmed) === normalizeText(primaryName),
+    });
+  }
+
+  const ranked = uniqueStrings(candidates.map((candidate) => candidate.value))
+    .map((value) => ({
+      value,
+      score: scoreTitleAnchorCandidate(
+        value,
+        candidates.some((candidate) => normalizeText(candidate.value) === normalizeText(value) && candidate.preferPrimary)
+      ),
+    }))
+    .filter((candidate) => {
+      if (candidate.score <= 0) {
+        return false;
+      }
+
+      if (!isPersonLedInput(input)) {
+        return true;
+      }
+
+      return !hasGenericShortProjectAnchor(candidate.value);
+    })
+    .sort((left, right) => right.score - left.score);
+
+  return ranked[0]?.value || null;
+}
+
+function buildTitleSupportingContextTerms(
+  input: StructuredRSSTMDbSelectionInput,
+  anchor: string
+): string[] {
+  const normalizedAnchor = normalizeText(anchor);
+  return uniqueStrings([
+    input.contextProject || null,
+    input.visualSubject,
+    ...input.requiredContextTerms,
+    ...input.queries,
+  ]).filter((term) => normalizeText(term) !== normalizedAnchor);
+}
+
+function titleMatchesProjectContext(
+  input: StructuredRSSTMDbSelectionInput,
+  title: string,
+  overview: string
+): boolean {
+  const contextTerms = uniqueStrings([
+    input.contextProject || null,
+    input.visualSubject,
+    ...input.requiredContextTerms,
+  ]);
+
+  if (contextTerms.length === 0) {
+    return false;
+  }
+
+  const matchScore = scoreContextTerms([title, overview].join(' '), contextTerms, []);
+  return matchScore >= 55;
 }
 
 function titleCandidateMatchesPersonContext(
@@ -621,6 +719,8 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
     return null;
   }
 
+  const supportingContextTerms = buildTitleSupportingContextTerms(input, anchor);
+
   const yearTokens = extractYearTokens([
     input.primarySubject.name,
     input.visualSubject,
@@ -674,6 +774,11 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
               [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
               input.requiredContextTerms,
               yearTokens
+            )
+            + scoreContextTerms(
+              [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
+              supportingContextTerms,
+              []
             )
             + Math.min(candidate.popularity || 0, 80) / 2,
         };
@@ -733,13 +838,27 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
           input.requiredContextTerms,
           yearTokens
         )
+        + scoreContextTerms(
+          [
+            title,
+            overview,
+            ...castNames,
+            ...crewNames,
+            ...productionNames,
+          ].join(' '),
+          supportingContextTerms,
+          []
+        )
         + scoreAliasMatch(anchor, [title]);
 
       if (enrichedScore < MIN_TMDB_TITLE_SCORE) {
         continue;
       }
 
-      if (!titleCandidateMatchesPersonContext(input, title, overview, castNames, crewNames)) {
+      const matchesPersonContext = titleCandidateMatchesPersonContext(input, title, overview, castNames, crewNames);
+      const projectContextOnly = !matchesPersonContext && titleMatchesProjectContext(input, title, overview);
+
+      if (!matchesPersonContext && !projectContextOnly) {
         continue;
       }
 
@@ -757,6 +876,7 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
         backdropUrl: backdropUrls[0],
         posterUrl: selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]),
         logoUrl: selectBestImageAsset(undefined, details.images?.logos, ['en', null]),
+        projectContextOnly,
       };
     }
   } catch (error) {
@@ -974,6 +1094,13 @@ export async function resolveStructuredTMDbImages(
 
   const titleCandidate = await resolveTitleCandidate(input);
   if (titleCandidate) {
+    const projectOnlyTitleFallback =
+      titleCandidate.projectContextOnly &&
+      isPersonLedInput(input) &&
+      input.imageIntent !== 'poster' &&
+      input.imageIntent !== 'logo' &&
+      input.imageIntent !== 'brand_backdrop';
+
     const titleRole = input.imageIntent === 'poster'
       ? 'poster'
       : input.imageIntent === 'logo' || input.imageIntent === 'brand_backdrop'
@@ -982,22 +1109,34 @@ export async function resolveStructuredTMDbImages(
           ? 'character'
           : 'still';
 
-    const preferredUrl = titleRole === 'poster'
+    const preferredUrl = projectOnlyTitleFallback
+      ? titleCandidate.logoUrl || titleCandidate.posterUrl
+      : titleRole === 'poster'
       ? titleCandidate.posterUrl
       : titleRole === 'logo' || titleRole === 'brand_backdrop'
         ? titleCandidate.logoUrl
         : titleCandidate.backdropUrls[0] || titleCandidate.posterUrl;
 
+    const preferredRole = projectOnlyTitleFallback
+      ? (titleCandidate.logoUrl ? 'logo' : 'poster')
+      : titleRole;
+
     if (preferredUrl) {
       candidates.push({
         url: preferredUrl,
         score: titleCandidate.score,
-        role: titleRole,
-        reason: `TMDb ${titleRole === 'poster' ? 'poster' : titleRole === 'logo' || titleRole === 'brand_backdrop' ? 'logo' : 'backdrop'} for ${titleCandidate.title}`,
+        role: preferredRole,
+        reason: `TMDb ${preferredRole === 'poster' ? 'poster' : preferredRole === 'logo' || preferredRole === 'brand_backdrop' ? 'logo' : 'backdrop'} for ${titleCandidate.title}`,
       });
     }
 
-    if (titleRole !== 'poster' && titleRole !== 'logo' && titleRole !== 'brand_backdrop' && titleCandidate.backdropUrls.length > 1) {
+    if (
+      !projectOnlyTitleFallback &&
+      titleRole !== 'poster' &&
+      titleRole !== 'logo' &&
+      titleRole !== 'brand_backdrop' &&
+      titleCandidate.backdropUrls.length > 1
+    ) {
       for (const [index, url] of titleCandidate.backdropUrls.entries()) {
         if (index === 0 || url === preferredUrl) {
           continue;

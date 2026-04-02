@@ -636,6 +636,6 @@ function analyzeLayers() {
   return JSON.stringify(result);
 }
 
-analyzeLayers();
+app.echoToOE(analyzeLayers());
 `;
 }

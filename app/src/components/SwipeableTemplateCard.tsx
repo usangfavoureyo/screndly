@@ -28,7 +28,6 @@ interface SwipeableTemplateCardProps {
   onExpand: (template: Template) => void;
   livePreviewData?: DesignData | null;
   isBeingEdited?: boolean;
-  renderedPreviewUrl?: string | null;
 }
 
 export function SwipeableTemplateCard({
@@ -38,7 +37,6 @@ export function SwipeableTemplateCard({
   onExpand,
   livePreviewData,
   isBeingEdited,
-  renderedPreviewUrl,
 }: SwipeableTemplateCardProps) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -97,7 +95,6 @@ export function SwipeableTemplateCard({
     setSwipeX(0);
   };
 
-  const previewImageUrl = renderedPreviewUrl || template.previewUrl;
   return (
     <div className="relative overflow-hidden rounded-2xl">
       <div className="absolute inset-0 flex items-center justify-end rounded-2xl bg-[#ec1e24]">
@@ -137,9 +134,9 @@ export function SwipeableTemplateCard({
 
           <button onClick={() => onExpand(template)} className="absolute inset-0 h-full w-full">
             {isBeingEdited && livePreviewData ? (
-              <LiveDesignPreview templatePreviewUrl={previewImageUrl} designData={livePreviewData} />
+              <LiveDesignPreview templatePreviewUrl={template.previewUrl} designData={livePreviewData} />
             ) : (
-              <img src={previewImageUrl} alt={template.name} className="h-full w-full object-cover" />
+              <img src={template.previewUrl} alt={template.name} className="h-full w-full object-cover" />
             )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
               <Eye className="h-8 w-8 text-white opacity-0 transition-opacity group-hover:opacity-100" />
@@ -149,12 +146,6 @@ export function SwipeableTemplateCard({
           <div className="pointer-events-none absolute top-3 right-3 rounded bg-black/70 px-2 py-1 text-xs text-white backdrop-blur-sm">
             {template.aspectRatio}
           </div>
-
-          {renderedPreviewUrl ? (
-            <div className="pointer-events-none absolute bottom-3 left-3 rounded bg-[#ec1e24] px-2 py-1 text-xs text-white">
-              Last Render
-            </div>
-          ) : null}
 
         </div>
 

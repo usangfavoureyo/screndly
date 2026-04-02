@@ -777,16 +777,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
   };
 
-  const latestRenderedDesignByTemplateId = useMemo(() => {
-    const latestById = new Map<string, RenderedDesign>();
-    for (const design of renderedDesigns) {
-      if (!latestById.has(design.templateId)) {
-        latestById.set(design.templateId, design);
-      }
-    }
-    return latestById;
-  }, [renderedDesigns]);
-
   const handlePublish = async (caption: string, platforms: PlatformSelection) => {
     if (!publishTarget) return;
 
@@ -1456,7 +1446,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     onExpand={handleExpandTemplate}
                     livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
                     isBeingEdited={editingTemplateId === template.id}
-                    renderedPreviewUrl={latestRenderedDesignByTemplateId.get(template.id)?.outputUrl ?? null}
                   />
                 ))}
             </div>
@@ -1668,7 +1657,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <X className="w-6 h-6" />
               </button>
               <img
-                src={latestRenderedDesignByTemplateId.get(expandedTemplate.id)?.outputUrl || expandedTemplate.previewUrl}
+                src={expandedTemplate.previewUrl}
                 alt={expandedTemplate.name}
                 className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
               />

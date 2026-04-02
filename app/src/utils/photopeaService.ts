@@ -6,16 +6,17 @@
 import { DesignData } from '../components/EditDesignBottomSheet';
 import { generateRenderScript, generateLayerAnalysisScript } from './photopeaScriptGenerator';
 
-interface PhotopeaMessage {
-  done?: boolean;
-  result?: string;
-  error?: string;
-}
-
 class PhotopeaService {
   private iframe: HTMLIFrameElement | null = null;
-  private messageQueue: Array<{ script: string; resolve: Function; reject: Function }> = [];
+  private messageQueue: Array<{
+    script?: string;
+    binary?: ArrayBuffer;
+    resolve: (value: string | null) => void;
+    reject: (reason?: unknown) => void;
+    payload?: unknown;
+  }> = [];
   private isReady = false;
+  private messageListenerAttached = false;
 
   /**
    * Initialize Photopea iframe (hidden)
@@ -37,7 +38,7 @@ class PhotopeaService {
         // Load Photopea
         // In production, use: https://www.photopea.com
         // For development with scripts: https://www.photopea.com#%7B%22files%22:%5B%5D%7D
-        this.iframe.src = 'https://www.photopea.com';
+        this.iframe.src = 'https://www.photopea.com/#';
 
         // Handle iframe load errors
         this.iframe.onerror = () => {
@@ -48,32 +49,25 @@ class PhotopeaService {
 
         document.body.appendChild(this.iframe);
 
-        // Wait for Photopea to load
-        let checkCount = 0;
-        const maxChecks = 20; // 20 seconds max
-        const checkReady = setInterval(() => {
-          checkCount++;
+        const timeout = window.setTimeout(() => {
+          window.removeEventListener('message', onReadyMessage);
+          this.cleanup();
+          reject(new Error('Photopea initialization timed out. Please try again.'));
+        }, 30000);
 
-          if (checkCount >= maxChecks) {
-            clearInterval(checkReady);
-            this.cleanup();
-            reject(new Error('Photopea initialization timed out. Please try again.'));
-            return;
+        const onReadyMessage = (event: MessageEvent) => {
+          if (event.source !== this.iframe?.contentWindow) return;
+          if (event.data === 'done') {
+            window.clearTimeout(timeout);
+            window.removeEventListener('message', onReadyMessage);
+            this.isReady = true;
+            this.setupMessageListener();
+            console.log('[Photopea] Initialized successfully');
+            resolve();
           }
+        };
 
-          try {
-            if (this.iframe?.contentWindow) {
-              this.isReady = true;
-              clearInterval(checkReady);
-              this.setupMessageListener();
-              console.log('[Photopea] Initialized successfully');
-              resolve();
-            }
-          } catch (_e) {
-            // Cross-origin check failed, continue waiting
-            // This is expected during initialization
-          }
-        }, 1000);
+        window.addEventListener('message', onReadyMessage);
 
       } catch (error) {
         this.cleanup();
@@ -93,41 +87,75 @@ class PhotopeaService {
     this.iframe = null;
     this.isReady = false;
     this.messageQueue = [];
+    this.messageListenerAttached = false;
   }
 
   /**
    * Setup message listener for Photopea responses
    */
   private setupMessageListener(): void {
+    if (this.messageListenerAttached) return;
+    this.messageListenerAttached = true;
+
     window.addEventListener('message', (e) => {
       // Only process messages from Photopea
       if (e.source !== this.iframe?.contentWindow) return;
 
-      const message: PhotopeaMessage = e.data;
-
       // Process message queue
       if (this.messageQueue.length > 0) {
         const current = this.messageQueue[0];
+        const message = e.data;
 
-        if (message.done) {
-          current.resolve(message.result || null);
+        if (message === 'done') {
+          const payload = current.payload;
+          current.payload = undefined;
+          const normalized = this.normalizePayload(payload);
+          current.resolve(normalized);
           this.messageQueue.shift();
 
           // Process next message in queue
           if (this.messageQueue.length > 0) {
             this.executeNextInQueue();
           }
-        } else if (message.error) {
-          current.reject(new Error(message.error));
+        } else if (message && typeof message === 'object' && 'error' in message && typeof (message as { error?: unknown }).error === 'string') {
+          const errorMessage = (message as { error: string }).error;
+          current.reject(new Error(errorMessage));
           this.messageQueue.shift();
 
           // Process next message in queue
           if (this.messageQueue.length > 0) {
             this.executeNextInQueue();
           }
+        } else if (message !== undefined && message !== null) {
+          current.payload = message;
         }
       }
     });
+  }
+
+  private normalizePayload(payload: unknown): string | null {
+    if (typeof payload === 'string') {
+      return payload;
+    }
+
+    if (payload instanceof ArrayBuffer) {
+      const bytes = new Uint8Array(payload);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    if (payload instanceof Uint8Array) {
+      let binary = '';
+      for (let i = 0; i < payload.length; i++) {
+        binary += String.fromCharCode(payload[i]);
+      }
+      return btoa(binary);
+    }
+
+    return null;
   }
 
   /**
@@ -136,10 +164,10 @@ class PhotopeaService {
   private executeNextInQueue(): void {
     if (this.messageQueue.length === 0) return;
 
-    const { script } = this.messageQueue[0];
+    const current = this.messageQueue[0];
 
     if (this.iframe?.contentWindow) {
-      this.iframe.contentWindow.postMessage(script, '*');
+      this.iframe.contentWindow.postMessage(current.binary ?? current.script ?? '', '*');
     }
   }
 
@@ -152,7 +180,22 @@ class PhotopeaService {
     }
 
     return new Promise((resolve, reject) => {
-      this.messageQueue.push({ script, resolve, reject });
+      this.messageQueue.push({ script, resolve, reject, payload: undefined });
+
+      // If this is the only item in queue, execute immediately
+      if (this.messageQueue.length === 1) {
+        this.executeNextInQueue();
+      }
+    });
+  }
+
+  async executeBinary(binary: ArrayBuffer): Promise<string | null> {
+    if (!this.isReady || !this.iframe) {
+      await this.initialize();
+    }
+
+    return new Promise((resolve, reject) => {
+      this.messageQueue.push({ binary, resolve, reject, payload: undefined });
 
       // If this is the only item in queue, execute immediately
       if (this.messageQueue.length === 1) {
@@ -174,17 +217,9 @@ class PhotopeaService {
 
       reader.onload = async (e) => {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-        const uint8Array = new Array.from(new Uint8Array(arrayBuffer));
-
-        // Send file data to Photopea
-        const script = `
-          var arr = [${uint8Array.join(',')}];
-          var file = new File(arr, "template.psd");
-          app.open(file);
-        `;
 
         try {
-          await this.executeScript(script);
+          await this.executeBinary(arrayBuffer);
           resolve();
         } catch (error) {
           reject(error);
@@ -253,20 +288,7 @@ class PhotopeaService {
 
     // Export as JPEG
     const exportScript = `
-      var jpegOptions = new JPEGSaveOptions();
-      jpegOptions.quality = 12;
-      jpegOptions.embedColorProfile = true;
-      
-      var tempFile = new File(Folder.temp + "/screndly-output.jpg");
-      app.activeDocument.saveAs(tempFile, jpegOptions, true);
-      
-      // Read file as base64
-      tempFile.encoding = "BINARY";
-      tempFile.open("r");
-      var content = tempFile.read();
-      tempFile.close();
-      
-      btoa(content);
+      app.activeDocument.saveToOE("jpg");
     `;
 
     const base64Result = await this.executeScript(exportScript);
@@ -295,26 +317,15 @@ class PhotopeaService {
       var tempDoc = originalDoc.duplicate();
       app.activeDocument = tempDoc;
       tempDoc.flatten();
-      
-      // Export as PNG to temp
-      var pngOptions = new PNGSaveOptions();
-      var tempFile = new File(Folder.temp + "/preview.png");
-      tempDoc.saveAs(tempFile, pngOptions, true);
+
+      tempDoc.saveToOE("png");
       tempDoc.close(SaveOptions.DONOTSAVECHANGES);
-      
+
       app.activeDocument = originalDoc;
-      
-      // Read as base64
-      tempFile.encoding = "BINARY";
-      tempFile.open("r");
-      var content = tempFile.read();
-      tempFile.close();
-      
-      "data:image/png;base64," + btoa(content);
     `;
 
     const result = await this.executeScript(script);
-    return result || '';
+    return result ? `data:image/png;base64,${result}` : '';
   }
 
   /**

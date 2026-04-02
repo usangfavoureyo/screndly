@@ -1,5 +1,7 @@
 import fs from 'fs';
+import http, { type Server } from 'http';
 import { chromium, type Browser, type Page } from 'playwright-core';
+import sharp from 'sharp';
 
 interface RenderTemplateInput {
   psdUrl: string;
@@ -111,7 +113,7 @@ function generateGradientUpdateScript(
   return `
 function findOverlayVariants() {
   var doc = app.activeDocument;
-  var overlays = { top: null, bottom: null, left: null, right: null };
+  var overlays = { top: null, bottom: null, left: null, right: null, generic: null };
   function searchLayers(layers) {
     for (var i = 0; i < layers.length; i++) {
       var layer = layers[i];
@@ -120,6 +122,7 @@ function findOverlayVariants() {
       else if (nameLower.match(/overlay.*bottom/)) overlays.bottom = layer;
       else if (nameLower.match(/overlay.*left/)) overlays.left = layer;
       else if (nameLower.match(/overlay.*right/)) overlays.right = layer;
+      else if (!overlays.generic && nameLower.match(/overlay|gradient/)) overlays.generic = layer;
       if (layer.typename === "LayerSet") searchLayers(layer.layers);
     }
   }
@@ -131,8 +134,9 @@ if (overlays.top) overlays.top.visible = false;
 if (overlays.bottom) overlays.bottom.visible = false;
 if (overlays.left) overlays.left.visible = false;
 if (overlays.right) overlays.right.visible = false;
+if (overlays.generic) overlays.generic.visible = false;
 ${enabled ? `
-var activeOverlay = overlays["${position}"];
+var activeOverlay = overlays["${position}"] || overlays.generic;
 if (activeOverlay) {
   activeOverlay.visible = true;
   activeOverlay.opacity = ${opacity};
@@ -227,9 +231,109 @@ function generateRenderScript(input: RenderTemplateInput): string {
   return scripts.join('\n\n');
 }
 
+function normalizePhotopeaPayload(data: unknown): string | null {
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return Buffer.from(data).toString('base64');
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    return Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('base64');
+  }
+
+  return null;
+}
+
 class ServerPhotopeaRenderer {
   private browser: Browser | null = null;
   private page: PhotopeaBridgePage | null = null;
+  private bridgeServer: Server | null = null;
+  private bridgeUrl: string | null = null;
+
+  private async ensureBridgeServer(): Promise<string> {
+    if (this.bridgeServer && this.bridgeUrl) {
+      return this.bridgeUrl;
+    }
+
+    const html = `<!doctype html>
+      <html>
+        <body style="margin:0;background:#000;">
+          <iframe id="photopea" src="https://www.photopea.com/#" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;"></iframe>
+          <script>
+            (function () {
+              const iframe = document.getElementById('photopea');
+              window.photopeaBridge = {
+                ready: new Promise((resolve, reject) => {
+                  const timeout = setTimeout(() => reject(new Error('Photopea load timed out')), 30000);
+                  function onMessage(event) {
+                    if (event.source !== iframe.contentWindow) return;
+                    if (event.data === 'done') {
+                      clearTimeout(timeout);
+                      window.removeEventListener('message', onMessage);
+                      resolve();
+                    }
+                  }
+                  window.addEventListener('message', onMessage);
+                }),
+                run: async function (script) {
+                  await this.ready;
+                  return await new Promise((resolve, reject) => {
+                    let payload = null;
+                    const timeout = setTimeout(() => {
+                      window.removeEventListener('message', onMessage);
+                      reject(new Error('Photopea script timed out'));
+                    }, 120000);
+                    function onMessage(event) {
+                      if (event.source !== iframe.contentWindow) return;
+                      const message = event.data;
+                      if (message === 'done') {
+                        clearTimeout(timeout);
+                        window.removeEventListener('message', onMessage);
+                        resolve(payload);
+                      } else if (message && typeof message === 'object' && message.error) {
+                        clearTimeout(timeout);
+                        window.removeEventListener('message', onMessage);
+                        reject(new Error(message.error));
+                      } else if (message !== undefined && message !== null) {
+                        payload = message;
+                      }
+                    }
+                    window.addEventListener('message', onMessage);
+                    iframe.contentWindow.postMessage(script, '*');
+                  });
+                },
+              };
+            })();
+          </script>
+        </body>
+      </html>`;
+
+    await new Promise<void>((resolve, reject) => {
+      const server = http.createServer((_req, res) => {
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        res.end(html);
+      });
+      server.on('error', reject);
+      server.listen(0, '127.0.0.1', () => {
+        const address = server.address();
+        if (!address || typeof address === 'string') {
+          reject(new Error('Failed to determine Photopea bridge server address.'));
+          return;
+        }
+        this.bridgeServer = server;
+        this.bridgeUrl = `http://127.0.0.1:${address.port}`;
+        resolve();
+      });
+    });
+
+    return this.bridgeUrl!;
+  }
 
   private async ensureBridge(): Promise<PhotopeaBridgePage> {
     if (this.page && !this.page.isClosed() && this.page.__photopeaBridgeInitialized) {
@@ -250,65 +354,38 @@ class ServerPhotopeaRenderer {
 
     const page = await this.browser.newPage() as PhotopeaBridgePage;
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.setContent(`
-      <!doctype html>
-      <html>
-        <body style="margin:0;background:#000;">
-          <iframe id="photopea" src="https://www.photopea.com" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;"></iframe>
-          <script>
-            (function () {
-              const iframe = document.getElementById('photopea');
-              window.photopeaBridge = {
-                ready: new Promise((resolve, reject) => {
-                  const timeout = setTimeout(() => reject(new Error('Photopea load timed out')), 30000);
-                  iframe.addEventListener('load', () => {
-                    setTimeout(() => {
-                      clearTimeout(timeout);
-                      resolve();
-                    }, 3000);
-                  }, { once: true });
-                }),
-                run: async function (script) {
-                  await this.ready;
-                  return await new Promise((resolve, reject) => {
-                    const timeout = setTimeout(() => {
-                      window.removeEventListener('message', onMessage);
-                      reject(new Error('Photopea script timed out'));
-                    }, 120000);
-                    function onMessage(event) {
-                      if (event.source !== iframe.contentWindow) return;
-                      const message = event.data || {};
-                      if (message.done) {
-                        clearTimeout(timeout);
-                        window.removeEventListener('message', onMessage);
-                        resolve(message.result || null);
-                      } else if (message.error) {
-                        clearTimeout(timeout);
-                        window.removeEventListener('message', onMessage);
-                        reject(new Error(message.error));
-                      }
-                    }
-                    window.addEventListener('message', onMessage);
-                    iframe.contentWindow.postMessage(script, '*');
-                  });
-                },
-              };
-            })();
-          </script>
-        </body>
-      </html>
-    `, { waitUntil: 'load' });
+    const bridgeUrl = await this.ensureBridgeServer();
+    await page.goto(bridgeUrl, { waitUntil: 'load', timeout: 35000 });
     await page.waitForFunction('Boolean(window.photopeaBridge)', { timeout: 35000 });
     page.__photopeaBridgeInitialized = true;
     this.page = page;
     return page;
   }
 
-  private async execute(script: string): Promise<string | null> {
+  private async runPayload(payload: string | ArrayBuffer): Promise<string | null> {
     const page = await this.ensureBridge();
-    return page.evaluate(async (payload) => {
-      return (globalThis as any).photopeaBridge.run(payload);
-    }, script);
+    const result = await page.evaluate(async (value) => {
+      return (globalThis as any).photopeaBridge.run(value);
+    }, payload);
+    return normalizePhotopeaPayload(result);
+  }
+
+  private async runBinaryBuffer(buffer: Buffer): Promise<string | null> {
+    const page = await this.ensureBridge();
+    const base64 = buffer.toString('base64');
+    const result = await page.evaluate(async (encoded) => {
+      const binary = atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return (globalThis as any).photopeaBridge.run(bytes.buffer);
+    }, base64);
+    return normalizePhotopeaPayload(result);
+  }
+
+  private async execute(script: string): Promise<string | null> {
+    return this.runPayload(script);
   }
 
   private async loadPsdFromUrl(psdUrl: string): Promise<void> {
@@ -317,29 +394,15 @@ class ServerPhotopeaRenderer {
       throw new Error(`Failed to download PSD: ${response.status} ${response.statusText}`);
     }
     const buffer = Buffer.from(await response.arrayBuffer());
-    const byteArrayLiteral = `[${Array.from(buffer.values()).join(',')}]`;
-    await this.execute(`
-      var arr = ${byteArrayLiteral};
-      var file = new File(arr, "template.psd");
-      app.open(file);
-    `);
+    await this.runBinaryBuffer(buffer);
   }
 
-  private async exportJpegBase64(): Promise<string> {
+  private async exportImageBase64(format: 'jpg' | 'png'): Promise<string> {
     const result = await this.execute(`
-      var jpegOptions = new JPEGSaveOptions();
-      jpegOptions.quality = 12;
-      jpegOptions.embedColorProfile = true;
-      var tempFile = new File(Folder.temp + "/screndly-server-output.jpg");
-      app.activeDocument.saveAs(tempFile, jpegOptions, true);
-      tempFile.encoding = "BINARY";
-      tempFile.open("r");
-      var content = tempFile.read();
-      tempFile.close();
-      btoa(content);
+      app.activeDocument.saveToOE(${JSON.stringify(format)});
     `);
     if (!result) {
-      throw new Error('Failed to export Photopea render');
+      throw new Error(`Failed to export Photopea render as ${format.toUpperCase()}`);
     }
     return result;
   }
@@ -361,8 +424,14 @@ class ServerPhotopeaRenderer {
 
     try {
       await this.execute(generateRenderScript(input));
-      const base64 = await this.exportJpegBase64();
-      return Buffer.from(base64, 'base64');
+      try {
+        const base64 = await this.exportImageBase64('jpg');
+        return Buffer.from(base64, 'base64');
+      } catch {
+        const pngBase64 = await this.exportImageBase64('png');
+        const pngBuffer = Buffer.from(pngBase64, 'base64');
+        return sharp(pngBuffer).jpeg({ quality: 95 }).toBuffer();
+      }
     } finally {
       await this.closeDocument();
     }
@@ -377,6 +446,13 @@ class ServerPhotopeaRenderer {
       await this.browser.close().catch(() => undefined);
     }
     this.browser = null;
+    if (this.bridgeServer) {
+      await new Promise<void>((resolve) => {
+        this.bridgeServer?.close(() => resolve());
+      });
+    }
+    this.bridgeServer = null;
+    this.bridgeUrl = null;
   }
 }
 

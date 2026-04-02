@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownWideNarrow,
-  CheckCheck,
   Clapperboard,
   ExternalLink,
   Film,
   MoreVertical,
   Rss,
   Settings as SettingsIcon,
-  Trash2,
   X,
   AlertCircle,
   WifiNoSignal,
@@ -680,10 +678,9 @@ export function NotificationPanel({
                   onMarkAllAsRead();
                   setShowBulkActionsSheet(false);
                 }}
-                className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left text-base text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+                className="flex w-full items-center justify-center px-6 py-4 text-center text-base text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
               >
                 <span>Mark all as read</span>
-                <CheckCheck className="h-5 w-5 shrink-0" />
               </button>
             )}
             <button
@@ -693,10 +690,9 @@ export function NotificationPanel({
                 onClearAll();
                 setShowBulkActionsSheet(false);
               }}
-              className="flex w-full items-center justify-between gap-3 px-6 py-4 text-left text-base text-[#ec1e24] hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+              className="flex w-full items-center justify-center px-6 py-4 text-center text-base text-[#ec1e24] hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
             >
               <span>Clear all</span>
-              <Trash2 className="h-5 w-5 shrink-0" />
             </button>
           </div>
         </BottomSheetBody>
