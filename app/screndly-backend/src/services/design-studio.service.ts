@@ -2,6 +2,8 @@ import prisma from '../lib/prisma';
 import { generateStudioCaption } from './ai.service';
 import { publisherService } from './publisher.service';
 import { getRSSActivity, type RSSActivityItem } from './rss.service';
+import { uploadBufferToBackblaze } from './backblaze';
+import { serverPhotopeaRenderer } from './server-photopea-renderer';
 
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
 const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
@@ -391,6 +393,68 @@ function selectRenderedImage(
     || '';
 }
 
+async function renderAutoEditorialImage(
+  item: RSSActivityItem,
+  template: DesignStudioTemplateRecord,
+  headerText: string,
+  subtext: string,
+): Promise<string> {
+  const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
+  if (!psdUrl || typeof psdUrl !== 'string') {
+    return selectRenderedImage(item, template);
+  }
+
+  const backgroundUrl = item.imageUrl || item.imageUrls?.[0];
+  let backgroundBytes: Buffer | undefined;
+  let backgroundFileName: string | undefined;
+
+  if (backgroundUrl) {
+    try {
+      const imageResponse = await fetch(backgroundUrl);
+      if (imageResponse.ok) {
+        backgroundBytes = Buffer.from(await imageResponse.arrayBuffer());
+        const parsedUrl = new URL(backgroundUrl);
+        backgroundFileName = parsedUrl.pathname.split('/').pop() || 'background.jpg';
+      }
+    } catch {
+      backgroundBytes = undefined;
+      backgroundFileName = undefined;
+    }
+  }
+
+  try {
+    const renderedBuffer = await serverPhotopeaRenderer.renderTemplate({
+      psdUrl,
+      headerText,
+      subtext,
+      backgroundBytes,
+      backgroundFileName,
+      width: template.width,
+      height: template.height,
+      hasSubtext: template.hasSubtext,
+      overlayDirection: template.overlayDirection || 'top',
+      overlayStrength: template.overlayStrength || 75,
+      backgroundOffsetX: template.imageAnchor?.x ?? 50,
+      backgroundOffsetY: template.imageAnchor?.y ?? 50,
+      zoomLevel: 1,
+      headerTextColor: '#ffffff',
+      subtextColor: '#ffffff',
+    });
+    const uploaded = await uploadBufferToBackblaze(
+      renderedBuffer,
+      `${template.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}-auto.jpg`,
+      {
+        bucketTypes: ['design', 'general'],
+        prefix: 'design-studio/renders',
+        contentType: 'image/jpeg',
+      },
+    );
+    return uploaded.url;
+  } catch {
+    return selectRenderedImage(item, template);
+  }
+}
+
 export async function generateDesignStudioAutoEditorials(): Promise<DesignStudioRunResult> {
   const settings = await getAutoSettings();
   if (!settings.enabled) {
@@ -462,6 +526,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
     const caption = await buildAutoCaption(candidate.item, contentType, subtext, settings);
     const now = new Date().toISOString();
+    const renderedImage = await renderAutoEditorialImage(candidate.item, template, headerText, subtext);
 
     nextEditorials.push({
       id: `auto-editorial-${Date.now()}-${index}`,
@@ -473,7 +538,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
       matchedKeyword: candidate.matchedKeyword,
       templateId: template.id,
       templateName: template.name,
-      renderedImage: selectRenderedImage(candidate.item, template),
+      renderedImage,
       headerText,
       subheaderText: subtext,
       caption,

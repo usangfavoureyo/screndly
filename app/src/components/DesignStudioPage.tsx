@@ -36,6 +36,13 @@ interface DesignStudioPageProps {
   previousPage?: string | null;
 }
 
+const PSD_FILE_ACCEPT =
+  '.psd,application/vnd.adobe.photoshop,application/photoshop,application/x-photoshop,application/psd,application/octet-stream';
+
+type FilePickerHandle = {
+  getFile: () => Promise<File>;
+};
+
 interface Template {
   id: string;
   name: string;
@@ -221,6 +228,23 @@ function dataUrlToFile(dataUrl: string, fileName: string): File {
   return new File([bytes], fileName, { type: mimeType });
 }
 
+function isPsdLikeFile(file: File): boolean {
+  const normalizedName = file.name.trim().toLowerCase();
+  const normalizedType = (file.type || '').trim().toLowerCase();
+
+  if (normalizedName.endsWith('.psd')) {
+    return true;
+  }
+
+  return [
+    'application/vnd.adobe.photoshop',
+    'application/photoshop',
+    'application/x-photoshop',
+    'application/psd',
+    'application/octet-stream',
+  ].includes(normalizedType);
+}
+
 export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) {
   const { addNotification } = useNotifications();
   const { settings } = useSettings();
@@ -341,12 +365,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     });
   };
 
-  const handleUploadPSD = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.name.endsWith('.psd')) {
-      toast.error('Please upload a PSD file');
+  const processPsdFile = async (file: File) => {
+    if (!isPsdLikeFile(file)) {
+      toast.error('Please choose a PSD file from your Files/Documents app');
       return;
     }
 
@@ -416,9 +437,67 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     } catch (error) {
       console.error('Photopea analysis error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
+    }
+  };
+
+  const handleUploadPSD = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      await processPsdFile(file);
     } finally {
       e.target.value = '';
     }
+  };
+
+  const handleOpenPsdPicker = async () => {
+    const picker = (window as Window & {
+      showOpenFilePicker?: (options?: {
+        multiple?: boolean;
+        excludeAcceptAllOption?: boolean;
+        types?: Array<{
+          description?: string;
+          accept: Record<string, string[]>;
+        }>;
+      }) => Promise<FilePickerHandle[]>;
+    }).showOpenFilePicker;
+
+    if (picker) {
+      try {
+        const [handle] = await picker({
+          multiple: false,
+          excludeAcceptAllOption: false,
+          types: [
+            {
+              description: 'Photoshop PSD Files',
+              accept: {
+                'application/vnd.adobe.photoshop': ['.psd'],
+                'application/photoshop': ['.psd'],
+                'application/x-photoshop': ['.psd'],
+                'application/psd': ['.psd'],
+                'application/octet-stream': ['.psd'],
+              },
+            },
+          ],
+        });
+
+        if (!handle) {
+          return;
+        }
+
+        const file = await handle.getFile();
+        await processPsdFile(file);
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        console.error('Direct PSD picker failed, falling back to input:', error);
+      }
+    }
+
+    fileInputRef.current?.click();
   };
 
   const handleLoadFromBackblaze = async () => {
@@ -1225,19 +1304,26 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         <>
           {/* Template Ingestion Section */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="block cursor-pointer">
+            <div className="block">
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".psd"
+                accept={PSD_FILE_ACCEPT}
                 onChange={handleUploadPSD}
                 className="hidden"
               />
-              <div className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]">
+              <button
+                type="button"
+                onClick={handleOpenPsdPicker}
+                className="w-full border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+              >
                 <Upload className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
                 <p className="text-gray-900 dark:text-white">Upload PSD Template</p>
-              </div>
-            </label>
+                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                  Select a `.psd` file from Files or Documents, not Photos
+                </p>
+              </button>
+            </div>
 
             <button
               onClick={handleLoadFromBackblaze}

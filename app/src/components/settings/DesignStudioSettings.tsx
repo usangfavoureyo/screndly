@@ -1031,37 +1031,63 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
           <div>
             <Label className="text-[#9CA3AF]">Posting Platforms</Label>
-            <div className="mt-2 grid grid-cols-2 gap-3">
+            <div className="mt-2 space-y-4">
               {[
-                { id: 'x', label: 'X' },
-                { id: 'threads', label: 'Threads' },
-                { id: 'facebook', label: 'Facebook' },
-                { id: 'instagram', label: 'Instagram' },
-                { id: 'pinterest', label: 'Pinterest' },
-              ].map((platform) => {
-                const activePlatforms = settings.designStudioTargetPlatforms || [];
-                const checked = activePlatforms.includes(platform.id);
-                return (
-                  <button
-                    key={platform.id}
-                    type="button"
-                    onClick={() => {
-                      const nextPlatforms = checked
-                        ? activePlatforms.filter((entry) => entry !== platform.id)
-                        : [...activePlatforms, platform.id];
-                      updateSetting('designStudioTargetPlatforms', nextPlatforms);
-                      updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
-                    }}
-                    className={`rounded-2xl border px-4 py-3 text-sm ${
-                      checked
-                        ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
-                        : 'border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white'
-                    }`}
-                  >
-                    {platform.label}
-                  </button>
-                );
-              })}
+                {
+                  group: 'Social Platforms',
+                  description: 'Shared-caption social destinations for the auto editorial pipeline.',
+                  platforms: [
+                    { id: 'x', label: 'X' },
+                    { id: 'threads', label: 'Threads' },
+                    { id: 'facebook', label: 'Facebook' },
+                    { id: 'instagram', label: 'Instagram' },
+                  ],
+                },
+                {
+                  group: 'Extended Destinations',
+                  description: 'Optional destinations that can stay separate from the core social set.',
+                  platforms: [
+                    { id: 'pinterest', label: 'Pinterest' },
+                  ],
+                },
+              ].map((platformGroup) => (
+                <div key={platformGroup.group} className="space-y-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#6B7280] dark:text-[#9CA3AF]">
+                      {platformGroup.group}
+                    </p>
+                    <p className="mt-1 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      {platformGroup.description}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {platformGroup.platforms.map((platform) => {
+                      const activePlatforms = settings.designStudioTargetPlatforms || [];
+                      const checked = activePlatforms.includes(platform.id);
+                      return (
+                        <button
+                          key={platform.id}
+                          type="button"
+                          onClick={() => {
+                            const nextPlatforms = checked
+                              ? activePlatforms.filter((entry) => entry !== platform.id)
+                              : [...activePlatforms, platform.id];
+                            updateSetting('designStudioTargetPlatforms', nextPlatforms);
+                            updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                          }}
+                          className={`rounded-2xl border px-4 py-3 text-sm ${
+                            checked
+                              ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                              : 'border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white'
+                          }`}
+                        >
+                          {platform.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
