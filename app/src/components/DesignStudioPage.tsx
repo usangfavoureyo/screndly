@@ -25,6 +25,7 @@ import {
   fetchDesignStudioState,
   saveDesignStudioState,
   uploadDesignStudioAsset,
+  uploadDesignStudioTemplate,
   type DesignStudioAutoEditorialRecord,
   type DesignStudioLayoutVariant,
 } from '../lib/api/designStudio';
@@ -413,22 +414,19 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
 
     haptics.medium();
-    toast.success('Processing PSD template with Photopea...');
+    toast.success('Uploading and analyzing PSD template...');
 
     try {
-      const photopeaService = getPhotopeaService();
-      await photopeaService.initialize();
-      await photopeaService.loadPSD(file);
-      const analysis = await photopeaService.analyzeLayers();
-      const detectedHeader = Boolean(analysis.detectedLayers.hasHeader);
-      const detectedBackground = Boolean(analysis.detectedLayers.hasBackground);
-      const detectedOverlay = Boolean(analysis.detectedLayers.hasOverlay);
-      const detectedSubtext = Boolean(analysis.detectedLayers.hasSubtext);
+      const uploadedTemplate = await uploadDesignStudioTemplate(file);
+      const detectedHeader = Boolean(uploadedTemplate.detectedLayers.hasHeader);
+      const detectedBackground = Boolean(uploadedTemplate.detectedLayers.hasBackground);
+      const detectedOverlay = Boolean(uploadedTemplate.detectedLayers.hasOverlay);
+      const detectedSubtext = Boolean(uploadedTemplate.detectedLayers.hasSubtext);
 
       toast.info('PSD Debug', {
         description: [
           `Filename: ${file.name}`,
-          `Signature: ${signature || 'Unknown'}`,
+          `Signature: ${uploadedTemplate.signature || signature || 'Unknown'}`,
           `Header: ${detectedHeader ? 'Yes' : 'No'}`,
           `Background: ${detectedBackground ? 'Yes' : 'No'}`,
           `Overlay: ${detectedOverlay ? 'Yes' : 'No'}`,
@@ -437,42 +435,21 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         duration: 8000,
       });
 
-      let previewUrl = createTemplateFallbackPreview(file.name.replace(/\.psd$/i, ''), analysis.width, analysis.height);
-      let previewFileName: string | undefined;
-
-      try {
-        const previewDataUrl = await photopeaService.getPreview();
-        if (previewDataUrl) {
-          const previewFile = dataUrlToFile(previewDataUrl, `${file.name.replace(/\.psd$/i, '')}-preview.png`);
-          const previewUpload = await uploadDesignStudioAsset(previewFile, 'template-previews');
-          previewUrl = previewUpload.url;
-          previewFileName = previewUpload.fileName;
-        }
-      } catch (previewError) {
-        console.warn('Failed to generate PSD preview, using fallback preview card:', previewError);
-        toast.warning('PSD preview fallback', {
-          description: 'Template saved with a fallback preview card because the live PSD preview could not be generated on this device.',
-          duration: 5000,
-        });
-      }
-
-      const templateUpload = await uploadDesignStudioAsset(file, 'templates');
+      const previewUrl = createTemplateFallbackPreview(file.name.replace(/\.psd$/i, ''), uploadedTemplate.width, uploadedTemplate.height);
       const layoutMetadata = defaultLayoutMetadata('top_left');
-      const mappedLayers = Array.isArray(analysis.layers)
-        ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
-        : [];
-      const isValidated = Boolean(analysis.detectedLayers.hasHeader && analysis.detectedLayers.hasBackground);
+      const mappedLayers = Array.isArray(uploadedTemplate.layers) ? uploadedTemplate.layers : [];
+      const isValidated = Boolean(uploadedTemplate.detectedLayers.hasHeader && uploadedTemplate.detectedLayers.hasBackground);
 
       const template: Template = {
         id: `template-${Date.now()}`,
         name: file.name.replace('.psd', ''),
         previewUrl,
-        aspectRatio: calculateAspectRatio(analysis.width, analysis.height),
-        width: analysis.width,
-        height: analysis.height,
+        aspectRatio: calculateAspectRatio(uploadedTemplate.width, uploadedTemplate.height),
+        width: uploadedTemplate.width,
+        height: uploadedTemplate.height,
         source: 'upload',
         lastEdited: new Date(),
-        hasSubtext: analysis.detectedLayers.hasSubtext,
+        hasSubtext: uploadedTemplate.detectedLayers.hasSubtext,
         hasCategory: false,
         hasSource: false,
         layoutVariant: 'top_left',
@@ -488,11 +465,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         createdAt: new Date(),
         updatedAt: new Date(),
         psdData: {
-          layers: analysis.layers,
-          detectedLayers: analysis.detectedLayers,
-          b2Url: templateUpload.url,
-          fileName: templateUpload.fileName,
-          previewFileName,
+          layers: uploadedTemplate.layers,
+          detectedLayers: uploadedTemplate.detectedLayers,
+          b2Url: uploadedTemplate.url,
+          fileName: uploadedTemplate.fileName,
         },
       };
 
@@ -504,7 +480,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       });
 
       toast.success(`Template "${template.name}" analyzed and uploaded!`);
-      await photopeaService.closeDocument();
     } catch (error) {
       console.error('Photopea analysis error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
@@ -1342,7 +1317,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
             {activeTab === 'manual'
               ? 'Create and edit PSD templates manually'
-              : 'Generate editorial designs automatically from selected news updates'}
+              : 'Generate editorial designs automatically'}
           </p>
         </div>
         <Button

@@ -3,12 +3,50 @@ import { Router } from 'express';
 import multer from 'multer';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
+import { readPsd } from 'ag-psd';
 import { authenticate } from '../middleware/auth';
 import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import { getDesignStudioStateSnapshot, saveDesignStudioStateSnapshot } from '../services/design-studio.service';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
+
+function flattenLayerNames(children: Array<any> | undefined, lines: string[] = []): string[] {
+  if (!Array.isArray(children)) {
+    return lines;
+  }
+
+  for (const child of children) {
+    if (child?.name && typeof child.name === 'string') {
+      lines.push(child.name);
+    }
+    if (Array.isArray(child?.children)) {
+      flattenLayerNames(child.children, lines);
+    }
+  }
+
+  return lines;
+}
+
+function normalizeName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function detectLayerPresence(layerNames: string[]) {
+  const normalizedNames = layerNames.map(normalizeName);
+  const hasMatch = (patterns: string[]) => normalizedNames.some((name) => patterns.some((pattern) => name.includes(pattern)));
+
+  return {
+    hasHeader: hasMatch(['header', 'title', 'headline', 'main']),
+    hasSubtext: hasMatch(['subtext', 'subtitle', 'description', 'caption', 'body']),
+    hasOverlay: hasMatch(['overlay', 'gradient']),
+    hasBackground: hasMatch(['background', 'image', 'photo', 'artwork', 'bg']),
+  };
+}
+
+function buildPsdSignature(buffer: Buffer): string {
+  return buffer.subarray(0, 4).toString('ascii');
+}
 
 const templateSchema = z.object({
   id: z.string(),
@@ -168,6 +206,55 @@ router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (re
   } catch (error) {
     console.error('Error uploading Design Studio asset:', error);
     res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to upload asset' } });
+  } finally {
+    if (req.file?.path) {
+      await fs.unlink(req.file.path).catch(() => undefined);
+    }
+  }
+});
+
+router.post('/upload-template', authenticate, upload.single('mediaFile'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: { message: 'No PSD file uploaded' } });
+    }
+
+    const fileBuffer = await fs.readFile(req.file.path);
+    const signature = buildPsdSignature(fileBuffer);
+    if (signature !== '8BPS') {
+      return res.status(400).json({ success: false, error: { message: 'Uploaded file is not a valid PSD' } });
+    }
+
+    const psd = readPsd(fileBuffer, {
+      skipCompositeImageData: true,
+      skipLayerImageData: true,
+      skipThumbnail: true,
+    });
+
+    const layerNames = flattenLayerNames(psd.children);
+    const detectedLayers = detectLayerPresence(layerNames);
+
+    const uploadResult = await uploadLocalFileToBackblaze(req.file.path, req.file.originalname, {
+      bucketTypes: ['design', 'general'],
+      prefix: 'design-studio/templates',
+      contentType: req.file.mimetype || 'application/vnd.adobe.photoshop',
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        url: uploadResult.url,
+        fileName: uploadResult.fileName,
+        signature,
+        width: psd.width,
+        height: psd.height,
+        layers: layerNames,
+        detectedLayers,
+      },
+    });
+  } catch (error) {
+    console.error('Error uploading/analyzing Design Studio PSD template:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to upload PSD template' } });
   } finally {
     if (req.file?.path) {
       await fs.unlink(req.file.path).catch(() => undefined);

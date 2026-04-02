@@ -143,6 +143,48 @@ export async function uploadDesignStudioAsset(file: File, folder: 'templates' | 
   return response.data;
 }
 
+export async function uploadDesignStudioTemplate(file: File): Promise<{
+  url: string;
+  fileName: string;
+  signature: string;
+  width: number;
+  height: number;
+  layers: string[];
+  detectedLayers: {
+    hasHeader: boolean;
+    hasSubtext: boolean;
+    hasOverlay: boolean;
+    hasBackground: boolean;
+  };
+}> {
+  const response = await apiClient.uploadFile<{
+    url: string;
+    fileName: string;
+    signature: string;
+    width: number;
+    height: number;
+    layers: string[];
+    detectedLayers: {
+      hasHeader: boolean;
+      hasSubtext: boolean;
+      hasOverlay: boolean;
+      hasBackground: boolean;
+    };
+  }>(
+    '/api/design-studio/upload-template',
+    file,
+    undefined,
+    undefined,
+    { timeout: 120000 },
+  );
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Failed to upload Design Studio template');
+  }
+
+  return response.data;
+}
+
 export async function createDesignStudioActivity(type: DesignStudioActivityType, details: Record<string, any>): Promise<void> {
   const response = await apiClient.post('/api/design-studio/activity', { type, details });
   if (!response.success) {
