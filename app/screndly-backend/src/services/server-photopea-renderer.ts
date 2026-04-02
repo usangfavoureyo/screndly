@@ -260,8 +260,8 @@ class ServerPhotopeaRenderer {
 
     const html = `<!doctype html>
       <html>
-        <body style="margin:0;background:#000;">
-          <iframe id="photopea" src="https://www.photopea.com/#" style="position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;border:0;"></iframe>
+        <body style="margin:0;background:#111;">
+          <iframe id="photopea" src="https://www.photopea.com/#" style="width:1600px;height:1900px;border:0;display:block;"></iframe>
           <script>
             (function () {
               const iframe = document.getElementById('photopea');
@@ -353,7 +353,7 @@ class ServerPhotopeaRenderer {
     }
 
     const page = await this.browser.newPage() as PhotopeaBridgePage;
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.setViewportSize({ width: 1650, height: 1950 });
     const bridgeUrl = await this.ensureBridgeServer();
     await page.goto(bridgeUrl, { waitUntil: 'load', timeout: 35000 });
     await page.waitForFunction('Boolean(window.photopeaBridge)', { timeout: 35000 });
@@ -407,6 +407,53 @@ class ServerPhotopeaRenderer {
     return result;
   }
 
+  private async captureCanvasRenderBuffer(): Promise<Buffer> {
+    const page = await this.ensureBridge();
+    const frame = page.frames().find((item) => item.url().startsWith('https://www.photopea.com'));
+    if (!frame) {
+      throw new Error('Photopea frame was not available for canvas capture.');
+    }
+
+    await frame.waitForFunction(
+      () => {
+        const doc = (globalThis as { document?: { querySelectorAll: (selector: string) => { length: number } } }).document;
+        return doc ? doc.querySelectorAll('canvas').length > 0 : false;
+      },
+      undefined,
+      { timeout: 90000 },
+    );
+    const largestCanvasIndex = await frame.evaluate(() => {
+      const doc = (globalThis as { document?: { querySelectorAll: (selector: string) => unknown[] } }).document;
+      const canvases = Array.from((doc?.querySelectorAll('canvas') ?? []) as ArrayLike<{
+        getBoundingClientRect: () => { width: number; height: number };
+      }>);
+      let bestIndex = -1;
+      let bestArea = 0;
+
+      canvases.forEach((canvas, index) => {
+        const rect = canvas.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (rect.width > 100 && rect.height > 100 && area > bestArea) {
+          bestArea = area;
+          bestIndex = index;
+        }
+      });
+
+      return bestIndex;
+    });
+
+    if (largestCanvasIndex < 0) {
+      throw new Error('No renderable Photopea canvas was found.');
+    }
+
+    const pngBuffer = await frame.locator('canvas').nth(largestCanvasIndex).screenshot({
+      animations: 'disabled',
+      type: 'png',
+    });
+
+    return sharp(pngBuffer).jpeg({ quality: 95 }).toBuffer();
+  }
+
   private async closeDocument(): Promise<void> {
     try {
       await this.execute(`
@@ -428,9 +475,13 @@ class ServerPhotopeaRenderer {
         const base64 = await this.exportImageBase64('jpg');
         return Buffer.from(base64, 'base64');
       } catch {
-        const pngBase64 = await this.exportImageBase64('png');
-        const pngBuffer = Buffer.from(pngBase64, 'base64');
-        return sharp(pngBuffer).jpeg({ quality: 95 }).toBuffer();
+        try {
+          const pngBase64 = await this.exportImageBase64('png');
+          const pngBuffer = Buffer.from(pngBase64, 'base64');
+          return sharp(pngBuffer).jpeg({ quality: 95 }).toBuffer();
+        } catch {
+          return this.captureCanvasRenderBuffer();
+        }
       }
     } finally {
       await this.closeDocument();
