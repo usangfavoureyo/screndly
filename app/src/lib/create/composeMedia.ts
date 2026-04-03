@@ -237,11 +237,8 @@ function normalizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): Compo
   if (!asset) return undefined;
   const previewUrl = asset.previewUrl || asset.storageUrl;
   const normalizedStatus =
-    asset.uploadStatus === 'uploading'
-      ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
-        ? 'uploaded'
-        : 'idle'
-      : asset.uploadStatus ?? (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+    asset.uploadStatus ??
+    (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
 
   return {
     ...asset,

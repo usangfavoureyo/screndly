@@ -90,6 +90,17 @@ export async function publishComposeItem(item: ComposeItem, options?: ComposePub
       throw new Error('Publish request cancelled');
     }
 
+    if (
+      primaryAsset.kind === 'video' &&
+      (platform === 'threads' || platform === 'x') &&
+      item.platformFields.videoProcessing?.cropMode === 'threads_x_3_4'
+    ) {
+      const threadsXVideoUrl = getVideoUrlForComposePlatform(item, platform);
+      if (!threadsXVideoUrl || threadsXVideoUrl.startsWith('blob:')) {
+        throw new Error('Wait for the Threads/X 3:4 crop to finish uploading before publishing.');
+      }
+    }
+
     const content = {
       text: item.sharedCaption?.trim() || item.title,
       title:

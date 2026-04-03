@@ -67,9 +67,10 @@ export function getVideoUrlForComposePlatform(item: ComposeItem, platform: Compo
     variant &&
     variant.sourceAssetId === primaryAsset.id &&
     variant.sourceSignature === buildComposeAssetSignature(primaryAsset) &&
-    variant.focusYPercent === (settings.focusYPercent ?? 50)
+    variant.focusYPercent === (settings.focusYPercent ?? 50) &&
+    variant.uploadStatus === 'uploaded'
   ) {
-    return variant.storageUrl || variant.previewUrl;
+    return variant.storageUrl || (variant.previewUrl && !variant.previewUrl.startsWith('blob:') ? variant.previewUrl : undefined);
   }
 
   return primaryAsset.previewUrl || primaryAsset.storageUrl;
