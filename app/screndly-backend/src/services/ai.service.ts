@@ -1015,8 +1015,11 @@ export interface CaptionContext {
     title: string;
     mediaType: 'movie' | 'tv';
     temporalTag: 'releasing_today' | 'releasing_this_week' | 'releasing_this_month' | 'anniversary' | 'already_released';
+    timingMode?: 'release_today' | 'exact_d_plus_7' | 'exact_calendar_month_plus_1' | 'anniversary_today' | 'fallback_day_count' | 'fallback_exact_date';
     daysUntil: number;
     releaseDate?: string;
+    formattedReleaseDate?: string;
+    scheduledDate?: string;
     year?: number;
     anniversaryYears?: number;
     cast: string[];
@@ -1037,11 +1040,15 @@ Your goal is to write a single, punchy, engaging caption based STRICTLY on the p
 - NO hashtags unless specifically asked (system will add them later).
 - NO "Click link in bio" or CTAs.
 - Length: Under 280 chars (tweet style) but impactful.
-- TENSE RULES:
-  - releasing_today -> PRESENT Tense ("Out now", "Streaming today")
-  - releasing_this_week -> ANTICIPATORY ("Coming this week", "Just X days left")
-  - releasing_this_month -> PREVIEW ("Look ahead", "Mark your calendars")
-  - anniversary -> NOSTALGIC ("Released X years ago", "A classic turns X")
+- TIMING RULES:
+  - release_today -> use exact same-day language like "out today" or "releases today"
+  - exact_d_plus_7 -> treat it as exactly one week out; prefer "next week" or the exact release date, not vague phrasing
+  - exact_calendar_month_plus_1 -> treat it as exactly one calendar month out; prefer the exact release date or "next month", not "this week"
+  - anniversary_today -> use anniversary language only
+  - fallback_day_count / fallback_exact_date -> prefer exact date language and avoid pretending it is a weekly/monthly module cue
+- Never say "this week" unless timingMode is exactly exact_d_plus_7.
+- Never say "this month" unless timingMode is exactly exact_calendar_month_plus_1 and the release is actually in the same calendar month as the scheduled post.
+- If an exact release date is provided, prefer using that date over loose calendar phrasing when there is any ambiguity.
 `;
 
     const systemPrompt = withReleaseResearchInstructions(customSystemPrompt || defaultSystemPrompt);
@@ -1052,8 +1059,11 @@ Your goal is to write a single, punchy, engaging caption based STRICTLY on the p
 Title: ${context.title}
 Type: ${context.mediaType}
 Tag: ${context.temporalTag}
+Timing Mode: ${context.timingMode || 'unknown'}
 Days Until: ${context.daysUntil}
 Release Date: ${context.releaseDate || 'N/A'}
+Formatted Release Date: ${context.formattedReleaseDate || 'N/A'}
+Scheduled Date: ${context.scheduledDate || 'N/A'}
 Year: ${typeof context.year === 'number' ? context.year : 'N/A'}
 Anniversary Years: ${typeof context.anniversaryYears === 'number' ? context.anniversaryYears : 'N/A'}
 Cast: ${formatPromptList(context.cast)}
@@ -1062,7 +1072,13 @@ ${platformLine}
 
 If the caption benefits from release context, verify whether it is theatrical or tied to a specific network/streaming platform before mentioning it.
 If platform/network context is unknown, uncertain, or not provided, do not name any platform, network, streamer, or social app in the caption.
-Use neutral phrasing like "releases this week" or "premieres this month" instead.
+Follow the timing mode exactly:
+- release_today -> use today language
+- exact_d_plus_7 -> you may use "next week" or the exact date
+- exact_calendar_month_plus_1 -> use the exact date or "next month"
+- fallback_day_count / fallback_exact_date -> do not use "this week" or "this month"; use the exact date instead
+
+Do not contradict the provided release date or timing mode.
 
 Write ONLY the caption text. No preamble.`;
 

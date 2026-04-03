@@ -178,7 +178,6 @@ export function EditDesignBottomSheet({
       try {
         const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
         setBackgroundImage(uploadedImage.url);
-        setPreviewBackgroundImage(uploadedImage.url);
         toast.success('Image uploaded');
       } catch (error) {
         console.error('Background upload failed:', error);
