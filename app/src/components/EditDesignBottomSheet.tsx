@@ -83,6 +83,7 @@ export function EditDesignBottomSheet({
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#000000');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
+  const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [imageFocalPoint, setImageFocalPoint] = useState(initialData?.imageFocalPoint || { x: 50, y: 50 });
   const [imageZoom, setImageZoom] = useState(initialData?.imageZoom || 1.0);
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
@@ -104,12 +105,21 @@ export function EditDesignBottomSheet({
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
 
   useEffect(() => {
+    return () => {
+      if (previewBackgroundImage.startsWith('blob:')) {
+        URL.revokeObjectURL(previewBackgroundImage);
+      }
+    };
+  }, [previewBackgroundImage]);
+
+  useEffect(() => {
     if (initialData) {
       setHeaderText(initialData.headerText || '');
       setSubtext(initialData.subtext || '');
       setHeaderTextColor(initialData.headerTextColor || '#000000');
       setSubtextColor(initialData.subtextColor || '#000000');
       setBackgroundImage(initialData.backgroundImage || '');
+      setPreviewBackgroundImage(initialData.backgroundImage || '');
       setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
       setImageZoom(initialData.imageZoom || 1.0);
       setOverlayEnabled(initialData.overlayEnabled || false);
@@ -127,7 +137,7 @@ export function EditDesignBottomSheet({
         subtext: hasSubtext ? subtext : undefined,
         headerTextColor,
         subtextColor,
-        backgroundImage,
+        backgroundImage: previewBackgroundImage || backgroundImage,
         imageFocalPoint,
         imageZoom,
         overlayEnabled,
@@ -142,7 +152,8 @@ export function EditDesignBottomSheet({
     subtext, 
     headerTextColor,
     subtextColor,
-    backgroundImage, 
+    backgroundImage,
+    previewBackgroundImage,
     imageFocalPoint.x, 
     imageFocalPoint.y, 
     imageZoom, 
@@ -158,13 +169,20 @@ export function EditDesignBottomSheet({
     haptics.light();
     const file = e.target.files?.[0];
     if (file) {
+      const localPreviewUrl = URL.createObjectURL(file);
+      if (previewBackgroundImage.startsWith('blob:')) {
+        URL.revokeObjectURL(previewBackgroundImage);
+      }
+      setPreviewBackgroundImage(localPreviewUrl);
       setIsUploadingBackground(true);
       try {
         const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
         setBackgroundImage(uploadedImage.url);
+        setPreviewBackgroundImage(uploadedImage.url);
         toast.success('Image uploaded');
       } catch (error) {
         console.error('Background upload failed:', error);
+        setPreviewBackgroundImage(backgroundImage);
         toast.error(error instanceof Error ? error.message : 'Failed to upload image');
       } finally {
         setIsUploadingBackground(false);
@@ -200,6 +218,7 @@ export function EditDesignBottomSheet({
   const handleSelectTmdbImage = (imageUrl: string) => {
     haptics.light();
     setBackgroundImage(imageUrl);
+    setPreviewBackgroundImage(imageUrl);
     setSelectedTmdbImage(imageUrl);
     setTmdbResults([]);
     setTmdbSearchQuery('');
@@ -531,7 +550,7 @@ export function EditDesignBottomSheet({
             </div>
 
             {/* Current Image Preview */}
-            {backgroundImage && (
+            {(previewBackgroundImage || backgroundImage) && (
               <div className="space-y-3">
                 <div className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]">
                   <button
@@ -542,7 +561,7 @@ export function EditDesignBottomSheet({
                     className="w-full"
                   >
                     <img
-                      src={backgroundImage}
+                      src={previewBackgroundImage || backgroundImage}
                       alt="Selected background"
                       className="w-full h-32 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     />
@@ -550,14 +569,18 @@ export function EditDesignBottomSheet({
                   <button
                     onClick={() => {
                       haptics.light();
+                      if (previewBackgroundImage.startsWith('blob:')) {
+                        URL.revokeObjectURL(previewBackgroundImage);
+                      }
                       setBackgroundImage('');
+                      setPreviewBackgroundImage('');
                       setSelectedTmdbImage(null);
                       setImageFocalPoint({ x: 50, y: 50 });
                       setImageZoom(1.0);
                     }}
-                    className="absolute top-2 right-2 p-1 bg-black/70 rounded-full hover:bg-black transition-colors"
+                    className="absolute right-3 top-3 flex h-11 w-11 items-center justify-center rounded-full bg-black/78 text-white shadow-lg transition-colors hover:bg-black"
                   >
-                    <X className="w-4 h-4 text-white" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
@@ -639,7 +662,7 @@ export function EditDesignBottomSheet({
                     <input
                       type="range"
                       min="0.5"
-                      max="2"
+                      max="4"
                       step="0.1"
                       value={imageZoom}
                       onChange={(e) => {
@@ -651,7 +674,7 @@ export function EditDesignBottomSheet({
                     <div className="flex justify-between text-xs text-gray-500 dark:text-[#6B7280] mt-1">
                       <span>50%</span>
                       <span>100%</span>
-                      <span>200%</span>
+                      <span>400%</span>
                     </div>
                   </div>
 
@@ -662,12 +685,12 @@ export function EditDesignBottomSheet({
                     </Label>
                     <div className={`relative ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}>
                       <div
-                        className="absolute inset-0"
-                        style={{
-                          backgroundImage: `url(${backgroundImage})`,
-                          backgroundSize: `${imageZoom * 100}%`,
-                          backgroundPosition: `${imageFocalPoint.x}% ${imageFocalPoint.y}%`,
-                          backgroundRepeat: 'no-repeat',
+                      className="absolute inset-0"
+                      style={{
+                        backgroundImage: `url(${previewBackgroundImage || backgroundImage})`,
+                        backgroundSize: `${imageZoom * 100}%`,
+                        backgroundPosition: `${imageFocalPoint.x}% ${imageFocalPoint.y}%`,
+                        backgroundRepeat: 'no-repeat',
                         }}
                       />
                       <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
@@ -845,11 +868,11 @@ export function EditDesignBottomSheet({
                     <div
                       className="absolute inset-0"
                       style={{
-                        backgroundImage: backgroundImage
-                          ? `url(${backgroundImage})`
+                        backgroundImage: (previewBackgroundImage || backgroundImage)
+                          ? `url(${previewBackgroundImage || backgroundImage})`
                           : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        backgroundSize: backgroundImage ? `${imageZoom * 100}%` : 'cover',
-                        backgroundPosition: backgroundImage ? `${imageFocalPoint.x}% ${imageFocalPoint.y}%` : 'center',
+                        backgroundSize: (previewBackgroundImage || backgroundImage) ? `${imageZoom * 100}%` : 'cover',
+                        backgroundPosition: (previewBackgroundImage || backgroundImage) ? `${imageFocalPoint.x}% ${imageFocalPoint.y}%` : 'center',
                         backgroundRepeat: 'no-repeat',
                       }}
                     />
@@ -1024,7 +1047,7 @@ export function EditDesignBottomSheet({
     </BottomSheet>
 
     {/* Expanded Image Preview Dialog */}
-    {backgroundImage && (
+    {(previewBackgroundImage || backgroundImage) && (
       <Dialog open={isImageExpanded} onOpenChange={setIsImageExpanded}>
         <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
           <VisuallyHidden>
@@ -1044,7 +1067,7 @@ export function EditDesignBottomSheet({
               <X className="w-6 h-6" />
             </button>
             <img
-              src={backgroundImage}
+              src={previewBackgroundImage || backgroundImage}
               alt="Selected background"
               className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
             />

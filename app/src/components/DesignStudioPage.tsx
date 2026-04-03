@@ -1272,9 +1272,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   haptics.light();
                   setIsExpanded(false);
                 }}
-                className="absolute top-4 right-4 z-50 bg-black/80 text-white p-2 rounded-full hover:bg-black transition-colors"
+                className="absolute right-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/78 text-white shadow-lg transition-colors hover:bg-black"
               >
-                <X className="w-6 h-6" />
+                <X className="h-5 w-5" />
               </button>
               <img
                 src={expandedTemplate.previewUrl}

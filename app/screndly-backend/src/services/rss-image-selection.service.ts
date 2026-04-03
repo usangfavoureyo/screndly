@@ -327,6 +327,9 @@ const COMPOSITE_KEYWORDS = [
 ];
 const FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [];
 const FEED_FALLBACK_BLOCKED_URL_KEYWORDS: string[] = [];
+const PROJECT_LINKED_FEED_FALLBACK_BLOCKED_DOMAINS: string[] = [
+  'comicbook.com',
+];
 const MIN_FEED_FALLBACK_WIDTH = 200;
 const MIN_FEED_FALLBACK_HEIGHT = 200;
 const COMIC_ART_KEYWORDS = [
@@ -930,6 +933,19 @@ function filterAllowedFeedFallbackUrls(
     }
 
     return true;
+  });
+}
+
+function filterProjectLinkedFeedFallbackUrls(urls: string[]): string[] {
+  return urls.filter((url) => {
+    try {
+      const domain = normalizeText(new URL(url).hostname);
+      return !PROJECT_LINKED_FEED_FALLBACK_BLOCKED_DOMAINS.some((blocked) =>
+        domain.includes(normalizeText(blocked))
+      );
+    } catch {
+      return false;
+    }
   });
 }
 
@@ -3747,16 +3763,26 @@ export async function resolveRelevantRSSImages(
   const limit = Math.max(options.limit, 1);
   const sources = getEnabledImageSources(options);
   const analysis = await extractSubjectAnalysis(article, options.model);
+  const rawProjectLinkedFeedFallback = shouldAllowRawProjectLinkedFeedFallback(article);
   const allowProjectLinkedFeedFallback =
     shouldAllowProjectLinkedFeedFallback(article, analysis) ||
-    shouldAllowRawProjectLinkedFeedFallback(article);
-  const fallbackImages = (shouldUseFeedFallbackImages(article) || allowProjectLinkedFeedFallback)
+    rawProjectLinkedFeedFallback;
+  const revealDrivenFeedFallback = shouldUseFeedFallbackImages(article);
+  const fallbackImages = (revealDrivenFeedFallback || allowProjectLinkedFeedFallback)
     ? await filterRenderableFeedFallbackUrls(
-      filterAllowedFeedFallbackUrls(
-        dedupeUrls(article.fallbackImages || []),
-        analysis,
-        article
-      )
+      (revealDrivenFeedFallback
+        ? filterAllowedFeedFallbackUrls(
+            dedupeUrls(article.fallbackImages || []),
+            analysis,
+            article
+          )
+        : filterProjectLinkedFeedFallbackUrls(
+            filterAllowedFeedFallbackUrls(
+              dedupeUrls(article.fallbackImages || []),
+              analysis,
+              article
+            )
+          ))
     )
     : [];
   const revealDrivenMode = getRevealDrivenArticleMode(article);
@@ -3847,7 +3873,7 @@ export async function resolveRelevantRSSImages(
   }
 
   const resolved = await resolveSingleSlotImages(article, analysis, fallbackImages, sources, limit);
-  if (resolved.length === 0 && allowProjectLinkedFeedFallback && fallbackImages.length > 0) {
+  if (resolved.length === 0 && (allowProjectLinkedFeedFallback || rawProjectLinkedFeedFallback) && fallbackImages.length > 0) {
     return buildFeedFallbackImages(fallbackImages, 1, 'Article project context image');
   }
 
