@@ -272,6 +272,12 @@ interface ResolvedRenderOutput {
   contentType: 'image/jpeg' | 'image/png';
 }
 
+interface PsdImageDataLike {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}
+
 let queue: Queue<QueueManualRenderInput> | null = null;
 let worker: Worker<QueueManualRenderInput> | null = null;
 let redisConnection: Redis | null = null;
@@ -336,6 +342,20 @@ function colorToHex(value: unknown, fallback = '#ffffff'): string {
     }
   }
   return fallback;
+}
+
+function imageDataToBuffer(imageData: PsdImageDataLike): Buffer {
+  return Buffer.from(imageData.data.buffer, imageData.data.byteOffset, imageData.data.byteLength);
+}
+
+async function rasterizeImageData(imageData: PsdImageDataLike): Promise<Buffer> {
+  return sharp(imageDataToBuffer(imageData), {
+    raw: {
+      width: imageData.width,
+      height: imageData.height,
+      channels: 4,
+    },
+  }).png().toBuffer();
 }
 
 function hexToRgba(value: string, alpha: number): string {
@@ -416,6 +436,226 @@ async function generateTemplatePreviewUrl(input: {
   }
 
   return buildPreviewPlaceholder(input.fallbackName, input.width, input.height);
+}
+
+function findPsdLayer(children: Array<any> | undefined, predicate: (layer: any) => boolean): any | undefined {
+  for (const child of children || []) {
+    if (predicate(child)) {
+      return child;
+    }
+    if (Array.isArray(child?.children)) {
+      const nested = findPsdLayer(child.children, predicate);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+  return undefined;
+}
+
+function buildPathFromVectorMask(vectorMask: any): string {
+  if (!Array.isArray(vectorMask?.paths)) {
+    return '';
+  }
+
+  const segments: string[] = [];
+
+  for (const path of vectorMask.paths) {
+    const knots = Array.isArray(path?.knots) ? path.knots : [];
+    if (!knots.length) {
+      continue;
+    }
+
+    const anchor = (knot: any) => ({
+      x: Number(knot?.points?.[2] ?? knot?.points?.[0] ?? 0),
+      y: Number(knot?.points?.[3] ?? knot?.points?.[1] ?? 0),
+    });
+    const incoming = (knot: any) => ({
+      x: Number(knot?.points?.[0] ?? knot?.points?.[2] ?? 0),
+      y: Number(knot?.points?.[1] ?? knot?.points?.[3] ?? 0),
+    });
+    const outgoing = (knot: any) => ({
+      x: Number(knot?.points?.[4] ?? knot?.points?.[2] ?? 0),
+      y: Number(knot?.points?.[5] ?? knot?.points?.[3] ?? 0),
+    });
+
+    const firstAnchor = anchor(knots[0]);
+    let command = `M ${firstAnchor.x} ${firstAnchor.y}`;
+    for (let index = 0; index < knots.length; index += 1) {
+      const current = knots[index];
+      const next = knots[(index + 1) % knots.length];
+      const currentOut = outgoing(current);
+      const nextIn = incoming(next);
+      const nextAnchor = anchor(next);
+      command += ` C ${currentOut.x} ${currentOut.y}, ${nextIn.x} ${nextIn.y}, ${nextAnchor.x} ${nextAnchor.y}`;
+      if (!path?.open && index === knots.length - 1) {
+        command += ' Z';
+      }
+    }
+    segments.push(command);
+  }
+
+  return segments.join(' ');
+}
+
+async function placeLayerImageOnCanvas(input: {
+  width: number;
+  height: number;
+  imageData?: PsdImageDataLike;
+  left: number;
+  top: number;
+}): Promise<Buffer | null> {
+  if (!input.imageData?.data?.length || input.imageData.width <= 0 || input.imageData.height <= 0) {
+    return null;
+  }
+
+  let raster = sharp(imageDataToBuffer(input.imageData), {
+    raw: {
+      width: input.imageData.width,
+      height: input.imageData.height,
+      channels: 4,
+    },
+  });
+
+  const visibleLeft = Math.max(0, input.left);
+  const visibleTop = Math.max(0, input.top);
+  const extractLeft = Math.max(0, -input.left);
+  const extractTop = Math.max(0, -input.top);
+  const visibleWidth = Math.min(input.imageData.width - extractLeft, input.width - visibleLeft);
+  const visibleHeight = Math.min(input.imageData.height - extractTop, input.height - visibleTop);
+
+  if (visibleWidth <= 0 || visibleHeight <= 0) {
+    return null;
+  }
+
+  const cropped = await raster.extract({
+    left: extractLeft,
+    top: extractTop,
+    width: visibleWidth,
+    height: visibleHeight,
+  }).png().toBuffer();
+
+  return sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  }).composite([{ input: cropped, left: visibleLeft, top: visibleTop }]).png().toBuffer();
+}
+
+async function buildTemplateStaticAssetsFromPsd(input: {
+  buffer: Buffer;
+  fileName: string;
+}): Promise<{ brandOverlayUrl?: string; fadeOverlayUrl?: string }> {
+  try {
+    const psd = readPsdSafely(input.buffer, {
+      skipCompositeImageData: true,
+      skipLayerImageData: false,
+      useImageData: true,
+      skipThumbnail: true,
+    });
+
+    const width = Number(psd.width || 0);
+    const height = Number(psd.height || 0);
+    if (!width || !height) {
+      return {};
+    }
+
+    const brandRectangle = findPsdLayer(psd.children, (layer) => layer?.name === 'Rectangle 1');
+    const brandNews = findPsdLayer(psd.children, (layer) => layer?.name === 'NEWS');
+    const brandMonogram = findPsdLayer(psd.children, (layer) => layer?.name === 'Monogram');
+    const fadeLayer = findPsdLayer(psd.children, (layer) => layer?.name === 'Fade');
+
+    let brandOverlayUrl: string | undefined;
+    let fadeOverlayUrl: string | undefined;
+
+    const brandSvgParts: string[] = [];
+    if (brandRectangle?.vectorOrigination?.keyDescriptorList?.[0]?.keyOriginShapeBoundingBox) {
+      const box = brandRectangle.vectorOrigination.keyDescriptorList[0].keyOriginShapeBoundingBox;
+      const radii = brandRectangle.vectorOrigination.keyDescriptorList[0].keyOriginRRectRadii || {};
+      const fill = colorToHex(brandRectangle?.vectorFill?.color, '#ffffff');
+      const rectOpacity = clamp(readNumber(brandRectangle?.opacity, 1), 0, 1);
+      brandSvgParts.push(
+        `<rect x="${box.left.value}" y="${box.top.value}" width="${box.right.value - box.left.value}" height="${box.bottom.value - box.top.value}" rx="${readNumber(radii.topLeft?.value, 0)}" ry="${readNumber(radii.topLeft?.value, 0)}" fill="${fill}" fill-opacity="${rectOpacity}" />`,
+      );
+    }
+
+    const monogramPath = buildPathFromVectorMask(brandMonogram?.vectorMask);
+    if (monogramPath) {
+      const fill = colorToHex(brandMonogram?.vectorFill?.color, '#ffffff');
+      const opacity = clamp(readNumber(brandMonogram?.opacity, 1), 0, 1);
+      brandSvgParts.push(`<path d="${monogramPath}" fill="${fill}" fill-opacity="${opacity}" fill-rule="nonzero" />`);
+    }
+
+    const brandComposites: Array<{ input: Buffer; left?: number; top?: number }> = [];
+    if (brandSvgParts.length) {
+      brandComposites.push({
+        input: Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${brandSvgParts.join('')}</svg>`,
+        ),
+      });
+    }
+
+    const newsOverlay = await placeLayerImageOnCanvas({
+      width,
+      height,
+      imageData: brandNews?.imageData,
+      left: Number(brandNews?.left || 0),
+      top: Number(brandNews?.top || 0),
+    });
+    if (newsOverlay) {
+      brandComposites.push({ input: newsOverlay });
+    }
+
+    if (brandComposites.length) {
+      const brandBuffer = await sharp({
+        create: {
+          width,
+          height,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      }).composite(brandComposites).png().toBuffer();
+
+      const uploadedBrand = await uploadBufferToBackblaze(
+        brandBuffer,
+        `${input.fileName.replace(/\.psd$/i, '')}-brand-overlay.png`,
+        {
+          bucketTypes: ['design', 'general'],
+          prefix: 'design-studio/template-assets',
+          contentType: 'image/png',
+        },
+      );
+      brandOverlayUrl = uploadedBrand.url;
+    }
+
+    const fadeOverlay = await placeLayerImageOnCanvas({
+      width,
+      height,
+      imageData: fadeLayer?.imageData,
+      left: Number(fadeLayer?.left || 0),
+      top: Number(fadeLayer?.top || 0),
+    });
+    if (fadeOverlay) {
+      const uploadedFade = await uploadBufferToBackblaze(
+        fadeOverlay,
+        `${input.fileName.replace(/\.psd$/i, '')}-fade-overlay.png`,
+        {
+          bucketTypes: ['design', 'general'],
+          prefix: 'design-studio/template-assets',
+          contentType: 'image/png',
+        },
+      );
+      fadeOverlayUrl = uploadedFade.url;
+    }
+
+    return { brandOverlayUrl, fadeOverlayUrl };
+  } catch (error) {
+    console.error('Failed to build PSD static assets:', error);
+    return {};
+  }
 }
 
 function flattenLayerReferences(
@@ -830,6 +1070,50 @@ function getTemplateVariantMetadata(template: DesignStudioTemplateRecord): {
   });
 
   return { baseVariant, variants };
+}
+
+async function ensureTemplateStaticAssets(template: DesignStudioTemplateRecord): Promise<{
+  brandOverlayUrl?: string;
+  fadeOverlayUrl?: string;
+}> {
+  const existing = template.psdData?.staticAssets || {};
+  if (existing.brandOverlayUrl || existing.fadeOverlayUrl) {
+    return existing;
+  }
+
+  const psdUrl = typeof template.psdData?.fileUrl === 'string' ? template.psdData.fileUrl : '';
+  if (!psdUrl) {
+    return {};
+  }
+
+  try {
+    const buffer = await fetchSourceBuffer(psdUrl);
+    if (!buffer) {
+      return {};
+    }
+
+    const staticAssets = await buildTemplateStaticAssetsFromPsd({
+      buffer,
+      fileName: `${template.name}.psd`,
+    });
+    if (!staticAssets.brandOverlayUrl && !staticAssets.fadeOverlayUrl) {
+      return {};
+    }
+
+    template.psdData = {
+      ...(template.psdData || {}),
+      staticAssets,
+    };
+
+    const templates = await getTemplates();
+    const nextTemplates = templates.map((entry) => (entry.id === template.id ? template : entry));
+    await saveTemplates(nextTemplates);
+
+    return staticAssets;
+  } catch (error) {
+    console.error('Failed to ensure template static assets:', error);
+    return {};
+  }
 }
 
 function buildTemplateFromPsdBuffer(input: {
@@ -1508,6 +1792,7 @@ async function renderDesignStudioImage(
   payload: DesignStudioRenderPayload,
 ): Promise<ResolvedRenderOutput> {
   const variant = findVariant(template, payload.template_variant);
+  const staticAssets = await ensureTemplateStaticAssets(template);
   const width = template.width;
   const height = template.height;
   const background = await buildBackgroundLayer({
@@ -1524,31 +1809,59 @@ async function renderDesignStudioImage(
     zoom: payload.zoomLevel || payload.imageZoom,
   });
 
-  const overlayColor = payload.useTemplateDefaultStyling ? '#000000' : (payload.overlayColor || '#000000');
-  const overlayStrength = payload.useTemplateDefaultStyling
-    ? 0.72
-    : clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
-  const overlay = buildOverlaySvg({
-    width,
-    height,
-    color: overlayColor,
-    strength: overlayStrength,
-    direction: payload.gradientPosition || variant.overlayDirection,
-    overlayType: payload.overlayType || 'linear',
-  });
   const textOverlay = buildTextSvg({ width, height, variant, template, payload });
-  const brandOverlay = buildBrandSvg(width, height, variant);
-  const [overlayRaster, textRaster, brandRaster] = await Promise.all([
-    sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
-    sharp(textOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
-    sharp(brandOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
-  ]);
+  const hasOverlayOverride = payload.overlayColor !== undefined
+    || payload.overlayOpacity !== undefined
+    || payload.overlayType !== undefined
+    || payload.gradientPosition !== undefined;
+  const useTemplateStyling = payload.useTemplateDefaultStyling !== false && !hasOverlayOverride;
+
+  const composites: Array<{ input: Buffer }> = [];
+  if (!useTemplateStyling) {
+    const overlayColor = payload.overlayColor || '#000000';
+    const overlayStrength = clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
+    const overlay = buildOverlaySvg({
+      width,
+      height,
+      color: overlayColor,
+      strength: overlayStrength,
+      direction: payload.gradientPosition || variant.overlayDirection,
+      overlayType: payload.overlayType || 'linear',
+    });
+    composites.push({ input: await sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
+  }
+
+  if (staticAssets.fadeOverlayUrl) {
+    const fadeRaster = await fetchSourceBuffer(staticAssets.fadeOverlayUrl);
+    if (fadeRaster) {
+      composites.push({ input: fadeRaster });
+    }
+  } else if (useTemplateStyling) {
+    const overlay = buildOverlaySvg({
+      width,
+      height,
+      color: '#000000',
+      strength: 0.72,
+      direction: payload.gradientPosition || variant.overlayDirection,
+      overlayType: payload.overlayType || 'linear',
+    });
+    composites.push({ input: await sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
+  }
+
+  composites.push({ input: await sharp(textOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
+
+  if (staticAssets.brandOverlayUrl) {
+    const brandRaster = await fetchSourceBuffer(staticAssets.brandOverlayUrl);
+    if (brandRaster) {
+      composites.push({ input: brandRaster });
+    }
+  } else {
+    const brandOverlay = buildBrandSvg(width, height, variant);
+    composites.push({ input: await sharp(brandOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
+  }
+
   const { format, jpegQuality } = await getRenderExportSettings(payload.exportFormat);
-  const pipeline = sharp(background).composite([
-    { input: overlayRaster },
-    { input: textRaster },
-    { input: brandRaster },
-  ]);
+  const pipeline = sharp(background).composite(composites);
 
   try {
     if (format === 'png') {
@@ -1567,16 +1880,14 @@ async function renderDesignStudioImage(
       contentType: 'image/jpeg',
     };
   } catch (error) {
-    const [backgroundMeta, overlayMeta, textMeta, brandMeta] = await Promise.all([
+    const [backgroundMeta, compositeMeta] = await Promise.all([
       sharp(background).metadata(),
-      sharp(overlayRaster).metadata(),
-      sharp(textRaster).metadata(),
-      sharp(brandRaster).metadata(),
+      Promise.all(composites.map((entry) => sharp(entry.input).metadata())),
     ]);
     throw new Error(
       `Render composite failed: ${
         error instanceof Error ? error.message : 'Unknown error'
-      } | background=${backgroundMeta.width}x${backgroundMeta.height} overlay=${overlayMeta.width}x${overlayMeta.height} text=${textMeta.width}x${textMeta.height} brand=${brandMeta.width}x${brandMeta.height}`,
+      } | background=${backgroundMeta.width}x${backgroundMeta.height} composites=${compositeMeta.map((meta) => `${meta.width}x${meta.height}`).join(',')}`,
     );
   }
 }
@@ -1849,6 +2160,14 @@ export async function registerUploadedDesignStudioTemplate(input: {
   });
   template.previewImage = previewUrl;
   template.previewUrl = previewUrl;
+  const staticAssets = await buildTemplateStaticAssetsFromPsd({
+    buffer: input.buffer,
+    fileName: input.fileName,
+  });
+  template.psdData = {
+    ...(template.psdData || {}),
+    staticAssets,
+  };
   const templates = await getTemplates();
   const nextTemplates = [template, ...templates.filter((entry) => entry.sourceFilePath !== template.sourceFilePath)].slice(0, 200);
   await saveTemplates(nextTemplates);

@@ -903,7 +903,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             size="icon"
                             variant="outline"
                             onClick={() => handleDelete(activity.id)}
-                            className="mr-2 hidden h-9 w-9 rounded-xl border-gray-200 bg-white text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
+                            className="mr-2 hidden h-10 w-11 rounded-[14px] border-gray-200 bg-white text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -912,7 +912,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             size="icon"
                             variant="outline"
                             onClick={() => openOptionsMenu(activity)}
-                            className="h-9 w-9 rounded-xl border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
+                            className="h-10 w-11 rounded-[14px] border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
