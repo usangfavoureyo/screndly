@@ -805,16 +805,16 @@ function deriveVariants(
   const bottomTextHeight = 300;
   const topTextHeight = 280;
   const bottomTextY = height - safeMargin - bottomTextHeight;
-  const brandWidth = 300;
-  const brandHeight = 90;
-  const bottomBrandY = height - safeMargin - brandHeight;
+  const defaultBrandWidth = 300;
+  const defaultBrandHeight = 90;
+  const bottomBrandY = height - safeMargin - defaultBrandHeight;
 
   const defaults: DesignStudioVariantRecord[] = [
     {
       variant: 'bottom_center',
       textBox: { x: safeMargin, y: bottomTextY, width: centeredWidth, height: bottomTextHeight },
       alignment: 'center',
-      brandBox: { x: Math.round((width - brandWidth) / 2), y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: Math.round((width - defaultBrandWidth) / 2), y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'top',
       overlayDirection: 'bottom',
       minFontSize: Math.round(baseFontSize * 0.64),
@@ -825,7 +825,7 @@ function deriveVariants(
       variant: 'top_center',
       textBox: { x: safeMargin, y: topTextY, width: centeredWidth, height: topTextHeight },
       alignment: 'center',
-      brandBox: { x: Math.round((width - brandWidth) / 2), y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: Math.round((width - defaultBrandWidth) / 2), y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'bottom',
       overlayDirection: 'top',
       minFontSize: Math.round(baseFontSize * 0.64),
@@ -836,7 +836,7 @@ function deriveVariants(
       variant: 'top_left',
       textBox: { x: safeMargin, y: topTextY, width: sideWidth, height: topTextHeight },
       alignment: 'left',
-      brandBox: { x: safeMargin, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: safeMargin, y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'bottom_right',
       overlayDirection: 'top_left',
       minFontSize: Math.round(baseFontSize * 0.64),
@@ -847,7 +847,7 @@ function deriveVariants(
       variant: 'top_right',
       textBox: { x: width - safeMargin - sideWidth, y: topTextY, width: sideWidth, height: topTextHeight },
       alignment: 'right',
-      brandBox: { x: width - safeMargin - brandWidth, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: width - safeMargin - defaultBrandWidth, y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'bottom_left',
       overlayDirection: 'top_right',
       minFontSize: Math.round(baseFontSize * 0.64),
@@ -858,7 +858,7 @@ function deriveVariants(
       variant: 'bottom_left',
       textBox: { x: safeMargin, y: bottomTextY, width: sideWidth, height: bottomTextHeight },
       alignment: 'left',
-      brandBox: { x: safeMargin, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: safeMargin, y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'top_right',
       overlayDirection: 'bottom_left',
       minFontSize: Math.round(baseFontSize * 0.64),
@@ -869,7 +869,7 @@ function deriveVariants(
       variant: 'bottom_right',
       textBox: { x: width - safeMargin - sideWidth, y: bottomTextY, width: sideWidth, height: bottomTextHeight },
       alignment: 'right',
-      brandBox: { x: width - safeMargin - brandWidth, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      brandBox: { x: width - safeMargin - defaultBrandWidth, y: bottomBrandY, width: defaultBrandWidth, height: defaultBrandHeight },
       backgroundAnchor: 'top_left',
       overlayDirection: 'bottom_right',
       minFontSize: Math.round(baseFontSize * 0.64),
