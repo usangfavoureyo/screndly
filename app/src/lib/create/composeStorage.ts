@@ -13,6 +13,15 @@ interface UploadComposeAssetResponse {
 const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPOSE_CROP_TIMEOUT_MS = 10 * 60 * 1000;
 
+export function buildComposeAssetStreamUrl(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (!/^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  return `/api/create/asset-stream?url=${encodeURIComponent(url)}`;
+}
+
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {
   if (!apiClient.isBackendAvailable()) {
     throw new Error('Backend is not available for post uploads.');

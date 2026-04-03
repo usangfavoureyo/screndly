@@ -49,7 +49,7 @@ import {
   buildComposePublishSuccessNotification,
   buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
-import { resolveComposeAssetPreview, uploadComposeAsset } from '../../lib/create/composeStorage';
+import { buildComposeAssetStreamUrl, resolveComposeAssetPreview, uploadComposeAsset } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type {
   ComposeItem,
@@ -337,7 +337,7 @@ export function ComposeEditorPage({
     formState.threadsXCropVideo?.uploadStatus === 'uploaded';
   const activeThreadsXCropPreviewUrl =
     hasThreadsXCropPreviewReady
-      ? (formState.threadsXCropVideo?.previewUrl || formState.threadsXCropVideo?.storageUrl)
+      ? buildComposeAssetStreamUrl(formState.threadsXCropVideo?.previewUrl || formState.threadsXCropVideo?.storageUrl)
       : undefined;
   const isThreadsXCropBlockingActions =
     isThreadsXCropEnabled && (isGeneratingThreadsXCrop || (isUploadingThreadsXCrop && !isThreadsXCropReady));
@@ -901,7 +901,9 @@ export function ComposeEditorPage({
       return;
     }
 
-    const previewUrl = formState.threadsXCropVideo.previewUrl || formState.threadsXCropVideo.storageUrl;
+    const previewUrl = buildComposeAssetStreamUrl(
+      formState.threadsXCropVideo.previewUrl || formState.threadsXCropVideo.storageUrl,
+    );
     if (!previewUrl) {
       toast.error('Generate the 3:4 crop first so you can preview it.');
       return;
