@@ -362,15 +362,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       (job) => job.status === 'queued' || job.status === 'rendering',
     );
     const interval = window.setInterval(async () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       try {
-        const [state, jobs] = await Promise.all([
-          fetchDesignStudioState(),
-          fetchDesignStudioRenderJobs(),
-        ]);
-        setTemplates((state.templates || []).map(parseTemplate));
-        setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
-        setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
+        const jobs = await fetchDesignStudioRenderJobs();
         setManualRenderJobs(jobs);
+        if (hasActiveManualRender) {
+          const state = await fetchDesignStudioState();
+          setTemplates((state.templates || []).map(parseTemplate));
+          setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
+          setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
+        }
       } catch (error) {
         console.error('Failed to refresh Design Studio state:', error);
       }

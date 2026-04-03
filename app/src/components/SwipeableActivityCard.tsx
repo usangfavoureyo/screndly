@@ -306,7 +306,7 @@ export function SwipeableActivityCard({
           <button
             type="button"
             aria-label={deleteLabel}
-            className="absolute right-3 top-3 z-10 hidden rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 opacity-0 transition-opacity hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#050505]/95 dark:text-[#9CA3AF] dark:hover:text-[#ec1e24] lg:flex"
+            className="absolute right-3 top-12 z-10 hidden rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 opacity-0 transition-opacity hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#050505]/95 dark:text-[#9CA3AF] dark:hover:text-[#ec1e24] lg:flex"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

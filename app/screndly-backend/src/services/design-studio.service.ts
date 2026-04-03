@@ -879,7 +879,7 @@ async function fetchSourceBuffer(value?: string): Promise<Buffer | null> {
     const [, content] = value.split(',');
     return Buffer.from(content, 'base64');
   }
-  const remoteUrl = value.startsWith('http') ? value : await resolveRemoteTemplateUrl(value);
+  const remoteUrl = await resolveRemoteTemplateUrl(value);
   return fetchBytesFromUrl(remoteUrl);
 }
 

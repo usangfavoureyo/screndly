@@ -1742,148 +1742,6 @@ export function ComposeEditorPage({
             </div>
           </div>
 
-          {shouldShowVideoThumbnails ? (
-            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-              <div className="mb-4">
-                <h3 className="mb-1 text-gray-900 dark:text-white">Video Thumbnails</h3>
-                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Add optional thumbnails for a single-video post. Shared thumbnail is used for Facebook, Instagram, Threads, and TikTok.
-                </p>
-              </div>
-
-              <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
-                {[
-                  shouldShowSharedThumbnailSection
-                    ? {
-                        key: 'sharedThumbnail' as const,
-                        label: 'Shared Thumbnail',
-                        description: 'Facebook, Instagram, Threads, TikTok',
-                        supportsGeneration: true,
-                      }
-                    : null,
-                  shouldShowYouTubeThumbnailSection
-                    ? {
-                        key: 'youtubeThumbnail' as const,
-                        label: 'YouTube Thumbnail',
-                        description: 'YouTube only',
-                        supportsGeneration: true,
-                      }
-                    : null,
-                ].filter(Boolean).map(({ key, label, description, supportsGeneration }) => {
-                  const thumbnail = formState[key];
-                  const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
-                  const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
-
-                  return (
-                    <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
-                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{description}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {supportsGeneration ? (
-                            <button
-                              type="button"
-                              onClick={() => handleGenerateThumbnail(key)}
-                              disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
-                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
-                              aria-label={`Generate ${label}`}
-                              title={`Generate ${label}`}
-                            >
-                              {isGeneratingThisThumbnail ? (
-                                <RedSpinner size="sm" label={`Generating ${label}...`} />
-                              ) : (
-                                <RotateCcw className="h-4 w-4 text-white" />
-                              )}
-                            </button>
-                          ) : null}
-                          {thumbnail ? (
-                            <button
-                              type="button"
-                              onClick={() => removeThumbnail(key)}
-                              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
-                              aria-label={`Remove ${label}`}
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 flex items-center gap-3">
-                        <Label htmlFor={`compose-thumbnail-${key}`} className="cursor-pointer">
-                          <span className="sr-only">Upload {label}</span>
-                          <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
-                            {thumbnail?.uploadStatus === 'uploading' ? (
-                              <RedSpinner size="sm" label="Uploading thumbnail..." />
-                            ) : (
-                              <Upload className="h-3.5 w-3.5 text-[#ec1e24]" />
-                            )}
-                            Upload
-                          </div>
-                        </Label>
-                        <input
-                          id={`compose-thumbnail-${key}`}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={(event) => handleThumbnailSelected(event, key)}
-                        />
-                        {thumbnail ? (
-                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                            {thumbnail.uploadStatus === 'failed'
-                              ? thumbnail.uploadError || 'Upload failed'
-                              : thumbnail.uploadStatus === 'uploaded'
-                                ? 'Stored in Backblaze'
-                                : thumbnail.uploadStatus === 'idle'
-                                  ? 'Stored locally'
-                                  : 'Uploading...'}
-                          </p>
-                        ) : (
-                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
-                            {supportsGeneration
-                              ? 'Upload manually or generate from Source Metadata'
-                              : 'PNG or JPG recommended'}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-black/90 dark:border-[#333333]">
-                        {previewUrl ? (
-                          <button
-                            type="button"
-                            onClick={() => handlePreviewThumbnail(thumbnail)}
-                            className="group relative block w-full text-left"
-                            aria-label={`Preview ${label}`}
-                          >
-                            <img
-                              src={previewUrl}
-                              alt={thumbnail?.fileName || label}
-                              className="h-36 w-full object-cover"
-                              onError={() => {
-                                void recoverThumbnailPreview(key);
-                              }}
-                            />
-                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
-                                <ImageIcon className="h-4 w-4" />
-                              </div>
-                            </div>
-                          </button>
-                        ) : (
-                          <div className="flex h-36 items-center justify-center">
-                            <ImageIcon className="h-6 w-6 text-white/70" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
-
           {canOfferThreadsXCrop ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
               <div className="mb-4">
@@ -2293,6 +2151,148 @@ export function ComposeEditorPage({
                     Shorts use the video and can fall back to the shared caption if no YouTube description is provided.
                   </p>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {shouldShowVideoThumbnails ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+              <div className="mb-4">
+                <h3 className="mb-1 text-gray-900 dark:text-white">Video Thumbnails</h3>
+                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                  Add optional thumbnails for a single-video post. Shared thumbnail is used for Facebook, Instagram, Threads, and TikTok.
+                </p>
+              </div>
+
+              <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
+                {[
+                  shouldShowSharedThumbnailSection
+                    ? {
+                        key: 'sharedThumbnail' as const,
+                        label: 'Shared Thumbnail',
+                        description: 'Facebook, Instagram, Threads, TikTok',
+                        supportsGeneration: true,
+                      }
+                    : null,
+                  shouldShowYouTubeThumbnailSection
+                    ? {
+                        key: 'youtubeThumbnail' as const,
+                        label: 'YouTube Thumbnail',
+                        description: 'YouTube only',
+                        supportsGeneration: true,
+                      }
+                    : null,
+                ].filter(Boolean).map(({ key, label, description, supportsGeneration }) => {
+                  const thumbnail = formState[key];
+                  const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
+                  const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
+
+                  return (
+                    <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{description}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {supportsGeneration ? (
+                            <button
+                              type="button"
+                              onClick={() => handleGenerateThumbnail(key)}
+                              disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
+                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                              aria-label={`Generate ${label}`}
+                              title={`Generate ${label}`}
+                            >
+                              {isGeneratingThisThumbnail ? (
+                                <RedSpinner size="sm" label={`Generating ${label}...`} />
+                              ) : (
+                                <RotateCcw className="h-4 w-4 text-white" />
+                              )}
+                            </button>
+                          ) : null}
+                          {thumbnail ? (
+                            <button
+                              type="button"
+                              onClick={() => removeThumbnail(key)}
+                              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                              aria-label={`Remove ${label}`}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-3">
+                        <Label htmlFor={`compose-thumbnail-${key}`} className="cursor-pointer">
+                          <span className="sr-only">Upload {label}</span>
+                          <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
+                            {thumbnail?.uploadStatus === 'uploading' ? (
+                              <RedSpinner size="sm" label="Uploading thumbnail..." />
+                            ) : (
+                              <Upload className="h-3.5 w-3.5 text-[#ec1e24]" />
+                            )}
+                            Upload
+                          </div>
+                        </Label>
+                        <input
+                          id={`compose-thumbnail-${key}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(event) => handleThumbnailSelected(event, key)}
+                        />
+                        {thumbnail ? (
+                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                            {thumbnail.uploadStatus === 'failed'
+                              ? thumbnail.uploadError || 'Upload failed'
+                              : thumbnail.uploadStatus === 'uploaded'
+                                ? 'Stored in Backblaze'
+                                : thumbnail.uploadStatus === 'idle'
+                                  ? 'Stored locally'
+                                  : 'Uploading...'}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                            {supportsGeneration
+                              ? 'Upload manually or generate from Source Metadata'
+                              : 'PNG or JPG recommended'}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-black/90 dark:border-[#333333]">
+                        {previewUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => handlePreviewThumbnail(thumbnail)}
+                            className="group relative block w-full text-left"
+                            aria-label={`Preview ${label}`}
+                          >
+                            <img
+                              src={previewUrl}
+                              alt={thumbnail?.fileName || label}
+                              className="h-36 w-full object-cover"
+                              onError={() => {
+                                void recoverThumbnailPreview(key);
+                              }}
+                            />
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
+                                <ImageIcon className="h-4 w-4" />
+                              </div>
+                            </div>
+                          </button>
+                        ) : (
+                          <div className="flex h-36 items-center justify-center">
+                            <ImageIcon className="h-6 w-6 text-white/70" />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : null}

@@ -48,6 +48,7 @@ interface DesignStudioActivityPageProps {
 type DesignStudioActivityTab = 'manual' | 'auto';
 
 const DESIGN_STUDIO_ACTIVITY_CACHE_KEY = 'designStudioActivityCache';
+const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY = 'designStudioActivityDismissed';
 
 const MANUAL_ACTIVITY_TYPES = new Set([
   'template_uploaded',
@@ -158,19 +159,28 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>(cachedActivityState?.templatePreviewUrls || {});
   const [isLoading, setIsLoading] = useState(!(cachedActivityState && (cachedActivityState.activities?.length || cachedActivityState.manualRenderJobs?.length)));
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [dismissedActivityIds, setDismissedActivityIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const retentionHours = settings.designStudioActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
   const logLevel = settings.designStudioLogLevel || 'standard';
+  const hasActiveManualRender = manualRenderJobs.some((job) => job.status === 'queued' || job.status === 'rendering');
 
   const loadActivities = async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!silent) {
       setIsLoading(true);
     }
     try {
-      const [response, renderJobs, designStudioState] = await Promise.all([
+      const [response, renderJobs] = await Promise.all([
         apiClient.get<DesignStudioActivityRecord[]>('/api/design-studio/activity'),
         fetchDesignStudioRenderJobs(),
-        fetchDesignStudioState(),
       ]);
       if (response.success && Array.isArray(response.data)) {
         setActivities(response.data);
@@ -178,11 +188,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         setActivities([]);
       }
       setManualRenderJobs(renderJobs);
-      setTemplatePreviewUrls(
-        Object.fromEntries(
-          (designStudioState.templates || []).map((template) => [template.id, template.previewUrl]),
-        ),
-      );
+      if (!silent || hasActiveManualRender) {
+        const designStudioState = await fetchDesignStudioState();
+        setTemplatePreviewUrls(
+          Object.fromEntries(
+            (designStudioState.templates || []).map((template) => [template.id, template.previewUrl]),
+          ),
+        );
+      }
     } catch (error) {
       console.error('Failed to fetch design studio activity:', error);
       if (!silent) {
@@ -203,13 +216,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') {
+        return;
+      }
       void loadActivities({ silent: true });
-    }, 5000);
+    }, hasActiveManualRender ? 5000 : 30000);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, []);
+  }, [hasActiveManualRender]);
 
   useEffect(() => {
     localStorage.setItem('designStudioActivityTab', activeTab);
@@ -223,6 +239,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       templatePreviewUrls,
     }));
   }, [activities, manualRenderJobs, templatePreviewUrls]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY, JSON.stringify(dismissedActivityIds));
+  }, [dismissedActivityIds]);
 
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
@@ -240,6 +261,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       }));
 
     return [...manualRenderActivityRecords, ...activities]
+      .filter((activity) => !dismissedActivityIds.includes(activity.id))
       .filter((activity) => {
         const timestamp = new Date(activity.createdAt).getTime();
         return Number.isNaN(timestamp) || timestamp >= cutoff;
@@ -258,7 +280,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           ? MANUAL_ACTIVITY_TYPES.has(activity.type)
           : AUTO_ACTIVITY_TYPES.has(activity.type)
       ));
-  }, [activeTab, activities, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
+  }, [activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
 
   useEffect(() => {
     const targetActivityId = window.localStorage.getItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
@@ -293,16 +315,25 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const handleDelete = async (id: string) => {
     haptics.medium();
+    if (id.startsWith('render-job-')) {
+      setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setManualRenderJobs((prev) => prev.filter((job) => `render-job-${job.id}` !== id));
+      toast.success('Activity deleted');
+      return;
+    }
+
     const deletedActivity = activities.find((activity) => activity.id === id);
     const deletedIndex = activities.findIndex((activity) => activity.id === id);
     if (!deletedActivity || deletedIndex === -1) return;
 
+    setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setActivities((prev) => prev.filter((activity) => activity.id !== id));
 
     showUndo({
       id,
       itemName: activityTitle(deletedActivity.type),
       onUndo: () => {
+        setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
         setActivities((prev) => {
           if (prev.some((activity) => activity.id === deletedActivity.id)) {
             return prev;
@@ -321,6 +352,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           toast.success('Activity deleted');
         } catch (error) {
           console.error('Failed to delete design studio activity:', error);
+          setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
           setActivities((prev) => {
             if (prev.some((activity) => activity.id === deletedActivity.id)) {
               return prev;
@@ -341,16 +373,24 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     haptics.medium();
     setIsDeletingSelected(true);
     const selectedIdSet = new Set(selection.selectedIds);
+    const syntheticIds = selection.selectedIds.filter((id) => id.startsWith('render-job-'));
+    const persistedIds = selection.selectedIds.filter((id) => !id.startsWith('render-job-'));
 
     try {
+      if (syntheticIds.length > 0) {
+        setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...syntheticIds])));
+        setManualRenderJobs((prev) => prev.filter((job) => !selectedIdSet.has(`render-job-${job.id}`)));
+      }
+
       await Promise.all(
-        selection.selectedIds.map(async (id) => {
+        persistedIds.map(async (id) => {
           const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
           if (!response.success) {
             throw new Error(response.error?.message || 'Failed to delete selected activity');
           }
         })
       );
+      setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...persistedIds])));
       setActivities((prev) => prev.filter((activity) => !selectedIdSet.has(activity.id)));
       toast.success(`${selection.selectedCount} design activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
       selection.clearSelection();

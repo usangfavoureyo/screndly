@@ -555,7 +555,9 @@ export function NotificationPanel({
               </div>
             </div>
 
-            <p className="text-sm text-gray-600 dark:text-[#9CA3AF] leading-6">{selectedNotification.message}</p>
+            <p className="break-words whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-[#9CA3AF]">
+              {selectedNotification.message}
+            </p>
 
             {actionTarget && onOpenPage && (
               <button
