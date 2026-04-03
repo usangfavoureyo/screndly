@@ -8,6 +8,7 @@ interface CommentReply {
   time: string;
   username?: string;
   postTitle?: string;
+  commentUrl?: string;
 }
 
 interface CommentReplyRecordInput {
@@ -17,6 +18,7 @@ interface CommentReplyRecordInput {
   time?: string;
   username?: string;
   postTitle?: string;
+  commentUrl?: string;
 }
 
 interface PlatformReadiness {
@@ -123,6 +125,7 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
                 time: reply.time || '',
                 username: reply.username,
                 postTitle: reply.postTitle,
+                commentUrl: reply.commentUrl,
               }))
               : [],
             enabled: readiness?.enabled ?? Boolean(item.enabled),
@@ -174,6 +177,7 @@ export function CommentAutomationProvider({ children }: { children: ReactNode })
             time: timestamp,
             username: reply.username,
             postTitle: reply.postTitle,
+            commentUrl: reply.commentUrl,
           },
           ...item.recentReplies,
         ].slice(0, 5);

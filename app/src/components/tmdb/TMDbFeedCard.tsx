@@ -332,6 +332,17 @@ function TMDbFeedCardComponent({
     });
   };
 
+  const formatScheduledDateTime = (dateString?: string) => {
+    if (!dateString) return 'Not scheduled';
+    return formatDateTime(dateString, 'en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
   // ONLY valid models: Today, Weekly, Monthly, Anniversary
   // NEVER return tmdb_upcoming or any invalid source
   const getSourceLabel = (source: string) => {
@@ -467,6 +478,11 @@ function TMDbFeedCardComponent({
                   <span className="text-xs px-2 py-0.5 rounded-full bg-[#ec1e24] text-white">
                     {getSourceLabel(feed.source)}
                   </span>
+                  {feed.status === 'scheduled' && (
+                    <span className="text-xs px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]">
+                      Scheduled
+                    </span>
+                  )}
                 </div>
                 {/* Title includes year in parentheses - no separate year label */}
                 <h2 className="font-semibold text-gray-900 dark:text-white truncate">
@@ -575,6 +591,11 @@ function TMDbFeedCardComponent({
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
                 <span>Fetched: {formatFetchedDateTime(feed.createdAt || feed.updatedAt)}</span>
               </div>
+              {feed.status === 'scheduled' && (
+                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
+                  <span>Scheduled: {formatScheduledDateTime(feed.scheduledTime)}</span>
+                </div>
+              )}
               <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-[#9CA3AF]">
                 <span>TMDb ID: {feed.tmdbId}</span>
               </div>

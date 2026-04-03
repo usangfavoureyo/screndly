@@ -131,6 +131,9 @@ const DESIGN_STUDIO_BACKEND_KEYS = [
   'designStudioMinimumScoreThreshold',
   'designStudioTargetPlatforms',
   'designStudioAutoUpdatedAt',
+  'renderQuality',
+  'exportFormat',
+  'jpegQuality',
 ] as const;
 
 const VIDEO_STUDIO_BACKEND_KEYS = [

@@ -49,8 +49,8 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
 
   useTMDbAutoSync(fetchPosts);
 
-  // Show only queued items here. Scheduled, published, and failed items live in Activity.
-  const feeds = posts.filter(post => post.status === 'queued');
+  // Keep queued and scheduled items visible here until they publish.
+  const feeds = posts.filter(post => post.status === 'queued' || post.status === 'scheduled');
 
   const currentSort = sortByTab[filterType];
   const filteredFeeds = useMemo(() => {
@@ -187,7 +187,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         showHandle
       >
         <BottomSheetHeader>
-          <BottomSheetTitle>Sort Queued Posts</BottomSheetTitle>
+          <BottomSheetTitle>Sort Feeds</BottomSheetTitle>
         </BottomSheetHeader>
         <BottomSheetBody className="px-4 pb-6">
           <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
@@ -283,7 +283,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         )}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-gray-900 dark:text-white">
-            Queued Posts ({filteredFeeds.length})
+            Queued & Scheduled Posts ({filteredFeeds.length})
           </h3>
           <div className="flex items-center gap-2">
             <Button
@@ -294,7 +294,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
                 setSortSheetOpen(true);
               }}
               className="h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-              aria-label={`Sort queued posts. Current: ${SORT_OPTION_LABELS[currentSort]}`}
+              aria-label={`Sort feeds. Current: ${SORT_OPTION_LABELS[currentSort]}`}
             >
               <ArrowDownWideNarrow size={16} className="shrink-0" />
             </Button>
@@ -336,11 +336,11 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
           ))
         ) : (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
-            <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No {filterType !== 'all' ? filterType : ''} queued posts</h3>
+            <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No {filterType !== 'all' ? filterType : ''} queued or scheduled posts</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filterType !== 'all'
-                ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} posts will appear here automatically when fetched and left waiting for publish or scheduling.`
-                : 'Queued TMDb posts will appear here automatically based on your TMDb settings.'
+                ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} posts will appear here automatically when fetched and stay here while queued or scheduled.`
+                : 'Queued and scheduled TMDb posts will appear here automatically based on your TMDb settings.'
               }
             </p>
           </div>

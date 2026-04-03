@@ -43,12 +43,49 @@ function resolveCaptionPlatform(platforms?: string[]): 'X' | 'Threads' | 'Facebo
   return match;
 }
 
-function getTemporalTag(feedType: FeedType) {
+function getStartOfWeek(date: Date, weekStartsOn = 1): Date {
+  const normalized = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const day = normalized.getDay();
+  const delta = (day - weekStartsOn + 7) % 7;
+  normalized.setDate(normalized.getDate() - delta);
+  return normalized;
+}
+
+function getWeeklyTimingReplacement(releaseDate: string, referenceDate = new Date()): string | null {
+  const target = parseCalendarDate(releaseDate);
+  if (!target) {
+    return null;
+  }
+
+  const referenceWeekStart = getStartOfWeek(referenceDate);
+  const targetWeekStart = getStartOfWeek(target);
+  const weekDelta = Math.round(
+    (targetWeekStart.getTime() - referenceWeekStart.getTime()) / (7 * 24 * 60 * 60 * 1000)
+  );
+
+  if (weekDelta === 0) {
+    return 'this week';
+  }
+
+  if (weekDelta === 1) {
+    return 'next week';
+  }
+
+  if (weekDelta > 1) {
+    return `in ${weekDelta} weeks`;
+  }
+
+  return null;
+}
+
+function getTemporalTag(feedType: FeedType, releaseDate?: string) {
   switch (feedType) {
     case 'today':
       return 'releasing_today' as const;
     case 'weekly':
-      return 'releasing_this_week' as const;
+      return getWeeklyTimingReplacement(releaseDate || '') === 'next week'
+        ? 'releasing_next_week' as const
+        : 'releasing_this_week' as const;
     case 'monthly':
       return 'releasing_next_month' as const;
     case 'anniversary':
@@ -66,7 +103,61 @@ function getDaysUntilRelease(releaseDate: string, feedType: FeedType): number {
   return getDaysUntilCalendarDate(releaseDate);
 }
 
-function buildSystemPrompt(options: CaptionGenerationOptions): string {
+function formatReleaseDateWithWeekday(releaseDate: string): string | null {
+  const target = parseCalendarDate(releaseDate);
+  if (!target) {
+    return null;
+  }
+
+  return target.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+function buildTemporalGuidance(item: TMDbItem, options: CaptionGenerationOptions): string[] {
+  if (!item.releaseDate || options.feedType === 'today' || options.feedType === 'anniversary') {
+    return [];
+  }
+
+  const formattedDate = formatReleaseDateWithWeekday(item.releaseDate);
+  if (!formattedDate) {
+    return [];
+  }
+
+  if (options.feedType === 'weekly') {
+    const weeklyTiming = getWeeklyTimingReplacement(item.releaseDate);
+    if (!weeklyTiming) {
+      return [];
+    }
+
+    return [
+      `- The release date falls ${weeklyTiming} on ${formattedDate}.`,
+      options.includeDate
+        ? '- When helpful, prefer timing phrasing like "next Friday, April 10" or "Friday, April 10" instead of a vague week reference.'
+        : '- Even without the full date, keep the week reference accurate to the actual calendar week.',
+    ];
+  }
+
+  if (options.feedType === 'monthly') {
+    const monthlyTiming = getMonthlyTimingReplacement(item.releaseDate);
+    if (!monthlyTiming) {
+      return [];
+    }
+
+    return [
+      `- The release date falls ${monthlyTiming} on ${formattedDate}.`,
+      options.includeDate
+        ? '- When helpful, you may mention the weekday and date, such as "Friday, May 1", while keeping the month reference accurate.'
+        : '- Keep the month reference accurate to the actual calendar month of the release.',
+    ];
+  }
+
+  return [];
+}
+
+function buildSystemPrompt(item: TMDbItem, options: CaptionGenerationOptions): string {
   return [
     options.prompt,
     'Additional Constraints:',
@@ -77,6 +168,7 @@ function buildSystemPrompt(options: CaptionGenerationOptions): string {
     options.includeDate
       ? '- You may mention the release date or year when helpful.'
       : '- Do not mention the exact release date or year unless absolutely necessary.',
+    ...buildTemporalGuidance(item, options),
     '- Never include URLs, website names, citations, source attributions, or markdown links.',
     '- Return plain caption text only.',
   ].join('\n');
@@ -123,6 +215,19 @@ function getMonthlyTimingReplacement(releaseDate: string, referenceDate = new Da
   return null;
 }
 
+function removeAnniversaryDateDuplication(value: string): string {
+  if (!/\bago today\b/i.test(value)) {
+    return value;
+  }
+
+  return value
+    .replace(/([,;]\s*)(premiered|released)\s+[A-Z][a-z]{2,9}\s+\d{1,2},\s+\d{4}\b/gi, '')
+    .replace(/\b(premiered|released)\s+[A-Z][a-z]{2,9}\s+\d{1,2},\s+\d{4}\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.!?;:])/g, '$1')
+    .trim();
+}
+
 function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGenerationOptions): string {
   let sanitized = stripCaptionLinks(caption)
     .replace(/\s{2,}/g, ' ')
@@ -130,11 +235,22 @@ function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGe
     .replace(/\(\s*\)/g, '')
     .trim();
 
+  if (options.feedType === 'weekly') {
+    const weeklyReplacement = getWeeklyTimingReplacement(item.releaseDate);
+    if (weeklyReplacement && weeklyReplacement !== 'this week') {
+      sanitized = sanitized.replace(/\bthis week\b/gi, weeklyReplacement);
+    }
+  }
+
   if (options.feedType === 'monthly') {
     const monthlyReplacement = getMonthlyTimingReplacement(item.releaseDate);
     if (monthlyReplacement) {
       sanitized = sanitized.replace(/\bthis month\b/gi, monthlyReplacement);
     }
+  }
+
+  if (options.feedType === 'anniversary') {
+    sanitized = removeAnniversaryDateDuplication(sanitized);
   }
 
   sanitized = sanitized
@@ -155,6 +271,7 @@ function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGe
 export const __tmdbCaptionSanitizer = {
   stripCaptionLinks,
   sanitizeTMDbCaption,
+  buildTemporalGuidance,
 };
 
 function getTMDbCaptionCacheTtlMs(): number {
@@ -209,7 +326,7 @@ export async function generateTMDbCaption(
     const requestPayload = {
       title: item.title,
       mediaType: item.mediaType,
-      temporalTag: getTemporalTag(feedType),
+      temporalTag: getTemporalTag(feedType, item.releaseDate),
       daysUntil: getDaysUntilRelease(item.releaseDate, feedType),
       releaseDate: options.includeDate ? item.releaseDate : undefined,
       anniversaryYears:
@@ -219,7 +336,7 @@ export async function generateTMDbCaption(
       genres: [],
       platform: captionPlatform,
       model: options.model,
-      customSystemPrompt: buildSystemPrompt(options),
+      customSystemPrompt: buildSystemPrompt(item, options),
     };
     const { data: response } = await getCachedAIResponse(
       'caption:tmdb',

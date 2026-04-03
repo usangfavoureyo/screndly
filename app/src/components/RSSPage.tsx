@@ -18,6 +18,8 @@ import { useUndo } from './UndoContext';
 import { PageLoader } from './PageLoader';
 import reorderIcon from '../public/icons/icons/hugeroundedicons/arrow-all-direction-stroke-rounded.svg';
 
+const DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY = 'screndly_dashboard_rss_feed_target';
+
 interface RSSPageProps {
   onNavigate?: (page: string, fromPage?: string | null) => void;
 }
@@ -83,6 +85,25 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     nextRunAt: feed.nextRunAt || undefined,
     favicon: feed.favicon || undefined,
   }));
+
+  useEffect(() => {
+    const targetFeedId = window.localStorage.getItem(DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY);
+    if (!targetFeedId || !feeds.some((feed) => feed.id === targetFeedId)) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(`rss-feed-card-${targetFeedId}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.localStorage.removeItem(DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [feeds]);
 
   const loadActivity = async () => {
     setIsActivityLoading(true);
@@ -575,6 +596,7 @@ function SortableFeedCard({
 
   return (
     <div
+      id={`rss-feed-card-${feed.id}`}
       ref={setNodeRef}
       style={style}
       className={`${isDragging ? 'z-20 scale-[1.01] opacity-90' : ''} ${isReorderMode ? 'cursor-grab active:cursor-grabbing' : ''}`.trim()}

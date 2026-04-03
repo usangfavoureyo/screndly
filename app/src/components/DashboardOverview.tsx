@@ -126,6 +126,13 @@ const EMPTY_DASHBOARD_STATS: DashboardStats = {
   recentActivity: [],
 };
 
+const FEEDS_ACTIVE_TAB_STORAGE_KEY = 'feedsActiveTab';
+const DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY = 'screndly_dashboard_rss_feed_target';
+const DASHBOARD_TMDB_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_tmdb_activity_target';
+const DASHBOARD_VIDEO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_video_activity_target';
+const DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_design_studio_activity_target';
+const DASHBOARD_VIDEO_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_video_studio_activity_target';
+
 function normalizeDashboardStats(payload: unknown): DashboardStats {
   const raw = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? payload as Partial<DashboardStats>
@@ -184,6 +191,7 @@ function normalizeDashboardStats(payload: unknown): DashboardStats {
 
 export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
   const composeItems = useComposeStore((state) => state.items);
+  const setActiveComposeItemId = useComposeStore((state) => state.setActiveItemId);
   const { platformData } = useCommentAutomation();
   const [isLoading, setIsLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -240,6 +248,44 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
     onNavigate(page, source);
   };
 
+  const handleOpenRssFeed = (feedId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    localStorage.setItem(FEEDS_ACTIVE_TAB_STORAGE_KEY, 'rss');
+    localStorage.setItem(DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY, feedId);
+    onNavigate('feeds', 'dashboard');
+  };
+
+  const handleOpenTmdbUpcomingItem = (itemId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    localStorage.setItem(FEEDS_ACTIVE_TAB_STORAGE_KEY, 'tmdb');
+    localStorage.setItem(DASHBOARD_TMDB_ACTIVITY_TARGET_STORAGE_KEY, itemId);
+    onNavigate('tmdb-activity', 'dashboard');
+  };
+
+  const handleOpenVideoDetection = (itemId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    localStorage.setItem(DASHBOARD_VIDEO_ACTIVITY_TARGET_STORAGE_KEY, itemId);
+    onNavigate('video-activity', 'dashboard');
+  };
+
+  const handleOpenDesignStudioActivity = (itemId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    localStorage.setItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY, itemId);
+    onNavigate('design-studio-activity', 'dashboard');
+  };
+
+  const handleOpenVideoStudioActivity = (itemId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    localStorage.setItem(DASHBOARD_VIDEO_STUDIO_ACTIVITY_TARGET_STORAGE_KEY, itemId);
+    onNavigate('video-studio-activity', 'dashboard');
+  };
+
+  const handleOpenComposeItem = (itemId: string) => {
+    sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+    setActiveComposeItemId(itemId);
+    onNavigate('compose-editor', 'dashboard');
+  };
+
   const usageTotal = useMemo(() => stats?.usage?.total ?? 0, [stats]);
   const videoTrends = useMemo(() => stats?.video.trends ?? [], [stats]);
   const hasVideoTrendData = useMemo(
@@ -275,6 +321,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
             repliedAt: reply.time,
             username: reply.username,
             postTitle: reply.postTitle,
+            commentUrl: reply.commentUrl,
           })),
         )
         .sort((left, right) => toTimestamp(right.repliedAt) - toTimestamp(left.repliedAt)),
@@ -393,7 +440,12 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
             <h4 className="text-sm text-gray-900 dark:text-white">Recent Posts</h4>
             {recentComposeItems.length ? (
               recentComposeItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleOpenComposeItem(item.id)}
+                  className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+                >
                   <div className="min-w-0 pr-4">
                     <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
                     <p className="text-sm text-gray-600 dark:text-[#9CA3AF] truncate">
@@ -408,7 +460,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                       {formatTimeAgo(item.scheduledAt ?? item.updatedAt ?? item.createdAt)}
                     </p>
                   </div>
-                </div>
+                </button>
               ))
             ) : (
               <EmptyCardMessage message="No post activity recorded yet." />
@@ -463,7 +515,19 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
               </div>
             ) : dashboardCommentReplies.length ? (
               dashboardCommentReplies.map((item) => (
-                <div key={item.id} className="p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!item.commentUrl) {
+                      return;
+                    }
+
+                    haptics.light();
+                    window.open(item.commentUrl, '_blank', 'noopener,noreferrer');
+                  }}
+                  className={`w-full p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors ${item.commentUrl ? 'hover:border-[#ec1e24] dark:hover:border-[#ec1e24] cursor-pointer' : 'cursor-default'}`}
+                >
                   <div className="flex items-start justify-between mb-2 gap-3">
                     <p className="text-sm text-gray-600 dark:text-[#9CA3AF] italic">&quot;{item.comment}&quot;</p>
                     <div className="text-right">
@@ -478,7 +542,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                   {item.postTitle ? (
                     <p className="mt-2 text-xs text-gray-500 dark:text-[#6B7280]">Post: {item.postTitle}</p>
                   ) : null}
-                </div>
+                </button>
               ))
             ) : (
               <EmptyCardMessage message="No recent comment replies yet." />
@@ -562,13 +626,18 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                   [1, 2, 3].map((item) => <Skeleton key={item} className="h-20 w-full rounded-xl" />)
                 ) : stats?.video.recentActivity.length ? (
                   stats.video.recentActivity.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleOpenVideoDetection(item.id)}
+                      className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+                    >
                       <div className="min-w-0 pr-4">
                         <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
                         <p className="text-sm text-gray-600 dark:text-[#9CA3AF] truncate">{item.channelName}</p>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTimeAgo(item.publishedAt)}</p>
-                    </div>
+                    </button>
                   ))
                 ) : (
                   <EmptyCardMessage message="No recent channel detections yet." />
@@ -583,7 +652,11 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
         icon={<Rss className="w-6 h-6 text-[#ec1e24]" />}
         title="RSS Feeds"
         subtitle="Active feed monitoring"
-        onViewAll={() => handleNavigate('rss-activity', 'dashboard')}
+        onViewAll={() => {
+          sessionStorage.setItem('dashboardScrollPosition', window.scrollY.toString());
+          localStorage.setItem(FEEDS_ACTIVE_TAB_STORAGE_KEY, 'rss');
+          onNavigate('feeds', 'dashboard');
+        }}
       >
         <div className="grid grid-cols-2 gap-4 mb-6">
           <MetricCard
@@ -603,7 +676,12 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
             <EmptyCardMessage message="No RSS feeds configured yet." />
           ) : (
             (stats?.rss.recentFeeds ?? []).map((feed) => (
-              <div key={feed.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+              <button
+                key={feed.id}
+                type="button"
+                onClick={() => handleOpenRssFeed(feed.id)}
+                className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+              >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className="w-2 h-2 rounded-full bg-gray-900 dark:bg-white" />
                   <div className="min-w-0">
@@ -616,7 +694,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                 <span className="text-xs px-2 py-1 rounded-lg text-gray-900 dark:text-white border border-gray-200 dark:border-[#333333]">
                   {feed.status}
                 </span>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -644,10 +722,15 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
         <div className="space-y-3">
           <h4 className="text-sm text-gray-900 dark:text-white">Upcoming Schedule</h4>
           {!isLoading && !stats?.tmdb.upcoming.length ? (
-            <EmptyCardMessage message="No upcoming TMDb posts are queued." />
+            <EmptyCardMessage message="No upcoming TMDb posts are queued or scheduled." />
           ) : (
             (stats?.tmdb.upcoming ?? []).map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleOpenTmdbUpcomingItem(item.id)}
+                className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+              >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="text-center min-w-[50px]">
                     <div className="text-xs text-gray-500 dark:text-[#6B7280]">{item.dateLabel}</div>
@@ -658,7 +741,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                     <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">{formatSourceLabel(item.source)}</p>
                   </div>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -689,7 +772,12 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
             <EmptyCardMessage message="No design activity recorded yet." />
           ) : (
             (stats?.designStudio.recentActivity ?? []).map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleOpenDesignStudioActivity(item.id)}
+                className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+              >
                 <div className="min-w-0 pr-4">
                   <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
                   <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">{formatSourceLabel(item.type)}</p>
@@ -698,7 +786,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                   <p className="text-xs text-gray-900 dark:text-white mb-0.5">{item.status}</p>
                   <p className="text-xs text-gray-500 dark:text-[#6B7280]">{formatTimeAgo(item.createdAt)}</p>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>
@@ -729,7 +817,12 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
             <EmptyCardMessage message="No video studio activity recorded yet." />
           ) : (
             (stats?.videoStudio.recentActivity ?? []).map((item) => (
-              <div key={item.id} className="flex items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]">
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleOpenVideoStudioActivity(item.id)}
+                className="flex w-full items-center justify-between p-3 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] text-left transition-colors hover:border-[#ec1e24] dark:hover:border-[#ec1e24]"
+              >
                 <div className="min-w-0 pr-4">
                   <p className="text-gray-900 dark:text-white truncate">{item.title}</p>
                   <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">{formatSourceLabel(item.type)}</p>
@@ -738,7 +831,7 @@ export function DashboardOverview({ onNavigate }: DashboardOverviewProps) {
                   <p className="text-xs text-gray-900 dark:text-white mb-0.5 capitalize">{item.status}</p>
                   <p className="text-xs text-gray-500 dark:text-[#6B7280]">{formatTimeAgo(item.createdAt)}</p>
                 </div>
-              </div>
+              </button>
             ))
           )}
         </div>

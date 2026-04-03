@@ -7,6 +7,8 @@ import { apiClient } from '../lib/api/client';
 import { useSettings } from '../contexts/SettingsContext';
 import { BackIconButton } from './BackIconButton';
 
+const DASHBOARD_VIDEO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_video_activity_target';
+
 interface ChannelItem {
   id: string;
   name: string;
@@ -87,6 +89,25 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
     });
   }, [items, retentionMs]);
 
+  useEffect(() => {
+    const targetItemId = window.localStorage.getItem(DASHBOARD_VIDEO_ACTIVITY_TARGET_STORAGE_KEY);
+    if (!targetItemId || !visibleItems.some((item) => item.id === targetItemId)) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(`video-activity-card-${targetItemId}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.localStorage.removeItem(DASHBOARD_VIDEO_ACTIVITY_TARGET_STORAGE_KEY);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [visibleItems]);
+
   const activeChannels = channels.filter((channel) => channel.status === 'active').length;
   const inactiveChannels = channels.filter((channel) => channel.status !== 'active').length;
   const todayStart = new Date();
@@ -160,7 +181,7 @@ export function VideoActivityPage({ onNavigate, previousPage }: VideoActivityPag
           ) : (
             <div className="space-y-3">
               {visibleItems.map((item) => (
-                <div key={item.id} className="p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000]">
+                <div id={`video-activity-card-${item.id}`} key={item.id} className="p-4 rounded-xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000]">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-gray-900 dark:text-white">{item.title}</p>

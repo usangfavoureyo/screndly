@@ -103,6 +103,7 @@ const renderedDesignSchema = z.object({
   templateId: z.string(),
   templateName: z.string(),
   templateVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
+  exportFormat: z.enum(['jpeg', 'png']).optional(),
   outputUrl: z.string(),
   previewUrl: z.string().optional(),
   data: z.record(z.any()),
@@ -210,6 +211,7 @@ const manualRenderRequestSchema = z.object({
     sharedCaption: z.string().optional(),
     pinterestTitle: z.string().optional(),
     pinterestDescription: z.string().optional(),
+    exportFormat: z.enum(['jpeg', 'png']).optional(),
   }),
 });
 

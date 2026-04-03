@@ -13,6 +13,7 @@ export interface CommentReplySummary {
   comment: string;
   reply: string;
   platform: string;
+  commentUrl?: string;
   repliedAt: string;
   username?: string;
   postTitle?: string;

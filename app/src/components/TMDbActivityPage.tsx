@@ -28,6 +28,8 @@ import {
   BottomSheetBody,
   BottomSheetFooter
 } from './ui/bottom-sheet';
+
+const DASHBOARD_TMDB_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_tmdb_activity_target';
 import { ChangeImageBottomSheet } from './tmdb/ChangeImageBottomSheet';
 import { generateTMDbCaption as generateTMDbCaptionWithSettings, getFeedTypeFromSource } from '../utils/tmdbCaptionGenerator';
 import { useBulkSelection } from '../hooks/useBulkSelection';
@@ -55,6 +57,7 @@ import {
   type TMDbPlatformResultRecord,
 } from '../lib/tmdb/activityStatus';
 import { publishTMDbPost, toTMDbPlatformNames } from '../lib/tmdb/tmdbPublish';
+import { formatTMDbReasonLabel } from '../lib/tmdb/reasonLabels';
 
 interface TMDbActivityItem {
   id: string;
@@ -182,7 +185,8 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       posts.map((post) => ({
         ...post,
         timestamp: getActivityTimestamp(post),
-        error: post.errorMessage,
+        error: formatTMDbReasonLabel(post.errorMessage || post.unscheduledReason),
+        errorMessage: formatTMDbReasonLabel(post.errorMessage || post.unscheduledReason),
       })),
     [posts]
   );
@@ -254,6 +258,25 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       if (filter === 'scheduled') return derivedStatus === 'scheduled';
       return true;
     });
+
+  useEffect(() => {
+    const targetItemId = window.localStorage.getItem(DASHBOARD_TMDB_ACTIVITY_TARGET_STORAGE_KEY);
+    if (!targetItemId || !filteredItems.some(({ item }) => item.id === targetItemId)) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(`tmdb-activity-card-${targetItemId}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.localStorage.removeItem(DASHBOARD_TMDB_ACTIVITY_TARGET_STORAGE_KEY);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [filteredItems]);
   const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const generateTmdbCaption = async (post: Pick<TMDbPost, 'title' | 'mediaType' | 'releaseDate' | 'cast' | 'year' | 'platforms' | 'source'>) => {
@@ -384,7 +407,13 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
         .at(-1);
       const failedStates = platformStates.filter((state) => state.status === 'failed');
       const persistedStatus: TMDbPost['status'] =
-        derivedStatus === 'failed' ? 'failed' : derivedStatus === 'publishing' ? 'queued' : 'published';
+        derivedStatus === 'published'
+          ? 'published'
+          : derivedStatus === 'publishing'
+            ? 'queued'
+            : derivedStatus === 'scheduled'
+              ? 'scheduled'
+              : 'failed';
 
       await updatePost(item.id, {
         status: persistedStatus,
@@ -749,17 +778,17 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
             const useSquareLogoThumbnail = imageStyle === 'backdrop_logo' && Boolean(logoPreviewUrl);
 
             return (
-              <SwipeableActivityCard
-                key={item.id}
-                id={item.id}
-                onDelete={(id) => handleDelete(id ?? item.id, item.title)}
-                isScheduled={derivedStatus === 'scheduled'}
-                selectionMode={selection.selectionMode}
-                selected={selection.isSelected(item.id)}
-                onEnterSelectionMode={selection.enterSelectionMode}
-                onToggleSelection={selection.toggleSelection}
-                className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200"
-              >
+              <div id={`tmdb-activity-card-${item.id}`} key={item.id}>
+                <SwipeableActivityCard
+                  id={item.id}
+                  onDelete={(id) => handleDelete(id ?? item.id, item.title)}
+                  isScheduled={derivedStatus === 'scheduled'}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.isSelected(item.id)}
+                  onEnterSelectionMode={selection.enterSelectionMode}
+                  onToggleSelection={selection.toggleSelection}
+                  className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200"
+                >
                 <div className="flex gap-4">
                   {/* Thumbnail */}
                   {cardPreviewImageUrl && (
@@ -1008,7 +1037,8 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                     )}
                   </div>
                 )}
-              </SwipeableActivityCard>
+                </SwipeableActivityCard>
+              </div>
             );
           })
         ) : (

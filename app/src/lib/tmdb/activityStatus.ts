@@ -45,6 +45,10 @@ export interface TMDbDerivedPlatformState {
   retryCount?: number;
 }
 
+function hasTerminalTMDbError(item: TMDbActivityStatusSource): boolean {
+  return Boolean(item.errorMessage) && item.status !== 'published' && item.status !== 'scheduled';
+}
+
 export function normalizeTMDbPlatformKey(value: string): string {
   const normalized = value.trim().toLowerCase();
   return normalized === 'twitter' ? 'x' : normalized;
@@ -146,6 +150,15 @@ export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDe
       };
     }
 
+    if (item.status === 'failed' || item.status === 'unscheduled' || hasTerminalTMDbError(item)) {
+      return {
+        platform,
+        label: formatTMDbPlatformLabel(platform),
+        status: 'failed',
+        errorMessage: item.errorMessage,
+      };
+    }
+
     if (item.status === 'queued' || item.status === 'dispatched') {
       return {
         platform,
@@ -157,8 +170,7 @@ export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDe
     return {
       platform,
       label: formatTMDbPlatformLabel(platform),
-      status: item.status === 'failed' ? 'failed' : 'pending',
-      errorMessage: item.status === 'failed' ? item.errorMessage : undefined,
+      status: 'pending',
     };
   });
 }
@@ -176,6 +188,10 @@ export function deriveTMDbActivityStatus(
 
     if (item.status === 'published') {
       return 'published';
+    }
+
+    if (item.status === 'failed' || item.status === 'unscheduled' || hasTerminalTMDbError(item)) {
+      return 'failed';
     }
 
     return 'publishing';
@@ -206,6 +222,10 @@ export function deriveTMDbActivityStatus(
 
   if (item.status === 'published') {
     return 'published';
+  }
+
+  if (item.status === 'failed' || item.status === 'unscheduled' || hasTerminalTMDbError(item)) {
+    return 'failed';
   }
 
   return 'publishing';

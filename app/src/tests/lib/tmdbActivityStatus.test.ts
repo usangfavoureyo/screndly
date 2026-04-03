@@ -131,4 +131,29 @@ describe('tmdb activity status helpers', () => {
     expect(deriveTMDbActivityStatus(item, platformStates)).toBe('published');
     expect(getRetryableTMDbPlatforms(platformStates)).toHaveLength(0);
   });
+
+  it('treats unscheduled items with a terminal error as failed instead of publishing', () => {
+    const item = buildItem({
+      status: 'unscheduled',
+      platforms: ['X', 'Threads'],
+      errorMessage: 'Could not schedule this post on the same day because the day is already full.',
+    });
+
+    const platformStates = deriveTMDbPlatformStates(item);
+
+    expect(platformStates.map((platform) => platform.status)).toEqual(['failed', 'failed']);
+    expect(deriveTMDbActivityStatus(item, platformStates)).toBe('failed');
+  });
+
+  it('treats queued items with a terminal scheduling error as failed instead of publishing', () => {
+    const item = buildItem({
+      status: 'queued',
+      errorMessage: 'Could not schedule this post on the same day because the day is already full.',
+    });
+
+    const platformStates = deriveTMDbPlatformStates(item);
+
+    expect(platformStates.map((platform) => platform.status)).toEqual(['failed', 'failed', 'failed']);
+    expect(deriveTMDbActivityStatus(item, platformStates)).toBe('failed');
+  });
 });

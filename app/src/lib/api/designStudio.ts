@@ -9,6 +9,8 @@ export type DesignStudioLayoutVariant =
   | 'bottom_right'
   | 'bottom_center';
 
+export type DesignStudioExportFormat = 'jpeg' | 'png';
+
 export type DesignStudioAutoEditorialStatus =
   | 'detected'
   | 'rendering'
@@ -66,6 +68,7 @@ export interface DesignStudioRenderedDesignRecord {
   templateId: string;
   templateName: string;
   templateVariant?: DesignStudioLayoutVariant;
+  exportFormat?: DesignStudioExportFormat;
   outputUrl: string;
   previewUrl?: string;
   data: Record<string, any>;
@@ -300,6 +303,7 @@ export async function startDesignStudioManualRender(payload: {
     sharedCaption?: string;
     pinterestTitle?: string;
     pinterestDescription?: string;
+    exportFormat?: DesignStudioExportFormat;
   };
 }): Promise<DesignStudioManualRenderJob> {
   const response = await apiClient.post<DesignStudioManualRenderJob>(

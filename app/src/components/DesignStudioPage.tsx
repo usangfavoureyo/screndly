@@ -96,6 +96,8 @@ interface RenderedDesign {
   id: string;
   templateId: string;
   templateName: string;
+  templateVariant?: DesignStudioLayoutVariant;
+  exportFormat?: 'jpeg' | 'png';
   outputUrl: string;
   data: DesignData;
   createdAt: Date;
@@ -543,6 +545,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           gradientPosition: data.gradientPosition,
           caption: data.caption,
           contentType: data.contentType,
+          exportFormat: settings.exportFormat === 'png' ? 'png' : 'jpeg',
         },
       });
       setManualRenderJobs((currentJobs) => [job, ...currentJobs.filter((currentJob) => currentJob.id !== job.id)]);
@@ -1123,6 +1126,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             }
           }}
           templateName={selectedTemplate.name}
+          aspectRatio={selectedTemplate.aspectRatio}
           hasHeader={selectedTemplate.hasHeader}
           hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}

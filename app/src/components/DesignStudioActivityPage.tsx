@@ -11,6 +11,8 @@ import {
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
+
+const DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_design_studio_activity_target';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -32,6 +34,8 @@ interface DesignStudioActivityRecord {
     field?: string;
     failureReason?: string | null;
     previewUrl?: string;
+    outputUrl?: string;
+    exportFormat?: 'jpeg' | 'png';
   };
   createdAt: string;
 }
@@ -230,6 +234,25 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       ));
   }, [activeTab, activities, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
 
+  useEffect(() => {
+    const targetActivityId = window.localStorage.getItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
+    if (!targetActivityId || !visibleActivities.some((activity) => activity.id === targetActivityId)) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(`design-studio-activity-card-${targetActivityId}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.localStorage.removeItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [visibleActivities]);
+
   const selection = useBulkSelection(visibleActivities.map((activity) => activity.id));
 
   const summary = useMemo(() => ({
@@ -414,17 +437,17 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               />
             )}
             {visibleActivities.map((activity) => (
-              <SwipeableActivityCard
-                key={activity.id}
-                id={activity.id}
-                onDelete={handleDelete}
-                selectionMode={selection.selectionMode}
-                selected={selection.isSelected(activity.id)}
-                onEnterSelectionMode={selection.enterSelectionMode}
-                onToggleSelection={selection.toggleSelection}
-                className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
-              >
-                {activity.type === 'design_render_queued' && activity.details?.previewUrl ? (
+              <div id={`design-studio-activity-card-${activity.id}`} key={activity.id}>
+                <SwipeableActivityCard
+                  id={activity.id}
+                  onDelete={handleDelete}
+                  selectionMode={selection.selectionMode}
+                  selected={selection.isSelected(activity.id)}
+                  onEnterSelectionMode={selection.enterSelectionMode}
+                  onToggleSelection={selection.toggleSelection}
+                  className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
+                >
+                {activity.details?.previewUrl ? (
                   <div className="flex items-start gap-4">
                     <div className="relative h-24 w-20 shrink-0 overflow-hidden rounded-xl border border-gray-200 dark:border-[#333333]">
                       <img
@@ -441,6 +464,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                           <div className="min-w-0">
                             <p className="text-gray-900 dark:text-white">{activityTitle(activity.type)}</p>
                             <p className="text-sm text-gray-600 dark:text-[#9CA3AF] mt-1">{activityDescription(activity)}</p>
+                            {activity.details.exportFormat ? (
+                              <p className="mt-2 text-xs uppercase tracking-[0.12em] text-[#6B7280] dark:text-[#9CA3AF]">
+                                Export: {activity.details.exportFormat}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                         <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
@@ -459,7 +487,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                     <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
                   </div>
                 )}
-              </SwipeableActivityCard>
+                </SwipeableActivityCard>
+              </div>
             ))}
           </>
         )}

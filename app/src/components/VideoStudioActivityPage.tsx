@@ -15,6 +15,8 @@ import { PinterestIcon } from './icons/PinterestIcon';
 import { useState, useEffect } from 'react';
 import { useSettings } from '../contexts/SettingsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
+
+const DASHBOARD_VIDEO_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_video_studio_activity_target';
 import { useUndo } from './UndoContext';
 import type { VideoStudioActivity } from '../utils/activityStore';
 import { Skeleton } from './ui/skeleton';
@@ -138,6 +140,26 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
       if (activeTab === 'scenes') return activity.type === 'scenes';
       return true;
     });
+
+  useEffect(() => {
+    const targetActivityId = window.localStorage.getItem(DASHBOARD_VIDEO_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
+    if (!targetActivityId || !displayedActivities.some((activity) => activity.id === targetActivityId)) {
+      return;
+    }
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const targetElement = document.getElementById(`video-studio-activity-card-${targetActivityId}`);
+      if (targetElement) {
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      window.localStorage.removeItem(DASHBOARD_VIDEO_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [displayedActivities]);
+
   const selection = useBulkSelection(displayedActivities.map((activity) => activity.id));
 
   const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
@@ -382,16 +404,16 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                 />
               )}
               {displayedActivities.map((activity) => (
-                  <SwipeableActivityCard
-                    key={activity.id}
-                    id={activity.id}
-                    onDelete={() => handleDelete(activity.id, activity.title)}
-                    selectionMode={selection.selectionMode}
-                    selected={selection.isSelected(activity.id)}
-                    onEnterSelectionMode={selection.enterSelectionMode}
-                    onToggleSelection={selection.toggleSelection}
-                    className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
-                  >
+                  <div id={`video-studio-activity-card-${activity.id}`} key={activity.id}>
+                    <SwipeableActivityCard
+                      id={activity.id}
+                      onDelete={() => handleDelete(activity.id, activity.title)}
+                      selectionMode={selection.selectionMode}
+                      selected={selection.isSelected(activity.id)}
+                      onEnterSelectionMode={selection.enterSelectionMode}
+                      onToggleSelection={selection.toggleSelection}
+                      className="p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333]"
+                    >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -525,7 +547,8 @@ export function VideoStudioActivityPage({ onNavigate, previousPage }: VideoStudi
                         )}
                       </div>
                     </div>
-                  </SwipeableActivityCard>
+                    </SwipeableActivityCard>
+                  </div>
                 ))}
             </>
           )}

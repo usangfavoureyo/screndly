@@ -246,10 +246,10 @@ export function EditDesignBottomSheet({
   return (
     <>
     <BottomSheet open={open} onOpenChange={onOpenChange}>
-      <BottomSheetHeader>
+        <BottomSheetHeader>
         <BottomSheetTitle className="text-gray-900 dark:text-white">Edit Design</BottomSheetTitle>
         <p className="text-xs text-[#6B7280] mt-1">
-          PSD layer changes are applied during render and exported as a JPEG.
+          PSD layer changes are applied during render and exported using your Design Studio output format.
         </p>
       </BottomSheetHeader>
 

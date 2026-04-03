@@ -22,7 +22,9 @@ type FFmpegModuleBundle = {
 let ffmpegInstance: FFmpeg | null = null;
 let isLoading = false;
 let loadAbortController: AbortController | null = null;
+let ffmpegModulesPromise: Promise<FFmpegModuleBundle> | null = null;
 
+const FFMPEG_MODULE_IMPORT_TIMEOUT_MS = 15000;
 const FFMPEG_LOAD_TIMEOUT_MS = 25000;
 const FFMPEG_FETCH_TIMEOUT_MS = 25000;
 const FFMPEG_EXEC_TIMEOUT_MS = 45000;
@@ -63,60 +65,69 @@ function getExtensionFromInput(input: string): string {
  * Dynamically import FFmpeg modules (only when needed)
  * Uses runtime script loading to completely bypass Vite
  */
-async function importFFmpegModules(): Promise<FFmpegModuleBundle> {
-  // Load FFmpeg using runtime script injection - Vite cannot analyze this
-  return new Promise<FFmpegModuleBundle>((resolve, reject) => {
-    // Check if already loaded
-    if ((window as any).FFmpegWASM && (window as any).FFmpegUtil) {
-      resolve({
-        FFmpeg: (window as any).FFmpegWASM.FFmpeg,
-        fetchFile: (window as any).FFmpegUtil.fetchFile,
-        toBlobURL: (window as any).FFmpegUtil.toBlobURL,
-      });
-      return;
+async function importRemoteModule<T>(urls: string[], label: string): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (const url of urls) {
+    try {
+      return await import(/* @vite-ignore */ url) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`[FFmpeg] Failed to load ${label} from ${url}`, lastError);
     }
+  }
 
-    // Load scripts dynamically
-    const script1 = document.createElement('script');
-    script1.type = 'module';
-    script1.textContent = `
-      import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
-      window.FFmpegWASM = { FFmpeg };
-    `;
-    
-    const script2 = document.createElement('script');
-    script2.type = 'module';
-    script2.textContent = `
-      import { fetchFile, toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
-      window.FFmpegUtil = { fetchFile, toBlobURL };
-    `;
+  throw lastError ?? new Error(`Failed to load ${label}`);
+}
 
-    let loadedCount = 0;
-    const checkLoaded = () => {
-      loadedCount++;
-      if (loadedCount === 2) {
-        setTimeout(() => {
-          if ((window as any).FFmpegWASM && (window as any).FFmpegUtil) {
-            resolve({
-              FFmpeg: (window as any).FFmpegWASM.FFmpeg,
-              fetchFile: (window as any).FFmpegUtil.fetchFile,
-              toBlobURL: (window as any).FFmpegUtil.toBlobURL,
-            });
-          } else {
-            reject(new Error('Failed to load FFmpeg modules'));
-          }
-        }, 100);
-      }
+async function importFFmpegModules(): Promise<FFmpegModuleBundle> {
+  if ((window as any).FFmpegWASM && (window as any).FFmpegUtil) {
+    return {
+      FFmpeg: (window as any).FFmpegWASM.FFmpeg,
+      fetchFile: (window as any).FFmpegUtil.fetchFile,
+      toBlobURL: (window as any).FFmpegUtil.toBlobURL,
     };
+  }
 
-    script1.onload = checkLoaded;
-    script1.onerror = () => reject(new Error('Failed to load FFmpeg'));
-    script2.onload = checkLoaded;
-    script2.onerror = () => reject(new Error('Failed to load FFmpeg Util'));
+  if (!ffmpegModulesPromise) {
+    ffmpegModulesPromise = withTimeout(
+      (async () => {
+        const ffmpegModule = await importRemoteModule<{ FFmpeg: any }>(
+          [
+            'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js',
+            'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js',
+          ],
+          'FFmpeg',
+        );
+        const utilModule = await importRemoteModule<{ fetchFile: (input: File | Blob | string) => Promise<Uint8Array>; toBlobURL: (url: string, mimeType: string) => Promise<string> }>(
+          [
+            'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js',
+            'https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js',
+          ],
+          'FFmpeg util',
+        );
 
-    document.head.appendChild(script1);
-    document.head.appendChild(script2);
-  });
+        (window as any).FFmpegWASM = { FFmpeg: ffmpegModule.FFmpeg };
+        (window as any).FFmpegUtil = {
+          fetchFile: utilModule.fetchFile,
+          toBlobURL: utilModule.toBlobURL,
+        };
+
+        return {
+          FFmpeg: ffmpegModule.FFmpeg,
+          fetchFile: utilModule.fetchFile,
+          toBlobURL: utilModule.toBlobURL,
+        };
+      })(),
+      FFMPEG_MODULE_IMPORT_TIMEOUT_MS,
+      'FFmpeg modules took too long to load. Please try again.',
+    ).catch((error) => {
+      ffmpegModulesPromise = null;
+      throw error;
+    });
+  }
+
+  return ffmpegModulesPromise;
 }
 
 /**

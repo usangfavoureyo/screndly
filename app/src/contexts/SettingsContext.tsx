@@ -276,6 +276,9 @@ export interface Settings {
   designStudioTargetPlatforms?: string[];
   designStudioAutoUpdatedAt?: string;
   designStudioLogLevel?: string;
+  renderQuality?: 'low' | 'medium' | 'high' | 'maximum';
+  exportFormat?: 'jpeg' | 'png';
+  jpegQuality?: number;
 
   // Video Studio
   systemPrompt?: string;
@@ -629,6 +632,9 @@ function getDefaultSettings(): Settings {
     designStudioMinimumScoreThreshold: 55,
     designStudioTargetPlatforms: ['x', 'threads'],
     designStudioAutoUpdatedAt: new Date().toISOString(),
+    renderQuality: 'high',
+    exportFormat: 'jpeg',
+    jpegQuality: 90,
 
     // Video Studio
     systemPrompt: '',

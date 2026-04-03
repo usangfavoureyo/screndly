@@ -53,6 +53,15 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
     }
   };
 
+  const handleOpenComment = (commentUrl?: string) => {
+    if (!commentUrl) {
+      return;
+    }
+
+    haptics.light();
+    window.open(commentUrl, '_blank', 'noopener,noreferrer');
+  };
+
   return (
     <div className="min-h-screen bg-white dark:bg-[#000000]">
       <div className="space-y-6">
@@ -153,8 +162,9 @@ export function CommentAutomationPage({ onBack }: CommentAutomationPageProps) {
               ) : data.recentReplies.map((item, index) => (
                 <button
                   key={`${data.platform}-${index}`}
-                  onClick={() => haptics.light()}
-                  className="w-full text-left p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] hover:border-[#ec1e24] dark:hover:border-[#ec1e24] transition-all cursor-pointer"
+                  type="button"
+                  onClick={() => handleOpenComment(item.commentUrl)}
+                  className={`w-full text-left p-4 bg-white dark:bg-[#000000] rounded-xl border border-gray-200 dark:border-[#333333] transition-all ${item.commentUrl ? 'hover:border-[#ec1e24] dark:hover:border-[#ec1e24] cursor-pointer' : 'cursor-default'}`}
                 >
                   <div className="flex items-start justify-between mb-2 gap-3">
                     <p className="text-sm text-gray-600 dark:text-[#9CA3AF] italic flex-1">&quot;{item.comment}&quot;</p>

@@ -668,8 +668,8 @@ export function NotificationPanel({
         <BottomSheetHeader>
           <BottomSheetTitle>Notification actions</BottomSheetTitle>
         </BottomSheetHeader>
-        <BottomSheetBody className="px-0 py-2">
-          <div className="flex flex-col">
+        <BottomSheetBody>
+          <div className="flex flex-col gap-2">
             {unreadCount > 0 && (
               <button
                 type="button"
@@ -678,7 +678,7 @@ export function NotificationPanel({
                   onMarkAllAsRead();
                   setShowBulkActionsSheet(false);
                 }}
-                className="flex w-full items-center justify-center px-6 py-4 text-center text-base text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-base font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
               >
                 <span>Mark all as read</span>
               </button>
@@ -690,11 +690,22 @@ export function NotificationPanel({
                 onClearAll();
                 setShowBulkActionsSheet(false);
               }}
-              className="flex w-full items-center justify-center px-6 py-4 text-center text-base text-[#ec1e24] hover:bg-gray-50 dark:hover:bg-[#1A1A1A]"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-base font-medium text-[#ec1e24] transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:hover:bg-[#111111]"
             >
               <span>Clear all</span>
             </button>
           </div>
+          <div className="my-4 -mx-6 border-t border-gray-200 dark:border-[#333333]" />
+          <button
+            type="button"
+            onClick={() => {
+              haptics.light();
+              setShowBulkActionsSheet(false);
+            }}
+            className="mb-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center text-base font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+          >
+            Cancel
+          </button>
         </BottomSheetBody>
       </BottomSheet>
     </>

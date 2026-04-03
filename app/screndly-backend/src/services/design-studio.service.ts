@@ -52,6 +52,8 @@ export type DesignStudioContentType =
   | 'announcement'
   | 'general';
 
+export type DesignStudioExportFormat = 'jpeg' | 'png';
+
 export type DesignStudioManualRenderJobStatus =
   | 'queued'
   | 'rendering'
@@ -139,6 +141,7 @@ export interface DesignStudioRenderedDesignRecord {
   templateId: string;
   templateName: string;
   templateVariant?: DesignStudioLayoutVariant;
+  exportFormat?: DesignStudioExportFormat;
   outputUrl: string;
   previewUrl?: string;
   data: Record<string, any>;
@@ -246,6 +249,7 @@ interface DesignStudioRenderPayload {
   sharedCaption?: string;
   pinterestTitle?: string;
   pinterestDescription?: string;
+  exportFormat?: DesignStudioExportFormat;
 }
 
 interface QueueManualRenderInput {
@@ -257,6 +261,13 @@ interface TextFitResult {
   fontSize: number;
   lines: string[];
   lineHeight: number;
+}
+
+interface ResolvedRenderOutput {
+  buffer: Buffer;
+  format: DesignStudioExportFormat;
+  extension: 'jpg' | 'png';
+  contentType: 'image/jpeg' | 'image/png';
 }
 
 let queue: Queue<QueueManualRenderInput> | null = null;
@@ -976,83 +987,129 @@ async function buildBackgroundLayer(input: {
   focalPoint?: { x: number; y: number };
   zoom?: number;
 }): Promise<Buffer> {
-  const source = input.source ? await fetchSourceBuffer(input.source) : null;
-  if (!source) {
-    return sharp({
-      create: {
-        width: input.width,
-        height: input.height,
-        channels: 3,
-        background: { r: 18, g: 18, b: 18 },
-      },
-    }).png().toBuffer();
+  try {
+    const source = input.source ? await fetchSourceBuffer(input.source) : null;
+    if (!source) {
+      return sharp({
+        create: {
+          width: input.width,
+          height: input.height,
+          channels: 3,
+          background: { r: 18, g: 18, b: 18 },
+        },
+      }).png().toBuffer();
+    }
+
+    const zoom = clamp(input.zoom || 1, 0.8, 2);
+    const cropMode = input.cropMode || 'cover';
+    const meta = await sharp(source).metadata();
+    const srcWidth = meta.width || input.width;
+    const srcHeight = meta.height || input.height;
+    let targetWidth = input.width;
+    let targetHeight = input.height;
+    if (cropMode === 'contain') {
+      const ratio = Math.min(input.width / srcWidth, input.height / srcHeight) * zoom;
+      targetWidth = Math.max(1, Math.round(srcWidth * ratio));
+      targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+    } else {
+      const ratio = Math.max(input.width / srcWidth, input.height / srcHeight) * zoom;
+      targetWidth = Math.max(1, Math.round(srcWidth * ratio));
+      targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+    }
+
+    const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
+    const leftBase = (() => {
+      switch (input.backgroundAnchor) {
+        case 'top_right':
+        case 'bottom_right':
+        case 'right':
+          return input.width - targetWidth;
+        case 'top_left':
+        case 'bottom_left':
+        case 'left':
+          return 0;
+        default:
+          return Math.round((input.width - targetWidth) / 2);
+      }
+    })();
+    const topBase = (() => {
+      switch (input.backgroundAnchor) {
+        case 'bottom':
+        case 'bottom_left':
+        case 'bottom_right':
+          return input.height - targetHeight;
+        case 'top':
+        case 'top_left':
+        case 'top_right':
+          return 0;
+        default:
+          return Math.round((input.height - targetHeight) / 2);
+      }
+    })();
+    const left = Math.round(leftBase + ((input.focalPoint?.x ?? 50) - 50) * 2.2);
+    const top = Math.round(topBase + ((input.focalPoint?.y ?? 50) - 50) * 2.2);
+
+    if (cropMode === 'contain') {
+      const containLeft = clamp(left, 0, Math.max(0, input.width - targetWidth));
+      const containTop = clamp(top, 0, Math.max(0, input.height - targetHeight));
+      return sharp({
+        create: {
+          width: input.width,
+          height: input.height,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 1 },
+        },
+      })
+        .composite([{ input: resized, left: Math.round(containLeft), top: Math.round(containTop) }])
+        .png()
+        .toBuffer();
+    }
+
+    const coverLeft = clamp(left, input.width - targetWidth, 0);
+    const coverTop = clamp(top, input.height - targetHeight, 0);
+    const extractLeft = Math.max(0, Math.round(-coverLeft));
+    const extractTop = Math.max(0, Math.round(-coverTop));
+
+    return sharp(resized)
+      .extract({
+        left: extractLeft,
+        top: extractTop,
+        width: Math.min(input.width, targetWidth - extractLeft),
+        height: Math.min(input.height, targetHeight - extractTop),
+      })
+      .resize(input.width, input.height, { fit: 'fill' })
+      .png()
+      .toBuffer();
+  } catch (error) {
+    throw new Error(
+      `Background render failed: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      } | source=${input.source || 'none'} anchor=${input.backgroundAnchor} cropMode=${input.cropMode || 'cover'} zoom=${input.zoom || 1}`,
+    );
   }
 
-  const zoom = clamp(input.zoom || 1, 0.8, 2);
-  const meta = await sharp(source).metadata();
-  const srcWidth = meta.width || input.width;
-  const srcHeight = meta.height || input.height;
-  let targetWidth = input.width;
-  let targetHeight = input.height;
-  if ((input.cropMode || 'cover') === 'contain') {
-    const ratio = Math.min(input.width / srcWidth, input.height / srcHeight) * zoom;
-    targetWidth = Math.max(1, Math.round(srcWidth * ratio));
-    targetHeight = Math.max(1, Math.round(srcHeight * ratio));
-  } else {
-    const ratio = Math.max(input.width / srcWidth, input.height / srcHeight) * zoom;
-    targetWidth = Math.max(1, Math.round(srcWidth * ratio));
-    targetHeight = Math.max(1, Math.round(srcHeight * ratio));
-  }
+}
 
-  const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
-  const leftBase = (() => {
-    switch (input.backgroundAnchor) {
-      case 'top_right':
-      case 'bottom_right':
-      case 'right':
-        return input.width - targetWidth;
-      case 'top_left':
-      case 'bottom_left':
-      case 'left':
-        return 0;
-      default:
-        return Math.round((input.width - targetWidth) / 2);
-    }
-  })();
-  const topBase = (() => {
-    switch (input.backgroundAnchor) {
-      case 'bottom':
-      case 'bottom_left':
-      case 'bottom_right':
-        return input.height - targetHeight;
-      case 'top':
-      case 'top_left':
-      case 'top_right':
-        return 0;
-      default:
-        return Math.round((input.height - targetHeight) / 2);
-    }
-  })();
-  const left = Math.round(leftBase + ((input.focalPoint?.x ?? 50) - 50) * 2.2);
-  const top = Math.round(topBase + ((input.focalPoint?.y ?? 50) - 50) * 2.2);
-
-  return sharp({
-    create: {
-      width: input.width,
-      height: input.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 1 },
-    },
-  })
-    .composite([{ input: resized, left, top }])
-    .png()
-    .toBuffer();
+async function getRenderExportSettings(preferredFormat?: DesignStudioExportFormat): Promise<{
+  format: DesignStudioExportFormat;
+  jpegQuality: number;
+}> {
+  const settingKeys = ['exportFormat', 'jpegQuality'];
+  const settings = await prisma.setting.findMany({
+    where: { key: { in: settingKeys } },
+    select: { key: true, value: true },
+  });
+  const map = new Map(settings.map((entry) => [entry.key, entry.value]));
+  const storedFormat = String(map.get('exportFormat') || 'jpeg').toLowerCase();
+  const format = preferredFormat || (storedFormat === 'png' ? 'png' : 'jpeg');
+  const jpegQuality = clamp(readNumber(map.get('jpegQuality'), 90), 1, 100);
+  return { format, jpegQuality };
 }
 
 async function renderDesignStudioImage(
   template: DesignStudioTemplateRecord,
   payload: DesignStudioRenderPayload,
-): Promise<Buffer> {
+): Promise<ResolvedRenderOutput> {
   const variant = findVariant(template, payload.template_variant);
   const width = template.width;
   const height = template.height;
@@ -1084,15 +1141,47 @@ async function renderDesignStudioImage(
   });
   const textOverlay = buildTextSvg({ width, height, variant, template, payload });
   const brandOverlay = buildBrandSvg(width, height, variant);
+  const [overlayRaster, textRaster, brandRaster] = await Promise.all([
+    sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
+    sharp(textOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
+    sharp(brandOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer(),
+  ]);
+  const { format, jpegQuality } = await getRenderExportSettings(payload.exportFormat);
+  const pipeline = sharp(background).composite([
+    { input: overlayRaster },
+    { input: textRaster },
+    { input: brandRaster },
+  ]);
 
-  return sharp(background)
-    .composite([
-      { input: overlay },
-      { input: textOverlay },
-      { input: brandOverlay },
-    ])
-    .jpeg({ quality: 92 })
-    .toBuffer();
+  try {
+    if (format === 'png') {
+      return {
+        buffer: await pipeline.png().toBuffer(),
+        format,
+        extension: 'png',
+        contentType: 'image/png',
+      };
+    }
+
+    return {
+      buffer: await pipeline.jpeg({ quality: jpegQuality }).toBuffer(),
+      format: 'jpeg',
+      extension: 'jpg',
+      contentType: 'image/jpeg',
+    };
+  } catch (error) {
+    const [backgroundMeta, overlayMeta, textMeta, brandMeta] = await Promise.all([
+      sharp(background).metadata(),
+      sharp(overlayRaster).metadata(),
+      sharp(textRaster).metadata(),
+      sharp(brandRaster).metadata(),
+    ]);
+    throw new Error(
+      `Render composite failed: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      } | background=${backgroundMeta.width}x${backgroundMeta.height} overlay=${overlayMeta.width}x${overlayMeta.height} text=${textMeta.width}x${textMeta.height} brand=${brandMeta.width}x${brandMeta.height}`,
+    );
+  }
 }
 
 function findMatchedKeyword(title: string, keywords: string[]): string | undefined {
@@ -1269,18 +1358,18 @@ async function processManualRenderJob(
 
   try {
     const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
-    const renderedBuffer = await renderDesignStudioImage(template, {
+    const rendered = await renderDesignStudioImage(template, {
       ...input.data,
       template_variant: activeVariant,
     });
 
     const uploaded = await uploadBufferToBackblaze(
-      renderedBuffer,
-      `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-${Date.now()}.jpg`,
+      rendered.buffer,
+      `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-${Date.now()}.${rendered.extension}`,
       {
         bucketTypes: ['design', 'general'],
         prefix: 'design-studio/renders',
-        contentType: 'image/jpeg',
+        contentType: rendered.contentType,
       },
     );
 
@@ -1295,6 +1384,7 @@ async function processManualRenderJob(
       templateId: template.id,
       templateName: template.name,
       templateVariant: activeVariant,
+      exportFormat: rendered.format,
       outputUrl: uploaded.url,
       previewUrl: uploaded.url,
       data: input.data,
@@ -1320,6 +1410,9 @@ async function processManualRenderJob(
       templateName: template.name,
       renderJobId: jobId,
       variant: renderedDesign.templateVariant,
+      previewUrl: renderedDesign.previewUrl,
+      outputUrl: renderedDesign.outputUrl,
+      exportFormat: renderedDesign.exportFormat,
     });
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : 'Failed to render design';
@@ -1472,12 +1565,12 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
       });
 
       const uploaded = await uploadBufferToBackblaze(
-        rendered,
-        `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-auto-${Date.now()}-${index}.jpg`,
+        rendered.buffer,
+        `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-auto-${Date.now()}-${index}.${rendered.extension}`,
         {
           bucketTypes: ['design', 'general'],
           prefix: 'design-studio/renders',
-          contentType: 'image/jpeg',
+          contentType: rendered.contentType,
         },
       );
 
@@ -1516,7 +1609,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
       failed += 1;
       await createDesignStudioActivity('auto_editorial_failed', {
         sourceTitle: candidate.item.title,
-        reason: error instanceof Error ? error.message : 'Failed to render auto editorial',
+        failureReason: error instanceof Error ? error.message : 'Failed to render auto editorial',
       });
     }
   }
@@ -1528,6 +1621,9 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
       templateName: editorial.templateName,
       variant: editorial.templateVariant,
       status: editorial.status,
+      previewUrl: editorial.renderedImage,
+      outputUrl: editorial.renderedImage,
+      matchedKeyword: editorial.matchedKeyword,
     })));
   }
 
@@ -1587,12 +1683,15 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
           sourceTitle: target.sourceTitle,
           templateName: target.templateName,
           targetPlatforms: target.targetPlatforms,
+          previewUrl: target.renderedImage,
+          outputUrl: target.renderedImage,
         });
       } else {
         failed += 1;
         await createDesignStudioActivity('auto_editorial_failed', {
           sourceTitle: target.sourceTitle,
-          reason: target.failureReason,
+          failureReason: target.failureReason,
+          previewUrl: target.renderedImage,
         });
       }
     } catch (error) {
@@ -1602,7 +1701,8 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
       failed += 1;
       await createDesignStudioActivity('auto_editorial_failed', {
         sourceTitle: target.sourceTitle,
-        reason: target.failureReason,
+        failureReason: target.failureReason,
+        previewUrl: target.renderedImage,
       });
     }
   }

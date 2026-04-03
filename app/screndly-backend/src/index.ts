@@ -192,7 +192,11 @@ import { initCronJobs } from './services/cron';
 if (require.main === module || process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
-        initCronJobs();
+        if (process.env.DISABLE_CRON === '1') {
+            console.log('Cron jobs disabled via DISABLE_CRON=1');
+        } else {
+            initCronJobs();
+        }
     });
 }
 
