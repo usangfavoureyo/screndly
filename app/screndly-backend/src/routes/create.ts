@@ -1,16 +1,87 @@
 import { Router } from 'express';
 import multer from 'multer';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
 import { getComposeState, mergeComposeState } from '../services/compose.service';
 
 const router = Router();
+const execFileAsync = promisify(execFile);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 128 * 1024 * 1024,
   },
 });
+
+function even(value: number) {
+  return Math.max(2, Math.floor(value / 2) * 2);
+}
+
+async function probeVideoDimensions(filePath: string): Promise<{ width: number; height: number; duration?: number }> {
+  const { stdout } = await execFileAsync('ffprobe', [
+    '-v',
+    'error',
+    '-select_streams',
+    'v:0',
+    '-show_entries',
+    'stream=width,height:format=duration',
+    '-of',
+    'json',
+    filePath,
+  ]);
+
+  const parsed = JSON.parse(stdout) as {
+    streams?: Array<{ width?: number; height?: number }>;
+    format?: { duration?: string };
+  };
+  const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined;
+  const width = Number(stream?.width || 0);
+  const height = Number(stream?.height || 0);
+
+  if (!width || !height) {
+    throw new Error('Failed to read video dimensions for the 3:4 crop.');
+  }
+
+  const duration = Number.parseFloat(parsed.format?.duration || '0') || undefined;
+  return { width, height, duration };
+}
+
+async function cropVideoToThreeByFour(inputPath: string, outputPath: string, focusYPercent: number) {
+  const metadata = await probeVideoDimensions(inputPath);
+  const targetRatio = 3 / 4;
+  const cropWidth = even(metadata.width);
+  const cropHeight = even(Math.min(metadata.height, Math.floor(cropWidth / targetRatio)));
+  const maxYOffset = Math.max(metadata.height - cropHeight, 0);
+  const cropY = even((maxYOffset * Math.max(0, Math.min(focusYPercent, 100))) / 100);
+  const filter = `crop=${cropWidth}:${cropHeight}:0:${cropY},setsar=1`;
+
+  await execFileAsync('ffmpeg', [
+    '-y',
+    '-i',
+    inputPath,
+    '-vf',
+    filter,
+    '-c:v',
+    'libx264',
+    '-preset',
+    'veryfast',
+    '-crf',
+    '22',
+    '-c:a',
+    'aac',
+    '-movflags',
+    '+faststart',
+    outputPath,
+  ], {
+    timeout: 180000,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+}
 
 router.get('/state', authenticate, async (_req, res) => {
   try {
@@ -137,6 +208,62 @@ router.post('/asset-preview', authenticate, async (req, res) => {
       success: false,
       error: { message: error instanceof Error ? error.message : 'Failed to resolve asset preview URL' },
     });
+  }
+});
+
+router.post('/generate-threads-x-crop', authenticate, upload.single('mediaFile'), async (req, res) => {
+  const uploadedFile = req.file;
+  const tempInputPath = uploadedFile
+    ? path.join(os.tmpdir(), `compose-crop-input-${Date.now()}-${uploadedFile.originalname}`)
+    : null;
+  const tempOutputPath = path.join(os.tmpdir(), `compose-crop-output-${Date.now()}.mp4`);
+
+  try {
+    if (!uploadedFile) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'A source video is required to generate the Threads/X crop.' },
+      });
+    }
+
+    const focusYPercent = Number.parseFloat(String(req.body?.focusYPercent ?? '50'));
+    const normalizedFocusYPercent = Number.isFinite(focusYPercent) ? focusYPercent : 50;
+    await fs.writeFile(tempInputPath!, uploadedFile.buffer);
+    await cropVideoToThreeByFour(tempInputPath!, tempOutputPath, normalizedFocusYPercent);
+
+    const croppedBuffer = await fs.readFile(tempOutputPath);
+    const originalBaseName = uploadedFile.originalname.replace(/\.[^.]+$/, '');
+    const croppedFileName = `${originalBaseName}-threads-x-3x4.mp4`;
+    const uploadResult = await uploadBufferToBackblaze(croppedBuffer, croppedFileName, {
+      bucketTypes: ['videos', 'general'],
+      prefix: 'compose/videos',
+      contentType: 'video/mp4',
+    });
+    const previewUrl = await getBackblazeAuthorizedDownloadUrl(uploadResult.url, 7 * 24 * 60 * 60);
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        url: uploadResult.url,
+        previewUrl,
+        fileName: uploadResult.fileName,
+        fileId: uploadResult.fileName,
+        originalName: uploadedFile.originalname,
+        contentType: 'video/mp4',
+        size: croppedBuffer.byteLength,
+      },
+    });
+  } catch (error) {
+    console.error('Error generating Threads/X crop:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to generate Threads/X crop' },
+    });
+  } finally {
+    await Promise.allSettled([
+      tempInputPath ? fs.unlink(tempInputPath) : Promise.resolve(),
+      fs.unlink(tempOutputPath),
+    ]);
   }
 });
 

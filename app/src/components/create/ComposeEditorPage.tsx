@@ -72,7 +72,6 @@ import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
 import { extractVideoMetadata } from '../../utils/videoMetadata';
-import { loadFFmpeg } from '../../utils/ffmpeg';
 import { useSettings } from '../../contexts/SettingsContext';
 
 interface ComposeEditorPageProps {
@@ -568,16 +567,6 @@ export function ComposeEditorPage({
     primaryVideoAsset,
   ]);
 
-  useEffect(() => {
-    if (!canOfferThreadsXCrop || !primaryVideoAsset) {
-      return;
-    }
-
-    void loadFFmpeg().catch((error) => {
-      console.warn('[ComposeEditorPage] FFmpeg preloading failed:', error);
-    });
-  }, [canOfferThreadsXCrop, primaryVideoAsset]);
-
   useBackEntry({
     enabled: (hasUnsavedChanges || isScheduleInteractionActive || isMediaPreviewOpen) && !unsavedChangesGuard.isPromptOpen,
     priority: 100,
@@ -854,7 +843,7 @@ export function ComposeEditorPage({
     }));
 
     try {
-      const { file, variant } = await buildThreadsXCropVariant(asset, focusYPercent, (_, message) => {
+      const variant = await buildThreadsXCropVariant(asset, focusYPercent, (_, message) => {
         if (message && !options?.silent) {
           toast.dismiss('threads-x-crop-progress');
           toast.loading(message, { id: 'threads-x-crop-progress' });
@@ -866,58 +855,10 @@ export function ComposeEditorPage({
         ...current,
         threadsXCropVideo: variant,
       }));
-      setIsGeneratingThreadsXCrop(false);
-      setIsUploadingThreadsXCrop(true);
 
       if (!options?.silent) {
-        toast.success('3:4 crop preview is ready. Uploading for Threads and X...');
+        toast.success('3:4 crop is ready for Threads and X.');
       }
-
-      void uploadComposeAsset(file)
-        .then((uploaded) => {
-          setFormState((current) => {
-            const currentVariant = current.threadsXCropVideo;
-            if (
-              !currentVariant
-              || currentVariant.sourceAssetId !== variant.sourceAssetId
-              || currentVariant.sourceSignature !== variant.sourceSignature
-              || currentVariant.focusYPercent !== variant.focusYPercent
-            ) {
-              return current;
-            }
-
-            return {
-              ...current,
-              threadsXCropVideo: {
-                ...currentVariant,
-                previewUrl: currentVariant.previewUrl || uploaded.previewUrl,
-                storageUrl: uploaded.url,
-                storageFileId: uploaded.fileId,
-                uploadStatus: 'uploaded',
-                uploadError: undefined,
-              },
-            };
-          });
-
-          if (!options?.silent) {
-            toast.success('3:4 crop uploaded for Threads and X.');
-          }
-        })
-        .catch((error) => {
-          const message = error instanceof Error ? error.message : 'Failed to upload the 3:4 crop.';
-          setFormState((current) => ({
-            ...current,
-            threadsXCropVideo: current.threadsXCropVideo
-              ? { ...current.threadsXCropVideo, uploadStatus: 'failed', uploadError: message }
-              : null,
-          }));
-          toast.error(message);
-        })
-        .finally(() => {
-          setIsUploadingThreadsXCrop(false);
-        });
-
-      return;
     } catch (error) {
       toast.dismiss('threads-x-crop-progress');
       const message = error instanceof Error ? error.message : 'Failed to generate the 3:4 crop.';
@@ -931,6 +872,7 @@ export function ComposeEditorPage({
       toast.error(message);
     } finally {
       setIsGeneratingThreadsXCrop(false);
+      setIsUploadingThreadsXCrop(false);
     }
   };
 

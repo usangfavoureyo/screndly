@@ -4,7 +4,7 @@ import type {
   ComposePlatformKey,
   ComposeProcessedVideoAsset,
 } from '../../types/compose';
-import { cropVideoToAspectRatio } from '../../utils/ffmpeg';
+import { generateThreadsXCropAsset } from './composeStorage';
 
 const THREADS_X_PLATFORMS: ComposePlatformKey[] = ['threads', 'x'];
 const NINE_BY_SIXTEEN_RATIO = 9 / 16;
@@ -112,42 +112,42 @@ export async function buildThreadsXCropVariant(
   asset: ComposeMediaAsset,
   focusYPercent: number,
   onProgress?: (progress: number, message: string) => void,
-): Promise<{ file: File; variant: ComposeProcessedVideoAsset }> {
+): Promise<ComposeProcessedVideoAsset> {
   const source = getThreadsXCropSourceUrl(asset);
   if (!source) {
     throw new Error('Upload the source video before generating a 3:4 crop.');
   }
 
-  const result = await cropVideoToAspectRatio({
-    input: source,
-    targetAspectRatio: '3:4',
-    focusYPercent,
-    outputFormat: 'mp4',
-    onProgress,
-  });
-
-  if (!result.success || !result.outputBlob || !result.outputUrl) {
-    throw new Error(result.error || 'Failed to generate the 3:4 video crop.');
+  onProgress?.(10, 'Preparing the source video for the 3:4 crop...');
+  const sourceResponse = await fetch(source);
+  if (!sourceResponse.ok) {
+    throw new Error(`Failed to load the source video (${sourceResponse.status}).`);
   }
 
-  const outputFile = new File(
-    [result.outputBlob],
-    asset.fileName.replace(/\.[^.]+$/, '') + '-threads-x-3x4.mp4',
-    { type: 'video/mp4', lastModified: Date.now() },
+  const sourceBlob = await sourceResponse.blob();
+  const sourceFile = new File(
+    [sourceBlob],
+    asset.fileName,
+    {
+      type: asset.mimeType || sourceBlob.type || 'video/mp4',
+      lastModified: Date.now(),
+    },
   );
+  onProgress?.(35, 'Generating the 3:4 crop on the server...');
+  const generated = await generateThreadsXCropAsset(sourceFile, focusYPercent);
+  onProgress?.(100, '3:4 crop ready.');
 
   return {
-    file: outputFile,
-    variant: {
-      fileName: outputFile.name,
-      mimeType: outputFile.type,
-      size: outputFile.size,
-      previewUrl: result.outputUrl,
-      uploadStatus: 'uploading',
-      sourceAssetId: asset.id,
-      sourceSignature: buildComposeAssetSignature(asset),
-      focusYPercent,
-      aspectRatioLabel: '3:4',
-    },
+    fileName: generated.fileName,
+    mimeType: 'video/mp4',
+    size: generated.size,
+    previewUrl: generated.previewUrl,
+    storageUrl: generated.url,
+    storageFileId: generated.fileId,
+    uploadStatus: 'uploaded',
+    sourceAssetId: asset.id,
+    sourceSignature: buildComposeAssetSignature(asset),
+    focusYPercent,
+    aspectRatioLabel: '3:4',
   };
 }

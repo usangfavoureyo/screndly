@@ -463,7 +463,101 @@ function findLayerByPatterns(
   });
 }
 
-function deriveVariants(width: number, height: number, baseFontSize: number): DesignStudioVariantRecord[] {
+function detectBaseVariant(input: {
+  width: number;
+  height: number;
+  headerLayer?: DesignStudioLayerReference;
+  brandGroup?: DesignStudioLayerReference;
+}): DesignStudioLayoutVariant {
+  const reference = input.headerLayer || input.brandGroup;
+  if (!reference) {
+    return 'bottom_center';
+  }
+
+  const centerX = reference.left + reference.width / 2;
+  const centerY = reference.top + reference.height / 2;
+  const horizontal = centerX < input.width * 0.35
+    ? 'left'
+    : centerX > input.width * 0.65
+      ? 'right'
+      : 'center';
+  const vertical = centerY < input.height * 0.45 ? 'top' : 'bottom';
+
+  return `${vertical}_${horizontal}` as DesignStudioLayoutVariant;
+}
+
+function buildTextBoxFromLayer(input: {
+  width: number;
+  height: number;
+  variant: DesignStudioLayoutVariant;
+  layer?: DesignStudioLayerReference;
+  safeMargin: number;
+}): DesignStudioVariantRecord['textBox'] | null {
+  if (!input.layer || input.layer.width <= 0 || input.layer.height <= 0) {
+    return null;
+  }
+
+  const sideVariant = input.variant.endsWith('left') || input.variant.endsWith('right');
+  const horizontalPadding = Math.round(input.safeMargin * 0.4);
+  const verticalPadding = Math.round(input.safeMargin * 0.35);
+  const minWidth = Math.round(input.width * (sideVariant ? 0.42 : 0.68));
+  const maxWidth = Math.round(input.width * (sideVariant ? 0.58 : 0.82));
+  const minHeight = Math.round(input.height * 0.18);
+  const maxHeight = Math.round(input.height * 0.34);
+
+  const rawWidth = Math.max(input.layer.width + horizontalPadding * 2, minWidth);
+  const rawHeight = Math.max(input.layer.height + verticalPadding * 2, minHeight);
+  const boxWidth = clamp(rawWidth, Math.round(input.width * 0.28), maxWidth);
+  const boxHeight = clamp(rawHeight, Math.round(input.height * 0.14), maxHeight);
+  const centerX = input.layer.left + input.layer.width / 2;
+  const x = clamp(Math.round(centerX - boxWidth / 2), input.safeMargin, input.width - input.safeMargin - boxWidth);
+  const y = clamp(
+    Math.round(input.layer.top - verticalPadding),
+    input.safeMargin,
+    input.height - input.safeMargin - boxHeight,
+  );
+
+  return { x, y, width: boxWidth, height: boxHeight };
+}
+
+function buildBrandBoxFromLayer(input: {
+  width: number;
+  height: number;
+  layer?: DesignStudioLayerReference;
+  safeMargin: number;
+  fallback: DesignStudioVariantRecord['brandBox'];
+}): DesignStudioVariantRecord['brandBox'] {
+  if (!input.layer || input.layer.width <= 0 || input.layer.height <= 0) {
+    return input.fallback;
+  }
+
+  const padding = Math.round(input.safeMargin * 0.12);
+  const boxWidth = clamp(
+    Math.round(input.layer.width + padding * 2),
+    Math.round(input.width * 0.18),
+    Math.round(input.width * 0.42),
+  );
+  const boxHeight = clamp(
+    Math.round(input.layer.height + padding * 2),
+    Math.round(input.height * 0.045),
+    Math.round(input.height * 0.12),
+  );
+  const x = clamp(Math.round(input.layer.left - padding), input.safeMargin, input.width - input.safeMargin - boxWidth);
+  const y = clamp(Math.round(input.layer.top - padding), input.safeMargin, input.height - input.safeMargin - boxHeight);
+
+  return { x, y, width: boxWidth, height: boxHeight };
+}
+
+function deriveVariants(
+  width: number,
+  height: number,
+  baseFontSize: number,
+  master?: {
+    headerLayer?: DesignStudioLayerReference;
+    brandGroup?: DesignStudioLayerReference;
+    baseVariant?: DesignStudioLayoutVariant;
+  },
+): DesignStudioVariantRecord[] {
   const safeMargin = Math.round(Math.min(width, height) * 0.1111);
   const centeredWidth = width - safeMargin * 2;
   const sideWidth = Math.round(width * 0.52);
@@ -475,7 +569,7 @@ function deriveVariants(width: number, height: number, baseFontSize: number): De
   const brandHeight = 90;
   const bottomBrandY = height - safeMargin - brandHeight;
 
-  return [
+  const defaults: DesignStudioVariantRecord[] = [
     {
       variant: 'bottom_center',
       textBox: { x: safeMargin, y: bottomTextY, width: centeredWidth, height: bottomTextHeight },
@@ -543,6 +637,199 @@ function deriveVariants(width: number, height: number, baseFontSize: number): De
       maxLines: 4,
     },
   ];
+
+  if (!master?.headerLayer && !master?.brandGroup) {
+    return defaults;
+  }
+
+  const byVariant = new Map(defaults.map((entry) => [entry.variant, { ...entry }]));
+  const baseVariant = master.baseVariant || detectBaseVariant({
+    width,
+    height,
+    headerLayer: master.headerLayer,
+    brandGroup: master.brandGroup,
+  });
+  const baseRecord = byVariant.get(baseVariant) || defaults[0];
+  const detectedTextBox = buildTextBoxFromLayer({
+    width,
+    height,
+    variant: baseVariant,
+    layer: master.headerLayer,
+    safeMargin,
+  });
+  const detectedBrandBox = buildBrandBoxFromLayer({
+    width,
+    height,
+    layer: master.brandGroup,
+    safeMargin,
+    fallback: baseRecord.brandBox,
+  });
+  const actualTextBox = detectedTextBox || baseRecord.textBox;
+  const textWidth = actualTextBox.width;
+  const textHeight = actualTextBox.height;
+  const brandWidth = detectedBrandBox.width;
+  const brandHeight = detectedBrandBox.height;
+
+  const alignments: Record<DesignStudioLayoutVariant, 'left' | 'center' | 'right'> = {
+    top_left: 'left',
+    top_center: 'center',
+    top_right: 'right',
+    bottom_left: 'left',
+    bottom_center: 'center',
+    bottom_right: 'right',
+  };
+
+  const brandGap = Math.round(safeMargin * 0.18);
+  const topTextYResolved = detectedTextBox
+    ? detectedTextBox.y
+    : clamp(safeMargin + brandHeight + brandGap, safeMargin, height - safeMargin - textHeight);
+  const bottomTextYResolved = detectedTextBox
+    ? detectedTextBox.y
+    : clamp(height - safeMargin - textHeight, safeMargin, height - safeMargin - textHeight);
+  const topBrandY = master.brandGroup
+    ? detectedBrandBox.y
+    : clamp(topTextYResolved - brandGap - brandHeight, safeMargin, height - safeMargin - brandHeight);
+  const bottomBrandYResolved = master.brandGroup
+    ? detectedBrandBox.y
+    : clamp(height - safeMargin - brandHeight, safeMargin, height - safeMargin - brandHeight);
+
+  const centeredX = clamp(Math.round((width - textWidth) / 2), safeMargin, width - safeMargin - textWidth);
+  const leftX = safeMargin;
+  const rightX = width - safeMargin - textWidth;
+  const centerBrandX = clamp(Math.round((width - brandWidth) / 2), safeMargin, width - safeMargin - brandWidth);
+  const rightBrandX = width - safeMargin - brandWidth;
+
+  const generated: DesignStudioVariantRecord[] = [
+    {
+      ...baseRecord,
+      variant: 'top_center',
+      textBox: {
+        x: baseVariant === 'top_center' ? actualTextBox.x : centeredX,
+        y: baseVariant === 'top_center' ? actualTextBox.y : topTextYResolved,
+        width: textWidth,
+        height: textHeight,
+      },
+      alignment: alignments.top_center,
+      brandBox: {
+        x: baseVariant === 'top_center' ? detectedBrandBox.x : centerBrandX,
+        y: baseVariant === 'top_center' ? detectedBrandBox.y : topBrandY,
+        width: brandWidth,
+        height: brandHeight,
+      },
+      backgroundAnchor: 'bottom',
+      overlayDirection: 'top',
+    },
+    {
+      ...baseRecord,
+      variant: 'top_left',
+      textBox: { x: leftX, y: topTextYResolved, width: textWidth, height: textHeight },
+      alignment: alignments.top_left,
+      brandBox: { x: leftX, y: topBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'bottom_right',
+      overlayDirection: 'top_left',
+    },
+    {
+      ...baseRecord,
+      variant: 'top_right',
+      textBox: { x: rightX, y: topTextYResolved, width: textWidth, height: textHeight },
+      alignment: alignments.top_right,
+      brandBox: { x: rightBrandX, y: topBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'bottom_left',
+      overlayDirection: 'top_right',
+    },
+    {
+      ...baseRecord,
+      variant: 'bottom_center',
+      textBox: {
+        x: baseVariant === 'bottom_center' ? actualTextBox.x : centeredX,
+        y: baseVariant === 'bottom_center' ? actualTextBox.y : bottomTextYResolved,
+        width: textWidth,
+        height: textHeight,
+      },
+      alignment: alignments.bottom_center,
+      brandBox: {
+        x: baseVariant === 'bottom_center' ? detectedBrandBox.x : centerBrandX,
+        y: baseVariant === 'bottom_center' ? detectedBrandBox.y : bottomBrandYResolved,
+        width: brandWidth,
+        height: brandHeight,
+      },
+      backgroundAnchor: 'top',
+      overlayDirection: 'bottom',
+    },
+    {
+      ...baseRecord,
+      variant: 'bottom_left',
+      textBox: { x: leftX, y: bottomTextYResolved, width: textWidth, height: textHeight },
+      alignment: alignments.bottom_left,
+      brandBox: { x: leftX, y: bottomBrandYResolved, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'top_right',
+      overlayDirection: 'bottom_left',
+    },
+    {
+      ...baseRecord,
+      variant: 'bottom_right',
+      textBox: { x: rightX, y: bottomTextYResolved, width: textWidth, height: textHeight },
+      alignment: alignments.bottom_right,
+      brandBox: { x: rightBrandX, y: bottomBrandYResolved, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'top_left',
+      overlayDirection: 'bottom_right',
+    },
+  ];
+
+  return generated.map((entry) => ({
+    ...entry,
+    minFontSize: Math.round(baseFontSize * 0.64),
+    maxFontSize: Math.round(baseFontSize),
+    maxLines: 4,
+  }));
+}
+
+function getLayerReferenceFromTemplate(
+  template: DesignStudioTemplateRecord,
+  logicalKey: keyof NonNullable<DesignStudioTemplateRecord['mappedLayers']>,
+  options: { hasText?: boolean; group?: boolean } = {},
+): DesignStudioLayerReference | undefined {
+  const layers = Array.isArray(template.layerReferences)
+    ? (template.layerReferences as DesignStudioLayerReference[])
+    : [];
+  const mappedName = template.mappedLayers?.[logicalKey];
+  if (mappedName) {
+    const normalizedMappedName = normalizeLayerName(mappedName);
+    const exactMatch = layers.find((layer) => {
+      if (options.hasText !== undefined && layer.hasText !== options.hasText) {
+        return false;
+      }
+      if (options.group !== undefined && layer.group !== options.group) {
+        return false;
+      }
+      return layer.normalizedName === normalizedMappedName;
+    });
+    if (exactMatch) {
+      return exactMatch;
+    }
+  }
+  return undefined;
+}
+
+function getTemplateVariantMetadata(template: DesignStudioTemplateRecord): {
+  baseVariant: DesignStudioLayoutVariant;
+  variants: DesignStudioVariantRecord[];
+} {
+  const headerLayer = getLayerReferenceFromTemplate(template, 'header_text', { hasText: true });
+  const brandGroup = getLayerReferenceFromTemplate(template, 'brand_group', { group: true });
+  const baseVariant = detectBaseVariant({
+    width: template.width,
+    height: template.height,
+    headerLayer,
+    brandGroup,
+  });
+  const variants = deriveVariants(template.width, template.height, template.baseFontSize || 96, {
+    headerLayer,
+    brandGroup,
+    baseVariant,
+  });
+
+  return { baseVariant, variants };
 }
 
 function buildTemplateFromPsdBuffer(input: {
@@ -602,8 +889,17 @@ function buildTemplateFromPsdBuffer(input: {
   if (!headerLayer) validationErrors.push('Missing header layer');
   if (!overlayLayer) validationErrors.push('Missing overlay layer');
 
-  const baseVariant: DesignStudioLayoutVariant = 'bottom_center';
-  const variants = deriveVariants(psd.width, psd.height, baseFontSize);
+  const baseVariant = detectBaseVariant({
+    width: psd.width,
+    height: psd.height,
+    headerLayer,
+    brandGroup,
+  });
+  const variants = deriveVariants(psd.width, psd.height, baseFontSize, {
+    headerLayer,
+    brandGroup,
+    baseVariant,
+  });
   const now = new Date().toISOString();
 
   return {
@@ -821,10 +1117,9 @@ function findVariant(
   template: DesignStudioTemplateRecord,
   variant?: DesignStudioLayoutVariant,
 ): DesignStudioVariantRecord {
-  const variants = (template.variants as DesignStudioVariantRecord[] | undefined)
-    || deriveVariants(template.width, template.height, template.baseFontSize || 96);
-  return variants.find((entry) => entry.variant === (variant || template.layoutVariant || template.baseVariant))
-    || variants.find((entry) => entry.variant === template.baseVariant)
+  const { baseVariant, variants } = getTemplateVariantMetadata(template);
+  return variants.find((entry) => entry.variant === (variant || template.layoutVariant || baseVariant || template.baseVariant))
+    || variants.find((entry) => entry.variant === baseVariant)
     || variants[0];
 }
 
@@ -1463,7 +1758,7 @@ async function processManualRenderJob(
 
   try {
     await withTimeout((async () => {
-      const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
+      const activeVariant = input.data.template_variant || getTemplateVariantMetadata(template).baseVariant || 'bottom_center';
       const rendered = await renderDesignStudioImage(template, {
         ...input.data,
         template_variant: activeVariant,
@@ -1662,7 +1957,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     const template = settings.templateRotationStrategy === 'random'
       ? templatePool[Math.floor(Math.random() * templatePool.length)]
       : templatePool[index % templatePool.length];
-    const activeVariant = template.baseVariant || template.layoutVariant || 'bottom_center';
+    const activeVariant = getTemplateVariantMetadata(template).baseVariant || template.layoutVariant || 'bottom_center';
     const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
     const headerText = deriveHeaderText(candidate.item.title);
     const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);

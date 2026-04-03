@@ -11,6 +11,7 @@ interface UploadComposeAssetResponse {
 }
 
 const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+const COMPOSE_CROP_TIMEOUT_MS = 10 * 60 * 1000;
 
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {
   if (!apiClient.isBackendAvailable()) {
@@ -32,6 +33,35 @@ export async function uploadComposeAsset(file: File): Promise<{ url: string; pre
     url: response.data.url,
     previewUrl: response.data.previewUrl,
     fileId: response.data.fileId || response.data.fileName,
+  };
+}
+
+export async function generateThreadsXCropAsset(
+  file: File,
+  focusYPercent: number,
+): Promise<{ url: string; previewUrl?: string; fileId: string; fileName: string; size: number }> {
+  if (!apiClient.isBackendAvailable()) {
+    throw new Error('Backend is not available for Threads/X crop generation.');
+  }
+
+  const response = await apiClient.uploadFile<UploadComposeAssetResponse>(
+    '/api/create/generate-threads-x-crop',
+    file,
+    undefined,
+    { focusYPercent },
+    { timeout: COMPOSE_CROP_TIMEOUT_MS },
+  );
+
+  if (!response.success || !response.data?.url) {
+    throw new Error(response.error?.message || 'Failed to generate the Threads/X crop.');
+  }
+
+  return {
+    url: response.data.url,
+    previewUrl: response.data.previewUrl,
+    fileId: response.data.fileId || response.data.fileName,
+    fileName: response.data.fileName,
+    size: response.data.size,
   };
 }
 
