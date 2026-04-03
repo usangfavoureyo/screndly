@@ -246,6 +246,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
   const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const [isFinalizingTemplateUpload, setIsFinalizingTemplateUpload] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadingTemplateName, setUploadingTemplateName] = useState('');
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
@@ -422,6 +423,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     haptics.medium();
     setIsUploadingTemplate(true);
+    setIsFinalizingTemplateUpload(false);
     setUploadProgress(0);
     setUploadingTemplateName(file.name);
     toast.success('Uploading and analyzing PSD template...');
@@ -430,6 +432,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       const uploadedTemplate = await uploadDesignStudioTemplate(file, (progress) => {
         setUploadProgress(Math.max(0, Math.min(100, Math.round(progress))));
       });
+      setIsUploadingTemplate(false);
+      setUploadProgress(0);
+      setIsFinalizingTemplateUpload(true);
       const detectedHeader = Boolean(uploadedTemplate.detectedLayers.hasHeader);
       const detectedBackground = Boolean(uploadedTemplate.detectedLayers.hasBackground);
       const detectedOverlay = Boolean(uploadedTemplate.detectedLayers.hasOverlay);
@@ -461,6 +466,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
     } finally {
       setIsUploadingTemplate(false);
+      setIsFinalizingTemplateUpload(false);
       setUploadProgress(0);
       setUploadingTemplateName('');
     }
@@ -1017,6 +1023,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
+            </div>
+          ) : null}
+
+          {isFinalizingTemplateUpload ? (
+            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
+              Finalizing PSD template...
             </div>
           ) : null}
 

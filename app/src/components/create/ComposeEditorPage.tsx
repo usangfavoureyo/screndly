@@ -924,6 +924,38 @@ export function ComposeEditorPage({
     setPreviewAsset(asset);
   };
 
+  const handlePreviewThreadsXCrop = () => {
+    if (!formState.threadsXCropVideo || !primaryVideoAsset) {
+      return;
+    }
+
+    const previewUrl = formState.threadsXCropVideo.previewUrl || formState.threadsXCropVideo.storageUrl;
+    if (!previewUrl) {
+      toast.error('Generate the 3:4 crop first so you can preview it.');
+      return;
+    }
+
+    haptics.light();
+    setPreviewThumbnail(null);
+    setPreviewAsset({
+      id: `${primaryVideoAsset.id}-threads-x-crop-preview`,
+      kind: 'video',
+      fileName: formState.threadsXCropVideo.fileName,
+      mimeType: formState.threadsXCropVideo.mimeType,
+      size: formState.threadsXCropVideo.size,
+      order: primaryVideoAsset.order,
+      width: primaryVideoAsset.width,
+      height: primaryVideoAsset.height,
+      aspectRatioLabel: '3:4',
+      aspectRatioValue: 3 / 4,
+      previewUrl,
+      storageUrl: formState.threadsXCropVideo.storageUrl,
+      storageFileId: formState.threadsXCropVideo.storageFileId,
+      uploadStatus: formState.threadsXCropVideo.uploadStatus,
+      uploadError: formState.threadsXCropVideo.uploadError,
+    });
+  };
+
   const handlePreviewThumbnail = (thumbnail: ComposeThumbnailAsset) => {
     const previewUrl = thumbnail.previewUrl || thumbnail.storageUrl;
     if (!previewUrl) {
@@ -1395,6 +1427,27 @@ export function ComposeEditorPage({
     }
   };
 
+  const publishValidation = validateComposeItemAction(buildItem('published', undefined, existingItem?.error), {
+    mode: 'published',
+  });
+
+  const publishBlockingMessage =
+    isUploadingMedia || hasUploadingAssets
+      ? 'Wait for media uploads to finish before publishing.'
+      : hasUploadingThumbnails
+        ? 'Wait for thumbnail uploads to finish before publishing.'
+        : hasGeneratingThumbnails
+          ? 'Wait for thumbnail generation to finish before publishing.'
+          : isGeneratingThreadsXCrop
+            ? 'Wait for the Threads/X 3:4 crop to finish generating.'
+            : isThreadsXCropEnabled && isUploadingThreadsXCrop && !isThreadsXCropReady
+              ? 'The 3:4 crop preview is ready, but the cropped video is still uploading before Threads/X can publish.'
+              : isGeneratingMetadata
+                ? 'Wait for AI content generation to finish before publishing.'
+                : !publishValidation.ok
+                  ? publishValidation.error
+                  : undefined;
+
   return (
     <div className="space-y-6">
       <div className="mb-4 flex items-start gap-4">
@@ -1800,19 +1853,32 @@ export function ComposeEditorPage({
                         </p>
                       </div>
 
-                      <Button
-                        type="button"
-                        onClick={() => void handleGenerateThreadsXCrop()}
-                        disabled={isGeneratingThreadsXCrop || isUploadingThreadsXCrop || !primaryVideoAsset}
-                      >
-                        {isGeneratingThreadsXCrop
-                          ? 'Generating 3:4 Video...'
-                          : isUploadingThreadsXCrop
-                            ? 'Uploading 3:4 Video...'
-                            : (isThreadsXCropReady || hasThreadsXCropPreviewReady)
-                              ? 'Regenerate 3:4 Video'
-                              : 'Generate Again'}
-                      </Button>
+                      <div className="flex flex-wrap gap-3">
+                        {hasThreadsXCropPreviewReady ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handlePreviewThreadsXCrop}
+                          >
+                            Preview 3:4 Crop
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          onClick={() => void handleGenerateThreadsXCrop()}
+                          disabled={isGeneratingThreadsXCrop || isUploadingThreadsXCrop || !primaryVideoAsset}
+                        >
+                          {isGeneratingThreadsXCrop
+                            ? 'Generating 3:4 Video...'
+                            : isUploadingThreadsXCrop
+                              ? 'Uploading 3:4 Video...'
+                              : formState.threadsXCropVideo?.uploadError
+                                ? 'Retry 3:4 Video'
+                                : (isThreadsXCropReady || hasThreadsXCropPreviewReady)
+                                  ? 'Regenerate 3:4 Video'
+                                  : 'Generate 3:4 Video'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -2212,6 +2278,9 @@ export function ComposeEditorPage({
                 {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
               </Button>
             </div>
+            {publishBlockingMessage ? (
+              <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF]">{publishBlockingMessage}</p>
+            ) : null}
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
               <p className="mb-1 text-sm text-gray-900 dark:text-white">Media Set</p>

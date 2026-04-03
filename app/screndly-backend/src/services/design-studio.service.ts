@@ -742,6 +742,31 @@ async function updateManualRenderJob(
   return updated;
 }
 
+async function claimManualRenderJob(jobId: string): Promise<DesignStudioManualRenderJob | null> {
+  const jobs = await getDesignStudioRenderJobs();
+  let claimed: DesignStudioManualRenderJob | null = null;
+  const next = jobs.map((job) => {
+    if (job.id !== jobId || job.status !== 'queued') {
+      return job;
+    }
+
+    claimed = {
+      ...job,
+      status: 'rendering',
+      failureReason: null,
+      updatedAt: new Date().toISOString(),
+    };
+    return claimed;
+  });
+
+  if (!claimed) {
+    return null;
+  }
+
+  await saveDesignStudioRenderJobs(next);
+  return claimed;
+}
+
 function getRedisUrl(): string | null {
   const value = process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim();
   return value || null;
@@ -1398,7 +1423,10 @@ async function processManualRenderJob(
   input: QueueManualRenderInput,
 ): Promise<void> {
   const template = input.template;
-  await updateManualRenderJob(jobId, { status: 'rendering', failureReason: null });
+  const claimedJob = await claimManualRenderJob(jobId);
+  if (!claimedJob) {
+    return;
+  }
 
   try {
     const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
@@ -1468,7 +1496,7 @@ async function processManualRenderJob(
       templateId: template.id,
       templateName: template.name,
       renderJobId: jobId,
-      reason: failureReason,
+      failureReason,
     });
   }
 }
@@ -1532,11 +1560,13 @@ export async function queueManualDesignStudioRender(input: QueueManualRenderInpu
       removeOnComplete: 50,
       removeOnFail: 50,
     });
-  } else {
-    setTimeout(() => {
-      void processManualRenderJob(job.id, input);
-    }, 0);
   }
+
+  // Safety net: if the shared queue worker does not pick this up quickly,
+  // process it in-process so the UI does not remain stuck in "queued".
+  setTimeout(() => {
+    void processManualRenderJob(job.id, input);
+  }, renderQueue ? 3000 : 0);
 
   return job;
 }
