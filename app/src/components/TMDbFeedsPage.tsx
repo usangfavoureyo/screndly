@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo } from 'react';
-import { ArrowDownWideNarrow, Check, RefreshCw } from 'lucide-react';
+import { ArrowDownWideNarrow, Check, Clock3, RefreshCw } from 'lucide-react';
 import { TMDbStatsPanel } from './tmdb/TMDbStatsPanel';
 import { TMDbFeedCard } from './tmdb/TMDbFeedCard';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
+import { saveSettings } from '../lib/api/settings';
 import { useTMDbPosts } from '../contexts/TMDbPostsContext';
 import { useUndo } from './UndoContext';
 import { useBulkSelection } from '../hooks/useBulkSelection';
@@ -32,11 +33,44 @@ const SORT_OPTION_LABELS: Record<SortOption, string> = {
   'recent-asc': 'Oldest Added',
 };
 
+const TMDB_INTERVAL_OPTIONS = [1, 2, 3, 4, 5, 10, 15, 20, 30, 45, 60, 120] as const;
+const TMDB_SETTINGS_STORAGE_KEY = 'screndly_tmdb_settings';
+
+function getCurrentTMDbIntervalMinutes(): number {
+  try {
+    const raw = window.localStorage.getItem(TMDB_SETTINGS_STORAGE_KEY);
+    if (!raw) return 60;
+
+    const parsed = JSON.parse(raw);
+    const value = Number.parseInt(String(parsed.minGapBetweenPostsMinutes ?? ''), 10);
+    return Number.isFinite(value) && value > 0 ? value : 60;
+  } catch {
+    return 60;
+  }
+}
+
+function formatTMDbIntervalLabel(minutes: number): string {
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  if (minutes === 60) {
+    return '1 hr';
+  }
+
+  if (minutes % 60 === 0) {
+    return `${minutes / 60} hrs`;
+  }
+
+  return `${minutes} min`;
+}
+
 export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   const { posts, fetchPosts, refreshFromTMDb, updatePost, deletePost, restorePost } = useTMDbPosts();
   const { showUndo } = useUndo();
   const [filterType, setFilterType] = useState<TMDbFeedFilterType>('all');
   const [sortSheetOpen, setSortSheetOpen] = useState(false);
+  const [intervalSheetOpen, setIntervalSheetOpen] = useState(false);
   const [sortByTab, setSortByTab] = useState<Record<TMDbFeedFilterType, SortOption>>({
     all: 'recent-desc',
     today: 'recent-desc',
@@ -46,6 +80,8 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
   });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [isSavingInterval, setIsSavingInterval] = useState(false);
+  const [tmdbIntervalMinutes, setTMDbIntervalMinutes] = useState<number>(() => getCurrentTMDbIntervalMinutes());
 
   useTMDbAutoSync(fetchPosts);
 
@@ -97,6 +133,36 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
     }));
     setSortSheetOpen(false);
   }, [filterType]);
+
+  const handleIntervalChange = useCallback(async (minutes: number) => {
+    haptics.light();
+    setTMDbIntervalMinutes(minutes);
+    setIsSavingInterval(true);
+
+    try {
+      const raw = window.localStorage.getItem(TMDB_SETTINGS_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : {};
+      const nextSettings = {
+        ...parsed,
+        minGapBetweenPostsMinutes: String(minutes),
+      };
+
+      window.localStorage.setItem(TMDB_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
+
+      const result = await saveSettings({ minGapBetweenPostsMinutes: String(minutes) } as any);
+      if (!result.success) {
+        throw new Error(result.error?.message || 'Failed to save TMDb interval');
+      }
+
+      toast.success(`TMDb auto-post interval set to ${formatTMDbIntervalLabel(minutes)}`);
+      setIntervalSheetOpen(false);
+    } catch (error) {
+      console.error('[TMDbFeedsPage] Failed to save TMDb interval:', error);
+      toast.error('Failed to update TMDb auto-post interval');
+    } finally {
+      setIsSavingInterval(false);
+    }
+  }, []);
 
   // Stable callback - identity doesn't change between renders
   const handleUpdateFeed = useCallback((feedId: string, updates: any) => {
@@ -214,6 +280,48 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         </BottomSheetBody>
       </BottomSheet>
 
+      <BottomSheet
+        open={intervalSheetOpen}
+        onOpenChange={setIntervalSheetOpen}
+        heightMode="auto"
+        showHandle
+      >
+        <BottomSheetHeader>
+          <BottomSheetTitle>Auto-Post Interval</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="px-4 pb-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+            {TMDB_INTERVAL_OPTIONS.map((minutes) => {
+              const selected = tmdbIntervalMinutes === minutes;
+
+              return (
+                <button
+                  key={minutes}
+                  type="button"
+                  onClick={() => {
+                    if (!isSavingInterval) {
+                      void handleIntervalChange(minutes);
+                    }
+                  }}
+                  disabled={isSavingInterval}
+                  className={`relative flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
+                    selected
+                      ? 'font-medium text-gray-900 dark:text-white'
+                      : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
+                  } ${isSavingInterval ? 'opacity-60' : ''}`}
+                >
+                  <span className="flex-1 truncate">{formatTMDbIntervalLabel(minutes)}</span>
+                  {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-3 text-xs text-gray-500 dark:text-[#9CA3AF]">
+            Controls the minimum spacing between auto-posted TMDb feeds. Random spacing is not enabled yet; I kept this on fixed intervals so the scheduler stays predictable.
+          </p>
+        </BottomSheetBody>
+      </BottomSheet>
+
       {/* Stats Panel */}
       <TMDbStatsPanel feeds={feeds} onFilterChange={handleFilterChange} />
 
@@ -286,6 +394,18 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
             Feeds ({filteredFeeds.length})
           </h3>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                haptics.light();
+                setIntervalSheetOpen(true);
+              }}
+              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+            >
+              <Clock3 size={16} className="mr-2 shrink-0" />
+              {formatTMDbIntervalLabel(tmdbIntervalMinutes)}
+            </Button>
             <Button
               variant="outline"
               size="sm"

@@ -13,6 +13,7 @@ interface SwipeableActivityCardProps {
   selected?: boolean;
   onEnterSelectionMode?: (id?: string) => void;
   onToggleSelection?: (id?: string) => void;
+  showHoverDelete?: boolean;
 }
 
 export function SwipeableActivityCard({
@@ -26,6 +27,7 @@ export function SwipeableActivityCard({
   selected = false,
   onEnterSelectionMode,
   onToggleSelection,
+  showHoverDelete = true,
 }: SwipeableActivityCardProps) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -302,7 +304,7 @@ export function SwipeableActivityCard({
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
       >
-        {!selectionMode && (
+        {!selectionMode && showHoverDelete && (
           <button
             type="button"
             aria-label={deleteLabel}

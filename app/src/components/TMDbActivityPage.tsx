@@ -825,9 +825,9 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
                   <div className="flex-1 min-w-0 flex flex-col">
                     {/* Header Row */}
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-gray-900 dark:text-white mb-2 line-clamp-2">{item.title}</h3>
+                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="mb-2 break-words text-gray-900 dark:text-white">{item.title}</h3>
                         <div className="flex flex-wrap items-center gap-2 mb-2">
                           <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-md bg-black dark:bg-white text-white dark:text-black">
                             {item.mediaType === 'movie' ? 'Movie' : 'TV'}
@@ -840,30 +840,32 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                       </div>
 
                       {/* Status Badge and Retry Button */}
-                      <div className="flex flex-col items-end gap-2">
+                      <div className="flex flex-col gap-2 self-start sm:items-end">
                         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg ${statusConfig.bg} flex-shrink-0`}>
                           {derivedStatus !== 'scheduled' && derivedStatus !== 'published' && <StatusIcon className={`w-4 h-4 ${statusConfig.color}`} />}
                           <span className={`text-sm ${statusConfig.color}`}>
                             {statusConfig.label}
                           </span>
                         </div>
-                        {!selection.selectionMode && retryablePlatforms.length > 0 && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => handleRetry(e, item)}
-                            disabled={retryingItemId === item.id}
-                            className="gap-2 bg-white dark:bg-black"
-                          >
-                            {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
-                          </Button>
-                        )}
                       </div>
                     </div>
 
                     {/* Platforms */}
                     {derivedStatus !== 'scheduled' && publishSummary && (
                       <p className="mb-2 text-xs text-gray-500 dark:text-[#9CA3AF]">{publishSummary}</p>
+                    )}
+                    {!selection.selectionMode && retryablePlatforms.length > 0 && (
+                      <div className="mb-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => handleRetry(e, item)}
+                          disabled={retryingItemId === item.id}
+                          className="h-auto max-w-full justify-start gap-2 whitespace-normal py-2 text-left leading-tight bg-white dark:bg-black sm:w-auto"
+                        >
+                          {retryingItemId === item.id ? 'Retrying...' : getRetryFailedLabel(retryablePlatforms.length)}
+                        </Button>
+                      </div>
                     )}
                     {derivedStatus === 'scheduled' && item.platforms && item.platforms.length > 0 ? (
                       <div className="flex items-center gap-2 mb-3">

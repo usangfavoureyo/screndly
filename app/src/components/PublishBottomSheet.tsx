@@ -9,10 +9,10 @@ import { InstagramIcon } from './icons/InstagramIcon';
 import { FacebookIcon } from './icons/FacebookIcon';
 import { ThreadsIcon } from './icons/ThreadsIcon';
 import { XIcon } from './icons/XIcon';
-import { YouTubeIcon } from './icons/YouTubeIcon';
 import { PinterestIcon } from './icons/PinterestIcon';
 import { OptimalTimeSuggestion } from './OptimalTimeSuggestion';
 import { haptics } from '../utils/haptics';
+import type { PlatformSelection } from '../lib/api/platforms';
 
 interface PublishBottomSheetProps {
   open: boolean;
@@ -21,17 +21,9 @@ interface PublishBottomSheetProps {
   description?: string;
   initialCaption?: string;
   onPublish?: (caption: string, platforms: PlatformSelection) => void;
-  onCaptionGenerate?: () => string;
+  onCaptionGenerate?: () => string | Promise<string>;
   isGeneratingCaption?: boolean;
-}
-
-interface PlatformSelection {
-  x: boolean;
-  threads: boolean;
-  facebook: boolean;
-  youtube: boolean;
-  instagram: boolean;
-  pinterest: boolean;
+  allowedPlatforms?: Array<'x' | 'threads' | 'facebook' | 'instagram' | 'pinterest'>;
 }
 
 export function PublishBottomSheet({
@@ -43,6 +35,7 @@ export function PublishBottomSheet({
   onPublish,
   onCaptionGenerate,
   isGeneratingCaption = false,
+  allowedPlatforms = ['x', 'threads', 'facebook', 'instagram', 'pinterest'],
 }: PublishBottomSheetProps) {
   const [generatedCaption, setGeneratedCaption] = useState(initialCaption);
   const [captionEditMode, setCaptionEditMode] = useState(false);
@@ -50,7 +43,6 @@ export function PublishBottomSheet({
     x: false,
     threads: false,
     facebook: false,
-    youtube: false,
     instagram: false,
     pinterest: false,
   });
@@ -62,10 +54,22 @@ export function PublishBottomSheet({
   const [pinterestBoard, setPinterestBoard] = useState('');
 
   useEffect(() => {
-    if (open && !generatedCaption && onCaptionGenerate) {
-      const caption = onCaptionGenerate();
-      setGeneratedCaption(caption);
-    }
+    let cancelled = false;
+
+    const populateCaption = async () => {
+      if (open && !generatedCaption && onCaptionGenerate) {
+        const caption = await onCaptionGenerate();
+        if (!cancelled) {
+          setGeneratedCaption(caption);
+        }
+      }
+    };
+
+    void populateCaption();
+
+    return () => {
+      cancelled = true;
+    };
   }, [open, generatedCaption, onCaptionGenerate]);
 
   useEffect(() => {
@@ -81,10 +85,10 @@ export function PublishBottomSheet({
       .map(([platform]) => platform);
   }, [selectedPlatforms]);
 
-  const handleGenerateCaption = () => {
+  const handleGenerateCaption = async () => {
     haptics.light();
     if (onCaptionGenerate) {
-      const caption = onCaptionGenerate();
+      const caption = await onCaptionGenerate();
       setGeneratedCaption(caption);
       setCaptionEditMode(false);
     }
@@ -167,7 +171,7 @@ export function PublishBottomSheet({
           <Label className="text-gray-900 dark:text-white">Select Platforms</Label>
           <div className="flex justify-center">
             <div className="grid grid-cols-3 gap-3 max-w-fit">
-              <button
+              {allowedPlatforms.includes('x') ? <button
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, x: !selectedPlatforms.x });
@@ -180,8 +184,9 @@ export function PublishBottomSheet({
               >
                 <XIcon className="w-4 h-4" />
               </button>
+              : null}
 
-              <button
+              {allowedPlatforms.includes('threads') ? <button
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, threads: !selectedPlatforms.threads });
@@ -194,8 +199,9 @@ export function PublishBottomSheet({
               >
                 <ThreadsIcon className="w-5 h-5" />
               </button>
+              : null}
 
-              <button
+              {allowedPlatforms.includes('facebook') ? <button
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, facebook: !selectedPlatforms.facebook });
@@ -208,22 +214,9 @@ export function PublishBottomSheet({
               >
                 <FacebookIcon className="w-5.5 h-5.5" />
               </button>
+              : null}
 
-              <button
-                onClick={() => {
-                  haptics.light();
-                  setSelectedPlatforms({ ...selectedPlatforms, youtube: !selectedPlatforms.youtube });
-                }}
-                className={`flex items-center justify-center w-14 h-14 rounded-lg transition-all ${selectedPlatforms.youtube
-                  ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
-                  : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
-                  }`}
-                title="YouTube"
-              >
-                <YouTubeIcon className="w-6 h-6" />
-              </button>
-
-              <button
+              {allowedPlatforms.includes('instagram') ? <button
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, instagram: !selectedPlatforms.instagram });
@@ -236,8 +229,9 @@ export function PublishBottomSheet({
               >
                 <InstagramIcon className="w-5.5 h-5.5" />
               </button>
+              : null}
 
-              <button
+              {allowedPlatforms.includes('pinterest') ? <button
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, pinterest: !selectedPlatforms.pinterest });
@@ -250,6 +244,7 @@ export function PublishBottomSheet({
               >
                 <PinterestIcon className="w-5.5 h-5.5" />
               </button>
+              : null}
             </div>
           </div>
         </div>

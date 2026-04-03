@@ -1514,6 +1514,7 @@ async function processManualRenderJob(
       await createDesignStudioActivity('design_rendered', {
         templateId: template.id,
         templateName: template.name,
+        headerText: input.data.headerText,
         renderJobId: jobId,
         variant: renderedDesign.templateVariant,
         previewUrl: renderedDesign.previewUrl,

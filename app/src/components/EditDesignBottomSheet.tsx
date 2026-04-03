@@ -61,6 +61,7 @@ export interface DesignData {
   gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
   caption?: string; // AI-generated caption
   contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
+  exportFormat?: 'jpeg' | 'png';
 }
 
 export function EditDesignBottomSheet({
@@ -103,6 +104,9 @@ export function EditDesignBottomSheet({
   const [caption, setCaption] = useState('');
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>(
+    persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
+  );
 
   useEffect(() => {
     return () => {
@@ -126,8 +130,9 @@ export function EditDesignBottomSheet({
       setOverlayColor(initialData.overlayColor || '#000000');
       setOverlayOpacity(initialData.overlayOpacity || 70);
       setGradientPosition(initialData.gradientPosition || 'top');
+      setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
     }
-  }, [initialData]);
+  }, [initialData, persistedSettings.exportFormat]);
 
   // Trigger real-time preview updates whenever design data changes
   useEffect(() => {
@@ -144,6 +149,7 @@ export function EditDesignBottomSheet({
         overlayColor,
         overlayOpacity,
         gradientPosition,
+        exportFormat,
       });
     }
      
@@ -162,7 +168,8 @@ export function EditDesignBottomSheet({
     overlayOpacity, 
     open, 
     hasSubtext,
-    gradientPosition
+    gradientPosition,
+    exportFormat,
   ]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -250,6 +257,7 @@ export function EditDesignBottomSheet({
       gradientPosition,
       caption: caption || undefined,
       contentType,
+      exportFormat,
     });
   };
 
@@ -340,6 +348,7 @@ export function EditDesignBottomSheet({
               </div>
               <div className="flex items-center gap-3">
                 <button
+                  type="button"
                   onClick={() => {
                     haptics.light();
                     setShowHeaderTextColorPicker(true);
@@ -553,6 +562,7 @@ export function EditDesignBottomSheet({
               <div className="space-y-3">
                 <div className="relative rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]">
                   <button
+                    type="button"
                     onClick={() => {
                       haptics.light();
                       setIsImageExpanded(true);
@@ -566,6 +576,7 @@ export function EditDesignBottomSheet({
                     />
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       haptics.light();
                       if (previewBackgroundImage.startsWith('blob:')) {
@@ -739,6 +750,7 @@ export function EditDesignBottomSheet({
                   </div>
                   <div className="flex items-center gap-3">
                     <button
+                      type="button"
                       onClick={() => {
                         haptics.light();
                         setShowColorPicker(true);
@@ -914,6 +926,36 @@ export function EditDesignBottomSheet({
               </div>
             </div>
           )}
+
+          <div>
+            <Label className="text-gray-900 dark:text-white mb-2 block">Output Format</Label>
+            <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
+              Choose whether this render exports as JPEG or PNG
+            </p>
+
+            <div className="bg-white dark:bg-black rounded-lg p-4 space-y-3">
+              <div>
+                <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
+                  Export Format
+                </Label>
+                <Select
+                  value={exportFormat}
+                  onValueChange={(value: 'jpeg' | 'png') => {
+                    haptics.light();
+                    setExportFormat(value);
+                  }}
+                >
+                  <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="jpeg">JPEG</SelectItem>
+                    <SelectItem value="png">PNG</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
 
           {/* AI Caption Generation Section */}
           <div>

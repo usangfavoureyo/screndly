@@ -28,7 +28,6 @@ interface SwipeableTemplateCardProps {
   onExpand: (template: Template) => void;
   livePreviewData?: DesignData | null;
   isBeingEdited?: boolean;
-  renderStatus?: 'queued' | 'rendering' | null;
 }
 
 export function SwipeableTemplateCard({
@@ -38,7 +37,6 @@ export function SwipeableTemplateCard({
   onExpand,
   livePreviewData,
   isBeingEdited,
-  renderStatus,
 }: SwipeableTemplateCardProps) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -148,11 +146,6 @@ export function SwipeableTemplateCard({
           <div className="pointer-events-none absolute top-3 right-3 rounded bg-black/70 px-2 py-1 text-xs text-white backdrop-blur-sm">
             {template.aspectRatio}
           </div>
-          {renderStatus ? (
-            <div className="pointer-events-none absolute top-3 left-3 rounded bg-[#ec1e24]/90 px-2.5 py-1 text-xs text-white backdrop-blur-sm">
-              {renderStatus === 'rendering' ? 'Rendering' : 'Render Queued'}
-            </div>
-          ) : null}
         </div>
 
         <div className="p-4">

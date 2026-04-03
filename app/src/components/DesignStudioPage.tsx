@@ -583,8 +583,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setIsRendering(true);
     setIsEditSheetOpen(false);
 
-    toast.success('Render queued. You can leave this page while it finishes.');
-
     try {
       const job = await startDesignStudioManualRender({
         template: {
@@ -606,13 +604,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           gradientPosition: data.gradientPosition,
           caption: data.caption,
           contentType: data.contentType,
-          exportFormat: settings.exportFormat === 'png' ? 'png' : 'jpeg',
+          exportFormat: data.exportFormat || (settings.exportFormat === 'png' ? 'png' : 'jpeg'),
         },
       });
       setManualRenderJobs((currentJobs) => [job, ...currentJobs.filter((currentJob) => currentJob.id !== job.id)]);
       setTemplates((currentTemplates) => [...currentTemplates]);
       setIsRendering(false);
-      toast.success('PSD render queued in the background');
+      toast.success('Moved to render queue. You can leave this page while it finishes.');
       haptics.success();
     } catch (error) {
       console.error('Failed to queue Design Studio render:', error);
@@ -770,16 +768,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     return defaultAutoTemplate ? [defaultAutoTemplate] : [];
   }, [defaultAutoTemplate, validatedTemplates]);
-
-  const templateRenderStatusMap = useMemo(() => {
-    const map = new Map<string, 'queued' | 'rendering'>();
-    for (const job of manualRenderJobs) {
-      if ((job.status === 'queued' || job.status === 'rendering') && !map.has(job.templateId)) {
-        map.set(job.templateId, job.status);
-      }
-    }
-    return map;
-  }, [manualRenderJobs]);
 
   const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
@@ -1061,14 +1049,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   <SwipeableTemplateCard
                     key={template.id}
                     template={template}
-                    onDelete={handleDeleteTemplate}
-                    onEdit={handleEditTemplate}
-                    onExpand={handleExpandTemplate}
-                    livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
-                    isBeingEdited={editingTemplateId === template.id}
-                    renderStatus={templateRenderStatusMap.get(template.id) || null}
-                  />
-                ))}
+                  onDelete={handleDeleteTemplate}
+                  onEdit={handleEditTemplate}
+                  onExpand={handleExpandTemplate}
+                  livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
+                  isBeingEdited={editingTemplateId === template.id}
+                />
+              ))}
               </div>
             </div>
           )}

@@ -148,6 +148,7 @@ export type DesignStudioActivityType =
   | 'design_render_queued'
   | 'design_rendered'
   | 'design_render_failed'
+  | 'design_scheduled'
   | 'design_published'
   | 'template_deleted'
   | 'auto_editorial_generated'

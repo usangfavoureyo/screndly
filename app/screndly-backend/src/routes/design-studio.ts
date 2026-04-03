@@ -5,7 +5,7 @@ import { isPsdSupportUnavailableError, readPsdSafely } from '../lib/psd';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
-import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
+import { getBackblazeAuthorizedDownloadUrl, listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import {
   generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
@@ -54,6 +54,33 @@ function detectLayerPresence(layerNames: string[]) {
 
 function buildPsdSignature(buffer: Buffer): string {
   return buffer.subarray(0, 4).toString('ascii');
+}
+
+async function authorizeDesignStudioMediaUrl(url?: string | null): Promise<string | undefined> {
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    return await getBackblazeAuthorizedDownloadUrl(url, 60 * 60);
+  } catch {
+    return url;
+  }
+}
+
+async function authorizeDesignStudioActivity<T extends { details?: unknown }>(activity: T): Promise<T> {
+  const details = activity.details && typeof activity.details === 'object' && !Array.isArray(activity.details)
+    ? activity.details as Record<string, unknown>
+    : {};
+
+  return {
+    ...activity,
+    details: {
+      ...details,
+      previewUrl: await authorizeDesignStudioMediaUrl(typeof details.previewUrl === 'string' ? details.previewUrl : undefined),
+      outputUrl: await authorizeDesignStudioMediaUrl(typeof details.outputUrl === 'string' ? details.outputUrl : undefined),
+    },
+  };
 }
 
 const templateSchema = z.object({
@@ -158,6 +185,7 @@ const designStudioActivitySchema = z.object({
     'design_render_queued',
     'design_rendered',
     'design_render_failed',
+    'design_scheduled',
     'design_published',
     'template_deleted',
     'auto_editorial_generated',
@@ -219,10 +247,33 @@ router.get('/state', authenticate, async (_req, res) => {
   try {
     const { templates, renderedDesigns, autoEditorials } = await getDesignStudioStateSnapshot();
 
+    const hydratedTemplates = await Promise.all(
+      (Array.isArray(templates) ? templates : []).map(async (template) => ({
+        ...template,
+        previewImage: await authorizeDesignStudioMediaUrl(template.previewImage),
+        previewUrl: (await authorizeDesignStudioMediaUrl(template.previewUrl)) || template.previewUrl,
+      })),
+    );
+
+    const hydratedRenderedDesigns = await Promise.all(
+      (Array.isArray(renderedDesigns) ? renderedDesigns : []).map(async (renderedDesign) => ({
+        ...renderedDesign,
+        outputUrl: (await authorizeDesignStudioMediaUrl(renderedDesign.outputUrl)) || renderedDesign.outputUrl,
+        previewUrl: await authorizeDesignStudioMediaUrl(renderedDesign.previewUrl || renderedDesign.outputUrl),
+      })),
+    );
+
+    const hydratedAutoEditorials = await Promise.all(
+      (Array.isArray(autoEditorials) ? autoEditorials : []).map(async (editorial) => ({
+        ...editorial,
+        renderedImage: (await authorizeDesignStudioMediaUrl(editorial.renderedImage)) || editorial.renderedImage,
+      })),
+    );
+
     const data = designStudioStateSchema.parse({
-      templates: Array.isArray(templates) ? templates : [],
-      renderedDesigns: Array.isArray(renderedDesigns) ? renderedDesigns : [],
-      autoEditorials: Array.isArray(autoEditorials) ? autoEditorials : [],
+      templates: hydratedTemplates,
+      renderedDesigns: hydratedRenderedDesigns,
+      autoEditorials: hydratedAutoEditorials,
     });
 
     res.json({ success: true, data });
@@ -412,7 +463,8 @@ router.get('/activity', authenticate, async (_req, res) => {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
-    res.json({ success: true, data: activities });
+    const hydratedActivities = await Promise.all(activities.map((activity) => authorizeDesignStudioActivity(activity)));
+    res.json({ success: true, data: hydratedActivities });
   } catch (error) {
     console.error('Error fetching design studio activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch design studio activity' } });
@@ -422,9 +474,15 @@ router.get('/activity', authenticate, async (_req, res) => {
 router.get('/render-jobs', authenticate, async (_req, res) => {
   try {
     const jobs = await getDesignStudioRenderJobs();
+    const hydratedJobs = await Promise.all(
+      jobs.map(async (job) => ({
+        ...job,
+        outputUrl: await authorizeDesignStudioMediaUrl(job.outputUrl),
+      })),
+    );
     res.json({
       success: true,
-      data: jobs.map((job) => renderJobSchema.parse(job)),
+      data: hydratedJobs.map((job) => renderJobSchema.parse(job)),
     });
   } catch (error) {
     console.error('Error fetching design studio render jobs:', error);
@@ -486,6 +544,29 @@ router.post('/activity', authenticate, async (req, res) => {
     }
     console.error('Error creating design studio activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to create activity' } });
+  }
+});
+
+router.put('/activity/:id', authenticate, async (req, res) => {
+  try {
+    const payload = z.object({
+      details: z.any(),
+    }).parse(req.body);
+
+    const updatedActivity = await prisma.designStudioActivity.update({
+      where: { id: req.params.id },
+      data: {
+        details: payload.details,
+      },
+    });
+
+    res.json({ success: true, data: updatedActivity });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid data', details: error.errors } });
+    }
+    console.error('Error updating design studio activity:', error);
+    res.status(500).json({ success: false, error: { message: 'Failed to update activity' } });
   }
 });
 
