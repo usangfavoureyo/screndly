@@ -44,6 +44,20 @@ const TMDB_REGION_OPTIONS = [
 ];
 
 const DEFAULT_ANNIVERSARY_YEARS = ['1', '2', '3', '5', '10', '15', '20', '25'];
+const TMDB_AUTO_POST_INTERVAL_OPTIONS = [
+  { value: '1', label: '1 minute' },
+  { value: '2', label: '2 minutes' },
+  { value: '3', label: '3 minutes' },
+  { value: '4', label: '4 minutes' },
+  { value: '5', label: '5 minutes' },
+  { value: '10', label: '10 minutes' },
+  { value: '15', label: '15 minutes' },
+  { value: '20', label: '20 minutes' },
+  { value: '30', label: '30 minutes' },
+  { value: '45', label: '45 minutes' },
+  { value: '60', label: '1 hour' },
+  { value: '120', label: '2 hours' },
+] as const;
 
 function normalizePreferredImageTypes(
   preferredImageTypes: unknown,
@@ -1479,6 +1493,30 @@ export function TMDbSettings() {
               }}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
+          </div>
+
+          <div>
+            <Label htmlFor="tmdb-auto-post-interval" className="text-[#9CA3AF]">Auto-Post Interval</Label>
+            <Select
+              value={String(tmdbSettings.minGapBetweenPostsMinutes)}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('minGapBetweenPostsMinutes', value);
+                toast.success(`TMDb auto-post interval set to ${TMDB_AUTO_POST_INTERVAL_OPTIONS.find((option) => option.value === value)?.label || `${value} minutes`}`);
+              }}
+            >
+              <SelectTrigger id="tmdb-auto-post-interval" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TMDB_AUTO_POST_INTERVAL_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Sets the minimum spacing between auto-posted TMDb feeds. Random spacing is not enabled yet.
+            </p>
           </div>
         </div>
 

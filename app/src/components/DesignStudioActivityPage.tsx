@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertCircle, Calendar, Clock3, LoaderCircle, MoreVertical, Send, Trash2, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlertCircle, Calendar, Clock3, LoaderCircle, MoreVertical, Send, Trash2, X } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import {
@@ -460,6 +460,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     setMenuActivity(activity);
   };
 
+  const closeMenuThen = (action: () => void) => {
+    setMenuActivity(null);
+    window.setTimeout(action, 120);
+  };
+
   const openScheduleSheet = (activity: DesignStudioActivityRecord) => {
     const nextHour = new Date();
     nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
@@ -898,7 +903,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             size="icon"
                             variant="outline"
                             onClick={() => handleDelete(activity.id)}
-                            className="mr-2 hidden h-9 w-9 rounded-full border-gray-200 bg-white text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
+                            className="mr-2 hidden h-9 w-9 rounded-xl border-gray-200 bg-white text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -907,7 +912,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             size="icon"
                             variant="outline"
                             onClick={() => openOptionsMenu(activity)}
-                            className="h-9 w-9 rounded-full border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
+                            className="h-9 w-9 rounded-xl border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
@@ -963,8 +968,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             <button
               onClick={() => {
                 if (!menuActivity) return;
-                setMenuActivity(null);
-                handleOpenPublish(menuActivity);
+                const current = menuActivity;
+                closeMenuThen(() => handleOpenPublish(current));
               }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
             >
@@ -973,8 +978,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             <button
               onClick={() => {
                 if (!menuActivity) return;
-                setMenuActivity(null);
-                openScheduleSheet(menuActivity);
+                const current = menuActivity;
+                closeMenuThen(() => openScheduleSheet(current));
               }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
             >
@@ -984,8 +989,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
-                setMenuActivity(null);
-                void handleDownload(current);
+                closeMenuThen(() => {
+                  void handleDownload(current);
+                });
               }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
             >
@@ -995,8 +1001,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
-                setMenuActivity(null);
-                openRenameSheet(current);
+                closeMenuThen(() => openRenameSheet(current));
               }}
               className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
             >
@@ -1136,29 +1141,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               <div className="absolute right-4 top-4 z-20 flex items-center gap-2">
                 <Button
                   type="button"
-                  size="icon"
-                  variant="outline"
-                  onClick={() => setPreviewZoom((current) => Math.max(1, current - 0.25))}
-                  className="h-10 w-10 rounded-full border-white/20 bg-black/70 text-white hover:bg-black"
-                >
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="outline"
-                  onClick={() => setPreviewZoom((current) => Math.min(4, current + 0.25))}
-                  className="h-10 w-10 rounded-full border-white/20 bg-black/70 text-white hover:bg-black"
-                >
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
                   onClick={() => setPreviewTarget(null)}
-                  className="rounded-full border-white/20 bg-black/70 px-4 text-white hover:bg-black"
+                  className="h-10 w-10 rounded-full border border-white/20 bg-black/70 p-0 text-white hover:bg-black"
                 >
-                  Close
+                  <X className="h-4 w-4" />
                 </Button>
               </div>
 
