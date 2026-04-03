@@ -1,14 +1,19 @@
+import { randomUUID } from 'crypto';
+import { Queue, Worker } from 'bullmq';
+import Redis from 'ioredis';
 import prisma from '../lib/prisma';
 import { generateStudioCaption } from './ai.service';
+import { uploadBufferToBackblaze, getBackblazeAuthorizedDownloadUrl } from './backblaze';
 import { publisherService } from './publisher.service';
-import { getRSSActivity, type RSSActivityItem } from './rss.service';
-import { uploadBufferToBackblaze } from './backblaze';
-import { serverPhotopeaRenderer } from './server-photopea-renderer';
+import { getRSSActivity } from './rss.service';
+import sharp from 'sharp';
+import { readPsd } from 'ag-psd';
 
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
 const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
 const DESIGN_STUDIO_AUTO_EDITORIALS_KEY = 'designStudioAutoEditorials';
 const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
+const DESIGN_STUDIO_QUEUE_NAME = 'design-studio-renders';
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
@@ -23,75 +28,128 @@ const DEFAULT_TRIGGER_KEYWORDS = [
   'in development',
 ];
 
-type DesignStudioLayoutVariant =
-  | 'top_left'
-  | 'top_right'
-  | 'top_center'
-  | 'bottom_left'
-  | 'bottom_right'
-  | 'bottom_center';
+const DEFAULT_TARGET_PLATFORMS = ['x', 'threads'];
 
-type DesignStudioAutoEditorialStatus =
-  | 'draft'
+export type DesignStudioLayoutVariant =
+  | 'top_left'
+  | 'top_center'
+  | 'top_right'
+  | 'bottom_left'
+  | 'bottom_center'
+  | 'bottom_right';
+
+export type DesignStudioAutoEditorialStatus =
+  | 'detected'
+  | 'rendering'
   | 'queued'
-  | 'scheduled'
   | 'posted'
   | 'failed';
 
-type DesignStudioContentType =
+export type DesignStudioContentType =
   | 'poster'
   | 'carousel'
   | 'story'
   | 'announcement'
   | 'general';
 
-interface DesignStudioTemplateRecord {
-  id: string;
-  name: string;
-  previewUrl: string;
-  aspectRatio: string;
-  width: number;
-  height: number;
-  source: 'upload' | 'backblaze';
-  lastEdited: string;
-  hasSubtext: boolean;
-  hasCategory?: boolean;
-  hasSource?: boolean;
-  psdData?: Record<string, any> | null;
-  layoutVariant?: DesignStudioLayoutVariant;
-  mappedLayers?: string[];
-  textZone?: { horizontal: 'left' | 'center' | 'right'; vertical: 'top' | 'bottom' };
-  imageAnchor?: { x: number; y: number };
-  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
-  overlayStrength?: number;
-  safeMargin?: number;
-  isValidated?: boolean;
-  validationState?: 'valid' | 'warning' | 'invalid';
-  isDefaultManual?: boolean;
-  isDefaultAuto?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-type DesignStudioManualRenderJobStatus =
+export type DesignStudioManualRenderJobStatus =
   | 'queued'
   | 'rendering'
   | 'completed'
   | 'failed';
 
-interface DesignStudioRenderedDesignRecord {
+export interface DesignStudioLayerReference {
+  id: string;
+  originalName: string;
+  normalizedName: string;
+  path: string[];
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+  hasText: boolean;
+  group: boolean;
+}
+
+export interface DesignStudioVariantRecord {
+  variant: DesignStudioLayoutVariant;
+  textBox: { x: number; y: number; width: number; height: number };
+  alignment: 'left' | 'center' | 'right';
+  brandBox: { x: number; y: number; width: number; height: number };
+  backgroundAnchor: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+  overlayDirection: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+  minFontSize: number;
+  maxFontSize: number;
+  maxLines: number;
+}
+
+export interface DesignStudioTemplateRecord {
+  id: string;
+  name: string;
+  sourceType?: 'device' | 'backblaze';
+  sourceFilePath?: string;
+  previewImage?: string;
+  previewUrl?: string;
+  width: number;
+  height: number;
+  aspectRatio: string;
+  baseVariant?: DesignStudioLayoutVariant;
+  layoutVariant?: DesignStudioLayoutVariant;
+  mappedLayers?: Record<string, string>;
+  mappedLayerNames?: string[];
+  layerReferences?: Array<Record<string, any>>;
+  fontFamily?: string;
+  fontStyle?: string;
+  fontWeight?: number;
+  baseFontSize?: number;
+  fontColor?: string;
+  lineHeightMultiplier?: number;
+  tracking?: number;
+  isPointText?: boolean;
+  isValidated?: boolean;
+  validationState?: 'valid' | 'warning' | 'invalid';
+  validationErrors?: string[];
+  safeMargin?: number;
+  variants?: Array<Record<string, any>>;
+  source: 'upload' | 'backblaze';
+  psdData?: Record<string, any> | null;
+  hasHeader?: boolean;
+  hasBackground?: boolean;
+  hasSubtext: boolean;
+  hasOverlay?: boolean;
+  hasCategory?: boolean;
+  hasSource?: boolean;
+  isDefaultManual?: boolean;
+  isDefaultAuto?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  lastEdited?: string;
+}
+
+export interface DesignStudioCaptionPayload {
+  shared_caption: string;
+  pinterest_title: string;
+  pinterest_description: string;
+}
+
+export interface DesignStudioRenderedDesignRecord {
   id: string;
   templateId: string;
   templateName: string;
+  templateVariant?: DesignStudioLayoutVariant;
   outputUrl: string;
+  previewUrl?: string;
   data: Record<string, any>;
   createdAt: string;
   aspectRatio: string;
   caption?: string;
+  captions?: Record<string, any>;
   contentType?: DesignStudioContentType;
 }
 
-interface DesignStudioManualRenderJob {
+export interface DesignStudioManualRenderJob {
   id: string;
   templateId: string;
   templateName: string;
@@ -103,7 +161,7 @@ interface DesignStudioManualRenderJob {
   failureReason?: string | null;
 }
 
-interface DesignStudioAutoEditorialRecord {
+export interface DesignStudioAutoEditorialRecord {
   id: string;
   sourceFeedItemId: string;
   sourceFeedId?: string;
@@ -113,15 +171,17 @@ interface DesignStudioAutoEditorialRecord {
   matchedKeyword?: string;
   templateId: string;
   templateName?: string;
+  templateVariant?: DesignStudioLayoutVariant;
   renderedImage: string;
   headerText: string;
   subheaderText?: string;
   caption: string;
+  captions?: Record<string, any>;
   backgroundSource?: string;
   backgroundOffsetX?: number;
   backgroundOffsetY?: number;
   zoomLevel?: number;
-  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
+  overlayDirection?: string;
   overlayStrength?: number;
   scheduleTime?: string | null;
   targetPlatforms: string[];
@@ -136,9 +196,10 @@ interface DesignStudioAutoSettings {
   enabled: boolean;
   autoPost: boolean;
   defaultTemplateId: string | null;
+  templatePool: string[];
+  templateRotationStrategy: 'sequential' | 'random' | 'weighted';
   postingInterval: number;
   triggerKeywords: string[];
-  bannedKeywords: string[];
   selectedRssFeedIds: string[];
   maxEditorialsPerRun: number;
   captionLengthMode: 'short' | 'medium';
@@ -158,28 +219,74 @@ interface DesignStudioRunResult {
   failed: number;
 }
 
+interface DesignStudioRenderPayload {
+  template_id?: string;
+  template_variant?: DesignStudioLayoutVariant;
+  headerText: string;
+  subtext?: string;
+  headerTextColor?: string;
+  subtextColor?: string;
+  backgroundImage?: string;
+  imageFocalPoint?: { x: number; y: number };
+  imageZoom?: number;
+  overlayColor?: string;
+  overlayOpacity?: number;
+  gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
+  caption?: string;
+  contentType?: DesignStudioContentType;
+  cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
+  headerAlignment?: 'left' | 'center' | 'right';
+  fontScale?: number;
+  maxLines?: number;
+  overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
+  useTemplateDefaultStyling?: boolean;
+  backgroundOffsetX?: number;
+  backgroundOffsetY?: number;
+  zoomLevel?: number;
+  sharedCaption?: string;
+  pinterestTitle?: string;
+  pinterestDescription?: string;
+}
+
 interface QueueManualRenderInput {
   template: DesignStudioTemplateRecord;
-  data: {
-    headerText: string;
-    subtext?: string;
-    headerTextColor?: string;
-    subtextColor?: string;
-    backgroundImage?: string;
-    imageFocalPoint?: { x: number; y: number };
-    imageZoom?: number;
-    overlayColor?: string;
-    overlayOpacity?: number;
-    gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
-    caption?: string;
-    contentType?: DesignStudioContentType;
-  };
+  data: DesignStudioRenderPayload;
+}
+
+interface TextFitResult {
+  fontSize: number;
+  lines: string[];
+  lineHeight: number;
+}
+
+let queue: Queue<QueueManualRenderInput> | null = null;
+let worker: Worker<QueueManualRenderInput> | null = null;
+let redisConnection: Redis | null = null;
+let workerBootstrapped = false;
+
+function normalizeKeyword(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function aspectRatioFromDimensions(width: number, height: number): string {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
     : [];
+}
+
+function readNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 function parseBoolean(value: unknown, fallback = false): boolean {
@@ -199,103 +306,303 @@ function parseBoolean(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
-function normalizeKeyword(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
+function normalizeLayerName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function findMatchedKeyword(title: string, keywords: string[]): string | undefined {
-  const normalizedTitle = normalizeKeyword(title);
-  return keywords.find((keyword) => normalizedTitle.includes(normalizeKeyword(keyword)));
-}
-
-function findBannedKeyword(title: string, keywords: string[]): string | undefined {
-  const normalizedTitle = normalizeKeyword(title);
-  return keywords.find((keyword) => normalizedTitle.includes(normalizeKeyword(keyword)));
-}
-
-function getContentTypeForKeyword(keyword?: string): DesignStudioContentType {
-  const normalized = normalizeKeyword(keyword || '');
-  if (normalized.includes('release date') || normalized.includes('premiere')) {
-    return 'announcement';
+function colorToHex(value: unknown, fallback = '#ffffff'): string {
+  if (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value.trim())) {
+    return value.trim().toLowerCase();
   }
-  if (normalized.includes('renew') || normalized.includes('cancel') || normalized.includes('confirm') || normalized.includes('development')) {
-    return 'announcement';
+  if (value && typeof value === 'object') {
+    const source = value as { r?: number; g?: number; b?: number };
+    if ([source.r, source.g, source.b].every((entry) => typeof entry === 'number')) {
+      return `#${[source.r, source.g, source.b]
+        .map((channel) => clamp(Math.round(channel as number), 0, 255).toString(16).padStart(2, '0'))
+        .join('')}`;
+    }
   }
-  return 'general';
+  return fallback;
 }
 
-function deriveEditorialScore(title: string, matchedKeyword: string, hasImage: boolean): number {
-  let score = 50;
-  score += matchedKeyword.trim().includes(' ') ? 12 : 8;
-  if (title.length >= 40 && title.length <= 110) {
-    score += 12;
-  }
-  if (hasImage) {
-    score += 10;
-  }
-  return Math.min(100, score);
+function hexToRgba(value: string, alpha: number): string {
+  const normalized = value.replace('#', '');
+  const safe = normalized.length === 6 ? normalized : '000000';
+  const red = Number.parseInt(safe.slice(0, 2), 16);
+  const green = Number.parseInt(safe.slice(2, 4), 16);
+  const blue = Number.parseInt(safe.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${clamp(alpha, 0, 1)})`;
 }
 
-function deriveHeaderText(title: string): string {
-  if (title.length <= 88) {
-    return title;
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildPreviewPlaceholder(name: string, width: number, height: number): string {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#131313" />
+          <stop offset="100%" stop-color="#050505" />
+        </linearGradient>
+      </defs>
+      <rect width="${width}" height="${height}" fill="url(#bg)"/>
+      <rect x="40" y="40" width="${width - 80}" height="${height - 80}" rx="28" fill="none" stroke="#ec1e24" stroke-opacity="0.45" stroke-width="4"/>
+      <text x="${width / 2}" y="${height / 2 - 28}" text-anchor="middle" fill="#ffffff" font-size="48" font-family="Arial">PSD Template</text>
+      <text x="${width / 2}" y="${height / 2 + 40}" text-anchor="middle" fill="#9ca3af" font-size="24" font-family="Arial">${escapeXml(name)}</text>
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function flattenLayerReferences(
+  children: Array<any> | undefined,
+  path: string[] = [],
+  layers: DesignStudioLayerReference[] = [],
+): DesignStudioLayerReference[] {
+  for (const child of children || []) {
+    const originalName = typeof child?.name === 'string' && child.name.trim().length > 0 ? child.name.trim() : 'Untitled';
+    const nextPath = [...path, originalName];
+    layers.push({
+      id: nextPath.join(' > '),
+      originalName,
+      normalizedName: normalizeLayerName(originalName),
+      path: nextPath,
+      left: Number(child?.left || 0),
+      top: Number(child?.top || 0),
+      right: Number(child?.right || 0),
+      bottom: Number(child?.bottom || 0),
+      width: Math.max(0, Number(child?.right || 0) - Number(child?.left || 0)),
+      height: Math.max(0, Number(child?.bottom || 0) - Number(child?.top || 0)),
+      hasText: Boolean(child?.text),
+      group: Array.isArray(child?.children) && child.children.length > 0,
+    });
+    if (Array.isArray(child?.children)) {
+      flattenLayerReferences(child.children, nextPath, layers);
+    }
   }
-  return `${title.slice(0, 85).trim()}...`;
+  return layers;
 }
 
-function deriveSubtext(feedName?: string, matchedKeyword?: string): string {
-  if (!feedName && !matchedKeyword) {
-    return '';
-  }
-  if (feedName && matchedKeyword) {
-    return `${feedName} | ${matchedKeyword}`;
-  }
-  return feedName || matchedKeyword || '';
+function findLayerByPatterns(
+  layers: DesignStudioLayerReference[],
+  patterns: string[],
+  options: { hasText?: boolean; group?: boolean } = {},
+): DesignStudioLayerReference | undefined {
+  return layers.find((layer) => {
+    if (options.hasText !== undefined && layer.hasText !== options.hasText) {
+      return false;
+    }
+    if (options.group !== undefined && layer.group !== options.group) {
+      return false;
+    }
+    return patterns.some((pattern) => layer.normalizedName.includes(pattern));
+  });
 }
 
-function buildCaptionPrompt(
-  contentType: DesignStudioContentType,
-  settings: DesignStudioAutoSettings,
-): string {
-  return contentType === 'announcement' ? settings.promptAnnouncement : settings.promptGeneral;
+function deriveVariants(width: number, height: number, baseFontSize: number): DesignStudioVariantRecord[] {
+  const safeMargin = Math.round(Math.min(width, height) * 0.1111);
+  const centeredWidth = width - safeMargin * 2;
+  const sideWidth = Math.round(width * 0.52);
+  const topTextY = safeMargin;
+  const bottomTextHeight = 300;
+  const topTextHeight = 280;
+  const bottomTextY = height - safeMargin - bottomTextHeight;
+  const brandWidth = 300;
+  const brandHeight = 90;
+  const bottomBrandY = height - safeMargin - brandHeight;
+
+  return [
+    {
+      variant: 'bottom_center',
+      textBox: { x: safeMargin, y: bottomTextY, width: centeredWidth, height: bottomTextHeight },
+      alignment: 'center',
+      brandBox: { x: Math.round((width - brandWidth) / 2), y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'top',
+      overlayDirection: 'bottom',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+    {
+      variant: 'top_center',
+      textBox: { x: safeMargin, y: topTextY, width: centeredWidth, height: topTextHeight },
+      alignment: 'center',
+      brandBox: { x: Math.round((width - brandWidth) / 2), y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'bottom',
+      overlayDirection: 'top',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+    {
+      variant: 'top_left',
+      textBox: { x: safeMargin, y: topTextY, width: sideWidth, height: topTextHeight },
+      alignment: 'left',
+      brandBox: { x: safeMargin, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'bottom_right',
+      overlayDirection: 'top_left',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+    {
+      variant: 'top_right',
+      textBox: { x: width - safeMargin - sideWidth, y: topTextY, width: sideWidth, height: topTextHeight },
+      alignment: 'right',
+      brandBox: { x: width - safeMargin - brandWidth, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'bottom_left',
+      overlayDirection: 'top_right',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+    {
+      variant: 'bottom_left',
+      textBox: { x: safeMargin, y: bottomTextY, width: sideWidth, height: bottomTextHeight },
+      alignment: 'left',
+      brandBox: { x: safeMargin, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'top_right',
+      overlayDirection: 'bottom_left',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+    {
+      variant: 'bottom_right',
+      textBox: { x: width - safeMargin - sideWidth, y: bottomTextY, width: sideWidth, height: bottomTextHeight },
+      alignment: 'right',
+      brandBox: { x: width - safeMargin - brandWidth, y: bottomBrandY, width: brandWidth, height: brandHeight },
+      backgroundAnchor: 'top_left',
+      overlayDirection: 'bottom_right',
+      minFontSize: Math.round(baseFontSize * 0.64),
+      maxFontSize: Math.round(baseFontSize),
+      maxLines: 4,
+    },
+  ];
 }
 
-function getCaptionMaxLength(lengthMode: 'short' | 'medium'): number {
-  return lengthMode === 'short' ? 160 : 220;
-}
+function buildTemplateFromPsdBuffer(input: {
+  buffer: Buffer;
+  fileName: string;
+  sourceType: 'device' | 'backblaze';
+  sourceFilePath: string;
+  uploadedUrl: string;
+}): DesignStudioTemplateRecord {
+  const psd = readPsd(input.buffer, {
+    skipCompositeImageData: true,
+    skipLayerImageData: true,
+    skipThumbnail: true,
+  });
 
-function truncateText(value: string, maxLength: number): string {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
-}
+  const layerReferences = flattenLayerReferences(psd.children);
+  const backgroundLayer = findLayerByPatterns(layerReferences, ['background', 'bg', 'image', 'photo']);
+  const overlayLayer = findLayerByPatterns(layerReferences, ['overlay']);
+  const headerLayer = findLayerByPatterns(layerReferences, ['header', 'headline', 'title'], { hasText: true });
+  const brandGroup = findLayerByPatterns(layerReferences, ['logo', 'brand'], { group: true });
+  const fadeLayer = findLayerByPatterns(layerReferences, ['fade', 'gradient']);
 
-function toTimestamp(value?: string | null): number {
-  if (!value || typeof value !== 'string') {
-    return 0;
-  }
-  const parsed = new Date(value).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
-}
+  const headerSource = (function resolveHeader(children: Array<any> | undefined): any | undefined {
+    for (const child of children || []) {
+      if (child?.name === headerLayer?.originalName && child?.text) {
+        return child;
+      }
+      if (Array.isArray(child?.children)) {
+        const nested = resolveHeader(child.children);
+        if (nested) {
+          return nested;
+        }
+      }
+    }
+    return undefined;
+  })(psd.children);
 
-function buildScheduledTime(
-  index: number,
-  postingInterval: number,
-  existingEditorials: DesignStudioAutoEditorialRecord[],
-): string {
-  const futureScheduleTimes = existingEditorials
-    .map((item) => item.scheduleTime)
-    .filter((value): value is string => typeof value === 'string' && value.length > 0)
-    .map((value) => new Date(value).getTime())
-    .filter((value) => Number.isFinite(value) && value > Date.now());
+  const headerStyle = headerSource?.text?.style || {};
+  const paragraphStyle = headerSource?.text?.paragraphStyle || {};
+  const fontFamily = headerStyle?.font?.name || 'Arial';
+  const fontStyle = headerStyle?.fauxItalic ? 'italic' : 'normal';
+  const fontWeight = headerStyle?.fauxBold ? 700 : 700;
+  const baseFontSize = readNumber(headerStyle?.fontSize, 96);
+  const lineHeightMultiplier = Math.max(1.02, Math.min(1.2, readNumber(headerStyle?.leading, baseFontSize * 1.05) / Math.max(baseFontSize, 1)));
+  const tracking = readNumber(headerStyle?.tracking, 0);
+  const mappedLayers = {
+    background_image: backgroundLayer?.originalName || '',
+    header_text: headerLayer?.originalName || '',
+    overlay_color: overlayLayer?.originalName || '',
+    overlay_strength: overlayLayer?.originalName || '',
+    brand_group: brandGroup?.originalName || '',
+    gradient_fade: fadeLayer?.originalName || '',
+  };
 
-  const baseTime = futureScheduleTimes.length > 0
-    ? new Date(Math.max(...futureScheduleTimes))
-    : new Date();
-  baseTime.setMinutes(baseTime.getMinutes() + (futureScheduleTimes.length > 0 ? postingInterval : 0) + (postingInterval * index));
-  return baseTime.toISOString();
+  const validationErrors: string[] = [];
+  if (!backgroundLayer) validationErrors.push('Missing background layer');
+  if (!headerLayer) validationErrors.push('Missing header layer');
+  if (!overlayLayer) validationErrors.push('Missing overlay layer');
+
+  const baseVariant: DesignStudioLayoutVariant = 'bottom_center';
+  const variants = deriveVariants(psd.width, psd.height, baseFontSize);
+  const now = new Date().toISOString();
+
+  return {
+    id: `design-template-${randomUUID()}`,
+    name: input.fileName.replace(/\.psd$/i, ''),
+    sourceType: input.sourceType,
+    sourceFilePath: input.sourceFilePath,
+    previewImage: buildPreviewPlaceholder(input.fileName.replace(/\.psd$/i, ''), psd.width, psd.height),
+    previewUrl: buildPreviewPlaceholder(input.fileName.replace(/\.psd$/i, ''), psd.width, psd.height),
+    width: psd.width,
+    height: psd.height,
+    aspectRatio: aspectRatioFromDimensions(psd.width, psd.height),
+    baseVariant,
+    layoutVariant: baseVariant,
+    mappedLayers,
+    mappedLayerNames: Object.values(mappedLayers).filter(Boolean),
+    layerReferences,
+    fontFamily,
+    fontStyle,
+    fontWeight,
+    baseFontSize,
+    fontColor: colorToHex(headerStyle?.fillColor, '#ffffff'),
+    lineHeightMultiplier,
+    tracking,
+    isPointText: !('bounds' in (headerSource?.text || {})),
+    isValidated: validationErrors.length === 0,
+    validationState: validationErrors.length === 0 ? 'valid' : backgroundLayer && headerLayer ? 'warning' : 'invalid',
+    validationErrors,
+    safeMargin: Math.round(Math.min(psd.width, psd.height) * 0.1111),
+    variants,
+    source: input.sourceType === 'backblaze' ? 'backblaze' : 'upload',
+    psdData: {
+      sourceType: input.sourceType,
+      fileUrl: input.uploadedUrl,
+      fileName: input.fileName,
+      fileSignature: input.buffer.subarray(0, 4).toString('ascii'),
+      headerStyle: {
+        fontFamily,
+        fontStyle,
+        fontWeight,
+        baseFontSize,
+        fontColor: colorToHex(headerStyle?.fillColor, '#ffffff'),
+        paragraphAlignment: paragraphStyle?.justification || 'center',
+        lineHeightMultiplier,
+        tracking,
+      },
+      layerMap: mappedLayers,
+    },
+    hasHeader: Boolean(headerLayer),
+    hasBackground: Boolean(backgroundLayer),
+    hasSubtext: false,
+    hasOverlay: Boolean(overlayLayer),
+    createdAt: now,
+    updatedAt: now,
+    lastEdited: now,
+  };
 }
 
 async function readJsonSetting<T>(key: string, fallback: T): Promise<T> {
@@ -323,14 +630,553 @@ async function createDesignStudioActivity(type: string, details: Record<string, 
   });
 }
 
+async function getTemplates(): Promise<DesignStudioTemplateRecord[]> {
+  const templates = await readJsonSetting<DesignStudioTemplateRecord[]>(DESIGN_STUDIO_TEMPLATES_KEY, []);
+  return Array.isArray(templates) ? templates : [];
+}
+
+async function saveTemplates(templates: DesignStudioTemplateRecord[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_TEMPLATES_KEY, templates);
+}
+
+async function getRenderedDesigns(): Promise<DesignStudioRenderedDesignRecord[]> {
+  const rendered = await readJsonSetting<DesignStudioRenderedDesignRecord[]>(DESIGN_STUDIO_RENDERED_KEY, []);
+  return Array.isArray(rendered) ? rendered : [];
+}
+
+async function saveRenderedDesigns(renderedDesigns: DesignStudioRenderedDesignRecord[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, renderedDesigns);
+}
+
+async function getAutoEditorials(): Promise<DesignStudioAutoEditorialRecord[]> {
+  const editorials = await readJsonSetting<DesignStudioAutoEditorialRecord[]>(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, []);
+  return Array.isArray(editorials) ? editorials : [];
+}
+
+async function saveAutoEditorials(editorials: DesignStudioAutoEditorialRecord[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, editorials);
+}
+
+export async function getDesignStudioRenderJobs(): Promise<DesignStudioManualRenderJob[]> {
+  const jobs = await readJsonSetting<DesignStudioManualRenderJob[]>(DESIGN_STUDIO_RENDER_JOBS_KEY, []);
+  return Array.isArray(jobs) ? jobs : [];
+}
+
+async function saveDesignStudioRenderJobs(jobs: DesignStudioManualRenderJob[]): Promise<void> {
+  await writeJsonSetting(DESIGN_STUDIO_RENDER_JOBS_KEY, jobs);
+}
+
+async function updateManualRenderJob(
+  jobId: string,
+  patch: Partial<DesignStudioManualRenderJob>,
+): Promise<DesignStudioManualRenderJob | null> {
+  const jobs = await getDesignStudioRenderJobs();
+  let updated: DesignStudioManualRenderJob | null = null;
+  const next = jobs.map((job) => {
+    if (job.id !== jobId) {
+      return job;
+    }
+    updated = {
+      ...job,
+      ...patch,
+      updatedAt: new Date().toISOString(),
+    };
+    return updated;
+  });
+  await saveDesignStudioRenderJobs(next);
+  return updated;
+}
+
+function getRedisUrl(): string | null {
+  const value = process.env.REDIS_URL?.trim() || process.env.UPSTASH_REDIS_URL?.trim();
+  return value || null;
+}
+
+function getRedisConnection(): Redis | null {
+  const redisUrl = getRedisUrl();
+  if (!redisUrl) {
+    return null;
+  }
+  if (!redisConnection) {
+    redisConnection = new Redis(redisUrl, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    });
+  }
+  return redisConnection;
+}
+
+function ensureRenderQueue(): Queue<QueueManualRenderInput> | null {
+  if (queue) {
+    return queue;
+  }
+  const connection = getRedisConnection();
+  if (!connection) {
+    return null;
+  }
+  queue = new Queue<QueueManualRenderInput>(DESIGN_STUDIO_QUEUE_NAME, { connection });
+  return queue;
+}
+
+function ensureRenderWorker(): void {
+  if (workerBootstrapped) {
+    return;
+  }
+  workerBootstrapped = true;
+  const connection = getRedisConnection();
+  if (!connection) {
+    return;
+  }
+
+  worker = new Worker<QueueManualRenderInput>(
+    DESIGN_STUDIO_QUEUE_NAME,
+    async (job) => processManualRenderJob(String(job.id), job.data),
+    { connection },
+  );
+}
+
+function findVariant(
+  template: DesignStudioTemplateRecord,
+  variant?: DesignStudioLayoutVariant,
+): DesignStudioVariantRecord {
+  const variants = (template.variants as DesignStudioVariantRecord[] | undefined)
+    || deriveVariants(template.width, template.height, template.baseFontSize || 96);
+  return variants.find((entry) => entry.variant === (variant || template.layoutVariant || template.baseVariant))
+    || variants.find((entry) => entry.variant === template.baseVariant)
+    || variants[0];
+}
+
+async function fetchBytesFromUrl(url: string): Promise<Buffer> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch remote asset (${response.status})`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function resolveRemoteTemplateUrl(url: string): Promise<string> {
+  return getBackblazeAuthorizedDownloadUrl(url, 7 * 24 * 60 * 60);
+}
+
+async function fetchSourceBuffer(value?: string): Promise<Buffer | null> {
+  if (!value) {
+    return null;
+  }
+  if (value.startsWith('data:')) {
+    const [, content] = value.split(',');
+    return Buffer.from(content, 'base64');
+  }
+  const remoteUrl = value.startsWith('http') ? value : await resolveRemoteTemplateUrl(value);
+  return fetchBytesFromUrl(remoteUrl);
+}
+
+function estimateWordWidth(word: string, fontSize: number, tracking: number): number {
+  const base = [...word].reduce((sum, char) => {
+    if ('MW@#%&'.includes(char)) return sum + 0.95;
+    if ('ilI1'.includes(char)) return sum + 0.35;
+    if (' .,:;!|'.includes(char)) return sum + 0.22;
+    return sum + 0.62;
+  }, 0);
+  return base * fontSize + Math.max(0, word.length - 1) * tracking * 0.08;
+}
+
+function fitTextBlock(input: {
+  text: string;
+  boxWidth: number;
+  boxHeight: number;
+  minFontSize: number;
+  maxFontSize: number;
+  maxLines: number;
+  lineHeightMultiplier: number;
+  tracking: number;
+}): TextFitResult {
+  const normalized = input.text.replace(/\s+/g, ' ').trim();
+  const words = normalized.split(' ').filter(Boolean);
+
+  const buildLines = (fontSize: number): string[] => {
+    const lines: string[] = [];
+    let current = '';
+
+    for (const word of words) {
+      const trial = current ? `${current} ${word}` : word;
+      const trialWidth = estimateWordWidth(trial, fontSize, input.tracking);
+      if (trialWidth <= input.boxWidth || !current) {
+        current = trial;
+      } else {
+        lines.push(current);
+        current = word;
+      }
+    }
+
+    if (current) {
+      lines.push(current);
+    }
+    return lines;
+  };
+
+  for (let fontSize = input.maxFontSize; fontSize >= input.minFontSize; fontSize -= 2) {
+    const lines = buildLines(fontSize);
+    const lineHeight = fontSize * input.lineHeightMultiplier;
+    if (lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
+      return { fontSize, lines, lineHeight };
+    }
+  }
+
+  const fontSize = input.minFontSize;
+  const lineHeight = fontSize * input.lineHeightMultiplier;
+  const lines = buildLines(fontSize).slice(0, input.maxLines);
+  if (lines.length > 0) {
+    const lastLine = lines[lines.length - 1];
+    lines[lines.length - 1] = lastLine.length > 3 ? `${lastLine.slice(0, Math.max(0, lastLine.length - 3)).trim()}...` : lastLine;
+  }
+  return { fontSize, lines, lineHeight };
+}
+
+function buildTextSvg(input: {
+  width: number;
+  height: number;
+  variant: DesignStudioVariantRecord;
+  template: DesignStudioTemplateRecord;
+  payload: DesignStudioRenderPayload;
+}): Buffer {
+  const alignment = input.payload.headerAlignment || input.variant.alignment;
+  const fontScale = input.payload.fontScale ?? 1;
+  const maxLines = input.payload.maxLines || input.variant.maxLines;
+  const fontColor = input.payload.useTemplateDefaultStyling
+    ? (input.template.fontColor || '#ffffff')
+    : (input.payload.headerTextColor || input.template.fontColor || '#ffffff');
+  const fit = fitTextBlock({
+    text: input.payload.headerText,
+    boxWidth: input.variant.textBox.width,
+    boxHeight: input.variant.textBox.height,
+    minFontSize: Math.round(input.variant.minFontSize * fontScale),
+    maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
+    maxLines,
+    lineHeightMultiplier: input.template.lineHeightMultiplier || 1.05,
+    tracking: input.template.tracking || 0,
+  });
+
+  const anchor = alignment === 'center' ? 'middle' : alignment === 'right' ? 'end' : 'start';
+  const x = alignment === 'center'
+    ? input.variant.textBox.x + input.variant.textBox.width / 2
+    : alignment === 'right'
+      ? input.variant.textBox.x + input.variant.textBox.width
+      : input.variant.textBox.x;
+  const firstLineY = input.variant.textBox.y + fit.fontSize;
+  const trackingEm = ((input.template.tracking || 0) / 1000).toFixed(3);
+  const linesSvg = fit.lines.map((line, index) => `
+      <text
+        x="${x}"
+        y="${firstLineY + index * fit.lineHeight}"
+        text-anchor="${anchor}"
+        fill="${fontColor}"
+        font-family="${escapeXml(input.template.fontFamily || 'Arial')}"
+        font-size="${fit.fontSize}"
+        font-style="${input.template.fontStyle || 'normal'}"
+        font-weight="${input.template.fontWeight || 700}"
+        letter-spacing="${trackingEm}em"
+      >${escapeXml(line)}</text>
+    `).join('');
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      ${linesSvg}
+    </svg>
+  `.trim();
+  return Buffer.from(svg);
+}
+
+function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {
+  const { x, y, width: boxWidth, height: boxHeight } = variant.brandBox;
+  const redWidth = Math.round(boxWidth * 0.22);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <g>
+        <rect x="${x}" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="12" fill="#0a0a0a" />
+        <rect x="${x}" y="${y}" width="${redWidth}" height="${boxHeight}" rx="12" fill="#ec1e24" />
+        <text x="${x + redWidth + 22}" y="${y + boxHeight / 2 + 10}" fill="#ffffff" font-family="Arial" font-size="34" font-weight="700" letter-spacing="0.3em">NEWS</text>
+      </g>
+    </svg>
+  `.trim();
+  return Buffer.from(svg);
+}
+
+function buildOverlaySvg(input: {
+  width: number;
+  height: number;
+  color: string;
+  strength: number;
+  direction: string;
+  overlayType: string;
+}): Buffer {
+  const alpha = clamp(input.strength, 0, 1);
+  const opaque = hexToRgba(input.color, alpha);
+  const transparent = hexToRgba(input.color, 0);
+  const directionMap: Record<string, { x1: string; y1: string; x2: string; y2: string }> = {
+    top: { x1: '0%', y1: '0%', x2: '0%', y2: '100%' },
+    bottom: { x1: '0%', y1: '100%', x2: '0%', y2: '0%' },
+    left: { x1: '0%', y1: '0%', x2: '100%', y2: '0%' },
+    right: { x1: '100%', y1: '0%', x2: '0%', y2: '0%' },
+    top_left: { x1: '0%', y1: '0%', x2: '100%', y2: '100%' },
+    top_right: { x1: '100%', y1: '0%', x2: '0%', y2: '100%' },
+    bottom_left: { x1: '0%', y1: '100%', x2: '100%', y2: '0%' },
+    bottom_right: { x1: '100%', y1: '100%', x2: '0%', y2: '0%' },
+  };
+  const gradient = directionMap[input.direction] || directionMap.bottom;
+
+  let body = `<rect width="${input.width}" height="${input.height}" fill="url(#overlay)" />`;
+  let defs = `
+    <linearGradient id="overlay" x1="${gradient.x1}" y1="${gradient.y1}" x2="${gradient.x2}" y2="${gradient.y2}">
+      <stop offset="0%" stop-color="${opaque}" />
+      <stop offset="62%" stop-color="${transparent}" />
+    </linearGradient>
+  `;
+
+  if (input.overlayType === 'radial') {
+    defs = `
+      <radialGradient id="overlay" cx="50%" cy="50%" r="70%">
+        <stop offset="0%" stop-color="${transparent}" />
+        <stop offset="100%" stop-color="${opaque}" />
+      </radialGradient>
+    `;
+  } else if (input.overlayType === 'full_fade') {
+    body = `<rect width="${input.width}" height="${input.height}" fill="${opaque}" />`;
+    defs = '';
+  } else if (input.overlayType === 'top_fade') {
+    defs = `
+      <linearGradient id="overlay" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" stop-color="${opaque}" />
+        <stop offset="72%" stop-color="${transparent}" />
+      </linearGradient>
+    `;
+  } else if (input.overlayType === 'bottom_fade') {
+    defs = `
+      <linearGradient id="overlay" x1="0%" y1="100%" x2="0%" y2="0%">
+        <stop offset="0%" stop-color="${opaque}" />
+        <stop offset="72%" stop-color="${transparent}" />
+      </linearGradient>
+    `;
+  }
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      <defs>${defs}</defs>
+      ${body}
+    </svg>
+  `.trim();
+  return Buffer.from(svg);
+}
+
+async function buildBackgroundLayer(input: {
+  width: number;
+  height: number;
+  source?: string;
+  cropMode?: DesignStudioRenderPayload['cropMode'];
+  backgroundAnchor: DesignStudioVariantRecord['backgroundAnchor'];
+  focalPoint?: { x: number; y: number };
+  zoom?: number;
+}): Promise<Buffer> {
+  const source = input.source ? await fetchSourceBuffer(input.source) : null;
+  if (!source) {
+    return sharp({
+      create: {
+        width: input.width,
+        height: input.height,
+        channels: 3,
+        background: { r: 18, g: 18, b: 18 },
+      },
+    }).png().toBuffer();
+  }
+
+  const zoom = clamp(input.zoom || 1, 0.8, 2);
+  const meta = await sharp(source).metadata();
+  const srcWidth = meta.width || input.width;
+  const srcHeight = meta.height || input.height;
+  let targetWidth = input.width;
+  let targetHeight = input.height;
+  if ((input.cropMode || 'cover') === 'contain') {
+    const ratio = Math.min(input.width / srcWidth, input.height / srcHeight) * zoom;
+    targetWidth = Math.max(1, Math.round(srcWidth * ratio));
+    targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+  } else {
+    const ratio = Math.max(input.width / srcWidth, input.height / srcHeight) * zoom;
+    targetWidth = Math.max(1, Math.round(srcWidth * ratio));
+    targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+  }
+
+  const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
+  const leftBase = (() => {
+    switch (input.backgroundAnchor) {
+      case 'top_right':
+      case 'bottom_right':
+      case 'right':
+        return input.width - targetWidth;
+      case 'top_left':
+      case 'bottom_left':
+      case 'left':
+        return 0;
+      default:
+        return Math.round((input.width - targetWidth) / 2);
+    }
+  })();
+  const topBase = (() => {
+    switch (input.backgroundAnchor) {
+      case 'bottom':
+      case 'bottom_left':
+      case 'bottom_right':
+        return input.height - targetHeight;
+      case 'top':
+      case 'top_left':
+      case 'top_right':
+        return 0;
+      default:
+        return Math.round((input.height - targetHeight) / 2);
+    }
+  })();
+  const left = Math.round(leftBase + ((input.focalPoint?.x ?? 50) - 50) * 2.2);
+  const top = Math.round(topBase + ((input.focalPoint?.y ?? 50) - 50) * 2.2);
+
+  return sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
+    },
+  })
+    .composite([{ input: resized, left, top }])
+    .png()
+    .toBuffer();
+}
+
+async function renderDesignStudioImage(
+  template: DesignStudioTemplateRecord,
+  payload: DesignStudioRenderPayload,
+): Promise<Buffer> {
+  const variant = findVariant(template, payload.template_variant);
+  const width = template.width;
+  const height = template.height;
+  const background = await buildBackgroundLayer({
+    width,
+    height,
+    source: payload.backgroundImage,
+    cropMode: payload.cropMode,
+    backgroundAnchor: variant.backgroundAnchor,
+    focalPoint: payload.imageFocalPoint || (
+      payload.backgroundOffsetX !== undefined || payload.backgroundOffsetY !== undefined
+        ? { x: payload.backgroundOffsetX ?? 50, y: payload.backgroundOffsetY ?? 50 }
+        : undefined
+    ),
+    zoom: payload.zoomLevel || payload.imageZoom,
+  });
+
+  const overlayColor = payload.useTemplateDefaultStyling ? '#000000' : (payload.overlayColor || '#000000');
+  const overlayStrength = payload.useTemplateDefaultStyling
+    ? 0.72
+    : clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
+  const overlay = buildOverlaySvg({
+    width,
+    height,
+    color: overlayColor,
+    strength: overlayStrength,
+    direction: payload.gradientPosition || variant.overlayDirection,
+    overlayType: payload.overlayType || 'linear',
+  });
+  const textOverlay = buildTextSvg({ width, height, variant, template, payload });
+  const brandOverlay = buildBrandSvg(width, height, variant);
+
+  return sharp(background)
+    .composite([
+      { input: overlay },
+      { input: textOverlay },
+      { input: brandOverlay },
+    ])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
+function findMatchedKeyword(title: string, keywords: string[]): string | undefined {
+  const normalizedTitle = normalizeKeyword(title);
+  return keywords.find((keyword) => normalizedTitle.includes(normalizeKeyword(keyword)));
+}
+
+function deriveEditorialScore(title: string, matchedKeyword: string, hasImage: boolean): number {
+  let score = 48;
+  score += matchedKeyword.includes(' ') ? 15 : 10;
+  if (title.length >= 30 && title.length <= 110) {
+    score += 14;
+  }
+  if (hasImage) {
+    score += 12;
+  }
+  return Math.min(100, score);
+}
+
+function deriveHeaderText(title: string): string {
+  return title.trim().length <= 120 ? title.trim() : `${title.trim().slice(0, 117).trim()}...`;
+}
+
+function deriveSubtext(feedName?: string, matchedKeyword?: string): string {
+  if (!feedName && !matchedKeyword) return '';
+  if (feedName && matchedKeyword) return `${feedName} | ${matchedKeyword}`;
+  return feedName || matchedKeyword || '';
+}
+
+function getContentTypeForKeyword(keyword?: string): DesignStudioContentType {
+  const normalized = normalizeKeyword(keyword || '');
+  if (['release date', 'premiere', 'renew', 'cancel', 'confirm', 'development'].some((entry) => normalized.includes(entry))) {
+    return 'announcement';
+  }
+  return 'general';
+}
+
+function getCaptionMaxLength(lengthMode: 'short' | 'medium'): number {
+  return lengthMode === 'short' ? 160 : 240;
+}
+
+function truncateText(value: string, maxLength: number): string {
+  const normalized = value.trim();
+  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, Math.max(0, maxLength - 3)).trim()}...`;
+}
+
+async function buildCaptionPayload(
+  title: string,
+  subtext: string,
+  contentType: DesignStudioContentType,
+  settings: DesignStudioAutoSettings,
+): Promise<DesignStudioCaptionPayload> {
+  const prompt = contentType === 'announcement' ? settings.promptAnnouncement : settings.promptGeneral;
+  const shared = truncateText(
+    await generateStudioCaption(
+      {
+        fileName: title,
+        fileDescription: subtext || title,
+        tone: settings.captionTone,
+      },
+      settings.model as any,
+      prompt,
+      settings.captionTemperature,
+      settings.captionMaxTokens,
+    ),
+    getCaptionMaxLength(settings.captionLengthMode),
+  );
+
+  return {
+    shared_caption: shared,
+    pinterest_title: truncateText(title, 100),
+    pinterest_description: truncateText(`${title}. ${subtext || 'Latest entertainment news update.'}`, 500),
+  };
+}
+
 async function getAutoSettings(): Promise<DesignStudioAutoSettings> {
   const keys = [
     'designStudioAutoEnabled',
     'designStudioAutoPost',
     'designStudioDefaultAutoTemplateId',
+    'designStudioTemplatePool',
+    'designStudioTemplateRotationStrategy',
     'designStudioPostingInterval',
     'designStudioTriggerKeywords',
-    'designStudioBannedKeywords',
     'designStudioSelectedRssFeedIds',
     'designStudioMaxEditorialsPerRun',
     'designStudioCaptionLengthMode',
@@ -343,14 +1189,15 @@ async function getAutoSettings(): Promise<DesignStudioAutoSettings> {
     'captionMaxTokens',
     'captionTone',
   ];
+
   const settings = await prisma.setting.findMany({
     where: { key: { in: keys } },
     select: { key: true, value: true },
   });
-  const map = new Map(settings.map((setting) => [setting.key, setting.value]));
-
+  const map = new Map(settings.map((entry) => [entry.key, entry.value]));
   const triggerKeywords = asStringArray(map.get('designStudioTriggerKeywords'));
-  const bannedKeywords = asStringArray(map.get('designStudioBannedKeywords'));
+  const templatePool = asStringArray(map.get('designStudioTemplatePool'));
+  const rotation = String(map.get('designStudioTemplateRotationStrategy') || 'sequential').toLowerCase();
 
   return {
     enabled: parseBoolean(map.get('designStudioAutoEnabled'), false),
@@ -358,255 +1205,78 @@ async function getAutoSettings(): Promise<DesignStudioAutoSettings> {
     defaultTemplateId: typeof map.get('designStudioDefaultAutoTemplateId') === 'string'
       ? String(map.get('designStudioDefaultAutoTemplateId'))
       : null,
-    postingInterval: Math.max(1, Number.parseInt(String(map.get('designStudioPostingInterval') ?? '5'), 10) || 5),
+    templatePool,
+    templateRotationStrategy: ['random', 'weighted', 'sequential'].includes(rotation)
+      ? rotation as DesignStudioAutoSettings['templateRotationStrategy']
+      : 'sequential',
+    postingInterval: Math.max(1, readNumber(map.get('designStudioPostingInterval'), 5)),
     triggerKeywords: triggerKeywords.length > 0 ? triggerKeywords : DEFAULT_TRIGGER_KEYWORDS,
-    bannedKeywords,
     selectedRssFeedIds: asStringArray(map.get('designStudioSelectedRssFeedIds')),
-    maxEditorialsPerRun: Math.max(1, Math.min(20, Number.parseInt(String(map.get('designStudioMaxEditorialsPerRun') ?? '5'), 10) || 5)),
-    captionLengthMode: String(map.get('designStudioCaptionLengthMode') ?? 'medium') === 'short' ? 'short' : 'medium',
-    minimumScoreThreshold: Math.max(0, Math.min(100, Number.parseInt(String(map.get('designStudioMinimumScoreThreshold') ?? '55'), 10) || 55)),
-    targetPlatforms: asStringArray(map.get('designStudioTargetPlatforms')),
-    model: typeof map.get('captionOpenaiModel') === 'string' ? String(map.get('captionOpenaiModel')) : 'gpt-5-mini',
-    promptGeneral: typeof map.get('captionGeneralPrompt') === 'string'
-      ? String(map.get('captionGeneralPrompt'))
-      : 'Write a concise entertainment-news social caption. Keep it clear, punchy, and under 220 characters.',
-    promptAnnouncement: typeof map.get('captionAnnouncementPrompt') === 'string'
-      ? String(map.get('captionAnnouncementPrompt'))
-      : 'Write a concise entertainment-news announcement caption. Lead with the news, keep it under 220 characters, and avoid fluff.',
-    captionTemperature: Number(map.get('captionTemperature') ?? 0.7) || 0.7,
-    captionMaxTokens: Number.parseInt(String(map.get('captionMaxTokens') ?? '500'), 10) || 500,
-    captionTone: typeof map.get('captionTone') === 'string' ? String(map.get('captionTone')) : 'engaging',
+    maxEditorialsPerRun: Math.max(1, readNumber(map.get('designStudioMaxEditorialsPerRun'), 5)),
+    captionLengthMode: String(map.get('designStudioCaptionLengthMode') || 'medium') === 'short' ? 'short' : 'medium',
+    minimumScoreThreshold: clamp(readNumber(map.get('designStudioMinimumScoreThreshold'), 55), 0, 100),
+    targetPlatforms: asStringArray(map.get('designStudioTargetPlatforms')).length > 0
+      ? asStringArray(map.get('designStudioTargetPlatforms'))
+      : DEFAULT_TARGET_PLATFORMS,
+    model: String(map.get('captionOpenaiModel') || 'gpt-4o-mini'),
+    promptGeneral: String(map.get('captionGeneralPrompt') || 'Write a concise entertainment-news caption.'),
+    promptAnnouncement: String(map.get('captionAnnouncementPrompt') || 'Write a concise entertainment announcement caption.'),
+    captionTemperature: readNumber(map.get('captionTemperature'), 0.7),
+    captionMaxTokens: Math.max(100, readNumber(map.get('captionMaxTokens'), 500)),
+    captionTone: String(map.get('captionTone') || 'engaging'),
   };
-}
-
-async function getTemplates(): Promise<DesignStudioTemplateRecord[]> {
-  const templates = await readJsonSetting<unknown[]>(DESIGN_STUDIO_TEMPLATES_KEY, []);
-  return Array.isArray(templates) ? templates.filter((item): item is DesignStudioTemplateRecord => Boolean(item && typeof item === 'object')) : [];
-}
-
-async function getAutoEditorials(): Promise<DesignStudioAutoEditorialRecord[]> {
-  const editorials = await readJsonSetting<unknown[]>(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, []);
-  return Array.isArray(editorials)
-    ? editorials.filter((item): item is DesignStudioAutoEditorialRecord => Boolean(item && typeof item === 'object'))
-    : [];
-}
-
-async function saveAutoEditorials(editorials: DesignStudioAutoEditorialRecord[]): Promise<void> {
-  await writeJsonSetting(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, editorials);
-}
-
-async function getRenderedDesigns(): Promise<DesignStudioRenderedDesignRecord[]> {
-  const renderedDesigns = await readJsonSetting<unknown[]>(DESIGN_STUDIO_RENDERED_KEY, []);
-  return Array.isArray(renderedDesigns)
-    ? renderedDesigns.filter((item): item is DesignStudioRenderedDesignRecord => Boolean(item && typeof item === 'object'))
-    : [];
-}
-
-async function saveRenderedDesigns(renderedDesigns: DesignStudioRenderedDesignRecord[]): Promise<void> {
-  await writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, renderedDesigns);
-}
-
-export async function getDesignStudioRenderJobs(): Promise<DesignStudioManualRenderJob[]> {
-  const renderJobs = await readJsonSetting<unknown[]>(DESIGN_STUDIO_RENDER_JOBS_KEY, []);
-  return Array.isArray(renderJobs)
-    ? renderJobs.filter((item): item is DesignStudioManualRenderJob => Boolean(item && typeof item === 'object'))
-    : [];
-}
-
-async function saveDesignStudioRenderJobs(renderJobs: DesignStudioManualRenderJob[]): Promise<void> {
-  await writeJsonSetting(DESIGN_STUDIO_RENDER_JOBS_KEY, renderJobs);
-}
-
-async function updateManualRenderJob(
-  jobId: string,
-  patch: Partial<DesignStudioManualRenderJob>,
-): Promise<DesignStudioManualRenderJob | null> {
-  const jobs = await getDesignStudioRenderJobs();
-  const index = jobs.findIndex((job) => job.id === jobId);
-  if (index === -1) {
-    return null;
-  }
-
-  const nextJob: DesignStudioManualRenderJob = {
-    ...jobs[index],
-    ...patch,
-    updatedAt: new Date().toISOString(),
-  };
-  jobs[index] = nextJob;
-  await saveDesignStudioRenderJobs(jobs);
-  return nextJob;
 }
 
 function getAutoTemplatePool(
   templates: DesignStudioTemplateRecord[],
-  defaultTemplateId: string | null,
-): DesignStudioTemplateRecord[] {
-  const validated = templates.filter((template) => template.isValidated !== false);
-  if (validated.length > 0) {
-    return validated;
-  }
-  if (defaultTemplateId) {
-    const fallback = templates.find((template) => template.id === defaultTemplateId);
-    return fallback ? [fallback] : [];
-  }
-  return [];
-}
-
-async function buildAutoCaption(
-  item: RSSActivityItem,
-  contentType: DesignStudioContentType,
-  subtext: string,
   settings: DesignStudioAutoSettings,
-): Promise<string> {
-  const prompt = buildCaptionPrompt(contentType, settings);
-  const rawCaption = await generateStudioCaption(
-    {
-      fileName: item.title,
-      fileDescription: [subtext, item.description, item.feedName].filter(Boolean).join(' | '),
-      tone: settings.captionTone,
-    },
-    settings.model as any,
-    prompt,
-    settings.captionTemperature,
-    settings.captionMaxTokens,
-  );
-
-  return truncateText(rawCaption, getCaptionMaxLength(settings.captionLengthMode));
+): DesignStudioTemplateRecord[] {
+  const validTemplates = templates.filter((template) => template.isValidated);
+  const poolIds = settings.templatePool.length > 0 ? settings.templatePool : (settings.defaultTemplateId ? [settings.defaultTemplateId] : []);
+  const pool = poolIds.length > 0
+    ? validTemplates.filter((template) => poolIds.includes(template.id))
+    : validTemplates.filter((template) => template.isDefaultAuto || template.id === settings.defaultTemplateId);
+  return pool.length > 0 ? pool : validTemplates.slice(0, 1);
 }
 
-function selectRenderedImage(
-  item: RSSActivityItem,
-  template: DesignStudioTemplateRecord,
+function toTimestamp(value?: string | null): number {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildScheduledTime(
+  index: number,
+  postingInterval: number,
+  existingEditorials: DesignStudioAutoEditorialRecord[],
 ): string {
-  return item.imageUrl
-    || item.imageUrls?.[0]
-    || template.previewUrl
-    || '';
-}
+  const futureScheduleTimes = existingEditorials
+    .map((item) => item.scheduleTime)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value).getTime())
+    .filter((value) => Number.isFinite(value) && value > Date.now());
 
-async function renderAutoEditorialImage(
-  item: RSSActivityItem,
-  template: DesignStudioTemplateRecord,
-  headerText: string,
-  subtext: string,
-): Promise<string> {
-  const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
-  if (!psdUrl || typeof psdUrl !== 'string') {
-    return selectRenderedImage(item, template);
-  }
-
-  const backgroundUrl = item.imageUrl || item.imageUrls?.[0];
-  let backgroundBytes: Buffer | undefined;
-  let backgroundFileName: string | undefined;
-
-  if (backgroundUrl) {
-    try {
-      const imageResponse = await fetch(backgroundUrl);
-      if (imageResponse.ok) {
-        backgroundBytes = Buffer.from(await imageResponse.arrayBuffer());
-        const parsedUrl = new URL(backgroundUrl);
-        backgroundFileName = parsedUrl.pathname.split('/').pop() || 'background.jpg';
-      }
-    } catch {
-      backgroundBytes = undefined;
-      backgroundFileName = undefined;
-    }
-  }
-
-  try {
-    const renderedBuffer = await serverPhotopeaRenderer.renderTemplate({
-      psdUrl,
-      headerText,
-      subtext,
-      backgroundBytes,
-      backgroundFileName,
-      width: template.width,
-      height: template.height,
-      hasSubtext: template.hasSubtext,
-      overlayDirection: template.overlayDirection || 'top',
-      overlayStrength: template.overlayStrength || 75,
-      backgroundOffsetX: template.imageAnchor?.x ?? 50,
-      backgroundOffsetY: template.imageAnchor?.y ?? 50,
-      zoomLevel: 1,
-      headerTextColor: '#ffffff',
-      subtextColor: '#ffffff',
-    });
-    const uploaded = await uploadBufferToBackblaze(
-      renderedBuffer,
-      `${template.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}-auto.jpg`,
-      {
-        bucketTypes: ['design', 'general'],
-        prefix: 'design-studio/renders',
-        contentType: 'image/jpeg',
-      },
-    );
-    return uploaded.url;
-  } catch {
-    return selectRenderedImage(item, template);
-  }
-}
-
-async function fetchBackgroundBytes(backgroundUrl?: string): Promise<{ bytes?: Buffer; fileName?: string }> {
-  if (!backgroundUrl) {
-    return {};
-  }
-
-  try {
-    const imageResponse = await fetch(backgroundUrl);
-    if (!imageResponse.ok) {
-      return {};
-    }
-
-    const bytes = Buffer.from(await imageResponse.arrayBuffer());
-    const parsedUrl = new URL(backgroundUrl);
-    return {
-      bytes,
-      fileName: parsedUrl.pathname.split('/').pop() || 'background.jpg',
-    };
-  } catch {
-    return {};
-  }
+  const base = futureScheduleTimes.length > 0 ? Math.max(...futureScheduleTimes) : Date.now();
+  return new Date(base + (postingInterval * (index + 1) * 60 * 1000)).toISOString();
 }
 
 async function processManualRenderJob(
   jobId: string,
   input: QueueManualRenderInput,
 ): Promise<void> {
-  const { template, data } = input;
-
-  await updateManualRenderJob(jobId, {
-    status: 'rendering',
-    failureReason: null,
-  });
+  const template = input.template;
+  await updateManualRenderJob(jobId, { status: 'rendering', failureReason: null });
 
   try {
-    const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
-    if (!psdUrl || typeof psdUrl !== 'string') {
-      throw new Error('Template source file is missing');
-    }
-
-    const background = await fetchBackgroundBytes(data.backgroundImage);
-    const renderedBuffer = await serverPhotopeaRenderer.renderTemplate({
-      psdUrl,
-      headerText: data.headerText,
-      subtext: template.hasSubtext ? data.subtext : undefined,
-      backgroundBytes: background.bytes,
-      backgroundFileName: background.fileName,
-      width: template.width,
-      height: template.height,
-      hasSubtext: template.hasSubtext,
-      overlayDirection: data.gradientPosition || template.overlayDirection || 'top',
-      overlayStrength: data.overlayOpacity ?? template.overlayStrength ?? 75,
-      backgroundOffsetX: data.imageFocalPoint?.x ?? template.imageAnchor?.x ?? 50,
-      backgroundOffsetY: data.imageFocalPoint?.y ?? template.imageAnchor?.y ?? 50,
-      zoomLevel: data.imageZoom ?? 1,
-      headerTextColor: data.headerTextColor || '#ffffff',
-      subtextColor: data.subtextColor || '#ffffff',
+    const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
+    const renderedBuffer = await renderDesignStudioImage(template, {
+      ...input.data,
+      template_variant: activeVariant,
     });
 
     const uploaded = await uploadBufferToBackblaze(
       renderedBuffer,
-      `${template.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}-${Date.now()}.jpg`,
+      `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-${Date.now()}.jpg`,
       {
         bucketTypes: ['design', 'general'],
         prefix: 'design-studio/renders',
@@ -614,20 +1284,29 @@ async function processManualRenderJob(
       },
     );
 
+    const captions: DesignStudioCaptionPayload = {
+      shared_caption: input.data.sharedCaption || input.data.caption || '',
+      pinterest_title: input.data.pinterestTitle || truncateText(input.data.headerText, 100),
+      pinterest_description: input.data.pinterestDescription || truncateText(input.data.subtext || input.data.headerText, 500),
+    };
+
     const renderedDesign: DesignStudioRenderedDesignRecord = {
-      id: `design-${Date.now()}`,
+      id: `design-render-${randomUUID()}`,
       templateId: template.id,
       templateName: template.name,
+      templateVariant: activeVariant,
       outputUrl: uploaded.url,
-      data,
+      previewUrl: uploaded.url,
+      data: input.data,
       createdAt: new Date().toISOString(),
       aspectRatio: template.aspectRatio,
-      caption: data.caption,
-      contentType: data.contentType,
+      caption: captions.shared_caption,
+      captions,
+      contentType: input.data.contentType,
     };
 
     const renderedDesigns = await getRenderedDesigns();
-    await saveRenderedDesigns([renderedDesign, ...renderedDesigns]);
+    await saveRenderedDesigns([renderedDesign, ...renderedDesigns].slice(0, 200));
 
     await updateManualRenderJob(jobId, {
       status: 'completed',
@@ -637,9 +1316,10 @@ async function processManualRenderJob(
     });
 
     await createDesignStudioActivity('design_rendered', {
+      templateId: template.id,
       templateName: template.name,
-      designId: renderedDesign.id,
       renderJobId: jobId,
+      variant: renderedDesign.templateVariant,
     });
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : 'Failed to render design';
@@ -648,6 +1328,7 @@ async function processManualRenderJob(
       failureReason,
     });
     await createDesignStudioActivity('design_render_failed', {
+      templateId: template.id,
       templateName: template.name,
       renderJobId: jobId,
       reason: failureReason,
@@ -655,10 +1336,31 @@ async function processManualRenderJob(
   }
 }
 
+export async function registerUploadedDesignStudioTemplate(input: {
+  buffer: Buffer;
+  fileName: string;
+  sourceType: 'device' | 'backblaze';
+  sourceFilePath: string;
+  uploadedUrl: string;
+}): Promise<DesignStudioTemplateRecord> {
+  const template = buildTemplateFromPsdBuffer(input);
+  const templates = await getTemplates();
+  const nextTemplates = [template, ...templates.filter((entry) => entry.sourceFilePath !== template.sourceFilePath)].slice(0, 200);
+  await saveTemplates(nextTemplates);
+  await createDesignStudioActivity('template_uploaded', {
+    templateId: template.id,
+    templateName: template.name,
+    sourceType: template.sourceType,
+    isValidated: template.isValidated,
+  });
+  return template;
+}
+
 export async function queueManualDesignStudioRender(input: QueueManualRenderInput): Promise<DesignStudioManualRenderJob> {
+  ensureRenderWorker();
   const now = new Date().toISOString();
   const job: DesignStudioManualRenderJob = {
-    id: `manual-render-${Date.now()}`,
+    id: `manual-render-${randomUUID()}`,
     templateId: input.template.id,
     templateName: input.template.name,
     status: 'queued',
@@ -670,26 +1372,32 @@ export async function queueManualDesignStudioRender(input: QueueManualRenderInpu
   };
 
   const jobs = await getDesignStudioRenderJobs();
-  await saveDesignStudioRenderJobs([job, ...jobs].slice(0, 100));
+  await saveDesignStudioRenderJobs([job, ...jobs].slice(0, 200));
   await createDesignStudioActivity('design_render_queued', {
     templateName: input.template.name,
+    templateId: input.template.id,
     renderJobId: job.id,
   });
 
-  setTimeout(() => {
-    void processManualRenderJob(job.id, input);
-  }, 0);
+  const renderQueue = ensureRenderQueue();
+  if (renderQueue) {
+    await renderQueue.add(job.id, { ...input, data: { ...input.data, template_id: input.template.id } }, {
+      jobId: job.id,
+      removeOnComplete: 50,
+      removeOnFail: 50,
+    });
+  } else {
+    setTimeout(() => {
+      void processManualRenderJob(job.id, input);
+    }, 0);
+  }
 
   return job;
 }
 
 export async function generateDesignStudioAutoEditorials(): Promise<DesignStudioRunResult> {
   const settings = await getAutoSettings();
-  if (!settings.enabled) {
-    return { generated: 0, published: 0, failed: 0 };
-  }
-
-  if (settings.selectedRssFeedIds.length === 0 || settings.triggerKeywords.length === 0) {
+  if (!settings.enabled || settings.selectedRssFeedIds.length === 0 || settings.triggerKeywords.length === 0) {
     return { generated: 0, published: 0, failed: 0 };
   }
 
@@ -699,7 +1407,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     getRSSActivity(250),
   ]);
 
-  const templatePool = getAutoTemplatePool(templates, settings.defaultTemplateId);
+  const templatePool = getAutoTemplatePool(templates, settings);
   if (templatePool.length === 0) {
     return { generated: 0, published: 0, failed: 0 };
   }
@@ -707,31 +1415,24 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
   const selectedFeedIds = new Set(settings.selectedRssFeedIds);
   const existingSourceIds = new Set(existingEditorials.map((item) => item.sourceFeedItemId));
   const seenTitles = new Set<string>();
+
   const candidates = activity.items
     .filter((item) => item.feedId && selectedFeedIds.has(item.feedId))
     .map((item) => {
-      const blockedKeyword = findBannedKeyword(item.title, settings.bannedKeywords);
-      if (blockedKeyword) {
-        return null;
-      }
-
       const matchedKeyword = findMatchedKeyword(item.title, settings.triggerKeywords);
       if (!matchedKeyword) {
         return null;
       }
-
       const normalizedTitle = normalizeKeyword(item.title);
       if (existingSourceIds.has(item.id) || seenTitles.has(normalizedTitle)) {
         return null;
       }
       seenTitles.add(normalizedTitle);
-
       const backgroundSource = item.imageUrl || item.imageUrls?.[0];
       const score = deriveEditorialScore(item.title, matchedKeyword, Boolean(backgroundSource));
       if (score < settings.minimumScoreThreshold) {
         return null;
       }
-
       return { item, matchedKeyword, backgroundSource, score };
     })
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
@@ -742,66 +1443,95 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     return { generated: 0, published: 0, failed: 0 };
   }
 
-  const startingTemplateIndex = templatePool.length > 1
-    ? Math.floor(Math.random() * templatePool.length)
-    : 0;
   const nextEditorials: DesignStudioAutoEditorialRecord[] = [];
+  let failed = 0;
 
   for (const [index, candidate] of candidates.entries()) {
-    const template = templatePool[(startingTemplateIndex + index) % templatePool.length];
+    const template = settings.templateRotationStrategy === 'random'
+      ? templatePool[Math.floor(Math.random() * templatePool.length)]
+      : templatePool[index % templatePool.length];
+    const activeVariant = template.baseVariant || template.layoutVariant || 'bottom_center';
     const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
     const headerText = deriveHeaderText(candidate.item.title);
     const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
-    const caption = await buildAutoCaption(candidate.item, contentType, subtext, settings);
-    const now = new Date().toISOString();
-    const renderedImage = await renderAutoEditorialImage(candidate.item, template, headerText, subtext);
+    const captions = await buildCaptionPayload(headerText, subtext, contentType, settings);
 
-    nextEditorials.push({
-      id: `auto-editorial-${Date.now()}-${index}`,
-      sourceFeedItemId: candidate.item.id,
-      sourceFeedId: candidate.item.feedId,
-      sourceFeedName: candidate.item.feedName,
-      sourceTitle: candidate.item.title,
-      sourceUrl: candidate.item.link,
-      matchedKeyword: candidate.matchedKeyword,
-      templateId: template.id,
-      templateName: template.name,
-      renderedImage,
-      headerText,
-      subheaderText: subtext,
-      caption,
-      backgroundSource: candidate.backgroundSource,
-      backgroundOffsetX: template.imageAnchor?.x ?? 50,
-      backgroundOffsetY: template.imageAnchor?.y ?? 50,
-      zoomLevel: 1,
-      overlayDirection: template.overlayDirection || 'top',
-      overlayStrength: template.overlayStrength || 75,
-      scheduleTime: settings.autoPost ? buildScheduledTime(index, settings.postingInterval, existingEditorials) : null,
-      targetPlatforms: settings.targetPlatforms,
-      status: settings.autoPost ? 'scheduled' : 'draft',
-      createdAt: now,
-      updatedAt: now,
-      postedAt: null,
-      failureReason: null,
-    });
+    try {
+      const rendered = await renderDesignStudioImage(template, {
+        template_variant: activeVariant,
+        headerText,
+        subtext,
+        backgroundImage: candidate.backgroundSource,
+        overlayColor: '#000000',
+        overlayOpacity: 72,
+        gradientPosition: activeVariant.startsWith('top') ? 'top' : 'bottom',
+        cropMode: 'cover',
+        sharedCaption: captions.shared_caption,
+        pinterestTitle: captions.pinterest_title,
+        pinterestDescription: captions.pinterest_description,
+      });
+
+      const uploaded = await uploadBufferToBackblaze(
+        rendered,
+        `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-auto-${Date.now()}-${index}.jpg`,
+        {
+          bucketTypes: ['design', 'general'],
+          prefix: 'design-studio/renders',
+          contentType: 'image/jpeg',
+        },
+      );
+
+      const now = new Date().toISOString();
+      nextEditorials.push({
+        id: `auto-editorial-${randomUUID()}`,
+        sourceFeedItemId: candidate.item.id,
+        sourceFeedId: candidate.item.feedId,
+        sourceFeedName: candidate.item.feedName,
+        sourceTitle: candidate.item.title,
+        sourceUrl: candidate.item.link,
+        matchedKeyword: candidate.matchedKeyword,
+        templateId: template.id,
+        templateName: template.name,
+        templateVariant: activeVariant,
+        renderedImage: uploaded.url,
+        headerText,
+        subheaderText: subtext,
+        caption: captions.shared_caption,
+        captions,
+        backgroundSource: candidate.backgroundSource,
+        backgroundOffsetX: 50,
+        backgroundOffsetY: 50,
+        zoomLevel: 1,
+        overlayDirection: findVariant(template, activeVariant).overlayDirection,
+        overlayStrength: 72,
+        scheduleTime: settings.autoPost ? buildScheduledTime(index, settings.postingInterval, existingEditorials) : null,
+        targetPlatforms: settings.targetPlatforms,
+        status: settings.autoPost ? 'queued' : 'detected',
+        createdAt: now,
+        updatedAt: now,
+        postedAt: null,
+        failureReason: null,
+      });
+    } catch (error) {
+      failed += 1;
+      await createDesignStudioActivity('auto_editorial_failed', {
+        sourceTitle: candidate.item.title,
+        reason: error instanceof Error ? error.message : 'Failed to render auto editorial',
+      });
+    }
   }
 
   if (nextEditorials.length > 0) {
-    const combined = [...nextEditorials, ...existingEditorials];
-    await saveAutoEditorials(combined);
-    await Promise.all(
-      nextEditorials.map((editorial) =>
-        createDesignStudioActivity('auto_editorial_generated', {
-          sourceTitle: editorial.sourceTitle,
-          templateName: editorial.templateName,
-          matchedKeyword: editorial.matchedKeyword,
-          status: editorial.status,
-        }),
-      ),
-    );
+    await saveAutoEditorials([...nextEditorials, ...existingEditorials].slice(0, 300));
+    await Promise.all(nextEditorials.map((editorial) => createDesignStudioActivity('auto_editorial_generated', {
+      sourceTitle: editorial.sourceTitle,
+      templateName: editorial.templateName,
+      variant: editorial.templateVariant,
+      status: editorial.status,
+    })));
   }
 
-  return { generated: nextEditorials.length, published: 0, failed: 0 };
+  return { generated: nextEditorials.length, published: 0, failed };
 }
 
 export async function publishScheduledDesignStudioAutoEditorials(): Promise<DesignStudioRunResult> {
@@ -811,12 +1541,11 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
   }
 
   const editorials = await getAutoEditorials();
-  const now = Date.now();
   const dueItems = editorials
     .filter((item) =>
-      item.status === 'scheduled'
+      item.status === 'queued'
       && typeof item.scheduleTime === 'string'
-      && new Date(item.scheduleTime).getTime() <= now,
+      && new Date(item.scheduleTime).getTime() <= Date.now(),
     )
     .sort((left, right) => toTimestamp(left.scheduleTime) - toTimestamp(right.scheduleTime))
     .slice(0, 5);
@@ -827,23 +1556,11 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
 
   let published = 0;
   let failed = 0;
-  const editorialMap = new Map(editorials.map((item) => [item.id, { ...item }]));
+  const editorialMap = new Map(editorials.map((entry) => [entry.id, { ...entry }]));
 
   for (const editorial of dueItems) {
     const target = editorialMap.get(editorial.id);
     if (!target) {
-      continue;
-    }
-
-    if (!target.targetPlatforms || target.targetPlatforms.length === 0) {
-      target.status = 'failed';
-      target.failureReason = 'No target platforms configured.';
-      target.updatedAt = new Date().toISOString();
-      failed += 1;
-      await createDesignStudioActivity('auto_editorial_failed', {
-        sourceTitle: target.sourceTitle,
-        reason: target.failureReason,
-      });
       continue;
     }
 
@@ -860,8 +1577,8 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
         .join(', ');
 
       target.status = success ? 'posted' : 'failed';
-      target.postedAt = success ? new Date().toISOString() : null;
       target.updatedAt = new Date().toISOString();
+      target.postedAt = success ? new Date().toISOString() : null;
       target.failureReason = success ? (failureMessage || null) : (failureMessage || 'Failed to publish auto editorial');
 
       if (success) {
@@ -896,26 +1613,22 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
 
 export async function getDesignStudioStateSnapshot() {
   const [templates, renderedDesigns, autoEditorials] = await Promise.all([
-    readJsonSetting(DESIGN_STUDIO_TEMPLATES_KEY, []),
-    readJsonSetting(DESIGN_STUDIO_RENDERED_KEY, []),
-    readJsonSetting(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, []),
+    getTemplates(),
+    getRenderedDesigns(),
+    getAutoEditorials(),
   ]);
 
-  return {
-    templates: Array.isArray(templates) ? templates : [],
-    renderedDesigns: Array.isArray(renderedDesigns) ? renderedDesigns : [],
-    autoEditorials: Array.isArray(autoEditorials) ? autoEditorials : [],
-  };
+  return { templates, renderedDesigns, autoEditorials };
 }
 
 export async function saveDesignStudioStateSnapshot(state: {
-  templates: unknown[];
-  renderedDesigns: unknown[];
-  autoEditorials?: unknown[];
+  templates: DesignStudioTemplateRecord[];
+  renderedDesigns: DesignStudioRenderedDesignRecord[];
+  autoEditorials?: DesignStudioAutoEditorialRecord[];
 }): Promise<void> {
   await Promise.all([
-    writeJsonSetting(DESIGN_STUDIO_TEMPLATES_KEY, state.templates),
-    writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, state.renderedDesigns),
-    writeJsonSetting(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, state.autoEditorials ?? []),
+    saveTemplates(state.templates || []),
+    saveRenderedDesigns(state.renderedDesigns || []),
+    saveAutoEditorials(state.autoEditorials || []),
   ]);
 }

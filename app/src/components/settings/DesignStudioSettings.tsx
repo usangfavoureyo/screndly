@@ -48,6 +48,8 @@ const DESIGN_STUDIO_SHARED_SETTING_KEYS = new Set([
   'designStudioAutoEnabled',
   'designStudioAutoPost',
   'designStudioDefaultAutoTemplateId',
+  'designStudioTemplatePool',
+  'designStudioTemplateRotationStrategy',
   'designStudioPostingInterval',
   'designStudioTriggerKeywords',
   'designStudioBannedKeywords',
@@ -303,7 +305,7 @@ Examples:
 
 Tone: Clear, category-focused, SEO-friendly`,
 
-  // Photopea Integration Settings
+  // Renderer Settings
   autoPreviewEnabled: true,
   renderQuality: 'high', // low, medium, high, maximum
   exportFormat: 'jpeg', // jpeg, png
@@ -311,6 +313,8 @@ Tone: Clear, category-focused, SEO-friendly`,
   designStudioAutoEnabled: false,
   designStudioAutoPost: false,
   designStudioDefaultAutoTemplateId: null,
+  designStudioTemplatePool: [] as string[],
+  designStudioTemplateRotationStrategy: 'sequential',
   designStudioPostingInterval: '5',
   designStudioTriggerKeywords: [...DEFAULT_AUTO_TRIGGER_KEYWORDS],
   designStudioBannedKeywords: [] as string[],
@@ -1030,6 +1034,65 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
           </div>
 
           <div>
+            <Label className="text-[#9CA3AF]">Template Pool</Label>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Choose the validated templates that Auto mode can rotate through.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2">
+              {templateOptions.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                  No validated templates available yet.
+                </div>
+              ) : (
+                templateOptions.map((template) => {
+                  const selectedPool = settings.designStudioTemplatePool || [];
+                  const selected = selectedPool.includes(template.id);
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => {
+                        const nextPool = selected
+                          ? selectedPool.filter((entry: string) => entry !== template.id)
+                          : [...selectedPool, template.id];
+                        updateSetting('designStudioTemplatePool', nextPool);
+                        updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+                      }}
+                      className={`rounded-2xl border px-4 py-3 text-left text-sm ${
+                        selected
+                          ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-gray-900 dark:text-white'
+                          : 'border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white'
+                      }`}
+                    >
+                      {template.name}{template.layoutVariant ? ` | ${template.layoutVariant}` : ''}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="design-studio-template-rotation" className="text-[#9CA3AF]">Template Rotation Strategy</Label>
+            <Select
+              value={settings.designStudioTemplateRotationStrategy || 'sequential'}
+              onValueChange={(value) => {
+                updateSetting('designStudioTemplateRotationStrategy', value);
+                updateSetting('designStudioAutoUpdatedAt', new Date().toISOString());
+              }}
+            >
+              <SelectTrigger id="design-studio-template-rotation" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sequential">Sequential</SelectItem>
+                <SelectItem value="random">Random</SelectItem>
+                <SelectItem value="weighted">Weighted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
             <Label className="text-[#9CA3AF]">Posting Platforms</Label>
             <div className="mt-2 space-y-4">
               {[
@@ -1309,12 +1372,12 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
 
         <Separator className="bg-gray-200 dark:bg-[#1F1F1F]" />
 
-        {/* Photopea Integration Settings */}
+        {/* Renderer Settings */}
         <div className="space-y-4">
           <div>
-            <h3 className="text-gray-900 dark:text-white">Photopea Integration</h3>
+            <h3 className="text-gray-900 dark:text-white">PSD Renderer</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Configure Photopea rendering engine settings
+              Configure the ag-psd plus sharp rendering pipeline used for deterministic exports.
             </p>
           </div>
 

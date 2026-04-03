@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, CloudRounded, X, MoreVertical, ZoomIn, ZoomOut } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, ZoomIn, ZoomOut } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -10,7 +10,6 @@ import { SwipeableTemplateCard } from './SwipeableTemplateCard';
 import { VisuallyHidden } from './ui/visually-hidden';
 import { haptics } from '../utils/haptics';
 import { addRecentActivity, addLogEntry } from '../utils/activityStore';
-import { getPhotopeaService } from '../utils/photopeaService';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useRSSFeeds } from '../contexts/RSSFeedsContext';
@@ -24,16 +23,15 @@ import {
   createDesignStudioActivity,
   fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
+  importDesignStudioTemplate,
   saveDesignStudioState,
   startDesignStudioManualRender,
-  uploadDesignStudioAsset,
   uploadDesignStudioTemplate,
   type DesignStudioAutoEditorialRecord,
   type DesignStudioLayoutVariant,
   type DesignStudioManualRenderJob,
 } from '../lib/api/designStudio';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
-import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 
 interface DesignStudioPageProps {
   onNavigate: (page: string, fromPage?: string | null) => void;
@@ -50,6 +48,9 @@ type FilePickerHandle = {
 interface Template {
   id: string;
   name: string;
+  sourceType?: 'device' | 'backblaze';
+  sourceFilePath?: string;
+  previewImage?: string;
   previewUrl: string;
   aspectRatio: string;
   width: number;
@@ -63,15 +64,28 @@ interface Template {
   hasCategory?: boolean;
   hasSource?: boolean;
   psdData?: any; // Will store actual PSD data in production
+  baseVariant?: DesignStudioLayoutVariant;
   layoutVariant?: DesignStudioLayoutVariant;
-  mappedLayers?: string[];
+  mappedLayers?: Record<string, string>;
+  mappedLayerNames?: string[];
+  layerReferences?: Array<Record<string, any>>;
+  fontFamily?: string;
+  fontStyle?: string;
+  fontWeight?: number;
+  baseFontSize?: number;
+  fontColor?: string;
+  lineHeightMultiplier?: number;
+  tracking?: number;
+  isPointText?: boolean;
+  variants?: Array<Record<string, any>>;
   textZone?: { horizontal: 'left' | 'center' | 'right'; vertical: 'top' | 'bottom' };
   imageAnchor?: { x: number; y: number };
-  overlayDirection?: 'top' | 'bottom' | 'left' | 'right';
+  overlayDirection?: string;
   overlayStrength?: number;
   safeMargin?: number;
   isValidated?: boolean;
   validationState?: 'valid' | 'warning' | 'invalid';
+  validationErrors?: string[];
   isDefaultManual?: boolean;
   isDefaultAuto?: boolean;
   createdAt?: Date;
@@ -107,6 +121,7 @@ type AutoEditorialAction =
 function parseTemplate(template: any): Template {
   return {
     ...template,
+    previewUrl: template.previewUrl || template.previewImage,
     hasHeader: template.hasHeader ?? true,
     hasBackground: template.hasBackground ?? true,
     hasSubtext: template.hasSubtext ?? false,
@@ -140,60 +155,6 @@ function serializeRenderedDesigns(renderedDesigns: RenderedDesign[]) {
   }));
 }
 
-function defaultLayoutMetadata(layoutVariant: DesignStudioLayoutVariant = 'top_left') {
-  switch (layoutVariant) {
-    case 'top_right':
-      return {
-        textZone: { horizontal: 'right' as const, vertical: 'top' as const },
-        imageAnchor: { x: 28, y: 68 },
-        overlayDirection: 'top' as const,
-        overlayStrength: 76,
-        safeMargin: 48,
-      };
-    case 'top_center':
-      return {
-        textZone: { horizontal: 'center' as const, vertical: 'top' as const },
-        imageAnchor: { x: 50, y: 72 },
-        overlayDirection: 'top' as const,
-        overlayStrength: 78,
-        safeMargin: 48,
-      };
-    case 'bottom_left':
-      return {
-        textZone: { horizontal: 'left' as const, vertical: 'bottom' as const },
-        imageAnchor: { x: 70, y: 30 },
-        overlayDirection: 'bottom' as const,
-        overlayStrength: 74,
-        safeMargin: 48,
-      };
-    case 'bottom_right':
-      return {
-        textZone: { horizontal: 'right' as const, vertical: 'bottom' as const },
-        imageAnchor: { x: 30, y: 30 },
-        overlayDirection: 'bottom' as const,
-        overlayStrength: 74,
-        safeMargin: 48,
-      };
-    case 'bottom_center':
-      return {
-        textZone: { horizontal: 'center' as const, vertical: 'bottom' as const },
-        imageAnchor: { x: 50, y: 28 },
-        overlayDirection: 'bottom' as const,
-        overlayStrength: 76,
-        safeMargin: 48,
-      };
-    case 'top_left':
-    default:
-      return {
-        textZone: { horizontal: 'left' as const, vertical: 'top' as const },
-        imageAnchor: { x: 72, y: 68 },
-        overlayDirection: 'top' as const,
-        overlayStrength: 76,
-        safeMargin: 48,
-      };
-  }
-}
-
 function parseAutoEditorial(editorial: any): AutoEditorial {
   return {
     ...editorial,
@@ -201,43 +162,6 @@ function parseAutoEditorial(editorial: any): AutoEditorial {
     createdAt: editorial.createdAt || new Date().toISOString(),
     updatedAt: editorial.updatedAt || editorial.createdAt || new Date().toISOString(),
   };
-}
-
-function normalizeKeyword(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9\s]+/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-async function inspectTemplateFromUrl(url: string) {
-  const photopeaService = getPhotopeaService();
-  await photopeaService.initialize();
-  try {
-    await photopeaService.loadPSDFromURL(url);
-    return await photopeaService.analyzeLayers();
-  } finally {
-    try {
-      await photopeaService.closeDocument();
-    } catch (closeError) {
-      console.warn('Failed to close inspected PSD document:', closeError);
-    }
-  }
-}
-
-function dataUrlToFile(dataUrl: string, fileName: string): File {
-  const [meta, content] = dataUrl.split(',');
-  if (!meta || !content) {
-    throw new Error('Invalid preview data');
-  }
-
-  const mimeMatch = meta.match(/data:(.*|);base64/);
-  const mimeType = mimeMatch?.[1] || 'image/png';
-  const binary = atob(content);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-
-  return new File([bytes], fileName, { type: mimeType });
 }
 
 function isPsdLikeFile(file: File): boolean {
@@ -257,11 +181,6 @@ function isPsdLikeFile(file: File): boolean {
   ].includes(normalizedType);
 }
 
-async function hasPsdSignature(file: File): Promise<boolean> {
-  const signature = await readPsdSignature(file);
-  return signature === '8BPS';
-}
-
 async function readPsdSignature(file: File): Promise<string | null> {
   try {
     const headerBuffer = await file.slice(0, 4).arrayBuffer();
@@ -273,32 +192,10 @@ async function readPsdSignature(file: File): Promise<string | null> {
   }
 }
 
-function createTemplateFallbackPreview(fileName: string, width?: number, height?: number): string {
-  const safeName = fileName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const dimensions = width && height ? `${width} x ${height}` : 'PSD Template';
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#121212" />
-          <stop offset="100%" stop-color="#050505" />
-        </linearGradient>
-      </defs>
-      <rect width="1080" height="720" rx="32" fill="url(#bg)" />
-      <rect x="56" y="56" width="968" height="608" rx="28" fill="none" stroke="#ec1e24" stroke-opacity="0.5" stroke-width="4" />
-      <text x="540" y="290" fill="#ffffff" font-size="44" text-anchor="middle" font-family="Arial, sans-serif">PSD Template</text>
-      <text x="540" y="360" fill="#ec1e24" font-size="32" text-anchor="middle" font-family="Arial, sans-serif">${safeName}</text>
-      <text x="540" y="420" fill="#9CA3AF" font-size="24" text-anchor="middle" font-family="Arial, sans-serif">${dimensions}</text>
-    </svg>
-  `.trim();
-
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
-}
-
 export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) {
   const { addNotification } = useNotifications();
   const { settings } = useSettings();
-  const { feeds, getActivity } = useRSSFeeds();
+  const { feeds } = useRSSFeeds();
   const { showUndo } = useUndo();
   const [activeTab, setActiveTab] = useState<DesignStudioTab>(() => {
     const savedTab = localStorage.getItem('designStudioActiveTab');
@@ -502,48 +399,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         duration: 8000,
       });
 
-      const previewUrl = createTemplateFallbackPreview(file.name.replace(/\.psd$/i, ''), uploadedTemplate.width, uploadedTemplate.height);
-      const layoutMetadata = defaultLayoutMetadata('top_left');
-      const mappedLayers = Array.isArray(uploadedTemplate.layers) ? uploadedTemplate.layers : [];
-      const isValidated = Boolean(uploadedTemplate.detectedLayers.hasHeader && uploadedTemplate.detectedLayers.hasBackground);
-
-      const template: Template = {
-        id: `template-${Date.now()}`,
-        name: file.name.replace('.psd', ''),
-        previewUrl,
-        aspectRatio: calculateAspectRatio(uploadedTemplate.width, uploadedTemplate.height),
-        width: uploadedTemplate.width,
-        height: uploadedTemplate.height,
-        source: 'upload',
-        lastEdited: new Date(),
-        hasHeader: detectedHeader,
-        hasBackground: detectedBackground,
-        hasSubtext: uploadedTemplate.detectedLayers.hasSubtext,
-        hasOverlay: detectedOverlay,
-        hasCategory: false,
-        hasSource: false,
-        layoutVariant: 'top_left',
-        mappedLayers,
-        textZone: layoutMetadata.textZone,
-        imageAnchor: layoutMetadata.imageAnchor,
-        overlayDirection: layoutMetadata.overlayDirection,
-        overlayStrength: layoutMetadata.overlayStrength,
-        safeMargin: layoutMetadata.safeMargin,
-        isValidated,
-        validationState: isValidated ? 'valid' : 'warning',
-        isDefaultManual: templates.length === 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        psdData: {
-          layers: uploadedTemplate.layers,
-          detectedLayers: uploadedTemplate.detectedLayers,
-          b2Url: uploadedTemplate.url,
-          fileName: uploadedTemplate.fileName,
-        },
-      };
-
-      const nextTemplates = [template, ...templates];
-      await persistState(nextTemplates, renderedDesigns);
+      const template = parseTemplate(uploadedTemplate.template);
+      const nextTemplates = [template, ...templates.filter((entry) => entry.id !== template.id)];
       setTemplates(nextTemplates);
       await createDesignStudioActivity('template_uploaded', {
         templateName: template.name,
@@ -551,7 +408,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       toast.success(`Template "${template.name}" analyzed and uploaded!`);
     } catch (error) {
-      console.error('Photopea analysis error:', error);
+      console.error('PSD template analysis error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
     }
   };
@@ -622,75 +479,24 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   };
 
   const handleLoadSelectedTemplates = async (selectedFiles: any[]) => {
-    const b2Templates: Template[] = [];
-
-    for (const [index, file] of selectedFiles.entries()) {
-      let width = 1080;
-      let height = 1350;
-      let hasHeader = false;
-      let hasBackground = false;
-      let hasSubtext = true;
-      let hasOverlay = false;
-      let mappedLayers: string[] = [];
-      let isValidated = false;
-
-      try {
-        const analysis = await inspectTemplateFromUrl(file.url);
-        width = analysis.width;
-        height = analysis.height;
-        hasHeader = analysis.detectedLayers.hasHeader;
-        hasBackground = analysis.detectedLayers.hasBackground;
-        hasSubtext = analysis.detectedLayers.hasSubtext;
-        hasOverlay = analysis.detectedLayers.hasOverlay;
-        mappedLayers = Array.isArray(analysis.layers)
-          ? analysis.layers.map((layer: { name?: string }) => layer.name).filter((name): name is string => Boolean(name))
-          : [];
-        isValidated = Boolean(analysis.detectedLayers.hasHeader && analysis.detectedLayers.hasBackground);
-      } catch (error) {
-        console.warn('Failed to inspect Backblaze template metadata, falling back to default canvas size:', file.fileName, error);
-      }
-      const layoutMetadata = defaultLayoutMetadata('top_left');
-
-      b2Templates.push({
-        id: `bb-${file.fileId}-${Date.now()}-${index}`,
-        name: file.fileName.replace('.psd', '').replace('templates/', ''),
-        previewUrl: file.url.replace('.psd', '_preview.jpg'),
-        aspectRatio: calculateAspectRatio(width, height),
-        width,
-        height,
-        source: 'backblaze',
-        lastEdited: new Date(file.lastModified),
-        hasHeader,
-        hasBackground,
-        hasSubtext,
-        hasOverlay,
-        layoutVariant: 'top_left',
-        mappedLayers,
-        textZone: layoutMetadata.textZone,
-        imageAnchor: layoutMetadata.imageAnchor,
-        overlayDirection: layoutMetadata.overlayDirection,
-        overlayStrength: layoutMetadata.overlayStrength,
-        safeMargin: layoutMetadata.safeMargin,
-        isValidated,
-        validationState: isValidated ? 'valid' : 'warning',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        psdData: {
-          b2Url: file.url,
+    const importedTemplates = await Promise.all(
+      selectedFiles.map(async (file: any) => {
+        const result = await importDesignStudioTemplate({
+          url: file.url,
           fileName: file.fileName,
-        },
-      });
-    }
+        });
+        return parseTemplate(result.template);
+      }),
+    );
 
-    const nextTemplates = [...b2Templates, ...templates];
-    await persistState(nextTemplates, renderedDesigns);
+    const nextTemplates = [...importedTemplates, ...templates.filter((template) => !importedTemplates.some((entry) => entry.id === template.id))];
     setTemplates(nextTemplates);
     await createDesignStudioActivity('templates_loaded', {
       source: 'backblaze',
-      count: b2Templates.length,
+      count: importedTemplates.length,
     });
 
-    toast.success(`${b2Templates.length} template${b2Templates.length !== 1 ? 's' : ''} loaded from Backblaze`);
+    toast.success(`${importedTemplates.length} template${importedTemplates.length !== 1 ? 's' : ''} loaded from Backblaze`);
     haptics.success();
     setShowBackblazeBrowser(false);
   };
@@ -706,33 +512,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setSelectedTemplate(template);
     setEditingTemplateId(template.id);
     setIsEditSheetOpen(true);
-  };
-
-  const handlePublishTemplate = (template: Template) => {
-    haptics.light();
-    
-    // Check if there's a rendered design for this template
-    const existingDesign = renderedDesigns.find(d => d.templateId === template.id);
-    const activeRenderJob = manualRenderJobs.find(
-      (job) => job.templateId === template.id && (job.status === 'queued' || job.status === 'rendering'),
-    );
-    
-    if (existingDesign) {
-      setPublishTarget(existingDesign);
-      setIsPublishSheetOpen(true);
-    } else if (activeRenderJob) {
-      toast('Render in progress', {
-        description: 'This PSD is still rendering in the background.',
-      });
-    } else {
-      // If no rendered design exists, open edit sheet first
-      setSelectedTemplate(template);
-      setEditingTemplateId(template.id);
-      setIsEditSheetOpen(true);
-      toast('Edit and render your design first', {
-        description: 'Add your content, then save to publish',
-      });
-    }
   };
 
   const handleSaveDesign = async (data: DesignData) => {
@@ -895,11 +674,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
   };
 
-  const selectedFeedIds = useMemo(
-    () => new Set(settings.designStudioSelectedRssFeedIds || []),
-    [settings.designStudioSelectedRssFeedIds],
-  );
-
   const validatedTemplates = useMemo(
     () => templates.filter((template) => template.isValidated !== false),
     [templates],
@@ -911,7 +685,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     return {
       generatedToday: autoEditorials.filter((item) => new Date(item.createdAt) >= startOfDay).length,
-      queued: autoEditorials.filter((item) => item.status === 'queued' || item.status === 'scheduled').length,
+      queued: autoEditorials.filter((item) => item.status === 'queued').length,
       posted: autoEditorials.filter((item) => item.status === 'posted').length,
       failed: autoEditorials.filter((item) => item.status === 'failed').length,
     };
@@ -932,50 +706,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return defaultAutoTemplate ? [defaultAutoTemplate] : [];
   }, [defaultAutoTemplate, validatedTemplates]);
 
-  const getContentTypeForKeyword = (keyword: string | undefined): AutoEditorial['contentType'] => {
-    const normalized = normalizeKeyword(keyword || '');
-    if (normalized.includes('release date') || normalized.includes('premiere') || normalized.includes('premieres')) {
-      return 'announcement';
-    }
-    if (normalized.includes('renew') || normalized.includes('cancel') || normalized.includes('confirm') || normalized.includes('development')) {
-      return 'announcement';
-    }
-    return 'general';
-  };
-
-  const findMatchedKeyword = (title: string, keywords: string[]) => {
-    const normalizedTitle = normalizeKeyword(title);
-    return keywords.find((keyword) => normalizedTitle.includes(normalizeKeyword(keyword)));
-  };
-
-  const findBannedKeyword = (title: string, keywords: string[]) => {
-    const normalizedTitle = normalizeKeyword(title);
-    return keywords.find((keyword) => normalizedTitle.includes(normalizeKeyword(keyword)));
-  };
-
-  const deriveEditorialScore = (title: string, matchedKeyword: string, hasImage: boolean) => {
-    let score = 50;
-    if (matchedKeyword.split(' ').length > 1) {
-      score += 12;
-    } else {
-      score += 8;
-    }
-    if (title.length >= 40 && title.length <= 110) {
-      score += 12;
-    }
-    if (hasImage) {
-      score += 10;
-    }
-    return Math.min(100, score);
-  };
-
-  const deriveHeaderText = (title: string) => {
-    if (title.length <= 88) {
-      return title;
-    }
-    return `${title.slice(0, 85).trim()}...`;
-  };
-
   const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
       return '';
@@ -984,224 +714,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       return `${feedName} • ${matchedKeyword}`;
     }
     return feedName || matchedKeyword || '';
-  };
-
-  const buildScheduledTime = (index: number) => {
-    const intervalMinutes = Number.parseInt(settings.designStudioPostingInterval || '5', 10) || 5;
-    const baseTime = new Date();
-    baseTime.setMinutes(baseTime.getMinutes() + intervalMinutes * index);
-    return baseTime.toISOString();
-  };
-
-  const renderAutoEditorialImage = async (
-    template: Template,
-    headerText: string,
-    subtext: string,
-    backgroundSource?: string,
-  ) => {
-    const photopeaService = getPhotopeaService();
-    await photopeaService.initialize();
-
-    try {
-      const psdUrl = template.psdData?.b2Url || template.psdData?.fileUrl;
-      if (!psdUrl) {
-        throw new Error('Template source file is missing');
-      }
-
-      await photopeaService.loadPSDFromURL(psdUrl);
-      const renderBlob = await photopeaService.renderDesign(
-        {
-          headerText,
-          subtext: subtext || undefined,
-          backgroundImage: backgroundSource,
-          overlayColor: '#000000',
-          overlayOpacity: template.overlayStrength || 75,
-          gradientPosition: template.overlayDirection || 'top',
-        },
-        {
-          width: template.width,
-          height: template.height,
-          hasSubtext: template.hasSubtext,
-          hasOverlay: template.hasOverlay,
-        },
-      );
-
-      const renderedFile = new File(
-        [renderBlob],
-        `${template.name.replace(/[^a-zA-Z0-9-_]+/g, '-')}-auto.jpg`,
-        { type: 'image/jpeg' },
-      );
-      const upload = await uploadDesignStudioAsset(renderedFile, 'renders');
-      return upload.url;
-    } finally {
-      try {
-        await photopeaService.closeDocument();
-      } catch (closeError) {
-        console.warn('Failed to close auto editorial document:', closeError);
-      }
-    }
-  };
-
-  const handleGenerateAutoEditorials = async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (isGeneratingAutoEditorials) {
-      return;
-    }
-
-    if (!settings.designStudioAutoEnabled) {
-      if (!silent) {
-        toast.info('Enable Auto Editorials in Design Studio settings first');
-      }
-      return;
-    }
-
-    if (selectedFeedIds.size === 0) {
-      if (!silent) {
-        toast.info('Select at least one RSS feed source in Design Studio settings');
-      }
-      return;
-    }
-
-    if (autoTemplatePool.length === 0) {
-      if (!silent) {
-        toast.info('Upload or load at least one validated PSD template first');
-      }
-      return;
-    }
-
-    const triggerKeywords = settings.designStudioTriggerKeywords || [];
-    if (triggerKeywords.length === 0) {
-      if (!silent) {
-        toast.info('Add at least one editorial trigger keyword first');
-      }
-      return;
-    }
-
-    setIsGeneratingAutoEditorials(true);
-
-    try {
-      const activity = await getActivity(200);
-      const activityItems = activity?.items || [];
-      const existingSourceIds = new Set(autoEditorials.map((item) => item.sourceFeedItemId));
-      const seenTitles = new Set<string>();
-      const bannedKeywords = settings.designStudioBannedKeywords || [];
-      const candidates = activityItems
-        .filter((item) => item.feedId && selectedFeedIds.has(item.feedId))
-        .map((item) => {
-          const blockedKeyword = findBannedKeyword(item.title, bannedKeywords);
-          if (blockedKeyword) {
-            return null;
-          }
-
-          const matchedKeyword = findMatchedKeyword(item.title, triggerKeywords);
-          if (!matchedKeyword) {
-            return null;
-          }
-
-          const normalizedTitle = normalizeKeyword(item.title);
-          if (seenTitles.has(normalizedTitle) || existingSourceIds.has(item.id)) {
-            return null;
-          }
-          seenTitles.add(normalizedTitle);
-
-          const backgroundSource = item.imageUrl || item.imageUrls?.[0] || item.selectedImages?.[0]?.url;
-          const score = deriveEditorialScore(item.title, matchedKeyword, Boolean(backgroundSource));
-          return { item, matchedKeyword, score, backgroundSource };
-        })
-        .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
-        .filter((candidate) => candidate.score >= (settings.designStudioMinimumScoreThreshold || 55))
-        .sort((left, right) => right.score - left.score)
-        .slice(0, settings.designStudioMaxEditorialsPerRun || 5);
-
-      if (candidates.length === 0) {
-        if (!silent) {
-          toast.info('No matching editorial candidates found yet');
-        }
-        return;
-      }
-
-      const nextAutoEditorials: AutoEditorial[] = [];
-      const startingTemplateIndex = autoTemplatePool.length > 1
-        ? Math.floor(Math.random() * autoTemplatePool.length)
-        : 0;
-
-      for (const [index, candidate] of candidates.entries()) {
-        const selectedTemplateForEditorial = autoTemplatePool[(startingTemplateIndex + index) % autoTemplatePool.length];
-        const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
-        const headerText = deriveHeaderText(candidate.item.title);
-        const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
-        const captionResult = await generateDesignStudioCaption(
-          {
-            contentType,
-            title: candidate.item.title,
-            tagline: subtext,
-            context: candidate.item.description || candidate.item.feedName || 'Editorial update',
-          },
-          settings,
-        );
-        const renderedImage = await renderAutoEditorialImage(
-          selectedTemplateForEditorial,
-          headerText,
-          subtext,
-          candidate.backgroundSource,
-        );
-        const scheduleTime = buildScheduledTime(index);
-        const editorial: AutoEditorial = {
-          id: `auto-editorial-${Date.now()}-${index}`,
-          sourceFeedItemId: candidate.item.id,
-          sourceFeedId: candidate.item.feedId,
-          sourceFeedName: candidate.item.feedName,
-          sourceTitle: candidate.item.title,
-          sourceUrl: candidate.item.link,
-          matchedKeyword: candidate.matchedKeyword,
-          templateId: selectedTemplateForEditorial.id,
-          templateName: selectedTemplateForEditorial.name,
-          renderedImage,
-          headerText,
-          subheaderText: subtext,
-          caption: captionResult.caption,
-          backgroundSource: candidate.backgroundSource,
-          backgroundOffsetX: selectedTemplateForEditorial.imageAnchor?.x ?? 50,
-          backgroundOffsetY: selectedTemplateForEditorial.imageAnchor?.y ?? 50,
-          zoomLevel: 1,
-          overlayDirection: selectedTemplateForEditorial.overlayDirection || 'top',
-          overlayStrength: selectedTemplateForEditorial.overlayStrength || 75,
-          scheduleTime,
-          targetPlatforms: settings.designStudioTargetPlatforms || [],
-          status: settings.designStudioAutoPost ? 'scheduled' : 'draft',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          postedAt: null,
-          failureReason: null,
-        };
-        nextAutoEditorials.push(editorial);
-      }
-
-      const combinedEditorials = [...nextAutoEditorials, ...autoEditorials];
-      await persistState(templates, renderedDesigns, combinedEditorials);
-      setAutoEditorials(combinedEditorials);
-
-      await Promise.all(
-        nextAutoEditorials.map((editorial) =>
-          createDesignStudioActivity('auto_editorial_generated', {
-            sourceTitle: editorial.sourceTitle,
-            templateName: editorial.templateName,
-            matchedKeyword: editorial.matchedKeyword,
-            status: editorial.status,
-          }),
-        ),
-      );
-
-      if (!silent) {
-        toast.success(`${nextAutoEditorials.length} auto editorial${nextAutoEditorials.length === 1 ? '' : 's'} generated`);
-      }
-    } catch (error) {
-      console.error('Failed to generate auto editorials:', error);
-      if (!silent) {
-        toast.error(error instanceof Error ? error.message : 'Failed to generate auto editorials');
-      }
-    } finally {
-      setIsGeneratingAutoEditorials(false);
-    }
   };
 
   const updateEditorial = async (editorialId: string, updates: Partial<AutoEditorial>) => {
@@ -1219,7 +731,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       const platforms = (editorial.targetPlatforms || []).reduce<Record<string, boolean>>((accumulator, platform) => {
         accumulator[platform] = true;
         return accumulator;
-      }, {}) as PlatformSelection;
+      }, {}) as unknown as PlatformSelection;
 
       const result = await publishContent(platforms, {
         text: editorial.caption,
@@ -1280,7 +792,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   ? editorial.templateId
                   : '',
     );
-    setEditorialOverlayDirection(editorial.overlayDirection || 'top');
+    setEditorialOverlayDirection((editorial.overlayDirection as 'top' | 'bottom' | 'left' | 'right') || 'top');
     setEditorialOverlayStrength(editorial.overlayStrength || 75);
     setIsEditorialActionsOpen(false);
     setIsEditorialEditorOpen(true);
@@ -1308,7 +820,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         break;
       case 'schedule':
         updates.scheduleTime = editorialDraftValue;
-        updates.status = editorialDraftValue ? 'scheduled' : 'queued';
+        updates.status = editorialDraftValue ? 'queued' : 'detected';
         break;
       case 'template': {
         const nextTemplate = templates.find((template) => template.id === editorialDraftValue);
@@ -1414,7 +926,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               onClick={handleLoadFromBackblaze}
               className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
             >
-              <CloudRounded className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+              <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
               <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
             </button>
           </div>

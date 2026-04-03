@@ -7,9 +7,12 @@ import { readPsd } from 'ag-psd';
 import { authenticate } from '../middleware/auth';
 import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import {
+  generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
   getDesignStudioStateSnapshot,
+  publishScheduledDesignStudioAutoEditorials,
   queueManualDesignStudioRender,
+  registerUploadedDesignStudioTemplate,
   saveDesignStudioStateSnapshot,
 } from '../services/design-studio.service';
 
@@ -56,6 +59,9 @@ function buildPsdSignature(buffer: Buffer): string {
 const templateSchema = z.object({
   id: z.string(),
   name: z.string(),
+  sourceType: z.enum(['device', 'backblaze']).optional(),
+  sourceFilePath: z.string().optional(),
+  previewImage: z.string().optional(),
   previewUrl: z.string(),
   aspectRatio: z.string(),
   width: z.number(),
@@ -67,20 +73,25 @@ const templateSchema = z.object({
   hasSource: z.boolean().optional(),
   psdData: z.record(z.any()).optional().nullable(),
   layoutVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
-  mappedLayers: z.array(z.string()).optional(),
-  textZone: z.object({
-    horizontal: z.enum(['left', 'center', 'right']),
-    vertical: z.enum(['top', 'bottom']),
-  }).optional(),
-  imageAnchor: z.object({
-    x: z.number(),
-    y: z.number(),
-  }).optional(),
-  overlayDirection: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+  baseVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
+  mappedLayers: z.record(z.string()).optional(),
+  mappedLayerNames: z.array(z.string()).optional(),
+  layerReferences: z.array(z.record(z.any())).optional(),
+  fontFamily: z.string().optional(),
+  fontStyle: z.string().optional(),
+  fontWeight: z.number().optional(),
+  baseFontSize: z.number().optional(),
+  fontColor: z.string().optional(),
+  lineHeightMultiplier: z.number().optional(),
+  tracking: z.number().optional(),
+  isPointText: z.boolean().optional(),
+  variants: z.array(z.record(z.any())).optional(),
+  overlayDirection: z.string().optional(),
   overlayStrength: z.number().optional(),
   safeMargin: z.number().optional(),
   isValidated: z.boolean().optional(),
   validationState: z.enum(['valid', 'warning', 'invalid']).optional(),
+  validationErrors: z.array(z.string()).optional(),
   isDefaultManual: z.boolean().optional(),
   isDefaultAuto: z.boolean().optional(),
   createdAt: z.string().optional(),
@@ -91,11 +102,14 @@ const renderedDesignSchema = z.object({
   id: z.string(),
   templateId: z.string(),
   templateName: z.string(),
+  templateVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
   outputUrl: z.string(),
+  previewUrl: z.string().optional(),
   data: z.record(z.any()),
   createdAt: z.string(),
   aspectRatio: z.string(),
   caption: z.string().optional(),
+  captions: z.record(z.any()).optional(),
   contentType: z.enum(['poster', 'carousel', 'story', 'announcement', 'general']).optional(),
 });
 
@@ -109,19 +123,21 @@ const autoEditorialSchema = z.object({
   matchedKeyword: z.string().optional(),
   templateId: z.string(),
   templateName: z.string().optional(),
+  templateVariant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
   renderedImage: z.string(),
   headerText: z.string(),
   subheaderText: z.string().optional(),
   caption: z.string(),
+  captions: z.record(z.any()).optional(),
   backgroundSource: z.string().optional(),
   backgroundOffsetX: z.number().optional(),
   backgroundOffsetY: z.number().optional(),
   zoomLevel: z.number().optional(),
-  overlayDirection: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+  overlayDirection: z.string().optional(),
   overlayStrength: z.number().optional(),
   scheduleTime: z.string().nullable().optional(),
   targetPlatforms: z.array(z.string()),
-  status: z.enum(['draft', 'queued', 'scheduled', 'posted', 'failed']),
+  status: z.enum(['detected', 'rendering', 'queued', 'posted', 'failed']),
   createdAt: z.string(),
   updatedAt: z.string(),
   postedAt: z.string().nullable().optional(),
@@ -182,6 +198,18 @@ const manualRenderRequestSchema = z.object({
     gradientPosition: z.enum(['top', 'bottom', 'left', 'right']).optional(),
     caption: z.string().optional(),
     contentType: z.enum(['poster', 'carousel', 'story', 'announcement', 'general']).optional(),
+    cropMode: z.enum(['cover', 'contain', 'center', 'face_focus']).optional(),
+    headerAlignment: z.enum(['left', 'center', 'right']).optional(),
+    fontScale: z.number().optional(),
+    maxLines: z.number().optional(),
+    overlayType: z.enum(['linear', 'radial', 'full_fade', 'top_fade', 'bottom_fade']).optional(),
+    useTemplateDefaultStyling: z.boolean().optional(),
+    backgroundOffsetX: z.number().optional(),
+    backgroundOffsetY: z.number().optional(),
+    zoomLevel: z.number().optional(),
+    sharedCaption: z.string().optional(),
+    pinterestTitle: z.string().optional(),
+    pinterestDescription: z.string().optional(),
   }),
 });
 
@@ -280,6 +308,14 @@ router.post('/upload-template', authenticate, upload.single('mediaFile'), async 
       contentType: req.file.mimetype || 'application/vnd.adobe.photoshop',
     });
 
+    const template = await registerUploadedDesignStudioTemplate({
+      buffer: fileBuffer,
+      fileName: req.file.originalname,
+      sourceType: 'device',
+      sourceFilePath: uploadResult.url,
+      uploadedUrl: uploadResult.url,
+    });
+
     res.status(201).json({
       success: true,
       data: {
@@ -290,6 +326,7 @@ router.post('/upload-template', authenticate, upload.single('mediaFile'), async 
         height: psd.height,
         layers: layerNames,
         detectedLayers,
+        template,
       },
     });
   } catch (error) {
@@ -299,6 +336,44 @@ router.post('/upload-template', authenticate, upload.single('mediaFile'), async 
     if (req.file?.path) {
       await fs.unlink(req.file.path).catch(() => undefined);
     }
+  }
+});
+
+router.post('/import-template', authenticate, async (req, res) => {
+  try {
+    const payload = z.object({
+      url: z.string().url(),
+      fileName: z.string().min(1),
+    }).parse(req.body);
+
+    const sourceUrl = await fetch(payload.url)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch template (${response.status})`);
+        }
+        return Buffer.from(await response.arrayBuffer());
+      });
+
+    const signature = buildPsdSignature(sourceUrl);
+    if (signature !== '8BPS') {
+      return res.status(400).json({ success: false, error: { message: 'Backblaze file is not a valid PSD' } });
+    }
+
+    const template = await registerUploadedDesignStudioTemplate({
+      buffer: sourceUrl,
+      fileName: payload.fileName,
+      sourceType: 'backblaze',
+      sourceFilePath: payload.url,
+      uploadedUrl: payload.url,
+    });
+
+    res.status(201).json({ success: true, data: { template } });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid template import request', details: error.errors } });
+    }
+    console.error('Error importing Design Studio template from Backblaze:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to import template' } });
   }
 });
 
@@ -346,6 +421,26 @@ router.get('/render-jobs', authenticate, async (_req, res) => {
   } catch (error) {
     console.error('Error fetching design studio render jobs:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch render jobs' } });
+  }
+});
+
+router.post('/generate-auto', authenticate, async (_req, res) => {
+  try {
+    const result = await generateDesignStudioAutoEditorials();
+    res.status(202).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error generating Design Studio auto editorials:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to generate auto editorials' } });
+  }
+});
+
+router.post('/publish-auto', authenticate, async (_req, res) => {
+  try {
+    const result = await publishScheduledDesignStudioAutoEditorials();
+    res.status(202).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error publishing Design Studio auto editorials:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to publish auto editorials' } });
   }
 });
 
