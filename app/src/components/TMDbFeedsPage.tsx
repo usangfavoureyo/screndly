@@ -283,7 +283,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
         )}
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-gray-900 dark:text-white">
-            Queued & Scheduled Posts ({filteredFeeds.length})
+            Feeds ({filteredFeeds.length})
           </h3>
           <div className="flex items-center gap-2">
             <Button
@@ -340,7 +340,7 @@ export function TMDbFeedsPage({ onNavigate }: TMDbFeedsPageProps) {
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               {filterType !== 'all'
                 ? `${filterType.charAt(0).toUpperCase() + filterType.slice(1)} posts will appear here automatically when fetched and stay here while queued or scheduled.`
-                : 'Queued and scheduled TMDb posts will appear here automatically based on your TMDb settings.'
+                : 'TMDb feeds will appear here automatically based on your TMDb settings.'
               }
             </p>
           </div>

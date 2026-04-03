@@ -478,6 +478,11 @@ function TMDbFeedCardComponent({
                   <span className="text-xs px-2 py-0.5 rounded-full bg-[#ec1e24] text-white">
                     {getSourceLabel(feed.source)}
                   </span>
+                  {feed.status === 'queued' && (
+                    <span className="text-xs px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]">
+                      Queued
+                    </span>
+                  )}
                   {feed.status === 'scheduled' && (
                     <span className="text-xs px-2 py-0.5 rounded-lg bg-gray-200 dark:bg-[#1f1f1f] text-gray-700 dark:text-[#9CA3AF]">
                       Scheduled

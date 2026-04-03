@@ -7,6 +7,7 @@ import { uploadBufferToBackblaze, getBackblazeAuthorizedDownloadUrl } from './ba
 import { publisherService } from './publisher.service';
 import { getRSSActivity } from './rss.service';
 import sharp from 'sharp';
+import 'ag-psd/initialize-canvas';
 import { readPsd } from 'ag-psd';
 
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
@@ -370,6 +371,50 @@ function buildPreviewPlaceholder(name: string, width: number, height: number): s
     </svg>
   `.trim();
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+async function generateTemplatePreviewUrl(input: {
+  buffer: Buffer;
+  fileName: string;
+  fallbackName: string;
+  width: number;
+  height: number;
+}): Promise<string> {
+  try {
+    const previewPsd = readPsd(input.buffer, {
+      skipLayerImageData: true,
+      skipThumbnail: false,
+    });
+
+    const compositeCanvas = (previewPsd as any)?.canvas;
+    if (compositeCanvas && typeof compositeCanvas.toBuffer === 'function') {
+      const previewBuffer = await sharp(compositeCanvas.toBuffer('image/png'))
+        .resize({
+          width: 1200,
+          height: 1200,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .png()
+        .toBuffer();
+
+      const uploadedPreview = await uploadBufferToBackblaze(
+        previewBuffer,
+        `${input.fileName.replace(/\.psd$/i, '')}-preview.png`,
+        {
+          bucketTypes: ['design', 'general'],
+          prefix: 'design-studio/template-previews',
+          contentType: 'image/png',
+        },
+      );
+
+      return uploadedPreview.url;
+    }
+  } catch (error) {
+    console.error('Failed to generate PSD composite preview:', error);
+  }
+
+  return buildPreviewPlaceholder(input.fallbackName, input.width, input.height);
 }
 
 function flattenLayerReferences(
@@ -1437,6 +1482,15 @@ export async function registerUploadedDesignStudioTemplate(input: {
   uploadedUrl: string;
 }): Promise<DesignStudioTemplateRecord> {
   const template = buildTemplateFromPsdBuffer(input);
+  const previewUrl = await generateTemplatePreviewUrl({
+    buffer: input.buffer,
+    fileName: input.fileName,
+    fallbackName: input.fileName.replace(/\.psd$/i, ''),
+    width: template.width,
+    height: template.height,
+  });
+  template.previewImage = previewUrl;
+  template.previewUrl = previewUrl;
   const templates = await getTemplates();
   const nextTemplates = [template, ...templates.filter((entry) => entry.sourceFilePath !== template.sourceFilePath)].slice(0, 200);
   await saveTemplates(nextTemplates);

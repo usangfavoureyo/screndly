@@ -47,6 +47,8 @@ interface DesignStudioActivityPageProps {
 
 type DesignStudioActivityTab = 'manual' | 'auto';
 
+const DESIGN_STUDIO_ACTIVITY_CACHE_KEY = 'designStudioActivityCache';
+
 const MANUAL_ACTIVITY_TYPES = new Set([
   'template_uploaded',
   'templates_loaded',
@@ -135,6 +137,15 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
 }
 
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
+  const cachedActivityState = (() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [activeTab, setActiveTab] = useState<DesignStudioActivityTab>(() => {
@@ -142,17 +153,19 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const savedTab = localStorage.getItem('designStudioActivityTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
-  const [activities, setActivities] = useState<DesignStudioActivityRecord[]>([]);
-  const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>([]);
-  const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [activities, setActivities] = useState<DesignStudioActivityRecord[]>(cachedActivityState?.activities || []);
+  const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>(cachedActivityState?.manualRenderJobs || []);
+  const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>(cachedActivityState?.templatePreviewUrls || {});
+  const [isLoading, setIsLoading] = useState(!(cachedActivityState && (cachedActivityState.activities?.length || cachedActivityState.manualRenderJobs?.length)));
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const retentionHours = settings.designStudioActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
   const logLevel = settings.designStudioLogLevel || 'standard';
 
-  const loadActivities = async () => {
-    setIsLoading(true);
+  const loadActivities = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setIsLoading(true);
+    }
     try {
       const [response, renderJobs, designStudioState] = await Promise.all([
         apiClient.get<DesignStudioActivityRecord[]>('/api/design-studio/activity'),
@@ -172,11 +185,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       );
     } catch (error) {
       console.error('Failed to fetch design studio activity:', error);
-      setActivities([]);
-      setManualRenderJobs([]);
-      setTemplatePreviewUrls({});
+      if (!silent) {
+        setActivities([]);
+        setManualRenderJobs([]);
+        setTemplatePreviewUrls({});
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -186,7 +203,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void loadActivities();
+      void loadActivities({ silent: true });
     }, 5000);
 
     return () => {
@@ -197,6 +214,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   useEffect(() => {
     localStorage.setItem('designStudioActivityTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY, JSON.stringify({
+      activities,
+      manualRenderJobs,
+      templatePreviewUrls,
+    }));
+  }, [activities, manualRenderJobs, templatePreviewUrls]);
 
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
@@ -408,10 +434,18 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       </div>
 
       <div className="space-y-4 mt-6">
-        {isLoading ? (
-          [1, 2, 3].map((item) => (
-            <div key={item} className="h-24 rounded-xl bg-gray-100 dark:bg-[#111111] animate-pulse" />
-          ))
+        {isLoading && visibleActivities.length > 0 ? (
+          <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
+            Refreshing activity...
+          </div>
+        ) : null}
+        {isLoading && visibleActivities.length === 0 ? (
+          <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">
+            <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">Loading Design Studio activity...</p>
+            <p className="text-sm text-gray-500 dark:text-[#6B7280]">
+              Recent renders, queued jobs, and auto editorial activity will appear here shortly.
+            </p>
+          </div>
         ) : visibleActivities.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
             <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">

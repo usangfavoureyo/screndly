@@ -996,7 +996,7 @@ export function EditDesignBottomSheet({
             disabled={isRendering || (hasHeader && !headerText.trim())}
             className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white disabled:opacity-50"
           >
-            {isRendering ? 'Queueing...' : 'Save & Queue Render'}
+            {isRendering ? 'Queueing Render...' : 'Save & Queue Render'}
           </Button>
         </div>
       </BottomSheetFooter>

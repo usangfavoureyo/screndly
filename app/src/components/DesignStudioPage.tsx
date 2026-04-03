@@ -120,7 +120,10 @@ type AutoEditorialAction =
   | 'template'
   | 'schedule';
 
+const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
+
 function parseTemplate(template: any): Template {
+  const lastEditedSource = template.lastEdited || template.updatedAt || template.createdAt || new Date().toISOString();
   return {
     ...template,
     previewUrl: template.previewUrl || template.previewImage,
@@ -128,7 +131,7 @@ function parseTemplate(template: any): Template {
     hasBackground: template.hasBackground ?? true,
     hasSubtext: template.hasSubtext ?? false,
     hasOverlay: template.hasOverlay ?? Boolean(template.psdData?.detectedLayers?.hasOverlay),
-    lastEdited: new Date(template.lastEdited),
+    lastEdited: new Date(lastEditedSource),
     createdAt: template.createdAt ? new Date(template.createdAt) : undefined,
     updatedAt: template.updatedAt ? new Date(template.updatedAt) : undefined,
   };
@@ -166,6 +169,29 @@ function parseAutoEditorial(editorial: any): AutoEditorial {
   };
 }
 
+function readDesignStudioPageCache(): {
+  templates: Template[];
+  renderedDesigns: RenderedDesign[];
+  autoEditorials: AutoEditorial[];
+  manualRenderJobs: ManualRenderJob[];
+} | null {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(DESIGN_STUDIO_PAGE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return {
+      templates: Array.isArray(parsed.templates) ? parsed.templates.map(parseTemplate) : [],
+      renderedDesigns: Array.isArray(parsed.renderedDesigns) ? parsed.renderedDesigns.map(parseRenderedDesign) : [],
+      autoEditorials: Array.isArray(parsed.autoEditorials) ? parsed.autoEditorials.map(parseAutoEditorial) : [],
+      manualRenderJobs: Array.isArray(parsed.manualRenderJobs) ? parsed.manualRenderJobs : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 function isPsdLikeFile(file: File): boolean {
   const normalizedName = file.name.trim().toLowerCase();
   const normalizedType = (file.type || '').trim().toLowerCase();
@@ -195,6 +221,7 @@ async function readPsdSignature(file: File): Promise<string | null> {
 }
 
 export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) {
+  const cachedPageState = readDesignStudioPageCache();
   const { addNotification } = useNotifications();
   const { settings } = useSettings();
   const { feeds } = useRSSFeeds();
@@ -203,10 +230,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     const savedTab = localStorage.getItem('designStudioActiveTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>([]);
-  const [manualRenderJobs, setManualRenderJobs] = useState<ManualRenderJob[]>([]);
-  const [autoEditorials, setAutoEditorials] = useState<AutoEditorial[]>([]);
+  const [templates, setTemplates] = useState<Template[]>(cachedPageState?.templates || []);
+  const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>(cachedPageState?.renderedDesigns || []);
+  const [manualRenderJobs, setManualRenderJobs] = useState<ManualRenderJob[]>(cachedPageState?.manualRenderJobs || []);
+  const [autoEditorials, setAutoEditorials] = useState<AutoEditorial[]>(cachedPageState?.autoEditorials || []);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedTemplate, setExpandedTemplate] = useState<Template | null>(null);
@@ -217,7 +244,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
-  const [isLoadingState, setIsLoadingState] = useState(true);
+  const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
   const [previewEditorial, setPreviewEditorial] = useState<AutoEditorial | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
@@ -235,6 +262,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     localStorage.setItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    window.localStorage.setItem(DESIGN_STUDIO_PAGE_CACHE_KEY, JSON.stringify({
+      templates: serializeTemplates(templates),
+      renderedDesigns: serializeRenderedDesigns(renderedDesigns),
+      autoEditorials,
+      manualRenderJobs,
+    }));
+  }, [autoEditorials, manualRenderJobs, renderedDesigns, templates]);
 
   useEffect(() => {
     for (const job of manualRenderJobs) {
@@ -404,6 +442,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       const template = parseTemplate(uploadedTemplate.template);
       const nextTemplates = [template, ...templates.filter((entry) => entry.id !== template.id)];
       setTemplates(nextTemplates);
+      await persistState(nextTemplates, renderedDesigns);
       await createDesignStudioActivity('template_uploaded', {
         templateName: template.name,
       });
@@ -481,7 +520,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   };
 
   const handleLoadSelectedTemplates = async (selectedFiles: any[]) => {
-    const importedTemplates = await Promise.all(
+      const importedTemplates = await Promise.all(
       selectedFiles.map(async (file: any) => {
         const result = await importDesignStudioTemplate({
           url: file.url,
@@ -493,6 +532,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     const nextTemplates = [...importedTemplates, ...templates.filter((template) => !importedTemplates.some((entry) => entry.id === template.id))];
     setTemplates(nextTemplates);
+    await persistState(nextTemplates, renderedDesigns);
     await createDesignStudioActivity('templates_loaded', {
       source: 'backblaze',
       count: importedTemplates.length,
@@ -549,6 +589,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         },
       });
       setManualRenderJobs((currentJobs) => [job, ...currentJobs.filter((currentJob) => currentJob.id !== job.id)]);
+      setTemplates((currentTemplates) => [...currentTemplates]);
       setIsRendering(false);
       toast.success('PSD render queued in the background');
       haptics.success();
@@ -708,6 +749,16 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     return defaultAutoTemplate ? [defaultAutoTemplate] : [];
   }, [defaultAutoTemplate, validatedTemplates]);
+
+  const templateRenderStatusMap = useMemo(() => {
+    const map = new Map<string, 'queued' | 'rendering'>();
+    for (const job of manualRenderJobs) {
+      if ((job.status === 'queued' || job.status === 'rendering') && !map.has(job.templateId)) {
+        map.set(job.templateId, job.status);
+      }
+    }
+    return map;
+  }, [manualRenderJobs]);
 
   const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
@@ -934,14 +985,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             </button>
           </div>
 
-          {isLoadingState ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[1, 2, 3].map((item) => (
-                <div
-                  key={item}
-                  className="h-72 rounded-2xl border border-gray-200 dark:border-[#333333] bg-gray-100 dark:bg-[#111111] animate-pulse"
-                />
-              ))}
+          {isLoadingState && templates.length === 0 ? (
+            <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">
+              <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">Loading your Design Studio templates...</p>
+              <p className="text-sm text-gray-500 dark:text-[#6B7280]">
+                Saved templates will appear here as soon as the workspace finishes syncing.
+              </p>
             </div>
           ) : templates.length === 0 ? (
             <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
@@ -951,7 +1000,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="space-y-3">
+              {isLoadingState ? (
+                <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
+                  Refreshing templates...
+                </div>
+              ) : null}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {templates.map((template) => (
                   <SwipeableTemplateCard
                     key={template.id}
@@ -961,8 +1016,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     onExpand={handleExpandTemplate}
                     livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
                     isBeingEdited={editingTemplateId === template.id}
+                    renderStatus={templateRenderStatusMap.get(template.id) || null}
                   />
                 ))}
+              </div>
             </div>
           )}
         </>
@@ -1177,6 +1234,54 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 alt={expandedTemplate.name}
                 className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
               />
+              <div className="border-t border-white/10 bg-black/90 p-5 text-white">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.18em] text-white/60">Template Details</p>
+                    <p className="mt-2 text-xl">{expandedTemplate.name}</p>
+                    <p className="mt-1 text-sm text-white/70">
+                      {expandedTemplate.width} x {expandedTemplate.height} • {expandedTemplate.aspectRatio}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/85">
+                      {expandedTemplate.validationState === 'invalid'
+                        ? 'Invalid'
+                        : expandedTemplate.validationState === 'warning'
+                          ? 'Needs Review'
+                          : expandedTemplate.isValidated === false
+                            ? 'Invalid'
+                            : 'Validated'}
+                    </span>
+                    {expandedTemplate.baseVariant ? (
+                      <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/85">
+                        {expandedTemplate.baseVariant.replace(/_/g, ' ')}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <p className="text-xs uppercase tracking-[0.18em] text-white/60">Mapped Layers</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(expandedTemplate.mappedLayerNames && expandedTemplate.mappedLayerNames.length > 0
+                      ? expandedTemplate.mappedLayerNames
+                      : Object.values(expandedTemplate.mappedLayers || {})
+                    ).slice(0, 8).map((layerName) => (
+                      <span
+                        key={layerName}
+                        className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/90"
+                      >
+                        {layerName}
+                      </span>
+                    ))}
+                    {(!expandedTemplate.mappedLayerNames || expandedTemplate.mappedLayerNames.length === 0) &&
+                    Object.keys(expandedTemplate.mappedLayers || {}).length === 0 ? (
+                      <span className="text-sm text-white/70">No PSD layer names were extracted for this template yet.</span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
             </div>
           </DialogContent>
         </Dialog>
