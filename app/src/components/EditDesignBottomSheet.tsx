@@ -14,7 +14,11 @@ import { useSettings } from '../contexts/SettingsContext';
 import ColorPickerPopup from './ColorPickerPopup';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 import type { DesignContentType } from '../utils/designStudioCaptionGenerator';
-import { searchDesignStudioTMDb, type DesignStudioTMDbSearchResult } from '../lib/api/designStudio';
+import {
+  searchDesignStudioTMDb,
+  uploadDesignStudioAsset,
+  type DesignStudioTMDbSearchResult,
+} from '../lib/api/designStudio';
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -97,6 +101,7 @@ export function EditDesignBottomSheet({
   const [contentType, setContentType] = useState<DesignContentType>('general');
   const [caption, setCaption] = useState('');
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
+  const [isUploadingBackground, setIsUploadingBackground] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -149,17 +154,22 @@ export function EditDesignBottomSheet({
     gradientPosition
   ]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     haptics.light();
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const imageUrl = event.target?.result as string;
-        setBackgroundImage(imageUrl);
+      setIsUploadingBackground(true);
+      try {
+        const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
+        setBackgroundImage(uploadedImage.url);
         toast.success('Image uploaded');
-      };
-      reader.readAsDataURL(file);
+      } catch (error) {
+        console.error('Background upload failed:', error);
+        toast.error(error instanceof Error ? error.message : 'Failed to upload image');
+      } finally {
+        setIsUploadingBackground(false);
+        e.target.value = '';
+      }
     }
   };
 
@@ -199,6 +209,11 @@ export function EditDesignBottomSheet({
   const handleSave = () => {
     if (hasHeader && !headerText.trim()) {
       toast.error('Header text is required');
+      return;
+    }
+
+    if (isUploadingBackground) {
+      toast.error('Please wait for the background image upload to finish');
       return;
     }
 
@@ -418,15 +433,21 @@ export function EditDesignBottomSheet({
                   type="file"
                   accept="image/*"
                   onChange={handleFileUpload}
+                  disabled={isUploadingBackground}
                   className="hidden"
                 />
                 <div className="border border-gray-200 dark:border-[#333333] rounded-lg p-4 text-center cursor-pointer hover:border-[#ec1e24] transition-colors">
                   <Upload className="w-6 h-6 text-gray-400 dark:text-[#666666] mx-auto mb-2" />
                   <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-                    Upload from device
+                    {isUploadingBackground ? 'Uploading background...' : 'Upload from device'}
                   </p>
                 </div>
               </label>
+              {isUploadingBackground ? (
+                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                  Preparing background image for rendering...
+                </p>
+              ) : null}
             </div>
 
             {/* TMDb Search */}
@@ -993,10 +1014,10 @@ export function EditDesignBottomSheet({
           </Button>
           <Button
             onClick={handleSave}
-            disabled={isRendering || (hasHeader && !headerText.trim())}
+            disabled={isRendering || isUploadingBackground || (hasHeader && !headerText.trim())}
             className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white disabled:opacity-50"
           >
-            {isRendering ? 'Queueing Render...' : 'Save & Queue Render'}
+            {isUploadingBackground ? 'Uploading Background...' : isRendering ? 'Queueing Render...' : 'Save & Queue Render'}
           </Button>
         </div>
       </BottomSheetFooter>

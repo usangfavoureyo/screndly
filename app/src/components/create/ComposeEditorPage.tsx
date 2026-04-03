@@ -335,7 +335,12 @@ export function ComposeEditorPage({
   const isThreadsXCropReady =
     hasThreadsXCropPreviewReady &&
     formState.threadsXCropVideo?.uploadStatus === 'uploaded';
-  const isThreadsXCropBlockingActions = isThreadsXCropEnabled && isGeneratingThreadsXCrop;
+  const activeThreadsXCropPreviewUrl =
+    hasThreadsXCropPreviewReady
+      ? (formState.threadsXCropVideo?.previewUrl || formState.threadsXCropVideo?.storageUrl)
+      : undefined;
+  const isThreadsXCropBlockingActions =
+    isThreadsXCropEnabled && (isGeneratingThreadsXCrop || (isUploadingThreadsXCrop && !isThreadsXCropReady));
   const hasUploadingThumbnails = [formState.sharedThumbnail, formState.youtubeThumbnail, formState.xThumbnail]
     .some((thumbnail) => thumbnail?.uploadStatus === 'uploading');
   const hasGeneratingThumbnails = Object.values(thumbnailGenerationState).some(Boolean);
@@ -1786,17 +1791,20 @@ export function ComposeEditorPage({
                       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-black dark:border-[#333333]">
                         <div className="relative aspect-[3/4] w-full overflow-hidden">
                           <video
-                            src={getComposeAssetPreviewUrl(primaryVideoAsset)}
+                            src={activeThreadsXCropPreviewUrl || getComposeAssetPreviewUrl(primaryVideoAsset)}
                             className="absolute inset-0 h-full w-full object-cover"
-                            style={{ objectPosition: `50% ${formState.videoCropFocusYPercent}%` }}
+                            style={activeThreadsXCropPreviewUrl ? undefined : { objectPosition: `50% ${formState.videoCropFocusYPercent}%` }}
                             muted
                             playsInline
                             preload="metadata"
+                            controls={Boolean(activeThreadsXCropPreviewUrl)}
                           />
                         </div>
                       </div>
                       <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                        Adjust the crop up or down for end-card logos and titles like the Mortal Kombat II screen you shared.
+                        {activeThreadsXCropPreviewUrl
+                          ? 'Showing the generated 3:4 crop preview. Use Generate Again after adjusting the framing.'
+                          : 'Adjust the crop up or down for end-card logos and titles like the Mortal Kombat II screen you shared.'}
                       </p>
                     </div>
 

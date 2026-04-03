@@ -185,10 +185,17 @@ export async function loadFFmpeg(onProgress?: (progress: number) => void): Promi
 
     for (let i = 0; i < CDN_URLS.length; i++) {
       const BASE_URL = CDN_URLS[i];
+      const classWorkerBaseUrl = BASE_URL
+        .replace('@ffmpeg/core@0.12.6/dist/umd', '@ffmpeg/ffmpeg@0.12.10/dist/esm')
+        .replace('/dist/umd', '/dist/esm');
       console.log(`[FFmpeg] Attempt ${i + 1}/${CDN_URLS.length}: Loading from ${BASE_URL}`);
 
       try {
         // Use toBlobURL helper which handles CORS and caching better
+        const classWorkerURL = await toBlobURL(
+          `${classWorkerBaseUrl}/worker.js`,
+          'text/javascript',
+        );
         const coreURL = await toBlobURL(`${BASE_URL}/ffmpeg-core.js`, 'text/javascript');
         const wasmURL = await toBlobURL(`${BASE_URL}/ffmpeg-core.wasm`, 'application/wasm');
 
@@ -200,6 +207,7 @@ export async function loadFFmpeg(onProgress?: (progress: number) => void): Promi
         }
 
         await ffmpeg.load({
+          classWorkerURL,
           coreURL,
           wasmURL,
         });
