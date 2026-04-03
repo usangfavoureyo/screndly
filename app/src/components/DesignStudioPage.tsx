@@ -245,6 +245,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
   const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
+  const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadingTemplateName, setUploadingTemplateName] = useState('');
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
   const [previewEditorial, setPreviewEditorial] = useState<AutoEditorial | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
@@ -418,10 +421,15 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
 
     haptics.medium();
+    setIsUploadingTemplate(true);
+    setUploadProgress(0);
+    setUploadingTemplateName(file.name);
     toast.success('Uploading and analyzing PSD template...');
 
     try {
-      const uploadedTemplate = await uploadDesignStudioTemplate(file);
+      const uploadedTemplate = await uploadDesignStudioTemplate(file, (progress) => {
+        setUploadProgress(Math.max(0, Math.min(100, Math.round(progress))));
+      });
       const detectedHeader = Boolean(uploadedTemplate.detectedLayers.hasHeader);
       const detectedBackground = Boolean(uploadedTemplate.detectedLayers.hasBackground);
       const detectedOverlay = Boolean(uploadedTemplate.detectedLayers.hasOverlay);
@@ -451,6 +459,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     } catch (error) {
       console.error('PSD template analysis error:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to process PSD template');
+    } finally {
+      setIsUploadingTemplate(false);
+      setUploadProgress(0);
+      setUploadingTemplateName('');
     }
   };
 
@@ -966,10 +978,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <button
                 type="button"
                 onClick={handleOpenPsdPicker}
+                disabled={isUploadingTemplate}
                 className="w-full border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
               >
                 <Upload className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
-                <p className="text-gray-900 dark:text-white">Upload PSD Template</p>
+                <p className="text-gray-900 dark:text-white">
+                  {isUploadingTemplate ? 'Uploading PSD Template...' : 'Upload PSD Template'}
+                </p>
                 <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                   Select a `.psd` file from Files or Documents, not Photos
                 </p>
@@ -984,6 +999,26 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
             </button>
           </div>
+
+          {isUploadingTemplate ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-900 dark:text-white">Uploading PSD template</p>
+                  <p className="mt-1 truncate text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    {uploadingTemplateName || 'Preparing upload...'}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm text-[#ec1e24]">{uploadProgress}%</p>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-[#111111]">
+                <div
+                  className="h-full rounded-full bg-[#ec1e24] transition-[width] duration-200 ease-out"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {isLoadingState && templates.length === 0 ? (
             <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">

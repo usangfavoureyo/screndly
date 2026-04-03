@@ -26,7 +26,14 @@ function loadReadPsd(): ReadPsdFn {
   }
 
   try {
-    require('ag-psd/initialize-canvas');
+    try {
+      require('ag-psd/initialize-canvas');
+    } catch (error) {
+      if (!isMissingOptionalDependency(error)) {
+        throw error;
+      }
+    }
+
     const { readPsd } = require('ag-psd') as { readPsd?: ReadPsdFn };
     if (typeof readPsd !== 'function') {
       throw new Error('ag-psd did not expose readPsd');
@@ -36,7 +43,7 @@ function loadReadPsd(): ReadPsdFn {
   } catch (error) {
     if (isMissingOptionalDependency(error)) {
       throw new PsdSupportUnavailableError(
-        'Design Studio PSD support is unavailable because the optional ag-psd/canvas dependency is not installed.',
+        'Design Studio PSD support is unavailable because ag-psd is not installed in this environment.',
         error
       );
     }

@@ -196,7 +196,10 @@ export async function uploadDesignStudioAsset(file: File, folder: 'templates' | 
   return response.data;
 }
 
-export async function uploadDesignStudioTemplate(file: File): Promise<{
+export async function uploadDesignStudioTemplate(
+  file: File,
+  onProgress?: (progress: number) => void,
+): Promise<{
   url: string;
   fileName: string;
   signature: string;
@@ -228,7 +231,7 @@ export async function uploadDesignStudioTemplate(file: File): Promise<{
   }>(
     '/api/design-studio/upload-template',
     file,
-    undefined,
+    onProgress,
     undefined,
     { timeout: 120000 },
   );
