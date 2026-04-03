@@ -1,9 +1,9 @@
 import fs from 'fs/promises';
 import { Router } from 'express';
 import multer from 'multer';
+import { isPsdSupportUnavailableError, readPsdSafely } from '../lib/psd';
 import prisma from '../lib/prisma';
 import { z } from 'zod';
-import { readPsd } from 'ag-psd';
 import { authenticate } from '../middleware/auth';
 import { listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import {
@@ -295,7 +295,7 @@ router.post('/upload-template', authenticate, upload.single('mediaFile'), async 
       return res.status(400).json({ success: false, error: { message: 'Uploaded file is not a valid PSD' } });
     }
 
-    const psd = readPsd(fileBuffer, {
+    const psd = readPsdSafely(fileBuffer, {
       skipCompositeImageData: true,
       skipLayerImageData: true,
       skipThumbnail: true,
@@ -333,6 +333,12 @@ router.post('/upload-template', authenticate, upload.single('mediaFile'), async 
     });
   } catch (error) {
     console.error('Error uploading/analyzing Design Studio PSD template:', error);
+    if (isPsdSupportUnavailableError(error)) {
+      return res.status(503).json({
+        success: false,
+        error: { message: 'Design Studio PSD uploads are unavailable because the server is missing the required canvas dependency.' },
+      });
+    }
     res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to upload PSD template' } });
   } finally {
     if (req.file?.path) {

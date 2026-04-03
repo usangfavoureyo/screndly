@@ -2,13 +2,12 @@ import { randomUUID } from 'crypto';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import prisma from '../lib/prisma';
+import { readPsdSafely } from '../lib/psd';
 import { generateStudioCaption } from './ai.service';
 import { uploadBufferToBackblaze, getBackblazeAuthorizedDownloadUrl } from './backblaze';
 import { publisherService } from './publisher.service';
 import { getRSSActivity } from './rss.service';
 import sharp from 'sharp';
-import 'ag-psd/initialize-canvas';
-import { readPsd } from 'ag-psd';
 
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
 const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
@@ -381,7 +380,7 @@ async function generateTemplatePreviewUrl(input: {
   height: number;
 }): Promise<string> {
   try {
-    const previewPsd = readPsd(input.buffer, {
+    const previewPsd = readPsdSafely(input.buffer, {
       skipLayerImageData: true,
       skipThumbnail: false,
     });
@@ -551,7 +550,7 @@ function buildTemplateFromPsdBuffer(input: {
   sourceFilePath: string;
   uploadedUrl: string;
 }): DesignStudioTemplateRecord {
-  const psd = readPsd(input.buffer, {
+  const psd = readPsdSafely(input.buffer, {
     skipCompositeImageData: true,
     skipLayerImageData: true,
     skipThumbnail: true,
