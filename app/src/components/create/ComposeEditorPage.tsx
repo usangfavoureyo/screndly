@@ -72,6 +72,7 @@ import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
 import { extractVideoMetadata } from '../../utils/videoMetadata';
+import { loadFFmpeg } from '../../utils/ffmpeg';
 import { useSettings } from '../../contexts/SettingsContext';
 
 interface ComposeEditorPageProps {
@@ -350,6 +351,20 @@ export function ComposeEditorPage({
   const isYouTubeShortsSelected = formState.platforms.includes('youtube_shorts');
   const isYouTubeSelected = isYouTubeLongformSelected || isYouTubeShortsSelected;
   const isPinterestSelected = formState.platforms.includes('pinterest');
+  const shouldShowSharedThumbnailSection =
+    isSingleVideo &&
+    formState.platforms.some((platform) => [
+      'instagram_feed',
+      'instagram_reels',
+      'instagram_stories',
+      'facebook_feed',
+      'facebook_stories',
+      'threads',
+      'tiktok',
+    ].includes(platform));
+  const shouldShowYouTubeThumbnailSection = isSingleVideo && isYouTubeSelected;
+  const shouldShowVideoThumbnails =
+    shouldShowSharedThumbnailSection || shouldShowYouTubeThumbnailSection;
   const hasYouTubeConnection = connectedPlatforms.has('youtube');
   const hasMatchingYouTubePlaylist = youtubePlaylists.some((playlist) => playlist.id === formState.youtubePlaylist);
   const initialFormSnapshot = useMemo(() => JSON.stringify(createInitialForm(existingItem)), [existingItem]);
@@ -552,6 +567,16 @@ export function ComposeEditorPage({
     hasThreadsXCropPreviewReady,
     primaryVideoAsset,
   ]);
+
+  useEffect(() => {
+    if (!canOfferThreadsXCrop || !primaryVideoAsset) {
+      return;
+    }
+
+    void loadFFmpeg().catch((error) => {
+      console.warn('[ComposeEditorPage] FFmpeg preloading failed:', error);
+    });
+  }, [canOfferThreadsXCrop, primaryVideoAsset]);
 
   useBackEntry({
     enabled: (hasUnsavedChanges || isScheduleInteractionActive || isMediaPreviewOpen) && !unsavedChangesGuard.isPromptOpen,
@@ -1620,7 +1645,104 @@ export function ComposeEditorPage({
             )}
           </div>
 
-          {isSingleVideo ? (
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
+            <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
+            <div className="mt-4 space-y-4">
+              {COMPOSE_META_PLATFORM_GROUPS.map((group) => {
+                const GroupIcon =
+                  group.id === 'instagram'
+                    ? InstagramIcon
+                    : group.id === 'facebook'
+                      ? FacebookIcon
+                      : YouTubeIcon;
+                const connected = connectedPlatforms.has(group.connectionKey.toLowerCase());
+
+                return (
+                  <div
+                    key={group.id}
+                    className={`rounded-2xl border p-4 transition-all ${
+                      connected
+                        ? 'border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]'
+                        : 'border-gray-200 bg-white/60 opacity-45 dark:border-[#333333] dark:bg-[#000000]'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-900 dark:bg-[#111111] dark:text-white">
+                          <GroupIcon className="h-5.5 w-5.5" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-900 dark:text-white">{group.label}</p>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{group.helper}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {group.options.map((option) => {
+                        const compatibility = compatibilityMap[option.id];
+                        const isSelected = formState.platforms.includes(option.id);
+                        const optionTone = !connected
+                          ? 'border-gray-200 bg-white text-gray-700 opacity-45 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]'
+                          : isSelected
+                            ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]'
+                            : compatibility.supported
+                              ? 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]'
+                              : 'border-gray-200 bg-white text-white/90 dark:border-[#333333] dark:bg-[#000000] dark:text-white';
+
+                        return (
+                          <button
+                            key={option.id}
+                            type="button"
+                            disabled={!connected}
+                            onClick={() => togglePlatform(option.id, connected)}
+                            className={`h-11 rounded-xl border px-4 text-sm transition-all ${optionTone}`}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              <div className="grid grid-cols-3 gap-3">
+              {COMPOSE_PLATFORM_OPTIONS.map((platform) => {
+                const Icon = PLATFORM_ICONS[platform.id];
+                const iconSizeClass = PLATFORM_ICON_SIZES[platform.id];
+                const compatibility = compatibilityMap[platform.id];
+                const isSelected = formState.platforms.includes(platform.id);
+                const connected = connectedPlatforms.has(platform.connectionKey.toLowerCase());
+
+                return (
+                  <button
+                    key={platform.id}
+                    type="button"
+                    onClick={() => togglePlatform(platform.id, connected)}
+                    disabled={!connected}
+                    aria-label={platform.label}
+                    title={platform.label}
+                    className={`aspect-square rounded-2xl border transition-all ${getPlatformCardTone(
+                      isSelected,
+                      compatibility.supported,
+                      connected,
+                    )}`}
+                  >
+                    <div className="flex h-full w-full items-center justify-center">
+                      <div className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
+                        isSelected ? 'bg-[#ec1e24]/10 text-[#ec1e24]' : 'bg-gray-100 text-current dark:bg-[#111111]'
+                      }`}>
+                        <Icon className={iconSizeClass} />
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+              </div>
+            </div>
+          </div>
+
+          {shouldShowVideoThumbnails ? (
             <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
               <div className="mb-4">
                 <h3 className="mb-1 text-gray-900 dark:text-white">Video Thumbnails</h3>
@@ -1631,19 +1753,23 @@ export function ComposeEditorPage({
 
               <div className={`grid gap-4 ${isCompactLayout ? 'grid-cols-1' : 'md:grid-cols-2'}`}>
                 {[
-                  {
-                    key: 'sharedThumbnail' as const,
-                    label: 'Shared Thumbnail',
-                    description: 'Facebook, Instagram, Threads, TikTok',
-                    supportsGeneration: true,
-                  },
-                  {
-                    key: 'youtubeThumbnail' as const,
-                    label: 'YouTube Thumbnail',
-                    description: 'YouTube only',
-                    supportsGeneration: true,
-                  },
-                ].map(({ key, label, description, supportsGeneration }) => {
+                  shouldShowSharedThumbnailSection
+                    ? {
+                        key: 'sharedThumbnail' as const,
+                        label: 'Shared Thumbnail',
+                        description: 'Facebook, Instagram, Threads, TikTok',
+                        supportsGeneration: true,
+                      }
+                    : null,
+                  shouldShowYouTubeThumbnailSection
+                    ? {
+                        key: 'youtubeThumbnail' as const,
+                        label: 'YouTube Thumbnail',
+                        description: 'YouTube only',
+                        supportsGeneration: true,
+                      }
+                    : null,
+                ].filter(Boolean).map(({ key, label, description, supportsGeneration }) => {
                   const thumbnail = formState[key];
                   const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
                   const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
@@ -1893,103 +2019,6 @@ export function ComposeEditorPage({
               </div>
             </div>
           ) : null}
-
-          <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
-            <h3 className="mb-1 text-gray-900 dark:text-white">Platform Selection</h3>
-            <div className="mt-4 space-y-4">
-              {COMPOSE_META_PLATFORM_GROUPS.map((group) => {
-                const GroupIcon =
-                  group.id === 'instagram'
-                    ? InstagramIcon
-                    : group.id === 'facebook'
-                      ? FacebookIcon
-                      : YouTubeIcon;
-                const connected = connectedPlatforms.has(group.connectionKey.toLowerCase());
-
-                return (
-                  <div
-                    key={group.id}
-                    className={`rounded-2xl border p-4 transition-all ${
-                      connected
-                        ? 'border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]'
-                        : 'border-gray-200 bg-white/60 opacity-45 dark:border-[#333333] dark:bg-[#000000]'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gray-100 text-gray-900 dark:bg-[#111111] dark:text-white">
-                          <GroupIcon className="h-5.5 w-5.5" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-900 dark:text-white">{group.label}</p>
-                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{group.helper}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      {group.options.map((option) => {
-                        const compatibility = compatibilityMap[option.id];
-                        const isSelected = formState.platforms.includes(option.id);
-                        const optionTone = !connected
-                          ? 'border-gray-200 bg-white text-gray-700 opacity-45 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]'
-                          : isSelected
-                            ? 'border-[#ec1e24] bg-[#ec1e24]/10 text-[#ec1e24] shadow-[0_0_0_1px_rgba(236,30,36,0.25)]'
-                            : compatibility.supported
-                              ? 'border-gray-200 bg-white text-gray-700 dark:border-[#333333] dark:bg-[#000000] dark:text-white hover:border-[#ec1e24]/60 hover:text-[#ec1e24] dark:hover:bg-[#111111]'
-                              : 'border-gray-200 bg-white text-white/90 dark:border-[#333333] dark:bg-[#000000] dark:text-white';
-
-                        return (
-                          <button
-                            key={option.id}
-                            type="button"
-                            disabled={!connected}
-                            onClick={() => togglePlatform(option.id, connected)}
-                            className={`h-11 rounded-xl border px-4 text-sm transition-all ${optionTone}`}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-
-              <div className="grid grid-cols-3 gap-3">
-              {COMPOSE_PLATFORM_OPTIONS.map((platform) => {
-                const Icon = PLATFORM_ICONS[platform.id];
-                const iconSizeClass = PLATFORM_ICON_SIZES[platform.id];
-                const compatibility = compatibilityMap[platform.id];
-                const isSelected = formState.platforms.includes(platform.id);
-                const connected = connectedPlatforms.has(platform.connectionKey.toLowerCase());
-
-                return (
-                  <button
-                    key={platform.id}
-                    type="button"
-                    onClick={() => togglePlatform(platform.id, connected)}
-                    disabled={!connected}
-                    aria-label={platform.label}
-                    title={platform.label}
-                    className={`aspect-square rounded-2xl border transition-all ${getPlatformCardTone(
-                      isSelected,
-                      compatibility.supported,
-                      connected,
-                    )}`}
-                  >
-                    <div className="flex h-full w-full items-center justify-center">
-                      <div className={`flex h-14 w-14 items-center justify-center rounded-2xl transition-colors ${
-                        isSelected ? 'bg-[#ec1e24]/10 text-[#ec1e24]' : 'bg-gray-100 text-current dark:bg-[#111111]'
-                      }`}>
-                        <Icon className={iconSizeClass} />
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-              </div>
-            </div>
-          </div>
 
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <div className="mb-4">

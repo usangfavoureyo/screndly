@@ -25,7 +25,7 @@ let loadAbortController: AbortController | null = null;
 let ffmpegModulesPromise: Promise<FFmpegModuleBundle> | null = null;
 
 const FFMPEG_MODULE_IMPORT_TIMEOUT_MS = 15000;
-const FFMPEG_LOAD_TIMEOUT_MS = 25000;
+const FFMPEG_LOAD_TIMEOUT_MS = 90000;
 const FFMPEG_FETCH_TIMEOUT_MS = 25000;
 const FFMPEG_EXEC_TIMEOUT_MS = 45000;
 const FFMPEG_READ_TIMEOUT_MS = 15000;

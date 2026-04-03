@@ -14,6 +14,8 @@ const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
 const DESIGN_STUDIO_AUTO_EDITORIALS_KEY = 'designStudioAutoEditorials';
 const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
 const DESIGN_STUDIO_QUEUE_NAME = 'design-studio-renders';
+const DESIGN_STUDIO_REMOTE_FETCH_TIMEOUT_MS = 30000;
+const DESIGN_STUDIO_RENDER_TIMEOUT_MS = 180000;
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
@@ -826,8 +828,39 @@ function findVariant(
     || variants[0];
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function fetchBytesFromUrl(url: string): Promise<Buffer> {
-  const response = await fetch(url);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), DESIGN_STUDIO_REMOTE_FETCH_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Timed out while fetching a remote render asset');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to fetch remote asset (${response.status})`);
   }
@@ -1429,63 +1462,65 @@ async function processManualRenderJob(
   }
 
   try {
-    const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
-    const rendered = await renderDesignStudioImage(template, {
-      ...input.data,
-      template_variant: activeVariant,
-    });
+    await withTimeout((async () => {
+      const activeVariant = input.data.template_variant || template.baseVariant || 'bottom_center';
+      const rendered = await renderDesignStudioImage(template, {
+        ...input.data,
+        template_variant: activeVariant,
+      });
 
-    const uploaded = await uploadBufferToBackblaze(
-      rendered.buffer,
-      `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-${Date.now()}.${rendered.extension}`,
-      {
-        bucketTypes: ['design', 'general'],
-        prefix: 'design-studio/renders',
-        contentType: rendered.contentType,
-      },
-    );
+      const uploaded = await uploadBufferToBackblaze(
+        rendered.buffer,
+        `${template.name.replace(/[^a-z0-9-]+/gi, '-')}-${Date.now()}.${rendered.extension}`,
+        {
+          bucketTypes: ['design', 'general'],
+          prefix: 'design-studio/renders',
+          contentType: rendered.contentType,
+        },
+      );
 
-    const captions: DesignStudioCaptionPayload = {
-      shared_caption: input.data.sharedCaption || input.data.caption || '',
-      pinterest_title: input.data.pinterestTitle || truncateText(input.data.headerText, 100),
-      pinterest_description: input.data.pinterestDescription || truncateText(input.data.subtext || input.data.headerText, 500),
-    };
+      const captions: DesignStudioCaptionPayload = {
+        shared_caption: input.data.sharedCaption || input.data.caption || '',
+        pinterest_title: input.data.pinterestTitle || truncateText(input.data.headerText, 100),
+        pinterest_description: input.data.pinterestDescription || truncateText(input.data.subtext || input.data.headerText, 500),
+      };
 
-    const renderedDesign: DesignStudioRenderedDesignRecord = {
-      id: `design-render-${randomUUID()}`,
-      templateId: template.id,
-      templateName: template.name,
-      templateVariant: activeVariant,
-      exportFormat: rendered.format,
-      outputUrl: uploaded.url,
-      previewUrl: uploaded.url,
-      data: input.data,
-      createdAt: new Date().toISOString(),
-      aspectRatio: template.aspectRatio,
-      caption: captions.shared_caption,
-      captions,
-      contentType: input.data.contentType,
-    };
+      const renderedDesign: DesignStudioRenderedDesignRecord = {
+        id: `design-render-${randomUUID()}`,
+        templateId: template.id,
+        templateName: template.name,
+        templateVariant: activeVariant,
+        exportFormat: rendered.format,
+        outputUrl: uploaded.url,
+        previewUrl: uploaded.url,
+        data: input.data,
+        createdAt: new Date().toISOString(),
+        aspectRatio: template.aspectRatio,
+        caption: captions.shared_caption,
+        captions,
+        contentType: input.data.contentType,
+      };
 
-    const renderedDesigns = await getRenderedDesigns();
-    await saveRenderedDesigns([renderedDesign, ...renderedDesigns].slice(0, 200));
+      const renderedDesigns = await getRenderedDesigns();
+      await saveRenderedDesigns([renderedDesign, ...renderedDesigns].slice(0, 200));
 
-    await updateManualRenderJob(jobId, {
-      status: 'completed',
-      renderedDesignId: renderedDesign.id,
-      outputUrl: renderedDesign.outputUrl,
-      failureReason: null,
-    });
+      await updateManualRenderJob(jobId, {
+        status: 'completed',
+        renderedDesignId: renderedDesign.id,
+        outputUrl: renderedDesign.outputUrl,
+        failureReason: null,
+      });
 
-    await createDesignStudioActivity('design_rendered', {
-      templateId: template.id,
-      templateName: template.name,
-      renderJobId: jobId,
-      variant: renderedDesign.templateVariant,
-      previewUrl: renderedDesign.previewUrl,
-      outputUrl: renderedDesign.outputUrl,
-      exportFormat: renderedDesign.exportFormat,
-    });
+      await createDesignStudioActivity('design_rendered', {
+        templateId: template.id,
+        templateName: template.name,
+        renderJobId: jobId,
+        variant: renderedDesign.templateVariant,
+        previewUrl: renderedDesign.previewUrl,
+        outputUrl: renderedDesign.outputUrl,
+        exportFormat: renderedDesign.exportFormat,
+      });
+    })(), DESIGN_STUDIO_RENDER_TIMEOUT_MS, 'Manual design render timed out after 3 minutes');
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : 'Failed to render design';
     await updateManualRenderJob(jobId, {

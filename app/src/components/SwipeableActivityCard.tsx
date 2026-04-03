@@ -30,6 +30,7 @@ export function SwipeableActivityCard({
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [swipeDirection, setSwipeDirection] = useState<'none' | 'horizontal' | 'vertical'>('none');
+  const mouseSwipeActiveRef = useRef(false);
   const startX = useRef(0);
   const startY = useRef(0);
   const currentX = useRef(0);
@@ -135,21 +136,22 @@ export function SwipeableActivityCard({
     clearLongPress();
 
     if (selectionMode) {
+      longPressTriggeredRef.current = false;
+      mouseSwipeActiveRef.current = false;
       setIsSwiping(false);
       setSwipeDirection('none');
       setSwipeX(0);
-
-      longPressTriggeredRef.current = false;
       currentX.current = startX.current;
       currentY.current = startY.current;
       return;
     }
 
     if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      mouseSwipeActiveRef.current = false;
       setIsSwiping(false);
       setSwipeDirection('none');
       setSwipeX(0);
-      longPressTriggeredRef.current = false;
       currentX.current = startX.current;
       currentY.current = startY.current;
       return;
@@ -167,6 +169,7 @@ export function SwipeableActivityCard({
     }
     
     // Reset state
+    mouseSwipeActiveRef.current = false;
     setIsSwiping(false);
     setSwipeDirection('none');
     setSwipeX(0);
@@ -176,6 +179,7 @@ export function SwipeableActivityCard({
 
   const handleTouchCancel = () => {
     clearLongPress();
+    mouseSwipeActiveRef.current = false;
     setIsSwiping(false);
     setSwipeDirection('none');
     setSwipeX(0);
@@ -183,19 +187,78 @@ export function SwipeableActivityCard({
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (selectionMode || e.button !== 0) {
+      return;
+    }
+
+    startX.current = e.clientX;
+    startY.current = e.clientY;
+    currentX.current = e.clientX;
+    currentY.current = e.clientY;
+    setSwipeDirection('none');
+    mouseSwipeActiveRef.current = !isInteractiveTarget(e.target);
     startLongPress(e.clientX, e.clientY, e.target);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     cancelLongPressOnMovement(e.clientX, e.clientY);
+
+    if (selectionMode || longPressTriggeredRef.current || !mouseSwipeActiveRef.current || (e.buttons & 1) !== 1) {
+      return;
+    }
+
+    currentX.current = e.clientX;
+    currentY.current = e.clientY;
+
+    const deltaX = Math.abs(currentX.current - startX.current);
+    const deltaY = Math.abs(currentY.current - startY.current);
+
+    if (swipeDirection === 'none' && (deltaX > 10 || deltaY > 10)) {
+      if (deltaX > deltaY * 1.5) {
+        setSwipeDirection('horizontal');
+        setIsSwiping(true);
+      } else {
+        setSwipeDirection('vertical');
+      }
+    }
+
+    if (swipeDirection === 'horizontal') {
+      e.preventDefault();
+
+      const diff = currentX.current - startX.current;
+      if (diff <= 0) {
+        const maxSwipe = 120;
+        const clampedDiff = Math.max(-maxSwipe, diff);
+        setSwipeX(clampedDiff);
+      }
+    }
   };
 
   const handleMouseUp = () => {
     clearLongPress();
+    if (mouseSwipeActiveRef.current || swipeDirection === 'horizontal') {
+      if (swipeX < -90 && !selectionMode && !longPressTriggeredRef.current) {
+        haptics.medium();
+        onDelete(id);
+      }
+      mouseSwipeActiveRef.current = false;
+      setIsSwiping(false);
+      setSwipeDirection('none');
+      setSwipeX(0);
+      currentX.current = startX.current;
+      currentY.current = startY.current;
+      return;
+    }
   };
 
   const handleMouseLeave = () => {
     clearLongPress();
+    if (mouseSwipeActiveRef.current || swipeDirection === 'horizontal') {
+      mouseSwipeActiveRef.current = false;
+      setIsSwiping(false);
+      setSwipeDirection('none');
+      setSwipeX(0);
+    }
   };
 
   const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
@@ -225,7 +288,7 @@ export function SwipeableActivityCard({
 
       {/* Card Content */}
       <div
-        className={`${className} relative select-none ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
+        className={`${className} group relative select-none ${selected ? 'ring-2 ring-[#ec1e24] bg-[#ec1e24]/5' : selectionMode ? 'ring-1 ring-[#ec1e24]/30' : ''}`}
         style={{
           transform: `translateX(${selectionMode ? 0 : swipeX}px)`,
           transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
@@ -239,6 +302,21 @@ export function SwipeableActivityCard({
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
       >
+        {!selectionMode && (
+          <button
+            type="button"
+            aria-label={deleteLabel}
+            className="absolute right-3 top-3 z-10 hidden rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 opacity-0 transition-opacity hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#050505]/95 dark:text-[#9CA3AF] dark:hover:text-[#ec1e24] lg:flex"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              haptics.medium();
+              onDelete(id);
+            }}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
         {selectionMode && (
           <button
             type="button"
