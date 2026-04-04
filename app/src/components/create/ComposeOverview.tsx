@@ -21,6 +21,7 @@ import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
 import { getComposePlatformLabel } from '../../lib/create/composePlatforms';
+import { buildComposeAssetStreamUrl } from '../../lib/create/composeStorage';
 import { isThreadsXCropVariantReady } from '../../lib/create/composeVideoProcessing';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import { validateComposeItemAction } from '../../lib/create/composeValidation';
@@ -306,7 +307,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
         }
 
         return {
-          src: assetPreviewUrl,
+          src: buildComposeAssetStreamUrl(assetPreviewUrl) || assetPreviewUrl,
           mediaType: asset.kind,
           title: asset.fileName,
           badgeLabel: asset.kind,

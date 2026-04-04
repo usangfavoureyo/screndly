@@ -11,6 +11,7 @@ import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
+import { buildComposeAssetStreamUrl } from '../../lib/create/composeStorage';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import { validateComposeItemAction } from '../../lib/create/composeValidation';
 import {
@@ -185,7 +186,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         }
 
         return {
-          src: assetPreviewUrl,
+          src: buildComposeAssetStreamUrl(assetPreviewUrl) || assetPreviewUrl,
           mediaType: asset.kind,
           title: asset.fileName,
           badgeLabel: asset.kind,
