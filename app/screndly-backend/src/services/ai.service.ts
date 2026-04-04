@@ -1097,7 +1097,45 @@ Write ONLY the caption text. No preamble.`;
         return `${context.temporalTag === 'releasing_today' ? '🚨 OUT NOW:' : '🎬'} ${context.title} ${context.daysUntil > 0 ? `(In ${context.daysUntil} days)` : ''}`;
     }
 
-    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    const normalizedCaption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    if (!hasGroundedRSSNamedEntities(context) || (!isVagueRSSCaption(normalizedCaption) && !isEditorializedRSSCaption(normalizedCaption))) {
+        return normalizedCaption;
+    }
+
+    const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
+
+Article Title: ${context.articleTitle}
+Article Summary: ${context.summary.slice(0, 500)}
+Allowed named entities: ${Array.isArray(context.allowedEntities) ? context.allowedEntities.join(', ') : 'None'}
+Original caption: ${normalizedCaption}
+
+Requirements:
+- Name the concrete subject directly if one is available in the title, summary, or allowed entities.
+- Remove vague phrases like "a Marvel character" or "a major actor".
+- Remove commentary, interpretation, and opinion.
+- Keep it concise and factual.
+
+Write ONLY the corrected caption.`;
+
+    const retryResponse = await generateCompletion({
+        model,
+        prompt: validationPrompt,
+        systemPrompt,
+        maxTokens: 150,
+        temperature: 0.2,
+        jsonMode: false
+    });
+
+    if (!retryResponse.success) {
+        return context.articleTitle;
+    }
+
+    const correctedCaption = normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content']);
+    if (isVagueRSSCaption(correctedCaption) || isEditorializedRSSCaption(correctedCaption)) {
+        return context.articleTitle;
+    }
+
+    return correctedCaption;
 }
 
 // ============================================
@@ -1112,6 +1150,20 @@ export interface RSSContext {
     tone?: string;
     selectedVisuals?: string[];
     allowedEntities?: string[];
+}
+
+function hasGroundedRSSNamedEntities(context: RSSContext): boolean {
+    return Array.isArray(context.allowedEntities) && context.allowedEntities.some((entry) => entry.trim().length >= 3);
+}
+
+function isVagueRSSCaption(caption: string): boolean {
+    const normalized = caption.toLowerCase();
+    return /\ba marvel character\b|\ba missing marvel character\b|\ba missing character\b|\ba major actor\b|\ba popular actor\b|\ba franchise film\b|\ba popular series\b|\ba beloved series\b|\ba major franchise\b/.test(normalized);
+}
+
+function isEditorializedRSSCaption(caption: string): boolean {
+    const normalized = caption.toLowerCase();
+    return /\bstarting to feel like\b|\bfeels like a pattern\b|\blooks like a pattern\b|\bseems like a pattern\b|\bslow[- ]burn returns\b|\bpattern again\b/.test(normalized);
 }
 
 export async function generateRSSCaption(
@@ -1149,6 +1201,9 @@ ${visualContext}
 ${allowedEntitiesContext}
 
 Rules:
+- Name the concrete subject immediately when the article title/summary or allowed entities contain a specific movie, series, character, or person.
+- Do not replace a named entity with vague labels like "a Marvel character", "a major actor", "a franchise film", or similar generic phrasing.
+- Do not add commentary, trend analysis, or opinion. Report only the event stated in the article.
 - Do not mention a movie, series, character, or person that is not supported by the article title/summary or the allowed named entities list.
 - If the selected visuals clearly represent one title, keep the caption anchored to that title instead of substituting a different one.
 
@@ -1166,7 +1221,45 @@ Write ONLY the caption.`;
     if (!response.success) {
         return `📰 ${context.articleTitle}`;
     }
-    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    const normalizedCaption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    if (!hasGroundedRSSNamedEntities(context) || (!isVagueRSSCaption(normalizedCaption) && !isEditorializedRSSCaption(normalizedCaption))) {
+        return normalizedCaption;
+    }
+
+    const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
+
+Article Title: ${context.articleTitle}
+Article Summary: ${context.summary.slice(0, 500)}
+Allowed named entities: ${Array.isArray(context.allowedEntities) ? context.allowedEntities.join(', ') : 'None'}
+Original caption: ${normalizedCaption}
+
+Requirements:
+- Name the concrete subject directly if one is available in the title, summary, or allowed entities.
+- Remove vague phrases like "a Marvel character" or "a major actor".
+- Remove commentary, interpretation, and opinion.
+- Keep it concise and factual.
+
+Write ONLY the corrected caption.`;
+
+    const retryResponse = await generateCompletion({
+        model,
+        prompt: validationPrompt,
+        systemPrompt,
+        maxTokens: 150,
+        temperature: 0.2,
+        jsonMode: false
+    });
+
+    if (!retryResponse.success) {
+        return context.articleTitle;
+    }
+
+    const correctedCaption = normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content']);
+    if (isVagueRSSCaption(correctedCaption) || isEditorializedRSSCaption(correctedCaption)) {
+        return context.articleTitle;
+    }
+
+    return correctedCaption;
 }
 
 

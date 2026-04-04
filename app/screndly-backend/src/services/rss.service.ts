@@ -1931,6 +1931,35 @@ function extractQuotedRSSCaptionEntities(value: string): string[] {
     .filter(Boolean);
 }
 
+function extractNamedRSSCaptionEntities(value: string): string[] {
+  const stopwords = new Set([
+    'A', 'An', 'And', 'As', 'At', 'After', 'Before', 'By', 'For', 'From', 'In', 'Into', 'Of', 'On', 'Or', 'The', 'To', 'With',
+    'He', 'She', 'They', 'It', 'His', 'Her', 'Their',
+  ]);
+
+  return Array.from(
+    sanitizeRSSPlainText(value).matchAll(/\b(?:[A-Z0-9][A-Za-z0-9:'&.-]*)(?:\s+(?:[A-Z0-9][A-Za-z0-9:'&.-]*)){0,5}\b/g)
+  )
+    .map((match) => (match[0] || '').trim())
+    .filter((entry) => {
+      if (!entry) {
+        return false;
+      }
+
+      const parts = entry.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) {
+        const token = parts[0] || '';
+        if (stopwords.has(token)) {
+          return false;
+        }
+
+        return token.length >= 3 || /^[A-Z0-9]{2,}$/.test(token);
+      }
+
+      return parts.some((part) => !stopwords.has(part));
+    });
+}
+
 function extractReasonAnchoredEntity(value: string): string[] {
   const text = sanitizeRSSPlainText(value).replace(/\s+/g, ' ').trim();
   if (!text) {
@@ -1966,6 +1995,8 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
   [
     ...extractQuotedRSSCaptionEntities(item.title || ''),
     ...extractQuotedRSSCaptionEntities(item.description || ''),
+    ...extractNamedRSSCaptionEntities(item.title || ''),
+    ...extractNamedRSSCaptionEntities(item.description || ''),
   ].forEach(pushEntity);
 
   for (const image of images) {
