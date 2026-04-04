@@ -409,7 +409,12 @@ export function MediaPreviewDialog({
                 className="absolute left-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Show previous image"
               >
-                <img src={arrowLeftRoundedIcon} alt="" aria-hidden="true" className="h-6 w-6" />
+                <img
+                  src={arrowLeftRoundedIcon}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-6 w-6 brightness-0 invert"
+                />
               </button>
               <button
                 type="button"
