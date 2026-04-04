@@ -148,17 +148,6 @@ export function MediaPreviewDialog({
     setIsInteracting(false);
   }, []);
 
-  const goToImage = useCallback((nextIndex: number) => {
-    if (resolvedGalleryItems.length <= 1) {
-      return;
-    }
-
-    const boundedIndex = clamp(nextIndex, 0, resolvedGalleryItems.length - 1);
-    setCurrentImageIndex(boundedIndex);
-    resetVideoPlayback();
-    resetImageTransform();
-  }, [resetImageTransform, resetVideoPlayback, resolvedGalleryItems.length]);
-
   const updateTransform = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
     const safeScale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
     const safeOffset = clampOffset(safeScale, nextOffset);
@@ -185,6 +174,17 @@ export function MediaPreviewDialog({
     setCurrentTime(0);
     setDuration(0);
   }, []);
+
+  const goToImage = useCallback((nextIndex: number) => {
+    if (resolvedGalleryItems.length <= 1) {
+      return;
+    }
+
+    const boundedIndex = clamp(nextIndex, 0, resolvedGalleryItems.length - 1);
+    setCurrentImageIndex(boundedIndex);
+    resetVideoPlayback();
+    resetImageTransform();
+  }, [resetImageTransform, resetVideoPlayback, resolvedGalleryItems.length]);
 
   useEffect(() => {
     if (!open) {
