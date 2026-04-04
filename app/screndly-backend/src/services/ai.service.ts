@@ -1097,45 +1097,7 @@ Write ONLY the caption text. No preamble.`;
         return `${context.temporalTag === 'releasing_today' ? '🚨 OUT NOW:' : '🎬'} ${context.title} ${context.daysUntil > 0 ? `(In ${context.daysUntil} days)` : ''}`;
     }
 
-    const normalizedCaption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
-    if (!hasGroundedRSSNamedEntities(context) || (!isVagueRSSCaption(normalizedCaption) && !isEditorializedRSSCaption(normalizedCaption))) {
-        return normalizedCaption;
-    }
-
-    const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
-
-Article Title: ${context.articleTitle}
-Article Summary: ${context.summary.slice(0, 500)}
-Allowed named entities: ${Array.isArray(context.allowedEntities) ? context.allowedEntities.join(', ') : 'None'}
-Original caption: ${normalizedCaption}
-
-Requirements:
-- Name the concrete subject directly if one is available in the title, summary, or allowed entities.
-- Remove vague phrases like "a Marvel character" or "a major actor".
-- Remove commentary, interpretation, and opinion.
-- Keep it concise and factual.
-
-Write ONLY the corrected caption.`;
-
-    const retryResponse = await generateCompletion({
-        model,
-        prompt: validationPrompt,
-        systemPrompt,
-        maxTokens: 150,
-        temperature: 0.2,
-        jsonMode: false
-    });
-
-    if (!retryResponse.success) {
-        return context.articleTitle;
-    }
-
-    const correctedCaption = normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content']);
-    if (isVagueRSSCaption(correctedCaption) || isEditorializedRSSCaption(correctedCaption)) {
-        return context.articleTitle;
-    }
-
-    return correctedCaption;
+    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
 }
 
 // ============================================
@@ -1175,12 +1137,12 @@ function getRSSCaptionLines(caption: string): string[] {
 }
 
 function getRSSHeadlineLine(caption: string): string {
-    return getRSSCaptionLines(caption).find((line) => !/^[•*-]\s*/.test(line)) || '';
+    return getRSSCaptionLines(caption).find((line) => !/^[\u2022*-]\s*/.test(line)) || '';
 }
 
 function hasInlineRSSQuote(caption: string): boolean {
     return getRSSCaptionLines(caption).some((line, index) => {
-        if (index === 0 || /^[•*-]\s*/.test(line)) {
+        if (index === 0 || /^[\u2022*-]\s*/.test(line)) {
             return false;
         }
 

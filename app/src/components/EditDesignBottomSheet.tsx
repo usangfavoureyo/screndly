@@ -17,6 +17,8 @@ import type { DesignContentType } from '../utils/designStudioCaptionGenerator';
 import {
   searchDesignStudioTMDb,
   uploadDesignStudioAsset,
+  type DesignStudioBrandBlockMode,
+  type DesignStudioLayoutVariant,
   type DesignStudioTMDbSearchResult,
 } from '../lib/api/designStudio';
 
@@ -37,6 +39,10 @@ interface EditDesignBottomSheetProps {
     overlayColor?: string; // Hex color for gradient overlay
     overlayOpacity?: number; // 0-100
     gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
+    templateVariant?: DesignStudioLayoutVariant;
+    fadeEnabled?: boolean;
+    fadeOpacity?: number;
+    brandBlockMode?: DesignStudioBrandBlockMode;
   };
   hasHeader?: boolean;
   hasBackground?: boolean;
@@ -59,6 +65,10 @@ export interface DesignData {
   overlayColor?: string; // Hex color for gradient overlay
   overlayOpacity?: number; // 0-100
   gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
+  templateVariant?: DesignStudioLayoutVariant;
+  fadeEnabled?: boolean;
+  fadeOpacity?: number;
+  brandBlockMode?: DesignStudioBrandBlockMode;
   caption?: string; // AI-generated caption
   contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
   exportFormat?: 'jpeg' | 'png';
@@ -97,6 +107,10 @@ export function EditDesignBottomSheet({
   const [overlayColor, setOverlayColor] = useState(initialData?.overlayColor || '#000000');
   const [overlayOpacity, setOverlayOpacity] = useState(initialData?.overlayOpacity || 70);
   const [gradientPosition, setGradientPosition] = useState(initialData?.gradientPosition || 'top');
+  const [templateVariant, setTemplateVariant] = useState<DesignStudioLayoutVariant>(initialData?.templateVariant || 'bottom_center');
+  const [fadeEnabled, setFadeEnabled] = useState(initialData?.fadeEnabled ?? true);
+  const [fadeOpacity, setFadeOpacity] = useState(initialData?.fadeOpacity ?? 90);
+  const [brandBlockMode, setBrandBlockMode] = useState<DesignStudioBrandBlockMode>(initialData?.brandBlockMode || 'auto');
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHeaderTextColorPicker, setShowHeaderTextColorPicker] = useState(false);
   const [showSubtextColorPicker, setShowSubtextColorPicker] = useState(false);
@@ -130,6 +144,10 @@ export function EditDesignBottomSheet({
       setOverlayColor(initialData.overlayColor || '#000000');
       setOverlayOpacity(initialData.overlayOpacity || 70);
       setGradientPosition(initialData.gradientPosition || 'top');
+      setTemplateVariant(initialData.templateVariant || 'bottom_center');
+      setFadeEnabled(initialData.fadeEnabled ?? true);
+      setFadeOpacity(initialData.fadeOpacity ?? 90);
+      setBrandBlockMode(initialData.brandBlockMode || 'auto');
       setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
     }
   }, [initialData, persistedSettings.exportFormat]);
@@ -149,6 +167,10 @@ export function EditDesignBottomSheet({
         overlayColor,
         overlayOpacity,
         gradientPosition,
+        templateVariant,
+        fadeEnabled,
+        fadeOpacity,
+        brandBlockMode,
         exportFormat,
       });
     }
@@ -166,6 +188,10 @@ export function EditDesignBottomSheet({
     overlayEnabled,
     overlayColor, 
     overlayOpacity, 
+    templateVariant,
+    fadeEnabled,
+    fadeOpacity,
+    brandBlockMode,
     open, 
     hasSubtext,
     gradientPosition,
@@ -255,6 +281,10 @@ export function EditDesignBottomSheet({
       overlayColor,
       overlayOpacity,
       gradientPosition,
+      templateVariant,
+      fadeEnabled,
+      fadeOpacity,
+      brandBlockMode,
       caption: caption || undefined,
       contentType,
       exportFormat,
@@ -447,6 +477,105 @@ export function EditDesignBottomSheet({
               </div>
             </div>
           )}
+
+          <div>
+            <Label className="text-gray-900 dark:text-white mb-2 block">Layout & Branding</Label>
+            <div className="bg-white dark:bg-black rounded-lg p-4 space-y-4">
+              <div>
+                <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
+                  Variant
+                </Label>
+                <Select
+                  value={templateVariant}
+                  onValueChange={(value: DesignStudioLayoutVariant) => {
+                    haptics.light();
+                    setTemplateVariant(value);
+                  }}
+                >
+                  <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bottom_center">Bottom Center</SelectItem>
+                    <SelectItem value="bottom_left">Bottom Left</SelectItem>
+                    <SelectItem value="bottom_right">Bottom Right</SelectItem>
+                    <SelectItem value="top_center">Top Center</SelectItem>
+                    <SelectItem value="top_left">Top Left</SelectItem>
+                    <SelectItem value="top_right">Top Right</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
+                  Brand Block
+                </Label>
+                <Select
+                  value={brandBlockMode}
+                  onValueChange={(value: DesignStudioBrandBlockMode) => {
+                    haptics.light();
+                    setBrandBlockMode(value);
+                  }}
+                >
+                  <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    <SelectItem value="black">Black</SelectItem>
+                    <SelectItem value="white">White</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                    Use Fade
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptics.light();
+                      setFadeEnabled((current) => !current);
+                    }}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                      fadeEnabled ? 'bg-[#ec1e24]' : 'bg-gray-300 dark:bg-[#333333]'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                        fadeEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-2">
+                    <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                      Fade Opacity
+                    </Label>
+                    <span className="text-xs text-gray-600 dark:text-[#6B7280]">
+                      {fadeOpacity}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={fadeOpacity}
+                    disabled={!fadeEnabled}
+                    onChange={(e) => {
+                      haptics.light();
+                      setFadeOpacity(Number(e.target.value));
+                    }}
+                    className="w-full h-2 bg-gray-200 dark:bg-[#333333] rounded-lg appearance-none cursor-pointer accent-[#ec1e24] disabled:opacity-40"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Image Replacement Section */}
           {hasBackground && (

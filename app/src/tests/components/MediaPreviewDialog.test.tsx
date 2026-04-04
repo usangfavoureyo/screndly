@@ -104,4 +104,38 @@ describe('MediaPreviewDialog', () => {
       expect(screen.getByRole('button', { name: 'Play video' })).toBeInTheDocument();
     });
   });
+
+  it('navigates through mixed media items with arrow controls', () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <MediaPreviewDialog
+        open
+        mediaItems={[
+          {
+            src: 'https://example.com/first.jpg',
+            mediaType: 'image',
+            title: 'First still',
+            badgeLabel: 'image',
+          },
+          {
+            src: 'https://example.com/second.mp4',
+            mediaType: 'video',
+            title: 'Second clip',
+            badgeLabel: 'video',
+          },
+        ]}
+        initialIndex={0}
+        mediaType="image"
+        onOpenChange={onOpenChange}
+      />,
+    );
+
+    expect(screen.getByRole('img', { name: 'First still' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show next media' }));
+
+    expect(document.querySelector('video')).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Show previous media' })).toBeInTheDocument();
+  });
 });

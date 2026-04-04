@@ -10,6 +10,7 @@ export type DesignStudioLayoutVariant =
   | 'bottom_center';
 
 export type DesignStudioExportFormat = 'jpeg' | 'png';
+export type DesignStudioBrandBlockMode = 'auto' | 'black' | 'white';
 
 export type DesignStudioAutoEditorialStatus =
   | 'detected'
@@ -283,6 +284,7 @@ export async function triggerDesignStudioAutoGeneration(): Promise<{ generated: 
 export async function startDesignStudioManualRender(payload: {
   template: DesignStudioTemplateRecord;
   data: {
+    template_variant?: DesignStudioLayoutVariant;
     headerText: string;
     subtext?: string;
     headerTextColor?: string;
@@ -304,6 +306,9 @@ export async function startDesignStudioManualRender(payload: {
     backgroundOffsetX?: number;
     backgroundOffsetY?: number;
     zoomLevel?: number;
+    fadeEnabled?: boolean;
+    fadeOpacity?: number;
+    brandBlockMode?: DesignStudioBrandBlockMode;
     sharedCaption?: string;
     pinterestTitle?: string;
     pinterestDescription?: string;

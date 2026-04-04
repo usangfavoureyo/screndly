@@ -15,6 +15,7 @@ import { tiktokService } from '../services/platforms/tiktok';
 import { pinterestService } from '../services/platforms/pinterest';
 import { ensureFreshPlatformConnection, hasPublishablePlatformConnection, hasUsablePlatformAccessToken } from '../services/platforms/connectionAuth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze, uploadLocalFileToBackblaze } from '../services/backblaze';
+import { publisherService } from '../services/publisher.service';
 import { authenticate } from '../middleware/auth';
 import { google } from 'googleapis';
 import fs from 'fs';
@@ -703,9 +704,10 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
             return preparedImageUrl;
         };
 
-        let preparedImageUrls: string[] | null = null;
+        let preparedImageUrls: string[] = [];
+        let preparedImageUrlsReady = false;
         const getPreparedImageUrls = async (): Promise<string[]> => {
-            if (preparedImageUrls) {
+            if (preparedImageUrlsReady) {
                 return preparedImageUrls;
             }
 
@@ -715,6 +717,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                     originalName: req.file?.originalname,
                 });
                 preparedImageUrls = uploadedImage ? [uploadedImage] : [];
+                preparedImageUrlsReady = true;
                 return preparedImageUrls;
             }
 
@@ -722,11 +725,13 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 preparedImageUrls = await Promise.all(
                     imageUrls.map((source) => prepareHostedImageUrl({ remoteUrl: source })),
                 ).then((sources) => sources.filter((value): value is string => typeof value === 'string' && value.trim().length > 0));
+                preparedImageUrlsReady = true;
                 return preparedImageUrls;
             }
 
             const singleImage = await getPreparedImageUrl();
             preparedImageUrls = singleImage ? [singleImage] : [];
+            preparedImageUrlsReady = true;
             return preparedImageUrls;
         };
 
@@ -968,6 +973,28 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     await getHostedVideoUrl(),
                                     connection.accessToken
                                 )
+                                : preparedImageSources.length > 1
+                                    ? (() => publisherService.publish(
+                                        ['Threads'],
+                                        {
+                                            text,
+                                            imageUrls: preparedImageSources,
+                                        },
+                                    ))().then((results) => {
+                                        const publishResult = results[0];
+                                        return publishResult?.status === 'posted'
+                                            ? {
+                                                success: true as const,
+                                                data: {
+                                                    id: publishResult.id || '',
+                                                    platform: 'Threads',
+                                                },
+                                            }
+                                            : {
+                                                success: false as const,
+                                                error: publishResult?.error || 'Failed to publish Threads carousel',
+                                            };
+                                    })
                                 : await metaService.postToThreads(
                                     connection.userId,
                                     text,

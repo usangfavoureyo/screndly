@@ -1,4 +1,6 @@
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import prisma from '../lib/prisma';
@@ -8,6 +10,11 @@ import { uploadBufferToBackblaze, getBackblazeAuthorizedDownloadUrl } from './ba
 import { publisherService } from './publisher.service';
 import { getRSSActivity } from './rss.service';
 import sharp from 'sharp';
+import {
+  REFERENCE_BRAND_HEIGHT,
+  REFERENCE_BRAND_WIDTH,
+  REFERENCE_VARIANTS,
+} from '../design-studio/reference-layouts';
 
 const DESIGN_STUDIO_TEMPLATES_KEY = 'designStudioTemplates';
 const DESIGN_STUDIO_RENDERED_KEY = 'designStudioRenderedDesigns';
@@ -16,6 +23,10 @@ const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
 const DESIGN_STUDIO_QUEUE_NAME = 'design-studio-renders';
 const DESIGN_STUDIO_REMOTE_FETCH_TIMEOUT_MS = 30000;
 const DESIGN_STUDIO_RENDER_TIMEOUT_MS = 180000;
+const DESIGN_STUDIO_REFERENCE_ASSET_DIR = path.join(__dirname, '..', 'design-studio', 'assets');
+const DESIGN_STUDIO_FADE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'fade.png');
+const DESIGN_STUDIO_BRAND_BLACK_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-black.png');
+const DESIGN_STUDIO_BRAND_WHITE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-white.png');
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
@@ -84,9 +95,13 @@ export interface DesignStudioVariantRecord {
   brandBox: { x: number; y: number; width: number; height: number };
   backgroundAnchor: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
   overlayDirection: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
+  fadeDefaultEnabled?: boolean;
+  fadeDefaultOpacity?: number;
   minFontSize: number;
   maxFontSize: number;
   maxLines: number;
+  lineHeightMultiplier?: number;
+  safeMargin?: number;
 }
 
 export interface DesignStudioTemplateRecord {
@@ -248,6 +263,9 @@ interface DesignStudioRenderPayload {
   backgroundOffsetX?: number;
   backgroundOffsetY?: number;
   zoomLevel?: number;
+  fadeEnabled?: boolean;
+  fadeOpacity?: number;
+  brandBlockMode?: 'auto' | 'black' | 'white';
   sharedCaption?: string;
   pinterestTitle?: string;
   pinterestDescription?: string;
@@ -356,6 +374,22 @@ async function rasterizeImageData(imageData: PsdImageDataLike): Promise<Buffer> 
       channels: 4,
     },
   }).png().toBuffer();
+}
+
+const referenceAssetBufferCache = new Map<string, Buffer>();
+
+function readReferenceAssetBuffer(assetPath: string): Buffer {
+  const cached = referenceAssetBufferCache.get(assetPath);
+  if (cached) {
+    return cached;
+  }
+  const buffer = fs.readFileSync(assetPath);
+  referenceAssetBufferCache.set(assetPath, buffer);
+  return buffer;
+}
+
+function getReferenceBrandAssetPath(mode: 'black' | 'white'): string {
+  return mode === 'black' ? DESIGN_STUDIO_BRAND_BLACK_ASSET_PATH : DESIGN_STUDIO_BRAND_WHITE_ASSET_PATH;
 }
 
 function hexToRgba(value: string, alpha: number): string {
@@ -1063,11 +1097,15 @@ function getTemplateVariantMetadata(template: DesignStudioTemplateRecord): {
     headerLayer,
     brandGroup,
   });
-  const variants = deriveVariants(template.width, template.height, template.baseFontSize || 96, {
-    headerLayer,
-    brandGroup,
-    baseVariant,
-  });
+  const templateBaseFontSize = Math.round(template.baseFontSize || REFERENCE_VARIANTS[baseVariant].baseFontSize || 96);
+  const minFontSize = Math.max(36, Math.round(templateBaseFontSize * 0.62));
+  const variants = (Object.values(REFERENCE_VARIANTS) as DesignStudioVariantRecord[]).map((variant) => ({
+    ...variant,
+    minFontSize,
+    maxFontSize: templateBaseFontSize,
+    lineHeightMultiplier: variant.lineHeightMultiplier ?? template.lineHeightMultiplier ?? 0.93,
+    safeMargin: variant.safeMargin ?? template.safeMargin ?? 48,
+  }));
 
   return { baseVariant, variants };
 }
@@ -1179,11 +1217,11 @@ function buildTemplateFromPsdBuffer(input: {
     headerLayer,
     brandGroup,
   });
-  const variants = deriveVariants(psd.width, psd.height, baseFontSize, {
-    headerLayer,
-    brandGroup,
-    baseVariant,
-  });
+  const variants = (Object.values(REFERENCE_VARIANTS) as DesignStudioVariantRecord[]).map((variant) => ({
+    ...variant,
+    minFontSize: Math.max(36, Math.round(baseFontSize * 0.62)),
+    maxFontSize: Math.round(baseFontSize),
+  }));
   const now = new Date().toISOString();
 
   return {
@@ -1544,7 +1582,7 @@ function buildTextSvg(input: {
     minFontSize: Math.round(input.variant.minFontSize * fontScale),
     maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
     maxLines,
-    lineHeightMultiplier: input.template.lineHeightMultiplier || 1.05,
+    lineHeightMultiplier: input.variant.lineHeightMultiplier || input.template.lineHeightMultiplier || 1.05,
     tracking: input.template.tracking || 0,
   });
 
@@ -1591,6 +1629,86 @@ function buildBrandSvg(width: number, height: number, variant: DesignStudioVaria
     </svg>
   `.trim();
   return Buffer.from(svg);
+}
+
+async function measureRegionLuminance(
+  background: Buffer,
+  box: { x: number; y: number; width: number; height: number },
+): Promise<number> {
+  const region = await sharp(background)
+    .extract({
+      left: Math.max(0, Math.round(box.x)),
+      top: Math.max(0, Math.round(box.y)),
+      width: Math.max(1, Math.round(box.width)),
+      height: Math.max(1, Math.round(box.height)),
+    })
+    .resize(1, 1, { fit: 'fill' })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+
+  const [red = 0, green = 0, blue = 0] = [...region];
+  return ((0.2126 * red) + (0.7152 * green) + (0.0722 * blue)) / 255;
+}
+
+async function resolveBrandBlockMode(
+  background: Buffer,
+  variant: DesignStudioVariantRecord,
+  requestedMode?: 'auto' | 'black' | 'white',
+): Promise<'black' | 'white'> {
+  if (requestedMode === 'black' || requestedMode === 'white') {
+    return requestedMode;
+  }
+
+  const luminance = await measureRegionLuminance(background, variant.brandBox);
+  return luminance >= 0.58 ? 'black' : 'white';
+}
+
+async function buildBrandLayer(
+  width: number,
+  height: number,
+  variant: DesignStudioVariantRecord,
+  brandMode: 'black' | 'white',
+): Promise<Buffer> {
+  const asset = readReferenceAssetBuffer(getReferenceBrandAssetPath(brandMode));
+  const resized = await sharp(asset)
+    .resize(Math.round(variant.brandBox.width || REFERENCE_BRAND_WIDTH), Math.round(variant.brandBox.height || REFERENCE_BRAND_HEIGHT), { fit: 'fill' })
+    .png()
+    .toBuffer();
+
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{
+      input: resized,
+      left: Math.round(variant.brandBox.x),
+      top: Math.round(variant.brandBox.y),
+    }])
+    .png()
+    .toBuffer();
+}
+
+async function buildFadeLayer(width: number, height: number, opacity: number): Promise<Buffer> {
+  const asset = readReferenceAssetBuffer(DESIGN_STUDIO_FADE_ASSET_PATH);
+  const alphaMask = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="${width}" height="${height}" fill="white" fill-opacity="${clamp(opacity, 0, 1)}" />
+    </svg>
+  `.trim());
+
+  return sharp(asset)
+    .resize(width, height, { fit: 'fill' })
+    .composite([{
+      input: alphaMask,
+      blend: 'dest-in',
+    }])
+    .png()
+    .toBuffer();
 }
 
 function buildOverlaySvg(input: {
@@ -1792,7 +1910,6 @@ async function renderDesignStudioImage(
   payload: DesignStudioRenderPayload,
 ): Promise<ResolvedRenderOutput> {
   const variant = findVariant(template, payload.template_variant);
-  const staticAssets = await ensureTemplateStaticAssets(template);
   const width = template.width;
   const height = template.height;
   const background = await buildBackgroundLayer({
@@ -1810,55 +1927,30 @@ async function renderDesignStudioImage(
   });
 
   const textOverlay = buildTextSvg({ width, height, variant, template, payload });
-  const hasOverlayOverride = payload.overlayColor !== undefined
-    || payload.overlayOpacity !== undefined
-    || payload.overlayType !== undefined
-    || payload.gradientPosition !== undefined;
-  const useTemplateStyling = payload.useTemplateDefaultStyling !== false && !hasOverlayOverride;
+  const overlayColor = payload.overlayColor || '#000000';
+  const overlayStrength = clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
+  const overlay = buildOverlaySvg({
+    width,
+    height,
+    color: overlayColor,
+    strength: overlayStrength,
+    direction: payload.gradientPosition || variant.overlayDirection,
+    overlayType: payload.overlayType || 'linear',
+  });
+  const fadeEnabled = payload.fadeEnabled ?? variant.fadeDefaultEnabled ?? true;
+  const fadeOpacity = payload.fadeOpacity ?? variant.fadeDefaultOpacity ?? 0.9;
+  const brandMode = await resolveBrandBlockMode(background, variant, payload.brandBlockMode);
 
-  const composites: Array<{ input: Buffer }> = [];
-  if (!useTemplateStyling) {
-    const overlayColor = payload.overlayColor || '#000000';
-    const overlayStrength = clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
-    const overlay = buildOverlaySvg({
-      width,
-      height,
-      color: overlayColor,
-      strength: overlayStrength,
-      direction: payload.gradientPosition || variant.overlayDirection,
-      overlayType: payload.overlayType || 'linear',
-    });
-    composites.push({ input: await sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
-  }
+  const composites: Array<{ input: Buffer }> = [
+    { input: await sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer() },
+  ];
 
-  if (staticAssets.fadeOverlayUrl) {
-    const fadeRaster = await fetchSourceBuffer(staticAssets.fadeOverlayUrl);
-    if (fadeRaster) {
-      composites.push({ input: fadeRaster });
-    }
-  } else if (useTemplateStyling) {
-    const overlay = buildOverlaySvg({
-      width,
-      height,
-      color: '#000000',
-      strength: 0.72,
-      direction: payload.gradientPosition || variant.overlayDirection,
-      overlayType: payload.overlayType || 'linear',
-    });
-    composites.push({ input: await sharp(overlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
+  if (fadeEnabled) {
+    composites.push({ input: await buildFadeLayer(width, height, fadeOpacity) });
   }
 
   composites.push({ input: await sharp(textOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
-
-  if (staticAssets.brandOverlayUrl) {
-    const brandRaster = await fetchSourceBuffer(staticAssets.brandOverlayUrl);
-    if (brandRaster) {
-      composites.push({ input: brandRaster });
-    }
-  } else {
-    const brandOverlay = buildBrandSvg(width, height, variant);
-    composites.push({ input: await sharp(brandOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });
-  }
+  composites.push({ input: await buildBrandLayer(width, height, variant, brandMode) });
 
   const { format, jpegQuality } = await getRenderExportSettings(payload.exportFormat);
   const pipeline = sharp(background).composite(composites);

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
-import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
+import { MediaPreviewDialog, type MediaPreviewItem } from '../media/MediaPreviewDialog';
 import { Button } from '../ui/button';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
@@ -59,7 +59,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
   const { addNotification } = useNotifications();
   const [filter, setFilter] = useState<'all' | ComposeStatus>('all');
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
+  const [previewState, setPreviewState] = useState<{ assets: ComposeMediaAsset[]; initialIndex: number } | null>(null);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
 
   const filteredItems = useMemo(
@@ -162,15 +162,38 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
     }
   };
 
-  const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
-    const previewUrl = getComposeAssetPreviewUrl(asset);
-    if (!asset || !previewUrl) {
+  const handlePreviewAsset = (item: ComposeItem, assetIndex = 0) => {
+    const previewableAssets = item.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
+    if (previewableAssets.length === 0) {
       return;
     }
 
+    const boundedIndex = Math.max(0, Math.min(assetIndex, previewableAssets.length - 1));
     haptics.light();
-    setPreviewAsset(asset);
+    setPreviewState({
+      assets: previewableAssets,
+      initialIndex: boundedIndex,
+    });
   };
+
+  const previewMediaItems = useMemo<MediaPreviewItem[]>(
+    () => (previewState?.assets ?? [])
+      .map((asset) => {
+        const assetPreviewUrl = getComposeAssetPreviewUrl(asset);
+        if (!assetPreviewUrl) {
+          return null;
+        }
+
+        return {
+          src: assetPreviewUrl,
+          mediaType: asset.kind,
+          title: asset.fileName,
+          badgeLabel: asset.kind,
+        } satisfies MediaPreviewItem;
+      })
+      .filter((item): item is MediaPreviewItem => Boolean(item)),
+    [previewState],
+  );
 
   return (
     <div className="space-y-6">
@@ -273,7 +296,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                         data-prevent-card-selection="true"
                         onClick={(event) => {
                           event.stopPropagation();
-                          handlePreviewAsset(primaryAsset);
+                          handlePreviewAsset(item, 0);
                         }}
                         className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10 transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#ec1e24]/60"
                         aria-label={`Preview ${primaryAsset.kind} ${primaryAsset.fileName}`}
@@ -453,14 +476,16 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
       </div>
 
       <MediaPreviewDialog
-        open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
-        mediaType={previewAsset?.kind ?? 'image'}
-        title={previewAsset?.fileName}
-        badgeLabel={previewAsset?.kind}
+        open={previewMediaItems.length > 0}
+        mediaItems={previewMediaItems}
+        initialIndex={previewState?.initialIndex ?? 0}
+        src={previewMediaItems[0]?.src}
+        mediaType={previewMediaItems[0]?.mediaType ?? 'image'}
+        title={previewMediaItems[0]?.title}
+        badgeLabel={previewMediaItems[0]?.badgeLabel}
         onOpenChange={(open) => {
           if (!open) {
-            setPreviewAsset(null);
+            setPreviewState(null);
           }
         }}
       />

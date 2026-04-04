@@ -7,11 +7,19 @@ import arrowLeftRoundedIcon from '../../public/icons/icons/hugeroundedicons/arro
 
 type MediaPreviewKind = 'image' | 'video';
 
+export interface MediaPreviewItem {
+  src: string;
+  mediaType: MediaPreviewKind;
+  title?: string;
+  badgeLabel?: string;
+}
+
 interface MediaPreviewDialogProps {
   open: boolean;
   src?: string | null;
   imageSources?: string[];
   badgeLabels?: string[];
+  mediaItems?: MediaPreviewItem[];
   initialIndex?: number;
   mediaType: MediaPreviewKind;
   title?: string;
@@ -55,6 +63,7 @@ export function MediaPreviewDialog({
   src,
   imageSources,
   badgeLabels,
+  mediaItems,
   initialIndex = 0,
   mediaType,
   title,
@@ -77,17 +86,29 @@ export function MediaPreviewDialog({
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const resolvedImageSources = mediaType === 'image'
+  const resolvedMediaItems = Array.isArray(mediaItems) && mediaItems.length > 0
+    ? mediaItems.filter((item): item is MediaPreviewItem => Boolean(item?.src && item?.mediaType))
+    : null;
+  const fallbackItems = mediaType === 'image'
     ? (Array.isArray(imageSources) && imageSources.length > 0
-      ? imageSources.filter((value): value is string => typeof value === 'string' && value.length > 0)
-      : (src ? [src] : []))
-    : [];
-  const activeImageSource = mediaType === 'image'
-    ? (resolvedImageSources[currentImageIndex] ?? resolvedImageSources[0] ?? src ?? null)
-    : src;
-  const activeBadgeLabel = mediaType === 'image'
-    ? (Array.isArray(badgeLabels) ? badgeLabels[currentImageIndex] : undefined) || badgeLabel
-    : badgeLabel;
+      ? imageSources
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .map((value, index) => ({
+          src: value,
+          mediaType: 'image' as const,
+          badgeLabel: Array.isArray(badgeLabels) ? badgeLabels[index] : badgeLabel,
+          title,
+        }))
+      : (src ? [{ src, mediaType: 'image' as const, badgeLabel, title }] : []))
+    : (src ? [{ src, mediaType: 'video' as const, badgeLabel, title }] : []);
+  const resolvedGalleryItems = resolvedMediaItems && resolvedMediaItems.length > 0
+    ? resolvedMediaItems
+    : fallbackItems;
+  const activeGalleryItem = resolvedGalleryItems[currentImageIndex] ?? resolvedGalleryItems[0] ?? null;
+  const activeMediaType = activeGalleryItem?.mediaType ?? mediaType;
+  const activeSource = activeGalleryItem?.src ?? src ?? null;
+  const activeBadgeLabel = activeGalleryItem?.badgeLabel ?? badgeLabel;
+  const activeTitle = activeGalleryItem?.title ?? title;
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -128,14 +149,15 @@ export function MediaPreviewDialog({
   }, []);
 
   const goToImage = useCallback((nextIndex: number) => {
-    if (resolvedImageSources.length <= 1) {
+    if (resolvedGalleryItems.length <= 1) {
       return;
     }
 
-    const boundedIndex = clamp(nextIndex, 0, resolvedImageSources.length - 1);
+    const boundedIndex = clamp(nextIndex, 0, resolvedGalleryItems.length - 1);
     setCurrentImageIndex(boundedIndex);
+    resetVideoPlayback();
     resetImageTransform();
-  }, [resetImageTransform, resolvedImageSources.length]);
+  }, [resetImageTransform, resetVideoPlayback, resolvedGalleryItems.length]);
 
   const updateTransform = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
     const safeScale = clamp(nextScale, MIN_SCALE, MAX_SCALE);
@@ -171,9 +193,20 @@ export function MediaPreviewDialog({
       return;
     }
 
+    if (resolvedGalleryItems.length > 0) {
+      const safeIndex = clamp(initialIndex, 0, resolvedGalleryItems.length - 1);
+      setCurrentImageIndex(safeIndex);
+      if (resolvedGalleryItems[safeIndex]?.mediaType === 'image') {
+        resetImageTransform();
+      } else {
+        resetVideoPlayback();
+      }
+      return;
+    }
+
     if (mediaType === 'image') {
-      const safeIndex = resolvedImageSources.length > 0
-        ? clamp(initialIndex, 0, resolvedImageSources.length - 1)
+      const safeIndex = fallbackItems.length > 0
+        ? clamp(initialIndex, 0, fallbackItems.length - 1)
         : 0;
       setCurrentImageIndex(safeIndex);
       resetImageTransform();
@@ -181,10 +214,10 @@ export function MediaPreviewDialog({
     }
 
     resetVideoPlayback();
-  }, [initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedImageSources.length, src]);
+  }, [fallbackItems.length, initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedGalleryItems, src]);
 
   useEffect(() => {
-    if (!open || mediaType !== 'image' || resolvedImageSources.length <= 1) {
+    if (!open || resolvedGalleryItems.length <= 1) {
       return;
     }
 
@@ -202,7 +235,7 @@ export function MediaPreviewDialog({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentImageIndex, goToImage, mediaType, open, resolvedImageSources.length]);
+  }, [currentImageIndex, goToImage, open, resolvedGalleryItems.length]);
 
   const handleDialogOpenChange = useCallback((nextOpen: boolean) => {
     if (!nextOpen) {
@@ -243,7 +276,7 @@ export function MediaPreviewDialog({
       return;
     }
 
-    if (event.touches.length === 1 && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
+    if (event.touches.length === 1 && scaleRef.current <= MIN_SCALE && resolvedGalleryItems.length > 1) {
       const touch = event.touches[0];
       swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
     }
@@ -293,7 +326,7 @@ export function MediaPreviewDialog({
     panStartRef.current = null;
     setIsInteracting(false);
 
-    if (event.changedTouches.length === 1 && swipeStart && scaleRef.current <= MIN_SCALE && resolvedImageSources.length > 1) {
+    if (event.changedTouches.length === 1 && swipeStart && scaleRef.current <= MIN_SCALE && resolvedGalleryItems.length > 1) {
       const touch = event.changedTouches[0];
       const deltaX = touch.clientX - swipeStart.x;
       const deltaY = touch.clientY - swipeStart.y;
@@ -353,11 +386,11 @@ export function MediaPreviewDialog({
     setCurrentTime(nextTime);
   };
 
-  const previewTitle = title || (mediaType === 'video' ? 'Video preview' : 'Image preview');
-  const previewDescription = mediaType === 'video'
+  const previewTitle = activeTitle || (activeMediaType === 'video' ? 'Video preview' : 'Image preview');
+  const previewDescription = activeMediaType === 'video'
     ? 'Expanded video preview with tap playback and scrub controls.'
-    : resolvedImageSources.length > 1
-      ? 'Expanded image preview with swipe, pinch, and double-tap zoom.'
+    : resolvedGalleryItems.length > 1
+      ? 'Expanded media preview with swipe, arrows, pinch, and playback controls.'
       : 'Expanded image preview with pinch and double-tap zoom.';
 
   if (!open) {
@@ -391,13 +424,13 @@ export function MediaPreviewDialog({
             </div>
           ) : null}
 
-          {mediaType === 'image' && resolvedImageSources.length > 1 ? (
+          {resolvedGalleryItems.length > 1 ? (
             <div className="absolute right-4 top-16 z-40 rounded-full bg-black/70 px-3 py-1 text-xs text-white">
-              {currentImageIndex + 1} / {resolvedImageSources.length}
+              {currentImageIndex + 1} / {resolvedGalleryItems.length}
             </div>
           ) : null}
 
-          {mediaType === 'image' && resolvedImageSources.length > 1 ? (
+          {resolvedGalleryItems.length > 1 ? (
             <>
               <button
                 type="button"
@@ -407,7 +440,7 @@ export function MediaPreviewDialog({
                 }}
                 disabled={currentImageIndex === 0}
                 className="absolute left-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Show previous image"
+                aria-label="Show previous media"
               >
                 <img
                   src={arrowLeftRoundedIcon}
@@ -422,16 +455,16 @@ export function MediaPreviewDialog({
                   haptics.light();
                   goToImage(currentImageIndex + 1);
                 }}
-                disabled={currentImageIndex >= resolvedImageSources.length - 1}
+                disabled={currentImageIndex >= resolvedGalleryItems.length - 1}
                 className="absolute right-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label="Show next image"
+                aria-label="Show next media"
               >
                 <ChevronRight className="h-6 w-6" />
               </button>
             </>
           ) : null}
 
-          {mediaType === 'image' ? (
+          {activeMediaType === 'image' ? (
             <div
               ref={imageContainerRef}
               className="flex h-[90vh] w-full select-none items-center justify-center overflow-hidden bg-black"
@@ -442,9 +475,9 @@ export function MediaPreviewDialog({
               onTouchEnd={handleImageTouchEnd}
               onTouchCancel={handleImageTouchEnd}
             >
-              {activeImageSource ? (
+              {activeSource ? (
                 <img
-                  src={activeImageSource}
+                  src={activeSource}
                   alt={previewTitle}
                   draggable={false}
                   className="max-h-full max-w-full object-contain"
@@ -460,11 +493,11 @@ export function MediaPreviewDialog({
             </div>
           ) : (
             <div className="relative flex h-[90vh] w-full items-center justify-center overflow-hidden bg-black">
-              {activeImageSource ? (
+              {activeSource ? (
                 <>
                   <video
                     ref={videoRef}
-                    src={activeImageSource}
+                    src={activeSource}
                     className="h-full w-full object-contain"
                     playsInline
                     preload="metadata"

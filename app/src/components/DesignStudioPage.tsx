@@ -592,6 +592,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           updatedAt: selectedTemplate.updatedAt?.toISOString(),
         },
         data: {
+          template_variant: data.templateVariant || selectedTemplate.layoutVariant || selectedTemplate.baseVariant,
           headerText: data.headerText,
           subtext: data.subtext,
           headerTextColor: data.headerTextColor,
@@ -602,6 +603,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           overlayColor: data.overlayColor,
           overlayOpacity: data.overlayOpacity,
           gradientPosition: data.gradientPosition,
+          fadeEnabled: data.fadeEnabled,
+          fadeOpacity: data.fadeOpacity,
+          brandBlockMode: data.brandBlockMode,
           caption: data.caption,
           contentType: data.contentType,
           exportFormat: data.exportFormat || (settings.exportFormat === 'png' ? 'png' : 'jpeg'),
@@ -1221,6 +1225,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           }}
           templateName={selectedTemplate.name}
           aspectRatio={selectedTemplate.aspectRatio}
+          initialData={{
+            ...livePreviewData,
+            templateVariant: livePreviewData?.templateVariant || selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
+          }}
           hasHeader={selectedTemplate.hasHeader}
           hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}

@@ -15,7 +15,7 @@ import {
 } from '../ui/bottom-sheet';
 import { ActivitySelectionToolbar } from '../ActivitySelectionToolbar';
 import { SwipeableActivityCard } from '../SwipeableActivityCard';
-import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
+import { MediaPreviewDialog, type MediaPreviewItem } from '../media/MediaPreviewDialog';
 import { useNotifications } from '../../contexts/NotificationsContext';
 import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
@@ -99,7 +99,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const [scheduleTime, setScheduleTime] = useState('09:00');
   const [isScheduleDatePickerOpen, setIsScheduleDatePickerOpen] = useState(false);
   const [isScheduleTimePickerOpen, setIsScheduleTimePickerOpen] = useState(false);
-  const [previewAsset, setPreviewAsset] = useState<ComposeMediaAsset | null>(null);
+  const [previewState, setPreviewState] = useState<{ assets: ComposeMediaAsset[]; initialIndex: number } | null>(null);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
   const draftItems = useMemo(
@@ -283,15 +283,38 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     toast.success('Selected post items deleted');
   };
 
-  const handlePreviewAsset = (asset?: ComposeMediaAsset) => {
-    const previewUrl = getComposeAssetPreviewUrl(asset);
-    if (!asset || !previewUrl) {
+  const handlePreviewAsset = (item: ComposeItem, assetIndex = 0) => {
+    const previewableAssets = item.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
+    if (previewableAssets.length === 0) {
       return;
     }
 
+    const boundedIndex = Math.max(0, Math.min(assetIndex, previewableAssets.length - 1));
     haptics.light();
-    setPreviewAsset(asset);
+    setPreviewState({
+      assets: previewableAssets,
+      initialIndex: boundedIndex,
+    });
   };
+
+  const previewMediaItems = useMemo<MediaPreviewItem[]>(
+    () => (previewState?.assets ?? [])
+      .map((asset) => {
+        const assetPreviewUrl = getComposeAssetPreviewUrl(asset);
+        if (!assetPreviewUrl) {
+          return null;
+        }
+
+        return {
+          src: assetPreviewUrl,
+          mediaType: asset.kind,
+          title: asset.fileName,
+          badgeLabel: asset.kind,
+        } satisfies MediaPreviewItem;
+      })
+      .filter((item): item is MediaPreviewItem => Boolean(item)),
+    [previewState],
+  );
 
   return (
     <div className="space-y-6">
@@ -424,7 +447,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                         data-prevent-card-selection="true"
                         onClick={(event) => {
                           event.stopPropagation();
-                          handlePreviewAsset(primaryAsset);
+                          handlePreviewAsset(item, 0);
                         }}
                         className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10 transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#ec1e24]/60"
                         aria-label={`Preview ${primaryAsset.kind} ${primaryAsset.fileName}`}
@@ -628,14 +651,16 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       </BottomSheet>
 
       <MediaPreviewDialog
-        open={Boolean(previewAsset && getComposeAssetPreviewUrl(previewAsset))}
-        src={previewAsset ? getComposeAssetPreviewUrl(previewAsset) : undefined}
-        mediaType={previewAsset?.kind ?? 'image'}
-        title={previewAsset?.fileName}
-        badgeLabel={previewAsset?.kind}
+        open={previewMediaItems.length > 0}
+        mediaItems={previewMediaItems}
+        initialIndex={previewState?.initialIndex ?? 0}
+        src={previewMediaItems[0]?.src}
+        mediaType={previewMediaItems[0]?.mediaType ?? 'image'}
+        title={previewMediaItems[0]?.title}
+        badgeLabel={previewMediaItems[0]?.badgeLabel}
         onOpenChange={(open) => {
           if (!open) {
-            setPreviewAsset(null);
+            setPreviewState(null);
           }
         }}
       />

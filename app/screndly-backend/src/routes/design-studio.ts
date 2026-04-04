@@ -212,6 +212,7 @@ const renderJobSchema = z.object({
 const manualRenderRequestSchema = z.object({
   template: templateSchema,
   data: z.object({
+    template_variant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
     headerText: z.string(),
     subtext: z.string().optional(),
     headerTextColor: z.string().optional(),
@@ -236,6 +237,9 @@ const manualRenderRequestSchema = z.object({
     backgroundOffsetX: z.number().optional(),
     backgroundOffsetY: z.number().optional(),
     zoomLevel: z.number().optional(),
+    fadeEnabled: z.boolean().optional(),
+    fadeOpacity: z.number().optional(),
+    brandBlockMode: z.enum(['auto', 'black', 'white']).optional(),
     sharedCaption: z.string().optional(),
     pinterestTitle: z.string().optional(),
     pinterestDescription: z.string().optional(),

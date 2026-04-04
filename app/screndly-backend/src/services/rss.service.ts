@@ -589,8 +589,8 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
         return '';
       }
 
-      return /^[•*-]\s*/.test(trimmedLine)
-        ? trimmedLine.replace(/^[*-]\s*/, '• ')
+      return /^[\u2022*-]\s*/.test(trimmedLine)
+        ? trimmedLine.replace(/^[*-]\s*/, '\u2022 ')
         : trimmedLine;
     })
     .join('\n')
