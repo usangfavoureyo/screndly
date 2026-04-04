@@ -974,13 +974,14 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                     connection.accessToken
                                 )
                                 : preparedImageSources.length > 1
-                                    ? (() => publisherService.publish(
-                                        ['Threads'],
-                                        {
-                                            text,
-                                            imageUrls: preparedImageSources,
-                                        },
-                                    ))().then((results) => {
+                                    ? await (async () => {
+                                        const results = await publisherService.publish(
+                                            ['Threads'],
+                                            {
+                                                text,
+                                                imageUrls: preparedImageSources,
+                                            },
+                                        );
                                         const publishResult = results[0];
                                         return publishResult?.status === 'posted'
                                             ? {
@@ -994,13 +995,13 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                                 success: false as const,
                                                 error: publishResult?.error || 'Failed to publish Threads carousel',
                                             };
-                                    })
-                                : await metaService.postToThreads(
-                                    connection.userId,
-                                    text,
-                                    preparedImageSources.length > 0 ? preparedImageSources : null,
-                                    connection.accessToken
-                                );
+                                    })()
+                                    : await metaService.postToThreads(
+                                        connection.userId,
+                                        text,
+                                        preparedImageSources.length > 0 ? preparedImageSources : null,
+                                        connection.accessToken
+                                    );
                             result = { platform: platformLabel, ...threadsResult, status: threadsResult.success ? 'posted' : 'failed' };
                         }
                         break;
