@@ -72,10 +72,10 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   threads: {
     supportsSingleImage: true,
     supportsSingleVideo: true,
-    supportsMultiImage: false,
+    supportsMultiImage: true,
     supportsMultiVideo: false,
     supportsMixedMedia: false,
-    maxItems: 1,
+    maxItems: 4,
   },
   x: {
     supportsSingleImage: true,
@@ -315,6 +315,12 @@ export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {
 
   const candidates = [asset.previewUrl, asset.storageUrl];
   return candidates.find((value) => typeof value === 'string' && /^https?:\/\//i.test(value.trim()));
+}
+
+export function getComposeAssetPublishUrls(assets: ComposeMediaAsset[]) {
+  return assets
+    .map((asset) => getComposeAssetPublishUrl(asset))
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
 
 export function getComposeThumbnailPublishUrl(thumbnail?: ComposeThumbnailAsset) {

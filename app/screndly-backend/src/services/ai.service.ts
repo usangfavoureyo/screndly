@@ -1166,6 +1166,53 @@ function isEditorializedRSSCaption(caption: string): boolean {
     return /\bstarting to feel like\b|\bfeels like a pattern\b|\blooks like a pattern\b|\bseems like a pattern\b|\bslow[- ]burn returns\b|\bpattern again\b/.test(normalized);
 }
 
+function getRSSCaptionLines(caption: string): string[] {
+    return caption
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+}
+
+function getRSSHeadlineLine(caption: string): string {
+    return getRSSCaptionLines(caption).find((line) => !/^[•*-]\s*/.test(line)) || '';
+}
+
+function hasInlineRSSQuote(caption: string): boolean {
+    return getRSSCaptionLines(caption).some((line, index) => {
+        if (index === 0 || /^[•*-]\s*/.test(line)) {
+            return false;
+        }
+
+        return /["'“”][^"'“”]{8,}["'“”]/.test(line) && !/^["'“”]/.test(line);
+    });
+}
+
+function hasOverloadedRSSHeadline(caption: string): boolean {
+    const headline = getRSSHeadlineLine(caption);
+    if (!headline) {
+        return false;
+    }
+
+    const sentenceBreaks = headline.match(/[.!?](?:\s|$)/g) || [];
+    if (sentenceBreaks.length > 1) {
+        return true;
+    }
+
+    return /\bbut\b|\bwith\b|\bas\b/.test(headline.toLowerCase()) && headline.length > 120;
+}
+
+function hasUnsupportedRSSVagueSubject(caption: string, context: RSSContext): boolean {
+    return hasGroundedRSSNamedEntities(context) && isVagueRSSCaption(caption);
+}
+
+function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolean {
+    return hasUnsupportedRSSVagueSubject(caption, context)
+        || isEditorializedRSSCaption(caption)
+        || hasInlineRSSQuote(caption)
+        || hasOverloadedRSSHeadline(caption);
+}
+
 export async function generateRSSCaption(
     context: RSSContext,
     model: AIModel = DEFAULT_OPENAI_MODEL,
@@ -1201,6 +1248,9 @@ ${visualContext}
 ${allowedEntitiesContext}
 
 Rules:
+- The first line must be exactly one clean headline sentence.
+- If you include a direct quote from the article, place it on its own separate line after the headline.
+- Use a second line only for one factual supporting sentence, one standalone quote, or up to two bullet points.
 - Name the concrete subject immediately when the article title/summary or allowed entities contain a specific movie, series, character, or person.
 - Do not replace a named entity with vague labels like "a Marvel character", "a major actor", "a franchise film", or similar generic phrasing.
 - Do not add commentary, trend analysis, or opinion. Report only the event stated in the article.
@@ -1222,7 +1272,7 @@ Write ONLY the caption.`;
         return `📰 ${context.articleTitle}`;
     }
     const normalizedCaption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
-    if (!hasGroundedRSSNamedEntities(context) || (!isVagueRSSCaption(normalizedCaption) && !isEditorializedRSSCaption(normalizedCaption))) {
+    if (!failsRSSCaptionFormatting(normalizedCaption, context)) {
         return normalizedCaption;
     }
 
@@ -1234,6 +1284,9 @@ Allowed named entities: ${Array.isArray(context.allowedEntities) ? context.allow
 Original caption: ${normalizedCaption}
 
 Requirements:
+- Keep the first line to exactly one clean headline sentence.
+- If you include a quote, put it on its own line and do not embed it inside another sentence.
+- Use only factual supporting detail after the headline.
 - Name the concrete subject directly if one is available in the title, summary, or allowed entities.
 - Remove vague phrases like "a Marvel character" or "a major actor".
 - Remove commentary, interpretation, and opinion.
@@ -1255,7 +1308,7 @@ Write ONLY the corrected caption.`;
     }
 
     const correctedCaption = normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content']);
-    if (isVagueRSSCaption(correctedCaption) || isEditorializedRSSCaption(correctedCaption)) {
+    if (failsRSSCaptionFormatting(correctedCaption, context)) {
         return context.articleTitle;
     }
 

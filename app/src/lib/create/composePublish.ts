@@ -1,5 +1,11 @@
 import { publishContent, type PlatformSelection } from '../api/platforms';
-import { getComposeAssetPublishUrl, getComposeThumbnailPublishUrl } from './composeMedia';
+import {
+  getComposeAssetPublishUrl,
+  getComposeAssetPublishUrls,
+  getComposeCompatibilityMap,
+  getComposeThumbnailPublishUrl,
+  summarizeComposeMedia,
+} from './composeMedia';
 import { getVideoUrlForComposePlatform } from './composeVideoProcessing';
 import { getComposePlatformLabel } from './composePlatforms';
 import type { ComposeItem, ComposePlatformKey } from '../../types/compose';
@@ -68,16 +74,23 @@ export async function publishComposeItem(item: ComposeItem, options?: ComposePub
     throw new Error('Select at least one platform');
   }
 
-  if (item.mediaAssets.length !== 1) {
-    throw new Error('Live publishing from Post currently supports one media item at a time.');
+  const mediaSummary = summarizeComposeMedia(item.mediaAssets);
+  if (mediaSummary.totalAssets === 0) {
+    throw new Error('Upload at least one image or video before publishing.');
+  }
+
+  const compatibilityMap = getComposeCompatibilityMap(item.mediaAssets);
+  const selectedPlatformIssues = platformKeys
+    .map((platform) => compatibilityMap[platform])
+    .filter((entry) => !entry.supported);
+  if (selectedPlatformIssues.length > 0) {
+    throw new Error(selectedPlatformIssues[0]?.reason || 'One or more selected platforms do not support this media set.');
   }
 
   const primaryAsset = item.mediaAssets[0];
-  const mediaUrl = getComposeAssetPublishUrl(primaryAsset);
-  if (!mediaUrl) {
-    throw new Error(
-      `Upload the ${primaryAsset.kind === 'video' ? 'video' : 'image'} to Backblaze before publishing this post.`,
-    );
+  const mediaUrls = getComposeAssetPublishUrls(item.mediaAssets);
+  if (mediaUrls.length !== item.mediaAssets.length) {
+    throw new Error('Upload all media to Backblaze before publishing this post.');
   }
 
   const sharedThumbnailUrl = getComposeThumbnailPublishUrl(item.platformFields.thumbnails?.shared);
@@ -91,7 +104,8 @@ export async function publishComposeItem(item: ComposeItem, options?: ComposePub
     }
 
     if (
-      primaryAsset.kind === 'video' &&
+      mediaSummary.kind === 'single-video' &&
+      primaryAsset?.kind === 'video' &&
       (platform === 'threads' || platform === 'x') &&
       item.platformFields.videoProcessing?.cropMode === 'threads_x_3_4'
     ) {
@@ -112,11 +126,15 @@ export async function publishComposeItem(item: ComposeItem, options?: ComposePub
       youtubePlaylistIds: item.platformFields.youtube?.playlist
         ? [item.platformFields.youtube.playlist]
         : undefined,
-      sharedThumbnailUrl: primaryAsset.kind === 'video' ? sharedThumbnailUrl : undefined,
-      youtubeThumbnailUrl: primaryAsset.kind === 'video' ? youtubeThumbnailUrl : undefined,
-      xThumbnailUrl: primaryAsset.kind === 'video' ? xThumbnailUrl : undefined,
-      imageUrl: primaryAsset.kind === 'image' ? mediaUrl : undefined,
-      videoUrl: primaryAsset.kind === 'video' ? getVideoUrlForComposePlatform(item, platform) || mediaUrl : undefined,
+      sharedThumbnailUrl: mediaSummary.kind === 'single-video' ? sharedThumbnailUrl : undefined,
+      youtubeThumbnailUrl: mediaSummary.kind === 'single-video' ? youtubeThumbnailUrl : undefined,
+      xThumbnailUrl: mediaSummary.kind === 'single-video' ? xThumbnailUrl : undefined,
+      imageUrl: mediaSummary.kind === 'single-image' ? mediaUrls[0] : undefined,
+      imageUrls: mediaSummary.kind === 'multi-image' ? mediaUrls : undefined,
+      videoUrl:
+        mediaSummary.kind === 'single-video'
+          ? getVideoUrlForComposePlatform(item, platform) || mediaUrls[0]
+          : undefined,
     };
 
     const response = await publishContent(toSinglePlatformSelection(platform), content, undefined, {

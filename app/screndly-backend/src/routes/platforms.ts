@@ -90,6 +90,34 @@ function asNonEmptyString(value: unknown): string | undefined {
     return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function asNonEmptyStringArray(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value
+            .filter((entry): entry is string => typeof entry === 'string')
+            .map((entry) => entry.trim())
+            .filter(Boolean);
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+        try {
+            const parsed = JSON.parse(value);
+            if (Array.isArray(parsed)) {
+                return parsed
+                    .filter((entry): entry is string => typeof entry === 'string')
+                    .map((entry) => entry.trim())
+                    .filter(Boolean);
+            }
+        } catch {
+            return value
+                .split(',')
+                .map((entry) => entry.trim())
+                .filter(Boolean);
+        }
+    }
+
+    return [];
+}
+
 function resolvePreferredMediaChoice(options: {
     localFilePath: string | null;
     mimeType?: string | null;
@@ -630,10 +658,11 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 : [];
 
         let imageUrl = asNonEmptyString(parsedContent?.imageUrl);
+        const imageUrls = asNonEmptyStringArray(parsedContent?.imageUrls);
         let videoUrl = asNonEmptyString(parsedContent?.videoUrl);
         const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
         const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
-        const coverImageUrl = sharedThumbnailUrl || imageUrl;
+        const coverImageUrl = sharedThumbnailUrl || imageUrl || imageUrls[0];
         const preferredMedia = resolvePreferredMediaChoice({
             localFilePath,
             mimeType: req.file?.mimetype,
@@ -646,6 +675,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
             hasUploadedFile: Boolean(localFilePath),
             originalMimeType: req.file?.mimetype || null,
             imageUrlPresent: Boolean(imageUrl),
+            imageUrlsCount: imageUrls.length,
             videoUrlPresent: Boolean(videoUrl),
             textLength: text.length,
         });
@@ -671,6 +701,33 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
             });
 
             return preparedImageUrl;
+        };
+
+        let preparedImageUrls: string[] | null = null;
+        const getPreparedImageUrls = async (): Promise<string[]> => {
+            if (preparedImageUrls) {
+                return preparedImageUrls;
+            }
+
+            if (hasUploadedImage && localFilePath) {
+                const uploadedImage = await prepareHostedImageUrl({
+                    localFilePath,
+                    originalName: req.file?.originalname,
+                });
+                preparedImageUrls = uploadedImage ? [uploadedImage] : [];
+                return preparedImageUrls;
+            }
+
+            if (imageUrls.length > 0) {
+                preparedImageUrls = await Promise.all(
+                    imageUrls.map((source) => prepareHostedImageUrl({ remoteUrl: source })),
+                ).then((sources) => sources.filter((value): value is string => typeof value === 'string' && value.trim().length > 0));
+                return preparedImageUrls;
+            }
+
+            const singleImage = await getPreparedImageUrl();
+            preparedImageUrls = singleImage ? [singleImage] : [];
+            return preparedImageUrls;
         };
 
         const getDownloadedVideoPath = async (): Promise<string> => {
@@ -744,6 +801,11 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                 switch (platform) {
                     case 'X':
                         if (connection?.accessToken) {
+                            const normalizedImageSources = imageUrls.length > 0
+                                ? imageUrls
+                                : preferredMedia.kind === 'image'
+                                    ? [preferredMedia.source]
+                                    : [];
                             const xResult = preferredMedia.kind === 'video'
                                 ? await xService.postVideoTweet(
                                     text,
@@ -752,7 +814,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 )
                                 : await xService.postTweet(
                                     text,
-                                    preferredMedia.kind === 'image' ? preferredMedia.source : undefined,
+                                    normalizedImageSources.length > 0 ? normalizedImageSources : undefined,
                                     connection
                                 );
                             result = { platform: platformLabel, ...xResult, status: xResult.success ? 'posted' : 'failed' };
@@ -898,6 +960,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
 
                     case 'Threads':
                         if (connection?.accessToken && connection.userId) {
+                            const preparedImageSources = await getPreparedImageUrls();
                             const threadsResult = (hasUploadedVideo || videoUrl)
                                 ? await metaService.postVideoToThreads(
                                     connection.userId,
@@ -908,7 +971,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 : await metaService.postToThreads(
                                     connection.userId,
                                     text,
-                                    (await getPreparedImageUrl()) ?? null,
+                                    preparedImageSources.length > 0 ? preparedImageSources : null,
                                     connection.accessToken
                                 );
                             result = { platform: platformLabel, ...threadsResult, status: threadsResult.success ? 'posted' : 'failed' };

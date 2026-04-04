@@ -572,10 +572,30 @@ function sanitizeRSSPlainText(value?: string): string {
 }
 
 function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
-  let sanitized = sanitizeRSSPlainText(value)
-    .replace(/\s+([,.;:!?])/g, '$1')
-    .replace(/([({\[])\s+/g, '$1')
-    .replace(/\s+([)}\]])/g, '$1')
+  const normalized = String(value || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n{3,}/g, '\n\n');
+
+  let sanitized = normalized
+    .split('\n')
+    .map((line) => {
+      const trimmedLine = sanitizeRSSPlainText(line)
+        .replace(/\s+([,.;:!?])/g, '$1')
+        .replace(/([({\[])\s+/g, '$1')
+        .replace(/\s+([)}\]])/g, '$1')
+        .trim();
+
+      if (!trimmedLine) {
+        return '';
+      }
+
+      return /^[•*-]\s*/.test(trimmedLine)
+        ? trimmedLine.replace(/^[*-]\s*/, '• ')
+        : trimmedLine;
+    })
+    .join('\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 
   if (maxLength && sanitized.length > maxLength) {

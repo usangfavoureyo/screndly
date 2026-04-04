@@ -203,10 +203,36 @@ function getPrimaryAsset(item: ComposeStateItem): Record<string, any> | null {
   return isRecord(firstAsset) ? firstAsset : null;
 }
 
+function summarizeMediaAssets(item: ComposeStateItem) {
+  const mediaAssets = Array.isArray(item.mediaAssets) ? item.mediaAssets.filter(isRecord) : [];
+  const imageCount = mediaAssets.filter((asset) => asset.kind === 'image').length;
+  const videoCount = mediaAssets.filter((asset) => asset.kind === 'video').length;
+
+  let kind: 'empty' | 'single-image' | 'single-video' | 'multi-image' | 'multi-video' | 'mixed-media' = 'empty';
+  if (mediaAssets.length === 1 && imageCount === 1) kind = 'single-image';
+  if (mediaAssets.length === 1 && videoCount === 1) kind = 'single-video';
+  if (mediaAssets.length > 1 && imageCount === mediaAssets.length) kind = 'multi-image';
+  if (mediaAssets.length > 1 && videoCount === mediaAssets.length) kind = 'multi-video';
+  if (mediaAssets.length > 1 && imageCount > 0 && videoCount > 0) kind = 'mixed-media';
+
+  return {
+    mediaAssets,
+    totalAssets: mediaAssets.length,
+    kind,
+  };
+}
+
 function getAssetUrl(asset?: Record<string, any> | null): string | undefined {
   if (!asset) return undefined;
   const candidates = [asset.previewUrl, asset.storageUrl];
   return candidates.find((value) => typeof value === 'string' && value.trim().length > 0);
+}
+
+function getAssetUrls(item: ComposeStateItem): string[] {
+  const { mediaAssets } = summarizeMediaAssets(item);
+  return mediaAssets
+    .map((asset) => getAssetUrl(asset))
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
 
 function buildAssetSignature(asset?: Record<string, any> | null): string {
@@ -280,18 +306,38 @@ function validateScheduledComposeItem(item: ComposeStateItem): string | undefine
     return 'Select at least one platform before scheduling.';
   }
 
-  const mediaAssets = Array.isArray(item.mediaAssets) ? item.mediaAssets : [];
-  if (mediaAssets.length !== 1) {
-    return 'Scheduled publishing currently supports one media item per post.';
+  const mediaSummary = summarizeMediaAssets(item);
+  if (mediaSummary.totalAssets === 0) {
+    return 'Upload one media item before scheduling.';
+  }
+
+  const assetUrls = getAssetUrls(item);
+  if (assetUrls.length !== mediaSummary.totalAssets) {
+    return 'Upload the media asset before scheduling.';
+  }
+
+  if (mediaSummary.kind === 'multi-image') {
+    for (const platform of platforms) {
+      if (platform === 'x' || platform === 'threads') {
+        continue;
+      }
+      return 'Only X and Threads support multiple images in the current scheduling flow.';
+    }
+
+    if (mediaSummary.totalAssets > 4) {
+      return 'X and Threads currently support up to 4 images in this post flow.';
+    }
+
+    return undefined;
+  }
+
+  if (mediaSummary.kind === 'mixed-media' || mediaSummary.kind === 'multi-video') {
+    return 'Mixed image/video sets and multiple videos are not supported for scheduling in this post flow.';
   }
 
   const primaryAsset = getPrimaryAsset(item);
   if (!primaryAsset) {
     return 'Upload one media item before scheduling.';
-  }
-
-  if (!getAssetUrl(primaryAsset)) {
-    return 'Upload the media asset before scheduling.';
   }
 
   if (primaryAsset.kind === 'video') {
@@ -306,11 +352,18 @@ function validateScheduledComposeItem(item: ComposeStateItem): string | undefine
 }
 
 function buildPublishContent(item: ComposeStateItem, platform: string, primaryAsset: Record<string, any>): PublishContent {
+  const mediaSummary = summarizeMediaAssets(item);
+  const assetUrls = getAssetUrls(item);
   const caption = typeof item.sharedCaption === 'string' && item.sharedCaption.trim().length > 0
     ? item.sharedCaption.trim()
     : (typeof item.title === 'string' ? item.title : 'Untitled post');
-  const videoUrl = primaryAsset.kind === 'video' ? getVideoUrlForPlatform(item, platform, primaryAsset) : undefined;
-  const imageUrl = primaryAsset.kind === 'image' ? getAssetUrl(primaryAsset) : getThumbnailUrl(item, platform);
+  const videoUrl = mediaSummary.kind === 'single-video' ? getVideoUrlForPlatform(item, platform, primaryAsset) : undefined;
+  const imageUrl =
+    mediaSummary.kind === 'single-image'
+      ? assetUrls[0]
+      : mediaSummary.kind === 'single-video'
+        ? getThumbnailUrl(item, platform)
+        : undefined;
 
   return {
     text: caption,
@@ -322,7 +375,7 @@ function buildPublishContent(item: ComposeStateItem, platform: string, primaryAs
       item.platformFields?.youtube?.description
       || caption,
     imageUrl,
-    imageUrls: primaryAsset.kind === 'image' && getAssetUrl(primaryAsset) ? [getAssetUrl(primaryAsset)!] : undefined,
+    imageUrls: mediaSummary.kind === 'multi-image' ? assetUrls : undefined,
     videoUrl,
   };
 }
