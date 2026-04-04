@@ -29,10 +29,31 @@ const VIDEO_BACKLOG_MODE_PROCESS = 'process-backlog';
 const VIDEO_BACKLOG_MODE_FUTURE_ONLY = 'future-only';
 const VIDEO_AGE_GATE_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index + 1));
 const TRAILER_KEYWORD_PLATFORM_OPTIONS = [
-  { id: 'youtube', name: 'YouTube' },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    destinations: [
+      { id: 'longForm', name: 'Long Form', publishLabel: 'YouTube Long Form' },
+      { id: 'shorts', name: 'Shorts', publishLabel: 'YouTube Shorts' },
+    ],
+  },
   { id: 'tiktok', name: 'TikTok' },
-  { id: 'instagram', name: 'Instagram' },
-  { id: 'facebook', name: 'Facebook' },
+  {
+    id: 'instagram',
+    name: 'Instagram',
+    destinations: [
+      { id: 'reels', name: 'Reels', publishLabel: 'Instagram Reels' },
+      { id: 'stories', name: 'Stories', publishLabel: 'Instagram Stories' },
+    ],
+  },
+  {
+    id: 'facebook',
+    name: 'Facebook',
+    destinations: [
+      { id: 'feed', name: 'Feed', publishLabel: 'Facebook Feed' },
+      { id: 'stories', name: 'Stories', publishLabel: 'Facebook Stories' },
+    ],
+  },
   { id: 'threads', name: 'Threads' },
   { id: 'x', name: 'X' },
   { id: 'pinterest', name: 'Pinterest' },
@@ -95,6 +116,50 @@ function normalizeSelectedTrailerKeywords(value: unknown): string[] {
   }
 
   return keywords;
+}
+
+function normalizePlatformRoutingValue(platformId: string, value: unknown) {
+  const currentValue = value && typeof value === 'object' ? { ...(value as Record<string, unknown>) } : {};
+  const platformOption = TRAILER_KEYWORD_PLATFORM_OPTIONS.find((platform) => platform.id === platformId);
+  const flatSelections = normalizeSelectedTrailerKeywords(currentValue.selectedTrailerKeywords);
+
+  if (!platformOption?.destinations) {
+    return {
+      ...currentValue,
+      selectedTrailerKeywords: flatSelections,
+    };
+  }
+
+  const rawDestinations =
+    currentValue.destinations && typeof currentValue.destinations === 'object'
+      ? (currentValue.destinations as Record<string, unknown>)
+      : {};
+
+  const nextDestinations = Object.fromEntries(
+    platformOption.destinations.map((destination) => {
+      const rawDestination =
+        rawDestinations[destination.id] && typeof rawDestinations[destination.id] === 'object'
+          ? (rawDestinations[destination.id] as Record<string, unknown>)
+          : {};
+      const destinationSelections = normalizeSelectedTrailerKeywords(rawDestination.selectedTrailerKeywords);
+
+      return [
+        destination.id,
+        {
+          ...rawDestination,
+          selectedTrailerKeywords: destinationSelections.length > 0 ? destinationSelections : flatSelections,
+        },
+      ];
+    })
+  );
+
+  const rest = { ...currentValue };
+  delete (rest as { selectedTrailerKeywords?: unknown }).selectedTrailerKeywords;
+
+  return {
+    ...rest,
+    destinations: nextDestinations,
+  };
 }
 
 function isValidScheduleTime(value: unknown): value is string {
@@ -255,17 +320,53 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
 
     const nextPlatformSettings = Object.fromEntries(
       Object.entries(platformSettings).map(([platformId, platformValue]) => {
-        const currentValue = platformValue && typeof platformValue === 'object' ? platformValue : {};
-        const currentSelections = normalizeSelectedTrailerKeywords((currentValue as any).selectedTrailerKeywords);
-        const nextSelections = currentSelections
-          .map((keyword) => activeKeywordLookup.get(keyword.toLowerCase()))
-          .filter((keyword): keyword is string => Boolean(keyword));
+        const currentValue = normalizePlatformRoutingValue(platformId, platformValue);
+        const platformOption = TRAILER_KEYWORD_PLATFORM_OPTIONS.find((platform) => platform.id === platformId);
+
+        if (!platformOption?.destinations) {
+          const nextSelections = normalizeSelectedTrailerKeywords((currentValue as any).selectedTrailerKeywords)
+            .map((keyword) => activeKeywordLookup.get(keyword.toLowerCase()))
+            .filter((keyword): keyword is string => Boolean(keyword));
+
+          return [
+            platformId,
+            {
+              ...currentValue,
+              selectedTrailerKeywords: nextSelections,
+            },
+          ];
+        }
+
+        const currentDestinations =
+          (currentValue as any).destinations && typeof (currentValue as any).destinations === 'object'
+            ? (currentValue as any).destinations
+            : {};
+
+        const nextDestinations = Object.fromEntries(
+          platformOption.destinations.map((destination) => {
+            const currentDestination =
+              currentDestinations[destination.id] && typeof currentDestinations[destination.id] === 'object'
+                ? currentDestinations[destination.id]
+                : {};
+            const nextSelections = normalizeSelectedTrailerKeywords(currentDestination.selectedTrailerKeywords)
+              .map((keyword) => activeKeywordLookup.get(keyword.toLowerCase()))
+              .filter((keyword): keyword is string => Boolean(keyword));
+
+            return [
+              destination.id,
+              {
+                ...currentDestination,
+                selectedTrailerKeywords: nextSelections,
+              },
+            ];
+          })
+        );
 
         return [
           platformId,
           {
             ...currentValue,
-            selectedTrailerKeywords: nextSelections,
+            destinations: nextDestinations,
           },
         ];
       })
@@ -285,10 +386,7 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
   const handlePlatformTrailerKeywordToggle = (platformId: string, keyword: string, checked: boolean) => {
     haptics.light();
 
-    const currentPlatformSettings =
-      platformSettings[platformId] && typeof platformSettings[platformId] === 'object'
-        ? platformSettings[platformId]
-        : {};
+    const currentPlatformSettings = normalizePlatformRoutingValue(platformId, platformSettings[platformId]);
     const currentSelections = normalizeSelectedTrailerKeywords((currentPlatformSettings as any).selectedTrailerKeywords);
     const currentSelectionSet = new Set(currentSelections.map((value) => value.toLowerCase()));
     const normalizedKeyword = keyword.toLowerCase();
@@ -314,6 +412,60 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
       checked
         ? `${keyword} added to ${platformName} routing`
         : `${keyword} removed from ${platformName} routing`
+    );
+  };
+
+  const handleDestinationTrailerKeywordToggle = (
+    platformId: string,
+    destinationId: string,
+    keyword: string,
+    checked: boolean
+  ) => {
+    haptics.light();
+
+    const currentPlatformSettings = normalizePlatformRoutingValue(platformId, platformSettings[platformId]);
+    const currentDestinations =
+      (currentPlatformSettings as any).destinations && typeof (currentPlatformSettings as any).destinations === 'object'
+        ? (currentPlatformSettings as any).destinations
+        : {};
+    const currentDestination =
+      currentDestinations[destinationId] && typeof currentDestinations[destinationId] === 'object'
+        ? currentDestinations[destinationId]
+        : {};
+    const currentSelections = normalizeSelectedTrailerKeywords(currentDestination.selectedTrailerKeywords);
+    const currentSelectionSet = new Set(currentSelections.map((value) => value.toLowerCase()));
+    const normalizedKeyword = keyword.toLowerCase();
+
+    if (checked) {
+      currentSelectionSet.add(normalizedKeyword);
+    } else {
+      currentSelectionSet.delete(normalizedKeyword);
+    }
+
+    const nextSelections = trailerKeywordOptions.filter((option) => currentSelectionSet.has(option.toLowerCase()));
+    const platformName = TRAILER_KEYWORD_PLATFORM_OPTIONS.find((platform) => platform.id === platformId)?.name || platformId;
+    const destinationName =
+      TRAILER_KEYWORD_PLATFORM_OPTIONS.find((platform) => platform.id === platformId)?.destinations?.find((destination) => destination.id === destinationId)?.name
+      || destinationId;
+
+    updateSetting('platformSettings', {
+      ...platformSettings,
+      [platformId]: {
+        ...currentPlatformSettings,
+        destinations: {
+          ...currentDestinations,
+          [destinationId]: {
+            ...currentDestination,
+            selectedTrailerKeywords: nextSelections,
+          },
+        },
+      },
+    });
+
+    toast.success(
+      checked
+        ? `${keyword} added to ${platformName} ${destinationName} routing`
+        : `${keyword} removed from ${platformName} ${destinationName} routing`
     );
   };
 
@@ -452,10 +604,13 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
   const trailerKeywordLookup = new Map(
     trailerKeywordOptions.map((keyword) => [keyword.toLowerCase(), keyword])
   );
-  const platformSettings =
-    settings.platformSettings && typeof settings.platformSettings === 'object'
-      ? settings.platformSettings
-      : {};
+  const platformSettings = Object.fromEntries(
+    Object.entries(
+      settings.platformSettings && typeof settings.platformSettings === 'object'
+        ? settings.platformSettings
+        : {}
+    ).map(([platformId, platformValue]) => [platformId, normalizePlatformRoutingValue(platformId, platformValue)])
+  );
   const enablePollingSchedule = settings.enablePollingSchedule === true;
   const pollingTimezone =
     typeof settings.pollingTimezone === 'string' && settings.pollingTimezone.trim().length > 0
@@ -645,14 +800,6 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
                   </p>
                 ) : (
                   TRAILER_KEYWORD_PLATFORM_OPTIONS.map((platform) => {
-                    const selectedKeywords = normalizeSelectedTrailerKeywords(
-                      platformSettings[platform.id]?.selectedTrailerKeywords
-                    )
-                      .map((keyword) => trailerKeywordLookup.get(keyword.toLowerCase()) || keyword)
-                      .filter((keyword, index, values) =>
-                        values.findIndex((value) => value.toLowerCase() === keyword.toLowerCase()) === index
-                      );
-
                     return (
                       <div
                         key={platform.id}
@@ -660,35 +807,116 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm text-gray-900 dark:text-white">{platform.name}</span>
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
-                            {selectedKeywords.length} selected
-                          </span>
+                          {!platform.destinations ? (
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
+                              {normalizeSelectedTrailerKeywords((platformSettings[platform.id] as any)?.selectedTrailerKeywords).length} selected
+                            </span>
+                          ) : null}
                         </div>
 
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {trailerKeywordOptions.map((keyword) => {
-                            const checked = selectedKeywords.some((value) => value.toLowerCase() === keyword.toLowerCase());
+                        {!platform.destinations ? (
+                          <>
+                            {(() => {
+                              const selectedKeywords = normalizeSelectedTrailerKeywords(
+                                (platformSettings[platform.id] as any)?.selectedTrailerKeywords
+                              )
+                                .map((keyword) => trailerKeywordLookup.get(keyword.toLowerCase()) || keyword)
+                                .filter((keyword, index, values) =>
+                                  values.findIndex((value) => value.toLowerCase() === keyword.toLowerCase()) === index
+                                );
 
-                            return (
-                              <label
-                                key={`${platform.id}-${keyword}`}
-                                className="inline-flex items-center gap-2 rounded-full border border-gray-200 dark:border-[#333333] px-3 py-2 cursor-pointer"
-                              >
-                                <Checkbox
-                                  checked={checked}
-                                  onCheckedChange={(value) => handlePlatformTrailerKeywordToggle(platform.id, keyword, value === true)}
-                                />
-                                <span className="text-xs text-gray-700 dark:text-[#E5E7EB]">{keyword}</span>
-                              </label>
-                            );
-                          })}
-                        </div>
+                              return (
+                                <>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {trailerKeywordOptions.map((keyword) => {
+                                      const checked = selectedKeywords.some((value) => value.toLowerCase() === keyword.toLowerCase());
 
-                        <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-3">
-                          {selectedKeywords.length > 0
-                            ? `Only videos with ${selectedKeywords.join(', ')} in the title can publish to ${platform.name}.`
-                            : `No videos will publish to ${platform.name} until at least one keyword is selected.`}
-                        </p>
+                                      return (
+                                        <label
+                                          key={`${platform.id}-${keyword}`}
+                                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 cursor-pointer transition-colors ${
+                                            checked
+                                              ? 'border-[#E11D48] bg-[#E11D48]/10'
+                                              : 'border-gray-200 dark:border-[#333333]'
+                                          }`}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={(value) => handlePlatformTrailerKeywordToggle(platform.id, keyword, value === true)}
+                                          />
+                                          <span className="text-xs text-gray-700 dark:text-[#E5E7EB]">{keyword}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+
+                                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-3">
+                                    {selectedKeywords.length > 0
+                                      ? `Only videos with ${selectedKeywords.join(', ')} in the title can publish to ${platform.name}.`
+                                      : `No videos will publish to ${platform.name} until at least one keyword is selected.`}
+                                  </p>
+                                </>
+                              );
+                            })()}
+                          </>
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            {platform.destinations.map((destination) => {
+                              const selectedKeywords = normalizeSelectedTrailerKeywords(
+                                ((platformSettings[platform.id] as any)?.destinations?.[destination.id] as any)?.selectedTrailerKeywords
+                              )
+                                .map((keyword) => trailerKeywordLookup.get(keyword.toLowerCase()) || keyword)
+                                .filter((keyword, index, values) =>
+                                  values.findIndex((value) => value.toLowerCase() === keyword.toLowerCase()) === index
+                                );
+
+                              return (
+                                <div
+                                  key={`${platform.id}-${destination.id}`}
+                                  className="rounded-xl border border-gray-200 dark:border-[#333333] bg-gray-50/60 dark:bg-[#050505] px-3 py-3"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-sm text-gray-900 dark:text-white">{destination.name}</span>
+                                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
+                                      {selectedKeywords.length} selected
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {trailerKeywordOptions.map((keyword) => {
+                                      const checked = selectedKeywords.some((value) => value.toLowerCase() === keyword.toLowerCase());
+
+                                      return (
+                                        <label
+                                          key={`${platform.id}-${destination.id}-${keyword}`}
+                                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 cursor-pointer transition-colors ${
+                                            checked
+                                              ? 'border-[#E11D48] bg-[#E11D48]/10'
+                                              : 'border-gray-200 dark:border-[#333333]'
+                                          }`}
+                                        >
+                                          <Checkbox
+                                            checked={checked}
+                                            onCheckedChange={(value) =>
+                                              handleDestinationTrailerKeywordToggle(platform.id, destination.id, keyword, value === true)
+                                            }
+                                          />
+                                          <span className="text-xs text-gray-700 dark:text-[#E5E7EB]">{keyword}</span>
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+
+                                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-3">
+                                    {selectedKeywords.length > 0
+                                      ? `Only videos with selected keywords in the title can publish to ${destination.publishLabel}.`
+                                      : `No videos will publish to ${destination.publishLabel} until at least one keyword is selected.`}
+                                  </p>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })

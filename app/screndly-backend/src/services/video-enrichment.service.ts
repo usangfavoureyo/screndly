@@ -44,6 +44,7 @@ interface PlatformSettingsValue {
     autoHashtag?: boolean;
     commentAutomation?: boolean;
     selectedTrailerKeywords?: string[];
+    destinations?: Record<string, { selectedTrailerKeywords?: string[] }>;
 }
 
 interface SelectedYouTubePlaylist {
@@ -577,7 +578,90 @@ function parseJsonValue<T>(value: unknown): T | null {
 }
 
 function parsePlatformSettings(value: unknown): Record<string, PlatformSettingsValue> {
-    return parseJsonValue<Record<string, PlatformSettingsValue>>(value) || {};
+    const parsed = parseJsonValue<Record<string, PlatformSettingsValue>>(value) || {};
+    const destinationMap: Record<string, string[]> = {
+        youtube: ['longForm', 'shorts'],
+        instagram: ['reels', 'stories'],
+        facebook: ['feed', 'stories'],
+    };
+
+    const normalizeKeywords = (input: unknown): string[] => {
+        if (!Array.isArray(input)) {
+            return [];
+        }
+
+        const seen = new Set<string>();
+        const keywords: string[] = [];
+
+        for (const item of input) {
+            if (typeof item !== 'string') {
+                continue;
+            }
+
+            const trimmed = item.trim();
+            const normalized = trimmed.toLowerCase();
+            if (!trimmed || seen.has(normalized)) {
+                continue;
+            }
+
+            seen.add(normalized);
+            keywords.push(trimmed);
+        }
+
+        return keywords;
+    };
+
+    return Object.fromEntries(
+        Object.entries(parsed).map(([platformId, rawValue]) => {
+            const value = rawValue && typeof rawValue === 'object' ? rawValue : {};
+            const baseSelections = normalizeKeywords((value as PlatformSettingsValue).selectedTrailerKeywords);
+            const supportedDestinations = destinationMap[platformId];
+
+            if (!supportedDestinations) {
+                return [
+                    platformId,
+                    {
+                        ...value,
+                        selectedTrailerKeywords: baseSelections,
+                    },
+                ];
+            }
+
+            const rawDestinations =
+                (value as PlatformSettingsValue).destinations
+                && typeof (value as PlatformSettingsValue).destinations === 'object'
+                    ? (value as PlatformSettingsValue).destinations!
+                    : {};
+
+            const destinations = Object.fromEntries(
+                supportedDestinations.map((destinationId) => {
+                    const destinationValue =
+                        rawDestinations[destinationId] && typeof rawDestinations[destinationId] === 'object'
+                            ? rawDestinations[destinationId]
+                            : {};
+
+                    const destinationSelections = normalizeKeywords(destinationValue.selectedTrailerKeywords);
+
+                    return [
+                        destinationId,
+                        {
+                            ...destinationValue,
+                            selectedTrailerKeywords:
+                                destinationSelections.length > 0 ? destinationSelections : baseSelections,
+                        },
+                    ];
+                })
+            );
+
+            return [
+                platformId,
+                {
+                    ...value,
+                    destinations,
+                },
+            ];
+        })
+    );
 }
 
 function parseThumbnailConfig(platform: LandscapePlatform, value: unknown): ThumbnailConfig {

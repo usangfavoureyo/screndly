@@ -113,6 +113,14 @@ interface PlatformAutomationSettings {
     autoThumbnail?: boolean;
     autoCaption?: boolean;
     autoHashtag?: boolean;
+    selectedTrailerKeywords?: string[];
+    destinations?: Record<string, { selectedTrailerKeywords?: string[] }>;
+}
+
+interface PlatformRoutingTarget {
+    publishPlatform: string;
+    settingsPlatform: string;
+    destinationId?: string;
 }
 
 interface GeneratedCaptions {
@@ -217,14 +225,43 @@ interface SchedulerTickSummary {
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
     Facebook: 'facebook',
+    FacebookFeed: 'facebook',
+    FacebookStories: 'facebook',
     Instagram: 'instagram',
+    InstagramFeed: 'instagram',
+    InstagramReels: 'instagram',
+    InstagramStories: 'instagram',
     Threads: 'threads',
     TikTok: 'tiktok',
     YouTube: 'youtube',
+    YouTubeLongform: 'youtube',
+    YouTubeShorts: 'youtube',
     Pinterest: 'pinterest',
 };
 
-const SOCIAL_THUMBNAIL_PLATFORMS = new Set(['Facebook', 'Instagram', 'Threads', 'Pinterest']);
+const SOCIAL_THUMBNAIL_PLATFORMS = new Set([
+    'Facebook',
+    'FacebookFeed',
+    'FacebookStories',
+    'Instagram',
+    'InstagramFeed',
+    'InstagramReels',
+    'InstagramStories',
+    'Threads',
+    'Pinterest',
+]);
+const DESTINATION_ROUTING_TARGETS: PlatformRoutingTarget[] = [
+    { publishPlatform: 'YouTubeLongform', settingsPlatform: 'YouTube', destinationId: 'longForm' },
+    { publishPlatform: 'YouTubeShorts', settingsPlatform: 'YouTube', destinationId: 'shorts' },
+    { publishPlatform: 'InstagramReels', settingsPlatform: 'Instagram', destinationId: 'reels' },
+    { publishPlatform: 'InstagramStories', settingsPlatform: 'Instagram', destinationId: 'stories' },
+    { publishPlatform: 'FacebookFeed', settingsPlatform: 'Facebook', destinationId: 'feed' },
+    { publishPlatform: 'FacebookStories', settingsPlatform: 'Facebook', destinationId: 'stories' },
+    { publishPlatform: 'TikTok', settingsPlatform: 'TikTok' },
+    { publishPlatform: 'Threads', settingsPlatform: 'Threads' },
+    { publishPlatform: 'X', settingsPlatform: 'X' },
+    { publishPlatform: 'Pinterest', settingsPlatform: 'Pinterest' },
+];
 const MAX_RECENT_FEED_ITEMS = 15;
 const MAX_OWNED_VIDEO_CANDIDATES = 8;
 const MAX_COLLAB_CANDIDATES = 6;
@@ -1794,7 +1831,7 @@ export class YouTubePollerService {
         options: PollOptions,
         supportsFeedItemStatus: boolean,
         trailerKeywords: string[],
-        autoPostPlatforms: string[],
+        autoPostPlatforms: PlatformRoutingTarget[],
         effectiveAgeGateHours: number | null
     ): Promise<FeedVideoProcessingResult> {
         const videoTitle = video.title || 'Untitled YouTube upload';
@@ -1867,7 +1904,7 @@ export class YouTubePollerService {
         const targetPlatforms = platformRouting.platforms;
         if (targetPlatforms.length === 0) {
             const configuredAutoPostPlatforms = autoPostPlatforms.length > 0
-                ? autoPostPlatforms.join(', ')
+                ? autoPostPlatforms.map((target) => target.publishPlatform).join(', ')
                 : 'none';
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'ignored');
             return {
@@ -2249,7 +2286,7 @@ export class YouTubePollerService {
             const captions = await this.generateCaptions(video, details, settings, enrichedMetadata, targetPlatforms);
             const playlists = await this.detectPlaylists(video, details, settings, enrichedMetadata, activeChannel);
             const youtubeMetadata =
-                targetPlatforms.includes('YouTube') && this.isAutoCaptionEnabled('YouTube', settings)
+                this.targetPlatformsIncludeAny(targetPlatforms, ['YouTube', 'YouTubeLongform', 'YouTubeShorts']) && this.isAutoCaptionEnabled('YouTube', settings)
                     ? await generateYouTubePublishMetadata(
                         video.title || '',
                         details.description || video.contentSnippet || '',
@@ -2257,7 +2294,7 @@ export class YouTubePollerService {
                         settings
                     )
                     : this.buildDefaultYouTubeMetadata(video, details, enrichedMetadata);
-            youtubeThumbnail = targetPlatforms.includes('YouTube') && this.isAutoThumbnailEnabled('YouTube', settings)
+            youtubeThumbnail = this.targetPlatformsIncludeAny(targetPlatforms, ['YouTube', 'YouTubeLongform', 'YouTubeShorts']) && this.isAutoThumbnailEnabled('YouTube', settings)
                 ? await generateLandscapeThumbnail('youtube', video.title || '', enrichedMetadata, thumbnailCandidates, settings)
                 : null;
             xThumbnail = targetPlatforms.includes('X') && this.isAutoThumbnailEnabled('X', settings)
@@ -2475,7 +2512,21 @@ export class YouTubePollerService {
                 Facebook: {
                     text: this.buildPlatformPostText('Facebook', captions, video, settings),
                 },
+                FacebookFeed: {
+                    text: this.buildPlatformPostText('Facebook', captions, video, settings),
+                },
+                FacebookStories: {
+                    text: this.buildPlatformPostText('Facebook', captions, video, settings),
+                },
                 Instagram: {
+                    text: this.buildPlatformPostText('Instagram', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
+                },
+                InstagramReels: {
+                    text: this.buildPlatformPostText('Instagram', captions, video, settings),
+                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
+                },
+                InstagramStories: {
                     text: this.buildPlatformPostText('Instagram', captions, video, settings),
                     imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
                 },
@@ -2487,6 +2538,34 @@ export class YouTubePollerService {
                     title: this.buildPlatformTitle('TikTok', captions, video, settings),
                 },
                 YouTube: {
+                    title: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.title || video.title)
+                        : (video.title || youtubeMetadata.title),
+                    description: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.description || captions.generated || captions.fallback)
+                        : youtubeMetadata.description,
+                    imagePath: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? thumbnailAssets.youtube?.localPath
+                        : undefined,
+                    imageUrl: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? (thumbnailAssets.youtube?.publicUrl || thumbnailAssets.youtube?.sourceUrl)
+                        : undefined,
+                },
+                YouTubeLongform: {
+                    title: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.title || video.title)
+                        : (video.title || youtubeMetadata.title),
+                    description: this.isAutoCaptionEnabled('YouTube', settings)
+                        ? (youtubeMetadata.description || captions.generated || captions.fallback)
+                        : youtubeMetadata.description,
+                    imagePath: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? thumbnailAssets.youtube?.localPath
+                        : undefined,
+                    imageUrl: this.isAutoThumbnailEnabled('YouTube', settings)
+                        ? (thumbnailAssets.youtube?.publicUrl || thumbnailAssets.youtube?.sourceUrl)
+                        : undefined,
+                },
+                YouTubeShorts: {
                     title: this.isAutoCaptionEnabled('YouTube', settings)
                         ? (youtubeMetadata.title || video.title)
                         : (video.title || youtubeMetadata.title),
@@ -2525,38 +2604,42 @@ export class YouTubePollerService {
         return { publishedPlatforms, failedPlatforms };
     }
 
-    private getAutoPostPlatforms(settings: LoadedVideoSettings): string[] {
-        const platformMap: Record<string, string> = {
-            x: 'X',
-            facebook: 'Facebook',
-            instagram: 'Instagram',
-            threads: 'Threads',
-            tiktok: 'TikTok',
-            youtube: 'YouTube',
-            pinterest: 'Pinterest'
-        };
-
-        return Object.entries(platformMap)
-            .filter(([key]) => settings.platformSettings[key]?.autoPost === true)
-            .map(([, platform]) => platform);
+    private getAutoPostPlatforms(settings: LoadedVideoSettings): PlatformRoutingTarget[] {
+        return DESTINATION_ROUTING_TARGETS.filter((target) =>
+            this.getPlatformAutomationSettings(target.settingsPlatform, settings).autoPost === true
+        );
     }
 
-    private getPlatformSelectedTrailerKeywords(platform: string, settings: LoadedVideoSettings): string[] {
-        const platformSettings = this.getPlatformAutomationSettings(platform, settings) as PlatformAutomationSettings & {
-            selectedTrailerKeywords?: string[];
-        };
-
-        if (!Array.isArray(platformSettings.selectedTrailerKeywords)) {
+    private normalizeSelectedTrailerKeywords(value: unknown): string[] {
+        if (!Array.isArray(value)) {
             return [];
         }
 
         return Array.from(
             new Set(
-                platformSettings.selectedTrailerKeywords
+                value
                     .map((keyword) => (typeof keyword === 'string' ? keyword.trim().toLowerCase() : ''))
                     .filter(Boolean)
             )
         );
+    }
+
+    private getPlatformSelectedTrailerKeywords(
+        target: PlatformRoutingTarget,
+        settings: LoadedVideoSettings
+    ): string[] {
+        const platformSettings = this.getPlatformAutomationSettings(target.settingsPlatform, settings);
+        const flatSelections = this.normalizeSelectedTrailerKeywords(platformSettings.selectedTrailerKeywords);
+
+        if (!target.destinationId) {
+            return flatSelections;
+        }
+
+        const destinationSelections = this.normalizeSelectedTrailerKeywords(
+            platformSettings.destinations?.[target.destinationId]?.selectedTrailerKeywords
+        );
+
+        return destinationSelections.length > 0 ? destinationSelections : flatSelections;
     }
 
     private getMatchedPlatformKeywords(titleLower: string, selectedKeywords: string[]): string[] {
@@ -2566,21 +2649,23 @@ export class YouTubePollerService {
     private getTargetPlatformsForVideo(
         titleLower: string,
         settings: LoadedVideoSettings,
-        autoPostPlatforms: string[]
+        autoPostPlatforms: PlatformRoutingTarget[]
     ): { platforms: string[]; matchedKeywordsByPlatform: Record<string, string[]> } {
         const matchedKeywordsByPlatform: Record<string, string[]> = {};
 
-        const platforms = autoPostPlatforms.filter((platform) => {
-            const selectedKeywords = this.getPlatformSelectedTrailerKeywords(platform, settings);
+        const platforms = autoPostPlatforms
+            .filter((target) => {
+            const selectedKeywords = this.getPlatformSelectedTrailerKeywords(target, settings);
             if (selectedKeywords.length === 0) {
-                matchedKeywordsByPlatform[platform] = [];
+                matchedKeywordsByPlatform[target.publishPlatform] = [];
                 return false;
             }
 
             const matchedKeywords = this.getMatchedPlatformKeywords(titleLower, selectedKeywords);
-            matchedKeywordsByPlatform[platform] = matchedKeywords;
+            matchedKeywordsByPlatform[target.publishPlatform] = matchedKeywords;
             return matchedKeywords.length > 0;
-        });
+        })
+            .map((target) => target.publishPlatform);
 
         return { platforms, matchedKeywordsByPlatform };
     }
@@ -2687,6 +2772,10 @@ Respond ONLY as strict JSON:
 
     private shouldStripHashtags(platform: string, settings: LoadedVideoSettings): boolean {
         return this.getPlatformAutomationSettings(platform, settings).autoHashtag === false;
+    }
+
+    private targetPlatformsIncludeAny(targetPlatforms: string[], platforms: string[]): boolean {
+        return platforms.some((platform) => targetPlatforms.includes(platform));
     }
 
     private stripHashtags(text: string): string {

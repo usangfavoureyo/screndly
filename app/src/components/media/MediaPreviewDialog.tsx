@@ -3,6 +3,7 @@ import { ChevronRight, Pause, Play, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { VisuallyHidden } from '../ui/visually-hidden';
 import { haptics } from '../../utils/haptics';
+import arrowLeftRoundedIcon from '../../public/icons/icons/hugeroundedicons/arrow-left-01-stroke-rounded.svg';
 
 type MediaPreviewKind = 'image' | 'video';
 
@@ -408,9 +409,7 @@ export function MediaPreviewDialog({
                 className="absolute left-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Show previous image"
               >
-                <span className="text-[1.75rem] font-medium leading-none" aria-hidden="true">
-                  &lt;
-                </span>
+                <img src={arrowLeftRoundedIcon} alt="" aria-hidden="true" className="h-6 w-6" />
               </button>
               <button
                 type="button"

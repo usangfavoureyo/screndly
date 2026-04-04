@@ -77,3 +77,75 @@ test('respects the configured polling schedule window', () => {
     assert.equal(service.isPollingScheduleOpen(schedule, sundayAfternoonEt).open, false);
     assert.equal(service.isPollingScheduleOpen(schedule, sundayEveningEt).open, true);
 });
+
+test('routes destination-aware trailer keywords independently per publish area', () => {
+    const service = new YouTubePollerService() as any;
+    const settings = {
+        platformSettings: {
+            youtube: {
+                autoPost: true,
+                destinations: {
+                    longForm: { selectedTrailerKeywords: ['Trailer', 'Title Reveal'] },
+                    shorts: { selectedTrailerKeywords: ['Clip'] },
+                },
+            },
+            instagram: {
+                autoPost: true,
+                destinations: {
+                    reels: { selectedTrailerKeywords: ['Trailer', 'Teaser'] },
+                    stories: { selectedTrailerKeywords: ['Title Reveal'] },
+                },
+            },
+            facebook: {
+                autoPost: true,
+                destinations: {
+                    feed: { selectedTrailerKeywords: ['Trailer'] },
+                    stories: { selectedTrailerKeywords: [] },
+                },
+            },
+            tiktok: {
+                autoPost: true,
+                selectedTrailerKeywords: ['Clip'],
+            },
+        },
+    };
+
+    const autoPostTargets = service.getAutoPostPlatforms(settings);
+    const routing = service.getTargetPlatformsForVideo(
+        'official trailer for example movie',
+        settings,
+        autoPostTargets
+    );
+
+    assert.deepEqual(
+        routing.platforms.sort(),
+        ['FacebookFeed', 'InstagramReels', 'YouTubeLongform'].sort()
+    );
+    assert.deepEqual(routing.matchedKeywordsByPlatform.YouTubeLongform, ['trailer']);
+    assert.deepEqual(routing.matchedKeywordsByPlatform.YouTubeShorts, []);
+    assert.deepEqual(routing.matchedKeywordsByPlatform.InstagramStories, []);
+});
+
+test('falls back from old flat platform routing into all supported destinations', () => {
+    const service = new YouTubePollerService() as any;
+    const settings = {
+        platformSettings: {
+            youtube: {
+                autoPost: true,
+                selectedTrailerKeywords: ['Trailer', 'Teaser'],
+            },
+        },
+    };
+
+    const autoPostTargets = service.getAutoPostPlatforms(settings);
+    const routing = service.getTargetPlatformsForVideo(
+        'official teaser for example movie',
+        settings,
+        autoPostTargets
+    );
+
+    assert.deepEqual(
+        routing.platforms.sort(),
+        ['YouTubeLongform', 'YouTubeShorts'].sort()
+    );
+});
