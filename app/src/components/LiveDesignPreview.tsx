@@ -348,6 +348,14 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
 
   return (
     <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black">
+      <style>{`
+        @font-face {
+          font-family: 'ScrendlyHeadline';
+          src: url('/design-studio/z-PFDinTextCompPro-Bold.ttf') format('truetype');
+          font-weight: 700;
+          font-style: normal;
+        }
+      `}</style>
       <canvas
         ref={canvasRef}
         width={CANVAS_WIDTH}
@@ -388,7 +396,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
             textTransform: 'uppercase',
             lineHeight: 0.93,
             letterSpacing: '-0.03em',
-            fontFamily: '"Impact", "Arial Narrow Bold", sans-serif',
+            fontFamily: '"ScrendlyHeadline", "Impact", "Arial Narrow Bold", sans-serif',
             textShadow: headerColor.toLowerCase() === '#000000' ? 'none' : '0 1px 2px rgba(0,0,0,0.28)',
           }}
         >

@@ -314,6 +314,36 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         .map((activity) => activity.details?.renderJobId)
         .filter((value): value is string => typeof value === 'string' && value.length > 0),
     );
+    const isQueuedActivityResolved = (activity: DesignStudioActivityRecord) => {
+      if (activity.type !== 'design_render_queued') {
+        return false;
+      }
+
+      const renderJobId = activity.details?.renderJobId;
+      const templateName = activity.details?.templateName;
+      const queuedCreatedAt = new Date(activity.createdAt).getTime();
+
+      return activities.some((candidate) => {
+        if (candidate.type !== 'design_rendered' && candidate.type !== 'design_render_failed') {
+          return false;
+        }
+
+        const candidateCreatedAt = new Date(candidate.createdAt).getTime();
+        const resolvedAfterQueued = Number.isNaN(queuedCreatedAt)
+          || Number.isNaN(candidateCreatedAt)
+          || candidateCreatedAt >= queuedCreatedAt;
+
+        if (!resolvedAfterQueued) {
+          return false;
+        }
+
+        if (renderJobId && candidate.details?.renderJobId === renderJobId) {
+          return true;
+        }
+
+        return !!templateName && candidate.details?.templateName === templateName;
+      });
+    };
 
     const manualRenderActivityRecords: DesignStudioActivityRecord[] = manualRenderJobs
       .filter((job) => (job.status === 'queued' || job.status === 'rendering') && !resolvedRenderJobIds.has(job.id))
@@ -359,6 +389,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         const timestamp = new Date(activity.createdAt).getTime();
         return Number.isNaN(timestamp) || timestamp >= cutoff;
       })
+      .filter((activity) => !isQueuedActivityResolved(activity))
       .filter((activity) => {
         if (logLevel === 'minimal') return activity.type === 'design_published';
         if (logLevel === 'standard') {

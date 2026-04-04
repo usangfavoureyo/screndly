@@ -27,6 +27,7 @@ const DESIGN_STUDIO_REFERENCE_ASSET_DIR = path.join(__dirname, '..', 'design-stu
 const DESIGN_STUDIO_FADE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'fade.png');
 const DESIGN_STUDIO_BRAND_BLACK_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-black.png');
 const DESIGN_STUDIO_BRAND_WHITE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-white.png');
+const DESIGN_STUDIO_HEADLINE_FONT_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'z-PFDinTextCompPro-Bold.ttf');
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
@@ -377,6 +378,7 @@ async function rasterizeImageData(imageData: PsdImageDataLike): Promise<Buffer> 
 }
 
 const referenceAssetBufferCache = new Map<string, Buffer>();
+let cachedHeadlineFontDataUri: string | null | undefined;
 
 function readReferenceAssetBuffer(assetPath: string): Buffer {
   const cached = referenceAssetBufferCache.get(assetPath);
@@ -386,6 +388,20 @@ function readReferenceAssetBuffer(assetPath: string): Buffer {
   const buffer = fs.readFileSync(assetPath);
   referenceAssetBufferCache.set(assetPath, buffer);
   return buffer;
+}
+
+function getHeadlineFontDataUri(): string | null {
+  if (cachedHeadlineFontDataUri !== undefined) {
+    return cachedHeadlineFontDataUri;
+  }
+
+  if (!fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH)) {
+    cachedHeadlineFontDataUri = null;
+    return cachedHeadlineFontDataUri;
+  }
+
+  cachedHeadlineFontDataUri = `data:font/ttf;base64,${readReferenceAssetBuffer(DESIGN_STUDIO_HEADLINE_FONT_PATH).toString('base64')}`;
+  return cachedHeadlineFontDataUri;
 }
 
 function getReferenceBrandAssetPath(mode: 'black' | 'white'): string {
@@ -1569,14 +1585,18 @@ function buildTextSvg(input: {
   template: DesignStudioTemplateRecord;
   payload: DesignStudioRenderPayload;
 }): Buffer {
+  const fontDataUri = getHeadlineFontDataUri();
   const alignment = input.payload.headerAlignment || input.variant.alignment;
   const fontScale = input.payload.fontScale ?? 1;
   const maxLines = input.payload.maxLines || input.variant.maxLines;
   const fontColor = input.payload.useTemplateDefaultStyling
     ? (input.template.fontColor || '#ffffff')
     : (input.payload.headerTextColor || input.template.fontColor || '#ffffff');
+  const preferredFontFamily = fontDataUri
+    ? 'ScrendlyHeadline'
+    : (input.template.fontFamily || 'Arial');
   const fit = fitTextBlock({
-    text: input.payload.headerText,
+    text: input.payload.headerText.toUpperCase(),
     boxWidth: input.variant.textBox.width,
     boxHeight: input.variant.textBox.height,
     minFontSize: Math.round(input.variant.minFontSize * fontScale),
@@ -1600,7 +1620,7 @@ function buildTextSvg(input: {
         y="${firstLineY + index * fit.lineHeight}"
         text-anchor="${anchor}"
         fill="${fontColor}"
-        font-family="${escapeXml(input.template.fontFamily || 'Arial')}"
+        font-family="${escapeXml(preferredFontFamily)}"
         font-size="${fit.fontSize}"
         font-style="${input.template.fontStyle || 'normal'}"
         font-weight="${input.template.fontWeight || 700}"
@@ -1610,6 +1630,16 @@ function buildTextSvg(input: {
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      ${fontDataUri ? `
+        <style>
+          @font-face {
+            font-family: 'ScrendlyHeadline';
+            src: url('${fontDataUri}') format('truetype');
+            font-weight: 700;
+            font-style: normal;
+          }
+        </style>
+      ` : ''}
       ${linesSvg}
     </svg>
   `.trim();
@@ -1672,7 +1702,7 @@ async function buildBrandLayer(
 ): Promise<Buffer> {
   const asset = readReferenceAssetBuffer(getReferenceBrandAssetPath(brandMode));
   const resized = await sharp(asset)
-    .resize(Math.round(variant.brandBox.width || REFERENCE_BRAND_WIDTH), Math.round(variant.brandBox.height || REFERENCE_BRAND_HEIGHT), { fit: 'fill' })
+    .resize(Math.round(variant.brandBox.width || REFERENCE_BRAND_WIDTH), Math.round(variant.brandBox.height || REFERENCE_BRAND_HEIGHT), { fit: 'contain' })
     .png()
     .toBuffer();
 
@@ -1695,18 +1725,23 @@ async function buildBrandLayer(
 
 async function buildFadeLayer(width: number, height: number, opacity: number): Promise<Buffer> {
   const asset = readReferenceAssetBuffer(DESIGN_STUDIO_FADE_ASSET_PATH);
-  const alphaMask = Buffer.from(`
-    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <rect width="${width}" height="${height}" fill="white" fill-opacity="${clamp(opacity, 0, 1)}" />
-    </svg>
-  `.trim());
-
-  return sharp(asset)
+  const alphaChannel = await sharp(asset)
     .resize(width, height, { fit: 'fill' })
-    .composite([{
-      input: alphaMask,
-      blend: 'dest-in',
-    }])
+    .ensureAlpha()
+    .extractChannel('alpha')
+    .linear(clamp(opacity, 0, 1), 0)
+    .png()
+    .toBuffer();
+
+  return sharp({
+    create: {
+      width,
+      height,
+      channels: 3,
+      background: { r: 0, g: 0, b: 0 },
+    },
+  })
+    .joinChannel(alphaChannel)
     .png()
     .toBuffer();
 }

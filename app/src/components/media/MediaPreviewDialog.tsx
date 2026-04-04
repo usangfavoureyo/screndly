@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, Pause, Play, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { VisuallyHidden } from '../ui/visually-hidden';
@@ -86,24 +86,33 @@ export function MediaPreviewDialog({
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const resolvedMediaItems = Array.isArray(mediaItems) && mediaItems.length > 0
-    ? mediaItems.filter((item): item is MediaPreviewItem => Boolean(item?.src && item?.mediaType))
-    : null;
-  const fallbackItems = mediaType === 'image'
-    ? (Array.isArray(imageSources) && imageSources.length > 0
-      ? imageSources
-        .filter((value): value is string => typeof value === 'string' && value.length > 0)
-        .map((value, index) => ({
-          src: value,
-          mediaType: 'image' as const,
-          badgeLabel: Array.isArray(badgeLabels) ? badgeLabels[index] : badgeLabel,
-          title,
-        }))
-      : (src ? [{ src, mediaType: 'image' as const, badgeLabel, title }] : []))
-    : (src ? [{ src, mediaType: 'video' as const, badgeLabel, title }] : []);
-  const resolvedGalleryItems = resolvedMediaItems && resolvedMediaItems.length > 0
-    ? resolvedMediaItems
-    : fallbackItems;
+  const resolvedMediaItems = useMemo(
+    () => (Array.isArray(mediaItems) && mediaItems.length > 0
+      ? mediaItems.filter((item): item is MediaPreviewItem => Boolean(item?.src && item?.mediaType))
+      : null),
+    [mediaItems],
+  );
+  const fallbackItems = useMemo(
+    () => (mediaType === 'image'
+      ? (Array.isArray(imageSources) && imageSources.length > 0
+        ? imageSources
+          .filter((value): value is string => typeof value === 'string' && value.length > 0)
+          .map((value, index) => ({
+            src: value,
+            mediaType: 'image' as const,
+            badgeLabel: Array.isArray(badgeLabels) ? badgeLabels[index] : badgeLabel,
+            title,
+          }))
+        : (src ? [{ src, mediaType: 'image' as const, badgeLabel, title }] : []))
+      : (src ? [{ src, mediaType: 'video' as const, badgeLabel, title }] : [])),
+    [badgeLabel, badgeLabels, imageSources, mediaType, src, title],
+  );
+  const resolvedGalleryItems = useMemo(
+    () => (resolvedMediaItems && resolvedMediaItems.length > 0
+      ? resolvedMediaItems
+      : fallbackItems),
+    [fallbackItems, resolvedMediaItems],
+  );
   const activeGalleryItem = resolvedGalleryItems[currentImageIndex] ?? resolvedGalleryItems[0] ?? null;
   const activeMediaType = activeGalleryItem?.mediaType ?? mediaType;
   const activeSource = activeGalleryItem?.src ?? src ?? null;
@@ -214,7 +223,7 @@ export function MediaPreviewDialog({
     }
 
     resetVideoPlayback();
-  }, [fallbackItems.length, initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedGalleryItems, src]);
+  }, [fallbackItems.length, initialIndex, mediaType, open, resetImageTransform, resetVideoPlayback, resolvedGalleryItems.length, src]);
 
   useEffect(() => {
     if (!open || resolvedGalleryItems.length <= 1) {
@@ -343,6 +352,31 @@ export function MediaPreviewDialog({
     }
 
     swipeStartRef.current = null;
+  };
+
+  const handleVideoTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 1 && resolvedGalleryItems.length > 1) {
+      const touch = event.touches[0];
+      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+    }
+  };
+
+  const handleVideoTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const swipeStart = swipeStartRef.current;
+    swipeStartRef.current = null;
+
+    if (!swipeStart || event.changedTouches.length !== 1 || resolvedGalleryItems.length <= 1) {
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - swipeStart.x;
+    const deltaY = touch.clientY - swipeStart.y;
+
+    if (Math.abs(deltaX) > 48 && Math.abs(deltaX) > Math.abs(deltaY)) {
+      haptics.light();
+      goToImage(currentImageIndex + (deltaX < 0 ? 1 : -1));
+    }
   };
 
   const handleImageDoubleClick = () => {
@@ -492,7 +526,12 @@ export function MediaPreviewDialog({
               )}
             </div>
           ) : (
-            <div className="relative flex h-[90vh] w-full items-center justify-center overflow-hidden bg-black">
+            <div
+              className="relative flex h-[90vh] w-full items-center justify-center overflow-hidden bg-black"
+              onTouchStart={handleVideoTouchStart}
+              onTouchEnd={handleVideoTouchEnd}
+              onTouchCancel={handleVideoTouchEnd}
+            >
               {activeSource ? (
                 <>
                   <video

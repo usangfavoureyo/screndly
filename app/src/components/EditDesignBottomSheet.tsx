@@ -510,22 +510,31 @@ export function EditDesignBottomSheet({
                 <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
                   Brand Block
                 </Label>
-                <Select
-                  value={brandBlockMode}
-                  onValueChange={(value: DesignStudioBrandBlockMode) => {
-                    haptics.light();
-                    setBrandBlockMode(value);
-                  }}
-                >
-                  <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto</SelectItem>
-                    <SelectItem value="black">Black</SelectItem>
-                    <SelectItem value="white">White</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    ['auto', 'Auto'],
+                    ['black', 'Black'],
+                    ['white', 'White'],
+                  ] as const).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        haptics.light();
+                        setBrandBlockMode(value as DesignStudioBrandBlockMode);
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className={`w-full border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white text-xs ${
+                        brandBlockMode === value
+                          ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white dark:bg-[#ec1e24] dark:text-white dark:hover:bg-[#ec1e24]'
+                          : 'bg-white dark:bg-[#000000] hover:bg-gray-50 dark:hover:bg-[#000000]'
+                      }`}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-3">
@@ -858,8 +867,8 @@ export function EditDesignBottomSheet({
           </div>
           )}
 
-          {/* Text Overlay Gradient Controls (Conditional) */}
-          {hasOverlay && (
+          {/* Text Overlay Gradient Controls */}
+          {
             <div>
               <Label className="text-gray-900 dark:text-white mb-2 block">Text Overlay Settings</Label>
               <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mb-3">
@@ -1054,7 +1063,7 @@ export function EditDesignBottomSheet({
                 </Button>
               </div>
             </div>
-          )}
+          }
 
           <div>
             <Label className="text-gray-900 dark:text-white mb-2 block">Output Format</Label>

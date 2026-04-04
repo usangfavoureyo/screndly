@@ -93,6 +93,9 @@ const SENSITIVE_KEYS = [
 ];
 
 const VIDEO_BACKEND_KEYS = [
+  'enablePollingSchedule',
+  'pollingTimezone',
+  'pollingWindows',
   'videoAgeGateHours',
   'videoBacklogMode',
   'videoFutureOnlySince',

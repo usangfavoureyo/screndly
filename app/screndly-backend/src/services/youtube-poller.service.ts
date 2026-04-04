@@ -546,6 +546,33 @@ export class YouTubePollerService {
         };
     }
 
+    private getNextPollingWindowSummary(schedule: PollingSchedule, now = new Date()): string | null {
+        if (!schedule.enabled) {
+            return 'now';
+        }
+
+        const timezone = schedule.timezone || 'America/New_York';
+        const currentParts = this.getCurrentScheduleParts(timezone, now);
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+        for (let offset = 0; offset <= 7; offset += 1) {
+            const candidateDay = (currentParts.day + offset) % 7;
+            const window = schedule.windows.find((entry) => entry.day === candidateDay && entry.active);
+            if (!window) {
+                continue;
+            }
+
+            const startMinutes = this.parseScheduleMinutes(window.startTime, 0);
+            if (offset === 0 && startMinutes !== null && currentParts.minutes >= startMinutes) {
+                continue;
+            }
+
+            return `${dayNames[candidateDay]} at ${window.startTime || '00:00'} ${timezone}`;
+        }
+
+        return null;
+    }
+
     private async tryClaimChannel(
         channel: any,
         settings: LoadedVideoSettings,
@@ -698,10 +725,21 @@ export class YouTubePollerService {
             const settings = await getYouTubeRuntimeSettings();
             const scheduleState = this.isPollingScheduleOpen(settings.pollingSchedule, startedAt);
             if (!scheduleState.open) {
+                const nextOpenSummary = this.getNextPollingWindowSummary(settings.pollingSchedule, startedAt);
                 console.log('[YouTubePoller] Scheduler tick skipped because polling schedule is closed', {
                     timezone: settings.pollingSchedule.timezone,
                     reason: scheduleState.reason,
+                    nextOpen: nextOpenSummary,
                 });
+                await notificationService.notifyUserOnceWithinWindow({
+                    title: 'YouTube Polling Paused by Schedule',
+                    message: nextOpenSummary
+                        ? `YouTube polling is paused by your polling schedule and will resume ${nextOpenSummary}.`
+                        : 'YouTube polling is paused by your polling schedule until the next active window.',
+                    type: 'info',
+                    source: 'youtube',
+                    actionPage: '/settings',
+                }, 12 * 60);
                 return {
                     startedAt: startedAt.toISOString(),
                     finishedAt: new Date().toISOString(),
