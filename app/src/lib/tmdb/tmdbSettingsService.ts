@@ -9,6 +9,7 @@ export type FeedType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 export type LegacyImagePreference = 'poster' | 'backdrop' | 'random';
 export type TMDbImagePreference = 'poster' | 'backdrop' | 'poster_backdrop' | 'backdrop_logo';
 export type ImagePreference = TMDbImagePreference;
+export type TMDbSchedulingMode = 'adaptive' | 'fixed';
 
 export const TMDB_IMAGE_PREFERENCE_OPTIONS: TMDbImagePreference[] = [
     'poster',
@@ -93,6 +94,7 @@ export interface TMDbSettings {
     // Scheduling
     timezone: string;
     tmdbDailyRefreshTime: string;
+    tmdbSchedulingMode: TMDbSchedulingMode;
     postingWindowStart: string;
     postingWindowEnd: string;
     minGapBetweenPostsMinutes: string;
@@ -176,11 +178,12 @@ const defaultSettings: TMDbSettings = {
     captionCacheTTL: '30',
     timezone: 'Africa/Lagos',
     tmdbDailyRefreshTime: '07:00',
-    postingWindowStart: '09:00',
+    tmdbSchedulingMode: 'adaptive',
+    postingWindowStart: '08:00',
     postingWindowEnd: '21:00',
     minGapBetweenPostsMinutes: '60',
     preferredGapBetweenSameModuleMinutes: '120',
-    maxPostsPerDayOverall: '12',
+    maxPostsPerDayOverall: '14',
     maxPostsPerModulePerDay: '4',
     reserveUrgentSlots: '2',
     weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
@@ -503,6 +506,7 @@ export function getSettingsForBackend(): Record<string, any> {
         creditsCacheTTL: parseInt(settings.creditsCacheTTL) || 30,
         captionCacheTTL: parseInt(settings.captionCacheTTL) || 30,
         tmdbDailyRefreshTime: settings.tmdbDailyRefreshTime,
+        tmdbSchedulingMode: settings.tmdbSchedulingMode || 'adaptive',
         postingWindowStart: settings.postingWindowStart,
         postingWindowEnd: settings.postingWindowEnd,
         minGapBetweenPostsMinutes: parseInt(settings.minGapBetweenPostsMinutes) || 60,

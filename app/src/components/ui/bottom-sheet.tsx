@@ -6,7 +6,7 @@ import { X } from "lucide-react";
 import { cn } from "./utils";
 import { haptics } from "../../utils/haptics";
 import { type BackPressSource, useBackNavigation } from "../../contexts/BackNavigationContext";
-import { getTransientHistoryPayload, useTransientHistoryState } from "../../hooks/useTransientHistoryState";
+import { consumeHandledPopState, getTransientHistoryPayload, useTransientHistoryState } from "../../hooks/useTransientHistoryState";
 
 interface BottomSheetProps {
   open: boolean;
@@ -147,6 +147,9 @@ export function BottomSheet({
     }
 
     const handlePopState = (event: PopStateEvent) => {
+      if (consumeHandledPopState()) {
+        return;
+      }
       const activeTransientId = getTransientHistoryPayload(
         (event.state as Record<string, unknown> | null) ?? null,
       )?.id;

@@ -29,6 +29,7 @@ import {
     type TMDbModuleType,
     type TMDbOverflowPolicy,
     type TMDbPostStatus,
+    type TMDbSchedulingMode,
 } from './tmdb-feed.domain';
 import {
     selectBestBackdropForLogo,
@@ -123,6 +124,7 @@ interface PlatformFlags {
 }
 
 export interface RefreshSettings {
+    tmdbSchedulingMode?: TMDbSchedulingMode;
     enableToday?: boolean;
     enableWeekly?: boolean;
     enableMonthly?: boolean;
@@ -231,11 +233,12 @@ const defaultRefreshSettings: RefreshSettings = {
     monthlyPlatforms: { x: true, threads: true, facebook: false, youtube: false, pinterest: false },
     anniversaryPlatforms: { x: true, threads: false, facebook: false, youtube: false, pinterest: false },
     tmdbDailyRefreshTime: '07:00',
-    postingWindowStart: '09:00',
+    tmdbSchedulingMode: 'adaptive',
+    postingWindowStart: '08:00',
     postingWindowEnd: '21:00',
     minGapBetweenPostsMinutes: 60,
     preferredGapBetweenSameModuleMinutes: 120,
-    maxPostsPerDayOverall: 12,
+    maxPostsPerDayOverall: 14,
     maxPostsPerModulePerDay: 4,
     reserveUrgentSlots: 2,
     weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
@@ -1102,7 +1105,8 @@ async function saveTMDbPost(
 
 function getSchedulerSettings(config: RefreshSettings): SchedulerSettings {
     return {
-        postingWindowStart: config.postingWindowStart || defaultRefreshSettings.postingWindowStart || '09:00',
+        schedulingMode: config.tmdbSchedulingMode || defaultRefreshSettings.tmdbSchedulingMode || 'adaptive',
+        postingWindowStart: config.postingWindowStart || defaultRefreshSettings.postingWindowStart || '08:00',
         postingWindowEnd: config.postingWindowEnd || defaultRefreshSettings.postingWindowEnd || '21:00',
         minGapBetweenPostsMinutes: config.minGapBetweenPostsMinutes || defaultRefreshSettings.minGapBetweenPostsMinutes || 60,
         preferredGapBetweenSameModuleMinutes: config.preferredGapBetweenSameModuleMinutes || defaultRefreshSettings.preferredGapBetweenSameModuleMinutes || 120,
@@ -1435,7 +1439,7 @@ export async function getTMDbSettings(): Promise<RefreshSettings> {
         'weeklyPinterestTitlePrompt', 'weeklyPinterestDescriptionPrompt', 'weeklyPinterestBoard', 'weeklyPinterestLinkStrategy',
         'monthlyPinterestTitlePrompt', 'monthlyPinterestDescriptionPrompt', 'monthlyPinterestBoard', 'monthlyPinterestLinkStrategy',
         'anniversaryPinterestTitlePrompt', 'anniversaryPinterestDescriptionPrompt', 'anniversaryPinterestBoard', 'anniversaryPinterestLinkStrategy',
-        'tmdbDailyRefreshTime', 'postingWindowStart', 'postingWindowEnd', 'minGapBetweenPostsMinutes', 'preferredGapBetweenSameModuleMinutes',
+        'tmdbDailyRefreshTime', 'tmdbSchedulingMode', 'postingWindowStart', 'postingWindowEnd', 'minGapBetweenPostsMinutes', 'preferredGapBetweenSameModuleMinutes',
         'maxPostsPerDayOverall', 'maxPostsPerModulePerDay', 'reserveUrgentSlots', 'weeklyOverflowPolicy', 'monthlyOverflowPolicy',
         'weeklyRescheduleValidityDays', 'monthlyRescheduleValidityDays', 'todayAnniversaryUrgentPriority', 'interleaveModules', 'captionRegenOnScheduleChange',
     ];

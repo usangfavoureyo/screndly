@@ -11,6 +11,7 @@ import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
 import { renderTMDbLogoCard } from './rss-logo-render.service';
+import { getYouTubeRuntimeSettings } from './video-enrichment.service';
 import {
     getComposeState,
     mutateComposeItem,
@@ -255,8 +256,70 @@ async function logCron(level: string, message: string, service: string = 'cron')
     }
 }
 
+function getScheduleParts(timezone: string, now = new Date()): { day: number; minutes: number } {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+    const parts = formatter.formatToParts(now);
+    const weekday = parts.find((part) => part.type === 'weekday')?.value;
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+    const dayMap: Record<string, number> = {
+        Sun: 0,
+        Mon: 1,
+        Tue: 2,
+        Wed: 3,
+        Thu: 4,
+        Fri: 5,
+        Sat: 6,
+    };
+
+    return {
+        day: dayMap[weekday || 'Sun'] ?? 0,
+        minutes: (hour * 60) + minute,
+    };
+}
+
+function parseScheduleMinutes(value: string | null | undefined, fallback: number): number {
+    if (!value || !/^\d{2}:\d{2}$/.test(value)) {
+        return fallback;
+    }
+
+    const [hours, minutes] = value.split(':').map((part) => Number(part));
+    return (hours * 60) + minutes;
+}
+
+function isPollingScheduleOpenForHealthCheck(schedule: Awaited<ReturnType<typeof getYouTubeRuntimeSettings>>['pollingSchedule'], now = new Date()): boolean {
+    if (!schedule.enabled) {
+        return true;
+    }
+
+    const { day, minutes } = getScheduleParts(schedule.timezone || 'America/New_York', now);
+    const window = schedule.windows.find((entry) => entry.day === day);
+    if (!window || !window.active) {
+        return false;
+    }
+
+    const startMinutes = parseScheduleMinutes(window.startTime, 0);
+    const endMinutes = parseScheduleMinutes(window.endTime, (23 * 60) + 59);
+    if (startMinutes <= endMinutes) {
+        return minutes >= startMinutes && minutes <= endMinutes;
+    }
+
+    return minutes >= startMinutes || minutes <= endMinutes;
+}
+
 async function checkYouTubePollingHealth() {
     const now = new Date();
+    const settings = await getYouTubeRuntimeSettings();
+    if (!isPollingScheduleOpenForHealthCheck(settings.pollingSchedule, now)) {
+        lastYouTubePollingHealthNotificationAt = null;
+        return;
+    }
     const staleBefore = new Date(now.getTime() - YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES * 60 * 1000);
 
     const activeChannels = await prisma.channel.findMany({

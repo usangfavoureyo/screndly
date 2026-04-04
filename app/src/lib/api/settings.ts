@@ -271,6 +271,7 @@ const TMDB_BACKEND_KEYS = [
   'monthlyPinterestLinkStrategy',
   'anniversaryPinterestTitlePrompt',
   'anniversaryPinterestDescriptionPrompt',
+  'tmdbSchedulingMode',
   'anniversaryPinterestBoard',
   'anniversaryPinterestLinkStrategy',
 ] as const;

@@ -31,6 +31,9 @@ const MASK_STRING = '••••••••••••••••';
 
 const SETTING_LABEL_OVERRIDES: Record<string, string> = {
     fetchInterval: 'Polling interval',
+    enablePollingSchedule: 'Enable polling schedule',
+    pollingTimezone: 'Polling timezone',
+    pollingWindows: 'Polling windows',
     postInterval: 'Post interval',
     advancedFilters: 'Trailer keywords',
     regionFilter: 'Region filter',
@@ -158,6 +161,9 @@ function getSettingsSectionLabel(key: string): string {
     if (
         key.startsWith('video')
         || key === 'fetchInterval'
+        || key === 'enablePollingSchedule'
+        || key === 'pollingTimezone'
+        || key === 'pollingWindows'
         || key === 'postInterval'
         || key === 'advancedFilters'
         || key === 'regionFilter'

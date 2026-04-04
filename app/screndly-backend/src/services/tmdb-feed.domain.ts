@@ -13,6 +13,7 @@ import {
 
 export type TMDbModuleType = 'today' | 'weekly' | 'monthly' | 'anniversary';
 export type TMDbOverflowPolicy = 'DROP' | 'HOLD_FOR_REVIEW' | 'RESCHEDULE_WITH_REGEN';
+export type TMDbSchedulingMode = 'adaptive' | 'fixed';
 export type TMDbHistoryStatus = 'fetched' | 'scheduled' | 'dispatched' | 'published' | 'skipped' | 'unscheduled';
 export type TMDbPostStatus = 'queued' | 'scheduled' | 'dispatched' | 'published' | 'failed' | 'unscheduled' | 'skipped';
 export type TMDbDecisionReason =
@@ -87,6 +88,7 @@ export interface CaptionContext {
 }
 
 export interface SchedulerSettings {
+    schedulingMode: TMDbSchedulingMode;
     postingWindowStart: string;
     postingWindowEnd: string;
     minGapBetweenPostsMinutes: number;
@@ -286,28 +288,19 @@ function parseMinutes(value: string): number {
     return (hours * 60) + minutes;
 }
 
+function getEffectiveGapMinutes(settings: SchedulerSettings): number {
+    if (settings.schedulingMode === 'adaptive') {
+        return 60;
+    }
+
+    return Math.max(1, settings.minGapBetweenPostsMinutes);
+}
+
 function setTimeOfDay(base: Date, timeValue: string) {
     const result = new Date(base.getTime());
     const [hours, minutes] = timeValue.split(':').map((part) => Number.parseInt(part, 10));
     result.setHours(hours, minutes, 0, 0);
     return result;
-}
-
-function getVariedGapMinutes(
-    previous: ScheduledCandidate | null,
-    next: TMDbCandidate,
-    settings: SchedulerSettings,
-    scheduledCount: number,
-): number {
-    const baseGap = Math.max(1, settings.minGapBetweenPostsMinutes);
-    if (previous?.candidate.moduleType === next.moduleType) {
-        return Math.max(baseGap, settings.preferredGapBetweenSameModuleMinutes);
-    }
-
-    const jitterSteps = [0, 15, 30];
-    const jitter = jitterSteps[(next.tmdbId + scheduledCount) % jitterSteps.length] || 0;
-    const ceiling = Math.max(baseGap, settings.preferredGapBetweenSameModuleMinutes);
-    return Math.min(ceiling, baseGap + jitter);
 }
 
 function findNextAvailableTime(
@@ -349,6 +342,51 @@ function chooseNextCandidate(
     return differentModule[0] || sorted[0];
 }
 
+function buildDesiredScheduleSlots(
+    count: number,
+    start: Date,
+    end: Date,
+    settings: SchedulerSettings,
+): Date[] {
+    if (count <= 0 || start.getTime() > end.getTime()) {
+        return [];
+    }
+
+    if (settings.schedulingMode === 'fixed') {
+        const slots: Date[] = [];
+        const gapMs = Math.max(1, settings.minGapBetweenPostsMinutes) * 60_000;
+
+        for (let index = 0; index < count; index += 1) {
+            const slot = new Date(start.getTime() + (gapMs * index));
+            if (slot.getTime() > end.getTime()) {
+                break;
+            }
+            slots.push(slot);
+        }
+
+        return slots;
+    }
+
+    if (count === 1) {
+        return [new Date(start.getTime() + Math.floor((end.getTime() - start.getTime()) / 2))];
+    }
+
+    const totalWindowMs = Math.max(0, end.getTime() - start.getTime());
+    const rawGapMs = totalWindowMs / Math.max(1, count - 1);
+    const finalGapMs = Math.max(rawGapMs, 60 * 60 * 1000);
+    const slots: Date[] = [];
+
+    for (let index = 0; index < count; index += 1) {
+        const slot = new Date(start.getTime() + (finalGapMs * index));
+        if (slot.getTime() > end.getTime()) {
+            break;
+        }
+        slots.push(slot);
+    }
+
+    return slots;
+}
+
 export function scheduleCandidates(
     candidates: TMDbCandidate[],
     existingScheduledTimes: Date[],
@@ -361,16 +399,23 @@ export function scheduleCandidates(
     const monthlyPool = candidates.filter((candidate) => candidate.moduleType === 'monthly');
     const anniversaryPool = candidates.filter((candidate) => candidate.moduleType === 'anniversary');
     const results: ScheduledCandidate[] = [];
-    const reserved = [...existingScheduledTimes].sort((left, right) => left.getTime() - right.getTime());
+    const effectiveGapMinutes = getEffectiveGapMinutes(settings);
     const start = setTimeOfDay(now, settings.postingWindowStart);
     const end = setTimeOfDay(now, settings.postingWindowEnd);
     const currentStart = now > start ? now : start;
+    const reserved = [...existingScheduledTimes]
+        .filter((time) => time.getTime() >= currentStart.getTime() && time.getTime() <= end.getTime())
+        .sort((left, right) => left.getTime() - right.getTime());
 
-    const windowMinutes = Math.max(1, Math.floor((end.getTime() - currentStart.getTime()) / 60000));
-    const availableSlots = Math.max(0, Math.min(
-        settings.maxPostsPerDayOverall,
-        Math.floor(windowMinutes / Math.max(1, settings.minGapBetweenPostsMinutes)) + 1,
-    ));
+    const windowMinutes = currentStart.getTime() > end.getTime()
+        ? 0
+        : Math.max(0, Math.floor((end.getTime() - currentStart.getTime()) / 60000));
+    const availableSlots = windowMinutes <= 0
+        ? 0
+        : Math.max(0, Math.min(
+            settings.maxPostsPerDayOverall,
+            Math.floor(windowMinutes / effectiveGapMinutes) + 1,
+        ));
     const remainingOverallCapacity = Math.max(0, availableSlots - reserved.length);
     const standardPoolCount = weeklyPool.length + monthlyPool.length;
     const reservedTodaySlots = Math.min(settings.reserveUrgentSlots, todayPool.length);
@@ -381,11 +426,11 @@ export function scheduleCandidates(
     const prioritizedAnniversarySlots = Math.min(1, anniversaryPool.length);
 
     let previous: ScheduledCandidate | null = null;
-    let nextTime = new Date(currentStart.getTime());
-    let scheduledCount = 0;
-    let standardScheduledCount = 0;
+    let plannedScheduledCount = 0;
+    let plannedStandardScheduledCount = 0;
     let todayScheduledCount = 0;
     let anniversaryScheduledCount = 0;
+    const plannedCandidates: TMDbCandidate[] = [];
 
     const pushOverflow = (next: TMDbCandidate, urgentMode: boolean) => {
         const overflowPolicy = next.moduleType === 'weekly' ? settings.weeklyOverflowPolicy : settings.monthlyOverflowPolicy;
@@ -459,8 +504,8 @@ export function scheduleCandidates(
         const schedulingCandidates: TMDbCandidate[] = [];
         const standardAvailable = weeklyPool.length + monthlyPool.length > 0;
         const urgentRemaining = todayPool.length + anniversaryPool.length;
-        const slotsRemaining = Math.max(0, remainingOverallCapacity - scheduledCount);
-        const canScheduleStandard = standardScheduledCount < standardCapacity && slotsRemaining > urgentRemaining;
+        const slotsRemaining = Math.max(0, remainingOverallCapacity - plannedScheduledCount);
+        const canScheduleStandard = plannedStandardScheduledCount < standardCapacity && slotsRemaining > urgentRemaining;
         const shouldPrioritizeToday = todayPool.length > 0 && todayScheduledCount < prioritizedTodaySlots;
         const shouldPrioritizeAnniversary = anniversaryPool.length > 0 && anniversaryScheduledCount < prioritizedAnniversarySlots;
         const shouldUseEarlyUrgentWindow = shouldPrioritizeToday || shouldPrioritizeAnniversary;
@@ -516,39 +561,22 @@ export function scheduleCandidates(
             next,
         );
 
-        if (scheduledCount >= remainingOverallCapacity || ((next.moduleType === 'weekly' || next.moduleType === 'monthly') && standardScheduledCount >= standardCapacity)) {
+        if (plannedScheduledCount >= remainingOverallCapacity || ((next.moduleType === 'weekly' || next.moduleType === 'monthly') && plannedStandardScheduledCount >= standardCapacity)) {
             pushOverflow(next, next.moduleType === 'today' || next.moduleType === 'anniversary');
             continue;
         }
 
-        const availableTime = findNextAvailableTime(nextTime, reserved, end, settings.minGapBetweenPostsMinutes);
-        if (!availableTime) {
-            results.push({
-                candidate: next,
-                status: 'unscheduled',
-                reason: next.moduleType === 'today' ? 'posting_window_closed' : 'unscheduled_no_same_day_capacity',
-                scheduledAt: null,
-            });
-            continue;
-        }
-
-        const captionContext = buildCaptionContext(next, availableTime, now, timezone);
-        const scheduled: ScheduledCandidate = {
+        plannedCandidates.push(next);
+        plannedScheduledCount += 1;
+        previous = {
             candidate: next,
-            status: 'scheduled',
+            status: 'queued',
             reason: 'scheduled_same_day',
-            scheduledAt: new Date(availableTime.getTime()),
-            captionContext,
-            captionContextHash: hashCaptionContext(captionContext),
+            scheduledAt: null,
         };
-        results.push(scheduled);
-        previous = scheduled;
-        reserved.push(new Date(availableTime.getTime()));
-        reserved.sort((left, right) => left.getTime() - right.getTime());
-        scheduledCount += 1;
 
         if (next.moduleType === 'weekly' || next.moduleType === 'monthly') {
-            standardScheduledCount += 1;
+            plannedStandardScheduledCount += 1;
         }
         if (next.moduleType === 'today') {
             todayScheduledCount += 1;
@@ -556,9 +584,39 @@ export function scheduleCandidates(
         if (next.moduleType === 'anniversary') {
             anniversaryScheduledCount += 1;
         }
+    }
 
-        const nextGap = getVariedGapMinutes(previous, next, settings, scheduledCount);
-        nextTime = new Date(availableTime.getTime() + nextGap * 60000);
+    const desiredSlots = buildDesiredScheduleSlots(plannedCandidates.length, currentStart, end, settings);
+    const reservedTimes = [...reserved];
+
+    for (let index = 0; index < plannedCandidates.length; index += 1) {
+        const candidate = plannedCandidates[index];
+        const desiredSlot = desiredSlots[index];
+
+        if (!desiredSlot) {
+            pushOverflow(candidate, candidate.moduleType === 'today' || candidate.moduleType === 'anniversary');
+            continue;
+        }
+
+        const availableTime = findNextAvailableTime(desiredSlot, reservedTimes, end, effectiveGapMinutes);
+        if (!availableTime) {
+            pushOverflow(candidate, candidate.moduleType === 'today' || candidate.moduleType === 'anniversary');
+            continue;
+        }
+
+        const captionContext = buildCaptionContext(candidate, availableTime, now, timezone);
+        const scheduled: ScheduledCandidate = {
+            candidate,
+            status: 'scheduled',
+            reason: 'scheduled_same_day',
+            scheduledAt: new Date(availableTime.getTime()),
+            captionContext,
+            captionContextHash: hashCaptionContext(captionContext),
+        };
+
+        results.push(scheduled);
+        reservedTimes.push(new Date(availableTime.getTime()));
+        reservedTimes.sort((left, right) => left.getTime() - right.getTime());
     }
 
     return results;

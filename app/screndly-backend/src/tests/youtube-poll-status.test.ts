@@ -52,3 +52,28 @@ test('classifies YouTube access issues by retryability', () => {
         'restricted'
     );
 });
+
+test('respects the configured polling schedule window', () => {
+    const service = new YouTubePollerService() as any;
+    const schedule = {
+        enabled: true,
+        timezone: 'America/New_York',
+        windows: [
+            { day: 0, active: true, startTime: '18:00', endTime: '23:59' },
+            { day: 1, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 2, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 3, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 4, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 5, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 6, active: false, startTime: null, endTime: null },
+        ],
+    };
+
+    const saturdayNoonEt = new Date('2026-04-04T16:00:00.000Z');
+    const sundayAfternoonEt = new Date('2026-04-05T20:30:00.000Z');
+    const sundayEveningEt = new Date('2026-04-05T22:30:00.000Z');
+
+    assert.equal(service.isPollingScheduleOpen(schedule, saturdayNoonEt).open, false);
+    assert.equal(service.isPollingScheduleOpen(schedule, sundayAfternoonEt).open, false);
+    assert.equal(service.isPollingScheduleOpen(schedule, sundayEveningEt).open, true);
+});

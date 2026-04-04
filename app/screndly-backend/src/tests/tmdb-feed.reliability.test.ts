@@ -45,6 +45,7 @@ function createCandidate(overrides: Partial<TMDbCandidate> = {}): TMDbCandidate 
 
 function createSchedulerSettings(overrides: Partial<SchedulerSettings> = {}): SchedulerSettings {
     return {
+        schedulingMode: 'adaptive',
         postingWindowStart: '09:00',
         postingWindowEnd: '21:00',
         minGapBetweenPostsMinutes: 60,
@@ -262,4 +263,76 @@ test('reschedule-with-regen computes caption context from the final scheduled da
     assert.ok(results[0]?.captionContextHash);
     assert.equal(results[0]?.captionContext?.timingMode, 'fallback_day_count');
     assert.equal(results[0]?.captionContext?.exactDayDelta, 6);
+});
+
+test('adaptive scheduling spreads candidates across the window and respects the 1 hour floor', () => {
+    const now = new Date('2026-04-04T06:00:00.000Z');
+    const settings = createSchedulerSettings({
+        schedulingMode: 'adaptive',
+        postingWindowStart: '08:00',
+        postingWindowEnd: '21:00',
+        maxPostsPerDayOverall: 20,
+        reserveUrgentSlots: 0,
+    });
+
+    const results = scheduleCandidates([
+        createCandidate({ moduleType: 'weekly', source: getModuleSource('weekly'), tmdbId: 1, releaseDate: new Date('2026-04-11T00:00:00.000Z') }),
+        createCandidate({ moduleType: 'weekly', source: getModuleSource('weekly'), tmdbId: 2, releaseDate: new Date('2026-04-11T00:00:00.000Z') }),
+        createCandidate({ moduleType: 'monthly', source: getModuleSource('monthly'), tmdbId: 3, releaseDate: new Date('2026-05-04T00:00:00.000Z') }),
+    ], [], now, timezone, settings).filter((item) => item.status === 'scheduled');
+
+    assert.equal(results.length, 3);
+    const firstGapMinutes = ((results[1]?.scheduledAt?.getTime() || 0) - (results[0]?.scheduledAt?.getTime() || 0)) / 60000;
+    const secondGapMinutes = ((results[2]?.scheduledAt?.getTime() || 0) - (results[1]?.scheduledAt?.getTime() || 0)) / 60000;
+    assert.equal(firstGapMinutes, 390);
+    assert.equal(secondGapMinutes, 390);
+});
+
+test('adaptive scheduling overflows candidates that cannot fit within the 1 hour floor', () => {
+    const now = new Date('2026-04-04T06:00:00.000Z');
+    const settings = createSchedulerSettings({
+        schedulingMode: 'adaptive',
+        postingWindowStart: '08:00',
+        postingWindowEnd: '12:00',
+        maxPostsPerDayOverall: 10,
+        reserveUrgentSlots: 0,
+    });
+
+    const candidates = Array.from({ length: 6 }, (_, index) => createCandidate({
+        moduleType: 'weekly',
+        source: getModuleSource('weekly'),
+        tmdbId: 100 + index,
+        releaseDate: new Date('2026-04-11T00:00:00.000Z'),
+    }));
+
+    const results = scheduleCandidates(candidates, [], now, timezone, settings);
+    const scheduled = results.filter((item) => item.status === 'scheduled');
+    const overflow = results.filter((item) => item.status !== 'scheduled');
+
+    assert.equal(scheduled.length, 5);
+    assert.equal(overflow.length, 1);
+});
+
+test('fixed scheduling uses the selected interval from the window start', () => {
+    const now = new Date('2026-04-04T06:00:00.000Z');
+    const settings = createSchedulerSettings({
+        schedulingMode: 'fixed',
+        postingWindowStart: '08:00',
+        postingWindowEnd: '12:00',
+        minGapBetweenPostsMinutes: 120,
+        maxPostsPerDayOverall: 10,
+        reserveUrgentSlots: 0,
+    });
+
+    const results = scheduleCandidates([
+        createCandidate({ moduleType: 'weekly', source: getModuleSource('weekly'), tmdbId: 201, releaseDate: new Date('2026-04-11T00:00:00.000Z') }),
+        createCandidate({ moduleType: 'monthly', source: getModuleSource('monthly'), tmdbId: 202, releaseDate: new Date('2026-05-04T00:00:00.000Z') }),
+        createCandidate({ moduleType: 'weekly', source: getModuleSource('weekly'), tmdbId: 203, releaseDate: new Date('2026-04-11T00:00:00.000Z') }),
+    ], [], now, timezone, settings).filter((item) => item.status === 'scheduled');
+
+    assert.equal(results.length, 3);
+    const firstGapMinutes = ((results[1]?.scheduledAt?.getTime() || 0) - (results[0]?.scheduledAt?.getTime() || 0)) / 60000;
+    const secondGapMinutes = ((results[2]?.scheduledAt?.getTime() || 0) - (results[1]?.scheduledAt?.getTime() || 0)) / 60000;
+    assert.equal(firstGapMinutes, 120);
+    assert.equal(secondGapMinutes, 120);
 });

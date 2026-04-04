@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Pause, Play, X } from 'lucide-react';
+import { ChevronRight, Pause, Play, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog';
 import { VisuallyHidden } from '../ui/visually-hidden';
 import { haptics } from '../../utils/haptics';
@@ -405,10 +405,12 @@ export function MediaPreviewDialog({
                   goToImage(currentImageIndex - 1);
                 }}
                 disabled={currentImageIndex === 0}
-                className="absolute left-4 top-1/2 z-40 -translate-y-1/2 rounded-full bg-black/70 p-2 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+                className="absolute left-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Show previous image"
               >
-                <ChevronLeft className="h-6 w-6" />
+                <span className="text-[1.75rem] font-medium leading-none" aria-hidden="true">
+                  &lt;
+                </span>
               </button>
               <button
                 type="button"
@@ -417,7 +419,7 @@ export function MediaPreviewDialog({
                   goToImage(currentImageIndex + 1);
                 }}
                 disabled={currentImageIndex >= resolvedImageSources.length - 1}
-                className="absolute right-4 top-1/2 z-40 -translate-y-1/2 rounded-full bg-black/70 p-2 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
+                className="absolute right-4 top-1/2 z-40 flex h-12 w-12 -translate-y-1/2 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-black disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Show next image"
               >
                 <ChevronRight className="h-6 w-6" />

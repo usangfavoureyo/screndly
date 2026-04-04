@@ -15,6 +15,16 @@ import { BackIconButton } from '../BackIconButton';
 
 const DEFAULT_TRAILER_KEYWORDS = 'trailer, teaser, official, first look, sneak peek';
 const DEFAULT_VIDEO_AGE_GATE = '24';
+const DEFAULT_POLLING_TIMEZONE = 'America/New_York';
+const DEFAULT_POLLING_WINDOWS = [
+  { day: 0, label: 'Sunday', active: true, startTime: '18:00', endTime: '23:59' },
+  { day: 1, label: 'Monday', active: true, startTime: '00:00', endTime: '23:59' },
+  { day: 2, label: 'Tuesday', active: true, startTime: '00:00', endTime: '23:59' },
+  { day: 3, label: 'Wednesday', active: true, startTime: '00:00', endTime: '23:59' },
+  { day: 4, label: 'Thursday', active: true, startTime: '00:00', endTime: '23:59' },
+  { day: 5, label: 'Friday', active: true, startTime: '00:00', endTime: '23:59' },
+  { day: 6, label: 'Saturday', active: false, startTime: null, endTime: null },
+] as const;
 const VIDEO_BACKLOG_MODE_PROCESS = 'process-backlog';
 const VIDEO_BACKLOG_MODE_FUTURE_ONLY = 'future-only';
 const VIDEO_AGE_GATE_OPTIONS = Array.from({ length: 24 }, (_, index) => String(index + 1));
@@ -85,6 +95,32 @@ function normalizeSelectedTrailerKeywords(value: unknown): string[] {
   }
 
   return keywords;
+}
+
+function isValidScheduleTime(value: unknown): value is string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+}
+
+function normalizePollingWindows(value: unknown) {
+  const windows = Array.isArray(value) ? value : [];
+
+  return DEFAULT_POLLING_WINDOWS.map((defaultWindow) => {
+    const matched = windows.find((item) => item && typeof item === 'object' && Number((item as { day?: unknown }).day) === defaultWindow.day) as
+      | { day?: number; active?: boolean; startTime?: string | null; endTime?: string | null }
+      | undefined;
+
+    const active = typeof matched?.active === 'boolean' ? matched.active : defaultWindow.active;
+    return {
+      ...defaultWindow,
+      active,
+      startTime: active
+        ? (isValidScheduleTime(matched?.startTime) ? matched!.startTime! : defaultWindow.startTime || '00:00')
+        : null,
+      endTime: active
+        ? (isValidScheduleTime(matched?.endTime) ? matched!.endTime! : defaultWindow.endTime || '23:59')
+        : null,
+    };
+  });
 }
 
 export function VideoSettings({ settings, updateSetting, updateSettings, onBack }: VideoSettingsProps) {
@@ -281,6 +317,49 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
     );
   };
 
+  const handlePollingScheduleEnabledChange = (checked: boolean) => {
+    haptics.light();
+    updateSettings({
+      enablePollingSchedule: checked,
+      pollingTimezone: pollingTimezone || DEFAULT_POLLING_TIMEZONE,
+      pollingWindows,
+    });
+    toast.success(checked ? 'Polling schedule enabled' : 'Polling schedule disabled');
+  };
+
+  const handlePollingTimezoneChange = (value: string) => {
+    haptics.light();
+    updateSetting('pollingTimezone', value || DEFAULT_POLLING_TIMEZONE);
+    toast.success('Polling timezone updated');
+  };
+
+  const handlePollingWindowChange = (
+    day: number,
+    updates: Partial<{ active: boolean; startTime: string | null; endTime: string | null }>
+  ) => {
+    haptics.light();
+    const nextWindows = pollingWindows.map((window) => {
+      if (window.day !== day) {
+        return window;
+      }
+
+      const nextActive = typeof updates.active === 'boolean' ? updates.active : window.active;
+      return {
+        ...window,
+        ...updates,
+        active: nextActive,
+        startTime: nextActive
+          ? (isValidScheduleTime(updates.startTime) ? updates.startTime : window.startTime || '00:00')
+          : null,
+        endTime: nextActive
+          ? (isValidScheduleTime(updates.endTime) ? updates.endTime : window.endTime || '23:59')
+          : null,
+      };
+    });
+
+    updateSetting('pollingWindows', nextWindows);
+  };
+
   const handlePostIntervalChange = (value: string) => {
     haptics.light();
     const minutes = parseInt(value) || 10;
@@ -377,6 +456,12 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
     settings.platformSettings && typeof settings.platformSettings === 'object'
       ? settings.platformSettings
       : {};
+  const enablePollingSchedule = settings.enablePollingSchedule === true;
+  const pollingTimezone =
+    typeof settings.pollingTimezone === 'string' && settings.pollingTimezone.trim().length > 0
+      ? settings.pollingTimezone
+      : DEFAULT_POLLING_TIMEZONE;
+  const pollingWindows = normalizePollingWindows(settings.pollingWindows);
 
   const toggleTrustedChannel = (channelId: string, checked: boolean) => {
     const nextTrusted = checked
@@ -427,6 +512,92 @@ export function VideoSettings({ settings, updateSetting, updateSettings, onBack 
               onChange={(e) => handleIntervalChange(e.target.value)}
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-gray-900 dark:text-white mb-3">Polling Schedule</h3>
+          <div className="space-y-4">
+            <label className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-[#333333] px-4 py-3">
+              <Checkbox
+                checked={enablePollingSchedule}
+                onCheckedChange={(value) => handlePollingScheduleEnabledChange(value === true)}
+              />
+              <div>
+                <div className="text-sm text-gray-900 dark:text-white">Enable Polling Schedule</div>
+                <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
+                  Only dispatch due channel polls during the active polling window.
+                </p>
+              </div>
+            </label>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Timezone for Polling Window</Label>
+              <Select value={pollingTimezone} onValueChange={handlePollingTimezoneChange}>
+                <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                  <SelectValue placeholder="Select timezone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="America/New_York">America/New_York</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                Polling windows are evaluated in Eastern Time to match studio release timing.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-[#9CA3AF]">Active Days and Times</Label>
+              <div className="mt-2 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 space-y-3">
+                {pollingWindows.map((window) => (
+                  <div
+                    key={window.day}
+                    className="rounded-xl border border-gray-200 dark:border-[#333333] px-3 py-3"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <Checkbox
+                          checked={window.active}
+                          onCheckedChange={(value) => handlePollingWindowChange(window.day, { active: value === true })}
+                        />
+                        <span className="text-sm text-gray-900 dark:text-white">{window.label}</span>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-[#111111] text-gray-500 dark:text-[#9CA3AF]">
+                        {window.active ? `${window.startTime || '00:00'} - ${window.endTime || '23:59'}` : 'Off'}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs text-[#9CA3AF]">Start Time</Label>
+                        <Input
+                          type="time"
+                          value={window.startTime || '00:00'}
+                          disabled={!window.active}
+                          onFocus={() => haptics.light()}
+                          onChange={(e) => handlePollingWindowChange(window.day, { startTime: e.target.value })}
+                          className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 disabled:opacity-50"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-[#9CA3AF]">End Time</Label>
+                        <Input
+                          type="time"
+                          value={window.endTime || '23:59'}
+                          disabled={!window.active}
+                          onFocus={() => haptics.light()}
+                          onChange={(e) => handlePollingWindowChange(window.day, { endTime: e.target.value })}
+                          className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-1">
+                Default schedule: Sunday from 18:00 ET, Monday to Friday all day, Saturday off.
+              </p>
+            </div>
           </div>
         </div>
 

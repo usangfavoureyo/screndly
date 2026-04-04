@@ -180,8 +180,22 @@ interface ThumbnailConfig {
     brandedOverlayFixedVariant?: BrandedOverlayVariant;
 }
 
+export interface PollingScheduleWindow {
+    day: number;
+    active: boolean;
+    startTime: string | null;
+    endTime: string | null;
+}
+
+export interface PollingSchedule {
+    enabled: boolean;
+    timezone: string;
+    windows: PollingScheduleWindow[];
+}
+
 export interface LoadedVideoSettings {
     fetchInterval: number;
+    pollingSchedule: PollingSchedule;
     postInterval: number;
     advancedFilters?: string;
     regionFilter?: string;
@@ -331,6 +345,9 @@ const BRANDED_TEXT_REGION = {
 
 const VIDEO_SETTINGS_KEYS = [
     'fetchInterval',
+    'enablePollingSchedule',
+    'pollingTimezone',
+    'pollingWindows',
     'postInterval',
     'advancedFilters',
     'regionFilter',
@@ -366,6 +383,16 @@ const VIDEO_SETTINGS_KEYS = [
     'thumbnailConfig_youtube',
     'thumbnailConfig_x',
 ] as const;
+
+const DEFAULT_POLLING_SCHEDULE_WINDOWS: PollingScheduleWindow[] = [
+    { day: 0, active: true, startTime: '18:00', endTime: '23:59' },
+    { day: 1, active: true, startTime: '00:00', endTime: '23:59' },
+    { day: 2, active: true, startTime: '00:00', endTime: '23:59' },
+    { day: 3, active: true, startTime: '00:00', endTime: '23:59' },
+    { day: 4, active: true, startTime: '00:00', endTime: '23:59' },
+    { day: 5, active: true, startTime: '00:00', endTime: '23:59' },
+    { day: 6, active: false, startTime: null, endTime: null },
+];
 
 const DEFAULT_THUMBNAIL_CONFIG: Record<LandscapePlatform, ThumbnailConfig> = {
     youtube: {
@@ -426,6 +453,62 @@ function asNumber(value: unknown, fallback: number): number {
         if (Number.isFinite(parsed)) return parsed;
     }
     return fallback;
+}
+
+function isValidTimeValue(value: unknown): value is string {
+    return typeof value === 'string' && /^([01]\d|2[0-3]):([0-5]\d)$/.test(value);
+}
+
+function normalizePollingScheduleWindows(value: unknown): PollingScheduleWindow[] {
+    if (!Array.isArray(value)) {
+        return DEFAULT_POLLING_SCHEDULE_WINDOWS.map((window) => ({ ...window }));
+    }
+
+    const byDay = new Map<number, PollingScheduleWindow>();
+
+    for (const item of value) {
+        if (!item || typeof item !== 'object') {
+            continue;
+        }
+
+        const rawDay = Number((item as { day?: unknown }).day);
+        if (!Number.isInteger(rawDay) || rawDay < 0 || rawDay > 6) {
+            continue;
+        }
+
+        const active = asBoolean((item as { active?: unknown }).active, false);
+        const startTime = isValidTimeValue((item as { startTime?: unknown }).startTime)
+            ? (item as { startTime: string }).startTime
+            : null;
+        const endTime = isValidTimeValue((item as { endTime?: unknown }).endTime)
+            ? (item as { endTime: string }).endTime
+            : null;
+
+        byDay.set(rawDay, {
+            day: rawDay,
+            active,
+            startTime: active ? startTime || '00:00' : null,
+            endTime: active ? endTime || '23:59' : null,
+        });
+    }
+
+    return DEFAULT_POLLING_SCHEDULE_WINDOWS.map((defaultWindow) => ({
+        ...defaultWindow,
+        ...(byDay.get(defaultWindow.day) || {}),
+    }));
+}
+
+function parsePollingSchedule(value: {
+    enabled: unknown;
+    timezone: unknown;
+    windows: unknown;
+}): PollingSchedule {
+    const timezone = asString(value.timezone) || 'America/New_York';
+    return {
+        enabled: asBoolean(value.enabled, false),
+        timezone,
+        windows: normalizePollingScheduleWindows(value.windows),
+    };
 }
 
 function asStringArray(value: unknown): string[] {
@@ -1482,6 +1565,11 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
 
     return {
         fetchInterval: Math.max(1, asNumber(map.get('fetchInterval'), 10)),
+        pollingSchedule: parsePollingSchedule({
+            enabled: map.get('enablePollingSchedule'),
+            timezone: map.get('pollingTimezone'),
+            windows: map.get('pollingWindows'),
+        }),
         postInterval: Math.max(1, asNumber(map.get('postInterval'), 10)),
         advancedFilters: asString(map.get('advancedFilters')),
         regionFilter: asString(map.get('regionFilter')),

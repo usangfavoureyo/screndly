@@ -320,6 +320,17 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       .filter((job) => {
         const jobCreatedAt = new Date(job.createdAt).getTime();
         return !activities.some((activity) => {
+          if (activity.type === 'design_render_queued') {
+            if (activity.details?.renderJobId && activity.details.renderJobId === job.id) {
+              return true;
+            }
+            if (activity.details?.templateName !== job.templateName) {
+              return false;
+            }
+            const activityCreatedAt = new Date(activity.createdAt).getTime();
+            return !Number.isNaN(jobCreatedAt) && !Number.isNaN(activityCreatedAt) && activityCreatedAt >= jobCreatedAt;
+          }
+
           if ((activity.type !== 'design_rendered' && activity.type !== 'design_render_failed')
             || activity.details?.templateName !== job.templateName) {
             return false;
@@ -893,8 +904,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                               Export: {activity.details.exportFormat}
                             </p>
                           ) : null}
+                          <p className="mt-2 text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">
+                            {formatTime(activity.createdAt)}
+                          </p>
                         </div>
-                        <p className="text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">{formatTime(activity.createdAt)}</p>
                       </div>
                       {activity.type === 'design_rendered' ? (
                         <div className="mt-3 flex justify-end">

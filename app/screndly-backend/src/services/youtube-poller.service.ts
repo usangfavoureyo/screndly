@@ -39,6 +39,7 @@ import {
     isExplicitCollaboratorForTrackedChannel,
     isRegionalFamilyChannelAssociation,
 } from './youtube-detection/collabDiscovery';
+import type { PollingSchedule, PollingScheduleWindow } from './video-enrichment.service';
 
 const parser = new Parser();
 
@@ -209,6 +210,8 @@ interface SchedulerTickSummary {
     claimedChannels: number;
     skippedLockedChannels: number;
     activeWorkerCount: number;
+    scheduleOpen?: boolean;
+    scheduleReason?: string;
 }
 
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
@@ -426,6 +429,86 @@ export class YouTubePollerService {
         return new Date(Date.now() + CHANNEL_POLL_LOCK_MS);
     }
 
+    private parseScheduleMinutes(value: string | null | undefined, fallback: number): number {
+        if (!value || !/^\d{2}:\d{2}$/.test(value)) {
+            return fallback;
+        }
+
+        const [hours, minutes] = value.split(':').map((part) => Number(part));
+        if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+            return fallback;
+        }
+
+        return (hours * 60) + minutes;
+    }
+
+    private getCurrentScheduleParts(timezone: string, now = new Date()): { day: number; minutes: number } {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+        const parts = formatter.formatToParts(now);
+        const weekday = parts.find((part) => part.type === 'weekday')?.value;
+        const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+        const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+        const dayMap: Record<string, number> = {
+            Sun: 0,
+            Mon: 1,
+            Tue: 2,
+            Wed: 3,
+            Thu: 4,
+            Fri: 5,
+            Sat: 6,
+        };
+
+        return {
+            day: dayMap[weekday || 'Sun'] ?? 0,
+            minutes: (hour * 60) + minute,
+        };
+    }
+
+    private isWindowOpen(window: PollingScheduleWindow, minutes: number): boolean {
+        if (!window.active) {
+            return false;
+        }
+
+        const startMinutes = this.parseScheduleMinutes(window.startTime, 0);
+        const endMinutes = this.parseScheduleMinutes(window.endTime, (23 * 60) + 59);
+
+        if (startMinutes <= endMinutes) {
+            return minutes >= startMinutes && minutes <= endMinutes;
+        }
+
+        return minutes >= startMinutes || minutes <= endMinutes;
+    }
+
+    private isPollingScheduleOpen(schedule: PollingSchedule, now = new Date()): { open: boolean; reason: string } {
+        if (!schedule.enabled) {
+            return { open: true, reason: 'disabled' };
+        }
+
+        const timezone = schedule.timezone || 'America/New_York';
+        const { day, minutes } = this.getCurrentScheduleParts(timezone, now);
+        const window = schedule.windows.find((entry) => entry.day === day);
+        if (!window) {
+            return { open: false, reason: `no_window_for_day_${day}` };
+        }
+
+        if (!window.active) {
+            return { open: false, reason: `inactive_day_${day}` };
+        }
+
+        return {
+            open: this.isWindowOpen(window, minutes),
+            reason: this.isWindowOpen(window, minutes)
+                ? 'active_window'
+                : `outside_window_${window.startTime || '00:00'}_${window.endTime || '23:59'}`,
+        };
+    }
+
     private async tryClaimChannel(
         channel: any,
         settings: LoadedVideoSettings,
@@ -576,6 +659,23 @@ export class YouTubePollerService {
 
         try {
             const settings = await getYouTubeRuntimeSettings();
+            const scheduleState = this.isPollingScheduleOpen(settings.pollingSchedule, startedAt);
+            if (!scheduleState.open) {
+                console.log('[YouTubePoller] Scheduler tick skipped because polling schedule is closed', {
+                    timezone: settings.pollingSchedule.timezone,
+                    reason: scheduleState.reason,
+                });
+                return {
+                    startedAt: startedAt.toISOString(),
+                    finishedAt: new Date().toISOString(),
+                    dueChannels: 0,
+                    claimedChannels: 0,
+                    skippedLockedChannels: 0,
+                    activeWorkerCount: this.activeChannelJobs.size,
+                    scheduleOpen: false,
+                    scheduleReason: scheduleState.reason,
+                };
+            }
             const availableSlots = Math.max(0, MAX_CONCURRENT_CHANNEL_POLLS - this.activeChannelJobs.size);
 
             if (availableSlots === 0) {
@@ -589,6 +689,8 @@ export class YouTubePollerService {
                     claimedChannels: 0,
                     skippedLockedChannels: 0,
                     activeWorkerCount: this.activeChannelJobs.size,
+                    scheduleOpen: true,
+                    scheduleReason: scheduleState.reason,
                 };
             }
 
@@ -642,6 +744,8 @@ export class YouTubePollerService {
                 claimedChannels: claimedChannels.length,
                 skippedLockedChannels,
                 activeWorkerCount: this.activeChannelJobs.size,
+                scheduleOpen: true,
+                scheduleReason: scheduleState.reason,
             };
         } finally {
             this.schedulerRunning = false;

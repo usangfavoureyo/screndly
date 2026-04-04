@@ -17,7 +17,7 @@ import { AI_MODELS, DEFAULT_MODELS, getModelDisplayName, normalizeAIModelId } fr
 import { fetchSettings, saveSettings } from '../../lib/api/settings';
 import { tmdbPromptDefaults } from '../../config/cultureCravePromptDefaults';
 import { useSettings } from '../../contexts/SettingsContext';
-import { TMDB_IMAGE_PREFERENCE_OPTIONS, getTMDbImagePreferenceLabel, type LegacyImagePreference, type TMDbImagePreference } from '../../lib/tmdb/tmdbSettingsService';
+import { TMDB_IMAGE_PREFERENCE_OPTIONS, getTMDbImagePreferenceLabel, type LegacyImagePreference, type TMDbImagePreference, type TMDbSchedulingMode } from '../../lib/tmdb/tmdbSettingsService';
 
 const TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY = 'screndly_culturecrave_tmdb_prompts_v1';
 const TMDB_SHARED_SETTING_KEYS = new Set([
@@ -58,6 +58,22 @@ const TMDB_AUTO_POST_INTERVAL_OPTIONS = [
   { value: '60', label: '1 hour' },
   { value: '120', label: '2 hours' },
 ] as const;
+const TMDB_SCHEDULING_MODE_OPTIONS: Array<{
+  value: TMDbSchedulingMode;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 'adaptive',
+    label: 'Adaptive',
+    description: 'Spread eligible TMDb feeds evenly across the posting window based on how many items are ready that day.',
+  },
+  {
+    value: 'fixed',
+    label: 'Fixed',
+    description: 'Post eligible TMDb feeds at a constant interval using the selected auto-post interval.',
+  },
+];
 
 function normalizePreferredImageTypes(
   preferredImageTypes: unknown,
@@ -226,11 +242,12 @@ const defaultSettings = {
   captionCacheTTL: '30',
   timezone: 'Africa/Lagos',
   tmdbDailyRefreshTime: '07:00',
-  postingWindowStart: '09:00',
+  tmdbSchedulingMode: 'adaptive' as TMDbSchedulingMode,
+  postingWindowStart: '08:00',
   postingWindowEnd: '21:00',
   minGapBetweenPostsMinutes: '60',
   preferredGapBetweenSameModuleMinutes: '120',
-  maxPostsPerDayOverall: '12',
+  maxPostsPerDayOverall: '14',
   maxPostsPerModulePerDay: '4',
   reserveUrgentSlots: '2',
   weeklyOverflowPolicy: 'RESCHEDULE_WITH_REGEN',
@@ -1466,6 +1483,33 @@ export function TMDbSettings() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
+            <Label htmlFor="tmdb-scheduling-mode" className="text-[#9CA3AF]">Scheduling Mode</Label>
+            <Select
+              value={tmdbSettings.tmdbSchedulingMode}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('tmdbSchedulingMode', value as TMDbSchedulingMode);
+                const mode = TMDB_SCHEDULING_MODE_OPTIONS.find((option) => option.value === value);
+                if (mode) {
+                  toast.success(`TMDb scheduling mode set to ${mode.label}`);
+                }
+              }}
+            >
+              <SelectTrigger id="tmdb-scheduling-mode" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TMDB_SCHEDULING_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              {TMDB_SCHEDULING_MODE_OPTIONS.find((option) => option.value === tmdbSettings.tmdbSchedulingMode)?.description}
+            </p>
+          </div>
+
+          <div>
             <Label htmlFor="posting-window-start" className="text-[#9CA3AF]">Posting Window Start</Label>
             <Input
               id="posting-window-start"
@@ -1494,7 +1538,9 @@ export function TMDbSettings() {
               className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1"
             />
           </div>
+        </div>
 
+        {tmdbSettings.tmdbSchedulingMode === 'fixed' ? (
           <div>
             <Label htmlFor="tmdb-auto-post-interval" className="text-[#9CA3AF]">Auto-Post Interval</Label>
             <Select
@@ -1515,10 +1561,18 @@ export function TMDbSettings() {
               </SelectContent>
             </Select>
             <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-              Sets the minimum spacing between auto-posted TMDb feeds. Random spacing is not enabled yet.
+              Sets the fixed spacing used when scheduling TMDb posts.
             </p>
           </div>
-        </div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+            <span className="text-[#9CA3AF]">Adaptive Minimum Gap</span>
+            <p className="mt-1 text-sm text-gray-900 dark:text-white">1 hour hard minimum</p>
+            <p className="mt-1 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Posts are spread evenly across the posting window with a hard minimum gap of 1 hour.
+            </p>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2">
           <div>
