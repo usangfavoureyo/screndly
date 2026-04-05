@@ -158,14 +158,15 @@ router.get('/search', async (req, res) => {
                 name?: string;
                 backdrop_path?: string | null;
                 poster_path?: string | null;
+                profile_path?: string | null;
                 release_date?: string;
                 first_air_date?: string;
             }>;
         };
 
         const results = (data.results || [])
-            .filter((item) => item.media_type === 'movie' || item.media_type === 'tv')
-            .filter((item) => item.backdrop_path || item.poster_path)
+            .filter((item) => item.media_type === 'movie' || item.media_type === 'tv' || item.media_type === 'person')
+            .filter((item) => item.backdrop_path || item.poster_path || item.profile_path)
             .slice(0, 12)
             .map((item) => ({
                 id: item.id,
@@ -173,6 +174,7 @@ router.get('/search', async (req, res) => {
                 title: item.title || item.name || 'Untitled',
                 backdrop: item.backdrop_path ? `${TMDB_BACKDROP_IMAGE_BASE}${item.backdrop_path}` : null,
                 poster: item.poster_path ? `${TMDB_POSTER_IMAGE_BASE}${item.poster_path}` : null,
+                profile: item.profile_path ? `${TMDB_POSTER_IMAGE_BASE}${item.profile_path}` : null,
                 releaseDate: item.release_date || item.first_air_date || null,
             }));
 
@@ -337,10 +339,10 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
     try {
         const { mediaType, tmdbId } = req.params;
 
-        if (mediaType !== 'movie' && mediaType !== 'tv') {
+        if (mediaType !== 'movie' && mediaType !== 'tv' && mediaType !== 'person') {
             return res.status(400).json({
                 success: false,
-                error: { message: 'Invalid media type. Must be "movie" or "tv".' }
+                error: { message: 'Invalid media type. Must be "movie", "tv", or "person".' }
             });
         }
 
@@ -366,6 +368,7 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
             posters?: TMDbImage[];
             backdrops?: TMDbImage[];
             logos?: TMDbImage[];
+            profiles?: TMDbImage[];
         }
 
         const data = await response.json() as TMDbImagesResponse;
@@ -403,6 +406,7 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
                 posters: buildAssets(data.posters, 'poster'),
                 backdrops: buildAssets(data.backdrops, 'backdrop'),
                 logos: buildAssets(data.logos, 'logo'),
+                profiles: buildAssets(data.profiles, 'poster'),
             }
         });
     } catch (error) {

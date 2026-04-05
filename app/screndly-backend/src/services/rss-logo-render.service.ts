@@ -415,3 +415,92 @@ export async function renderTMDbLogoCard(
 
   return uploaded.url;
 }
+
+export async function renderTMDbBackdropLogoComposite(
+  backdropUrl: string,
+  logoUrl: string
+): Promise<string> {
+  const [backdropBuffer, logoBuffer] = await Promise.all([
+    fetchBuffer(backdropUrl),
+    fetchBuffer(logoUrl),
+  ]);
+
+  const trimmedLogoBuffer = await trimTMDbLogoOuterBorderBuffer(logoBuffer);
+  const backdropImage = sharp(backdropBuffer, { animated: false }).rotate();
+  const backdropMetadata = await backdropImage.metadata();
+  const canvasWidth = Math.max(1200, backdropMetadata.width ?? 1600);
+  const canvasHeight = Math.max(675, backdropMetadata.height ?? 900);
+
+  const normalizedBackdrop = await backdropImage
+    .resize(canvasWidth, canvasHeight, {
+      fit: 'cover',
+      position: 'attention',
+      withoutEnlargement: false,
+    })
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toBuffer();
+
+  const maxLogoWidth = Math.round(canvasWidth * 0.52);
+  const maxLogoHeight = Math.round(canvasHeight * 0.24);
+  const resizedLogo = await sharp(trimmedLogoBuffer, { animated: false })
+    .resize({
+      width: maxLogoWidth,
+      height: maxLogoHeight,
+      fit: 'inside',
+      withoutEnlargement: true,
+      background: TRANSPARENT_BACKGROUND,
+    })
+    .png()
+    .toBuffer();
+  const logoMetadata = await sharp(resizedLogo).metadata();
+  const logoWidth = logoMetadata.width ?? maxLogoWidth;
+  const logoHeight = logoMetadata.height ?? maxLogoHeight;
+  const overlayPaddingX = Math.max(26, Math.round(logoWidth * 0.08));
+  const overlayPaddingY = Math.max(20, Math.round(logoHeight * 0.16));
+  const overlayWidth = logoWidth + (overlayPaddingX * 2);
+  const overlayHeight = logoHeight + (overlayPaddingY * 2);
+  const overlayLeft = Math.max(0, Math.round((canvasWidth - overlayWidth) / 2));
+  const overlayTop = Math.max(0, Math.round((canvasHeight - overlayHeight) / 2));
+  const logoLeft = overlayLeft + Math.round((overlayWidth - logoWidth) / 2);
+  const logoTop = overlayTop + Math.round((overlayHeight - logoHeight) / 2);
+
+  const overlaySvg = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${overlayWidth}" height="${overlayHeight}" viewBox="0 0 ${overlayWidth} ${overlayHeight}">
+      <rect
+        x="0"
+        y="0"
+        width="${overlayWidth}"
+        height="${overlayHeight}"
+        rx="${Math.round(Math.min(overlayWidth, overlayHeight) * 0.18)}"
+        fill="rgba(0,0,0,0.38)"
+      />
+    </svg>
+  `);
+
+  const composed = await sharp(normalizedBackdrop, { animated: false })
+    .composite([
+      { input: overlaySvg, left: overlayLeft, top: overlayTop },
+      { input: resizedLogo, left: logoLeft, top: logoTop },
+    ])
+    .jpeg({ quality: 92, mozjpeg: true })
+    .toBuffer();
+
+  const hash = createHash('sha1')
+    .update(backdropUrl)
+    .update(logoUrl)
+    .update('tmdb-backdrop-logo-publish')
+    .digest('hex')
+    .slice(0, 12);
+
+  const uploaded = await uploadBufferToBackblaze(
+    composed,
+    `${hash}-tmdb-backdrop-logo.jpg`,
+    {
+      bucketTypes: ['general', 'design'],
+      prefix: 'tmdb/publish-composites',
+      contentType: 'image/jpeg',
+    }
+  );
+
+  return uploaded.url;
+}

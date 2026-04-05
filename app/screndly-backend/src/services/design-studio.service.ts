@@ -268,6 +268,7 @@ interface DesignStudioRenderPayload {
   cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
   headerAlignment?: 'left' | 'center' | 'right';
   fontScale?: number;
+  headlineWidthScale?: number;
   lineHeightMultiplier?: number;
   maxLines?: number;
   overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
@@ -1589,26 +1590,33 @@ function fitTextBlock(input: {
   return { fontSize, lines, lineHeight };
 }
 
-function buildTextSvg(input: {
+async function buildTextLayer(input: {
   width: number;
   height: number;
   variant: DesignStudioVariantRecord;
   template: DesignStudioTemplateRecord;
   payload: DesignStudioRenderPayload;
-}): Buffer {
-  const fontDataUri = getHeadlineFontDataUri();
+}): Promise<Buffer> {
   const alignment = input.payload.headerAlignment || input.variant.alignment;
   const fontScale = input.payload.fontScale ?? 1;
+  const headlineWidthScale = input.payload.headlineWidthScale ?? 1;
   const maxLines = input.payload.maxLines || input.variant.maxLines;
   const fontColor = input.payload.useTemplateDefaultStyling
     ? (input.template.fontColor || '#ffffff')
     : (input.payload.headerTextColor || input.template.fontColor || '#ffffff');
-  const preferredFontFamily = fontDataUri
-    ? 'ScrendlyHeadline'
-    : (input.template.fontFamily || 'Arial');
+  const scaledBoxWidth = clamp(
+    Math.round(input.variant.textBox.width * headlineWidthScale),
+    Math.round(input.variant.textBox.width * 0.72),
+    Math.round(input.width - ((input.variant.safeMargin || 48) * 2)),
+  );
+  const scaledTextBoxX = alignment === 'center'
+    ? Math.round(input.variant.textBox.x + (input.variant.textBox.width - scaledBoxWidth) / 2)
+    : alignment === 'right'
+      ? Math.round(input.variant.textBox.x + input.variant.textBox.width - scaledBoxWidth)
+      : input.variant.textBox.x;
   const fit = fitTextBlock({
     text: input.payload.headerText.toUpperCase(),
-    boxWidth: input.variant.textBox.width,
+    boxWidth: scaledBoxWidth,
     boxHeight: input.variant.textBox.height,
     minFontSize: Math.round(input.variant.minFontSize * fontScale),
     maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
@@ -1620,44 +1628,48 @@ function buildTextSvg(input: {
     tracking: input.template.tracking || 0,
   });
 
-  const anchor = alignment === 'center' ? 'middle' : alignment === 'right' ? 'end' : 'start';
-  const x = alignment === 'center'
-    ? input.variant.textBox.x + input.variant.textBox.width / 2
-    : alignment === 'right'
-      ? input.variant.textBox.x + input.variant.textBox.width
-      : input.variant.textBox.x;
-  const firstLineY = input.variant.textBox.y + fit.fontSize;
-  const trackingEm = ((input.template.tracking || 0) / 1000).toFixed(3);
-  const linesSvg = fit.lines.map((line, index) => `
-      <text
-        x="${x}"
-        y="${firstLineY + index * fit.lineHeight}"
-        text-anchor="${anchor}"
-        fill="${fontColor}"
-        font-family="${escapeXml(preferredFontFamily)}"
-        font-size="${fit.fontSize}"
-        font-style="${input.template.fontStyle || 'normal'}"
-        font-weight="${input.template.fontWeight || 700}"
-        letter-spacing="${trackingEm}em"
-      >${escapeXml(line)}</text>
-    `).join('');
+  const fontFamily = input.template.fontFamily || 'PFDinTextCompPro';
+  const lineGap = Math.max(0, Math.round(fit.lineHeight - fit.fontSize));
+  const textMarkup = `<span foreground="${escapeXml(fontColor)}">${escapeXml(fit.lines.join('\n'))}</span>`;
+  const textBuffer = await sharp({
+    text: {
+      text: textMarkup,
+      width: Math.max(1, scaledBoxWidth),
+      rgba: true,
+      align: alignment,
+      font: `${fontFamily} ${Math.max(1, Math.round(fit.fontSize))}`,
+      fontfile: fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH) ? DESIGN_STUDIO_HEADLINE_FONT_PATH : undefined,
+      spacing: lineGap,
+    } as any,
+  }).png().toBuffer();
 
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
-      ${fontDataUri ? `
-        <style>
-          @font-face {
-            font-family: 'ScrendlyHeadline';
-            src: url('${fontDataUri}') format('truetype');
-            font-weight: 700;
-            font-style: normal;
-          }
-        </style>
-      ` : ''}
-      ${linesSvg}
-    </svg>
-  `.trim();
-  return Buffer.from(svg);
+  const metadata = await sharp(textBuffer).metadata();
+  const textWidth = Math.max(1, metadata.width || input.variant.textBox.width);
+  const textHeight = Math.max(1, metadata.height || Math.ceil(fit.lines.length * fit.lineHeight));
+  const left = alignment === 'center'
+    ? Math.round(scaledTextBoxX + (scaledBoxWidth - textWidth) / 2)
+    : alignment === 'right'
+      ? Math.round(scaledTextBoxX + scaledBoxWidth - textWidth)
+      : scaledTextBoxX;
+  const top = input.variant.variant.startsWith('bottom')
+    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - textHeight)
+    : input.variant.textBox.y;
+
+  return sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{
+      input: textBuffer,
+      left: clamp(left, 0, Math.max(0, input.width - textWidth)),
+      top: clamp(top, 0, Math.max(0, input.height - textHeight)),
+    }])
+    .png()
+    .toBuffer();
 }
 
 function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {
@@ -1975,7 +1987,7 @@ async function renderDesignStudioImage(
     zoom: payload.zoomLevel || payload.imageZoom,
   });
 
-  const textOverlay = buildTextSvg({ width, height, variant, template, payload });
+  const textOverlay = await buildTextLayer({ width, height, variant, template, payload });
   const overlayColor = payload.overlayColor || '#000000';
   const overlayStrength = clamp((payload.overlayOpacity ?? 72) / 100, 0, 1);
   const overlay = buildOverlaySvg({

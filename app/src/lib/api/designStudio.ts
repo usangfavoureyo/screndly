@@ -160,11 +160,24 @@ export type DesignStudioActivityType =
 
 export interface DesignStudioTMDbSearchResult {
   id: number;
-  mediaType: 'movie' | 'tv';
+  mediaType: 'movie' | 'tv' | 'person';
   title: string;
   backdrop: string | null;
   poster: string | null;
+  profile?: string | null;
   releaseDate: string | null;
+}
+
+export interface DesignStudioTMDbImageAsset {
+  path: string | null;
+  url: string;
+}
+
+export interface DesignStudioTMDbImagePool {
+  posters: DesignStudioTMDbImageAsset[];
+  backdrops: DesignStudioTMDbImageAsset[];
+  logos?: DesignStudioTMDbImageAsset[];
+  profiles?: DesignStudioTMDbImageAsset[];
 }
 
 export async function fetchDesignStudioState(): Promise<DesignStudioStateResponse> {
@@ -300,6 +313,7 @@ export async function startDesignStudioManualRender(payload: {
     cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
     headerAlignment?: 'left' | 'center' | 'right';
     fontScale?: number;
+    headlineWidthScale?: number;
     lineHeightMultiplier?: number;
     maxLines?: number;
     overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
@@ -340,6 +354,18 @@ export async function searchDesignStudioTMDb(query: string): Promise<DesignStudi
   const response = await apiClient.get<DesignStudioTMDbSearchResult[]>(`/api/tmdb/search?query=${encodeURIComponent(query)}`);
   if (!response.success || !Array.isArray(response.data)) {
     throw new Error(response.error?.message || 'Failed to search TMDb');
+  }
+
+  return response.data;
+}
+
+export async function fetchDesignStudioTMDbImages(
+  mediaType: 'movie' | 'tv' | 'person',
+  tmdbId: number,
+): Promise<DesignStudioTMDbImagePool> {
+  const response = await apiClient.get<DesignStudioTMDbImagePool>(`/api/tmdb/images/${mediaType}/${tmdbId}`);
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Failed to fetch TMDb images');
   }
 
   return response.data;

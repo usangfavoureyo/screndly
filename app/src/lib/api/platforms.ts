@@ -23,6 +23,8 @@ export interface PublishContent {
     link?: string; // For Pinterest/FB
     imageUrl?: string; // If posting image
     imageUrls?: string[]; // If posting a multi-image carousel/gallery
+    imageTypes?: string[];
+    imageStyle?: string;
     videoUrl?: string; // If posting video from URL
     sharedThumbnailUrl?: string;
     youtubeThumbnailUrl?: string;

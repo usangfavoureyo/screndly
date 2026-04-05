@@ -11,6 +11,8 @@ export interface TMDbPublishablePost {
     caption?: string;
     imageUrl?: string;
     imageUrls?: string[];
+    imageTypes?: string[];
+    imageStyle?: string;
     source: TMDbSource;
     platforms?: string[];
 }
@@ -153,6 +155,8 @@ export async function publishTMDbPost(
             title: post.title,
             imageUrl: post.imageUrl || undefined,
             imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : undefined,
+            imageTypes: Array.isArray(post.imageTypes) && post.imageTypes.length > 0 ? post.imageTypes : undefined,
+            imageStyle: post.imageStyle || undefined,
         }
     );
 

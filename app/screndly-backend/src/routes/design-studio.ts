@@ -63,6 +63,9 @@ async function authorizeDesignStudioMediaUrl(url?: string | null): Promise<strin
   }
 
   try {
+    if (!/backblazeb2\.com|backblaze\.com|\/file\//i.test(url)) {
+      return url;
+    }
     return await getBackblazeAuthorizedDownloadUrl(url, 60 * 60);
   } catch {
     return url;
@@ -232,6 +235,8 @@ const manualRenderRequestSchema = z.object({
     cropMode: z.enum(['cover', 'contain', 'center', 'face_focus']).optional(),
     headerAlignment: z.enum(['left', 'center', 'right']).optional(),
     fontScale: z.number().optional(),
+    headlineWidthScale: z.number().optional(),
+    lineHeightMultiplier: z.number().optional(),
     maxLines: z.number().optional(),
     overlayType: z.enum(['linear', 'radial', 'full_fade', 'top_fade', 'bottom_fade']).optional(),
     useTemplateDefaultStyling: z.boolean().optional(),
@@ -505,7 +510,9 @@ router.get('/media-stream', async (req, res) => {
       });
     }
 
-    const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 60 * 60);
+    const authorizedUrl = /backblazeb2\.com|backblaze\.com|\/file\//i.test(rawUrl)
+      ? await getBackblazeAuthorizedDownloadUrl(rawUrl, 60 * 60)
+      : rawUrl;
     const upstreamResponse = await fetch(authorizedUrl, {
       headers: req.headers.range ? { Range: req.headers.range } : undefined,
     });

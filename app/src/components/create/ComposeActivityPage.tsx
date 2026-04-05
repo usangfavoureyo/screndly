@@ -87,6 +87,24 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
     setIsDeletingSelected(false);
   };
 
+  const handleDeleteItem = (itemId?: string) => {
+    if (!itemId) return;
+
+    const deletedItem = items.find((item) => item.id === itemId);
+    if (!deletedItem) return;
+
+    deleteItem(itemId);
+    toast.success('Post item deleted', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          saveItem(deletedItem);
+          toast.success('Post item restored');
+        },
+      },
+    });
+  };
+
   const handlePublish = async (itemId: string) => {
     const item = items.find((entry) => entry.id === itemId);
     if (!item) return;
@@ -288,10 +306,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                 <SwipeableActivityCard
                   key={item.id}
                   id={item.id}
-                  onDelete={(id) => {
-                    if (!id) return;
-                    deleteItem(id);
-                  }}
+                  onDelete={handleDeleteItem}
                   selectionMode={selection.selectionMode}
                   selected={selection.isSelected(item.id)}
                   onEnterSelectionMode={selection.enterSelectionMode}

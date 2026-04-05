@@ -35,7 +35,7 @@ export const REFERENCE_VARIANTS: Record<ReferenceLayoutVariant, ReferenceVariant
     variant: 'bottom_center',
     canvasWidth: 1080,
     canvasHeight: 1350,
-    textBox: { x: 88, y: 926, width: 904, height: 318 },
+    textBox: { x: 88, y: 1042, width: 904, height: 260 },
     alignment: 'center',
     brandBox: { x: 369, y: 48, width: 341, height: 73 },
     backgroundAnchor: 'top',

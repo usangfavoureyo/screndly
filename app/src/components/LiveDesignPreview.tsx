@@ -21,7 +21,7 @@ const FALLBACK_BACKGROUND =
 
 const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   bottom_center: {
-    textBox: { x: 88, y: 926, width: 904, height: 318 },
+    textBox: { x: 88, y: 1042, width: 904, height: 260 },
     alignment: 'center',
     brandBox: { x: 369, y: 48, width: 341, height: 73 },
   },
@@ -75,7 +75,35 @@ function estimateWordWidth(word: string, fontSize: number) {
   return widthUnits * fontSize;
 }
 
-function fitHeadline(text: string, layout: PreviewLayout) {
+function resolvePreviewTextBox(
+  layout: PreviewLayout,
+  widthScale: number,
+): PreviewLayout['textBox'] {
+  const nextWidth = layout.textBox.width * widthScale;
+  if (layout.alignment === 'center') {
+    const centerX = layout.textBox.x + layout.textBox.width / 2;
+    return {
+      ...layout.textBox,
+      width: nextWidth,
+      x: centerX - nextWidth / 2,
+    };
+  }
+
+  if (layout.alignment === 'right') {
+    return {
+      ...layout.textBox,
+      width: nextWidth,
+      x: layout.textBox.x + layout.textBox.width - nextWidth,
+    };
+  }
+
+  return {
+    ...layout.textBox,
+    width: nextWidth,
+  };
+}
+
+function fitHeadline(text: string, layout: PreviewLayout, textBox: PreviewLayout['textBox']) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
     return { lines: [], fontSize: 88, lineHeight: 82 };
@@ -91,7 +119,7 @@ function fitHeadline(text: string, layout: PreviewLayout) {
 
     for (const word of words) {
       const next = currentLine ? `${currentLine} ${word}` : word;
-      if (estimateWordWidth(next, fontSize) <= layout.textBox.width) {
+      if (estimateWordWidth(next, fontSize) <= textBox.width) {
         currentLine = next;
       } else {
         if (currentLine) lines.push(currentLine);
@@ -102,7 +130,7 @@ function fitHeadline(text: string, layout: PreviewLayout) {
     if (currentLine) lines.push(currentLine);
 
     const lineHeight = fontSize * 0.93;
-    if (lines.length <= maxLines && lines.length * lineHeight <= layout.textBox.height) {
+    if (lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
       return { lines, fontSize, lineHeight };
     }
   }
@@ -114,7 +142,7 @@ function fitHeadline(text: string, layout: PreviewLayout) {
 
   for (const word of words) {
     const next = currentLine ? `${currentLine} ${word}` : word;
-    if (estimateWordWidth(next, fallbackFontSize) <= layout.textBox.width) {
+    if (estimateWordWidth(next, fallbackFontSize) <= textBox.width) {
       currentLine = next;
     } else {
       if (currentLine) fallbackLines.push(currentLine);
@@ -195,9 +223,11 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const fadeEnabled = designData?.fadeEnabled ?? true;
   const fadeOpacity = designData?.fadeOpacity ?? 90;
   const fontScale = designData?.fontScale ?? 1;
+  const headlineWidthScale = designData?.headlineWidthScale ?? 1;
   const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 0.93;
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
-  const fittedHeadline = fitHeadline(designData?.headerText || '', variant);
+  const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale);
+  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox);
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
   const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
 
@@ -283,10 +313,10 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         <div
           className="absolute"
           style={{
-            left: `${(variant.textBox.x / CANVAS_WIDTH) * 100}%`,
-            top: `${(variant.textBox.y / CANVAS_HEIGHT) * 100}%`,
-            width: `${(variant.textBox.width / CANVAS_WIDTH) * 100}%`,
-            height: `${(variant.textBox.height / CANVAS_HEIGHT) * 100}%`,
+            left: `${(resolvedTextBox.x / CANVAS_WIDTH) * 100}%`,
+            top: `${(resolvedTextBox.y / CANVAS_HEIGHT) * 100}%`,
+            width: `${(resolvedTextBox.width / CANVAS_WIDTH) * 100}%`,
+            height: `${(resolvedTextBox.height / CANVAS_HEIGHT) * 100}%`,
             color: headerColor,
             textAlign: variant.alignment,
             display: 'flex',

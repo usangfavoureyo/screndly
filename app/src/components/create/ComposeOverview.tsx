@@ -285,6 +285,24 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
     toast.success('Selected post items deleted');
   };
 
+  const handleDeleteItem = (itemId?: string) => {
+    if (!itemId) return;
+
+    const deletedItem = items.find((item) => item.id === itemId);
+    if (!deletedItem) return;
+
+    deleteItem(itemId);
+    toast.success('Post item deleted', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          saveItem(deletedItem);
+          toast.success('Post item restored');
+        },
+      },
+    });
+  };
+
   const handlePreviewAsset = (item: ComposeItem, assetIndex = 0) => {
     const previewableAssets = item.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
     if (previewableAssets.length === 0) {
@@ -439,10 +457,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                 <SwipeableActivityCard
                   key={item.id}
                   id={item.id}
-                  onDelete={(id) => {
-                    if (!id) return;
-                    deleteItem(id);
-                  }}
+                  onDelete={handleDeleteItem}
                   selectionMode={selection.selectionMode}
                   selected={selection.isSelected(item.id)}
                   onEnterSelectionMode={selection.enterSelectionMode}

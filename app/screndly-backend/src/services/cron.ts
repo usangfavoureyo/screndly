@@ -10,7 +10,7 @@ import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
-import { renderTMDbLogoCard } from './rss-logo-render.service';
+import { renderTMDbBackdropLogoComposite } from './rss-logo-render.service';
 import { getYouTubeRuntimeSettings } from './video-enrichment.service';
 import {
     getComposeState,
@@ -75,12 +75,12 @@ async function resolveTMDbPublishImageUrls(post: {
     const backdropUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'backdrop');
     const logoUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'logo');
 
-    if (backdropUrl && logoUrl && !posterUrl && !logoUrl.includes('/rss/logo-cards/')) {
+    if (backdropUrl && logoUrl && !posterUrl) {
         try {
-            const renderedLogoUrl = await renderTMDbLogoCard(logoUrl, 'brand_backdrop');
-            return [backdropUrl, renderedLogoUrl];
+            const compositeUrl = await renderTMDbBackdropLogoComposite(backdropUrl, logoUrl);
+            return [compositeUrl];
         } catch (error) {
-            console.warn(`[Cron] Failed to render TMDb logo card for post ${String(post.id || post.imageUrl || '')}:`, error);
+            console.warn(`[Cron] Failed to render TMDb backdrop+logo composite for post ${String(post.id || post.imageUrl || '')}:`, error);
             return [backdropUrl];
         }
     }

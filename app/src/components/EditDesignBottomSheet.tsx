@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Upload, X, Sparkles } from 'lucide-react';
+import { ArrowLeft, Upload, X, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
 import { Input } from './ui/input';
@@ -15,9 +15,11 @@ import ColorPickerPopup from './ColorPickerPopup';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 import type { DesignContentType } from '../utils/designStudioCaptionGenerator';
 import {
+  fetchDesignStudioTMDbImages,
   searchDesignStudioTMDb,
   uploadDesignStudioAsset,
   type DesignStudioBrandBlockMode,
+  type DesignStudioTMDbImagePool,
   type DesignStudioLayoutVariant,
   type DesignStudioTMDbSearchResult,
 } from '../lib/api/designStudio';
@@ -35,6 +37,7 @@ interface EditDesignBottomSheetProps {
     headerTextColor?: string; // Text color for header
     subtextColor?: string; // Text color for subtext
     fontScale?: number;
+    headlineWidthScale?: number;
     lineHeightMultiplier?: number;
     backgroundImage?: string;
     imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
@@ -63,6 +66,7 @@ export interface DesignData {
   headerTextColor?: string; // Text color for header
   subtextColor?: string; // Text color for subtext
   fontScale?: number;
+  headlineWidthScale?: number;
   lineHeightMultiplier?: number;
   backgroundImage?: string;
   imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
@@ -100,6 +104,7 @@ export function EditDesignBottomSheet({
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
   const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
+  const [headlineWidthScale, setHeadlineWidthScale] = useState(initialData?.headlineWidthScale ?? 1);
   const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? 0.93);
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
@@ -108,6 +113,10 @@ export function EditDesignBottomSheet({
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
   const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [tmdbImagePool, setTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
+  const [tmdbImageCategory, setTmdbImageCategory] = useState<'backdrops' | 'posters' | 'profiles'>('backdrops');
+  const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
   const [selectedTmdbImage, setSelectedTmdbImage] = useState<string | null>(null);
   const [isImageExpanded, setIsImageExpanded] = useState(false);
   const [showFocalPointAdjuster, setShowFocalPointAdjuster] = useState(false);
@@ -161,6 +170,7 @@ export function EditDesignBottomSheet({
       headerTextColor: initialData.headerTextColor || '#FFFFFF',
       subtextColor: initialData.subtextColor || '#000000',
       fontScale: initialData.fontScale ?? 1,
+      headlineWidthScale: initialData.headlineWidthScale ?? 1,
       lineHeightMultiplier: initialData.lineHeightMultiplier ?? 0.93,
       backgroundImage: initialData.backgroundImage || '',
       imageFocalPoint: initialData.imageFocalPoint || { x: 50, y: 50 },
@@ -185,6 +195,7 @@ export function EditDesignBottomSheet({
     setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
     setSubtextColor(initialData.subtextColor || '#000000');
     setFontScale(initialData.fontScale ?? 1);
+    setHeadlineWidthScale(initialData.headlineWidthScale ?? 1);
     setLineHeightMultiplier(initialData.lineHeightMultiplier ?? 0.93);
     setBackgroundImage(initialData.backgroundImage || '');
     setPreviewBackgroundImage(initialData.backgroundImage || '');
@@ -219,6 +230,7 @@ export function EditDesignBottomSheet({
         headerTextColor,
         subtextColor,
         fontScale,
+        headlineWidthScale,
         lineHeightMultiplier,
         backgroundImage: backgroundImage,
         imageFocalPoint,
@@ -241,6 +253,7 @@ export function EditDesignBottomSheet({
     headerTextColor,
     subtextColor,
     fontScale,
+    headlineWidthScale,
     lineHeightMultiplier,
     backgroundImage,
     previewBackgroundImage,
@@ -292,6 +305,8 @@ export function EditDesignBottomSheet({
     setIsSearching(true);
 
     try {
+      setSelectedTmdbResult(null);
+      setTmdbImagePool(null);
       const results = await searchDesignStudioTMDb(tmdbSearchQuery);
       setTmdbResults(results);
 
@@ -309,15 +324,53 @@ export function EditDesignBottomSheet({
     }
   };
 
+  const handleSelectTmdbResult = async (result: DesignStudioTMDbSearchResult) => {
+    haptics.light();
+    setSelectedTmdbResult(result);
+    setIsLoadingTmdbImages(true);
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      setTmdbImagePool(pool);
+      const nextCategory = result.mediaType === 'person'
+        ? 'profiles'
+        : pool.backdrops?.length
+          ? 'backdrops'
+          : 'posters';
+      setTmdbImageCategory(nextCategory);
+    } catch (error) {
+      console.error('TMDb image fetch failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load TMDb images');
+      setSelectedTmdbResult(null);
+      setTmdbImagePool(null);
+    } finally {
+      setIsLoadingTmdbImages(false);
+    }
+  };
+
   const handleSelectTmdbImage = (imageUrl: string) => {
     haptics.light();
     setBackgroundImage(imageUrl);
     setPreviewBackgroundImage(imageUrl);
     setSelectedTmdbImage(imageUrl);
+    setSelectedTmdbResult(null);
+    setTmdbImagePool(null);
     setTmdbResults([]);
     setTmdbSearchQuery('');
     toast.success('Image selected from TMDb');
   };
+
+  const handleBackToTmdbResults = () => {
+    haptics.light();
+    setSelectedTmdbResult(null);
+    setTmdbImagePool(null);
+  };
+
+  const activeTmdbImages = useMemo(() => {
+    if (!tmdbImagePool) return [];
+    if (tmdbImageCategory === 'profiles') return tmdbImagePool.profiles || [];
+    if (tmdbImageCategory === 'posters') return tmdbImagePool.posters || [];
+    return tmdbImagePool.backdrops || [];
+  }, [tmdbImageCategory, tmdbImagePool]);
 
   const handleSave = () => {
     if (hasHeader && !headerText.trim()) {
@@ -337,6 +390,7 @@ export function EditDesignBottomSheet({
       headerTextColor,
       subtextColor,
       fontScale,
+      headlineWidthScale,
       lineHeightMultiplier,
       backgroundImage: hasBackground ? backgroundImage : undefined,
       imageFocalPoint,
@@ -361,6 +415,7 @@ export function EditDesignBottomSheet({
     headerTextColor,
     subtextColor,
     fontScale,
+    headlineWidthScale,
     lineHeightMultiplier,
     backgroundImage,
     imageFocalPoint,
@@ -626,6 +681,29 @@ export function EditDesignBottomSheet({
                   onChange={(e) => {
                     haptics.light();
                     setFontScale(Number(e.target.value));
+                  }}
+                  className="w-full accent-[#ec1e24]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                    Headline Width
+                  </Label>
+                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
+                    {headlineWidthScale.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.8"
+                  max="1.2"
+                  step="0.02"
+                  value={headlineWidthScale}
+                  onChange={(e) => {
+                    haptics.light();
+                    setHeadlineWidthScale(Number(e.target.value));
                   }}
                   className="w-full accent-[#ec1e24]"
                 />
@@ -905,57 +983,113 @@ export function EditDesignBottomSheet({
               </div>
 
               {/* TMDb Results */}
-              {tmdbResults.length > 0 && (
-                <div className="mt-3 space-y-2 max-h-48 overflow-y-auto">
-                  {tmdbResults.map((result) => (
-                    <div key={result.id} className="space-y-2">
-                      <p className="text-sm text-gray-900 dark:text-white">{result.title}</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => result.backdrop && handleSelectTmdbImage(result.backdrop)}
-                          disabled={!result.backdrop}
-                          className="relative aspect-video rounded-lg overflow-hidden border-2 border-transparent hover:border-[#ec1e24] transition-colors"
-                        >
-                          {result.backdrop ? (
-                            <img
-                              src={result.backdrop}
-                              alt="Backdrop"
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-500 dark:bg-[#111111] dark:text-[#6B7280]">
-                              No backdrop
-                            </div>
-                          )}
-                          <div className="absolute bottom-1 left-1 text-xs bg-black/70 text-white px-1.5 py-0.5 rounded">
-                            Backdrop
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => result.poster && handleSelectTmdbImage(result.poster)}
-                          disabled={!result.poster}
-                          className="relative aspect-[2/3] rounded-lg overflow-hidden border-2 border-transparent hover:border-[#ec1e24] transition-colors"
-                        >
-                          {result.poster ? (
-                            <img
-                              src={result.poster}
-                              alt="Poster"
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-500 dark:bg-[#111111] dark:text-[#6B7280]">
-                              No poster
-                            </div>
-                          )}
-                          <div className="absolute bottom-1 left-1 text-xs bg-black/70 text-white px-1.5 py-0.5 rounded">
-                            Poster
-                          </div>
-                        </button>
-                      </div>
+              {selectedTmdbResult ? (
+                <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleBackToTmdbResults}
+                      className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#9CA3AF]"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                      Back
+                    </button>
+                    <div className="text-right">
+                      <p className="text-sm text-gray-900 dark:text-white">{selectedTmdbResult.title}</p>
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] uppercase">
+                        {selectedTmdbResult.mediaType}
+                      </p>
                     </div>
-                  ))}
+                  </div>
+
+                  <div className="mb-3 grid grid-cols-3 gap-2">
+                    {selectedTmdbResult.mediaType !== 'person' ? (
+                      <>
+                        <Button
+                          type="button"
+                          onClick={() => setTmdbImageCategory('backdrops')}
+                          variant="outline"
+                          size="sm"
+                          className={`text-xs ${tmdbImageCategory === 'backdrops' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}
+                        >
+                          Backdrops
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => setTmdbImageCategory('posters')}
+                          variant="outline"
+                          size="sm"
+                          className={`text-xs ${tmdbImageCategory === 'posters' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}
+                        >
+                          Posters
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        onClick={() => setTmdbImageCategory('profiles')}
+                        variant="outline"
+                        size="sm"
+                        className="text-xs bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white"
+                      >
+                        Profiles
+                      </Button>
+                    )}
+                  </div>
+
+                  {isLoadingTmdbImages ? (
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading TMDb images...</p>
+                  ) : activeTmdbImages.length === 0 ? (
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No images available in this section.</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                      {activeTmdbImages.map((asset) => (
+                        <button
+                          key={asset.url}
+                          type="button"
+                          onClick={() => handleSelectTmdbImage(asset.url)}
+                          className={`relative overflow-hidden rounded-lg border-2 border-transparent hover:border-[#ec1e24] transition-colors ${
+                            tmdbImageCategory === 'backdrops' ? 'aspect-video' : 'aspect-[2/3]'
+                          }`}
+                        >
+                          <img
+                            src={asset.url}
+                            alt={`${selectedTmdbResult.title} ${tmdbImageCategory}`}
+                            className="h-full w-full object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : tmdbResults.length > 0 ? (
+                <div className="mt-3 space-y-2 max-h-56 overflow-y-auto">
+                  {tmdbResults.map((result) => {
+                    const thumb = result.backdrop || result.poster || result.profile || '';
+                    return (
+                      <button
+                        key={`${result.mediaType}-${result.id}`}
+                        type="button"
+                        onClick={() => handleSelectTmdbResult(result)}
+                        className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
+                      >
+                        <div className="h-14 w-14 overflow-hidden rounded-md bg-[#111111] shrink-0">
+                          {thumb ? (
+                            <img src={thumb} alt={result.title} className="h-full w-full object-cover" />
+                          ) : null}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                          <p className="mt-1 text-xs uppercase text-[#6B7280] dark:text-[#9CA3AF]">
+                            {result.mediaType}
+                            {result.releaseDate ? ` • ${result.releaseDate.slice(0, 4)}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
             </div>
 
             {/* Current Image Preview */}
