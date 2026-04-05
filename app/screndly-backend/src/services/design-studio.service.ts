@@ -268,6 +268,7 @@ interface DesignStudioRenderPayload {
   cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
   headerAlignment?: 'left' | 'center' | 'right';
   fontScale?: number;
+  lineHeightMultiplier?: number;
   maxLines?: number;
   overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
   useTemplateDefaultStyling?: boolean;
@@ -1612,7 +1613,10 @@ function buildTextSvg(input: {
     minFontSize: Math.round(input.variant.minFontSize * fontScale),
     maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
     maxLines,
-    lineHeightMultiplier: input.variant.lineHeightMultiplier || input.template.lineHeightMultiplier || 1.05,
+    lineHeightMultiplier: input.payload.lineHeightMultiplier
+      || input.variant.lineHeightMultiplier
+      || input.template.lineHeightMultiplier
+      || 1.05,
     tracking: input.template.tracking || 0,
   });
 

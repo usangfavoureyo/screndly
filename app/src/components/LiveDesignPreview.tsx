@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DesignStudioBrandBlockMode, DesignStudioLayoutVariant } from '../lib/api/designStudio';
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { DesignData } from './EditDesignBottomSheet';
@@ -179,9 +179,11 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [frameScale, setFrameScale] = useState(1);
   const [previewImageError, setPreviewImageError] = useState(false);
+  const [fadeAssetError, setFadeAssetError] = useState(false);
+  const [brandAssetError, setBrandAssetError] = useState(false);
 
-  const rawSourceUrl = designData?.backgroundImage || templatePreviewUrl || '';
-  const sourceUrl = buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl;
+  const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
+  const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
   const variantKey = designData?.templateVariant || 'bottom_center';
   const variant = PREVIEW_VARIANTS[variantKey];
   const focalPoint = designData?.imageFocalPoint || { x: 50, y: 50 };
@@ -197,6 +199,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant);
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
+  const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
 
   useEffect(() => {
     const container = containerRef.current;
@@ -221,6 +224,14 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   useEffect(() => {
     setPreviewImageError(false);
   }, [sourceUrl]);
+
+  useEffect(() => {
+    setFadeAssetError(false);
+  }, [fadeEnabled]);
+
+  useEffect(() => {
+    setBrandAssetError(false);
+  }, [brandAssetUrl]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
@@ -257,12 +268,15 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
       />
 
       {fadeEnabled ? (
-        <img
-          src="/design-studio/fade.png"
-          alt=""
-          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          style={{ zIndex: 20, opacity: clamp(fadeOpacity / 100, 0, 1) }}
-        />
+        fadeAssetError ? null : (
+          <img
+            src="/design-studio/fade.png"
+            alt=""
+            onError={() => setFadeAssetError(true)}
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+            style={{ zIndex: 20, opacity: clamp(fadeOpacity / 100, 0, 1) }}
+          />
+        )
       ) : null}
 
       {designData?.headerText ? (
@@ -301,19 +315,36 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         </div>
       ) : null}
 
-      <img
-        src={brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png'}
-        alt=""
-        className="pointer-events-none absolute"
-        style={{
-          zIndex: 40,
-          left: `${(variant.brandBox.x / CANVAS_WIDTH) * 100}%`,
-          top: `${(variant.brandBox.y / CANVAS_HEIGHT) * 100}%`,
-          width: `${(variant.brandBox.width / CANVAS_WIDTH) * 100}%`,
-          height: `${(variant.brandBox.height / CANVAS_HEIGHT) * 100}%`,
-          objectFit: 'contain',
-        }}
-      />
+      {brandAssetError ? (
+        <div
+          className="pointer-events-none absolute rounded-md"
+          style={{
+            zIndex: 40,
+            left: `${(variant.brandBox.x / CANVAS_WIDTH) * 100}%`,
+            top: `${(variant.brandBox.y / CANVAS_HEIGHT) * 100}%`,
+            width: `${(variant.brandBox.width / CANVAS_WIDTH) * 100}%`,
+            height: `${(variant.brandBox.height / CANVAS_HEIGHT) * 100}%`,
+            background: brandMode === 'black'
+              ? 'linear-gradient(90deg, #050505 0%, #050505 29%, rgba(30,30,30,0.7) 30%, rgba(30,30,30,0.7) 100%)'
+              : 'linear-gradient(90deg, #ffffff 0%, #ffffff 29%, rgba(255,255,255,0.44) 30%, rgba(255,255,255,0.44) 100%)',
+          }}
+        />
+      ) : (
+        <img
+          src={brandAssetUrl}
+          alt=""
+          onError={() => setBrandAssetError(true)}
+          className="pointer-events-none absolute"
+          style={{
+            zIndex: 40,
+            left: `${(variant.brandBox.x / CANVAS_WIDTH) * 100}%`,
+            top: `${(variant.brandBox.y / CANVAS_HEIGHT) * 100}%`,
+            width: `${(variant.brandBox.width / CANVAS_WIDTH) * 100}%`,
+            height: `${(variant.brandBox.height / CANVAS_HEIGHT) * 100}%`,
+            objectFit: 'contain',
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Upload, X, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
@@ -21,6 +21,7 @@ import {
   type DesignStudioLayoutVariant,
   type DesignStudioTMDbSearchResult,
 } from '../lib/api/designStudio';
+import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { LiveDesignPreview } from './LiveDesignPreview';
 
 interface EditDesignBottomSheetProps {
@@ -130,6 +131,8 @@ export function EditDesignBottomSheet({
   const expandedPreviewOffsetRef = useRef({ x: 0, y: 0 });
   const expandedPreviewPinchDistanceRef = useRef<number | null>(null);
   const expandedPreviewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const expandedPreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const appliedInitialDataRef = useRef<string>('');
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>(
     persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
   );
@@ -143,32 +146,69 @@ export function EditDesignBottomSheet({
   }, [previewBackgroundImage]);
 
   useEffect(() => {
-    if (initialData) {
-      setHeaderText(initialData.headerText || '');
-      setSubtext(initialData.subtext || '');
-      setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
-      setSubtextColor(initialData.subtextColor || '#000000');
-      setFontScale(initialData.fontScale ?? 1);
-      setLineHeightMultiplier(initialData.lineHeightMultiplier ?? 0.93);
-      setBackgroundImage(initialData.backgroundImage || '');
-      setPreviewBackgroundImage(initialData.backgroundImage || '');
-      setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
-      setImageZoom(initialData.imageZoom || 1.0);
-      setOverlayEnabled(initialData.overlayEnabled || false);
-      setOverlayColor(initialData.overlayColor || '#000000');
-      setOverlayOpacity(initialData.overlayOpacity || 70);
-      setGradientPosition(initialData.gradientPosition || 'top');
-      setTemplateVariant(initialData.templateVariant || 'bottom_center');
-      setFadeEnabled(initialData.fadeEnabled ?? true);
-      setFadeOpacity(initialData.fadeOpacity ?? 90);
-      setBrandBlockMode(initialData.brandBlockMode || 'auto');
-      setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
+    if (!open || !initialData) {
+      if (!open) {
+        appliedInitialDataRef.current = '';
+      }
+      return;
     }
-  }, [initialData, persistedSettings.exportFormat]);
+
+    const signature = JSON.stringify({
+      templateName,
+      exportFormat: persistedSettings.exportFormat,
+      headerText: initialData.headerText || '',
+      subtext: initialData.subtext || '',
+      headerTextColor: initialData.headerTextColor || '#FFFFFF',
+      subtextColor: initialData.subtextColor || '#000000',
+      fontScale: initialData.fontScale ?? 1,
+      lineHeightMultiplier: initialData.lineHeightMultiplier ?? 0.93,
+      backgroundImage: initialData.backgroundImage || '',
+      imageFocalPoint: initialData.imageFocalPoint || { x: 50, y: 50 },
+      imageZoom: initialData.imageZoom || 1,
+      overlayEnabled: initialData.overlayEnabled || false,
+      overlayColor: initialData.overlayColor || '#000000',
+      overlayOpacity: initialData.overlayOpacity || 70,
+      gradientPosition: initialData.gradientPosition || 'top',
+      templateVariant: initialData.templateVariant || 'bottom_center',
+      fadeEnabled: initialData.fadeEnabled ?? true,
+      fadeOpacity: initialData.fadeOpacity ?? 90,
+      brandBlockMode: initialData.brandBlockMode || 'auto',
+    });
+
+    if (appliedInitialDataRef.current === signature) {
+      return;
+    }
+
+    appliedInitialDataRef.current = signature;
+    setHeaderText(initialData.headerText || '');
+    setSubtext(initialData.subtext || '');
+    setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
+    setSubtextColor(initialData.subtextColor || '#000000');
+    setFontScale(initialData.fontScale ?? 1);
+    setLineHeightMultiplier(initialData.lineHeightMultiplier ?? 0.93);
+    setBackgroundImage(initialData.backgroundImage || '');
+    setPreviewBackgroundImage(initialData.backgroundImage || '');
+    setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
+    setImageZoom(initialData.imageZoom || 1.0);
+    setOverlayEnabled(initialData.overlayEnabled || false);
+    setOverlayColor(initialData.overlayColor || '#000000');
+    setOverlayOpacity(initialData.overlayOpacity || 70);
+    setGradientPosition(initialData.gradientPosition || 'top');
+    setTemplateVariant(initialData.templateVariant || 'bottom_center');
+    setFadeEnabled(initialData.fadeEnabled ?? true);
+    setFadeOpacity(initialData.fadeOpacity ?? 90);
+    setBrandBlockMode(initialData.brandBlockMode || 'auto');
+    setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
+  }, [open, initialData, persistedSettings.exportFormat, templateName]);
 
   useEffect(() => {
     expandedPreviewOffsetRef.current = expandedPreviewOffset;
   }, [expandedPreviewOffset]);
+
+  const resolvedPreviewBackgroundSrc = useMemo(() => {
+    const source = previewBackgroundImage || backgroundImage || '';
+    return buildDesignStudioMediaStreamUrl(source) || source;
+  }, [previewBackgroundImage, backgroundImage]);
 
   // Trigger real-time preview updates whenever design data changes
   useEffect(() => {
@@ -180,7 +220,7 @@ export function EditDesignBottomSheet({
         subtextColor,
         fontScale,
         lineHeightMultiplier,
-        backgroundImage: previewBackgroundImage || backgroundImage,
+        backgroundImage: backgroundImage,
         imageFocalPoint,
         imageZoom,
         overlayEnabled,
@@ -322,7 +362,7 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     lineHeightMultiplier,
-    backgroundImage: previewBackgroundImage || backgroundImage,
+    backgroundImage,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -399,6 +439,30 @@ export function EditDesignBottomSheet({
   };
 
   const handleExpandedPreviewTouchEnd = () => {
+    const activeTap = expandedPreviewPanStartRef.current;
+    if (activeTap) {
+      const now = Date.now();
+      const lastTap = expandedPreviewLastTapRef.current;
+      const tapX = activeTap.x;
+      const tapY = activeTap.y;
+      if (
+        lastTap &&
+        now - lastTap.time <= 300 &&
+        Math.abs(lastTap.x - tapX) <= 24 &&
+        Math.abs(lastTap.y - tapY) <= 24
+      ) {
+        setExpandedPreviewZoom((current) => {
+          const nextZoom = current > 1 ? 1 : 2;
+          if (nextZoom === 1) {
+            setExpandedPreviewOffset({ x: 0, y: 0 });
+          }
+          return nextZoom;
+        });
+        expandedPreviewLastTapRef.current = null;
+      } else {
+        expandedPreviewLastTapRef.current = { time: now, x: tapX, y: tapY };
+      }
+    }
     expandedPreviewPinchDistanceRef.current = null;
     expandedPreviewPanStartRef.current = null;
   };
@@ -907,7 +971,7 @@ export function EditDesignBottomSheet({
                     className="w-full"
                   >
                     <img
-                      src={previewBackgroundImage || backgroundImage}
+                      src={resolvedPreviewBackgroundSrc}
                       alt="Selected background"
                       className="w-full h-32 object-cover cursor-pointer hover:opacity-90 transition-opacity"
                     />
@@ -1040,7 +1104,7 @@ export function EditDesignBottomSheet({
                       className={`relative block w-full ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}
                     >
                       <LiveDesignPreview
-                        templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                        templatePreviewUrl={resolvedPreviewBackgroundSrc}
                         designData={currentPreviewData}
                       />
                       <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
@@ -1217,7 +1281,7 @@ export function EditDesignBottomSheet({
                   </Label>
                   <div className={`relative ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}>
                     <LiveDesignPreview
-                      templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                      templatePreviewUrl={resolvedPreviewBackgroundSrc}
                       designData={currentPreviewData}
                     />
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
@@ -1445,7 +1509,7 @@ export function EditDesignBottomSheet({
                 }}
               >
                 <LiveDesignPreview
-                  templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                  templatePreviewUrl={resolvedPreviewBackgroundSrc}
                   designData={currentPreviewData}
                 />
               </div>

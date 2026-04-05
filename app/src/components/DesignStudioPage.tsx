@@ -268,6 +268,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedTemplate, setExpandedTemplate] = useState<Template | null>(null);
+  const [expandedTemplateZoom, setExpandedTemplateZoom] = useState(1);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false);
   const [editorInitialData, setEditorInitialData] = useState<DesignData | null>(null);
@@ -293,6 +294,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
   const [previewEditorial, setPreviewEditorial] = useState<AutoEditorial | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const templatePreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const editorialPreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const [selectedEditorial, setSelectedEditorial] = useState<AutoEditorial | null>(null);
   const [isEditorialActionsOpen, setIsEditorialActionsOpen] = useState(false);
   const [isEditorialEditorOpen, setIsEditorialEditorOpen] = useState(false);
@@ -634,7 +637,43 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const handleExpandTemplate = (template: Template) => {
     haptics.light();
     setExpandedTemplate(template);
+    setExpandedTemplateZoom(1);
     setIsExpanded(true);
+  };
+
+  const handleDoubleTapZoom = (
+    event: React.TouchEvent<HTMLElement>,
+    target: 'template' | 'editorial',
+  ) => {
+    if (event.touches.length > 1) {
+      return;
+    }
+
+    const touch = event.changedTouches[0];
+    if (!touch) {
+      return;
+    }
+
+    const now = Date.now();
+    const ref = target === 'template' ? templatePreviewLastTapRef : editorialPreviewLastTapRef;
+    const lastTap = ref.current;
+
+    if (
+      lastTap &&
+      now - lastTap.time <= 300 &&
+      Math.abs(lastTap.x - touch.clientX) <= 24 &&
+      Math.abs(lastTap.y - touch.clientY) <= 24
+    ) {
+      if (target === 'template') {
+        setExpandedTemplateZoom((value) => (value > 1 ? 1 : 2));
+      } else {
+        setPreviewZoom((value) => (value > 1 ? 1 : 2));
+      }
+      ref.current = null;
+      return;
+    }
+
+    ref.current = { time: now, x: touch.clientX, y: touch.clientY };
   };
 
   const handleEditTemplate = (template: Template) => {
@@ -1368,17 +1407,22 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <button
                 onClick={() => {
                   haptics.light();
+                  setExpandedTemplateZoom(1);
                   setIsExpanded(false);
                 }}
                 className="absolute right-4 top-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/78 text-white shadow-lg transition-colors hover:bg-black"
               >
                 <X className="h-5 w-5" />
               </button>
-              <img
-                src={expandedTemplate.previewUrl}
-                alt={expandedTemplate.name}
-                className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
-              />
+              <div className="max-h-[90vh] overflow-auto rounded-lg bg-black">
+                <img
+                  src={expandedTemplate.previewUrl}
+                  alt={expandedTemplate.name}
+                  onTouchEnd={(event) => handleDoubleTapZoom(event, 'template')}
+                  className="w-full h-auto max-h-[90vh] object-contain rounded-lg transition-transform duration-200"
+                  style={{ transform: `scale(${expandedTemplateZoom})`, transformOrigin: 'center center' }}
+                />
+              </div>
               <div className="border-t border-white/10 bg-black/90 p-5 text-white">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
@@ -1673,6 +1717,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   onClick={() => {
                     haptics.light();
                     setPreviewEditorial(null);
+                    editorialPreviewLastTapRef.current = null;
                     setPreviewZoom(1);
                   }}
                   className="flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white"
@@ -1684,6 +1729,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <img
                   src={previewEditorial.renderedImage}
                   alt={previewEditorial.sourceTitle}
+                  onTouchEnd={(event) => handleDoubleTapZoom(event, 'editorial')}
                   className="mx-auto h-auto max-w-full origin-center rounded-lg transition-transform duration-200"
                   style={{ transform: `scale(${previewZoom})` }}
                 />

@@ -300,6 +300,7 @@ export async function startDesignStudioManualRender(payload: {
     cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
     headerAlignment?: 'left' | 'center' | 'right';
     fontScale?: number;
+    lineHeightMultiplier?: number;
     maxLines?: number;
     overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
     useTemplateDefaultStyling?: boolean;
