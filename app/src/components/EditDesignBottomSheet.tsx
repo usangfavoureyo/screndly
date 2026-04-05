@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Upload, X, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
@@ -21,6 +21,7 @@ import {
   type DesignStudioLayoutVariant,
   type DesignStudioTMDbSearchResult,
 } from '../lib/api/designStudio';
+import { LiveDesignPreview } from './LiveDesignPreview';
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -91,7 +92,7 @@ export function EditDesignBottomSheet({
   const { settings: persistedSettings } = useSettings();
   const [headerText, setHeaderText] = useState(initialData?.headerText || '');
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
-  const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#000000');
+  const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
@@ -118,6 +119,11 @@ export function EditDesignBottomSheet({
   const [caption, setCaption] = useState('');
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [expandedPreviewZoom, setExpandedPreviewZoom] = useState(1);
+  const [expandedPreviewOffset, setExpandedPreviewOffset] = useState({ x: 0, y: 0 });
+  const expandedPreviewOffsetRef = useRef({ x: 0, y: 0 });
+  const expandedPreviewPinchDistanceRef = useRef<number | null>(null);
+  const expandedPreviewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>(
     persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
   );
@@ -134,7 +140,7 @@ export function EditDesignBottomSheet({
     if (initialData) {
       setHeaderText(initialData.headerText || '');
       setSubtext(initialData.subtext || '');
-      setHeaderTextColor(initialData.headerTextColor || '#000000');
+      setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
       setSubtextColor(initialData.subtextColor || '#000000');
       setBackgroundImage(initialData.backgroundImage || '');
       setPreviewBackgroundImage(initialData.backgroundImage || '');
@@ -151,6 +157,10 @@ export function EditDesignBottomSheet({
       setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
     }
   }, [initialData, persistedSettings.exportFormat]);
+
+  useEffect(() => {
+    expandedPreviewOffsetRef.current = expandedPreviewOffset;
+  }, [expandedPreviewOffset]);
 
   // Trigger real-time preview updates whenever design data changes
   useEffect(() => {
@@ -289,6 +299,122 @@ export function EditDesignBottomSheet({
       contentType,
       exportFormat,
     });
+  };
+
+  const currentPreviewData: DesignData = {
+    headerText,
+    subtext: hasSubtext ? subtext : undefined,
+    headerTextColor,
+    subtextColor,
+    backgroundImage: previewBackgroundImage || backgroundImage,
+    imageFocalPoint,
+    imageZoom,
+    overlayEnabled,
+    overlayColor,
+    overlayOpacity,
+    gradientPosition,
+    templateVariant,
+    fadeEnabled,
+    fadeOpacity,
+    brandBlockMode,
+    caption,
+    contentType,
+    exportFormat,
+  };
+
+  const resetExpandedPreviewTransform = () => {
+    expandedPreviewPinchDistanceRef.current = null;
+    expandedPreviewPanStartRef.current = null;
+    setExpandedPreviewZoom(1);
+    setExpandedPreviewOffset({ x: 0, y: 0 });
+  };
+
+  const handleExpandedPreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 1 && expandedPreviewZoom > 1) {
+      const touch = event.touches[0];
+      expandedPreviewPanStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        offsetX: expandedPreviewOffsetRef.current.x,
+        offsetY: expandedPreviewOffsetRef.current.y,
+      };
+      expandedPreviewPinchDistanceRef.current = null;
+      return;
+    }
+
+    if (event.touches.length !== 2) {
+      expandedPreviewPinchDistanceRef.current = null;
+      expandedPreviewPanStartRef.current = null;
+      return;
+    }
+
+    const [firstTouch, secondTouch] = event.touches;
+    expandedPreviewPanStartRef.current = null;
+    expandedPreviewPinchDistanceRef.current = Math.hypot(
+      secondTouch.clientX - firstTouch.clientX,
+      secondTouch.clientY - firstTouch.clientY,
+    );
+  };
+
+  const handleExpandedPreviewTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 1 && expandedPreviewPanStartRef.current && expandedPreviewZoom > 1) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      setExpandedPreviewOffset({
+        x: expandedPreviewPanStartRef.current.offsetX + (touch.clientX - expandedPreviewPanStartRef.current.x),
+        y: expandedPreviewPanStartRef.current.offsetY + (touch.clientY - expandedPreviewPanStartRef.current.y),
+      });
+      return;
+    }
+
+    if (event.touches.length !== 2 || expandedPreviewPinchDistanceRef.current == null) {
+      return;
+    }
+
+    event.preventDefault();
+    const [firstTouch, secondTouch] = event.touches;
+    const nextDistance = Math.hypot(
+      secondTouch.clientX - firstTouch.clientX,
+      secondTouch.clientY - firstTouch.clientY,
+    );
+    const scaleRatio = nextDistance / expandedPreviewPinchDistanceRef.current;
+    expandedPreviewPinchDistanceRef.current = nextDistance;
+    setExpandedPreviewZoom((current) => Math.max(1, Math.min(4, current * scaleRatio)));
+  };
+
+  const handleExpandedPreviewTouchEnd = () => {
+    expandedPreviewPinchDistanceRef.current = null;
+    expandedPreviewPanStartRef.current = null;
+  };
+
+  const handleExpandedPreviewMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (expandedPreviewZoom <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    expandedPreviewPanStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: expandedPreviewOffsetRef.current.x,
+      offsetY: expandedPreviewOffsetRef.current.y,
+    };
+  };
+
+  const handleExpandedPreviewMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!expandedPreviewPanStartRef.current || expandedPreviewZoom <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    setExpandedPreviewOffset({
+      x: expandedPreviewPanStartRef.current.offsetX + (event.clientX - expandedPreviewPanStartRef.current.x),
+      y: expandedPreviewPanStartRef.current.offsetY + (event.clientY - expandedPreviewPanStartRef.current.y),
+    });
+  };
+
+  const handleExpandedPreviewMouseUp = () => {
+    expandedPreviewPanStartRef.current = null;
   };
 
   const handleCancel = () => {
@@ -831,20 +957,23 @@ export function EditDesignBottomSheet({
                     <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
                       Composition Preview
                     </Label>
-                    <div className={`relative ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}>
-                      <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: `url(${previewBackgroundImage || backgroundImage})`,
-                        backgroundSize: `${imageZoom * 100}%`,
-                        backgroundPosition: `${imageFocalPoint.x}% ${imageFocalPoint.y}%`,
-                        backgroundRepeat: 'no-repeat',
-                        }}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        haptics.light();
+                        resetExpandedPreviewTransform();
+                        setIsImageExpanded(true);
+                      }}
+                      className={`relative block w-full ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}
+                    >
+                      <LiveDesignPreview
+                        templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                        designData={currentPreviewData}
                       />
                       <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                        Live Preview
+                        Tap to Expand
                       </div>
-                    </div>
+                    </button>
                   </div>
 
                   {/* Reset Button */}
@@ -1014,31 +1143,9 @@ export function EditDesignBottomSheet({
                     Overlay Preview
                   </Label>
                   <div className={`relative ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}>
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: (previewBackgroundImage || backgroundImage)
-                          ? `url(${previewBackgroundImage || backgroundImage})`
-                          : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                        backgroundSize: (previewBackgroundImage || backgroundImage) ? `${imageZoom * 100}%` : 'cover',
-                        backgroundPosition: (previewBackgroundImage || backgroundImage) ? `${imageFocalPoint.x}% ${imageFocalPoint.y}%` : 'center',
-                        backgroundRepeat: 'no-repeat',
-                      }}
-                    />
-                    <div
-                      className="absolute inset-0"
-                      style={{
-                        backgroundImage: (() => {
-                          const gradientDirectionMap: Record<string, string> = {
-                            top: 'to bottom',
-                            bottom: 'to top',
-                            left: 'to right',
-                            right: 'to left',
-                          };
-                          const direction = gradientDirectionMap[gradientPosition] || 'to bottom';
-                          return `linear-gradient(${direction}, ${overlayColor}${Math.round(overlayOpacity * 2.55).toString(16).padStart(2, '0')} 0%, transparent 100%)`;
-                        })(),
-                      }}
+                    <LiveDesignPreview
+                      templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                      designData={currentPreviewData}
                     />
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                       Live Preview
@@ -1226,30 +1333,50 @@ export function EditDesignBottomSheet({
     </BottomSheet>
 
     {/* Expanded Image Preview Dialog */}
-    {(previewBackgroundImage || backgroundImage) && (
+    {isImageExpanded && (
       <Dialog open={isImageExpanded} onOpenChange={setIsImageExpanded}>
         <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
           <VisuallyHidden>
-            <DialogTitle>Background Image Preview</DialogTitle>
+            <DialogTitle>Design Preview</DialogTitle>
             <DialogDescription>
-              Full size preview of selected background image
+              Full size preview of the composed design with zoom and pan controls
             </DialogDescription>
           </VisuallyHidden>
-          <div className="relative">
+          <div className="relative rounded-2xl bg-black/95 p-4">
             <button
               onClick={() => {
                 haptics.light();
                 setIsImageExpanded(false);
+                resetExpandedPreviewTransform();
               }}
-              className="absolute top-4 right-4 z-50 bg-black/80 text-white p-2 rounded-full hover:bg-black transition-colors"
+              className="absolute top-4 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white transition-colors hover:bg-black"
             >
               <X className="w-6 h-6" />
             </button>
-            <img
-              src={previewBackgroundImage || backgroundImage}
-              alt="Selected background"
-              className="w-full h-auto max-h-[90vh] object-contain rounded-lg"
-            />
+            <div
+              className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-hidden touch-pan-y"
+              onTouchStart={handleExpandedPreviewTouchStart}
+              onTouchMove={handleExpandedPreviewTouchMove}
+              onTouchEnd={handleExpandedPreviewTouchEnd}
+              onMouseDown={handleExpandedPreviewMouseDown}
+              onMouseMove={handleExpandedPreviewMouseMove}
+              onMouseUp={handleExpandedPreviewMouseUp}
+              onMouseLeave={handleExpandedPreviewMouseUp}
+            >
+              <div
+                className="relative w-[min(100%,calc(85vh*0.8))] aspect-[4/5] max-h-[80vh] overflow-hidden rounded-lg"
+                style={{
+                  transform: `translate(${expandedPreviewOffset.x}px, ${expandedPreviewOffset.y}px) scale(${expandedPreviewZoom})`,
+                  transformOrigin: 'center center',
+                  cursor: expandedPreviewZoom > 1 ? 'grab' : 'default',
+                }}
+              >
+                <LiveDesignPreview
+                  templatePreviewUrl={previewBackgroundImage || backgroundImage || ''}
+                  designData={currentPreviewData}
+                />
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

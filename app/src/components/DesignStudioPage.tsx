@@ -1227,6 +1227,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           aspectRatio={selectedTemplate.aspectRatio}
           initialData={{
             ...livePreviewData,
+            headerTextColor: livePreviewData?.headerTextColor || selectedTemplate.fontColor || '#FFFFFF',
             templateVariant: livePreviewData?.templateVariant || selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
           }}
           hasHeader={selectedTemplate.hasHeader}
