@@ -587,13 +587,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     try {
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(`Download failed (${response.status})`);
-      }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
       const extension = activity.details.exportFormat === 'png' ? 'png' : 'jpg';
       const safeName = (activity.details.headerText || activity.details.templateName || 'design-render')
         .replace(/[^a-z0-9-_]+/gi, '-')
@@ -602,12 +595,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         .toLowerCase() || 'design-render';
 
       const anchor = document.createElement('a');
-      anchor.href = objectUrl;
+      anchor.href = downloadUrl;
       anchor.download = `${safeName}.${extension}`;
+      anchor.rel = 'noopener';
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      URL.revokeObjectURL(objectUrl);
       toast.success('Rendered image downloaded');
     } catch (error) {
       console.error('Failed to download rendered image:', error);
@@ -1261,6 +1254,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         <BottomSheetBody>
           <div className="flex flex-col gap-2">
             <button
+              type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
@@ -1271,6 +1265,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               Edit
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
@@ -1281,6 +1276,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               Publish
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
@@ -1291,6 +1287,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               Schedule
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
@@ -1303,6 +1300,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               Download
             </button>
             <button
+              type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;

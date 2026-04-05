@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Film, Image as ImageIcon, RotateCcw, Search, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -73,6 +73,12 @@ import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
 import { PageLoader, RedSpinner } from '../PageLoader';
 import { extractVideoMetadata } from '../../utils/videoMetadata';
 import { useSettings } from '../../contexts/SettingsContext';
+import {
+  fetchDesignStudioTMDbImages,
+  searchDesignStudioTMDb,
+  type DesignStudioTMDbImagePool,
+  type DesignStudioTMDbSearchResult,
+} from '../../lib/api/designStudio';
 
 interface ComposeEditorPageProps {
   isCompactLayout?: boolean;
@@ -272,6 +278,13 @@ export function ComposeEditorPage({
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
+  const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
+  const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [tmdbImagePool, setTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
+  const [tmdbImageCategory, setTmdbImageCategory] = useState<'backdrops' | 'posters' | 'profiles'>('backdrops');
+  const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
+  const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
   const [isGeneratingThreadsXCrop, setIsGeneratingThreadsXCrop] = useState(false);
   const [isUploadingThreadsXCrop, setIsUploadingThreadsXCrop] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -702,6 +715,137 @@ export function ComposeEditorPage({
     );
 
     setIsUploadingMedia(false);
+  };
+
+  const activeTmdbImages = useMemo(() => {
+    if (!tmdbImagePool) return [];
+    if (tmdbImageCategory === 'profiles') return tmdbImagePool.profiles || [];
+    if (tmdbImageCategory === 'posters') return tmdbImagePool.posters || [];
+    return tmdbImagePool.backdrops || [];
+  }, [tmdbImageCategory, tmdbImagePool]);
+
+  const handleTmdbSearch = async () => {
+    if (!tmdbSearchQuery.trim()) return;
+
+    haptics.medium();
+    setIsSearchingTmdb(true);
+    setSelectedTmdbResult(null);
+    setTmdbImagePool(null);
+
+    try {
+      const results = await searchDesignStudioTMDb(tmdbSearchQuery);
+      setTmdbResults(results);
+      if (!results.length) {
+        toast('No TMDb matches found', {
+          description: 'Try a more exact movie, TV show, or person name.',
+        });
+      }
+    } catch (error) {
+      console.error('TMDb search failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search TMDb');
+      setTmdbResults([]);
+    } finally {
+      setIsSearchingTmdb(false);
+    }
+  };
+
+  const handleSelectTmdbResult = async (result: DesignStudioTMDbSearchResult) => {
+    haptics.light();
+    setSelectedTmdbResult(result);
+    setIsLoadingTmdbImages(true);
+
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      setTmdbImagePool(pool);
+      const nextCategory = result.mediaType === 'person'
+        ? 'profiles'
+        : pool.backdrops?.length
+          ? 'backdrops'
+          : 'posters';
+      setTmdbImageCategory(nextCategory);
+    } catch (error) {
+      console.error('Failed to load TMDb image pool:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load TMDb images');
+      setSelectedTmdbResult(null);
+      setTmdbImagePool(null);
+    } finally {
+      setIsLoadingTmdbImages(false);
+    }
+  };
+
+  const handleBackToTmdbResults = () => {
+    haptics.light();
+    setSelectedTmdbResult(null);
+    setTmdbImagePool(null);
+  };
+
+  const handleSelectTmdbImage = async (imageUrl: string) => {
+    const currentOrder = formState.mediaAssets.length;
+    setIsUploadingMedia(true);
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch selected TMDb image (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const resultTitle = selectedTmdbResult?.title || 'tmdb-image';
+      const safeName = resultTitle
+        .replace(/[^a-z0-9-_]+/gi, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .toLowerCase() || 'tmdb-image';
+      const extension = blob.type.includes('png') ? 'png' : 'jpg';
+      const file = new File([blob], `${safeName}-${tmdbImageCategory}.${extension}`, {
+        type: blob.type || 'image/jpeg',
+      });
+
+      const pendingAsset = await buildComposeMediaAsset(file, currentOrder);
+      setFormState((current) => ({
+        ...current,
+        mediaAssets: [...current.mediaAssets, pendingAsset],
+      }));
+
+      try {
+        const uploaded = await uploadComposeAsset(file);
+        updateAsset(pendingAsset.id, (currentAsset) => ({
+          ...currentAsset,
+          previewUrl: uploaded.previewUrl || currentAsset.previewUrl,
+          storageUrl: uploaded.url,
+          storageFileId: uploaded.fileId,
+          uploadStatus: 'uploaded',
+          uploadError: undefined,
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Upload failed';
+        if (message.toLowerCase().includes('not configured')) {
+          updateAsset(pendingAsset.id, (currentAsset) => ({
+            ...currentAsset,
+            uploadStatus: 'idle',
+            uploadError: undefined,
+          }));
+        } else {
+          updateAsset(pendingAsset.id, (currentAsset) => ({
+            ...currentAsset,
+            uploadStatus: 'failed',
+            uploadError: message,
+          }));
+          toast.error(message);
+        }
+      }
+
+      setSelectedTmdbResult(null);
+      setTmdbImagePool(null);
+      setTmdbResults([]);
+      setTmdbSearchQuery('');
+      toast.success('TMDb image added to media');
+    } catch (error) {
+      console.error('Failed to add TMDb image:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to add TMDb image');
+    } finally {
+      setIsUploadingMedia(false);
+    }
   };
 
   const handleThumbnailSelected = async (
@@ -1462,6 +1606,122 @@ export function ComposeEditorPage({
                   </div>
                 </Label>
                 <input id="compose-media" type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaSelected} />
+              </div>
+              <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <div>
+                  <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
+                  <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    Find a movie, TV show, or person, then add a backdrop, poster, or profile image directly to this post.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={tmdbSearchQuery}
+                    onChange={(event) => setTmdbSearchQuery(event.target.value)}
+                    placeholder="Search TMDb for movie, TV, or person..."
+                    className="bg-white dark:bg-black"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => void handleTmdbSearch()}
+                    disabled={isSearchingTmdb || !tmdbSearchQuery.trim()}
+                    className="shrink-0"
+                  >
+                    {isSearchingTmdb ? 'Searching...' : <><Search className="h-4 w-4" />Search</>}
+                  </Button>
+                </div>
+
+                {selectedTmdbResult ? (
+                  <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                    <div className="flex items-center justify-between gap-3">
+                      <button
+                        type="button"
+                        onClick={handleBackToTmdbResults}
+                        className="inline-flex items-center gap-2 text-xs text-[#6B7280] transition-colors hover:text-[#ec1e24] dark:text-[#9CA3AF]"
+                      >
+                        <ArrowLeft className="h-3.5 w-3.5" />
+                        Back
+                      </button>
+                      <span className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
+                        {selectedTmdbResult.mediaType}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-900 dark:text-white">{selectedTmdbResult.title}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedTmdbResult.mediaType !== 'person' ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant={tmdbImageCategory === 'backdrops' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setTmdbImageCategory('backdrops')}
+                          >
+                            Backdrops
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={tmdbImageCategory === 'posters' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setTmdbImageCategory('posters')}
+                          >
+                            Posters
+                          </Button>
+                        </>
+                      ) : null}
+                      {selectedTmdbResult.mediaType === 'person' ? (
+                        <Button type="button" variant="default" size="sm">
+                          Profiles
+                        </Button>
+                      ) : null}
+                    </div>
+                    {isLoadingTmdbImages ? (
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading images...</p>
+                    ) : activeTmdbImages.length ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {activeTmdbImages.map((asset, index) => (
+                          <button
+                            key={`${asset.url}-${index}`}
+                            type="button"
+                            onClick={() => void handleSelectTmdbImage(asset.url)}
+                            className="overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-[#ec1e24] dark:border-[#333333] dark:bg-[#050505]"
+                          >
+                            <img
+                              src={asset.url}
+                              alt={`${selectedTmdbResult.title} ${tmdbImageCategory}`}
+                              className={`w-full object-cover ${tmdbImageCategory === 'backdrops' ? 'aspect-video' : 'aspect-[2/3]'}`}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No images available for this category.</p>
+                    )}
+                  </div>
+                ) : tmdbResults.length ? (
+                  <div className="space-y-2">
+                    {tmdbResults.map((result) => {
+                      const thumb = result.backdrop || result.poster || result.profile || '';
+                      return (
+                        <button
+                          key={`${result.mediaType}-${result.id}`}
+                          type="button"
+                          onClick={() => void handleSelectTmdbResult(result)}
+                          className="flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-left transition hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
+                        >
+                          <div className="h-14 w-14 overflow-hidden rounded-xl bg-[#111111]">
+                            {thumb ? <img src={thumb} alt={result.title} className="h-full w-full object-cover" /> : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                            <p className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
+                              {result.mediaType}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             </div>
             {formState.mediaAssets.length > 0 ? (

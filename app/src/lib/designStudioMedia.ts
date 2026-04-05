@@ -4,5 +4,9 @@ export function buildDesignStudioMediaStreamUrl(url?: string | null): string | u
     return url;
   }
 
+  if (!/backblazeb2\.com|backblaze\.com|\/file\//i.test(url)) {
+    return url;
+  }
+
   return `/api/design-studio/media-stream?url=${encodeURIComponent(url)}`;
 }

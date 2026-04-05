@@ -127,6 +127,7 @@ export function PublishBottomSheet({
             <Label className="text-gray-900 dark:text-white">Social Media Caption</Label>
             {onCaptionGenerate && (
               <button
+                type="button"
                 onClick={handleGenerateCaption}
                 disabled={isGeneratingCaption}
                 className="text-sm text-black dark:text-white hover:opacity-70 disabled:opacity-50 flex items-center gap-1"
@@ -172,6 +173,7 @@ export function PublishBottomSheet({
           <div className="flex justify-center">
             <div className="grid grid-cols-3 gap-3 max-w-fit">
               {allowedPlatforms.includes('x') ? <button
+                type="button"
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, x: !selectedPlatforms.x });
@@ -187,6 +189,7 @@ export function PublishBottomSheet({
               : null}
 
               {allowedPlatforms.includes('threads') ? <button
+                type="button"
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, threads: !selectedPlatforms.threads });
@@ -202,6 +205,7 @@ export function PublishBottomSheet({
               : null}
 
               {allowedPlatforms.includes('facebook') ? <button
+                type="button"
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, facebook: !selectedPlatforms.facebook });
@@ -217,6 +221,7 @@ export function PublishBottomSheet({
               : null}
 
               {allowedPlatforms.includes('instagram') ? <button
+                type="button"
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, instagram: !selectedPlatforms.instagram });
@@ -232,6 +237,7 @@ export function PublishBottomSheet({
               : null}
 
               {allowedPlatforms.includes('pinterest') ? <button
+                type="button"
                 onClick={() => {
                   haptics.light();
                   setSelectedPlatforms({ ...selectedPlatforms, pinterest: !selectedPlatforms.pinterest });
@@ -337,6 +343,7 @@ export function PublishBottomSheet({
       <BottomSheetFooter>
         <div className="flex gap-3 w-full">
           <Button
+            type="button"
             onClick={handleCancel}
             variant="outline"
             className="flex-1 border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#000000]"
@@ -344,6 +351,7 @@ export function PublishBottomSheet({
             Cancel
           </Button>
           <Button
+            type="button"
             onClick={handlePublish}
             className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white shadow-none hover:shadow-none active:shadow-none focus:shadow-none hover:scale-100 active:scale-100"
           >
