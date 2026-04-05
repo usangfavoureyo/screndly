@@ -189,6 +189,36 @@ function activityDescription(activity: DesignStudioActivityRecord): string {
   }
 }
 
+function getLinkedRenderJobDismissals(
+  activity: DesignStudioActivityRecord,
+  manualRenderJobs: DesignStudioManualRenderJob[],
+): string[] {
+  if (activity.type !== 'design_rendered' && activity.type !== 'design_render_failed') {
+    return [];
+  }
+
+  const renderJobId = activity.details?.renderJobId;
+  const templateName = activity.details?.templateName;
+  const activityCreatedAt = new Date(activity.createdAt).getTime();
+
+  return manualRenderJobs
+    .filter((job) => {
+      if (renderJobId && job.id === renderJobId) {
+        return true;
+      }
+
+      if (!templateName || job.templateName !== templateName) {
+        return false;
+      }
+
+      const jobCreatedAt = new Date(job.createdAt).getTime();
+      return Number.isNaN(activityCreatedAt)
+        || Number.isNaN(jobCreatedAt)
+        || jobCreatedAt <= activityCreatedAt;
+    })
+    .map((job) => `render-job-${job.id}`);
+}
+
 export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStudioActivityPageProps) {
   const cachedActivityState = (() => {
     if (typeof window === 'undefined') return null;
@@ -931,15 +961,17 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const deletedActivity = activities.find((activity) => activity.id === id);
     const deletedIndex = activities.findIndex((activity) => activity.id === id);
     if (!deletedActivity || deletedIndex === -1) return;
+    const linkedRenderJobDismissals = getLinkedRenderJobDismissals(deletedActivity, manualRenderJobs);
+    const dismissIds = [id, ...linkedRenderJobDismissals];
 
-    setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
     setActivities((prev) => prev.filter((activity) => activity.id !== id));
 
     showUndo({
       id,
       itemName: activityTitle(deletedActivity),
       onUndo: () => {
-        setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+        setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
         setActivities((prev) => {
           if (prev.some((activity) => activity.id === deletedActivity.id)) {
             return prev;
@@ -958,7 +990,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           toast.success('Activity deleted');
         } catch (error) {
           console.error('Failed to delete design studio activity:', error);
-          setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+          setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
           setActivities((prev) => {
             if (prev.some((activity) => activity.id === deletedActivity.id)) {
               return prev;
@@ -981,11 +1013,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const selectedIdSet = new Set(selection.selectedIds);
     const syntheticIds = selection.selectedIds.filter((id) => id.startsWith('render-job-'));
     const persistedIds = selection.selectedIds.filter((id) => !id.startsWith('render-job-'));
+    const linkedRenderJobDismissals = activities
+      .filter((activity) => selectedIdSet.has(activity.id))
+      .flatMap((activity) => getLinkedRenderJobDismissals(activity, manualRenderJobs));
+    const allSyntheticDismissals = Array.from(new Set([...syntheticIds, ...linkedRenderJobDismissals]));
 
     try {
-      if (syntheticIds.length > 0) {
-        setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...syntheticIds])));
-        setManualRenderJobs((prev) => prev.filter((job) => !selectedIdSet.has(`render-job-${job.id}`)));
+      if (allSyntheticDismissals.length > 0) {
+        const syntheticIdSet = new Set(allSyntheticDismissals);
+        setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...allSyntheticDismissals])));
+        setManualRenderJobs((prev) => prev.filter((job) => !syntheticIdSet.has(`render-job-${job.id}`)));
       }
 
       await Promise.all(
@@ -996,7 +1033,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           }
         })
       );
-      setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...persistedIds])));
+      setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...persistedIds, ...allSyntheticDismissals])));
       setActivities((prev) => prev.filter((activity) => !selectedIdSet.has(activity.id)));
       toast.success(`${selection.selectedCount} design activity item${selection.selectedCount === 1 ? '' : 's'} deleted`);
       selection.clearSelection();

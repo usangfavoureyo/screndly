@@ -2367,7 +2367,21 @@ async function resolveRSSActivityImageUrl(url?: string): Promise<string | undefi
   }
 }
 
+function isNoResolvedImagesFailure(error?: string): boolean {
+  return typeof error === 'string' &&
+    error.toLowerCase().includes('no resolved images were available');
+}
+
 async function resolveRSSActivityItemImages(item: RSSActivityItem): Promise<RSSActivityItem> {
+  if (isNoResolvedImagesFailure(item.error)) {
+    return {
+      ...item,
+      imageUrl: undefined,
+      imageUrls: [],
+      selectedImages: [],
+    };
+  }
+
   const [imageUrl, imageUrls, selectedImages] = await Promise.all([
     resolveRSSActivityImageUrl(item.imageUrl),
     Promise.all((item.imageUrls || []).map((url) => resolveRSSActivityImageUrl(url))),
