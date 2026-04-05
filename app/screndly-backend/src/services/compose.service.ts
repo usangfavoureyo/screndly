@@ -317,15 +317,19 @@ function validateScheduledComposeItem(item: ComposeStateItem): string | undefine
   }
 
   if (mediaSummary.kind === 'multi-image') {
+    const supportsMultiImage = new Set(['x', 'threads', 'facebook_feed']);
     for (const platform of platforms) {
-      if (platform === 'x' || platform === 'threads') {
+      if (supportsMultiImage.has(platform)) {
         continue;
       }
-      return 'Only X and Threads support multiple images in the current scheduling flow.';
+      return 'Only Facebook Feed, X, and Threads support multiple images in the current scheduling flow.';
     }
 
-    if (mediaSummary.totalAssets > 4) {
-      return 'X and Threads currently support up to 4 images in this post flow.';
+    const maxItems = platforms.includes('facebook_feed') ? 3 : 4;
+    if (mediaSummary.totalAssets > maxItems) {
+      return platforms.includes('facebook_feed')
+        ? 'Facebook Feed currently supports up to 3 images in this post flow.'
+        : 'X and Threads currently support up to 4 images in this post flow.';
     }
 
     return undefined;

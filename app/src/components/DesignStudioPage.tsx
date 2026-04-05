@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, Cloud, X, MoreVertical, ZoomIn, ZoomOut } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, ZoomIn, ZoomOut, Plus } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -106,6 +106,12 @@ interface RenderedDesign {
   contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
 }
 
+interface DesignStudioEditorTarget {
+  templateId: string;
+  tab?: DesignStudioTab;
+  initialData?: DesignData | null;
+}
+
 type DesignStudioTab = 'manual' | 'auto';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
@@ -121,6 +127,31 @@ type AutoEditorialAction =
   | 'schedule';
 
 const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
+const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
+
+function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'png'): DesignData {
+  return {
+    headerText: '',
+    subtext: '',
+    headerTextColor: template.fontColor || '#FFFFFF',
+    fontScale: 1,
+    lineHeightMultiplier: template.lineHeightMultiplier || 0.93,
+    backgroundImage: '',
+    imageFocalPoint: { x: 50, y: 50 },
+    imageZoom: 1,
+    overlayEnabled: true,
+    overlayColor: '#000000',
+    overlayOpacity: typeof template.overlayStrength === 'number'
+      ? Math.round(template.overlayStrength * 100)
+      : 70,
+    gradientPosition: (template.overlayDirection as DesignData['gradientPosition']) || 'top',
+    templateVariant: template.layoutVariant || template.baseVariant || 'bottom_center',
+    fadeEnabled: true,
+    fadeOpacity: 90,
+    brandBlockMode: 'auto',
+    exportFormat,
+  };
+}
 
 function parseTemplate(template: any): Template {
   const lastEditedSource = template.lastEdited || template.updatedAt || template.createdAt || new Date().toISOString();
@@ -239,8 +270,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [expandedTemplate, setExpandedTemplate] = useState<Template | null>(null);
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false);
+  const [editorInitialData, setEditorInitialData] = useState<DesignData | null>(null);
   const [livePreviewData, setLivePreviewData] = useState<DesignData | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [pendingEditorTarget, setPendingEditorTarget] = useState<DesignStudioEditorTarget | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
@@ -266,6 +307,32 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     localStorage.setItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    if (!pendingEditorTarget) {
+      return;
+    }
+
+    const template = templates.find((entry) => entry.id === pendingEditorTarget.templateId);
+    if (!template) {
+      return;
+    }
+
+    if (pendingEditorTarget.tab) {
+      setActiveTab(pendingEditorTarget.tab);
+    }
+
+    setSelectedTemplate(template);
+    setEditingTemplateId(template.id);
+    setEditorInitialData(pendingEditorTarget.initialData || buildTemplateInitialData(template, settings.exportFormat === 'png' ? 'png' : 'jpeg'));
+    setLivePreviewData(pendingEditorTarget.initialData || null);
+    setIsEditSheetOpen(true);
+    setPendingEditorTarget(null);
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
+    }
+  }, [pendingEditorTarget, settings.exportFormat, templates]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -574,6 +641,28 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     haptics.light();
     setSelectedTemplate(template);
     setEditingTemplateId(template.id);
+    setEditorInitialData(buildTemplateInitialData(template, settings.exportFormat === 'png' ? 'png' : 'jpeg'));
+    setLivePreviewData(null);
+    setIsEditSheetOpen(true);
+  };
+
+  const handleCreateDesign = () => {
+    const preferredTemplate = templates.find((template) => template.isDefaultManual)
+      || templates.find((template) => template.isValidated !== false)
+      || templates[0];
+
+    if (!preferredTemplate) {
+      toast.error('Upload or load a template first');
+      return;
+    }
+
+    haptics.light();
+    setActiveTab('manual');
+    setSelectedTemplate(preferredTemplate);
+    setEditingTemplateId(preferredTemplate.id);
+    const initialData = buildTemplateInitialData(preferredTemplate, settings.exportFormat === 'png' ? 'png' : 'jpeg');
+    setEditorInitialData(initialData);
+    setLivePreviewData(initialData);
     setIsEditSheetOpen(true);
   };
 
@@ -773,30 +862,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return defaultAutoTemplate ? [defaultAutoTemplate] : [];
   }, [defaultAutoTemplate, validatedTemplates]);
 
-  const editInitialData = useMemo(() => {
-    if (!selectedTemplate) {
-      return undefined;
-    }
-
-    return {
-      headerTextColor: selectedTemplate.fontColor || '#FFFFFF',
-      fontScale: 1,
-      lineHeightMultiplier: selectedTemplate.lineHeightMultiplier || 0.93,
-      templateVariant: selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
-      overlayColor: '#000000',
-      overlayOpacity:
-        typeof selectedTemplate.overlayStrength === 'number'
-          ? Math.round(selectedTemplate.overlayStrength * 100)
-          : 70,
-      gradientPosition:
-        ((selectedTemplate.overlayDirection as DesignData['gradientPosition']) || 'top'),
-      fadeEnabled: true,
-      fadeOpacity: 90,
-      brandBlockMode: 'auto' as const,
-      exportFormat: settings.exportFormat === 'png' ? 'png' : 'jpeg',
-    };
-  }, [selectedTemplate, settings.exportFormat]);
-
   const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
       return '';
@@ -991,7 +1056,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       {activeTab === 'manual' ? (
         <>
           {/* Template Ingestion Section */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="block">
               <input
                 ref={fileInputRef}
@@ -1022,6 +1087,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             >
               <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
               <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCreateDesign}
+              className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+            >
+              <Plus className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+              <p className="text-gray-900 dark:text-white">Create Design</p>
+              <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                Start a new design using your saved template layout
+              </p>
             </button>
           </div>
 
@@ -1245,12 +1322,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             setIsEditSheetOpen(open);
             if (!open) {
               setEditingTemplateId(null);
+              setEditorInitialData(null);
               setLivePreviewData(null);
             }
           }}
           templateName={selectedTemplate.name}
           aspectRatio={selectedTemplate.aspectRatio}
-          initialData={editInitialData}
+          initialData={editorInitialData || buildTemplateInitialData(selectedTemplate, settings.exportFormat === 'png' ? 'png' : 'jpeg')}
           hasHeader={selectedTemplate.hasHeader}
           hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}

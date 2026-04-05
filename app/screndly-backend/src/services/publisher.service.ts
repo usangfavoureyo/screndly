@@ -549,6 +549,7 @@ export class PublisherService {
                 return 4;
             case 'Threads':
             case 'Facebook':
+            case 'FacebookFeed':
                 return 3;
             default:
                 return 1;

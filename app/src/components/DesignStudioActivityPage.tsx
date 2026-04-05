@@ -12,10 +12,12 @@ import {
   type DesignStudioManualRenderJob,
 } from '../lib/api/designStudio';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
+import type { DesignData } from './EditDesignBottomSheet';
 import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 
 const DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_design_studio_activity_target';
+const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -73,6 +75,12 @@ interface ActivityPublishTarget {
 interface ActivityPreviewTarget {
   title: string;
   imageUrl: string;
+}
+
+interface DesignStudioEditorTarget {
+  templateId: string;
+  tab?: DesignStudioActivityTab;
+  initialData?: DesignData | null;
 }
 
 interface DesignStudioActivityPageProps {
@@ -457,17 +465,89 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     () => new Map(autoEditorials.map((editorial) => [editorial.renderedImage, editorial])),
     [autoEditorials],
   );
+  const findAutoEditorialForActivity = (activity: DesignStudioActivityRecord) =>
+    autoEditorials.find((editorial) => {
+      if (activity.details.outputUrl && editorial.renderedImage === activity.details.outputUrl) {
+        return true;
+      }
 
-  const getActivityDownloadUrl = (activity: DesignStudioActivityRecord) =>
-    buildDesignStudioMediaStreamUrl(activity.details.previewUrl || activity.details.outputUrl)
-    || activity.details.previewUrl
-    || activity.details.outputUrl
-    || '';
+      if (activity.details.previewUrl && editorial.renderedImage === activity.details.previewUrl) {
+        return true;
+      }
 
-  const getActivityImageUrl = (activity: DesignStudioActivityRecord) =>
-    activity.details.previewUrl
-    || activity.details.outputUrl
-    || '';
+      return Boolean(activity.details.sourceTitle) && editorial.sourceTitle === activity.details.sourceTitle;
+    });
+
+  const buildManualEditData = (renderedDesign: DesignStudioRenderedDesignRecord): DesignData => ({
+    headerText: String(renderedDesign.data?.headerText || ''),
+    subtext: typeof renderedDesign.data?.subtext === 'string' ? renderedDesign.data.subtext : '',
+    headerTextColor: renderedDesign.data?.headerTextColor || '#FFFFFF',
+    subtextColor: renderedDesign.data?.subtextColor || '#000000',
+    fontScale: typeof renderedDesign.data?.fontScale === 'number' ? renderedDesign.data.fontScale : 1,
+    lineHeightMultiplier:
+      typeof renderedDesign.data?.lineHeightMultiplier === 'number'
+        ? renderedDesign.data.lineHeightMultiplier
+        : 0.93,
+    backgroundImage: renderedDesign.data?.backgroundImage || '',
+    imageFocalPoint: renderedDesign.data?.imageFocalPoint || { x: 50, y: 50 },
+    imageZoom: typeof renderedDesign.data?.imageZoom === 'number' ? renderedDesign.data.imageZoom : 1,
+    overlayEnabled: renderedDesign.data?.overlayEnabled ?? true,
+    overlayColor: renderedDesign.data?.overlayColor || '#000000',
+    overlayOpacity: typeof renderedDesign.data?.overlayOpacity === 'number' ? renderedDesign.data.overlayOpacity : 70,
+    gradientPosition: renderedDesign.data?.gradientPosition || 'top',
+    templateVariant: renderedDesign.templateVariant || renderedDesign.data?.template_variant || 'bottom_center',
+    fadeEnabled: renderedDesign.data?.fadeEnabled ?? true,
+    fadeOpacity: typeof renderedDesign.data?.fadeOpacity === 'number' ? renderedDesign.data.fadeOpacity : 90,
+    brandBlockMode: renderedDesign.data?.brandBlockMode || 'auto',
+    caption: renderedDesign.caption,
+    contentType: renderedDesign.contentType,
+    exportFormat: renderedDesign.exportFormat,
+  });
+
+  const buildAutoEditData = (editorial: DesignStudioAutoEditorialRecord): DesignData => ({
+    headerText: editorial.headerText || '',
+    subtext: editorial.subheaderText || '',
+    headerTextColor: '#FFFFFF',
+    subtextColor: '#000000',
+    fontScale: 1,
+    lineHeightMultiplier: 0.93,
+    backgroundImage: editorial.backgroundSource || editorial.renderedImage || '',
+    imageFocalPoint: {
+      x: typeof editorial.backgroundOffsetX === 'number' ? 50 + editorial.backgroundOffsetX : 50,
+      y: typeof editorial.backgroundOffsetY === 'number' ? 50 + editorial.backgroundOffsetY : 50,
+    },
+    imageZoom: typeof editorial.zoomLevel === 'number' ? editorial.zoomLevel : 1,
+    overlayEnabled: true,
+    overlayColor: '#000000',
+    overlayOpacity: typeof editorial.overlayStrength === 'number' ? Math.round(editorial.overlayStrength * 100) : 70,
+    gradientPosition: (editorial.overlayDirection as DesignData['gradientPosition']) || 'top',
+    templateVariant: editorial.templateVariant || 'bottom_center',
+    fadeEnabled: true,
+    fadeOpacity: 90,
+    brandBlockMode: 'auto',
+    caption: editorial.caption,
+    contentType: 'announcement',
+    exportFormat: 'jpeg',
+  });
+
+  const openEditorTarget = (target: DesignStudioEditorTarget) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
+      window.localStorage.setItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
+    }
+    onNavigate('design-studio');
+  };
+
+  const getActivityDownloadUrl = (activity: DesignStudioActivityRecord) => {
+    const autoEditorial = findAutoEditorialForActivity(activity);
+    const mediaUrl = activity.details.previewUrl || activity.details.outputUrl || autoEditorial?.renderedImage;
+    return buildDesignStudioMediaStreamUrl(mediaUrl) || mediaUrl || '';
+  };
+
+  const getActivityImageUrl = (activity: DesignStudioActivityRecord) => {
+    const autoEditorial = findAutoEditorialForActivity(activity);
+    return activity.details.previewUrl || activity.details.outputUrl || autoEditorial?.renderedImage || '';
+  };
 
   const handleDownload = async (activity: DesignStudioActivityRecord) => {
     const downloadUrl = getActivityDownloadUrl(activity);
@@ -506,18 +586,19 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handleOpenPublish = (activity: DesignStudioActivityRecord) => {
-    const outputUrl = activity.details.outputUrl || activity.details.previewUrl;
+    const autoEditorial = findAutoEditorialForActivity(activity);
+    const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorial?.renderedImage;
     if (!outputUrl) {
       toast.error('No rendered image available to publish');
       return;
     }
 
     const renderedDesign = renderedDesignByOutputUrl.get(outputUrl);
-    const autoEditorial = autoEditorialByImageUrl.get(outputUrl);
+    const resolvedAutoEditorial = autoEditorialByImageUrl.get(outputUrl) || autoEditorial;
     const resolvedTitle = renderedDesign?.data?.headerText
       || activity.details.headerText
-      || autoEditorial?.headerText
-      || autoEditorial?.sourceTitle
+      || resolvedAutoEditorial?.headerText
+      || resolvedAutoEditorial?.sourceTitle
       || activity.details.sourceTitle
       || activity.details.templateName
       || 'Rendered Design';
@@ -526,17 +607,17 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       activityId: activity.id,
       title: resolvedTitle,
       outputUrl,
-      caption: autoEditorial?.caption || renderedDesign?.caption,
-      contentType: autoEditorial
+      caption: resolvedAutoEditorial?.caption || renderedDesign?.caption,
+      contentType: resolvedAutoEditorial
         ? 'announcement'
         : renderedDesign?.contentType,
-      context: autoEditorial?.subheaderText
+      context: resolvedAutoEditorial?.subheaderText
         || renderedDesign?.data?.subtext
         || renderedDesign?.templateName
         || activity.details.templateName,
-      sourceTitle: autoEditorial?.sourceTitle || activity.details.sourceTitle,
-      matchedKeyword: autoEditorial?.matchedKeyword || activity.details.matchedKeyword,
-      isAutoEditorial: Boolean(autoEditorial),
+      sourceTitle: resolvedAutoEditorial?.sourceTitle || activity.details.sourceTitle,
+      matchedKeyword: resolvedAutoEditorial?.matchedKeyword || activity.details.matchedKeyword,
+      isAutoEditorial: Boolean(resolvedAutoEditorial),
     });
     setIsPublishSheetOpen(true);
   };
@@ -577,6 +658,33 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     });
     setPreviewZoom(1);
     setPreviewOffset({ x: 0, y: 0 });
+  };
+
+  const handleEditActivity = (activity: DesignStudioActivityRecord) => {
+    const autoEditorialFromActivity = findAutoEditorialForActivity(activity);
+    const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorialFromActivity?.renderedImage;
+    const renderedDesign = outputUrl ? renderedDesignByOutputUrl.get(outputUrl) : undefined;
+    const autoEditorial = outputUrl ? autoEditorialByImageUrl.get(outputUrl) || autoEditorialFromActivity : autoEditorialFromActivity;
+
+    if (renderedDesign) {
+      openEditorTarget({
+        templateId: renderedDesign.templateId,
+        tab: 'manual',
+        initialData: buildManualEditData(renderedDesign),
+      });
+      return;
+    }
+
+    if (autoEditorial) {
+      openEditorTarget({
+        templateId: autoEditorial.templateId,
+        tab: 'auto',
+        initialData: buildAutoEditData(autoEditorial),
+      });
+      return;
+    }
+
+    toast.error('No editable design configuration was found for this item');
   };
 
   useEffect(() => {
@@ -1046,7 +1154,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                           </p>
                         </div>
                       </div>
-                      {activity.type === 'design_rendered' ? (
+                      {(activity.type === 'design_rendered' || activity.type.startsWith('auto_editorial_')) ? (
                         <div className="mt-3 flex justify-end">
                           <Button
                             type="button"
@@ -1115,6 +1223,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         </BottomSheetHeader>
         <BottomSheetBody>
           <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => handleEditActivity(current));
+              }}
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+            >
+              Edit
+            </button>
             <button
               onClick={() => {
                 if (!menuActivity) return;

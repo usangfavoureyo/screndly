@@ -48,10 +48,10 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   facebook_feed: {
     supportsSingleImage: true,
     supportsSingleVideo: true,
-    supportsMultiImage: false,
+    supportsMultiImage: true,
     supportsMultiVideo: false,
     supportsMixedMedia: false,
-    maxItems: 1,
+    maxItems: 3,
   },
   facebook_stories: {
     supportsSingleImage: true,

@@ -133,24 +133,48 @@ async function publishThreadsContainer(
     creationId: string,
     accessToken: string
 ): Promise<string> {
-    const publishPayload = new URLSearchParams({
-        creation_id: creationId,
-        access_token: accessToken,
-    });
+    const maxAttempts = 3;
 
-    const publishRes = await axios.post(
-        `${THREADS_BASE_URL}/${userId}/threads_publish`,
-        publishPayload.toString(),
-        {
-            headers: FORM_URL_ENCODED_HEADERS,
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+            const publishPayload = new URLSearchParams({
+                creation_id: creationId,
+                access_token: accessToken,
+            });
+
+            const publishRes = await axios.post(
+                `${THREADS_BASE_URL}/${userId}/threads_publish`,
+                publishPayload.toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            if (!publishRes.data.id) {
+                throw new Error('Failed to publish Threads media container');
+            }
+
+            return String(publishRes.data.id);
+        } catch (error: any) {
+            const message = extractMetaError(error);
+            const statusCode = Number(error?.response?.status || 0);
+            const isRetryable =
+                attempt < maxAttempts - 1 &&
+                (
+                    statusCode === 429 ||
+                    statusCode >= 500 ||
+                    /retry your request later|unexpected error|temporar/i.test(message)
+                );
+
+            if (!isRetryable) {
+                throw error;
+            }
+
+            await sleep((attempt + 1) * 3_000);
         }
-    );
-
-    if (!publishRes.data.id) {
-        throw new Error('Failed to publish Threads media container');
     }
 
-    return String(publishRes.data.id);
+    throw new Error('Failed to publish Threads media container');
 }
 
 async function uploadUnpublishedFacebookPhoto(
@@ -222,7 +246,7 @@ async function waitForThreadsMediaReady(containerId: string, accessToken: string
         });
 
         const status = String(statusResponse.data?.status || '').toUpperCase();
-        if (!status || status === 'FINISHED' || status === 'PUBLISHED' || status === 'READY') {
+        if (status === 'FINISHED' || status === 'PUBLISHED' || status === 'READY') {
             return;
         }
 
