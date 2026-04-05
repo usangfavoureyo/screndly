@@ -217,7 +217,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [isRenameSheetOpen, setIsRenameSheetOpen] = useState(false);
   const [previewTarget, setPreviewTarget] = useState<ActivityPreviewTarget | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
   const pinchDistanceRef = useRef<number | null>(null);
+  const previewOffsetRef = useRef({ x: 0, y: 0 });
+  const previewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const [dismissedActivityIds, setDismissedActivityIds] = useState<string[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -539,7 +542,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       imageUrl,
     });
     setPreviewZoom(1);
+    setPreviewOffset({ x: 0, y: 0 });
   };
+
+  useEffect(() => {
+    previewOffsetRef.current = previewOffset;
+  }, [previewOffset]);
 
   const handleSaveSchedule = async () => {
     if (!scheduleActivity || !scheduledDate || !scheduledTime) {
@@ -614,12 +622,26 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length !== 2) {
+    if (event.touches.length === 1 && previewZoom > 1) {
+      const touch = event.touches[0];
+      previewPanStartRef.current = {
+        x: touch.clientX,
+        y: touch.clientY,
+        offsetX: previewOffsetRef.current.x,
+        offsetY: previewOffsetRef.current.y,
+      };
       pinchDistanceRef.current = null;
       return;
     }
 
+    if (event.touches.length !== 2) {
+      pinchDistanceRef.current = null;
+      previewPanStartRef.current = null;
+      return;
+    }
+
     const [firstTouch, secondTouch] = event.touches;
+    previewPanStartRef.current = null;
     pinchDistanceRef.current = Math.hypot(
       secondTouch.clientX - firstTouch.clientX,
       secondTouch.clientY - firstTouch.clientY,
@@ -627,6 +649,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 1 && previewPanStartRef.current && previewZoom > 1) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      setPreviewOffset({
+        x: previewPanStartRef.current.offsetX + (touch.clientX - previewPanStartRef.current.x),
+        y: previewPanStartRef.current.offsetY + (touch.clientY - previewPanStartRef.current.y),
+      });
+      return;
+    }
+
     if (event.touches.length !== 2 || pinchDistanceRef.current == null) {
       return;
     }
@@ -645,6 +677,37 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const handlePreviewTouchEnd = () => {
     pinchDistanceRef.current = null;
+    previewPanStartRef.current = null;
+  };
+
+  const handlePreviewMouseDown = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (previewZoom <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    previewPanStartRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      offsetX: previewOffsetRef.current.x,
+      offsetY: previewOffsetRef.current.y,
+    };
+  };
+
+  const handlePreviewMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!previewPanStartRef.current || previewZoom <= 1) {
+      return;
+    }
+
+    event.preventDefault();
+    setPreviewOffset({
+      x: previewPanStartRef.current.offsetX + (event.clientX - previewPanStartRef.current.x),
+      y: previewPanStartRef.current.offsetY + (event.clientY - previewPanStartRef.current.y),
+    });
+  };
+
+  const handlePreviewMouseUp = () => {
+    previewPanStartRef.current = null;
   };
 
   const handlePublish = async (caption: string, platforms: PlatformSelection) => {
@@ -1204,12 +1267,21 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 onTouchStart={handlePreviewTouchStart}
                 onTouchMove={handlePreviewTouchMove}
                 onTouchEnd={handlePreviewTouchEnd}
+                onMouseDown={handlePreviewMouseDown}
+                onMouseMove={handlePreviewMouseMove}
+                onMouseUp={handlePreviewMouseUp}
+                onMouseLeave={handlePreviewMouseUp}
               >
                 <img
                   src={previewTarget.imageUrl}
                   alt={previewTarget.title}
+                  draggable={false}
                   className="max-h-[78vh] w-auto max-w-full object-contain transition-transform duration-150"
-                  style={{ transform: `scale(${previewZoom})`, transformOrigin: 'center center' }}
+                  style={{
+                    transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom})`,
+                    transformOrigin: 'center center',
+                    cursor: previewZoom > 1 ? 'grab' : 'default',
+                  }}
                 />
               </div>
             </div>
