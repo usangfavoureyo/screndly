@@ -113,6 +113,45 @@ export function isTMDbLogoCardUrl(url?: string | null): boolean {
   return typeof url === 'string' && url.includes('/rss/logo-cards/');
 }
 
+export function resolveTMDbPreviewAsset(
+  imageUrl?: string | null,
+  imageType?: string | null,
+  imageUrls?: string[] | null,
+  imageTypes?: Array<string | null | undefined>,
+  preferredIndex = 0,
+): {
+  url?: string;
+  type: TMDbImageAssetType;
+  index: number;
+  useSquareLogoThumbnail: boolean;
+} {
+  const normalizedUrls = Array.isArray(imageUrls)
+    ? imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+  const normalizedTypes = normalizeTMDbImageTypes(imageType, imageTypes);
+
+  if (normalizedUrls.length === 0) {
+    const fallbackType = normalizedTypes[0] || (isValidAssetType(imageType) ? imageType : 'poster');
+    return {
+      url: typeof imageUrl === 'string' && imageUrl.length > 0 ? imageUrl : undefined,
+      type: fallbackType,
+      index: 0,
+      useSquareLogoThumbnail: fallbackType === 'logo',
+    };
+  }
+
+  const boundedIndex = Math.max(0, Math.min(preferredIndex, normalizedUrls.length - 1));
+  const resolvedType = normalizedTypes[boundedIndex] || normalizedTypes[0] || 'poster';
+  const resolvedUrl = normalizedUrls[boundedIndex] || normalizedUrls[0];
+
+  return {
+    url: resolvedUrl,
+    type: resolvedType,
+    index: boundedIndex,
+    useSquareLogoThumbnail: resolvedType === 'logo' && !isTMDbLogoCardUrl(resolvedUrl),
+  };
+}
+
 export function buildTMDbImageSelectionPayload(input: {
   imageStyle: TMDbFeedImageStyle;
   posterUrl?: string | null;

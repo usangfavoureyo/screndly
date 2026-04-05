@@ -2280,6 +2280,40 @@ function buildRSSActivityItemFromFeedRecord(record: {
   };
 }
 
+function buildRSSItemFromActivityItem(activity: RSSActivityItem): RSSItem {
+  return {
+    title: activity.title || '',
+    link: activity.link || '',
+    description: activity.description || '',
+    pubDate: new Date(activity.publishedAt || activity.timestamp),
+    imageUrl: activity.imageUrl,
+    imageUrls: activity.imageUrls || [],
+    imageSource: activity.imageSource,
+    imageReason: activity.imageReason,
+    imageScore: activity.imageScore,
+    imageSelectionConfidence: activity.imageSelectionConfidence,
+    selectedImages: activity.selectedImages,
+    platformPostIds: activity.platformPostIds,
+    platformResults: activity.platformResults,
+    contentHtml: activity.contentHtml,
+  };
+}
+
+function activityMatchesCurrentFeedRules(
+  activity: RSSActivityItem,
+  filters?: RSSFeedFilters | Prisma.JsonValue | null
+): boolean {
+  const normalizedFilters = ensureFeedFilters(filters as RSSFeedFilters | undefined);
+  const hasActiveRequired = normalizedFilters.required.some((rule) => rule.active && rule.text.trim());
+  const hasActiveBlocked = normalizedFilters.blocked.some((rule) => rule.active && rule.text.trim());
+
+  if (!hasActiveRequired && !hasActiveBlocked) {
+    return true;
+  }
+
+  return evaluateFeedRules(buildRSSItemFromActivityItem(activity), normalizedFilters).allowed;
+}
+
 function isSameRSSActivityItem(activity: RSSActivityItem, feedId: string, item: RSSItem): boolean {
   if (activity.feedId !== feedId) {
     return false;
@@ -4007,14 +4041,42 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
             id: true,
             name: true,
             platformsEnabled: true,
+            filters: true,
           },
         },
       },
     });
 
-    const recordItems = records.map((record) => buildRSSActivityItemFromFeedRecord(record));
+    const recordItems = records
+      .map((record) => ({
+        activity: buildRSSActivityItemFromFeedRecord(record),
+        filters: record.feed.filters,
+      }))
+      .filter(({ activity, filters }) => activityMatchesCurrentFeedRules(activity, filters))
+      .map(({ activity }) => activity);
+
+    const feedIds = Array.from(new Set([
+      ...records.map((record) => record.feedId),
+      ...logItems.map((item) => item.feedId).filter((feedId): feedId is string => Boolean(feedId)),
+    ]));
+    const feedFiltersById = new Map<string, Prisma.JsonValue | null>(
+      feedIds.length > 0
+        ? (await prisma.rSSFeed.findMany({
+            where: { id: { in: feedIds } },
+            select: { id: true, filters: true },
+          })).map((feed) => [feed.id, feed.filters ?? null])
+        : []
+    );
+
+    const filteredLogItems = logItems.filter((item) => {
+      if (!item.feedId) {
+        return true;
+      }
+
+      return activityMatchesCurrentFeedRules(item, feedFiltersById.get(item.feedId));
+    });
     const items = await Promise.all(
-      mergeRSSActivityItems(recordItems, logItems, limit).map((item) => resolveRSSActivityItemImages(item))
+      mergeRSSActivityItems(recordItems, filteredLogItems, limit).map((item) => resolveRSSActivityItemImages(item))
     );
     return {
       items,
@@ -4022,7 +4084,23 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
     };
   }
 
-  const items = await Promise.all(logItems.slice(0, limit).map((item) => resolveRSSActivityItemImages(item)));
+  const feedIds = Array.from(new Set(logItems.map((item) => item.feedId).filter((feedId): feedId is string => Boolean(feedId))));
+  const feedFiltersById = new Map<string, Prisma.JsonValue | null>(
+    feedIds.length > 0
+      ? (await prisma.rSSFeed.findMany({
+          where: { id: { in: feedIds } },
+          select: { id: true, filters: true },
+        })).map((feed) => [feed.id, feed.filters ?? null])
+      : []
+  );
+  const filteredLogItems = logItems.filter((item) => {
+    if (!item.feedId) {
+      return true;
+    }
+
+    return activityMatchesCurrentFeedRules(item, feedFiltersById.get(item.feedId));
+  });
+  const items = await Promise.all(filteredLogItems.slice(0, limit).map((item) => resolveRSSActivityItemImages(item)));
   return {
     items,
     summary: buildActivitySummary(items),

@@ -2574,13 +2574,12 @@ async function collectRawTitleTMDbFallbackImages(
     return [];
   }
 
-  const directFallback = await resolveStructuredTMDbImages({
+  const sharedInput = {
     primarySubject: {
       name: projectAnchor,
       type: projectType,
     },
     visualSubject: projectAnchor,
-    imageIntent: 'still',
     targetFormat: resolveTargetFormat(articleText, projectType),
     contextProject: projectAnchor,
     requiredContextTerms: uniqueStrings([
@@ -2596,10 +2595,25 @@ async function collectRawTitleTMDbFallbackImages(
       `${projectAnchor} movie`,
     ]),
     limit,
+  } as const;
+
+  const directFallback = await resolveStructuredTMDbImages({
+    ...sharedInput,
+    imageIntent: 'still',
   });
 
-  // This is an explicit title-derived fallback from the article itself, so accept the direct TMDb result set.
-  return buildResolvedImagesFromTMDb(directFallback);
+  const brandingFallback = directFallback.length === 0
+    ? await resolveStructuredTMDbImages({
+        ...sharedInput,
+        imageIntent: 'brand_backdrop',
+      })
+    : [];
+
+  // This is an explicit title-derived fallback from the article itself, so accept
+  // a strongly anchored TMDb still first, then a TMDb logo/backdrop card if needed.
+  return buildResolvedImagesFromTMDb(
+    directFallback.length > 0 ? directFallback : brandingFallback
+  );
 }
 
 function shouldFallbackToFeedImageForSecondary(slot: ImageSlotPlan | null): boolean {

@@ -81,7 +81,10 @@ interface ModalState {
     imagePreviewModal: {
         open: boolean;
         feed: TMDbFeed | null;
+        initialIndex: number;
     };
+
+    rememberedPreviewImageIndexes: Record<string, number>;
 }
 
 interface ModalActions {
@@ -106,8 +109,9 @@ interface ModalActions {
     closePlatformSelect: () => void;
 
     // Image Preview
-    openImagePreview: (feed: TMDbFeed) => void;
+    openImagePreview: (feed: TMDbFeed, initialIndex?: number) => void;
     closeImagePreview: () => void;
+    setRememberedPreviewImageIndex: (feedId: string, index: number) => void;
 
     // Close all modals
     closeAll: () => void;
@@ -119,7 +123,8 @@ const initialState: ModalState = {
     rescheduleModal: { open: false, feed: null },
     deleteModal: { open: false, feed: null },
     platformSelectModal: { open: false, feed: null, mode: 'schedule' },
-    imagePreviewModal: { open: false, feed: null },
+    imagePreviewModal: { open: false, feed: null, initialIndex: 0 },
+    rememberedPreviewImageIndexes: {},
 };
 
 export const useTMDbModalStore = create<ModalState & ModalActions>((set) => ({
@@ -166,12 +171,18 @@ export const useTMDbModalStore = create<ModalState & ModalActions>((set) => ({
     }),
 
     // Image Preview
-    openImagePreview: (feed) => set({
-        imagePreviewModal: { open: true, feed }
+    openImagePreview: (feed, initialIndex = 0) => set({
+        imagePreviewModal: { open: true, feed, initialIndex }
     }),
     closeImagePreview: () => set({
-        imagePreviewModal: { open: false, feed: null }
+        imagePreviewModal: { open: false, feed: null, initialIndex: 0 }
     }),
+    setRememberedPreviewImageIndex: (feedId, index) => set((state) => ({
+        rememberedPreviewImageIndexes: {
+            ...state.rememberedPreviewImageIndexes,
+            [feedId]: Math.max(0, index),
+        },
+    })),
 
     // Close all
     closeAll: () => set(initialState),

@@ -26,6 +26,7 @@ interface TMDbImagePreviewDialogProps {
   initialIndex?: number;
   onOpenChange: (open: boolean) => void;
   onClose: () => void;
+  onImageIndexChange?: (index: number) => void;
 }
 
 export function TMDbImagePreviewDialog({
@@ -38,6 +39,7 @@ export function TMDbImagePreviewDialog({
   initialIndex,
   onOpenChange,
   onClose,
+  onImageIndexChange,
 }: TMDbImagePreviewDialogProps) {
   const handleOpenChange = (nextOpen: boolean) => {
     onOpenChange(nextOpen);
@@ -58,6 +60,7 @@ export function TMDbImagePreviewDialog({
       badgeLabels={imageTypes?.map((value) => formatImageTypeLabel(value) || '')}
       initialIndex={initialIndex}
       onOpenChange={handleOpenChange}
+      onImageIndexChange={onImageIndexChange}
     />
   );
 }

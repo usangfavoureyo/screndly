@@ -25,6 +25,7 @@ interface MediaPreviewDialogProps {
   title?: string;
   badgeLabel?: string;
   onOpenChange: (open: boolean) => void;
+  onImageIndexChange?: (index: number) => void;
 }
 
 const MIN_SCALE = 1;
@@ -69,6 +70,7 @@ export function MediaPreviewDialog({
   title,
   badgeLabel,
   onOpenChange,
+  onImageIndexChange,
 }: MediaPreviewDialogProps) {
   const imageContainerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -126,6 +128,12 @@ export function MediaPreviewDialog({
   useEffect(() => {
     offsetRef.current = offset;
   }, [offset]);
+
+  useEffect(() => {
+    if (activeMediaType === 'image') {
+      onImageIndexChange?.(currentImageIndex);
+    }
+  }, [activeMediaType, currentImageIndex, onImageIndexChange]);
 
   const clampOffset = useCallback((nextScale: number, nextOffset: { x: number; y: number }) => {
     if (nextScale <= MIN_SCALE) {

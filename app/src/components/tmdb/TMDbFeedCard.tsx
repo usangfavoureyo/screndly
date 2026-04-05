@@ -4,7 +4,7 @@ import { Button } from '../ui/button';
 import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
 import { formatCalendarDate, formatDateTime } from '../../utils/calendarDate';
-import { deriveTMDbImageStyle, getTMDbAssetUrl, isTMDbLogoCardUrl } from '../../lib/tmdb/feedImageSelection';
+import { resolveTMDbPreviewAsset } from '../../lib/tmdb/feedImageSelection';
 import {
   BottomSheet,
   BottomSheetHeader,
@@ -50,6 +50,9 @@ function TMDbFeedCardComponent({
   const openDelete = useTMDbModalStore(s => s.openDelete);
   const openPlatformSelect = useTMDbModalStore(s => s.openPlatformSelect);
   const openImagePreview = useTMDbModalStore(s => s.openImagePreview);
+  const rememberedPreviewImageIndex = useTMDbModalStore(
+    (state) => state.rememberedPreviewImageIndexes[feed.id] ?? 0
+  );
 
   // Menu bottom sheet state
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -120,8 +123,8 @@ function TMDbFeedCardComponent({
   const handleImageClick = useCallback(() => {
     if (selectionMode) return;
     haptics.light();
-    openImagePreview(feed);
-  }, [feed, openImagePreview, selectionMode]);
+    openImagePreview(feed, rememberedPreviewImageIndex);
+  }, [feed, openImagePreview, rememberedPreviewImageIndex, selectionMode]);
 
   const handleEditCaption = useCallback(() => {
     if (selectionMode) return;
@@ -359,13 +362,15 @@ function TMDbFeedCardComponent({
   };
 
   const imageCount = Array.isArray(feed.imageUrls) && feed.imageUrls.length > 0 ? feed.imageUrls.length : 1;
-  const imageStyle = feed.imageStyle || deriveTMDbImageStyle(feed.imageType, feed.imageTypes);
-  const rawLogoPreviewUrl = getTMDbAssetUrl(feed.imageUrls, feed.imageTypes, 'logo');
-  const logoPreviewUrl = isTMDbLogoCardUrl(rawLogoPreviewUrl) ? undefined : rawLogoPreviewUrl;
-  const cardPreviewImageUrl = imageStyle === 'backdrop_logo'
-    ? (logoPreviewUrl || feed.imageUrl || feed.imageUrls?.[0])
-    : (feed.imageUrl || feed.imageUrls?.[0]);
-  const useSquareLogoThumbnail = imageStyle === 'backdrop_logo' && Boolean(logoPreviewUrl);
+  const previewAsset = resolveTMDbPreviewAsset(
+    feed.imageUrl,
+    feed.imageType,
+    feed.imageUrls,
+    feed.imageTypes,
+    rememberedPreviewImageIndex,
+  );
+  const cardPreviewImageUrl = previewAsset.url;
+  const useSquareLogoThumbnail = previewAsset.useSquareLogoThumbnail;
 
   const handleSelectionToggle = (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
     e.preventDefault();

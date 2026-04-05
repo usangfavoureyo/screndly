@@ -61,6 +61,7 @@ export function TMDbModals() {
     const deleteModal = useTMDbModalStore(s => s.deleteModal);
     const platformSelectModal = useTMDbModalStore(s => s.platformSelectModal);
     const imagePreviewModal = useTMDbModalStore(s => s.imagePreviewModal);
+    const setRememberedPreviewImageIndex = useTMDbModalStore(s => s.setRememberedPreviewImageIndex);
 
     // Modal actions
     const closeEditCaption = useTMDbModalStore(s => s.closeEditCaption);
@@ -450,6 +451,13 @@ export function TMDbModals() {
                 title={imagePreviewModal.feed?.title}
                 imageType={imagePreviewModal.feed?.imageType}
                 imageTypes={imagePreviewModal.feed?.imageTypes}
+                initialIndex={imagePreviewModal.initialIndex}
+                onImageIndexChange={(index) => {
+                    const feedId = imagePreviewModal.feed?.id;
+                    if (feedId) {
+                        setRememberedPreviewImageIndex(feedId, index);
+                    }
+                }}
             />
 
             {/* Edit Caption Modal */}

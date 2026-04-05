@@ -38,10 +38,8 @@ import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 import { useTMDbModalStore } from '../stores/tmdbModalStore';
 import { BackIconButton } from './BackIconButton';
 import {
-  deriveTMDbImageStyle,
-  getTMDbAssetUrl,
   getTMDbImageBadgeLabel,
-  isTMDbLogoCardUrl,
+  resolveTMDbPreviewAsset,
   type TMDbFeedImageStyle,
   type TMDbImageAssetType,
 } from '../lib/tmdb/feedImageSelection';
@@ -141,6 +139,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
   const { showUndo } = useUndo();
   const openImagePreview = useTMDbModalStore(s => s.openImagePreview);
   const openPlatformSelect = useTMDbModalStore(s => s.openPlatformSelect);
+  const rememberedPreviewImageIndexes = useTMDbModalStore(s => s.rememberedPreviewImageIndexes);
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending' | 'scheduled'>('all');
   const [isChangeDateOpen, setIsChangeDateOpen] = useState(false);
   const [isChangeTimeOpen, setIsChangeTimeOpen] = useState(false);
@@ -627,7 +626,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     if (!selectedPost?.imageUrl) return;
 
     haptics.light();
-    openImagePreview(selectedPost);
+    openImagePreview(selectedPost, rememberedPreviewImageIndexes[id] ?? 0);
   };
 
   return (
@@ -769,13 +768,15 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
             const statusConfig = getStatusConfig(derivedStatus);
             const StatusIcon = statusConfig.icon;
             const imageCount = Array.isArray(item.imageUrls) && item.imageUrls.length > 0 ? item.imageUrls.length : 1;
-            const imageStyle = item.imageStyle || deriveTMDbImageStyle(item.imageType, item.imageTypes);
-            const rawLogoPreviewUrl = getTMDbAssetUrl(item.imageUrls, item.imageTypes, 'logo');
-            const logoPreviewUrl = isTMDbLogoCardUrl(rawLogoPreviewUrl) ? undefined : rawLogoPreviewUrl;
-            const cardPreviewImageUrl = imageStyle === 'backdrop_logo'
-              ? (logoPreviewUrl || item.imageUrl || item.imageUrls?.[0])
-              : (item.imageUrl || item.imageUrls?.[0]);
-            const useSquareLogoThumbnail = imageStyle === 'backdrop_logo' && Boolean(logoPreviewUrl);
+            const previewAsset = resolveTMDbPreviewAsset(
+              item.imageUrl,
+              item.imageType,
+              item.imageUrls,
+              item.imageTypes,
+              rememberedPreviewImageIndexes[item.id] ?? 0,
+            );
+            const cardPreviewImageUrl = previewAsset.url;
+            const useSquareLogoThumbnail = previewAsset.useSquareLogoThumbnail;
 
             return (
               <div id={`tmdb-activity-card-${item.id}`} key={item.id}>
