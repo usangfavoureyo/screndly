@@ -7,6 +7,8 @@ const binaryDir = path.join(process.cwd(), 'bin');
 const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp';
 const binaryPath = path.join(binaryDir, binaryName);
 const releaseEndpoint = process.env.YOUTUBE_DL_HOST || 'https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest';
+const designStudioAssetSourceDir = path.join(process.cwd(), 'src', 'design-studio', 'assets');
+const designStudioAssetDistDir = path.join(process.cwd(), 'dist', 'design-studio', 'assets');
 
 async function fetchResponse(url) {
     const response = await fetch(url, {
@@ -42,6 +44,17 @@ async function resolveBinaryBuffer() {
 }
 
 async function main() {
+    if (fs.existsSync(designStudioAssetSourceDir)) {
+        fs.mkdirSync(designStudioAssetDistDir, { recursive: true });
+        for (const entry of fs.readdirSync(designStudioAssetSourceDir)) {
+            const sourcePath = path.join(designStudioAssetSourceDir, entry);
+            const destinationPath = path.join(designStudioAssetDistDir, entry);
+            if (fs.statSync(sourcePath).isFile()) {
+                fs.copyFileSync(sourcePath, destinationPath);
+            }
+        }
+    }
+
     if (process.env.YOUTUBE_DL_SKIP_DOWNLOAD) {
         return;
     }

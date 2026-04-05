@@ -23,11 +23,21 @@ const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
 const DESIGN_STUDIO_QUEUE_NAME = 'design-studio-renders';
 const DESIGN_STUDIO_REMOTE_FETCH_TIMEOUT_MS = 30000;
 const DESIGN_STUDIO_RENDER_TIMEOUT_MS = 180000;
-const DESIGN_STUDIO_REFERENCE_ASSET_DIR = path.join(__dirname, '..', 'design-studio', 'assets');
-const DESIGN_STUDIO_FADE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'fade.png');
-const DESIGN_STUDIO_BRAND_BLACK_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-black.png');
-const DESIGN_STUDIO_BRAND_WHITE_ASSET_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'brand-block-white.png');
-const DESIGN_STUDIO_HEADLINE_FONT_PATH = path.join(DESIGN_STUDIO_REFERENCE_ASSET_DIR, 'z-PFDinTextCompPro-Bold.ttf');
+function resolveDesignStudioAssetPath(fileName: string): string {
+  const candidates = [
+    path.join(__dirname, '..', 'design-studio', 'assets', fileName),
+    path.join(process.cwd(), 'dist', 'design-studio', 'assets', fileName),
+    path.join(process.cwd(), 'src', 'design-studio', 'assets', fileName),
+  ];
+
+  const match = candidates.find((candidate) => fs.existsSync(candidate));
+  return match || candidates[0];
+}
+
+const DESIGN_STUDIO_FADE_ASSET_PATH = resolveDesignStudioAssetPath('fade.png');
+const DESIGN_STUDIO_BRAND_BLACK_ASSET_PATH = resolveDesignStudioAssetPath('brand-block-black.png');
+const DESIGN_STUDIO_BRAND_WHITE_ASSET_PATH = resolveDesignStudioAssetPath('brand-block-white.png');
+const DESIGN_STUDIO_HEADLINE_FONT_PATH = resolveDesignStudioAssetPath('z-PFDinTextCompPro-Bold.ttf');
 
 const DEFAULT_TRIGGER_KEYWORDS = [
   'renewed',
