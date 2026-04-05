@@ -773,6 +773,28 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return defaultAutoTemplate ? [defaultAutoTemplate] : [];
   }, [defaultAutoTemplate, validatedTemplates]);
 
+  const editInitialData = useMemo(() => {
+    if (!selectedTemplate) {
+      return undefined;
+    }
+
+    return {
+      headerTextColor: selectedTemplate.fontColor || '#FFFFFF',
+      templateVariant: selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
+      overlayColor: '#000000',
+      overlayOpacity:
+        typeof selectedTemplate.overlayStrength === 'number'
+          ? Math.round(selectedTemplate.overlayStrength * 100)
+          : 70,
+      gradientPosition:
+        ((selectedTemplate.overlayDirection as DesignData['gradientPosition']) || 'top'),
+      fadeEnabled: true,
+      fadeOpacity: 90,
+      brandBlockMode: 'auto' as const,
+      exportFormat: settings.exportFormat === 'png' ? 'png' : 'jpeg',
+    };
+  }, [selectedTemplate, settings.exportFormat]);
+
   const deriveSubtext = (feedName?: string, matchedKeyword?: string) => {
     if (!feedName && !matchedKeyword) {
       return '';
@@ -1215,6 +1237,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       {/* Edit Design Bottom Sheet */}
       {selectedTemplate && (
         <EditDesignBottomSheet
+          key={selectedTemplate.id}
           open={isEditSheetOpen}
           onOpenChange={(open) => {
             setIsEditSheetOpen(open);
@@ -1225,11 +1248,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           }}
           templateName={selectedTemplate.name}
           aspectRatio={selectedTemplate.aspectRatio}
-          initialData={{
-            ...livePreviewData,
-            headerTextColor: livePreviewData?.headerTextColor || selectedTemplate.fontColor || '#FFFFFF',
-            templateVariant: livePreviewData?.templateVariant || selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
-          }}
+          initialData={editInitialData}
           hasHeader={selectedTemplate.hasHeader}
           hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}

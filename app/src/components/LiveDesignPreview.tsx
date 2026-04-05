@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { DesignStudioBrandBlockMode, DesignStudioLayoutVariant } from '../lib/api/designStudio';
+import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { DesignData } from './EditDesignBottomSheet';
 
 interface LiveDesignPreviewProps {
@@ -11,7 +12,6 @@ type PreviewLayout = {
   textBox: { x: number; y: number; width: number; height: number };
   alignment: 'left' | 'center' | 'right';
   brandBox: { x: number; y: number; width: number; height: number };
-  backgroundAnchor: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
 };
 
 const CANVAS_WIDTH = 1080;
@@ -22,37 +22,31 @@ const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
     textBox: { x: 88, y: 926, width: 904, height: 318 },
     alignment: 'center',
     brandBox: { x: 369, y: 48, width: 341, height: 73 },
-    backgroundAnchor: 'top',
   },
   bottom_left: {
     textBox: { x: 49, y: 895, width: 510, height: 372 },
     alignment: 'left',
     brandBox: { x: 49, y: 49, width: 341, height: 73 },
-    backgroundAnchor: 'top_right',
   },
   bottom_right: {
     textBox: { x: 541, y: 844, width: 490, height: 423 },
     alignment: 'right',
     brandBox: { x: 688, y: 1223, width: 341, height: 73 },
-    backgroundAnchor: 'top_left',
   },
   top_center: {
     textBox: { x: 108, y: 44, width: 864, height: 322 },
     alignment: 'center',
     brandBox: { x: 369, y: 1221, width: 341, height: 73 },
-    backgroundAnchor: 'bottom',
   },
   top_left: {
     textBox: { x: 46, y: 36, width: 495, height: 438 },
     alignment: 'left',
     brandBox: { x: 49, y: 1223, width: 341, height: 73 },
-    backgroundAnchor: 'bottom_right',
   },
   top_right: {
     textBox: { x: 548, y: 34, width: 486, height: 432 },
     alignment: 'right',
     brandBox: { x: 688, y: 49, width: 341, height: 73 },
-    backgroundAnchor: 'bottom_left',
   },
 };
 
@@ -115,6 +109,7 @@ function fitHeadline(text: string, layout: PreviewLayout) {
   const fallbackLineHeight = fallbackFontSize * 0.93;
   const fallbackLines: string[] = [];
   let currentLine = '';
+
   for (const word of words) {
     const next = currentLine ? `${currentLine} ${word}` : word;
     if (estimateWordWidth(next, fallbackFontSize) <= layout.textBox.width) {
@@ -124,6 +119,7 @@ function fitHeadline(text: string, layout: PreviewLayout) {
       currentLine = word;
     }
   }
+
   if (currentLine) fallbackLines.push(currentLine);
 
   return {
@@ -154,6 +150,7 @@ function getGradient(direction: 'top' | 'bottom' | 'left' | 'right', color: stri
   const alpha = clamp(opacity / 100, 0, 1);
   const opaque = hexToRgba(color, alpha);
   const transparent = hexToRgba(color, 0);
+
   switch (direction) {
     case 'top':
       return `linear-gradient(to bottom, ${opaque} 0%, ${transparent} 72%)`;
@@ -168,129 +165,20 @@ function getGradient(direction: 'top' | 'bottom' | 'left' | 'right', color: stri
   }
 }
 
-function resolveAnchorPosition(anchor: PreviewLayout['backgroundAnchor'], width: number, height: number) {
-  const leftBase = (() => {
-    switch (anchor) {
-      case 'top_right':
-      case 'bottom_right':
-      case 'right':
-        return CANVAS_WIDTH - width;
-      case 'top_left':
-      case 'bottom_left':
-      case 'left':
-        return 0;
-      default:
-        return Math.round((CANVAS_WIDTH - width) / 2);
-    }
-  })();
+function resolveBrandMode(requestedMode: DesignStudioBrandBlockMode | undefined, headerColor: string): 'black' | 'white' {
+  if (requestedMode === 'black' || requestedMode === 'white') {
+    return requestedMode;
+  }
 
-  const topBase = (() => {
-    switch (anchor) {
-      case 'bottom':
-      case 'bottom_left':
-      case 'bottom_right':
-        return CANVAS_HEIGHT - height;
-      case 'top':
-      case 'top_left':
-      case 'top_right':
-        return 0;
-      default:
-        return Math.round((CANVAS_HEIGHT - height) / 2);
-    }
-  })();
-
-  return { leftBase, topBase };
-}
-
-function drawBackground(
-  context: CanvasRenderingContext2D,
-  image: HTMLImageElement,
-  anchor: PreviewLayout['backgroundAnchor'],
-  focalPoint: { x: number; y: number },
-  zoom: number,
-) {
-  const ratio = Math.max(CANVAS_WIDTH / image.naturalWidth, CANVAS_HEIGHT / image.naturalHeight) * zoom;
-  const targetWidth = Math.max(1, Math.round(image.naturalWidth * ratio));
-  const targetHeight = Math.max(1, Math.round(image.naturalHeight * ratio));
-  const { leftBase, topBase } = resolveAnchorPosition(anchor, targetWidth, targetHeight);
-  const left = Math.round(leftBase + ((focalPoint.x ?? 50) - 50) * 2.2);
-  const top = Math.round(topBase + ((focalPoint.y ?? 50) - 50) * 2.2);
-
-  context.drawImage(image, left, top, targetWidth, targetHeight);
-}
-
-function useAutoBrandMode(
-  sourceUrl: string,
-  variant: PreviewLayout,
-  focalPoint: { x: number; y: number },
-  zoom: number,
-  requestedMode: DesignStudioBrandBlockMode,
-) {
-  const [brandMode, setBrandMode] = useState<'black' | 'white'>(requestedMode === 'white' ? 'white' : 'black');
-
-  useEffect(() => {
-    if (requestedMode === 'black' || requestedMode === 'white') {
-      setBrandMode(requestedMode);
-      return;
-    }
-
-    let cancelled = false;
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.onload = () => {
-      if (cancelled) return;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
-      const context = canvas.getContext('2d');
-      if (!context) {
-        setBrandMode('white');
-        return;
-      }
-
-      context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      drawBackground(context, image, variant.backgroundAnchor, focalPoint, zoom);
-
-      try {
-        const imageData = context.getImageData(
-          Math.round(variant.brandBox.x),
-          Math.round(variant.brandBox.y),
-          Math.round(variant.brandBox.width),
-          Math.round(variant.brandBox.height),
-        ).data;
-
-        let total = 0;
-        const samples = imageData.length / 4;
-        for (let index = 0; index < imageData.length; index += 4) {
-          total += ((0.2126 * imageData[index]) + (0.7152 * imageData[index + 1]) + (0.0722 * imageData[index + 2])) / 255;
-        }
-        const luminance = samples > 0 ? total / samples : 0.5;
-        setBrandMode(luminance >= 0.58 ? 'black' : 'white');
-      } catch {
-        setBrandMode('white');
-      }
-    };
-    image.onerror = () => {
-      if (!cancelled) {
-        setBrandMode('white');
-      }
-    };
-    image.src = sourceUrl;
-
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceUrl, variant, focalPoint, zoom, requestedMode]);
-
-  return brandMode;
+  return headerColor.trim().toLowerCase() === '#000000' ? 'black' : 'white';
 }
 
 export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesignPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [frameScale, setFrameScale] = useState(1);
-  const sourceUrl = designData?.backgroundImage || templatePreviewUrl;
+
+  const rawSourceUrl = designData?.backgroundImage || templatePreviewUrl || '';
+  const sourceUrl = buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl;
   const variantKey = designData?.templateVariant || 'bottom_center';
   const variant = PREVIEW_VARIANTS[variantKey];
   const focalPoint = designData?.imageFocalPoint || { x: 50, y: 50 };
@@ -301,7 +189,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const overlayDirection = designData?.gradientPosition || getDefaultOverlayDirection(variantKey);
   const fadeEnabled = designData?.fadeEnabled ?? true;
   const fadeOpacity = designData?.fadeOpacity ?? 90;
-  const brandMode = useAutoBrandMode(sourceUrl, variant, focalPoint, zoom, designData?.brandBlockMode || 'auto');
+  const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant);
 
   useEffect(() => {
@@ -324,30 +212,8 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     };
   }, []);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-
-    context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.onload = () => {
-      const draw = canvas.getContext('2d');
-      if (!draw) return;
-      draw.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      drawBackground(draw, image, variant.backgroundAnchor, focalPoint, zoom);
-    };
-    image.onerror = () => {
-      context.fillStyle = '#111111';
-      context.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    };
-    image.src = sourceUrl;
-  }, [sourceUrl, variant, focalPoint, zoom]);
-
   return (
-    <div ref={containerRef} className="relative w-full h-full overflow-hidden bg-black">
+    <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
         @font-face {
           font-family: 'ScrendlyHeadline';
@@ -356,12 +222,20 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
           font-style: normal;
         }
       `}</style>
-      <canvas
-        ref={canvasRef}
-        width={CANVAS_WIDTH}
-        height={CANVAS_HEIGHT}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
+
+      {sourceUrl ? (
+        <div
+          className="absolute inset-0 bg-[#111111]"
+          style={{
+            backgroundImage: `url("${sourceUrl}")`,
+            backgroundSize: `${zoom * 100}%`,
+            backgroundPosition: `${focalPoint.x}% ${focalPoint.y}%`,
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
+      ) : (
+        <div className="absolute inset-0 bg-[#111111]" />
+      )}
 
       <div
         className="absolute inset-0"
@@ -374,7 +248,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         <img
           src="/design-studio/fade.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover pointer-events-none"
+          className="pointer-events-none absolute inset-0 h-full w-full object-cover"
           style={{ opacity: clamp(fadeOpacity / 100, 0, 1) }}
         />
       ) : null}
@@ -418,7 +292,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
       <img
         src={brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png'}
         alt=""
-        className="absolute pointer-events-none"
+        className="pointer-events-none absolute"
         style={{
           left: `${(variant.brandBox.x / CANVAS_WIDTH) * 100}%`,
           top: `${(variant.brandBox.y / CANVAS_HEIGHT) * 100}%`,
