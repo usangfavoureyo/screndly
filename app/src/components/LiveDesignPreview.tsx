@@ -16,6 +16,8 @@ type PreviewLayout = {
 
 const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1350;
+const FALLBACK_BACKGROUND =
+  'radial-gradient(circle at 18% 88%, rgba(110, 102, 255, 0.92) 0%, rgba(110, 102, 255, 0.28) 22%, rgba(110, 102, 255, 0) 48%), radial-gradient(circle at 82% 14%, rgba(150, 118, 255, 0.32) 0%, rgba(150, 118, 255, 0) 30%), linear-gradient(180deg, #5b4f8d 0%, #463d78 24%, #2a274f 58%, #171925 100%)';
 
 const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   bottom_center: {
@@ -176,6 +178,7 @@ function resolveBrandMode(requestedMode: DesignStudioBrandBlockMode | undefined,
 export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesignPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [frameScale, setFrameScale] = useState(1);
+  const [previewImageError, setPreviewImageError] = useState(false);
 
   const rawSourceUrl = designData?.backgroundImage || templatePreviewUrl || '';
   const sourceUrl = buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl;
@@ -189,8 +192,11 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const overlayDirection = designData?.gradientPosition || getDefaultOverlayDirection(variantKey);
   const fadeEnabled = designData?.fadeEnabled ?? true;
   const fadeOpacity = designData?.fadeOpacity ?? 90;
+  const fontScale = designData?.fontScale ?? 1;
+  const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 0.93;
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant);
+  const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -212,6 +218,10 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     };
   }, []);
 
+  useEffect(() => {
+    setPreviewImageError(false);
+  }, [sourceUrl]);
+
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
@@ -223,23 +233,25 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         }
       `}</style>
 
-      {sourceUrl ? (
-        <div
-          className="absolute inset-0 bg-[#111111]"
+      <div className="absolute inset-0" style={{ background: FALLBACK_BACKGROUND }} />
+
+      {showPreviewImage ? (
+        <img
+          src={sourceUrl}
+          alt=""
+          onError={() => setPreviewImageError(true)}
+          className="absolute inset-0 h-full w-full object-cover"
           style={{
-            backgroundImage: `url("${sourceUrl}")`,
-            backgroundSize: `${zoom * 100}%`,
-            backgroundPosition: `${focalPoint.x}% ${focalPoint.y}%`,
-            backgroundRepeat: 'no-repeat',
+            transform: `translate(${(50 - focalPoint.x) * 0.65}%, ${(50 - focalPoint.y) * 0.65}%) scale(${zoom})`,
+            transformOrigin: `${focalPoint.x}% ${focalPoint.y}%`,
           }}
         />
-      ) : (
-        <div className="absolute inset-0 bg-[#111111]" />
-      )}
+      ) : null}
 
       <div
         className="absolute inset-0"
         style={{
+          zIndex: 10,
           backgroundImage: getGradient(overlayDirection, overlayColor, overlayOpacity),
         }}
       />
@@ -249,7 +261,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
           src="/design-studio/fade.png"
           alt=""
           className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          style={{ opacity: clamp(fadeOpacity / 100, 0, 1) }}
+          style={{ zIndex: 20, opacity: clamp(fadeOpacity / 100, 0, 1) }}
         />
       ) : null}
 
@@ -268,18 +280,18 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
             justifyContent: variantKey.startsWith('bottom') ? 'flex-end' : 'flex-start',
             fontWeight: 800,
             textTransform: 'uppercase',
-            lineHeight: 0.93,
             letterSpacing: '-0.03em',
             fontFamily: '"ScrendlyHeadline", "Impact", "Arial Narrow Bold", sans-serif',
             textShadow: headerColor.toLowerCase() === '#000000' ? 'none' : '0 1px 2px rgba(0,0,0,0.28)',
+            zIndex: 30,
           }}
         >
           {fittedHeadline.lines.map((line, index) => (
             <div
               key={`${line}-${index}`}
               style={{
-                fontSize: `${Math.max(18, fittedHeadline.fontSize * frameScale)}px`,
-                lineHeight: `${Math.max(18, fittedHeadline.lineHeight * frameScale)}px`,
+                fontSize: `${Math.max(18, fittedHeadline.fontSize * fontScale * frameScale)}px`,
+                lineHeight: `${Math.max(18, fittedHeadline.fontSize * fontScale * lineHeightMultiplier * frameScale)}px`,
               }}
               className="leading-none"
             >
@@ -294,10 +306,12 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         alt=""
         className="pointer-events-none absolute"
         style={{
+          zIndex: 40,
           left: `${(variant.brandBox.x / CANVAS_WIDTH) * 100}%`,
           top: `${(variant.brandBox.y / CANVAS_HEIGHT) * 100}%`,
           width: `${(variant.brandBox.width / CANVAS_WIDTH) * 100}%`,
           height: `${(variant.brandBox.height / CANVAS_HEIGHT) * 100}%`,
+          objectFit: 'contain',
         }}
       />
     </div>

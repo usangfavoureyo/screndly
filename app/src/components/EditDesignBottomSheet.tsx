@@ -33,6 +33,8 @@ interface EditDesignBottomSheetProps {
     subtext?: string;
     headerTextColor?: string; // Text color for header
     subtextColor?: string; // Text color for subtext
+    fontScale?: number;
+    lineHeightMultiplier?: number;
     backgroundImage?: string;
     imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
     imageZoom?: number; // Scale factor (1.0 = 100%)
@@ -59,6 +61,8 @@ export interface DesignData {
   subtext?: string;
   headerTextColor?: string; // Text color for header
   subtextColor?: string; // Text color for subtext
+  fontScale?: number;
+  lineHeightMultiplier?: number;
   backgroundImage?: string;
   imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
   imageZoom?: number; // Scale factor (1.0 = 100%)
@@ -94,6 +98,8 @@ export function EditDesignBottomSheet({
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
+  const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
+  const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? 0.93);
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [imageFocalPoint, setImageFocalPoint] = useState(initialData?.imageFocalPoint || { x: 50, y: 50 });
@@ -142,6 +148,8 @@ export function EditDesignBottomSheet({
       setSubtext(initialData.subtext || '');
       setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
       setSubtextColor(initialData.subtextColor || '#000000');
+      setFontScale(initialData.fontScale ?? 1);
+      setLineHeightMultiplier(initialData.lineHeightMultiplier ?? 0.93);
       setBackgroundImage(initialData.backgroundImage || '');
       setPreviewBackgroundImage(initialData.backgroundImage || '');
       setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
@@ -170,6 +178,8 @@ export function EditDesignBottomSheet({
         subtext: hasSubtext ? subtext : undefined,
         headerTextColor,
         subtextColor,
+        fontScale,
+        lineHeightMultiplier,
         backgroundImage: previewBackgroundImage || backgroundImage,
         imageFocalPoint,
         imageZoom,
@@ -190,6 +200,8 @@ export function EditDesignBottomSheet({
     subtext, 
     headerTextColor,
     subtextColor,
+    fontScale,
+    lineHeightMultiplier,
     backgroundImage,
     previewBackgroundImage,
     imageFocalPoint.x, 
@@ -284,6 +296,8 @@ export function EditDesignBottomSheet({
       subtext: hasSubtext ? subtext : undefined,
       headerTextColor,
       subtextColor,
+      fontScale,
+      lineHeightMultiplier,
       backgroundImage: hasBackground ? backgroundImage : undefined,
       imageFocalPoint,
       imageZoom,
@@ -306,6 +320,8 @@ export function EditDesignBottomSheet({
     subtext: hasSubtext ? subtext : undefined,
     headerTextColor,
     subtextColor,
+    fontScale,
+    lineHeightMultiplier,
     backgroundImage: previewBackgroundImage || backgroundImage,
     imageFocalPoint,
     imageZoom,
@@ -526,6 +542,54 @@ export function EditDesignBottomSheet({
                 />
               </div>
             </div>
+
+            <div className="mt-4 space-y-4">
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                    Text Size
+                  </Label>
+                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
+                    {fontScale.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.8"
+                  max="1.4"
+                  step="0.05"
+                  value={fontScale}
+                  onChange={(e) => {
+                    haptics.light();
+                    setFontScale(Number(e.target.value));
+                  }}
+                  className="w-full accent-[#ec1e24]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                    Line Spacing
+                  </Label>
+                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
+                    {lineHeightMultiplier.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.85"
+                  max="1.15"
+                  step="0.01"
+                  value={lineHeightMultiplier}
+                  onChange={(e) => {
+                    haptics.light();
+                    setLineHeightMultiplier(Number(e.target.value));
+                  }}
+                  className="w-full accent-[#ec1e24]"
+                />
+              </div>
+            </div>
           </div>
           )}
 
@@ -611,25 +675,34 @@ export function EditDesignBottomSheet({
                 <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
                   Variant
                 </Label>
-                <Select
-                  value={templateVariant}
-                  onValueChange={(value: DesignStudioLayoutVariant) => {
-                    haptics.light();
-                    setTemplateVariant(value);
-                  }}
-                >
-                  <SelectTrigger className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="bottom_center">Bottom Center</SelectItem>
-                    <SelectItem value="bottom_left">Bottom Left</SelectItem>
-                    <SelectItem value="bottom_right">Bottom Right</SelectItem>
-                    <SelectItem value="top_center">Top Center</SelectItem>
-                    <SelectItem value="top_left">Top Left</SelectItem>
-                    <SelectItem value="top_right">Top Right</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['bottom_center', 'Bottom Center'],
+                    ['bottom_left', 'Bottom Left'],
+                    ['bottom_right', 'Bottom Right'],
+                    ['top_center', 'Top Center'],
+                    ['top_left', 'Top Left'],
+                    ['top_right', 'Top Right'],
+                  ] as Array<[DesignStudioLayoutVariant, string]>).map(([value, label]) => (
+                    <Button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        haptics.light();
+                        setTemplateVariant(value);
+                      }}
+                      variant="outline"
+                      size="sm"
+                      className={`w-full border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white text-xs ${
+                        templateVariant === value
+                          ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white dark:bg-[#ec1e24] dark:text-white dark:hover:bg-[#ec1e24]'
+                          : 'bg-white dark:bg-[#000000] hover:bg-gray-50 dark:hover:bg-[#000000]'
+                      }`}
+                    >
+                      {label}
+                    </Button>
+                  ))}
+                </div>
               </div>
 
               <div>

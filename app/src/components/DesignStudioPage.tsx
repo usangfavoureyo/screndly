@@ -780,6 +780,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     return {
       headerTextColor: selectedTemplate.fontColor || '#FFFFFF',
+      fontScale: 1,
+      lineHeightMultiplier: selectedTemplate.lineHeightMultiplier || 0.93,
       templateVariant: selectedTemplate.layoutVariant || selectedTemplate.baseVariant || 'bottom_center',
       overlayColor: '#000000',
       overlayOpacity:
