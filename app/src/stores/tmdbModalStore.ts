@@ -2,6 +2,43 @@ import { create } from 'zustand';
 import { type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
 import { type TMDbPlatformResultRecord } from '../lib/tmdb/activityStatus';
 
+const TMDB_REMEMBERED_PREVIEW_INDEXES_STORAGE_KEY = 'screndly_tmdb_remembered_preview_indexes';
+
+function loadRememberedPreviewImageIndexes(): Record<string, number> {
+    if (typeof window === 'undefined') {
+        return {};
+    }
+
+    try {
+        const raw = window.localStorage.getItem(TMDB_REMEMBERED_PREVIEW_INDEXES_STORAGE_KEY);
+        if (!raw) {
+            return {};
+        }
+
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        return Object.fromEntries(
+            Object.entries(parsed).map(([key, value]) => [key, Math.max(0, Number(value) || 0)])
+        );
+    } catch {
+        return {};
+    }
+}
+
+function saveRememberedPreviewImageIndexes(indexes: Record<string, number>) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(
+            TMDB_REMEMBERED_PREVIEW_INDEXES_STORAGE_KEY,
+            JSON.stringify(indexes),
+        );
+    } catch {
+        // Ignore storage failures and keep the in-memory state.
+    }
+}
+
 /**
  * TMDb Modal Store
  * 
@@ -124,7 +161,7 @@ const initialState: ModalState = {
     deleteModal: { open: false, feed: null },
     platformSelectModal: { open: false, feed: null, mode: 'schedule' },
     imagePreviewModal: { open: false, feed: null, initialIndex: 0 },
-    rememberedPreviewImageIndexes: {},
+    rememberedPreviewImageIndexes: loadRememberedPreviewImageIndexes(),
 };
 
 export const useTMDbModalStore = create<ModalState & ModalActions>((set) => ({
@@ -177,12 +214,18 @@ export const useTMDbModalStore = create<ModalState & ModalActions>((set) => ({
     closeImagePreview: () => set({
         imagePreviewModal: { open: false, feed: null, initialIndex: 0 }
     }),
-    setRememberedPreviewImageIndex: (feedId, index) => set((state) => ({
-        rememberedPreviewImageIndexes: {
+    setRememberedPreviewImageIndex: (feedId, index) => set((state) => {
+        const rememberedPreviewImageIndexes = {
             ...state.rememberedPreviewImageIndexes,
             [feedId]: Math.max(0, index),
-        },
-    })),
+        };
+
+        saveRememberedPreviewImageIndexes(rememberedPreviewImageIndexes);
+
+        return {
+            rememberedPreviewImageIndexes,
+        };
+    }),
 
     // Close all
     closeAll: () => set(initialState),
