@@ -458,14 +458,19 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     [autoEditorials],
   );
 
-  const getActivityDisplayUrl = (activity: DesignStudioActivityRecord) =>
+  const getActivityDownloadUrl = (activity: DesignStudioActivityRecord) =>
     buildDesignStudioMediaStreamUrl(activity.details.previewUrl || activity.details.outputUrl)
     || activity.details.previewUrl
     || activity.details.outputUrl
     || '';
 
+  const getActivityImageUrl = (activity: DesignStudioActivityRecord) =>
+    activity.details.previewUrl
+    || activity.details.outputUrl
+    || '';
+
   const handleDownload = async (activity: DesignStudioActivityRecord) => {
-    const downloadUrl = getActivityDisplayUrl(activity);
+    const downloadUrl = getActivityDownloadUrl(activity);
     if (!downloadUrl) {
       toast.error('No rendered image available to download');
       return;
@@ -562,7 +567,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const openPreview = (activity: DesignStudioActivityRecord) => {
-    const imageUrl = getActivityDisplayUrl(activity);
+    const imageUrl = getActivityImageUrl(activity);
     if (!imageUrl) {
       return;
     }
@@ -1018,7 +1023,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                       className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-[#050505] dark:border-[#333333]"
                     >
                       <img
-                        src={getActivityDisplayUrl(activity)}
+                        src={getActivityImageUrl(activity)}
                         alt={activity.details.headerText || activity.details.templateName || 'Template preview'}
                         className="h-full w-full object-cover object-center"
                         loading="lazy"
