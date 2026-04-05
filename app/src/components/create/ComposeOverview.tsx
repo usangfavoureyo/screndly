@@ -423,6 +423,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
               const LeadingIcon = getLeadingIcon(item.status);
               const primaryAsset = getPrimaryAsset(item);
               const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);
+              const primaryCardPreviewUrl = buildComposeAssetStreamUrl(primaryPreviewUrl) || primaryPreviewUrl;
               const extraAssetCount = Math.max((item.mediaAssets?.length ?? (item.media ? 1 : 0)) - 1, 0);
               const hasThreadsXCropReady = primaryAsset ? isThreadsXCropVariantReady(item, primaryAsset) : false;
               const hasThreadsXCropEnabled = item.platformFields.videoProcessing?.cropMode === 'threads_x_3_4';
@@ -442,7 +443,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                   className="w-full text-left p-5 rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] transition-all duration-200"
                 >
                   <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-x-3 gap-y-4">
-                    {primaryPreviewUrl && primaryAsset ? (
+                    {primaryCardPreviewUrl && primaryAsset ? (
                       <button
                         type="button"
                         data-prevent-card-selection="true"
@@ -456,7 +457,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                         {primaryAsset.kind === 'video' ? (
                           <>
                             <video
-                              src={primaryPreviewUrl}
+                              src={primaryCardPreviewUrl}
                               className="pointer-events-none h-full w-full object-cover"
                               muted
                               playsInline
@@ -467,8 +468,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             </div>
                           </>
                         ) : (
-                          <img
-                            src={primaryPreviewUrl}
+                            <img
+                              src={primaryCardPreviewUrl}
                             alt={primaryAsset.fileName}
                             className="pointer-events-none h-full w-full object-cover"
                           />

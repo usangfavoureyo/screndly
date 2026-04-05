@@ -307,7 +307,11 @@ export function buildComposeMediaAsset(
 
 export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
   if (!asset) return undefined;
-  return asset.previewUrl || asset.storageUrl;
+  if (asset.previewUrl?.startsWith('blob:')) {
+    return asset.previewUrl;
+  }
+
+  return asset.storageUrl || asset.previewUrl;
 }
 
 export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {

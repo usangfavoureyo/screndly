@@ -1,4 +1,5 @@
 import fs from 'fs/promises';
+import { Readable } from 'stream';
 import { Router } from 'express';
 import multer from 'multer';
 import { isPsdSupportUnavailableError, readPsdSafely } from '../lib/psd';
@@ -491,6 +492,60 @@ router.get('/render-jobs', authenticate, async (_req, res) => {
   } catch (error) {
     console.error('Error fetching design studio render jobs:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to fetch render jobs' } });
+  }
+});
+
+router.get('/media-stream', async (req, res) => {
+  try {
+    const rawUrl = typeof req.query?.url === 'string' ? req.query.url.trim() : '';
+    if (!rawUrl) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Media URL is required' },
+      });
+    }
+
+    const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 60 * 60);
+    const upstreamResponse = await fetch(authorizedUrl, {
+      headers: req.headers.range ? { Range: req.headers.range } : undefined,
+    });
+
+    if (!upstreamResponse.ok) {
+      return res.status(upstreamResponse.status).json({
+        success: false,
+        error: { message: `Failed to stream design studio media (${upstreamResponse.status})` },
+      });
+    }
+
+    const contentType = upstreamResponse.headers.get('content-type') || 'application/octet-stream';
+    const contentLength = upstreamResponse.headers.get('content-length');
+    const contentRange = upstreamResponse.headers.get('content-range');
+    const acceptRanges = upstreamResponse.headers.get('accept-ranges');
+
+    res.status(upstreamResponse.status);
+    res.setHeader('Content-Type', contentType);
+    if (contentLength) {
+      res.setHeader('Content-Length', contentLength);
+    }
+    if (contentRange) {
+      res.setHeader('Content-Range', contentRange);
+    }
+    if (acceptRanges) {
+      res.setHeader('Accept-Ranges', acceptRanges);
+    }
+    res.setHeader('Cache-Control', 'private, max-age=300');
+
+    if (!upstreamResponse.body) {
+      return res.end();
+    }
+
+    Readable.fromWeb(upstreamResponse.body as never).pipe(res);
+  } catch (error) {
+    console.error('Error streaming design studio media:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to stream design studio media' },
+    });
   }
 });
 

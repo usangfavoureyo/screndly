@@ -196,10 +196,6 @@ function buildCacheKey(bucketType: BackblazeBucketType, config: BackblazeBucketC
 function parseBackblazeFileUrl(value: string): { bucketName: string; fileName: string } | null {
   try {
     const parsed = new URL(value);
-    if (parsed.searchParams.has('Authorization')) {
-      return null;
-    }
-
     const segments = parsed.pathname.split('/').filter(Boolean);
     const fileMarkerIndex = segments.indexOf('file');
     if (fileMarkerIndex === -1 || segments.length < fileMarkerIndex + 3) {

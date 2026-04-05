@@ -31,6 +31,7 @@ import { Label } from './ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dialog';
 import { VisuallyHidden } from './ui/visually-hidden';
 import { Input } from './ui/input';
+import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -442,8 +443,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     [renderedDesigns],
   );
 
+  const getActivityDisplayUrl = (activity: DesignStudioActivityRecord) =>
+    buildDesignStudioMediaStreamUrl(activity.details.previewUrl || activity.details.outputUrl)
+    || activity.details.previewUrl
+    || activity.details.outputUrl
+    || '';
+
   const handleDownload = async (activity: DesignStudioActivityRecord) => {
-    const downloadUrl = activity.details.outputUrl || activity.details.previewUrl;
+    const downloadUrl = getActivityDisplayUrl(activity);
     if (!downloadUrl) {
       toast.error('No rendered image available to download');
       return;
@@ -523,7 +530,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const openPreview = (activity: DesignStudioActivityRecord) => {
-    const imageUrl = activity.details.outputUrl || activity.details.previewUrl;
+    const imageUrl = getActivityDisplayUrl(activity);
     if (!imageUrl) {
       return;
     }
@@ -917,7 +924,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                       className="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-gray-200 bg-[#050505] dark:border-[#333333]"
                     >
                       <img
-                        src={activity.details.previewUrl || activity.details.outputUrl}
+                        src={getActivityDisplayUrl(activity)}
                         alt={activity.details.headerText || activity.details.templateName || 'Template preview'}
                         className="h-full w-full object-cover object-center"
                         loading="lazy"
