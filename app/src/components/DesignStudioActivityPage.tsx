@@ -5,6 +5,7 @@ import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import {
   createDesignStudioActivity,
+  type DesignStudioAutoEditorialRecord,
   fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
   type DesignStudioRenderedDesignRecord,
@@ -64,6 +65,9 @@ interface ActivityPublishTarget {
   caption?: string;
   contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
   context?: string;
+  sourceTitle?: string;
+  matchedKeyword?: string;
+  isAutoEditorial?: boolean;
 }
 
 interface ActivityPreviewTarget {
@@ -198,6 +202,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>(cachedActivityState?.manualRenderJobs || []);
   const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>(cachedActivityState?.templatePreviewUrls || {});
   const [renderedDesigns, setRenderedDesigns] = useState<DesignStudioRenderedDesignRecord[]>(cachedActivityState?.renderedDesigns || []);
+  const [autoEditorials, setAutoEditorials] = useState<DesignStudioAutoEditorialRecord[]>(cachedActivityState?.autoEditorials || []);
   const [isLoading, setIsLoading] = useState(!(cachedActivityState && (cachedActivityState.activities?.length || cachedActivityState.manualRenderJobs?.length)));
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishTarget, setPublishTarget] = useState<ActivityPublishTarget | null>(null);
@@ -258,6 +263,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           ),
         );
         setRenderedDesigns(designStudioState.renderedDesigns || []);
+        setAutoEditorials(designStudioState.autoEditorials || []);
       }
     } catch (error) {
       console.error('Failed to fetch design studio activity:', error);
@@ -266,6 +272,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         setManualRenderJobs([]);
         setTemplatePreviewUrls({});
         setRenderedDesigns([]);
+        setAutoEditorials([]);
       }
     } finally {
       if (!silent) {
@@ -302,8 +309,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       manualRenderJobs,
       templatePreviewUrls,
       renderedDesigns,
+      autoEditorials,
     }));
-  }, [activities, manualRenderJobs, renderedDesigns, templatePreviewUrls]);
+  }, [activities, autoEditorials, manualRenderJobs, renderedDesigns, templatePreviewUrls]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -445,6 +453,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     () => new Map(renderedDesigns.map((renderedDesign) => [renderedDesign.outputUrl, renderedDesign])),
     [renderedDesigns],
   );
+  const autoEditorialByImageUrl = useMemo(
+    () => new Map(autoEditorials.map((editorial) => [editorial.renderedImage, editorial])),
+    [autoEditorials],
+  );
 
   const getActivityDisplayUrl = (activity: DesignStudioActivityRecord) =>
     buildDesignStudioMediaStreamUrl(activity.details.previewUrl || activity.details.outputUrl)
@@ -496,13 +508,30 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     const renderedDesign = renderedDesignByOutputUrl.get(outputUrl);
+    const autoEditorial = autoEditorialByImageUrl.get(outputUrl);
+    const resolvedTitle = renderedDesign?.data?.headerText
+      || activity.details.headerText
+      || autoEditorial?.headerText
+      || autoEditorial?.sourceTitle
+      || activity.details.sourceTitle
+      || activity.details.templateName
+      || 'Rendered Design';
+
     setPublishTarget({
       activityId: activity.id,
-      title: renderedDesign?.data?.headerText || activity.details.templateName || 'Rendered Design',
+      title: resolvedTitle,
       outputUrl,
-      caption: renderedDesign?.caption,
-      contentType: renderedDesign?.contentType,
-      context: renderedDesign?.templateName || activity.details.templateName,
+      caption: autoEditorial?.caption || renderedDesign?.caption,
+      contentType: autoEditorial
+        ? 'announcement'
+        : renderedDesign?.contentType,
+      context: autoEditorial?.subheaderText
+        || renderedDesign?.data?.subtext
+        || renderedDesign?.templateName
+        || activity.details.templateName,
+      sourceTitle: autoEditorial?.sourceTitle || activity.details.sourceTitle,
+      matchedKeyword: autoEditorial?.matchedKeyword || activity.details.matchedKeyword,
+      isAutoEditorial: Boolean(autoEditorial),
     });
     setIsPublishSheetOpen(true);
   };
@@ -763,6 +792,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       const result = await generateDesignStudioCaption({
         contentType: publishTarget.contentType || 'announcement',
         title: publishTarget.title,
+        tagline: publishTarget.isAutoEditorial ? publishTarget.sourceTitle : undefined,
+        releaseInfo: publishTarget.matchedKeyword,
         context: publishTarget.context,
       }, settings);
       return result.caption;
