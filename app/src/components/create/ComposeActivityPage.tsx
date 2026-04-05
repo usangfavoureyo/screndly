@@ -60,7 +60,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
   const { addNotification } = useNotifications();
   const [filter, setFilter] = useState<'all' | ComposeStatus>('all');
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [previewState, setPreviewState] = useState<{ assets: ComposeMediaAsset[]; initialIndex: number } | null>(null);
+  const [previewState, setPreviewState] = useState<{ itemId: string; assets: ComposeMediaAsset[]; initialIndex: number } | null>(null);
+  const [rememberedPreviewIndexes, setRememberedPreviewIndexes] = useState<Record<string, number>>({});
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
 
   const filteredItems = useMemo(
@@ -172,6 +173,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
     const boundedIndex = Math.max(0, Math.min(assetIndex, previewableAssets.length - 1));
     haptics.light();
     setPreviewState({
+      itemId: item.id,
       assets: previewableAssets,
       initialIndex: boundedIndex,
     });
@@ -272,10 +274,15 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
           <div className="space-y-3">
             {filteredItems.map((item) => {
               const LeadingIcon = getLeadingIcon(item.status);
-              const primaryAsset = getPrimaryAsset(item);
+              const previewableAssets = item.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
+              const rememberedIndex = rememberedPreviewIndexes[item.id] ?? 0;
+              const boundedRememberedIndex = previewableAssets.length > 0
+                ? Math.max(0, Math.min(rememberedIndex, previewableAssets.length - 1))
+                : 0;
+              const primaryAsset = previewableAssets[boundedRememberedIndex] ?? getPrimaryAsset(item);
               const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);
               const primaryCardPreviewUrl = buildComposeAssetStreamUrl(primaryPreviewUrl) || primaryPreviewUrl;
-              const extraAssetCount = Math.max((item.mediaAssets?.length ?? (item.media ? 1 : 0)) - 1, 0);
+              const extraAssetCount = Math.max(previewableAssets.length - 1, 0);
 
               return (
                 <SwipeableActivityCard
@@ -298,7 +305,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                         data-prevent-card-selection="true"
                         onClick={(event) => {
                           event.stopPropagation();
-                          handlePreviewAsset(item, 0);
+                          handlePreviewAsset(item, boundedRememberedIndex);
                         }}
                         className="relative mt-0.5 h-14 w-14 overflow-hidden rounded-xl bg-[#ec1e24]/10 transition-transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-[#ec1e24]/60"
                         aria-label={`Preview ${primaryAsset.kind} ${primaryAsset.fileName}`}
@@ -485,6 +492,14 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         mediaType={previewMediaItems[0]?.mediaType ?? 'image'}
         title={previewMediaItems[0]?.title}
         badgeLabel={previewMediaItems[0]?.badgeLabel}
+        onImageIndexChange={(index) => {
+          const itemId = previewState?.itemId;
+          if (!itemId) return;
+          setRememberedPreviewIndexes((current) => ({
+            ...current,
+            [itemId]: index,
+          }));
+        }}
         onOpenChange={(open) => {
           if (!open) {
             setPreviewState(null);

@@ -19,6 +19,19 @@ export function buildComposeAssetStreamUrl(url?: string): string | undefined {
     return url;
   }
 
+  try {
+    const parsed = new URL(url);
+    const isBackblazeFile = /backblazeb2\.com$/i.test(parsed.hostname) && parsed.pathname.includes('/file/');
+    const hasDownloadAuthorization = parsed.searchParams.has('Authorization');
+
+    // Authorized preview URLs are already browser-safe; only proxy raw Backblaze file URLs.
+    if (!isBackblazeFile || hasDownloadAuthorization) {
+      return url;
+    }
+  } catch {
+    return url;
+  }
+
   return `/api/create/asset-stream?url=${encodeURIComponent(url)}`;
 }
 

@@ -311,7 +311,7 @@ export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
     return asset.previewUrl;
   }
 
-  return asset.storageUrl || asset.previewUrl;
+  return asset.previewUrl || asset.storageUrl;
 }
 
 export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {
