@@ -146,7 +146,11 @@ router.get('/search', async (req, res) => {
             `https://api.themoviedb.org/3/search/multi?api_key=${apiKey}&query=${encodeURIComponent(query)}&include_adult=false`
         );
 
-        if (!response.ok) {
+        const companyResponse = await fetch(
+            `https://api.themoviedb.org/3/search/company?api_key=${apiKey}&query=${encodeURIComponent(query)}`
+        );
+
+        if (!response.ok || !companyResponse.ok) {
             throw new Error('Failed to search TMDb');
         }
 
@@ -163,8 +167,15 @@ router.get('/search', async (req, res) => {
                 first_air_date?: string;
             }>;
         };
+        const companyData = await companyResponse.json() as {
+            results?: Array<{
+                id: number;
+                name?: string;
+                logo_path?: string | null;
+            }>;
+        };
 
-        const results = (data.results || [])
+        const mediaResults = (data.results || [])
             .filter((item) => item.media_type === 'movie' || item.media_type === 'tv' || item.media_type === 'person')
             .filter((item) => item.backdrop_path || item.poster_path || item.profile_path)
             .slice(0, 12)
@@ -177,6 +188,21 @@ router.get('/search', async (req, res) => {
                 profile: item.profile_path ? `${TMDB_POSTER_IMAGE_BASE}${item.profile_path}` : null,
                 releaseDate: item.release_date || item.first_air_date || null,
             }));
+
+        const companyResults = (companyData.results || [])
+            .filter((item) => item.logo_path)
+            .slice(0, 6)
+            .map((item) => ({
+                id: item.id,
+                mediaType: 'company',
+                title: item.name || 'Untitled company',
+                backdrop: null,
+                poster: item.logo_path ? `${TMDB_POSTER_IMAGE_BASE}${item.logo_path}` : null,
+                profile: null,
+                releaseDate: null,
+            }));
+
+        const results = [...mediaResults, ...companyResults].slice(0, 12);
 
         res.json({ success: true, data: results });
     } catch (error) {
@@ -339,10 +365,10 @@ router.get('/images/:mediaType/:tmdbId', async (req, res) => {
     try {
         const { mediaType, tmdbId } = req.params;
 
-        if (mediaType !== 'movie' && mediaType !== 'tv' && mediaType !== 'person') {
+        if (mediaType !== 'movie' && mediaType !== 'tv' && mediaType !== 'person' && mediaType !== 'company') {
             return res.status(400).json({
                 success: false,
-                error: { message: 'Invalid media type. Must be "movie", "tv", or "person".' }
+                error: { message: 'Invalid media type. Must be "movie", "tv", "person", or "company".' }
             });
         }
 

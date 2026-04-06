@@ -64,6 +64,11 @@ export function getYtDlpAuthOptions(): YtDlpOptions {
         options.cookies = cookieFilePath;
     }
 
+    const cookiesFromBrowser = process.env.YT_DLP_COOKIES_FROM_BROWSER?.trim();
+    if (cookiesFromBrowser) {
+        options.cookiesFromBrowser = cookiesFromBrowser;
+    }
+
     const proxy = process.env.YT_DLP_PROXY_URL?.trim();
     if (proxy) {
         options.proxy = proxy;
@@ -79,7 +84,7 @@ export function getYtDlpAuthOptions(): YtDlpOptions {
 
 export function hasYtDlpAuthConfiguration(): boolean {
     const options = getYtDlpAuthOptions();
-    return Boolean(options.cookies || options.proxy);
+    return Boolean(options.cookies || options.cookiesFromBrowser || options.proxy);
 }
 
 export function describeYtDlpAuthConfiguration(): string {
@@ -88,6 +93,10 @@ export function describeYtDlpAuthConfiguration(): string {
 
     if (options.cookies) {
         enabledModes.push('cookies');
+    }
+
+    if (options.cookiesFromBrowser) {
+        enabledModes.push(`browser:${options.cookiesFromBrowser}`);
     }
 
     if (options.proxy) {

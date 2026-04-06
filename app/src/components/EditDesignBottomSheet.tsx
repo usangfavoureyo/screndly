@@ -806,7 +806,22 @@ export function EditDesignBottomSheet({
                 aria-label="Undo design changes"
                 className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
               >
-                <img src={undoIcon} alt="" className="h-5 w-5" />
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: 'currentColor',
+                    WebkitMaskImage: `url("${undoIcon}")`,
+                    maskImage: `url("${undoIcon}")`,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskSize: 'contain',
+                  }}
+                />
               </button>
               <button
                 type="button"
@@ -815,7 +830,22 @@ export function EditDesignBottomSheet({
                 aria-label="Redo design changes"
                 className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
               >
-                <img src={redoIcon} alt="" className="h-5 w-5" />
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: 'currentColor',
+                    WebkitMaskImage: `url("${redoIcon}")`,
+                    maskImage: `url("${redoIcon}")`,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskSize: 'contain',
+                  }}
+                />
               </button>
             </div>
           </div>
@@ -849,14 +879,14 @@ export function EditDesignBottomSheet({
               className="bg-white dark:bg-black border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#292929]"
             />
             {headerText.length > 90 && (
-              <p className="text-xs text-[#ec1e24] mt-1">
-                ⚠️ Exceeds recommended limit (may use smaller font)
-              </p>
+                <p className="text-xs text-[#ec1e24] mt-1">
+                  Warning: exceeds recommended limit and may use a smaller font.
+                </p>
             )}
             {headerText.length > 60 && headerText.length <= 90 && (
-              <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
-                💡 Medium font size will be used
-              </p>
+                <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
+                  Tip: a medium font size will be used.
+                </p>
             )}
             
             {/* Header Text Color Picker */}
@@ -999,14 +1029,14 @@ export function EditDesignBottomSheet({
                 className="bg-white dark:bg-black border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#292929] resize-none"
               />
               {subtext.length > 120 && (
-                <p className="text-xs text-[#ec1e24] mt-1">
-                  ⚠️ Exceeds recommended limit (may use smaller font)
-                </p>
+                  <p className="text-xs text-[#ec1e24] mt-1">
+                    Warning: exceeds recommended limit and may use a smaller font.
+                  </p>
               )}
               {subtext.length > 90 && subtext.length <= 120 && (
-                <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
-                  💡 Medium font size will be used
-                </p>
+                  <p className="text-xs text-yellow-600 dark:text-yellow-500 mt-1">
+                    Tip: a medium font size will be used.
+                  </p>
               )}
               
               {/* Subtext Color Picker */}

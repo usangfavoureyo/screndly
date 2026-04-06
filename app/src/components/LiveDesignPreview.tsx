@@ -234,13 +234,13 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const previewImageStyle = useMemo(() => {
     if (!sourceDimensions?.width || !sourceDimensions?.height) {
       return {
-        left: '0%',
-        top: '0%',
+        left: '50%',
+        top: '50%',
         width: '100%',
         height: '100%',
         objectFit: 'cover' as const,
-        objectPosition: `${focalPoint.x}% ${focalPoint.y}%`,
-        transform: `scale(${zoom})`,
+        objectPosition: 'center center',
+        transform: `translate(-50%, -50%) scale(${zoom})`,
         transformOrigin: 'center center',
       };
     }
@@ -263,15 +263,19 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     const scaledHeight = baseHeight * zoom;
     const overflowX = Math.max(0, scaledWidth - CANVAS_WIDTH);
     const overflowY = Math.max(0, scaledHeight - CANVAS_HEIGHT);
-    const left = -overflowX * clamp(focalPoint.x / 100, 0, 1);
-    const top = -overflowY * clamp(focalPoint.y / 100, 0, 1);
+    const offsetX = (clamp(focalPoint.x, 0, 100) - 50) / 50;
+    const offsetY = (clamp(focalPoint.y, 0, 100) - 50) / 50;
+    const translateX = -offsetX * (overflowX / 2);
+    const translateY = -offsetY * (overflowY / 2);
 
     return {
-      left: `${(left / CANVAS_WIDTH) * 100}%`,
-      top: `${(top / CANVAS_HEIGHT) * 100}%`,
+      left: '50%',
+      top: '50%',
       width: `${(scaledWidth / CANVAS_WIDTH) * 100}%`,
       height: `${(scaledHeight / CANVAS_HEIGHT) * 100}%`,
       objectFit: 'fill' as const,
+      transform: `translate(calc(-50% + ${(translateX / CANVAS_WIDTH) * 100}%), calc(-50% + ${(translateY / CANVAS_HEIGHT) * 100}%))`,
+      transformOrigin: 'center center',
     };
   }, [focalPoint.x, focalPoint.y, sourceDimensions, zoom]);
 

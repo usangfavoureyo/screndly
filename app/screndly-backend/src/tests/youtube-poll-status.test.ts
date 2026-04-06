@@ -53,6 +53,13 @@ test('classifies YouTube access issues by retryability', () => {
     );
 });
 
+test('keeps bot-challenge download failures retryable even without auth configuration', () => {
+    const service = new YouTubePollerService() as any;
+
+    assert.equal(service.shouldPauseDownloadRetries('bot_challenge', false), false);
+    assert.equal(service.getDownloadFailureFeedStatus('bot_challenge', false), 'failed');
+});
+
 test('respects the configured polling schedule window', () => {
     const service = new YouTubePollerService() as any;
     const schedule = {

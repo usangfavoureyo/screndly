@@ -160,7 +160,7 @@ export type DesignStudioActivityType =
 
 export interface DesignStudioTMDbSearchResult {
   id: number;
-  mediaType: 'movie' | 'tv' | 'person';
+  mediaType: 'movie' | 'tv' | 'person' | 'company';
   title: string;
   backdrop: string | null;
   poster: string | null;
@@ -360,7 +360,7 @@ export async function searchDesignStudioTMDb(query: string): Promise<DesignStudi
 }
 
 export async function fetchDesignStudioTMDbImages(
-  mediaType: 'movie' | 'tv' | 'person',
+  mediaType: 'movie' | 'tv' | 'person' | 'company',
   tmdbId: number,
 ): Promise<DesignStudioTMDbImagePool> {
   const response = await apiClient.get<DesignStudioTMDbImagePool>(`/api/tmdb/images/${mediaType}/${tmdbId}`);

@@ -1644,47 +1644,67 @@ async function buildTextLayer(input: {
       ? Math.round(scaledTextBoxX + scaledBoxWidth)
       : scaledTextBoxX;
 
-  const fontDataUri = getHeadlineFontDataUri();
-  const fontFaceRule = fontDataUri
-    ? `@font-face { font-family: 'ScrendlyHeadline'; src: url('${fontDataUri}') format('truetype'); font-weight: 700; font-style: normal; }`
-    : '';
-  const fontFamily = fontDataUri
-    ? `'ScrendlyHeadline', 'Impact', 'Arial Narrow Bold', sans-serif`
-    : `'Impact', 'Arial Narrow Bold', sans-serif`;
-  const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.28;
-  const textElements = fit.lines
-    .map((line, index) => {
-      const y = top + Math.round(index * fit.lineHeight);
-      return `
-        <text
-          x="${x}"
-          y="${y}"
-          fill="${escapeXml(fontColor)}"
-          font-family="${escapeXml(fontFamily)}"
-          font-size="${Math.max(1, Math.round(fit.fontSize))}"
-          font-weight="800"
-          text-anchor="${anchor}"
-          dominant-baseline="hanging"
-          letter-spacing="-0.03em"
-          text-transform="uppercase"
-          style="paint-order: stroke fill; stroke: rgba(0,0,0,${shadowOpacity}); stroke-width: ${shadowOpacity > 0 ? 2 : 0}px;"
-        >${escapeXml(line)}</text>
+  const fontFamily = input.template.fontFamily || 'PFDinTextCompPro';
+  const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
+  const fontFile = fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH) ? DESIGN_STUDIO_HEADLINE_FONT_PATH : undefined;
+
+  const baseLayer = sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  });
+
+  const composites: Array<{ input: Buffer; left: number; top: number }> = [];
+
+  for (let index = 0; index < fit.lines.length; index += 1) {
+    const line = fit.lines[index];
+    const lineBuffer = await sharp({
+      text: {
+        text: line,
+        rgba: true,
+        align: 'left',
+        font: `${fontFamily} ${Math.max(1, Math.round(fit.fontSize))}`,
+        fontfile: fontFile,
+      } as any,
+    }).png().toBuffer();
+
+    const metadata = await sharp(lineBuffer).metadata();
+    const lineWidth = Math.max(1, metadata.width || scaledBoxWidth);
+    const lineHeight = Math.max(1, metadata.height || Math.round(fit.lineHeight));
+    const left = alignment === 'center'
+      ? Math.round(x - (lineWidth / 2))
+      : alignment === 'right'
+        ? Math.round(x - lineWidth)
+        : x;
+    const lineTop = top + Math.round(index * fit.lineHeight);
+    const safeLeft = clamp(left, 0, Math.max(0, input.width - lineWidth));
+    const safeTop = clamp(lineTop, 0, Math.max(0, input.height - lineHeight));
+
+    if (shadowOpacity > 0) {
+      const shadowSvg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${lineWidth + 6}" height="${lineHeight + 6}" viewBox="0 0 ${lineWidth + 6} ${lineHeight + 6}">
+          <image href="data:image/png;base64,${lineBuffer.toString('base64')}" x="2" y="2" opacity="${shadowOpacity}" />
+        </svg>
       `.trim();
-    })
-    .join('');
+      const shadowBuffer = await sharp(Buffer.from(shadowSvg)).blur(1.2).png().toBuffer();
+      composites.push({
+        input: shadowBuffer,
+        left: clamp(safeLeft - 2, 0, Math.max(0, input.width - (lineWidth + 6))),
+        top: clamp(safeTop - 2, 0, Math.max(0, input.height - (lineHeight + 6))),
+      });
+    }
 
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
-      <defs>
-        <style>
-          ${fontFaceRule}
-        </style>
-      </defs>
-      ${textElements}
-    </svg>
-  `.trim();
+    composites.push({
+      input: lineBuffer,
+      left: safeLeft,
+      top: safeTop,
+    });
+  }
 
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  return baseLayer.composite(composites).png().toBuffer();
 }
 
 function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {

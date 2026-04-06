@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowLeft, ArrowUp, Film, Image as ImageIcon, RotateCcw, Search, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -79,8 +79,8 @@ import {
   type DesignStudioTMDbImagePool,
   type DesignStudioTMDbSearchResult,
 } from '../../lib/api/designStudio';
-import undoIcon from '../../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
-import redoIcon from '../../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
+const undoIcon = '/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
+const redoIcon = '/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
 interface ComposeEditorPageProps {
   isCompactLayout?: boolean;
@@ -109,6 +109,7 @@ type FormState = {
 };
 
 type EditableComposeField = 'sharedCaption' | 'youtubeTitle' | 'youtubeDescription' | 'youtubePlaylist';
+type TmdbImageCategory = 'backdrops' | 'posters' | 'profiles' | 'logos';
 
 type PendingGeneratedContentAction =
   | {
@@ -149,6 +150,134 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
   youtube_shorts: 'w-6 h-6',
   pinterest: 'w-5.5 h-5.5',
 };
+
+function loadImageElement(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Failed to load TMDb logo preview.'));
+    image.src = url;
+  });
+}
+
+async function buildTmdbFileFromSelection(
+  imageUrl: string,
+  category: TmdbImageCategory,
+  resultTitle: string,
+): Promise<File> {
+  const response = await fetch(imageUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch selected TMDb image (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  const safeName = resultTitle
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase() || 'tmdb-image';
+
+  if (category !== 'logos') {
+    const extension = blob.type.includes('png') ? 'png' : 'jpg';
+    return new File([blob], `${safeName}-${category}.${extension}`, {
+      type: blob.type || 'image/jpeg',
+    });
+  }
+
+  const blobUrl = URL.createObjectURL(blob);
+
+  try {
+    const image = await loadImageElement(blobUrl);
+    const sampleCanvas = document.createElement('canvas');
+    sampleCanvas.width = Math.max(1, image.naturalWidth || image.width);
+    sampleCanvas.height = Math.max(1, image.naturalHeight || image.height);
+    const sampleContext = sampleCanvas.getContext('2d');
+
+    if (!sampleContext) {
+      throw new Error('Canvas is not available for logo processing.');
+    }
+
+    sampleContext.clearRect(0, 0, sampleCanvas.width, sampleCanvas.height);
+    sampleContext.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
+
+    const { data } = sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
+    let visiblePixelCount = 0;
+    let redTotal = 0;
+    let greenTotal = 0;
+    let blueTotal = 0;
+    let chromaTotal = 0;
+
+    for (let index = 0; index < data.length; index += 4) {
+      const alpha = data[index + 3];
+      if (alpha < 24) continue;
+
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+
+      visiblePixelCount += 1;
+      redTotal += red;
+      greenTotal += green;
+      blueTotal += blue;
+      chromaTotal += (Math.abs(red - green) + Math.abs(green - blue) + Math.abs(red - blue)) / 3;
+    }
+
+    const averageRed = visiblePixelCount ? redTotal / visiblePixelCount : 255;
+    const averageGreen = visiblePixelCount ? greenTotal / visiblePixelCount : 255;
+    const averageBlue = visiblePixelCount ? blueTotal / visiblePixelCount : 255;
+    const averageBrightness = (averageRed + averageGreen + averageBlue) / 3;
+    const averageChroma = visiblePixelCount ? chromaTotal / visiblePixelCount : 0;
+    const isMostlyMonochrome = averageChroma < 18;
+
+    const backgroundColor = isMostlyMonochrome
+      ? averageBrightness < 110
+        ? '#FFFFFF'
+        : '#101010'
+      : averageBrightness > 170
+        ? '#111111'
+        : '#FFFFFF';
+
+    const outputSize = 1600;
+    const padding = Math.round(outputSize * 0.16);
+    const contentWidth = outputSize - padding * 2;
+    const contentHeight = outputSize - padding * 2;
+    const scale = Math.min(contentWidth / sampleCanvas.width, contentHeight / sampleCanvas.height);
+    const drawWidth = Math.max(1, Math.round(sampleCanvas.width * scale));
+    const drawHeight = Math.max(1, Math.round(sampleCanvas.height * scale));
+    const offsetX = Math.round((outputSize - drawWidth) / 2);
+    const offsetY = Math.round((outputSize - drawHeight) / 2);
+
+    const outputCanvas = document.createElement('canvas');
+    outputCanvas.width = outputSize;
+    outputCanvas.height = outputSize;
+    const outputContext = outputCanvas.getContext('2d');
+
+    if (!outputContext) {
+      throw new Error('Canvas is not available for logo processing.');
+    }
+
+    outputContext.fillStyle = backgroundColor;
+    outputContext.fillRect(0, 0, outputSize, outputSize);
+    outputContext.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
+
+    const processedBlob = await new Promise<Blob>((resolve, reject) => {
+      outputCanvas.toBlob((value) => {
+        if (!value) {
+          reject(new Error('Failed to render the selected logo.'));
+          return;
+        }
+        resolve(value);
+      }, 'image/png');
+    });
+
+    return new File([processedBlob], `${safeName}-logo.png`, {
+      type: 'image/png',
+    });
+  } finally {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
 
@@ -265,7 +394,7 @@ function getIntentBadgeLabel(intentResult: ComposeContentGenerationResult['inten
   };
 
   const outputLabel = intentResult.outputMode === 'preview_only' ? 'Preview' : 'Direct fill';
-  return `${intentMap[intentResult.intent] || 'AI'} • ${outputLabel}`;
+  return `${intentMap[intentResult.intent] || 'AI'} - ${outputLabel}`;
 }
 
 export function ComposeEditorPage({
@@ -290,7 +419,7 @@ export function ComposeEditorPage({
   const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
   const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
   const [tmdbImagePool, setTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
-  const [tmdbImageCategory, setTmdbImageCategory] = useState<'backdrops' | 'posters' | 'profiles'>('backdrops');
+  const [tmdbImageCategory, setTmdbImageCategory] = useState<TmdbImageCategory>('backdrops');
   const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
   const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
   const [isGeneratingThreadsXCrop, setIsGeneratingThreadsXCrop] = useState(false);
@@ -803,6 +932,7 @@ export function ComposeEditorPage({
     if (!tmdbImagePool) return [];
     if (tmdbImageCategory === 'profiles') return tmdbImagePool.profiles || [];
     if (tmdbImageCategory === 'posters') return tmdbImagePool.posters || [];
+    if (tmdbImageCategory === 'logos') return tmdbImagePool.logos || [];
     return tmdbImagePool.backdrops || [];
   }, [tmdbImageCategory, tmdbImagePool]);
 
@@ -843,7 +973,9 @@ export function ComposeEditorPage({
         ? 'profiles'
         : pool.backdrops?.length
           ? 'backdrops'
-          : 'posters';
+          : pool.posters?.length
+            ? 'posters'
+            : 'logos';
       setTmdbImageCategory(nextCategory);
     } catch (error) {
       console.error('Failed to load TMDb image pool:', error);
@@ -862,28 +994,12 @@ export function ComposeEditorPage({
   };
 
   const handleSelectTmdbImage = async (imageUrl: string) => {
-    const currentOrder = formState.mediaAssets.length;
     setIsUploadingMedia(true);
 
     try {
-      const response = await fetch(imageUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch selected TMDb image (${response.status})`);
-      }
-
-      const blob = await response.blob();
       const resultTitle = selectedTmdbResult?.title || 'tmdb-image';
-      const safeName = resultTitle
-        .replace(/[^a-z0-9-_]+/gi, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '')
-        .toLowerCase() || 'tmdb-image';
-      const extension = blob.type.includes('png') ? 'png' : 'jpg';
-      const file = new File([blob], `${safeName}-${tmdbImageCategory}.${extension}`, {
-        type: blob.type || 'image/jpeg',
-      });
-
-      const pendingAsset = await buildComposeMediaAsset(file, currentOrder);
+      const file = await buildTmdbFileFromSelection(imageUrl, tmdbImageCategory, resultTitle);
+      const pendingAsset = await buildComposeMediaAsset(file, formState.mediaAssets.length);
       setFormState((current) => ({
         ...current,
         mediaAssets: [...current.mediaAssets, pendingAsset],
@@ -917,11 +1033,7 @@ export function ComposeEditorPage({
         }
       }
 
-      setSelectedTmdbResult(null);
-      setTmdbImagePool(null);
-      setTmdbResults([]);
-      setTmdbSearchQuery('');
-      toast.success('TMDb image added to media');
+      toast.success(tmdbImageCategory === 'logos' ? 'TMDb logo added to media' : 'TMDb image added to media');
     } catch (error) {
       console.error('Failed to add TMDb image:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to add TMDb image');
@@ -1682,7 +1794,22 @@ export function ComposeEditorPage({
                 aria-label="Undo post changes"
                 className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
               >
-                <img src={undoIcon} alt="" className="h-5 w-5" />
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: 'currentColor',
+                    WebkitMaskImage: `url("${undoIcon}")`,
+                    maskImage: `url("${undoIcon}")`,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskSize: 'contain',
+                  }}
+                />
               </button>
               <button
                 type="button"
@@ -1691,7 +1818,22 @@ export function ComposeEditorPage({
                 aria-label="Redo post changes"
                 className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
               >
-                <img src={redoIcon} alt="" className="h-5 w-5" />
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  style={{
+                    display: 'inline-block',
+                    backgroundColor: 'currentColor',
+                    WebkitMaskImage: `url("${redoIcon}")`,
+                    maskImage: `url("${redoIcon}")`,
+                    WebkitMaskRepeat: 'no-repeat',
+                    maskRepeat: 'no-repeat',
+                    WebkitMaskPosition: 'center',
+                    maskPosition: 'center',
+                    WebkitMaskSize: 'contain',
+                    maskSize: 'contain',
+                  }}
+                />
               </button>
             </div>
           </div>
@@ -1721,14 +1863,14 @@ export function ComposeEditorPage({
                 <div>
                   <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
                   <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                    Find a movie, TV show, or person, then add a backdrop, poster, or profile image directly to this post.
+                    Find a movie, TV show, person, network, or company, then add posters, backdrops, profiles, or logos directly to this post.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
                     value={tmdbSearchQuery}
                     onChange={(event) => setTmdbSearchQuery(event.target.value)}
-                    placeholder="Search TMDb for movie, TV, or person..."
+                    placeholder="Search TMDb for movie, TV, person, or company..."
                     className="bg-white dark:bg-black"
                   />
                   <Button
@@ -1737,7 +1879,7 @@ export function ComposeEditorPage({
                     disabled={isSearchingTmdb || !tmdbSearchQuery.trim()}
                     className="shrink-0"
                   >
-                    {isSearchingTmdb ? 'Searching...' : <><Search className="h-4 w-4" />Search</>}
+                    {isSearchingTmdb ? 'Searching...' : 'Search'}
                   </Button>
                 </div>
 
@@ -1760,22 +1902,36 @@ export function ComposeEditorPage({
                     <div className="flex flex-wrap gap-2">
                       {selectedTmdbResult.mediaType !== 'person' ? (
                         <>
-                          <Button
-                            type="button"
-                            variant={tmdbImageCategory === 'backdrops' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setTmdbImageCategory('backdrops')}
-                          >
-                            Backdrops
-                          </Button>
-                          <Button
-                            type="button"
-                            variant={tmdbImageCategory === 'posters' ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => setTmdbImageCategory('posters')}
-                          >
-                            Posters
-                          </Button>
+                          {tmdbImagePool?.backdrops?.length ? (
+                            <Button
+                              type="button"
+                              variant={tmdbImageCategory === 'backdrops' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setTmdbImageCategory('backdrops')}
+                            >
+                              Backdrops
+                            </Button>
+                          ) : null}
+                          {tmdbImagePool?.posters?.length ? (
+                            <Button
+                              type="button"
+                              variant={tmdbImageCategory === 'posters' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setTmdbImageCategory('posters')}
+                            >
+                              Posters
+                            </Button>
+                          ) : null}
+                          {tmdbImagePool?.logos?.length ? (
+                            <Button
+                              type="button"
+                              variant={tmdbImageCategory === 'logos' ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => setTmdbImageCategory('logos')}
+                            >
+                              Logos
+                            </Button>
+                          ) : null}
                         </>
                       ) : null}
                       {selectedTmdbResult.mediaType === 'person' ? (
@@ -1787,7 +1943,13 @@ export function ComposeEditorPage({
                     {isLoadingTmdbImages ? (
                       <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading images...</p>
                     ) : activeTmdbImages.length ? (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        {tmdbImageCategory === 'logos' ? (
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                            Logo picks are automatically placed on a solid background before they are added to Media Upload.
+                          </p>
+                        ) : null}
+                        <div className="grid grid-cols-2 gap-3">
                         {activeTmdbImages.map((asset, index) => (
                           <button
                             key={`${asset.url}-${index}`}
@@ -1798,10 +1960,11 @@ export function ComposeEditorPage({
                             <img
                               src={asset.url}
                               alt={`${selectedTmdbResult.title} ${tmdbImageCategory}`}
-                              className={`w-full object-cover ${tmdbImageCategory === 'backdrops' ? 'aspect-video' : 'aspect-[2/3]'}`}
+                              className={`w-full ${tmdbImageCategory === 'backdrops' ? 'aspect-video object-cover' : tmdbImageCategory === 'logos' ? 'aspect-square object-contain bg-[#111111] p-4' : 'aspect-[2/3] object-cover'}`}
                             />
                           </button>
                         ))}
+                        </div>
                       </div>
                     ) : (
                       <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No images available for this category.</p>
@@ -2197,7 +2360,7 @@ export function ComposeEditorPage({
               <div>
                 <h3 className="mb-1 text-gray-900 dark:text-white">Source or Prompt Input</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Paste trailer, teaser, movie, or TV metadata here, or type a request like “write a review for The Matrix for 60 seconds video.” AI will generate post content and, when relevant, YouTube details.
+                  Paste trailer, teaser, movie, or TV metadata here, or type a request like "write a review for The Matrix for 60 seconds video." AI will generate post content and, when relevant, YouTube details.
                 </p>
               </div>
             </div>
@@ -2211,7 +2374,7 @@ export function ComposeEditorPage({
                     setMetadataGenerationError(null);
                   }
                 }}
-                placeholder="Paste metadata or type a request like “Generate a caption for this trailer” or “Write a review for The Matrix for 60 seconds video”..."
+                placeholder={'Paste metadata or type a request like "Generate a caption for this trailer" or "Write a review for The Matrix for 60 seconds video"...'}
                 className="min-h-[200px] border-gray-200 bg-white pb-16 dark:border-[#333333] dark:bg-[#000000]"
               />
               <button

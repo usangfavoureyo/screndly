@@ -262,6 +262,22 @@ const DESTINATION_ROUTING_TARGETS: PlatformRoutingTarget[] = [
     { publishPlatform: 'X', settingsPlatform: 'X' },
     { publishPlatform: 'Pinterest', settingsPlatform: 'Pinterest' },
 ];
+const PLATFORM_NOTIFICATION_LABELS: Record<string, string> = {
+    X: 'X',
+    Facebook: 'Facebook',
+    FacebookFeed: 'Facebook Feed',
+    FacebookStories: 'Facebook Stories',
+    Instagram: 'Instagram',
+    InstagramFeed: 'Instagram Feed',
+    InstagramReels: 'Instagram Reels',
+    InstagramStories: 'Instagram Stories',
+    Threads: 'Threads',
+    TikTok: 'TikTok',
+    YouTube: 'YouTube',
+    YouTubeLongform: 'YouTube Long Form',
+    YouTubeShorts: 'YouTube Shorts',
+    Pinterest: 'Pinterest',
+};
 const MAX_RECENT_FEED_ITEMS = 15;
 const MAX_OWNED_VIDEO_CANDIDATES = 8;
 const MAX_COLLAB_CANDIDATES = 6;
@@ -1844,6 +1860,19 @@ export class YouTubePollerService {
         return 'other';
     }
 
+    private shouldPauseDownloadRetries(issueKind: YouTubeAccessIssueKind | null, authConfigured: boolean): boolean {
+        if (issueKind === 'bot_challenge' && !authConfigured) {
+            return false;
+        }
+
+        return false;
+    }
+
+    private getDownloadFailureFeedStatus(issueKind: YouTubeAccessIssueKind | null, authConfigured: boolean): FeedItemStatus {
+        const shouldPauseRetries = this.shouldPauseDownloadRetries(issueKind, authConfigured);
+        return shouldPauseRetries ? 'ignored' : 'failed';
+    }
+
     private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
         if (downloadPath && fs.existsSync(downloadPath)) {
             fs.unlinkSync(downloadPath);
@@ -2231,8 +2260,9 @@ export class YouTubePollerService {
             }
 
             if (!downloadPath) {
-                const shouldPauseRetries = youtubeAccessIssueKind === 'bot_challenge' && !hasYtDlpAuthConfiguration();
-                const failedStatus: FeedItemStatus = shouldPauseRetries ? 'ignored' : 'failed';
+                const authConfigured = hasYtDlpAuthConfiguration();
+                const shouldPauseRetries = this.shouldPauseDownloadRetries(youtubeAccessIssueKind, authConfigured);
+                const failedStatus = this.getDownloadFailureFeedStatus(youtubeAccessIssueKind, authConfigured);
                 await this.recordFeedItem(
                     videoId,
                     activeChannel.channelId,
@@ -2250,7 +2280,7 @@ export class YouTubePollerService {
                                 kind: youtubeAccessIssueKind || 'other',
                                 message: youtubeAccessIssueMessage,
                                 shouldPauseRetries,
-                                authConfigured: hasYtDlpAuthConfiguration(),
+                                authConfigured,
                             },
                         },
                     }
@@ -2264,7 +2294,7 @@ export class YouTubePollerService {
                                 ? 'YouTube Download Restricted'
                                 : 'Trailer Download Failed',
                     message: youtubeAccessIssueKind === 'bot_challenge'
-                        ? `${videoTitle} matched detection rules but YouTube blocked the production downloader. Configure authenticated yt-dlp access, then force a reprocess for this video.`
+                        ? `${videoTitle} matched detection rules but YouTube blocked the production downloader. Screndly will keep retrying automatically, and you can also force a reprocess after updating yt-dlp access if needed.`
                         : youtubeAccessIssueKind === 'unavailable'
                             ? `${videoTitle} matched detection rules but YouTube reported the video as unavailable to the production downloader. The item will stay retryable for future polls or a forced reprocess.`
                             : youtubeAccessIssueKind === 'restricted'
@@ -2285,8 +2315,8 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: false,
                         failed: true,
-                        message: youtubeAccessIssueKind === 'bot_challenge' && shouldPauseRetries
-                            ? `YouTube blocked automated download for ${videoTitle}; retries are paused until authenticated yt-dlp access is configured`
+                        message: youtubeAccessIssueKind === 'bot_challenge'
+                            ? `YouTube blocked automated download for ${videoTitle}; it will stay retryable for the next polling cycle and manual reprocesses`
                             : youtubeAccessIssueKind === 'unavailable'
                                 ? `YouTube reported ${videoTitle} as unavailable to the downloader; it will retry on the next polling cycle`
                                 : youtubeAccessIssueKind === 'restricted'
@@ -2395,6 +2425,7 @@ export class YouTubePollerService {
             );
 
             if (publishResult.publishedPlatforms.length > 0) {
+                const publishedPlatformLabels = this.formatPlatformNotificationLabels(publishResult.publishedPlatforms);
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted', {
                     decisionPath: decisionResult.decisionPath,
                     promoFingerprint: dedupResult.dedupFingerprint,
@@ -2412,7 +2443,7 @@ export class YouTubePollerService {
                 );
                 await notificationService.notifyUser({
                     title: 'New Trailer Published',
-                    message: `${video.title} was posted to ${publishResult.publishedPlatforms.join(', ')}.`,
+                    message: `${video.title} was posted to ${publishedPlatformLabels.join(', ')}.`,
                     type: 'success',
                     source: 'youtube',
                     actionPage: '/channels'
@@ -2430,12 +2461,13 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: true,
                         failed: false,
-                        message: `Published to ${publishResult.publishedPlatforms.join(', ')}`
+                        message: `Published to ${publishedPlatformLabels.join(', ')}`
                     }
                 };
             }
 
             if (publishResult.failedPlatforms.length > 0) {
+                const failedPlatformLabels = this.formatPlatformNotificationLabels(publishResult.failedPlatforms);
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed', {
                     decisionPath: decisionResult.decisionPath,
                     promoFingerprint: dedupResult.dedupFingerprint,
@@ -2456,7 +2488,7 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: false,
                         failed: true,
-                        message: `Publish failed for ${publishResult.failedPlatforms.join(', ')}; ${videoTitle} will retry on the next polling cycle`
+                        message: `Publish failed for ${failedPlatformLabels.join(', ')}; ${videoTitle} will retry on the next polling cycle`
                     }
                 };
             }
@@ -2814,6 +2846,14 @@ Respond ONLY as strict JSON:
 
     private targetPlatformsIncludeAny(targetPlatforms: string[], platforms: string[]): boolean {
         return platforms.some((platform) => targetPlatforms.includes(platform));
+    }
+
+    private formatPlatformNotificationLabel(platform: string): string {
+        return PLATFORM_NOTIFICATION_LABELS[platform] || platform;
+    }
+
+    private formatPlatformNotificationLabels(platforms: string[]): string[] {
+        return platforms.map((platform) => this.formatPlatformNotificationLabel(platform));
     }
 
     private stripHashtags(text: string): string {
