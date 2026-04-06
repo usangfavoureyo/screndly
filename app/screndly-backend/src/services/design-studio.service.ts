@@ -1628,48 +1628,63 @@ async function buildTextLayer(input: {
     tracking: input.template.tracking || 0,
   });
 
-  const fontFamily = input.template.fontFamily || 'PFDinTextCompPro';
-  const lineGap = Math.max(0, Math.round(fit.lineHeight - fit.fontSize));
-  const textMarkup = `<span foreground="${escapeXml(fontColor)}">${escapeXml(fit.lines.join('\n'))}</span>`;
-  const textBuffer = await sharp({
-    text: {
-      text: textMarkup,
-      width: Math.max(1, scaledBoxWidth),
-      rgba: true,
-      align: alignment,
-      font: `${fontFamily} ${Math.max(1, Math.round(fit.fontSize))}`,
-      fontfile: fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH) ? DESIGN_STUDIO_HEADLINE_FONT_PATH : undefined,
-      spacing: lineGap,
-    } as any,
-  }).png().toBuffer();
-
-  const metadata = await sharp(textBuffer).metadata();
-  const textWidth = Math.max(1, metadata.width || input.variant.textBox.width);
-  const textHeight = Math.max(1, metadata.height || Math.ceil(fit.lines.length * fit.lineHeight));
-  const left = alignment === 'center'
-    ? Math.round(scaledTextBoxX + (scaledBoxWidth - textWidth) / 2)
-    : alignment === 'right'
-      ? Math.round(scaledTextBoxX + scaledBoxWidth - textWidth)
-      : scaledTextBoxX;
+  const totalTextHeight = Math.max(1, Math.ceil(fit.lines.length * fit.lineHeight));
   const top = input.variant.variant.startsWith('bottom')
-    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - textHeight)
+    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
     : input.variant.textBox.y;
 
-  return sharp({
-    create: {
-      width: input.width,
-      height: input.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([{
-      input: textBuffer,
-      left: clamp(left, 0, Math.max(0, input.width - textWidth)),
-      top: clamp(top, 0, Math.max(0, input.height - textHeight)),
-    }])
-    .png()
-    .toBuffer();
+  const anchor = alignment === 'center'
+    ? 'middle'
+    : alignment === 'right'
+      ? 'end'
+      : 'start';
+  const x = alignment === 'center'
+    ? Math.round(scaledTextBoxX + (scaledBoxWidth / 2))
+    : alignment === 'right'
+      ? Math.round(scaledTextBoxX + scaledBoxWidth)
+      : scaledTextBoxX;
+
+  const fontDataUri = getHeadlineFontDataUri();
+  const fontFaceRule = fontDataUri
+    ? `@font-face { font-family: 'ScrendlyHeadline'; src: url('${fontDataUri}') format('truetype'); font-weight: 700; font-style: normal; }`
+    : '';
+  const fontFamily = fontDataUri
+    ? `'ScrendlyHeadline', 'Impact', 'Arial Narrow Bold', sans-serif`
+    : `'Impact', 'Arial Narrow Bold', sans-serif`;
+  const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.28;
+  const textElements = fit.lines
+    .map((line, index) => {
+      const y = top + Math.round(index * fit.lineHeight);
+      return `
+        <text
+          x="${x}"
+          y="${y}"
+          fill="${escapeXml(fontColor)}"
+          font-family="${escapeXml(fontFamily)}"
+          font-size="${Math.max(1, Math.round(fit.fontSize))}"
+          font-weight="800"
+          text-anchor="${anchor}"
+          dominant-baseline="hanging"
+          letter-spacing="-0.03em"
+          text-transform="uppercase"
+          style="paint-order: stroke fill; stroke: rgba(0,0,0,${shadowOpacity}); stroke-width: ${shadowOpacity > 0 ? 2 : 0}px;"
+        >${escapeXml(line)}</text>
+      `.trim();
+    })
+    .join('');
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      <defs>
+        <style>
+          ${fontFaceRule}
+        </style>
+      </defs>
+      ${textElements}
+    </svg>
+  `.trim();
+
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {

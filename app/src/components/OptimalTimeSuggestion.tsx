@@ -125,6 +125,7 @@ export function OptimalTimeSuggestion({
         <div className={`rounded-lg border border-gray-200 dark:border-[#333333] overflow-hidden ${className}`}>
             {/* Header - Always Visible */}
             <button
+                type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-[#111111] hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors"
             >
@@ -203,6 +204,7 @@ export function OptimalTimeSuggestion({
                     {/* Apply Button */}
                     {onTimeSelect && nextOptimalDate && (
                         <button
+                            type="button"
                             onClick={handleApplyTime}
                             className="w-full py-2.5 rounded-lg bg-[#ec1e24] hover:bg-[#d01a20] text-white text-sm font-medium transition-colors flex items-center justify-center gap-2"
                         >

@@ -211,6 +211,7 @@ const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
 const RSS_PUBLISH_CLAIM_STALE_MS = 15 * 60 * 1000;
 const RSS_TOPIC_DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const RSS_SUBJECT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
 const activeRSSFeedRefreshes = new Map<string, Promise<RefreshResult>>();
@@ -362,6 +363,48 @@ const RSS_TOPIC_CUE_PATTERNS: Array<{ key: string; pattern: RegExp }> = [
   { key: 'trailer', pattern: /\b(trailer|teaser|first look|new look|poster drop|poster reveal)\b/i },
   { key: 'production', pattern: /\b(production|filming|shooting|wraps?|wrapped|begins? filming)\b/i },
 ];
+const RSS_SUBJECT_PHRASE_CONNECTORS = new Set([
+  'a',
+  'an',
+  'and',
+  'at',
+  'for',
+  'from',
+  'in',
+  'of',
+  'on',
+  'the',
+  'to',
+  'with',
+]);
+const RSS_SUBJECT_SINGLE_TOKEN_BLOCKLIST = new Set([
+  'abc',
+  'amazon',
+  'apple',
+  'bbc',
+  'cbs',
+  'cnn',
+  'comicbook',
+  'deadline',
+  'disney',
+  'facebook',
+  'fox',
+  'hbo',
+  'hulu',
+  'marvel',
+  'max',
+  'nbc',
+  'netflix',
+  'paramount',
+  'peacock',
+  'prime',
+  'screen',
+  'render',
+  'threads',
+  'tv',
+  'variety',
+  'x',
+]);
 
 type RSSFeedColumnSupport = {
   platformImageCounts: boolean;
@@ -1618,11 +1661,72 @@ function extractRSSEntityTokens(title?: string | null): string[] {
   return Array.from(new Set(entityMatches));
 }
 
+function extractRSSSubjectPhrases(title?: string | null): string[] {
+  if (!title) {
+    return [];
+  }
+
+  const words = String(title)
+    .replace(/[()[\]{}:;,.!?/\\|"]/g, ' ')
+    .split(/\s+/)
+    .map((word) => word.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9'-]+$/g, ''))
+    .filter(Boolean);
+  const phrases: string[] = [];
+  let current: string[] = [];
+
+  const flush = (): void => {
+    if (current.length === 0) {
+      return;
+    }
+
+    const phrase = normalizeRSSDedupeValue(current.join(' '));
+    const meaningfulTokens = phrase
+      .split(' ')
+      .map((token) => normalizeRSSTopicToken(token))
+      .filter((token) => token && !RSS_TOPIC_ENTITY_STOP_WORDS.has(token))
+      .filter((token) => token.length > 2 || /^\d+$/.test(token));
+
+    const isAllowedSingleToken =
+      meaningfulTokens.length === 1
+      && meaningfulTokens[0].length >= 5
+      && !RSS_SUBJECT_SINGLE_TOKEN_BLOCKLIST.has(meaningfulTokens[0]);
+
+    if (meaningfulTokens.length >= 2 || isAllowedSingleToken) {
+      phrases.push(phrase);
+    }
+
+    current = [];
+  };
+
+  for (const word of words) {
+    const normalizedWord = word.replace(/[’]/g, "'");
+    const lowerWord = normalizedWord.toLowerCase();
+    const isConnector = RSS_SUBJECT_PHRASE_CONNECTORS.has(lowerWord);
+    const isEntityLike = /^[A-Z0-9][A-Za-z0-9'’-]*$/.test(normalizedWord);
+
+    if (isEntityLike) {
+      current.push(normalizedWord);
+      continue;
+    }
+
+    if (isConnector && current.length > 0) {
+      current.push(lowerWord);
+      continue;
+    }
+
+    flush();
+  }
+
+  flush();
+  return Array.from(new Set(phrases));
+}
+
 function buildRSSTopicFingerprint(title?: string | null): {
   signature: string;
   tokens: Set<string>;
   entityTokens: Set<string>;
   cueTokens: Set<string>;
+  subjectPhrases: Set<string>;
 } {
   const signature = getRSSTopicSignature(title);
   return {
@@ -1632,6 +1736,7 @@ function buildRSSTopicFingerprint(title?: string | null): {
     cueTokens: new Set(
       RSS_TOPIC_CUE_PATTERNS.filter(({ pattern }) => pattern.test(String(title || ''))).map(({ key }) => key)
     ),
+    subjectPhrases: new Set(extractRSSSubjectPhrases(title)),
   };
 }
 
@@ -1646,8 +1751,8 @@ function getSetIntersectionCount(left: Set<string>, right: Set<string>): number 
 }
 
 function areRSSTopicFingerprintsSimilar(
-  left: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string> },
-  right: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string> }
+  left: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string>; subjectPhrases: Set<string> },
+  right: { signature: string; tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string>; subjectPhrases: Set<string> }
 ): boolean {
   if (!left.signature || !right.signature) {
     return false;
@@ -1673,15 +1778,38 @@ function areRSSTopicFingerprintsSimilar(
   return entityHeavyMatch || highTokenOverlap || cueAnchoredMatch || franchiseEventMatch || weightedScore >= 8;
 }
 
+function areRSSSubjectsInCooldown(
+  left: { tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string>; subjectPhrases: Set<string> },
+  right: { tokens: Set<string>; entityTokens: Set<string>; cueTokens: Set<string>; subjectPhrases: Set<string> }
+): boolean {
+  const sharedSubjectPhrases = getSetIntersectionCount(left.subjectPhrases, right.subjectPhrases);
+  if (sharedSubjectPhrases >= 1) {
+    return true;
+  }
+
+  const sharedEntities = getSetIntersectionCount(left.entityTokens, right.entityTokens);
+  const sharedTokens = getSetIntersectionCount(left.tokens, right.tokens);
+  const sharedCues = getSetIntersectionCount(left.cueTokens, right.cueTokens);
+
+  return sharedEntities >= 2 && (sharedTokens >= 3 || sharedCues >= 1);
+}
+
 function getRSSItemTopicDedupeKey(item: RSSItem): string {
   const signature = getRSSTopicSignature(item.title);
   return signature ? `topic:${signature}` : '';
+}
+
+function getRSSItemSubjectCooldownKeys(item: RSSItem): string[] {
+  return extractRSSSubjectPhrases(item.title)
+    .slice(0, 4)
+    .map((phrase) => `subject:${phrase}`);
 }
 
 function getRSSPublishClaimKeys(feedId: string, item: RSSItem): string[] {
   return [
     `${feedId}:${getRSSItemDedupeKey(item)}`,
     getRSSItemTopicDedupeKey(item) ? `${feedId}:${getRSSItemTopicDedupeKey(item)}` : '',
+    ...getRSSItemSubjectCooldownKeys(item),
   ].filter(Boolean);
 }
 
@@ -3305,6 +3433,11 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
       .map((activity) => buildRSSTopicFingerprint(activity.title))
       .filter((fingerprint) => fingerprint.signature);
+    const recentSubjectCooldownFingerprints = recentActivities
+      .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+      .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_SUBJECT_COOLDOWN_MS)
+      .map((activity) => buildRSSTopicFingerprint(activity.title))
+      .filter((fingerprint) => fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0);
     const getCrossSourceTopicDuplicateReason = (item: RSSItem): string | null => {
       const itemFingerprint = buildRSSTopicFingerprint(item.title);
       if (!itemFingerprint.signature) {
@@ -3318,10 +3451,28 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
       return 'Filtered as a duplicate topic that was already queued or published recently from another source.';
     };
+    const getRecentSubjectCooldownReason = (item: RSSItem): string | null => {
+      const itemFingerprint = buildRSSTopicFingerprint(item.title);
+      if (itemFingerprint.subjectPhrases.size === 0 && itemFingerprint.entityTokens.size === 0) {
+        return null;
+      }
+
+      const matchesRecentSubject = recentSubjectCooldownFingerprints.some((fingerprint) =>
+        areRSSSubjectsInCooldown(itemFingerprint, fingerprint)
+      );
+      if (!matchesRecentSubject) {
+        return null;
+      }
+
+      return 'Filtered because this subject was already queued or published within the last two hours from another source.';
+    };
     const rememberRecentTopic = (item: RSSItem): void => {
       const fingerprint = buildRSSTopicFingerprint(item.title);
       if (fingerprint.signature) {
         recentTopicFingerprints.push(fingerprint);
+      }
+      if (fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0) {
+        recentSubjectCooldownFingerprints.push(fingerprint);
       }
     };
     const selectionMode = manualLatestSelection ? 'latest_item' : 'backlog';
@@ -3413,6 +3564,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           .find((item) => {
             const dedupeKey = getRSSItemDedupeKey(item);
             return !manualRunBlockedKeys.has(dedupeKey)
+              && !getRecentSubjectCooldownReason(item)
               && !getCrossSourceTopicDuplicateReason(item)
               && evaluateFeedRules(item, feedFilters).allowed;
           })
@@ -3443,6 +3595,38 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
               status: 'filtered',
               lastAttemptedAt: new Date(),
               errorMessage: pendingRuleEvaluation.reason ?? 'Filtered by current feed rules.',
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
+        continue;
+      }
+
+      const pendingSubjectCooldownReason = getRecentSubjectCooldownReason(item);
+      if (pendingSubjectCooldownReason) {
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'filtered',
+              lastAttemptedAt: new Date(),
+              errorMessage: pendingSubjectCooldownReason,
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
+        continue;
+      }
+
+      const pendingTopicDuplicateReason = getCrossSourceTopicDuplicateReason(item);
+      if (pendingTopicDuplicateReason) {
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'filtered',
+              lastAttemptedAt: new Date(),
+              errorMessage: pendingTopicDuplicateReason,
               itemData: serializeRSSItem(item),
             },
           });
@@ -3633,6 +3817,16 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       const topicDuplicateReason = getCrossSourceTopicDuplicateReason(item);
+      const subjectCooldownReason = getRecentSubjectCooldownReason(item);
+      if (subjectCooldownReason) {
+        await upsertRSSFeedItem(feed.id, item, 'filtered', {
+          errorMessage: subjectCooldownReason,
+          firstSeenAt: item.pubDate,
+        });
+        seenKeys.add(dedupeKey);
+        continue;
+      }
+
       if (topicDuplicateReason) {
         await upsertRSSFeedItem(feed.id, item, 'filtered', {
           errorMessage: topicDuplicateReason,

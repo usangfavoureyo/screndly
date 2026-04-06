@@ -79,6 +79,8 @@ import {
   type DesignStudioTMDbImagePool,
   type DesignStudioTMDbSearchResult,
 } from '../../lib/api/designStudio';
+import undoIcon from '../../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
+import redoIcon from '../../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
 interface ComposeEditorPageProps {
   isCompactLayout?: boolean;
@@ -277,6 +279,12 @@ export function ComposeEditorPage({
   const { addNotification } = useNotifications();
   const existingItem = getItemById(activeItemId);
   const [formState, setFormState] = useState<FormState>(() => createInitialForm(existingItem));
+  const historyRef = useRef<FormState[]>([]);
+  const redoHistoryRef = useRef<FormState[]>([]);
+  const lastHistorySignatureRef = useRef('');
+  const skipHistorySignatureRef = useRef('');
+  const resetHistorySignatureRef = useRef('');
+  const [, setHistoryVersion] = useState(0);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
   const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
@@ -479,7 +487,9 @@ export function ComposeEditorPage({
   ]);
 
   useEffect(() => {
-    setFormState(createInitialForm(existingItem));
+    const initialForm = createInitialForm(existingItem);
+    resetHistorySignatureRef.current = JSON.stringify(initialForm);
+    setFormState(initialForm);
     setScheduleDate(existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined);
     setScheduleTime(toLocalTimeInputValue(existingItem?.scheduledAt));
     setMetadataGenerationError(null);
@@ -499,6 +509,78 @@ export function ComposeEditorPage({
     setIsReplaceGeneratedThumbnailOpen(false);
     setIsUploadingThreadsXCrop(false);
   }, [activeItemId, existingItem]);
+
+  const formStateSignature = useMemo(() => JSON.stringify(formState), [formState]);
+
+  useEffect(() => {
+    if (resetHistorySignatureRef.current === formStateSignature) {
+      historyRef.current = [formState];
+      redoHistoryRef.current = [];
+      lastHistorySignatureRef.current = formStateSignature;
+      resetHistorySignatureRef.current = '';
+      skipHistorySignatureRef.current = '';
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (skipHistorySignatureRef.current === formStateSignature) {
+      lastHistorySignatureRef.current = formStateSignature;
+      skipHistorySignatureRef.current = '';
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (!lastHistorySignatureRef.current) {
+      historyRef.current = [formState];
+      redoHistoryRef.current = [];
+      lastHistorySignatureRef.current = formStateSignature;
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (lastHistorySignatureRef.current === formStateSignature) {
+      return;
+    }
+
+    historyRef.current = [...historyRef.current, formState].slice(-60);
+    redoHistoryRef.current = [];
+    lastHistorySignatureRef.current = formStateSignature;
+    setHistoryVersion((value) => value + 1);
+  }, [formState, formStateSignature]);
+
+  const canUndo = historyRef.current.length > 1;
+  const canRedo = redoHistoryRef.current.length > 0;
+
+  const handleUndo = useCallback(() => {
+    if (historyRef.current.length <= 1) {
+      return;
+    }
+
+    const current = historyRef.current[historyRef.current.length - 1];
+    const previous = historyRef.current[historyRef.current.length - 2];
+    redoHistoryRef.current = [current, ...redoHistoryRef.current].slice(0, 60);
+    historyRef.current = historyRef.current.slice(0, -1);
+    lastHistorySignatureRef.current = JSON.stringify(previous);
+    skipHistorySignatureRef.current = JSON.stringify(previous);
+    setFormState(previous);
+    haptics.light();
+    setHistoryVersion((value) => value + 1);
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    if (redoHistoryRef.current.length === 0) {
+      return;
+    }
+
+    const [next, ...remaining] = redoHistoryRef.current;
+    historyRef.current = [...historyRef.current, next].slice(-60);
+    redoHistoryRef.current = remaining;
+    lastHistorySignatureRef.current = JSON.stringify(next);
+    skipHistorySignatureRef.current = JSON.stringify(next);
+    setFormState(next);
+    haptics.light();
+    setHistoryVersion((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     if (!formState.youtubePlaylist || youtubePlaylists.length === 0 || hasMatchingYouTubePlaylist) {
@@ -1334,6 +1416,12 @@ export function ComposeEditorPage({
         titleHint: formState.youtubeTitle || buildItemTitle(formState),
         sharedCaption: formState.sharedCaption,
         youtubeTitle: formState.youtubeTitle,
+        thumbnailConfig:
+          key === 'youtubeThumbnail'
+            ? settings.thumbnailConfig_youtube
+            : key === 'xThumbnail'
+              ? settings.thumbnailConfig_x
+              : undefined,
       });
 
       if (!response.success || !response.data) {
@@ -1584,7 +1672,29 @@ export function ComposeEditorPage({
       </div>
 
       <div className={`grid grid-cols-1 gap-6 ${isCompactLayout ? '' : 'xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]'}`}>
-        <div className="space-y-6">
+        <div className="relative space-y-6">
+          <div className="pointer-events-none sticky top-24 z-20 -mb-16 flex justify-end pr-1">
+            <div className="pointer-events-auto flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                aria-label="Undo post changes"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
+              >
+                <img src={undoIcon} alt="" className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                aria-label="Redo post changes"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
+              >
+                <img src={redoIcon} alt="" className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
           <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-[#333333] dark:bg-[#000000] dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)]">
             <div className="mb-4 space-y-3">
               <div>

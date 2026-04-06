@@ -371,6 +371,7 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
             sharedCaption,
             youtubeTitle,
             model,
+            thumbnailConfig,
         } = req.body ?? {};
 
         if (typeof metadataText !== 'string' || metadataText.trim().length === 0) {
@@ -388,8 +389,48 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
         }
 
         const settings = await getYouTubeRuntimeSettings();
+        const thumbnailConfigOverride = (() => {
+            if (thumbnailType !== 'youtube' && thumbnailType !== 'x') {
+                return null;
+            }
+
+            if (!thumbnailConfig) {
+                return null;
+            }
+
+            if (typeof thumbnailConfig === 'string') {
+                try {
+                    return JSON.parse(thumbnailConfig) as Record<string, unknown>;
+                } catch {
+                    return null;
+                }
+            }
+
+            return typeof thumbnailConfig === 'object' ? thumbnailConfig as Record<string, unknown> : null;
+        })();
+
+        const effectiveSettings = thumbnailConfigOverride
+            ? {
+                ...settings,
+                ...(thumbnailType === 'youtube'
+                    ? {
+                        thumbnailConfigYoutube: {
+                            ...settings.thumbnailConfigYoutube,
+                            ...thumbnailConfigOverride,
+                            platform: 'youtube' as const,
+                        },
+                    }
+                    : {
+                        thumbnailConfigX: {
+                            ...settings.thumbnailConfigX,
+                            ...thumbnailConfigOverride,
+                            platform: 'x' as const,
+                        },
+                    }),
+            }
+            : settings;
         const resolvedModel = normalizeAIModel(
-            typeof model === 'string' ? model : settings.videoOpenaiModel || undefined,
+            typeof model === 'string' ? model : effectiveSettings.videoOpenaiModel || undefined,
         );
 
         const resolvedTitle =
@@ -404,7 +445,7 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
             `compose-thumbnail-${thumbnailType}`,
             resolvedTitle,
             metadataText,
-            settings,
+            effectiveSettings,
         );
 
         const generatedAsset = thumbnailType === 'shared'
@@ -412,14 +453,14 @@ router.post('/generate/compose-thumbnail', async (req: Request, res: Response) =
                 resolvedTitle,
                 enrichedMetadata,
                 undefined,
-                settings,
+                effectiveSettings,
             )
             : await generateLandscapeThumbnail(
                 thumbnailType === 'x' ? 'x' : 'youtube',
                 resolvedTitle,
                 enrichedMetadata,
                 undefined,
-                settings,
+                effectiveSettings,
             );
 
         if (!generatedAsset?.publicUrl) {

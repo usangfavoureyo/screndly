@@ -33,7 +33,7 @@ const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   bottom_right: {
     textBox: { x: 541, y: 844, width: 490, height: 423 },
     alignment: 'right',
-    brandBox: { x: 688, y: 1223, width: 341, height: 73 },
+    brandBox: { x: 688, y: 49, width: 341, height: 73 },
   },
   top_center: {
     textBox: { x: 108, y: 44, width: 864, height: 322 },
@@ -48,7 +48,7 @@ const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   top_right: {
     textBox: { x: 548, y: 34, width: 486, height: 432 },
     alignment: 'right',
-    brandBox: { x: 688, y: 49, width: 341, height: 73 },
+    brandBox: { x: 688, y: 1223, width: 341, height: 73 },
   },
 };
 
@@ -209,6 +209,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const [previewImageError, setPreviewImageError] = useState(false);
   const [fadeAssetError, setFadeAssetError] = useState(false);
   const [brandAssetError, setBrandAssetError] = useState(false);
+  const [sourceDimensions, setSourceDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
   const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
@@ -230,6 +231,49 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox);
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
   const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
+  const previewImageStyle = useMemo(() => {
+    if (!sourceDimensions?.width || !sourceDimensions?.height) {
+      return {
+        left: '0%',
+        top: '0%',
+        width: '100%',
+        height: '100%',
+        objectFit: 'cover' as const,
+        objectPosition: `${focalPoint.x}% ${focalPoint.y}%`,
+        transform: `scale(${zoom})`,
+        transformOrigin: 'center center',
+      };
+    }
+
+    const canvasAspect = CANVAS_WIDTH / CANVAS_HEIGHT;
+    const imageAspect = sourceDimensions.width / sourceDimensions.height;
+
+    let baseWidth = CANVAS_WIDTH;
+    let baseHeight = CANVAS_HEIGHT;
+
+    if (imageAspect > canvasAspect) {
+      baseHeight = CANVAS_HEIGHT;
+      baseWidth = CANVAS_HEIGHT * imageAspect;
+    } else {
+      baseWidth = CANVAS_WIDTH;
+      baseHeight = CANVAS_WIDTH / imageAspect;
+    }
+
+    const scaledWidth = baseWidth * zoom;
+    const scaledHeight = baseHeight * zoom;
+    const overflowX = Math.max(0, scaledWidth - CANVAS_WIDTH);
+    const overflowY = Math.max(0, scaledHeight - CANVAS_HEIGHT);
+    const left = -overflowX * clamp(focalPoint.x / 100, 0, 1);
+    const top = -overflowY * clamp(focalPoint.y / 100, 0, 1);
+
+    return {
+      left: `${(left / CANVAS_WIDTH) * 100}%`,
+      top: `${(top / CANVAS_HEIGHT) * 100}%`,
+      width: `${(scaledWidth / CANVAS_WIDTH) * 100}%`,
+      height: `${(scaledHeight / CANVAS_HEIGHT) * 100}%`,
+      objectFit: 'fill' as const,
+    };
+  }, [focalPoint.x, focalPoint.y, sourceDimensions, zoom]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -253,6 +297,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
 
   useEffect(() => {
     setPreviewImageError(false);
+    setSourceDimensions(null);
   }, [sourceUrl]);
 
   useEffect(() => {
@@ -280,12 +325,16 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         <img
           src={sourceUrl}
           alt=""
-          onError={() => setPreviewImageError(true)}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{
-            transform: `translate(${(50 - focalPoint.x) * 0.65}%, ${(50 - focalPoint.y) * 0.65}%) scale(${zoom})`,
-            transformOrigin: `${focalPoint.x}% ${focalPoint.y}%`,
+          onLoad={(event) => {
+            const target = event.currentTarget;
+            setSourceDimensions({
+              width: target.naturalWidth || CANVAS_WIDTH,
+              height: target.naturalHeight || CANVAS_HEIGHT,
+            });
           }}
+          onError={() => setPreviewImageError(true)}
+          className="absolute max-w-none"
+          style={previewImageStyle}
         />
       ) : null}
 

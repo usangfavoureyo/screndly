@@ -112,6 +112,16 @@ interface DesignStudioEditorTarget {
   initialData?: DesignData | null;
 }
 
+function readPendingEditorTarget(): DesignStudioEditorTarget | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 type DesignStudioTab = 'manual' | 'auto';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
@@ -275,15 +285,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [editorInitialData, setEditorInitialData] = useState<DesignData | null>(null);
   const [livePreviewData, setLivePreviewData] = useState<DesignData | null>(null);
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [pendingEditorTarget, setPendingEditorTarget] = useState<DesignStudioEditorTarget | null>(() => {
-    if (typeof window === 'undefined') return null;
-    try {
-      const raw = window.localStorage.getItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [pendingEditorTarget, setPendingEditorTarget] = useState<DesignStudioEditorTarget | null>(() => readPendingEditorTarget());
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
@@ -337,6 +339,37 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       window.localStorage.removeItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
     }
   }, [pendingEditorTarget, settings.exportFormat, templates]);
+
+  useEffect(() => {
+    const syncPendingTarget = () => {
+      const target = readPendingEditorTarget();
+      if (target) {
+        setPendingEditorTarget(target);
+      }
+    };
+
+    syncPendingTarget();
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === DESIGN_STUDIO_EDITOR_TARGET_KEY) {
+        syncPendingTarget();
+      }
+    };
+
+    const handleCustomTarget = () => {
+      syncPendingTarget();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleCustomTarget);
+    window.addEventListener('screndly:design-studio-edit-target', handleCustomTarget as EventListener);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleCustomTarget);
+      window.removeEventListener('screndly:design-studio-edit-target', handleCustomTarget as EventListener);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

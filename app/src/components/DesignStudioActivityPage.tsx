@@ -83,6 +83,16 @@ interface DesignStudioEditorTarget {
   initialData?: DesignData | null;
 }
 
+function normalizeMediaKey(value?: string | null): string {
+  if (!value) return '';
+  try {
+    const parsed = new URL(value, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return value.split('?')[0]?.trim() || '';
+  }
+}
+
 interface DesignStudioActivityPageProps {
   onNavigate: (page: string) => void;
   previousPage?: string | null;
@@ -491,8 +501,20 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     () => new Map(renderedDesigns.map((renderedDesign) => [renderedDesign.outputUrl, renderedDesign])),
     [renderedDesigns],
   );
+  const renderedDesignByOutputUrlNormalized = useMemo(
+    () => new Map(renderedDesigns.map((renderedDesign) => [normalizeMediaKey(renderedDesign.outputUrl), renderedDesign])),
+    [renderedDesigns],
+  );
+  const renderedDesignById = useMemo(
+    () => new Map(renderedDesigns.map((renderedDesign) => [renderedDesign.id, renderedDesign])),
+    [renderedDesigns],
+  );
   const autoEditorialByImageUrl = useMemo(
     () => new Map(autoEditorials.map((editorial) => [editorial.renderedImage, editorial])),
+    [autoEditorials],
+  );
+  const autoEditorialByImageUrlNormalized = useMemo(
+    () => new Map(autoEditorials.map((editorial) => [normalizeMediaKey(editorial.renderedImage), editorial])),
     [autoEditorials],
   );
   const findAutoEditorialForActivity = (activity: DesignStudioActivityRecord) =>
@@ -564,6 +586,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
       window.localStorage.setItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
+      window.dispatchEvent(new CustomEvent('screndly:design-studio-edit-target', { detail: target }));
     }
     onNavigate('design-studio');
   };
@@ -598,6 +621,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       anchor.href = downloadUrl;
       anchor.download = `${safeName}.${extension}`;
       anchor.rel = 'noopener';
+      if (/^https?:\/\//i.test(downloadUrl)) {
+        anchor.target = '_blank';
+      }
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -616,8 +642,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return;
     }
 
-    const renderedDesign = renderedDesignByOutputUrl.get(outputUrl);
-    const resolvedAutoEditorial = autoEditorialByImageUrl.get(outputUrl) || autoEditorial;
+    const renderedDesign = renderedDesignByOutputUrl.get(outputUrl)
+      || renderedDesignByOutputUrlNormalized.get(normalizeMediaKey(outputUrl))
+      || (activity.details.designId ? renderedDesignById.get(activity.details.designId) : undefined);
+    const resolvedAutoEditorial = autoEditorialByImageUrl.get(outputUrl)
+      || autoEditorialByImageUrlNormalized.get(normalizeMediaKey(outputUrl))
+      || autoEditorial;
     const resolvedTitle = renderedDesign?.data?.headerText
       || activity.details.headerText
       || resolvedAutoEditorial?.headerText
@@ -686,8 +716,19 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const handleEditActivity = (activity: DesignStudioActivityRecord) => {
     const autoEditorialFromActivity = findAutoEditorialForActivity(activity);
     const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorialFromActivity?.renderedImage;
-    const renderedDesign = outputUrl ? renderedDesignByOutputUrl.get(outputUrl) : undefined;
-    const autoEditorial = outputUrl ? autoEditorialByImageUrl.get(outputUrl) || autoEditorialFromActivity : autoEditorialFromActivity;
+    const normalizedOutputUrl = normalizeMediaKey(outputUrl);
+    const renderedDesign = outputUrl
+      ? renderedDesignByOutputUrl.get(outputUrl)
+        || renderedDesignByOutputUrlNormalized.get(normalizedOutputUrl)
+        || (activity.details.designId ? renderedDesignById.get(activity.details.designId) : undefined)
+      : activity.details.designId
+        ? renderedDesignById.get(activity.details.designId)
+        : undefined;
+    const autoEditorial = outputUrl
+      ? autoEditorialByImageUrl.get(outputUrl)
+        || autoEditorialByImageUrlNormalized.get(normalizedOutputUrl)
+        || autoEditorialFromActivity
+      : autoEditorialFromActivity;
 
     if (renderedDesign) {
       openEditorTarget({

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeft, Upload, X, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
@@ -25,6 +25,9 @@ import {
 } from '../lib/api/designStudio';
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { LiveDesignPreview } from './LiveDesignPreview';
+import { markNextPopStateAsHandled } from '../hooks/useTransientHistoryState';
+import undoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
+import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -142,9 +145,37 @@ export function EditDesignBottomSheet({
   const expandedPreviewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const expandedPreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const appliedInitialDataRef = useRef<string>('');
+  const historyRef = useRef<DesignData[]>([]);
+  const redoHistoryRef = useRef<DesignData[]>([]);
+  const lastHistorySignatureRef = useRef('');
+  const skipHistorySignatureRef = useRef('');
+  const resetHistorySignatureRef = useRef('');
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>(
     persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
   );
+  const [, setHistoryVersion] = useState(0);
+
+  const dismissActiveTextInput = () => {
+    if (typeof document === 'undefined') return;
+
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (!activeElement) return;
+
+    const tagName = activeElement.tagName?.toLowerCase();
+    const isTextField = tagName === 'textarea'
+      || (tagName === 'input' && (activeElement as HTMLInputElement).type !== 'range')
+      || activeElement.isContentEditable;
+
+    if (isTextField) {
+      activeElement.blur();
+    }
+  };
+
+  const sliderInteractionProps = {
+    onPointerDown: dismissActiveTextInput,
+    onTouchStart: dismissActiveTextInput,
+    onMouseDown: dismissActiveTextInput,
+  } as const;
 
   useEffect(() => {
     return () => {
@@ -210,6 +241,7 @@ export function EditDesignBottomSheet({
     setFadeOpacity(initialData.fadeOpacity ?? 90);
     setBrandBlockMode(initialData.brandBlockMode || 'auto');
     setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
+    resetHistorySignatureRef.current = signature;
   }, [open, initialData, persistedSettings.exportFormat, templateName]);
 
   useEffect(() => {
@@ -220,6 +252,163 @@ export function EditDesignBottomSheet({
     const source = previewBackgroundImage || backgroundImage || '';
     return buildDesignStudioMediaStreamUrl(source) || source;
   }, [previewBackgroundImage, backgroundImage]);
+
+  const currentDesignSnapshot = useMemo<DesignData>(() => ({
+    headerText,
+    subtext: hasSubtext ? subtext : undefined,
+    headerTextColor,
+    subtextColor,
+    fontScale,
+    headlineWidthScale,
+    lineHeightMultiplier,
+    backgroundImage,
+    imageFocalPoint,
+    imageZoom,
+    overlayEnabled,
+    overlayColor,
+    overlayOpacity,
+    gradientPosition,
+    templateVariant,
+    fadeEnabled,
+    fadeOpacity,
+    brandBlockMode,
+    caption,
+    contentType,
+    exportFormat,
+  }), [
+    headerText,
+    hasSubtext,
+    subtext,
+    headerTextColor,
+    subtextColor,
+    fontScale,
+    headlineWidthScale,
+    lineHeightMultiplier,
+    backgroundImage,
+    imageFocalPoint,
+    imageZoom,
+    overlayEnabled,
+    overlayColor,
+    overlayOpacity,
+    gradientPosition,
+    templateVariant,
+    fadeEnabled,
+    fadeOpacity,
+    brandBlockMode,
+    caption,
+    contentType,
+    exportFormat,
+  ]);
+
+  const currentDesignSignature = useMemo(
+    () => JSON.stringify(currentDesignSnapshot),
+    [currentDesignSnapshot],
+  );
+
+  const applyDesignSnapshot = useCallback((snapshot: DesignData) => {
+    const signature = JSON.stringify(snapshot);
+    skipHistorySignatureRef.current = signature;
+    setHeaderText(snapshot.headerText || '');
+    setSubtext(snapshot.subtext || '');
+    setHeaderTextColor(snapshot.headerTextColor || '#FFFFFF');
+    setSubtextColor(snapshot.subtextColor || '#000000');
+    setFontScale(snapshot.fontScale ?? 1);
+    setHeadlineWidthScale(snapshot.headlineWidthScale ?? 1);
+    setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? 0.93);
+    setBackgroundImage(snapshot.backgroundImage || '');
+    setPreviewBackgroundImage(snapshot.backgroundImage || '');
+    setImageFocalPoint(snapshot.imageFocalPoint || { x: 50, y: 50 });
+    setImageZoom(snapshot.imageZoom || 1);
+    setOverlayEnabled(snapshot.overlayEnabled || false);
+    setOverlayColor(snapshot.overlayColor || '#000000');
+    setOverlayOpacity(snapshot.overlayOpacity || 70);
+    setGradientPosition(snapshot.gradientPosition || 'top');
+    setTemplateVariant(snapshot.templateVariant || 'bottom_center');
+    setFadeEnabled(snapshot.fadeEnabled ?? true);
+    setFadeOpacity(snapshot.fadeOpacity ?? 90);
+    setBrandBlockMode(snapshot.brandBlockMode || 'auto');
+    setCaption(snapshot.caption || '');
+    setContentType((snapshot.contentType as DesignContentType | undefined) || 'general');
+    setExportFormat(snapshot.exportFormat === 'png' ? 'png' : 'jpeg');
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      historyRef.current = [];
+      redoHistoryRef.current = [];
+      lastHistorySignatureRef.current = '';
+      skipHistorySignatureRef.current = '';
+      resetHistorySignatureRef.current = '';
+      setHistoryVersion(0);
+      return;
+    }
+
+    if (resetHistorySignatureRef.current === currentDesignSignature) {
+      historyRef.current = [currentDesignSnapshot];
+      redoHistoryRef.current = [];
+      lastHistorySignatureRef.current = currentDesignSignature;
+      resetHistorySignatureRef.current = '';
+      skipHistorySignatureRef.current = '';
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (skipHistorySignatureRef.current === currentDesignSignature) {
+      lastHistorySignatureRef.current = currentDesignSignature;
+      skipHistorySignatureRef.current = '';
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (!lastHistorySignatureRef.current) {
+      historyRef.current = [currentDesignSnapshot];
+      redoHistoryRef.current = [];
+      lastHistorySignatureRef.current = currentDesignSignature;
+      setHistoryVersion((value) => value + 1);
+      return;
+    }
+
+    if (lastHistorySignatureRef.current === currentDesignSignature) {
+      return;
+    }
+
+    historyRef.current = [...historyRef.current, currentDesignSnapshot].slice(-40);
+    redoHistoryRef.current = [];
+    lastHistorySignatureRef.current = currentDesignSignature;
+    setHistoryVersion((value) => value + 1);
+  }, [open, currentDesignSnapshot, currentDesignSignature]);
+
+  const canUndo = historyRef.current.length > 1;
+  const canRedo = redoHistoryRef.current.length > 0;
+
+  const handleUndo = useCallback(() => {
+    if (historyRef.current.length <= 1) {
+      return;
+    }
+
+    const current = historyRef.current[historyRef.current.length - 1];
+    const previous = historyRef.current[historyRef.current.length - 2];
+    redoHistoryRef.current = [current, ...redoHistoryRef.current].slice(0, 40);
+    historyRef.current = historyRef.current.slice(0, -1);
+    lastHistorySignatureRef.current = JSON.stringify(previous);
+    applyDesignSnapshot(previous);
+    haptics.light();
+    setHistoryVersion((value) => value + 1);
+  }, [applyDesignSnapshot]);
+
+  const handleRedo = useCallback(() => {
+    if (redoHistoryRef.current.length === 0) {
+      return;
+    }
+
+    const [next, ...remaining] = redoHistoryRef.current;
+    historyRef.current = [...historyRef.current, next].slice(-40);
+    redoHistoryRef.current = remaining;
+    lastHistorySignatureRef.current = JSON.stringify(next);
+    applyDesignSnapshot(next);
+    haptics.light();
+    setHistoryVersion((value) => value + 1);
+  }, [applyDesignSnapshot]);
 
   // Trigger real-time preview updates whenever design data changes
   useEffect(() => {
@@ -557,6 +746,17 @@ export function EditDesignBottomSheet({
     onOpenChange(false);
   };
 
+  const closeExpandedPreview = () => {
+    if (!isImageExpanded) {
+      return;
+    }
+
+    haptics.light();
+    markNextPopStateAsHandled();
+    setIsImageExpanded(false);
+    resetExpandedPreviewTransform();
+  };
+
   // Helper function to get aspect ratio class
   const getAspectRatioClass = () => {
     switch (aspectRatio) {
@@ -577,7 +777,17 @@ export function EditDesignBottomSheet({
 
   return (
     <>
-    <BottomSheet open={open} onOpenChange={onOpenChange}>
+    <BottomSheet
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && isImageExpanded) {
+          closeExpandedPreview();
+          return;
+        }
+
+        onOpenChange(nextOpen);
+      }}
+    >
         <BottomSheetHeader>
         <BottomSheetTitle className="text-gray-900 dark:text-white">Edit Design</BottomSheetTitle>
         <p className="text-xs text-[#6B7280] mt-1">
@@ -586,7 +796,29 @@ export function EditDesignBottomSheet({
       </BottomSheetHeader>
 
       <BottomSheetBody>
-        <div className="space-y-4" data-scrollable>
+        <div className="relative space-y-4" data-scrollable>
+          <div className="pointer-events-none sticky top-20 z-20 -mb-14 flex justify-end pr-1">
+            <div className="pointer-events-auto flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={!canUndo}
+                aria-label="Undo design changes"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
+              >
+                <img src={undoIcon} alt="" className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={!canRedo}
+                aria-label="Redo design changes"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white/92 shadow-sm backdrop-blur transition hover:border-[#ec1e24]/60 hover:text-[#ec1e24] disabled:cursor-not-allowed disabled:opacity-35 dark:border-[#333333] dark:bg-black/88 dark:text-white"
+              >
+                <img src={redoIcon} alt="" className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
           {/* Header Text (Required) */}
           {hasHeader && (
           <div>
@@ -678,6 +910,7 @@ export function EditDesignBottomSheet({
                   max="1.4"
                   step="0.05"
                   value={fontScale}
+                  {...sliderInteractionProps}
                   onChange={(e) => {
                     haptics.light();
                     setFontScale(Number(e.target.value));
@@ -701,6 +934,7 @@ export function EditDesignBottomSheet({
                   max="1.2"
                   step="0.02"
                   value={headlineWidthScale}
+                  {...sliderInteractionProps}
                   onChange={(e) => {
                     haptics.light();
                     setHeadlineWidthScale(Number(e.target.value));
@@ -724,6 +958,7 @@ export function EditDesignBottomSheet({
                   max="1.15"
                   step="0.01"
                   value={lineHeightMultiplier}
+                  {...sliderInteractionProps}
                   onChange={(e) => {
                     haptics.light();
                     setLineHeightMultiplier(Number(e.target.value));
@@ -916,6 +1151,7 @@ export function EditDesignBottomSheet({
                     max="100"
                     value={fadeOpacity}
                     disabled={!fadeEnabled}
+                    {...sliderInteractionProps}
                     onChange={(e) => {
                       haptics.light();
                       setFadeOpacity(Number(e.target.value));
@@ -1153,6 +1389,7 @@ export function EditDesignBottomSheet({
                       min="0"
                       max="100"
                       value={imageFocalPoint.x}
+                      {...sliderInteractionProps}
                       onChange={(e) => {
                         haptics.light();
                         setImageFocalPoint({ ...imageFocalPoint, x: Number(e.target.value) });
@@ -1181,6 +1418,7 @@ export function EditDesignBottomSheet({
                       min="0"
                       max="100"
                       value={imageFocalPoint.y}
+                      {...sliderInteractionProps}
                       onChange={(e) => {
                         haptics.light();
                         setImageFocalPoint({ ...imageFocalPoint, y: Number(e.target.value) });
@@ -1210,6 +1448,7 @@ export function EditDesignBottomSheet({
                       max="4"
                       step="0.1"
                       value={imageZoom}
+                      {...sliderInteractionProps}
                       onChange={(e) => {
                         haptics.light();
                         setImageZoom(Number(e.target.value));
@@ -1326,6 +1565,7 @@ export function EditDesignBottomSheet({
                     min="0"
                     max="100"
                     value={overlayOpacity}
+                    {...sliderInteractionProps}
                     onChange={(e) => {
                       haptics.light();
                       setOverlayOpacity(Number(e.target.value));
@@ -1605,7 +1845,17 @@ export function EditDesignBottomSheet({
 
     {/* Expanded Image Preview Dialog */}
     {isImageExpanded && (
-      <Dialog open={isImageExpanded} onOpenChange={setIsImageExpanded}>
+      <Dialog
+        open={isImageExpanded}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            closeExpandedPreview();
+            return;
+          }
+
+          setIsImageExpanded(true);
+        }}
+      >
         <DialogContent className="max-w-4xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
           <VisuallyHidden>
             <DialogTitle>Design Preview</DialogTitle>
@@ -1616,9 +1866,7 @@ export function EditDesignBottomSheet({
           <div className="relative rounded-2xl bg-black/95 p-4">
             <button
               onClick={() => {
-                haptics.light();
-                setIsImageExpanded(false);
-                resetExpandedPreviewTransform();
+                closeExpandedPreview();
               }}
               className="absolute top-4 right-4 z-50 flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white transition-colors hover:bg-black"
             >

@@ -102,6 +102,7 @@ export async function generateComposeThumbnail(request: {
   titleHint?: string;
   sharedCaption?: string;
   youtubeTitle?: string;
+  thumbnailConfig?: unknown;
 }) {
   return apiClient.post<ComposeThumbnailGenerationResult>('/api/ai/generate/compose-thumbnail', request, {
     timeout: 120000,

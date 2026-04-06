@@ -13,7 +13,7 @@ import { FeedPreview } from './rss/FeedPreview';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
 import { useSettings } from '../contexts/SettingsContext';
-import { useRSSFeeds, RSSActivityItem, PlatformsEnabled } from '../contexts/RSSFeedsContext';
+import { useRSSFeeds, RSSActivityItem, RSSActivitySummary, PlatformsEnabled } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
 import { PageLoader } from './PageLoader';
 import reorderIcon from '../public/icons/icons/hugeroundedicons/arrow-all-direction-stroke-rounded.svg';
@@ -48,6 +48,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewFeedId, setPreviewFeedId] = useState<string | null>(null);
   const [activityItems, setActivityItems] = useState<RSSActivityItem[]>([]);
+  const [activitySummary, setActivitySummary] = useState<RSSActivitySummary | null>(null);
   const [isActivityLoading, setIsActivityLoading] = useState(true);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [isReorderMode, setIsReorderMode] = useState(false);
@@ -110,6 +111,7 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     const response = await getActivity(200);
     if (response) {
       setActivityItems(response.items);
+      setActivitySummary(response.summary);
     }
     setIsActivityLoading(false);
   };
@@ -134,16 +136,13 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
   }, [isReorderMode, refetch]);
 
   const stats = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     return {
       totalFeeds: feeds.length,
       activeFeeds: feeds.filter((feed) => feed.status === 'active').length,
-      publishedToday: activityItems.filter((item) => item.status === 'published' && new Date(item.timestamp) >= today).length,
-      failedItems: activityItems.filter((item) => item.status === 'failed').length,
+      publishedToday: activitySummary?.published ?? 0,
+      failedItems: activitySummary?.failed ?? 0,
     };
-  }, [feeds, activityItems]);
+  }, [activitySummary, feeds]);
 
   const handleAddFeed = () => {
     haptics.medium();
