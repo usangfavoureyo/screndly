@@ -209,6 +209,38 @@ test('keeps new season trailer eligible when season context is present', async (
     assert.equal(result.allow, true);
 });
 
+test('rejects reposted trailer for an already released TV season', async () => {
+    const result = await decideYouTubeCandidate(
+        {
+            ...buildCandidate('Daredevil: Born Again Season 2 | Official Trailer | Marvel Entertainment', 'UC_MARVEL', 'Marvel Entertainment'),
+            mediaTypeGuess: 'tv',
+            seasonNumber: 2,
+            publishedAt: new Date('2026-04-06T12:00:00.000Z'),
+        },
+        buildMetadata({
+            tmdbMatch: {
+                ...buildMetadata().tmdbMatch,
+                mediaType: 'tv',
+                title: 'Daredevil: Born Again',
+                releaseDate: '2026-03-01',
+                year: 2026,
+                seasonNumber: 2,
+                productionNames: ['Disney+'],
+                distributors: ['Disney'],
+                networks: ['Disney+'],
+                popularity: 60,
+                voteCount: 2400,
+                releaseStatus: 'Released',
+            },
+        }),
+        buildSettings()
+    );
+
+    assert.equal(result.allow, false);
+    assert.equal(result.preLLMDecision, 'REJECT_PRELLM');
+    assert.match(result.reasonSummary, /already released tv season 2/i);
+});
+
 test('promo fingerprint keeps teaser and trailer distinct', () => {
     const teaser = buildPromoFingerprint(buildCandidate('Example Title | Official Teaser'));
     const trailer = buildPromoFingerprint(buildCandidate('Example Title | Official Trailer'));

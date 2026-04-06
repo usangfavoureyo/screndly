@@ -15,6 +15,7 @@ const APPROVED_DISTRIBUTORS = ['Lionsgate', 'A24', 'Neon', 'Sony Pictures', 'Uni
 const BLOCKED_GENRES = new Set(['documentary', 'reality', 'talk', 'news', 'war & politics']);
 const MOVIE_POST_RELEASE_CATALOG_WINDOW_DAYS = 90;
 const TV_POST_RELEASE_CATALOG_WINDOW_DAYS = 180;
+const TV_SEASON_POST_RELEASE_CATALOG_WINDOW_DAYS = 30;
 
 export function buildDetectionSettings(settings: LoadedVideoSettings): DetectionSettings {
     const allowedRegionsList = (settings.allowedRegions || settings.regionFilter || '')
@@ -240,6 +241,10 @@ export function getPostReleaseCatalogRejectionReason(candidate: EnrichedCandidat
 
     if (match.mediaType === 'movie' && ageInDays > MOVIE_POST_RELEASE_CATALOG_WINDOW_DAYS) {
         return `Post-release catalog/platform trailer for an older movie (${Math.floor(ageInDays)} days after release)`;
+    }
+
+    if (match.mediaType === 'tv' && match.seasonNumber && ageInDays > TV_SEASON_POST_RELEASE_CATALOG_WINDOW_DAYS) {
+        return `Post-release platform promo for already released TV season ${match.seasonNumber} (${Math.floor(ageInDays)} days after release)`;
     }
 
     if (match.mediaType === 'tv' && !match.seasonNumber && ageInDays > TV_POST_RELEASE_CATALOG_WINDOW_DAYS) {
