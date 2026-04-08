@@ -534,16 +534,14 @@ export function TMDbModals() {
                     currentImageUrls={changeImageModal.feed.imageUrls}
                     currentImageType={changeImageModal.feed.imageType}
                     currentImageTypes={changeImageModal.feed.imageTypes}
-                    onSave={({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
+                    onSave={async ({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
                         if (changeImageModal.feed) {
-                            updatePost(changeImageModal.feed.id, {
+                            await updatePost(changeImageModal.feed.id, {
                                 imageStyle,
                                 imageUrl,
                                 imageType,
                                 imageUrls,
                                 imageTypes,
-                            }).catch(error => {
-                                console.error('Failed to update image', error);
                             });
                         }
                     }}

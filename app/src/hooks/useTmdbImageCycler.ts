@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildTMDbImageSelectionPayload,
   deriveTMDbImageStyle,
@@ -42,6 +42,7 @@ export function useTmdbImageCycler({
   const [backdropIndex, setBackdropIndex] = useState(0);
   const [logoIndex, setLogoIndex] = useState(0);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const hasUserSelectionRef = useRef(false);
 
   const posterUrls = useMemo(() => pools.posters.map((asset) => asset.url), [pools.posters]);
   const backdropUrls = useMemo(() => pools.backdrops.map((asset) => asset.url), [pools.backdrops]);
@@ -49,27 +50,36 @@ export function useTmdbImageCycler({
 
   useEffect(() => {
     if (!open) {
+      hasUserSelectionRef.current = false;
       return;
     }
 
     const nextStyle = deriveTMDbImageStyle(currentImageType, currentImageTypes);
+    const isCustomImage = currentImageType === 'custom' || currentImageTypes?.[0] === 'custom';
+
+    hasUserSelectionRef.current = false;
+    setSelectedStyle(nextStyle);
+    setUploadedImageUrl(isCustomImage ? currentImageUrl || currentImageUrls?.[0] || null : null);
+  }, [open, currentImageUrl, currentImageType, currentImageUrls, currentImageTypes]);
+
+  useEffect(() => {
+    if (!open || hasUserSelectionRef.current) {
+      return;
+    }
+
     const currentPosterUrl = getTMDbAssetUrl(currentImageUrls, currentImageTypes, 'poster');
     const currentBackdropUrl = getTMDbAssetUrl(currentImageUrls, currentImageTypes, 'backdrop');
     const currentLogoUrl = getTMDbAssetUrl(currentImageUrls, currentImageTypes, 'logo');
-    const isCustomImage = currentImageType === 'custom' || currentImageTypes?.[0] === 'custom';
 
-    setSelectedStyle(nextStyle);
     setPosterIndex(resolveAssetIndex(posterUrls, currentPosterUrl || currentImageUrl));
     setBackdropIndex(resolveAssetIndex(backdropUrls, currentBackdropUrl || currentImageUrl));
     setLogoIndex(resolveAssetIndex(logoUrls, currentLogoUrl));
-    setUploadedImageUrl(isCustomImage ? currentImageUrl || currentImageUrls?.[0] || null : null);
   }, [
     open,
     posterUrls,
     backdropUrls,
     logoUrls,
     currentImageUrl,
-    currentImageType,
     currentImageUrls,
     currentImageTypes,
   ]);
@@ -78,25 +88,41 @@ export function useTmdbImageCycler({
   const selectedBackdrop = pools.backdrops[backdropIndex] ?? null;
   const selectedLogo = pools.logos[logoIndex] ?? null;
 
-  const clearUploadedImage = () => setUploadedImageUrl(null);
+  const markUserSelection = () => {
+    hasUserSelectionRef.current = true;
+  };
+
+  const setCustomUploadedImageUrl = (url: string | null) => {
+    markUserSelection();
+    setUploadedImageUrl(url);
+  };
+
+  const clearUploadedImage = () => {
+    markUserSelection();
+    setUploadedImageUrl(null);
+  };
 
   const cyclePoster = () => {
-    clearUploadedImage();
+    markUserSelection();
+    setUploadedImageUrl(null);
     setPosterIndex((previous) => (posterUrls.length <= 1 ? 0 : (previous + 1) % posterUrls.length));
   };
 
   const cycleBackdrop = () => {
-    clearUploadedImage();
+    markUserSelection();
+    setUploadedImageUrl(null);
     setBackdropIndex((previous) => (backdropUrls.length <= 1 ? 0 : (previous + 1) % backdropUrls.length));
   };
 
   const cycleLogo = () => {
-    clearUploadedImage();
+    markUserSelection();
+    setUploadedImageUrl(null);
     setLogoIndex((previous) => (logoUrls.length <= 1 ? 0 : (previous + 1) % logoUrls.length));
   };
 
   const selectStyle = (style: TMDbFeedImageStyle) => {
-    clearUploadedImage();
+    markUserSelection();
+    setUploadedImageUrl(null);
     setSelectedStyle(style);
   };
 
@@ -146,7 +172,7 @@ export function useTmdbImageCycler({
     cycleBackdrop,
     cycleLogo,
     uploadedImageUrl,
-    setUploadedImageUrl,
+    setUploadedImageUrl: setCustomUploadedImageUrl,
     clearUploadedImage,
     canSave,
     selection,

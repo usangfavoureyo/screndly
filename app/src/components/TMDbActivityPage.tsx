@@ -1260,9 +1260,9 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
           currentImageUrls={posts.find(p => p.id === selectedItemId)?.imageUrls}
           currentImageType={posts.find(p => p.id === selectedItemId)?.imageType}
           currentImageTypes={posts.find(p => p.id === selectedItemId)?.imageTypes}
-          onSave={({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
+          onSave={async ({ imageStyle, imageUrl, imageType, imageUrls, imageTypes }) => {
             if (selectedItemId) {
-              updatePost(selectedItemId, { imageStyle, imageUrl, imageType, imageUrls, imageTypes });
+              await updatePost(selectedItemId, { imageStyle, imageUrl, imageType, imageUrls, imageTypes });
             }
           }}
         />

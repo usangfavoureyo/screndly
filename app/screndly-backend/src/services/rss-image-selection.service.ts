@@ -83,6 +83,18 @@ interface SerperImagesResponse {
   images?: SerperImageResult[];
 }
 
+interface OpenAIWebSearchImageCandidate {
+  imageUrl?: string;
+  sourcePage?: string;
+  title?: string;
+  domain?: string;
+  rationale?: string;
+}
+
+interface OpenAIWebSearchImageResponse {
+  images?: OpenAIWebSearchImageCandidate[];
+}
+
 interface RSSSubjectAnalysis {
   editorialPrimary: string;
   primarySubject: {
@@ -3146,6 +3158,7 @@ async function collectStructuredTMDbImages(
   const tmdbSelections = await resolveStructuredTMDbImages({
     primarySubject: analysis.primarySubject,
     visualSubject: analysis.visualSubject,
+    secondarySubjects: analysis.secondarySubjects,
     imageIntent: analysis.imageIntent,
     targetFormat: analysis.targetFormat,
     contextProject: analysis.contextProject,
@@ -3632,7 +3645,11 @@ async function searchOpenAIWebImages(
 
   try {
     const parsed = JSON.parse(response.content) as OpenAIWebSearchImageResponse;
-    const hydrated = await Promise.all((parsed.images || []).slice(0, Math.max(4, limit)).map(hydrateOpenAIImageCandidate));
+    const hydrated = await Promise.all(
+      (parsed.images || [])
+        .slice(0, Math.max(4, limit))
+        .map((item: OpenAIWebSearchImageCandidate) => hydrateOpenAIImageCandidate(item))
+    );
     const results = hydrated.filter((item): item is SerperImageResult => Boolean(item));
     if (results.length === 0) {
       console.warn('[RSS] OpenAI web image search returned no approved candidates.', {

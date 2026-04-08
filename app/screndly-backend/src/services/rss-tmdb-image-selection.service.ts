@@ -49,6 +49,7 @@ export interface StructuredRSSTMDbSelectionInput {
     type: RSSSubjectType;
   };
   visualSubject: string;
+  secondarySubjects?: string[];
   imageIntent: RSSImageIntent;
   targetFormat?: 'movie' | 'series' | 'general';
   contextProject?: string | null;
@@ -167,6 +168,18 @@ interface ResolvedTMDbTitleCandidate {
   projectContextOnly?: boolean;
 }
 
+interface CanonicalTMDbEntity {
+  name: string;
+  specificTitle: string;
+  mediaType: 'movie' | 'tv' | 'franchise' | 'person' | 'company' | 'unknown';
+  franchise?: string;
+  tmdbType: 'movie' | 'tv' | 'multi';
+  tmdbQuery: string;
+  alternateQueries: string[];
+  confidence: number;
+  ambiguityFlags: string[];
+}
+
 interface BackdropRotationState {
   poolKey: string;
   orderedUrls: string[];
@@ -191,6 +204,168 @@ const TITLE_ANCHOR_STOPWORDS = new Set([
   'to',
   'with',
 ]);
+
+const DISAMBIGUATION_RULES: Array<{
+  match: RegExp;
+  resolve: (combinedText: string, input: StructuredRSSTMDbSelectionInput) => Partial<CanonicalTMDbEntity> | null;
+}> = [
+  {
+    match: /\bharry potter\b/i,
+    resolve: (combinedText, input) => {
+      if (/\b(hbo|max|series|season|episode|showrunner|tv)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Harry Potter',
+          mediaType: 'tv',
+          tmdbType: 'tv',
+          tmdbQuery: 'Harry Potter HBO series',
+          alternateQueries: ['Harry Potter TV series', 'Harry Potter HBO'],
+          franchise: 'Harry Potter',
+          confidence: 0.93,
+          ambiguityFlags: ['franchise_disambiguated_to_tv'],
+        };
+      }
+      if (/\b(book|novel|author|publishing)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Harry Potter',
+          mediaType: 'franchise',
+          tmdbType: 'multi',
+          tmdbQuery: 'Harry Potter franchise',
+          alternateQueries: ['Harry Potter film series'],
+          franchise: 'Harry Potter',
+          confidence: 0.58,
+          ambiguityFlags: ['book_context_fallback_to_franchise'],
+        };
+      }
+      return {
+        specificTitle: 'Harry Potter',
+        mediaType: input.targetFormat === 'series' ? 'tv' : 'franchise',
+        tmdbType: input.targetFormat === 'series' ? 'tv' : 'multi',
+        tmdbQuery: input.targetFormat === 'series' ? 'Harry Potter HBO series' : 'Harry Potter franchise',
+        alternateQueries: ['Harry Potter film series'],
+        franchise: 'Harry Potter',
+        confidence: input.targetFormat === 'series' ? 0.82 : 0.62,
+        ambiguityFlags: ['franchise_ambiguous'],
+      };
+    },
+  },
+  {
+    match: /\bdaredevil\b/i,
+    resolve: (combinedText) => {
+      if (/\b(born again|mcu|disney\+|disney plus)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Daredevil: Born Again',
+          mediaType: 'tv',
+          tmdbType: 'tv',
+          tmdbQuery: 'Daredevil Born Again',
+          alternateQueries: ['Daredevil: Born Again Disney+', 'Daredevil Born Again Marvel'],
+          franchise: 'Daredevil',
+          confidence: 0.95,
+          ambiguityFlags: ['franchise_disambiguated_to_born_again'],
+        };
+      }
+      if (/\b(netflix)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Daredevil',
+          mediaType: 'tv',
+          tmdbType: 'tv',
+          tmdbQuery: 'Daredevil Netflix series',
+          alternateQueries: ['Marvel Daredevil Netflix'],
+          franchise: 'Daredevil',
+          confidence: 0.91,
+          ambiguityFlags: ['franchise_disambiguated_to_netflix_series'],
+        };
+      }
+      if (/\b2003\b/i.test(combinedText) || /\bben affleck\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Daredevil',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'Daredevil 2003',
+          alternateQueries: ['Daredevil Ben Affleck'],
+          franchise: 'Daredevil',
+          confidence: 0.92,
+          ambiguityFlags: ['franchise_disambiguated_to_2003_film'],
+        };
+      }
+      return null;
+    },
+  },
+  {
+    match: /\bmatrix\b/i,
+    resolve: (combinedText) => {
+      if (/\b(resurrections|lana wachowski|2021|recent film)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'The Matrix Resurrections',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'The Matrix Resurrections',
+          alternateQueries: ['Matrix Resurrections', 'The Matrix Resurrections 2021'],
+          franchise: 'The Matrix',
+          confidence: 0.94,
+          ambiguityFlags: ['franchise_disambiguated_to_resurrections'],
+        };
+      }
+      return {
+        specificTitle: 'The Matrix',
+        mediaType: 'franchise',
+        tmdbType: 'multi',
+        tmdbQuery: 'The Matrix franchise',
+        alternateQueries: ['The Matrix', 'Matrix series'],
+        franchise: 'The Matrix',
+        confidence: 0.68,
+        ambiguityFlags: ['franchise_level_fallback'],
+      };
+    },
+  },
+  {
+    match: /\bwolverine\b/i,
+    resolve: (combinedText) => {
+      if (/\b(deadpool and wolverine|deadpool & wolverine|2024|ryan reynolds)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Deadpool & Wolverine',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'Deadpool & Wolverine',
+          alternateQueries: ['Deadpool and Wolverine', 'Deadpool & Wolverine 2024'],
+          franchise: 'X-Men',
+          confidence: 0.95,
+          ambiguityFlags: ['character_disambiguated_to_specific_project'],
+        };
+      }
+      if (/\b(logan|2017|james mangold)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Logan',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'Logan 2017',
+          alternateQueries: ['Logan Wolverine', 'Logan Hugh Jackman'],
+          franchise: 'X-Men',
+          confidence: 0.93,
+          ambiguityFlags: ['character_disambiguated_to_logan'],
+        };
+      }
+      return null;
+    },
+  },
+  {
+    match: /\bspider man\b|\bspider-man\b/i,
+    resolve: (combinedText) => {
+      if (/\bbrand new day\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Spider-Man: Brand New Day',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'Spider-Man Brand New Day',
+          alternateQueries: ['Spider-Man: Brand New Day'],
+          franchise: 'Spider-Man',
+          confidence: 0.95,
+          ambiguityFlags: ['franchise_disambiguated_to_specific_project'],
+        };
+      }
+      return null;
+    },
+  },
+];
 
 function normalizeText(value: string): string {
   return value
@@ -559,7 +734,94 @@ function scoreTitleAnchorCandidate(value: string, preferPrimary = false): number
     + Math.min(tokens.join(' ').length, 60);
 }
 
+function buildDisambiguationText(input: StructuredRSSTMDbSelectionInput): string {
+  return uniqueStrings([
+    input.primarySubject.name,
+    input.visualSubject,
+    input.contextProject || null,
+    ...(input.secondarySubjects || []),
+    ...input.requiredContextTerms,
+    ...input.relevantStudios,
+    ...input.queries,
+  ]).join(' ');
+}
+
+function inferDisambiguationMediaType(input: StructuredRSSTMDbSelectionInput, combinedText: string): CanonicalTMDbEntity['mediaType'] {
+  if (input.primarySubject.type === 'actor' || input.primarySubject.type === 'director' || input.primarySubject.type === 'producer') {
+    return 'person';
+  }
+  if (input.primarySubject.type === 'studio' || input.primarySubject.type === 'streaming_service') {
+    return 'company';
+  }
+  if (input.targetFormat === 'movie' || /\b(movie|film|theatrical|box office)\b/i.test(combinedText)) {
+    return 'movie';
+  }
+  if (input.targetFormat === 'series' || /\b(series|season|episode|showrunner|hbo|max|netflix|tv)\b/i.test(combinedText)) {
+    return 'tv';
+  }
+  if (input.primarySubject.type === 'franchise') {
+    return 'franchise';
+  }
+  return 'unknown';
+}
+
+function buildEntityCandidates(input: StructuredRSSTMDbSelectionInput): string[] {
+  return uniqueStrings([
+    input.contextProject || null,
+    input.primarySubject.name,
+    input.visualSubject,
+    ...(input.secondarySubjects || []),
+    ...input.requiredContextTerms,
+    ...input.queries,
+  ]);
+}
+
+function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): CanonicalTMDbEntity {
+  const combinedText = buildDisambiguationText(input);
+  const candidates = buildEntityCandidates(input);
+  const primaryName = input.primarySubject.name.trim() || input.visualSubject.trim() || input.contextProject?.trim() || candidates[0] || '';
+  const inferredMediaType = inferDisambiguationMediaType(input, combinedText);
+
+  for (const rule of DISAMBIGUATION_RULES) {
+    if (rule.match.test(combinedText)) {
+      const resolved = rule.resolve(combinedText, input);
+      if (resolved) {
+        return {
+          name: primaryName,
+          specificTitle: resolved.specificTitle || primaryName,
+          mediaType: resolved.mediaType || inferredMediaType,
+          franchise: resolved.franchise,
+          tmdbType: resolved.tmdbType || (resolved.mediaType === 'tv' ? 'tv' : resolved.mediaType === 'movie' ? 'movie' : 'multi'),
+          tmdbQuery: resolved.tmdbQuery || primaryName,
+          alternateQueries: resolved.alternateQueries || candidates.filter((candidate) => normalizeText(candidate) !== normalizeText(resolved.tmdbQuery || primaryName)).slice(0, 4),
+          confidence: resolved.confidence ?? 0.75,
+          ambiguityFlags: resolved.ambiguityFlags || [],
+        };
+      }
+    }
+  }
+
+  const specificTitle = input.contextProject?.trim() || input.visualSubject.trim() || primaryName;
+  const tmdbType = inferredMediaType === 'tv' ? 'tv' : inferredMediaType === 'movie' ? 'movie' : 'multi';
+  return {
+    name: primaryName,
+    specificTitle,
+    mediaType: inferredMediaType,
+    franchise: input.primarySubject.type === 'franchise' ? primaryName : undefined,
+    tmdbType,
+    tmdbQuery: specificTitle,
+    alternateQueries: candidates.filter((candidate) => normalizeText(candidate) !== normalizeText(specificTitle)).slice(0, 4),
+    confidence: input.contextProject ? 0.82 : 0.64,
+    ambiguityFlags: input.contextProject ? [] : ['unresolved_specific_project'],
+  };
+}
+
 function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string | null {
+  const canonicalEntity = resolveCanonicalTMDbEntity(input);
+  if (canonicalEntity.tmdbQuery) {
+    return canonicalEntity.tmdbQuery;
+  }
+
   const candidates: Array<{ value: string; preferPrimary?: boolean }> = [];
   const primaryName = input.primarySubject.name.trim();
 
@@ -703,15 +965,21 @@ function titleCandidateMatchesPersonContext(
 }
 
 async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Promise<ResolvedTMDbTitleCandidate | null> {
-  const anchor = buildTitleSearchAnchor(input);
+  const canonicalEntity = resolveCanonicalTMDbEntity(input);
+  const anchor = canonicalEntity.tmdbQuery || buildTitleSearchAnchor(input);
   if (!anchor) {
     return null;
   }
 
-  const preferredFormat = input.targetFormat ?? 'general';
+  const preferredFormat = canonicalEntity.mediaType === 'movie'
+    ? 'movie'
+    : canonicalEntity.mediaType === 'tv'
+      ? 'series'
+      : (input.targetFormat ?? 'general');
 
   const queries = uniqueStrings([
     anchor,
+    ...canonicalEntity.alternateQueries,
     ...input.queries,
   ]).slice(0, 4);
 
@@ -722,6 +990,8 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
   const supportingContextTerms = buildTitleSupportingContextTerms(input, anchor);
 
   const yearTokens = extractYearTokens([
+    canonicalEntity.specificTitle,
+    canonicalEntity.franchise,
     input.primarySubject.name,
     input.visualSubject,
     input.contextProject,
@@ -768,6 +1038,7 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
             candidate.name,
             candidate.original_title,
             candidate.original_name,
+            canonicalEntity.specificTitle,
           ])
             + scoreTargetFormatMatch(preferredFormat, candidateMediaType)
             + scoreContextTerms(
@@ -1173,3 +1444,7 @@ export async function resolveStructuredTMDbImages(
 
   return finalized;
 }
+
+export const __rssTmdbDisambiguationTestUtils = {
+  resolveCanonicalTMDbEntity,
+};

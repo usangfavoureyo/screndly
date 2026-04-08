@@ -38,6 +38,7 @@ import {
     selectBestPoster,
     type TMDbImageAsset,
 } from './tmdb-image-selection.service';
+import { notificationService } from './notification.service';
 import { prepareTMDbLogoAsset } from './rss-logo-render.service';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -113,6 +114,7 @@ interface TMDbMovieReleaseDatesResponse {
 interface SaveTMDbPostResult {
     action: 'created' | 'updated' | 'skipped';
     postId?: string;
+    missingImage?: boolean;
 }
 
 interface PlatformFlags {
@@ -1053,6 +1055,10 @@ async function saveTMDbPost(
 ): Promise<SaveTMDbPostResult> {
     const { candidate, captionContext } = scheduled;
     const { imageUrl, imageType, imageUrls, imageTypes } = await selectImages(candidate, config);
+    const resolvedImageUrls = Array.isArray(imageUrls)
+        ? imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0)
+        : [];
+    const missingImage = resolvedImageUrls.length === 0 && !imageUrl;
     const existing = await prisma.tMDbPost.findFirst({
         where: {
             tmdbId: candidate.tmdbId,
@@ -1096,11 +1102,29 @@ async function saveTMDbPost(
             where: { id: existing.id },
             data: payload,
         });
-        return { action: 'updated', postId: existing.id };
+        return { action: 'updated', postId: existing.id, missingImage };
     }
 
     const created = await prisma.tMDbPost.create({ data: payload });
-    return { action: 'created', postId: created.id };
+    return { action: 'created', postId: created.id, missingImage };
+}
+
+function quoteTMDbTitle(value: string): string {
+    return `“${String(value || '').trim()}”`;
+}
+
+function formatTMDbMissingImageTitles(titles: string[], max = 3): string {
+    const normalized = titles
+        .map((title) => String(title || '').trim())
+        .filter(Boolean);
+
+    if (normalized.length === 0) {
+        return '';
+    }
+
+    const visible = normalized.slice(0, max).map(quoteTMDbTitle);
+    const extraCount = normalized.length - visible.length;
+    return `${visible.join(', ')}${extraCount > 0 ? `, and ${extraCount} more` : ''}`;
 }
 
 function getSchedulerSettings(config: RefreshSettings): SchedulerSettings {
@@ -1173,10 +1197,11 @@ async function collectCandidates(config: RefreshSettings, now: Date): Promise<TM
     return candidates;
 }
 
-export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[]; addedTitles: string[]; runId: string }> {
+export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ added: number; errors: string[]; addedTitles: string[]; missingImageTitles: string[]; runId: string }> {
     const config = { ...defaultRefreshSettings, ...settings };
     const errors: string[] = [];
     const addedTitles: string[] = [];
+    const missingImageTitles: string[] = [];
     const timezone = getTimezone(config);
     const now = new Date();
     const runId = randomUUID();
@@ -1255,6 +1280,9 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
             if (saveResult.action !== 'skipped') {
                 added += 1;
                 addedTitles.push(result.candidate.title);
+                if (saveResult.missingImage) {
+                    missingImageTitles.push(result.candidate.title);
+                }
             }
 
             await prisma.log.create({
@@ -1293,6 +1321,7 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
                 dedupedCandidates: dedupedCandidates.length,
                 processed: scheduledResults.length,
                 added,
+                missingImages: missingImageTitles.length,
                 errors: errors.length,
                 countsByModule: scheduledResults.reduce<Record<string, number>>((acc, item) => {
                     acc[item.candidate.moduleType] = (acc[item.candidate.moduleType] || 0) + 1;
@@ -1306,7 +1335,22 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
         },
     });
 
-    return { added, errors, addedTitles, runId };
+    if (missingImageTitles.length > 0) {
+        const highlightedTitles = formatTMDbMissingImageTitles(missingImageTitles);
+        await notificationService.notifyUserOnceWithinWindow({
+            title: missingImageTitles.length === 1
+                ? `TMDb Feed Missing Image: ${missingImageTitles[0]}`
+                : 'TMDb Feeds Missing Images',
+            message: highlightedTitles
+                ? `${highlightedTitles} ${missingImageTitles.length === 1 ? 'was fetched' : 'were fetched'} without any image.`
+                : `Fetched ${missingImageTitles.length} TMDb ${missingImageTitles.length === 1 ? 'feed' : 'feeds'} without any image.`,
+            type: 'warning',
+            source: 'tmdb',
+            actionPage: '/tmdb-feeds',
+        }, 30);
+    }
+
+    return { added, errors, addedTitles, missingImageTitles, runId };
 }
 
 export async function regenerateCaptionForTMDbPost(postId: string, scheduledTime?: Date): Promise<{ caption: string; captionContextHash: string }> {

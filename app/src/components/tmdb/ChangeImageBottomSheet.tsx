@@ -205,6 +205,9 @@ export function ChangeImageBottomSheet({
 
   const handleUploadTrigger = () => {
     haptics.light();
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     fileInputRef.current?.click();
   };
 
