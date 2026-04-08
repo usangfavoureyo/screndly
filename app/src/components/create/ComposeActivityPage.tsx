@@ -27,6 +27,10 @@ interface ComposeActivityPageProps {
   previousPage?: string | null;
 }
 
+type CardInteractionEvent = {
+  stopPropagation: () => void;
+};
+
 const FILTERS: Array<{ id: 'all' | ComposeStatus; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'draft', label: 'Drafts' },
@@ -85,6 +89,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
     selection.selectedIds.forEach((id) => deleteItem(id));
     selection.clearSelection();
     setIsDeletingSelected(false);
+  };
+
+  const stopCardTouchPropagation = (event: CardInteractionEvent) => {
+    event.stopPropagation();
   };
 
   const handleDeleteItem = (itemId?: string) => {
@@ -318,6 +326,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                       <button
                         type="button"
                         data-prevent-card-selection="true"
+                        onPointerDown={stopCardTouchPropagation}
+                        onTouchStart={stopCardTouchPropagation}
                         onClick={(event) => {
                           event.stopPropagation();
                           handlePreviewAsset(item, boundedRememberedIndex);
@@ -388,6 +398,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
@@ -406,6 +418,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -420,6 +434,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -439,6 +455,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
@@ -457,6 +475,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -476,6 +496,8 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 w-full px-3 text-sm"

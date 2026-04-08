@@ -39,6 +39,10 @@ interface ComposeOverviewProps {
   onNavigate: (page: string, fromPage?: string) => void;
 }
 
+type CardInteractionEvent = {
+  stopPropagation: () => void;
+};
+
 function formatItemMeta(item: ComposeItem): string {
   if (item.scheduledAt) {
     return `Scheduled ${new Date(item.scheduledAt).toLocaleString()}`;
@@ -104,11 +108,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const [rememberedPreviewIndexes, setRememberedPreviewIndexes] = useState<Record<string, number>>({});
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
-  const draftItems = useMemo(
-    () => items.filter((item) => item.status === 'draft'),
+  const visibleItems = useMemo(
+    () => items.filter((item) => item.status !== 'published'),
     [items],
   );
-  const selection = useBulkSelection(draftItems.map((item) => item.id));
+  const selection = useBulkSelection(visibleItems.map((item) => item.id));
 
   const stats = {
     drafts: items.filter((item) => item.status === 'draft').length,
@@ -141,6 +145,10 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const handleEdit = (itemId: string) => {
     setActiveItemId(itemId);
     onNavigate('compose-editor', 'create');
+  };
+
+  const stopCardTouchPropagation = (event: CardInteractionEvent) => {
+    event.stopPropagation();
   };
 
   const handlePublish = async (itemId: string) => {
@@ -403,7 +411,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
       <div>
         <div className="flex items-center justify-between mb-3 gap-3">
-          <h3 className="text-gray-900 dark:text-white">Post Items ({draftItems.length})</h3>
+          <h3 className="text-gray-900 dark:text-white">Post Items ({visibleItems.length})</h3>
           <Button
             variant="outline"
             size="sm"
@@ -417,9 +425,9 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
           </Button>
         </div>
 
-        {draftItems.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm p-12 text-center">
-            <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No post drafts yet</h3>
+            <h3 className="text-gray-500 dark:text-[#9CA3AF] mb-2">No post items yet</h3>
             <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
               Add a post to prepare media, captions, and schedules in one place.
             </p>
@@ -439,7 +447,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
               />
             )}
 
-            {draftItems.map((item) => {
+            {visibleItems.map((item) => {
               const LeadingIcon = getLeadingIcon(item.status);
               const previewableAssets = item.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
               const rememberedIndex = rememberedPreviewIndexes[item.id] ?? 0;
@@ -469,6 +477,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                       <button
                         type="button"
                         data-prevent-card-selection="true"
+                        onPointerDown={stopCardTouchPropagation}
+                        onTouchStart={stopCardTouchPropagation}
                         onClick={(event) => {
                           event.stopPropagation();
                           handlePreviewAsset(item, boundedRememberedIndex);
@@ -553,6 +563,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
@@ -571,6 +583,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -584,6 +598,49 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
+                              variant="outline"
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                haptics.light();
+                                handleEdit(item.id);
+                              }}
+                            >
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                      ) : item.status === 'scheduled' ? (
+                        <div className="col-start-2">
+                          <div className={`grid w-full gap-2 ${isCompactLayout ? 'grid-cols-1' : 'max-w-[18rem] grid-cols-[minmax(0,1fr)_minmax(0,1fr)]'}`}>
+                            <Button
+                              type="button"
+                              data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
+                              size="sm"
+                              className="h-10 whitespace-nowrap px-3 text-sm"
+                              disabled={publishingIds.includes(item.id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handlePublish(item.id);
+                              }}
+                            >
+                              {publishingIds.includes(item.id) ? (
+                                <>
+                                  <RedSpinner size="sm" className="mr-2" label="Publishing post..." />
+                                  Publish
+                                </>
+                              ) : 'Publish'}
+                            </Button>
+                            <Button
+                              type="button"
+                              data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
@@ -603,6 +660,8 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
+                              onPointerDown={stopCardTouchPropagation}
+                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 w-full px-3 text-sm"

@@ -132,7 +132,7 @@ describe('ComposeOverview', () => {
     useComposeStore.setState({ items: [], activeItemId: null });
   });
 
-  it('shows only draft items on the post overview page', () => {
+  it('shows active non-published items on the post overview page', () => {
     useComposeStore.setState({
       items: [
         {
@@ -180,8 +180,9 @@ describe('ComposeOverview', () => {
     );
 
     expect(screen.getByText('Draft title')).toBeInTheDocument();
-    expect(screen.queryByText('Scheduled title')).not.toBeInTheDocument();
+    expect(screen.getByText('Scheduled title')).toBeInTheDocument();
     expect(screen.queryByText('Published title')).not.toBeInTheDocument();
+    expect(screen.getByText('Post Items (2)')).toBeInTheDocument();
   });
 
   it('navigates on a touch pointer tap without waiting for a synthetic click', () => {

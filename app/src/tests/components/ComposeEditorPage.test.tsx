@@ -282,7 +282,7 @@ describe('ComposeEditorPage scheduling', () => {
     fetchYouTubePlaylistsMock.mockResolvedValue([]);
   });
 
-  it('keeps the schedule sheet open while a nested picker is active and saves the updated schedule', () => {
+  it('keeps the editor open after scheduling while nested pickers are active', () => {
     useComposeStore.setState({
       items: [
         {
@@ -340,8 +340,9 @@ describe('ComposeEditorPage scheduling', () => {
 
     expect(scheduledItem?.status).toBe('scheduled');
     expect(scheduledItem?.scheduledAt).toBe(expectedScheduledAt.toISOString());
-    expect(onNavigate).toHaveBeenCalledWith('create', 'create');
+    expect(onNavigate).not.toHaveBeenCalled();
     expect(screen.queryByTestId('schedule-sheet')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Update Schedule' })).toBeInTheDocument();
   }, 60000);
 
   it('blocks scheduling when a caption-required platform is selected but the caption is empty', () => {

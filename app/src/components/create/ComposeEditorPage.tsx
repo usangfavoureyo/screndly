@@ -333,6 +333,7 @@ export function ComposeEditorPage({
     'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail' | null
   >(null);
   const [isReplaceGeneratedThumbnailOpen, setIsReplaceGeneratedThumbnailOpen] = useState(false);
+  const scheduleReopenLockUntilRef = useRef(0);
   const threadsXAutoGenerateTimeoutRef = useRef<number | null>(null);
   const lastThreadsXAutoGenerateKeyRef = useRef<string>('');
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
@@ -1654,12 +1655,19 @@ export function ComposeEditorPage({
     const nextItem = buildItem('scheduled', scheduledAt);
     saveItem(nextItem);
     addNotification(buildComposeScheduledNotification(nextItem, scheduledAt));
+    scheduleReopenLockUntilRef.current = Date.now() + 450;
     setIsScheduleOpen(false);
     toast.success(existingItem?.status === 'scheduled' ? 'Schedule updated' : 'Post scheduled');
-    onNavigate('create', previousPage || 'create');
   };
 
   const isEditingScheduledItem = existingItem?.status === 'scheduled';
+  const openScheduleSheet = () => {
+    if (Date.now() < scheduleReopenLockUntilRef.current) {
+      return;
+    }
+
+    setIsScheduleOpen(true);
+  };
 
   const handlePublish = async () => {
     if (!validate('published')) return;
@@ -2778,7 +2786,7 @@ export function ComposeEditorPage({
                   </>
                 ) : 'Publish'}
               </Button>
-              <Button variant="outline" className="w-full" onClick={() => setIsScheduleOpen(true)} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isThreadsXCropBlockingActions || isGeneratingMetadata}>
+              <Button variant="outline" className="w-full" onClick={openScheduleSheet} disabled={hasUploadingAssets || isUploadingMedia || hasUploadingThumbnails || hasGeneratingThumbnails || isThreadsXCropBlockingActions || isGeneratingMetadata}>
                 {isEditingScheduledItem ? 'Update Schedule' : 'Schedule'}
               </Button>
             </div>

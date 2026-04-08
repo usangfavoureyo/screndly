@@ -92,6 +92,39 @@ describe('ComposeActivityPage', () => {
     expect(screen.queryByRole('button', { name: 'Schedule' })).not.toBeInTheDocument();
   });
 
+  it('opens the editor when editing a scheduled post card', () => {
+    const onNavigate = vi.fn();
+
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'scheduled-post',
+          title: 'Campaign poster',
+          status: 'scheduled',
+          mediaAssets: [],
+          platforms: ['instagram_feed'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          scheduledAt: '2026-03-13T09:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    render(
+      <BackNavigationProvider>
+        <ComposeActivityPage onNavigate={onNavigate} previousPage="create" />
+      </BackNavigationProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+
+    expect(useComposeStore.getState().activeItemId).toBe('scheduled-post');
+    expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
+  });
+
   it('routes draft scheduling through the editor instead of an inline schedule sheet', () => {
     const onNavigate = vi.fn();
 
