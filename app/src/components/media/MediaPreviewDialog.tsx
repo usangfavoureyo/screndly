@@ -268,16 +268,16 @@ export function MediaPreviewDialog({
     handleDialogOpenChange(false);
   }, [handleDialogOpenChange]);
 
-  const handleCloseButtonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+  const swallowButtonPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  const handleCloseButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
     handleClose();
   }, [handleClose]);
-
-  const swallowButtonClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-  }, []);
 
   const handleImageTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     if (event.touches.length === 2) {
@@ -464,8 +464,8 @@ export function MediaPreviewDialog({
         <div className="relative overflow-hidden rounded-2xl bg-black">
           <button
             type="button"
-            onPointerDown={handleCloseButtonPointerDown}
-            onClick={swallowButtonClick}
+            onPointerDown={swallowButtonPointerDown}
+            onClick={handleCloseButtonClick}
             className="absolute right-4 top-4 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-black/80 text-white transition-colors hover:bg-black"
             aria-label="Close preview"
           >

@@ -72,7 +72,7 @@ export function markNextPopStateAsHandled() {
     return;
   }
 
-  const transientWindow = window as Window & Record<string, number | undefined>;
+  const transientWindow = window as unknown as Record<string, number | undefined>;
   transientWindow[SUPPRESS_POPSTATE_KEY] = (transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0) + 1;
   transientWindow[SUPPRESS_POPSTATE_AT_KEY] = Date.now();
 }
@@ -82,9 +82,9 @@ export function consumeHandledPopState() {
     return false;
   }
 
-  const transientWindow = window as Window & Record<string, number | boolean | undefined>;
-  const pendingCount = transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0;
-  const pendingAt = transientWindow[SUPPRESS_POPSTATE_AT_KEY] ?? 0;
+  const transientWindow = window as unknown as Record<string, number | boolean | undefined>;
+  const pendingCount = Number(transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0);
+  const pendingAt = Number(transientWindow[SUPPRESS_POPSTATE_AT_KEY] ?? 0);
 
   if (pendingCount > 0 && pendingAt > 0 && Date.now() - pendingAt > SUPPRESS_POPSTATE_MAX_AGE_MS) {
     transientWindow[SUPPRESS_POPSTATE_KEY] = 0;
@@ -101,13 +101,13 @@ export function consumeHandledPopState() {
     transientWindow[SUPPRESS_POPSTATE_RELEASE_KEY] = true;
 
     window.setTimeout(() => {
-      const releaseWindow = window as Window & Record<string, number | boolean | undefined>;
-      const remainingCount = releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0;
+      const releaseWindow = window as unknown as Record<string, number | boolean | undefined>;
+      const remainingCount = Number(releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0);
       if (remainingCount > 0) {
         releaseWindow[SUPPRESS_POPSTATE_KEY] = remainingCount - 1;
       }
 
-      if ((releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0) <= 0) {
+      if (Number(releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0) <= 0) {
         releaseWindow[SUPPRESS_POPSTATE_KEY] = 0;
         releaseWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
       }

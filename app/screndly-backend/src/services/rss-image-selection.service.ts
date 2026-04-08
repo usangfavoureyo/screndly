@@ -1568,6 +1568,20 @@ function extractLeadPersonSubject(title: string): string | null {
   return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
 }
 
+function extractLeadIndustryPersonSubject(title: string): string | null {
+  const match = title.match(
+    /^([A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){1,3})\s+(?:(?:officially|reportedly|quietly)\s+)?(?:out|out\s+as|steps?\s+down|stepping\s+down|exits?|departs?|leaves?|left|ousted|fired|hired|named|appointed|promoted)\b/i
+  );
+
+  const candidate = match?.[1]?.replace(/\s+(officially|reportedly|quietly)$/i, '').trim();
+  return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
+}
+
+function isExecutiveIndustryStory(title: string, articleText: string): boolean {
+  return /\b(?:president|ceo|chief executive|chair(?:man|woman|person)?|board|executive|boss|studio head|company head)\b/i.test(title)
+    || /\b(?:president|ceo|chief executive|chair(?:man|woman|person)?|board|executive|boss|studio head|company head)\b/i.test(articleText);
+}
+
 function extractHeadlineCastingPerson(title: string): string | null {
   const match = title.match(
     /^(?:["'â€œâ€][^"'â€œâ€]{2,120}["'â€œâ€]|[A-Z][A-Za-z0-9'â€™:&.-]+(?:\s+[A-Z][A-Za-z0-9'â€™:&.-]+){0,5})\s+(?:adds?|added|casts?|cast|taps?|tapped|boards?|boarded|sets?|set|hires?|hired)\s+([A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){1,3})\b/
@@ -1649,7 +1663,9 @@ function inferContentSubjectType(articleText: string, subject: string): SubjectT
     looksLikeNamedPerson(subject) &&
     (
       new RegExp(`\\b(?:actor|actress|star|stars|starring|cast(?: member)?)\\s+${escapeRegExp(normalizedSubject)}\\b`).test(normalizedArticle) ||
-      new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\s+(?:actor|actress|star|stars|cast member)\\b`).test(normalizedArticle)
+      new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\s+(?:actor|actress|star|stars|cast member)\\b`).test(normalizedArticle) ||
+      new RegExp(`\\b(?:president|ceo|chief executive|chair(?:man|woman|person)?|board member|executive|studio head|company head)\\s+${escapeRegExp(normalizedSubject)}\\b`).test(normalizedArticle) ||
+      new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\s+(?:president|ceo|chief executive|chair(?:man|woman|person)?|executive|studio head|company head)\\b`).test(normalizedArticle)
     )
   ) {
     return 'actor';
@@ -1888,7 +1904,7 @@ function classifyContextType(articleText: string): ContextType {
   if (/\bcasting|joins?|added?|adds?|cast as|starring|boards?\b/.test(normalized)) return 'casting';
   if (/\binterview|talks about|speaks on|explains\b/.test(normalized)) return 'interview';
   if (/\bbox office|boxoffice|opens to|debuts at\b/.test(normalized)) return 'boxoffice';
-  if (/\bstudio|network|streaming|service|platform|merger|ceo\b/.test(normalized)) return 'industry';
+  if (/\bstudio|network|streaming|service|platform|merger|ceo|president|chair(?:man|woman|person)?|board|executive|boss\b/.test(normalized)) return 'industry';
   if (/\brelease|premiere|coming to|set for|arrives\b/.test(normalized)) return 'release';
   return 'general';
 }
@@ -1992,6 +2008,7 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
   const headlineProjectCandidate = extractHeadlineProjectCandidate(normalizedTitle, articleText, studios);
   const leadPersonCandidate = extractLeadPersonSubject(normalizedTitle);
+  const leadIndustryPersonCandidate = extractLeadIndustryPersonSubject(normalizedTitle);
   const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios, articleText);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
@@ -2000,10 +2017,14 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   let primaryName = quotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
   let primaryType: SubjectType = 'general';
   const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
+  const executiveIndustryStory = isExecutiveIndustryStory(normalizedTitle, articleText);
 
   if (containerOwnedSubject) {
     primaryName = containerOwnedSubject;
     primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
+  } else if (leadIndustryPersonCandidate && quotedMatches.length === 0 && executiveIndustryStory) {
+    primaryName = leadIndustryPersonCandidate;
+    primaryType = 'actor';
   } else if (headlineProjectCandidate) {
     primaryName = headlineProjectCandidate;
     primaryType = inferContentSubjectType(articleText, headlineProjectCandidate);
@@ -2727,6 +2748,28 @@ function determineSmartImagePlan(
         useTwoImages: true,
       };
     }
+  }
+
+  if (
+    analysis.contextType === 'industry' &&
+    (analysis.primarySubject.type === 'actor' || analysis.primarySubject.type === 'director' || analysis.primarySubject.type === 'producer') &&
+    analysis.relevantStudios.length > 0
+  ) {
+    const companySubject = analysis.relevantStudios.find((studio) =>
+      normalizeText(studio) !== normalizeText(analysis.primarySubject.name)
+    ) || analysis.relevantStudios[0];
+
+    return {
+      primary: buildImageSlotPlan(analysis.primarySubject.name, analysis.primarySubject.type, 'person_portrait', analysis, false),
+      secondary: buildImageSlotPlan(
+        companySubject,
+        inferSlotType(companySubject, articleText, 'studio', analysis),
+        'logo',
+        analysis,
+        true
+      ),
+      useTwoImages: true,
+    };
   }
 
   if (leadPerson && inferredLeadProjectSubject) {

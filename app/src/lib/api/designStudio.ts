@@ -116,6 +116,7 @@ export interface DesignStudioAutoEditorialRecord {
   renderedImage: string;
   headerText: string;
   subheaderText?: string;
+  contentType?: DesignStudioContentType;
   caption: string;
   captions?: {
     shared_caption: string;
@@ -126,6 +127,8 @@ export interface DesignStudioAutoEditorialRecord {
   backgroundOffsetX?: number;
   backgroundOffsetY?: number;
   zoomLevel?: number;
+  headerTextColor?: string;
+  brandBlockMode?: DesignStudioBrandBlockMode;
   overlayDirection?: string;
   overlayStrength?: number;
   scheduleTime?: string | null;
@@ -307,7 +310,7 @@ export async function startDesignStudioManualRender(payload: {
     imageZoom?: number;
     overlayColor?: string;
     overlayOpacity?: number;
-    gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
+    gradientPosition?: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
     caption?: string;
     contentType?: DesignStudioContentType;
     cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';

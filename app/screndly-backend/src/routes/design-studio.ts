@@ -229,7 +229,7 @@ const manualRenderRequestSchema = z.object({
     imageZoom: z.number().optional(),
     overlayColor: z.string().optional(),
     overlayOpacity: z.number().optional(),
-    gradientPosition: z.enum(['top', 'bottom', 'left', 'right']).optional(),
+    gradientPosition: z.enum(['top', 'bottom', 'left', 'right', 'top_left', 'top_right', 'bottom_left', 'bottom_right']).optional(),
     caption: z.string().optional(),
     contentType: z.enum(['poster', 'carousel', 'story', 'announcement', 'general']).optional(),
     cropMode: z.enum(['cover', 'contain', 'center', 'face_focus']).optional(),

@@ -172,3 +172,23 @@ test('prefers actor portrait plus project logo for casting stories with a strong
   assert.equal(plan.secondary?.subject, 'Bridgerton');
   assert.equal(plan.secondary?.intent, 'logo');
 });
+
+test('treats executive departure stories as person-led and pairs portrait with company logo', () => {
+  const article = {
+    title: "Jeff Shell Officially Out as Paramount's President",
+    description:
+      'Company says exec is stepping down to focus on lawsuit filed against him. Jeff Shell is officially departing his role as president of Paramount Skydance.',
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.primarySubject.name, 'Jeff Shell');
+  assert.equal(analysis.primarySubject.type, 'actor');
+  assert.equal(analysis.contextType, 'industry');
+  assert.equal(plan.useTwoImages, true);
+  assert.equal(plan.primary.subject, 'Jeff Shell');
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.secondary?.intent, 'logo');
+  assert.match(plan.secondary?.subject || '', /Paramount/i);
+});

@@ -1874,6 +1874,21 @@ function getRSSItemTopicDedupeKey(item: RSSItem): string {
   return signature ? `topic:${signature}` : '';
 }
 
+function getRSSItemLocalSeenKeys(item: RSSItem): string[] {
+  return [
+    getRSSItemDedupeKey(item),
+    getRSSItemTopicDedupeKey(item),
+  ].filter(Boolean);
+}
+
+function addRSSItemLocalSeenKeys(seen: Set<string>, item: RSSItem): void {
+  getRSSItemLocalSeenKeys(item).forEach((key) => seen.add(key));
+}
+
+function hasRSSItemLocalSeenKeys(seen: Set<string>, item: RSSItem): boolean {
+  return getRSSItemLocalSeenKeys(item).some((key) => seen.has(key));
+}
+
 function getRSSItemSubjectCooldownKeys(item: RSSItem): string[] {
   return extractRSSSubjectPhrases(item.title)
     .slice(0, 4)
@@ -2145,11 +2160,33 @@ function buildRSSCaptionSystemPrompt(
   return [basePrompt, constraints].filter(Boolean).join('\n\nAdditional Constraints:\n');
 }
 
-function buildRSSCaptionVisualContext(images: RSSResolvedImage[]): string[] | undefined {
+function imageReasonMatchesArticleContext(item: RSSItem, reason: string): boolean {
+  const articleContext = normalizeRSSDedupeValue([
+    item.title,
+    item.description,
+    sanitizeRSSPlainText(item.contentHtml || ''),
+  ].filter(Boolean).join(' '));
+
+  if (!articleContext) {
+    return true;
+  }
+
+  const anchoredEntities = extractReasonAnchoredEntity(reason);
+  if (anchoredEntities.length === 0) {
+    return true;
+  }
+
+  return anchoredEntities.some((entity) => {
+    const normalizedEntity = normalizeRSSDedupeValue(entity);
+    return normalizedEntity && articleContext.includes(normalizedEntity);
+  });
+}
+
+function buildRSSCaptionVisualContext(item: RSSItem, images: RSSResolvedImage[]): string[] | undefined {
   const entries = images
     .map((image, index) => {
       const reason = sanitizeRSSPlainText(image.reason || '').replace(/\s+/g, ' ').trim();
-      if (!reason) {
+      if (!reason || !imageReasonMatchesArticleContext(item, reason)) {
         return null;
       }
 
@@ -2235,6 +2272,10 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
   ].forEach(pushEntity);
 
   for (const image of images) {
+    if (!imageReasonMatchesArticleContext(item, image.reason || '')) {
+      continue;
+    }
+
     extractReasonAnchoredEntity(image.reason || '').forEach(pushEntity);
   }
 
@@ -2898,7 +2939,7 @@ async function attemptRSSPublish(
         articleBody: sanitizeRSSPlainText(item.contentHtml),
         articleContentHtml: item.contentHtml,
         platform: 'X',
-        selectedVisuals: buildRSSCaptionVisualContext(publishImages),
+        selectedVisuals: buildRSSCaptionVisualContext(item, publishImages),
         allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
       },
       normalizeAIModel(runtimeSettings.rssCaptionModel),
@@ -3673,28 +3714,44 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           select: {
             dedupeKey: true,
             status: true,
+            title: true,
           },
         })
       : [];
     const processedKeys = new Set<string>([
-      ...activePendingQueueRecords.map((record) => record.dedupeKey),
-      ...knownFeedItems.map((record) => record.dedupeKey),
-      ...feedRecentActivities.map((activity) => getRSSActivityDedupeKey(activity)),
+      ...activePendingQueue.map((entry) => getRSSItemLocalSeenKeys(entry.item)).flat(),
+      ...knownFeedItems.flatMap((record) => {
+        const keys = [record.dedupeKey];
+        const topicKey = record.title ? getRSSItemTopicDedupeKey({ title: record.title } as RSSItem) : '';
+        return topicKey ? [...keys, topicKey] : keys;
+      }),
+      ...feedRecentActivities.flatMap((activity) => {
+        const keys = [getRSSActivityDedupeKey(activity)];
+        const topicKey = activity.title ? getRSSItemTopicDedupeKey({ title: activity.title } as RSSItem) : '';
+        return topicKey ? [...keys, topicKey] : keys;
+      }),
     ]);
     const manualRunBlockedKeys = new Set<string>([
-      ...activePendingQueueRecords.map((record) => record.dedupeKey),
+      ...activePendingQueue.map((entry) => getRSSItemLocalSeenKeys(entry.item)).flat(),
       ...knownFeedItems
         .filter((record) => record.status === 'pending' || record.status === 'published')
-        .map((record) => record.dedupeKey),
+        .flatMap((record) => {
+          const keys = [record.dedupeKey];
+          const topicKey = record.title ? getRSSItemTopicDedupeKey({ title: record.title } as RSSItem) : '';
+          return topicKey ? [...keys, topicKey] : keys;
+        }),
       ...feedRecentActivities
         .filter((activity) => activity.status === 'pending' || activity.status === 'published')
-        .map((activity) => getRSSActivityDedupeKey(activity)),
+        .flatMap((activity) => {
+          const keys = [getRSSActivityDedupeKey(activity)];
+          const topicKey = activity.title ? getRSSItemTopicDedupeKey({ title: activity.title } as RSSItem) : '';
+          return topicKey ? [...keys, topicKey] : keys;
+        }),
     ]);
     const latestEligibleItem = manualLatestSelection
       ? manualSelectionCandidates
           .find((item) => {
-            const dedupeKey = getRSSItemDedupeKey(item);
-            return !manualRunBlockedKeys.has(dedupeKey)
+            return !hasRSSItemLocalSeenKeys(manualRunBlockedKeys, item)
               && !getRecentSubjectCooldownReason(item)
               && !getCrossSourceTopicDuplicateReason(item)
               && evaluateFeedRules(item, feedFilters).allowed;
@@ -3778,13 +3835,13 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       if (hasRecentRSSActivity(recentActivities, feed.id, item, ['pending', 'published'])) {
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
       if (!acquireRSSPublishClaim(feed.id, item)) {
         pendingCount += 1;
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
@@ -3796,7 +3853,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
         if (!claimAcquired) {
           pendingCount += 1;
-          seenKeys.add(dedupeKey);
+          addRSSItemLocalSeenKeys(seenKeys, item);
           continue;
         }
 
@@ -3933,7 +3990,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       latestHandledItem = item;
       const dedupeKey = getRSSItemDedupeKey(item);
 
-      if (seenKeys.has(dedupeKey)) {
+      if (hasRSSItemLocalSeenKeys(seenKeys, item)) {
         continue;
       }
 
@@ -3943,7 +4000,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           errorMessage: ruleEvaluation.reason ?? null,
           firstSeenAt: item.pubDate,
         });
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
@@ -3954,7 +4011,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           errorMessage: subjectCooldownReason,
           firstSeenAt: item.pubDate,
         });
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
@@ -3963,7 +4020,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           errorMessage: topicDuplicateReason,
           firstSeenAt: item.pubDate,
         });
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
@@ -3992,7 +4049,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           errorMessage: pendingMetadata.errorMessage ?? null,
           firstSeenAt: item.pubDate,
         });
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         rememberRecentTopic(item);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
@@ -4023,7 +4080,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           errorMessage: blockReason,
           firstSeenAt: item.pubDate,
         });
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         rememberRecentTopic(item);
         if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['pending'])) {
           await logRSSActivity(pendingMetadata);
@@ -4033,13 +4090,13 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       if (hasRecentRSSActivity(recentActivities, feed.id, item, ['pending', 'published'])) {
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
       if (!acquireRSSPublishClaim(feed.id, item)) {
         pendingCount += 1;
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
 
@@ -4050,12 +4107,12 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         });
 
         if (!claimAcquired) {
-          seenKeys.add(dedupeKey);
+          addRSSItemLocalSeenKeys(seenKeys, item);
           continue;
         }
 
         const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
-        seenKeys.add(dedupeKey);
+        addRSSItemLocalSeenKeys(seenKeys, item);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
       resolvedActivityItem.generatedCaption = publishAttempt.caption;
       resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
@@ -4334,7 +4391,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       articleBody: sanitizeRSSPlainText(previewItem.contentHtml),
       articleContentHtml: previewItem.contentHtml,
       platform: 'X',
-      selectedVisuals: buildRSSCaptionVisualContext(resolvedImages),
+      selectedVisuals: buildRSSCaptionVisualContext(previewItem, resolvedImages),
       allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),
     },
     normalizeAIModel(runtimeSettings.rssCaptionModel),
@@ -4770,4 +4827,7 @@ export const __rssDedupeTestUtils = {
   buildRSSTopicFingerprint,
   areRSSTopicFingerprintsSimilar,
   areRSSSubjectsInCooldown,
+  getRSSItemLocalSeenKeys,
+  buildRSSCaptionAllowedEntities,
+  buildRSSCaptionVisualContext,
 };

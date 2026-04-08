@@ -224,12 +224,15 @@ export interface DesignStudioAutoEditorialRecord {
   renderedImage: string;
   headerText: string;
   subheaderText?: string;
+  contentType?: DesignStudioContentType;
   caption: string;
   captions?: Record<string, any>;
   backgroundSource?: string;
   backgroundOffsetX?: number;
   backgroundOffsetY?: number;
   zoomLevel?: number;
+  headerTextColor?: string;
+  brandBlockMode?: 'auto' | 'black' | 'white';
   overlayDirection?: string;
   overlayStrength?: number;
   scheduleTime?: string | null;
@@ -280,7 +283,7 @@ interface DesignStudioRenderPayload {
   imageZoom?: number;
   overlayColor?: string;
   overlayOpacity?: number;
-  gradientPosition?: 'top' | 'bottom' | 'left' | 'right';
+  gradientPosition?: 'top' | 'bottom' | 'left' | 'right' | 'top_left' | 'top_right' | 'bottom_left' | 'bottom_right';
   caption?: string;
   contentType?: DesignStudioContentType;
   cropMode?: 'cover' | 'contain' | 'center' | 'face_focus';
@@ -319,6 +322,19 @@ interface ResolvedRenderOutput {
   format: DesignStudioExportFormat;
   extension: 'jpg' | 'png';
   contentType: 'image/jpeg' | 'image/png';
+}
+
+interface MeasuredRegionStats {
+  luminance: number;
+  detail: number;
+}
+
+interface DesignStudioAutoRenderPlan {
+  variant: DesignStudioLayoutVariant;
+  overlayDirection: DesignStudioVariantRecord['overlayDirection'];
+  headerTextColor: string;
+  brandBlockMode: 'black' | 'white';
+  score: number;
 }
 
 interface PsdImageDataLike {
@@ -1796,6 +1812,43 @@ async function measureRegionLuminance(
   return ((0.2126 * red) + (0.7152 * green) + (0.0722 * blue)) / 255;
 }
 
+async function measureRegionStats(
+  background: Buffer,
+  box: { x: number; y: number; width: number; height: number },
+): Promise<MeasuredRegionStats> {
+  const sample = await sharp(background)
+    .extract({
+      left: Math.max(0, Math.round(box.x)),
+      top: Math.max(0, Math.round(box.y)),
+      width: Math.max(1, Math.round(box.width)),
+      height: Math.max(1, Math.round(box.height)),
+    })
+    .resize(24, 24, { fit: 'fill' })
+    .removeAlpha()
+    .raw()
+    .toBuffer();
+
+  const luminanceValues: number[] = [];
+  for (let index = 0; index < sample.length; index += 3) {
+    const red = sample[index] ?? 0;
+    const green = sample[index + 1] ?? 0;
+    const blue = sample[index + 2] ?? 0;
+    luminanceValues.push(((0.2126 * red) + (0.7152 * green) + (0.0722 * blue)) / 255);
+  }
+
+  if (luminanceValues.length === 0) {
+    return { luminance: 0, detail: 0 };
+  }
+
+  const averageLuminance = luminanceValues.reduce((sum, value) => sum + value, 0) / luminanceValues.length;
+  const variance = luminanceValues.reduce((sum, value) => sum + ((value - averageLuminance) ** 2), 0) / luminanceValues.length;
+
+  return {
+    luminance: averageLuminance,
+    detail: Math.sqrt(variance),
+  };
+}
+
 async function resolveBrandBlockMode(
   background: Buffer,
   variant: DesignStudioVariantRecord,
@@ -1807,6 +1860,81 @@ async function resolveBrandBlockMode(
 
   const luminance = await measureRegionLuminance(background, variant.brandBox);
   return luminance >= 0.58 ? 'black' : 'white';
+}
+
+function chooseHeaderTextColor(luminance: number): '#000000' | '#FFFFFF' {
+  return luminance >= 0.6 ? '#000000' : '#FFFFFF';
+}
+
+function scoreAutoVariantCandidate(input: {
+  variant: DesignStudioVariantRecord;
+  textStats: MeasuredRegionStats;
+  brandStats: MeasuredRegionStats;
+  baseVariant: DesignStudioLayoutVariant;
+}): DesignStudioAutoRenderPlan {
+  const headerTextColor = chooseHeaderTextColor(input.textStats.luminance);
+  const brandBlockMode = input.brandStats.luminance >= 0.58 ? 'black' : 'white';
+  const textContrast = headerTextColor === '#000000'
+    ? input.textStats.luminance
+    : (1 - input.textStats.luminance);
+  const brandContrast = brandBlockMode === 'black'
+    ? input.brandStats.luminance
+    : (1 - input.brandStats.luminance);
+  const baseVariantBonus = input.variant.variant === input.baseVariant ? 0.08 : 0;
+  const score = (textContrast * 3.8)
+    + (brandContrast * 1.25)
+    - (input.textStats.detail * 2.4)
+    - (input.brandStats.detail * 0.6)
+    + baseVariantBonus;
+
+  return {
+    variant: input.variant.variant,
+    overlayDirection: input.variant.overlayDirection,
+    headerTextColor,
+    brandBlockMode,
+    score,
+  };
+}
+
+async function resolveAutoEditorialRenderPlan(input: {
+  template: DesignStudioTemplateRecord;
+  backgroundImage?: string;
+  cropMode?: DesignStudioRenderPayload['cropMode'];
+  imageFocalPoint?: { x: number; y: number };
+  imageZoom?: number;
+}): Promise<DesignStudioAutoRenderPlan> {
+  const { template, backgroundImage, cropMode, imageFocalPoint, imageZoom } = input;
+  const { baseVariant, variants } = getTemplateVariantMetadata(template);
+  const previewVariant = findVariant(template, baseVariant || template.layoutVariant);
+  const background = await buildBackgroundLayer({
+    width: template.width,
+    height: template.height,
+    source: backgroundImage,
+    cropMode,
+    backgroundAnchor: previewVariant.backgroundAnchor,
+    focalPoint: imageFocalPoint,
+    zoom: imageZoom,
+  });
+
+  const scored = await Promise.all(
+    variants.map(async (variant) =>
+      scoreAutoVariantCandidate({
+        variant,
+        textStats: await measureRegionStats(background, variant.textBox),
+        brandStats: await measureRegionStats(background, variant.brandBox),
+        baseVariant,
+      }),
+    ),
+  );
+
+  return scored.sort((left, right) => right.score - left.score)[0]
+    || {
+      variant: baseVariant,
+      overlayDirection: previewVariant.overlayDirection,
+      headerTextColor: '#FFFFFF',
+      brandBlockMode: 'white',
+      score: 0,
+    };
 }
 
 async function buildBrandLayer(
@@ -2186,6 +2314,7 @@ function evaluateAutoEditorialNarrativeEligibility(
 
 export const __designStudioAutoTestUtils = {
   evaluateAutoEditorialNarrativeEligibility,
+  resolveAutoEditorialRenderPlan,
 };
 
 export const __designStudioRenderTestUtils = {
@@ -2563,22 +2692,29 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     const template = settings.templateRotationStrategy === 'random'
       ? templatePool[Math.floor(Math.random() * templatePool.length)]
       : templatePool[index % templatePool.length];
-    const activeVariant = getTemplateVariantMetadata(template).baseVariant || template.layoutVariant || 'bottom_center';
     const contentType = getContentTypeForKeyword(candidate.matchedKeyword);
     const headerText = deriveHeaderText(candidate.item.title);
     const subtext = deriveSubtext(candidate.item.feedName, candidate.matchedKeyword);
     const captions = await buildCaptionPayload(headerText, subtext, contentType, settings);
 
     try {
+      const autoPlan = await resolveAutoEditorialRenderPlan({
+        template,
+        backgroundImage: candidate.backgroundSource,
+        cropMode: 'cover',
+      });
+
       const rendered = await renderDesignStudioImage(template, {
-        template_variant: activeVariant,
+        template_variant: autoPlan.variant,
         headerText,
         subtext,
         backgroundImage: candidate.backgroundSource,
+        headerTextColor: autoPlan.headerTextColor,
         overlayColor: '#000000',
         overlayOpacity: 72,
-        gradientPosition: activeVariant.startsWith('top') ? 'top' : 'bottom',
+        gradientPosition: autoPlan.overlayDirection,
         cropMode: 'cover',
+        brandBlockMode: autoPlan.brandBlockMode,
         sharedCaption: captions.shared_caption,
         pinterestTitle: captions.pinterest_title,
         pinterestDescription: captions.pinterest_description,
@@ -2605,17 +2741,20 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
         matchedKeyword: candidate.matchedKeyword,
         templateId: template.id,
         templateName: template.name,
-        templateVariant: activeVariant,
+        templateVariant: autoPlan.variant,
         renderedImage: uploaded.url,
         headerText,
         subheaderText: subtext,
+        contentType,
         caption: captions.shared_caption,
         captions,
         backgroundSource: candidate.backgroundSource,
         backgroundOffsetX: 50,
         backgroundOffsetY: 50,
         zoomLevel: 1,
-        overlayDirection: findVariant(template, activeVariant).overlayDirection,
+        headerTextColor: autoPlan.headerTextColor,
+        brandBlockMode: autoPlan.brandBlockMode,
+        overlayDirection: autoPlan.overlayDirection,
         overlayStrength: 72,
         scheduleTime: settings.autoPost ? buildScheduledTime(index, settings.postingInterval, existingEditorials) : null,
         targetPlatforms: settings.targetPlatforms,

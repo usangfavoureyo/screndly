@@ -581,7 +581,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const buildAutoEditData = (editorial: DesignStudioAutoEditorialRecord): DesignData => ({
     headerText: editorial.headerText || '',
     subtext: editorial.subheaderText || '',
-    headerTextColor: '#FFFFFF',
+    headerTextColor: editorial.headerTextColor || '#FFFFFF',
     subtextColor: '#000000',
     fontScale: 1,
     lineHeightMultiplier: 0.93,
@@ -598,9 +598,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     templateVariant: editorial.templateVariant || 'bottom_center',
     fadeEnabled: true,
     fadeOpacity: 90,
-    brandBlockMode: 'auto',
+    brandBlockMode: editorial.brandBlockMode || 'auto',
     caption: editorial.caption,
-    contentType: 'announcement',
+    contentType: editorial.contentType || 'announcement',
     exportFormat: 'jpeg',
   });
 
