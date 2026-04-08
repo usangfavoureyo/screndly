@@ -50,6 +50,7 @@ const SETTING_LABEL_OVERRIDES: Record<string, string> = {
     videoYoutubeSelectedPlaylists: 'YouTube playlists',
     rssCaptionPrompt: 'Caption prompt',
     rssCaptionModel: 'Caption model',
+    rssImageWebSearchModel: 'OpenAI image web search model',
     rssCaptionTone: 'Caption tone',
     rssCaptionMaxLength: 'Max caption length',
     rssPostingInterval: 'Posting interval',

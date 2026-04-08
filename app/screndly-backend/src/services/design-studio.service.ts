@@ -1967,40 +1967,24 @@ async function buildBackgroundLayer(input: {
     }
 
     const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
-    const leftBase = (() => {
-      switch (input.backgroundAnchor) {
-        case 'top_right':
-        case 'bottom_right':
-        case 'right':
-          return input.width - targetWidth;
-        case 'top_left':
-        case 'bottom_left':
-        case 'left':
-          return 0;
-        default:
-          return Math.round((input.width - targetWidth) / 2);
-      }
-    })();
-    const topBase = (() => {
-      switch (input.backgroundAnchor) {
-        case 'bottom':
-        case 'bottom_left':
-        case 'bottom_right':
-          return input.height - targetHeight;
-        case 'top':
-        case 'top_left':
-        case 'top_right':
-          return 0;
-        default:
-          return Math.round((input.height - targetHeight) / 2);
-      }
-    })();
-    const left = Math.round(leftBase + ((input.focalPoint?.x ?? 50) - 50) * 2.2);
-    const top = Math.round(topBase + ((input.focalPoint?.y ?? 50) - 50) * 2.2);
+    const normalizedFocalX = (clamp(input.focalPoint?.x ?? 50, 0, 100) - 50) / 50;
+    const normalizedFocalY = (clamp(input.focalPoint?.y ?? 50, 0, 100) - 50) / 50;
+    const centeredLeft = (input.width - targetWidth) / 2;
+    const centeredTop = (input.height - targetHeight) / 2;
 
     if (cropMode === 'contain') {
-      const containLeft = clamp(left, 0, Math.max(0, input.width - targetWidth));
-      const containTop = clamp(top, 0, Math.max(0, input.height - targetHeight));
+      const containRangeX = Math.max(0, input.width - targetWidth) / 2;
+      const containRangeY = Math.max(0, input.height - targetHeight) / 2;
+      const containLeft = clamp(
+        Math.round(centeredLeft + (normalizedFocalX * containRangeX)),
+        0,
+        Math.max(0, input.width - targetWidth),
+      );
+      const containTop = clamp(
+        Math.round(centeredTop + (normalizedFocalY * containRangeY)),
+        0,
+        Math.max(0, input.height - targetHeight),
+      );
       return sharp({
         create: {
           width: input.width,
@@ -2014,8 +1998,18 @@ async function buildBackgroundLayer(input: {
         .toBuffer();
     }
 
-    const coverLeft = clamp(left, input.width - targetWidth, 0);
-    const coverTop = clamp(top, input.height - targetHeight, 0);
+    const overflowX = Math.max(0, targetWidth - input.width);
+    const overflowY = Math.max(0, targetHeight - input.height);
+    const coverLeft = clamp(
+      Math.round(centeredLeft - (normalizedFocalX * (overflowX / 2))),
+      input.width - targetWidth,
+      0,
+    );
+    const coverTop = clamp(
+      Math.round(centeredTop - (normalizedFocalY * (overflowY / 2))),
+      input.height - targetHeight,
+      0,
+    );
     const extractLeft = Math.max(0, Math.round(-coverLeft));
     const extractTop = Math.max(0, Math.round(-coverTop));
 
@@ -2192,6 +2186,10 @@ function evaluateAutoEditorialNarrativeEligibility(
 
 export const __designStudioAutoTestUtils = {
   evaluateAutoEditorialNarrativeEligibility,
+};
+
+export const __designStudioRenderTestUtils = {
+  buildBackgroundLayer,
 };
 
 function deriveHeaderText(title: string): string {

@@ -53,6 +53,8 @@ export interface RSSFeed {
   serperEnabled: boolean;
   tmdbEnabled: boolean;
   serperPriority: boolean;
+  openaiWebSearchEnabled?: boolean;
+  imageSourcePriority?: 'tmdb_first' | 'openai_first' | 'serper_first';
   rehostImages: boolean;
   autoPost: boolean;
   platformsEnabled: PlatformsEnabled;
@@ -105,14 +107,14 @@ export interface RSSActivityItem {
   contentHtml?: string;
   imageUrl?: string;
   imageUrls?: string[];
-  imageSource?: 'tmdb' | 'serper' | 'feed';
+  imageSource?: 'tmdb' | 'serper' | 'openai_web_search' | 'feed';
   imageReason?: string;
   imageScore?: number;
   imageSelectionConfidence?: 'high' | 'medium' | 'low';
   selectedImages?: Array<{
     url: string;
     reason: string;
-    source: 'tmdb' | 'serper' | 'feed';
+    source: 'tmdb' | 'serper' | 'openai_web_search' | 'feed';
     score?: number;
   }>;
   status: 'pending' | 'published' | 'failed' | 'filtered';
@@ -207,6 +209,8 @@ function normalizeFeed(feed: RSSFeed): RSSFeed {
     serperEnabled: feed.serperEnabled ?? true,
     tmdbEnabled: feed.tmdbEnabled ?? false,
     serperPriority: feed.serperPriority ?? true,
+    openaiWebSearchEnabled: feed.openaiWebSearchEnabled ?? false,
+    imageSourcePriority: feed.imageSourcePriority ?? (feed.serperPriority ? 'serper_first' : 'tmdb_first'),
     rehostImages: feed.rehostImages ?? false,
   };
 }

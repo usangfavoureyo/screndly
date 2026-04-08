@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 const TRANSIENT_HISTORY_KEY = '__screndlyTransient';
 const SUPPRESS_POPSTATE_KEY = '__screndlySuppressTransientPopstate';
 const SUPPRESS_POPSTATE_AT_KEY = '__screndlySuppressTransientPopstateAt';
+const SUPPRESS_POPSTATE_RELEASE_KEY = '__screndlySuppressTransientPopstateReleaseScheduled';
 const SUPPRESS_POPSTATE_MAX_AGE_MS = 1500;
 
 type HistoryStateRecord = Record<string, unknown>;
@@ -81,13 +82,14 @@ export function consumeHandledPopState() {
     return false;
   }
 
-  const transientWindow = window as Window & Record<string, number | undefined>;
+  const transientWindow = window as Window & Record<string, number | boolean | undefined>;
   const pendingCount = transientWindow[SUPPRESS_POPSTATE_KEY] ?? 0;
   const pendingAt = transientWindow[SUPPRESS_POPSTATE_AT_KEY] ?? 0;
 
   if (pendingCount > 0 && pendingAt > 0 && Date.now() - pendingAt > SUPPRESS_POPSTATE_MAX_AGE_MS) {
     transientWindow[SUPPRESS_POPSTATE_KEY] = 0;
     transientWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
+    transientWindow[SUPPRESS_POPSTATE_RELEASE_KEY] = false;
     return false;
   }
 
@@ -95,10 +97,25 @@ export function consumeHandledPopState() {
     return false;
   }
 
-  transientWindow[SUPPRESS_POPSTATE_KEY] = pendingCount - 1;
-  if (pendingCount - 1 <= 0) {
-    transientWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
+  if (!transientWindow[SUPPRESS_POPSTATE_RELEASE_KEY]) {
+    transientWindow[SUPPRESS_POPSTATE_RELEASE_KEY] = true;
+
+    window.setTimeout(() => {
+      const releaseWindow = window as Window & Record<string, number | boolean | undefined>;
+      const remainingCount = releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0;
+      if (remainingCount > 0) {
+        releaseWindow[SUPPRESS_POPSTATE_KEY] = remainingCount - 1;
+      }
+
+      if ((releaseWindow[SUPPRESS_POPSTATE_KEY] ?? 0) <= 0) {
+        releaseWindow[SUPPRESS_POPSTATE_KEY] = 0;
+        releaseWindow[SUPPRESS_POPSTATE_AT_KEY] = 0;
+      }
+
+      releaseWindow[SUPPRESS_POPSTATE_RELEASE_KEY] = false;
+    }, 0);
   }
+
   return true;
 }
 

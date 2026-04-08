@@ -243,6 +243,45 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
         {/* Divider */}
         <div className="border-t border-gray-200 dark:border-[#333333]"></div>
 
+        {/* OpenAI Image Web Search Section */}
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-gray-900 dark:text-white mb-1">OpenAI Image Web Search</h3>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+              Configure the OpenAI model used for RSS image web-search discovery and recovery when TMDb misses
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="rss-image-web-search-model" className="text-[#6B7280] dark:text-[#9CA3AF]">OpenAI Image Web Search Model</Label>
+            <Select
+              value={settings.rssImageWebSearchModel || 'gpt-5.4-mini'}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('rssImageWebSearchModel', value);
+                toast.success(`Image web search model changed to ${getModelDisplayName(value)}`);
+              }}
+            >
+              <SelectTrigger id="rss-image-web-search-model" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS.map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.displayName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Used only for the OpenAI image fallback path in RSS feeds. GPT-5.4 Mini is the recommended default.
+            </p>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-gray-200 dark:border-[#333333]"></div>
+
         {/* Caption Generation Section */}
         <div className="space-y-4">
           <div>

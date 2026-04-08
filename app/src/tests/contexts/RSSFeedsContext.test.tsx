@@ -52,6 +52,8 @@ function createFeed(overrides: Partial<RSSFeed> = {}): RSSFeed {
     serperEnabled: overrides.serperEnabled ?? true,
     tmdbEnabled: overrides.tmdbEnabled ?? false,
     serperPriority: overrides.serperPriority ?? false,
+    openaiWebSearchEnabled: overrides.openaiWebSearchEnabled ?? false,
+    imageSourcePriority: overrides.imageSourcePriority ?? (overrides.serperPriority ? 'serper_first' : 'tmdb_first'),
     rehostImages: overrides.rehostImages ?? false,
     autoPost: overrides.autoPost ?? false,
     platformsEnabled: overrides.platformsEnabled ?? {

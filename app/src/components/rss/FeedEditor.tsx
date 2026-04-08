@@ -58,7 +58,9 @@ function createDefaultFormData(): Partial<Feed> {
     filters: DEFAULT_FILTERS,
     serperEnabled: true,
     tmdbEnabled: false,
+    openaiWebSearchEnabled: false,
     serperPriority: true,
+    imageSourcePriority: 'serper_first',
     rehostImages: false,
     platformsEnabled: { x: true, threads: true, facebook: false, pinterest: false },
     autoPost: true,
@@ -86,6 +88,8 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
         serperEnabled: feed.serperEnabled ?? true,
         tmdbEnabled: feed.tmdbEnabled ?? false,
         serperPriority: feed.serperPriority ?? true,
+        openaiWebSearchEnabled: feed.openaiWebSearchEnabled ?? false,
+        imageSourcePriority: feed.imageSourcePriority ?? (feed.serperPriority ? 'serper_first' : 'tmdb_first'),
         rehostImages: feed.rehostImages ?? false,
         filters: {
           ...DEFAULT_FILTERS,
@@ -118,6 +122,8 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
         serperEnabled: formData.serperEnabled ?? true,
         tmdbEnabled: formData.tmdbEnabled ?? false,
         serperPriority: formData.serperPriority ?? true,
+        openaiWebSearchEnabled: formData.openaiWebSearchEnabled ?? false,
+        imageSourcePriority: formData.imageSourcePriority ?? ((formData.serperPriority ?? true) ? 'serper_first' : 'tmdb_first'),
         rehostImages: formData.rehostImages ?? false,
         platformsEnabled: formData.platformsEnabled || { x: true, threads: true, facebook: false, pinterest: false },
         autoPost: formData.autoPost ?? true,
@@ -691,15 +697,33 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                 />
               </div>
 
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label className="text-gray-600 dark:text-[#9CA3AF]">OpenAI Web Search</Label>
+                  <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">Use OpenAI Responses API web search as a discovery fallback when TMDb misses</p>
+                </div>
+                <Switch
+                  checked={formData.openaiWebSearchEnabled ?? false}
+                  onCheckedChange={(checked) => setFormData({ ...formData, openaiWebSearchEnabled: checked })}
+                />
+              </div>
+
               <div>
                 <Label className="text-gray-600 dark:text-[#9CA3AF]">Source Priority</Label>
                 <p className="text-xs text-gray-500 dark:text-[#6B7280] mt-0.5">
                   When both sources are enabled, choose which one gets the first image pass
                 </p>
                 <Select
-                  value={(formData.serperPriority ?? true) ? 'serper_first' : 'tmdb_first'}
-                  onValueChange={(value) => setFormData({ ...formData, serperPriority: value === 'serper_first' })}
-                  disabled={!formData.serperEnabled || !formData.tmdbEnabled}
+                  value={formData.imageSourcePriority || ((formData.serperPriority ?? true) ? 'serper_first' : 'tmdb_first')}
+                  onValueChange={(value: 'tmdb_first' | 'openai_first' | 'serper_first') => setFormData({
+                    ...formData,
+                    imageSourcePriority: value,
+                    serperPriority: value === 'serper_first',
+                  })}
+                  disabled={
+                    [formData.tmdbEnabled, formData.serperEnabled, formData.openaiWebSearchEnabled]
+                      .filter(Boolean).length < 2
+                  }
                 >
                   <SelectTrigger
                     className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1 disabled:opacity-50"
@@ -708,8 +732,9 @@ export function FeedEditor({ feed, onSave, onDelete, onClose, isOpen }: FeedEdit
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="tmdb_first">TMDb first, Serper fallback</SelectItem>
-                    <SelectItem value="serper_first">Serper first, TMDb fallback</SelectItem>
+                    <SelectItem value="tmdb_first">TMDb first</SelectItem>
+                    <SelectItem value="openai_first">OpenAI Web Search first</SelectItem>
+                    <SelectItem value="serper_first">Serper first</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

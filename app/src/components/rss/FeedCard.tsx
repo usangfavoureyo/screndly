@@ -41,6 +41,8 @@ export interface Feed {
   serperEnabled: boolean;
   tmdbEnabled: boolean;
   serperPriority: boolean;
+  openaiWebSearchEnabled?: boolean;
+  imageSourcePriority?: 'tmdb_first' | 'openai_first' | 'serper_first';
   rehostImages: boolean;
   lastProcessedAt?: string;
   nextRunAt?: string;

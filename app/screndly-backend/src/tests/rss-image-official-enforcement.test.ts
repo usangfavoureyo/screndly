@@ -6,6 +6,7 @@ import {
 } from '../services/rss-image-selection.service';
 
 const { validateImageCandidate, guessPrimarySubject, isUnanchoredGeneralStory } = __rssImageSelectionTestUtils;
+const { determineSmartImagePlan } = __rssImageSelectionTestUtils;
 
 function buildAnalysis(article: RSSImageSelectionArticle) {
   return guessPrimarySubject(article);
@@ -152,4 +153,22 @@ test('treats The Bear as a project when renewal context is explicit', () => {
   assert.equal(analysis.primarySubject.name, 'The Bear');
   assert.equal(analysis.primarySubject.type, 'tv_show');
   assert.equal(isUnanchoredGeneralStory(analysis), false);
+});
+
+test('prefers actor portrait plus project logo for casting stories with a strong person and title anchor', () => {
+  const article = {
+    title: "'Bridgerton' adds Tega Alexander as Christopher, Lord Anderson's son, for Season 5",
+    description:
+      "Per Netflix's Tudum, the Shonda Rhimes-produced period drama also cast Jacqueline Boatswain as Helen.",
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.contextType, 'casting');
+  assert.equal(plan.useTwoImages, true);
+  assert.equal(plan.primary.subject, 'Tega Alexander');
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.secondary?.subject, 'Bridgerton');
+  assert.equal(plan.secondary?.intent, 'logo');
 });
