@@ -5,9 +5,10 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Clock, TrendingUp, ChevronDown, ChevronUp, Brain } from 'lucide-react';
+import { Clock, TrendingUp, Brain } from 'lucide-react';
 import { postTimeOptimizer } from '../lib/optimization';
 import type { Platform } from '../lib/optimization/types';
+import arrowDownIcon from '../public/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg';
 
 interface OptimalTimeSuggestionProps {
     selectedPlatforms: string[];
@@ -133,11 +134,12 @@ export function OptimalTimeSuggestion({
                             {Math.round(avgConfidence)}% confident
                         </span>
                     )}
-                    {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 text-gray-500 dark:text-[#6B7280]" />
-                    ) : (
-                        <ChevronDown className="w-4 h-4 text-gray-500 dark:text-[#6B7280]" />
-                    )}
+                    <img
+                        src={arrowDownIcon}
+                        alt=""
+                        aria-hidden="true"
+                        className={`w-4 h-4 opacity-70 dark:opacity-60 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                    />
                 </div>
             </button>
 

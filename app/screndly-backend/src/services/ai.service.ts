@@ -1108,14 +1108,204 @@ export interface RSSContext {
     articleTitle: string;
     feedName: string;
     summary: string;
+    articleBody?: string;
+    articleContentHtml?: string;
     platform: 'X' | 'Threads' | 'Facebook' | 'LinkedIn';
     tone?: string;
     selectedVisuals?: string[];
     allowedEntities?: string[];
 }
 
+interface RssCaptionExtraction {
+    article_title: string;
+    article_summary?: string;
+    article_body_clean?: string;
+    event_type:
+        | 'reveal'
+        | 'casting'
+        | 'renewal'
+        | 'cancellation'
+        | 'development'
+        | 'in_production'
+        | 'trailer'
+        | 'release_date'
+        | 'box_office'
+        | 'interview_quote'
+        | 'first_look'
+        | 'platform_move'
+        | 'director_attachment'
+        | 'writer_attachment'
+        | 'return'
+        | 'reflection'
+        | 'other';
+    primary_subject?: string;
+    secondary_subject?: string;
+    media_title?: string;
+    franchise_or_universe?: string;
+    named_people?: string[];
+    named_characters?: string[];
+    studio_or_platform?: string;
+    release_or_event?: string;
+    direct_quote?: string;
+    quote_speaker?: string;
+    supporting_facts?: string[];
+    spoiler_level?: 'none' | 'low' | 'medium' | 'high';
+    extraction_confidence?: number;
+    ambiguity_flags?: string[];
+}
+
+const RSS_HEADLINE_PREFIX_TOKENS = [
+    'EXCLUSIVE',
+    'LISTEN',
+    'WATCH',
+    'REPORT',
+    'SCOOP',
+    'BREAKING',
+    'FIRST LOOK',
+    'TRAILER',
+];
+
+const RSS_EVENT_PATTERNS: Array<{ type: RssCaptionExtraction['event_type']; patterns: RegExp[] }> = [
+    { type: 'casting', patterns: [/\bcast\b/i, /\bjoins?\b/i, /\bset to star\b/i, /\badded to\b/i, /\bboards?\b/i] },
+    { type: 'renewal', patterns: [/\brenewed\b/i, /\breturns? for season\b/i, /\bpicked up for\b/i] },
+    { type: 'cancellation', patterns: [/\bcancel(?:ed|led)\b/i, /\bnot returning\b/i, /\baxed\b/i] },
+    { type: 'development', patterns: [/\bin development\b/i, /\bin the works\b/i, /\bbeing developed\b/i] },
+    { type: 'in_production', patterns: [/\bbegins production\b/i, /\bstarts filming\b/i, /\bnow filming\b/i, /\bin production\b/i] },
+    { type: 'trailer', patterns: [/\btrailer\b/i, /\bteaser\b/i] },
+    { type: 'release_date', patterns: [/\brelease date\b/i, /\bpremieres?\b/i, /\bdebuts?\b/i, /\bmoved to\b/i] },
+    { type: 'first_look', patterns: [/\bfirst look\b/i, /\bnew images? released\b/i] },
+    { type: 'interview_quote', patterns: [/\bsays?\b/i, /\bsaid\b/i, /\bopens up\b/i, /\bexplains?\b/i, /\btalks about\b/i] },
+    { type: 'box_office', patterns: [/\bbox office\b/i, /\bgrosses?\b/i, /\bopens to\b/i, /\breaches?\b/i] },
+    { type: 'director_attachment', patterns: [/\bto direct\b/i, /\bdirecting\b/i, /\bhelming\b/i] },
+    { type: 'writer_attachment', patterns: [/\bwriter\b/i, /\bpenning\b/i, /\bscreenwriter\b/i, /\bscript\b/i] },
+    { type: 'return', patterns: [/\breturns?\b/i, /\bcoming back\b/i] },
+    { type: 'reflection', patterns: [/\breflects?\b/i, /\blooked back\b/i, /\bremembered\b/i] },
+    { type: 'reveal', patterns: [/\bconfirmed\b/i, /\brevealed\b/i, /\bfinally addressed\b/i, /\bexplained\b/i] },
+];
+
 function hasGroundedRSSNamedEntities(context: RSSContext): boolean {
     return Array.isArray(context.allowedEntities) && context.allowedEntities.some((entry) => entry.trim().length >= 3);
+}
+
+function stripHtmlTags(value: string): string {
+    return value
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeRSSHeadlineInput(value: string): string {
+    let normalized = String(value || '').trim();
+    for (const token of RSS_HEADLINE_PREFIX_TOKENS) {
+        const pattern = new RegExp(`^${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*`, 'i');
+        normalized = normalized.replace(pattern, '');
+    }
+
+    return normalized.replace(/\s+/g, ' ').trim();
+}
+
+function extractQuotedRSSTitles(value: string): string[] {
+    return Array.from(value.matchAll(/['"“]([^'"”]{2,80})['"”]/g))
+        .map((match) => (match[1] || '').trim())
+        .filter(Boolean);
+}
+
+function extractNamedPeopleFromText(value: string): string[] {
+    const matches = Array.from(value.matchAll(/\b(?:[A-Z][A-Za-z'&.-]+)(?:\s+[A-Z][A-Za-z'&.-]+){1,3}\b/g))
+        .map((match) => (match[0] || '').trim())
+        .filter((entry) => entry.length >= 5);
+    return Array.from(new Set(matches));
+}
+
+function classifyRSSEventType(text: string): RssCaptionExtraction['event_type'] {
+    for (const entry of RSS_EVENT_PATTERNS) {
+        if (entry.patterns.some((pattern) => pattern.test(text))) {
+            return entry.type;
+        }
+    }
+    return 'other';
+}
+
+function detectRSSSpoilerLevel(text: string): RssCaptionExtraction['spoiler_level'] {
+    if (/\b(killer|ending|finale|dies|death|survives|cameo|twist)\b/i.test(text)) {
+        return 'high';
+    }
+    if (/\b(reveals?|revealed|explained|finally addressed|status)\b/i.test(text)) {
+        return 'medium';
+    }
+    return 'low';
+}
+
+function extractDirectQuote(text: string): { quote?: string; speaker?: string } {
+    const quoteMatch = text.match(/["“]([^"”]{10,220})["”]/);
+    if (!quoteMatch?.[1]) {
+        return {};
+    }
+
+    const before = text.slice(Math.max(0, quoteMatch.index! - 120), quoteMatch.index);
+    const speakerMatch = before.match(/\b([A-Z][A-Za-z'&.-]+(?:\s+[A-Z][A-Za-z'&.-]+){0,2})\s+(?:said|says|told|called|added|explained)\b/i);
+    return {
+        quote: quoteMatch[1].trim(),
+        speaker: speakerMatch?.[1]?.trim(),
+    };
+}
+
+function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtraction {
+    const normalizedTitle = normalizeRSSHeadlineInput(context.articleTitle);
+    const summary = String(context.summary || '').trim();
+    const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+    const combined = [normalizedTitle, summary, body].filter(Boolean).join(' ');
+    const quotedTitles = extractQuotedRSSTitles(`${normalizedTitle} ${summary} ${body}`);
+    const namedPeople = extractNamedPeopleFromText(`${normalizedTitle} ${summary} ${body}`);
+    const { quote, speaker } = extractDirectQuote(`${summary} ${body}`);
+    const eventType = classifyRSSEventType(combined);
+    const mediaTitle = quotedTitles.find((entry) => entry.length >= 2);
+    const primarySubject = mediaTitle || namedPeople[0] || normalizedTitle;
+    const secondarySubject = mediaTitle && namedPeople[0] && namedPeople[0] !== primarySubject ? namedPeople[0] : namedPeople[1];
+
+    return {
+        article_title: normalizedTitle,
+        article_summary: summary || undefined,
+        article_body_clean: body || undefined,
+        event_type: eventType,
+        primary_subject: primarySubject || undefined,
+        secondary_subject: secondarySubject || undefined,
+        media_title: mediaTitle || undefined,
+        named_people: namedPeople.slice(0, 6),
+        studio_or_platform: /\b(Netflix|Prime Video|Apple TV\+|Disney\+|HBO|Max|CBS|NBC|ABC|Fox|Lucasfilm|Marvel Studios|Warner Bros\.?|Paramount)\b/i.exec(combined)?.[1],
+        direct_quote: quote,
+        quote_speaker: speaker,
+        supporting_facts: [summary, body].filter(Boolean).map((entry) => entry.trim()).slice(0, 2),
+        spoiler_level: detectRSSSpoilerLevel(combined),
+        extraction_confidence: mediaTitle || namedPeople.length > 0 ? 0.8 : 0.45,
+        ambiguity_flags: primarySubject === normalizedTitle ? ['headline_led_subject'] : [],
+    };
+}
+
+function ensureRSSSentenceTerminal(value: string): string {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return trimmed;
+    }
+    return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function enforceRSSCaptionPunctuation(caption: string): string {
+    return caption
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => /^[\u2022*-]\s*/.test(line)
+            ? line.replace(/^([*\-])\s*/, '\u2022 ').replace(/^(\u2022\s*)(.*)$/u, (_m, bullet, text) => `${bullet}${ensureRSSSentenceTerminal(text)}`)
+            : ensureRSSSentenceTerminal(line))
+        .join('\n');
 }
 
 function isVagueRSSCaption(caption: string): boolean {
@@ -1168,11 +1358,39 @@ function hasUnsupportedRSSVagueSubject(caption: string, context: RSSContext): bo
     return hasGroundedRSSNamedEntities(context) && isVagueRSSCaption(caption);
 }
 
+function mirrorsRSSHeadlineTooClosely(caption: string, context: RSSContext): boolean {
+    const headline = normalizeRSSHeadlineInput(getRSSHeadlineLine(caption));
+    const articleTitle = normalizeRSSHeadlineInput(context.articleTitle);
+    if (!headline || !articleTitle) {
+        return false;
+    }
+
+    const normalizedHeadline = headline.toLowerCase();
+    const normalizedTitle = articleTitle.toLowerCase();
+    if (normalizedHeadline === normalizedTitle) {
+        return true;
+    }
+
+    const titleTokens = normalizedTitle.split(/\s+/).filter((token) => token.length > 2);
+    if (titleTokens.length === 0) {
+        return false;
+    }
+
+    const overlap = titleTokens.filter((token) => normalizedHeadline.includes(token)).length;
+    return overlap / titleTokens.length >= 0.85 && Math.abs(normalizedHeadline.length - normalizedTitle.length) <= 24;
+}
+
+function lacksRSSLineTerminalPunctuation(caption: string): boolean {
+    return getRSSCaptionLines(caption).some((line) => !/[.!?…"”'"]$/.test(line));
+}
+
 function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolean {
     return hasUnsupportedRSSVagueSubject(caption, context)
         || isEditorializedRSSCaption(caption)
         || hasInlineRSSQuote(caption)
-        || hasOverloadedRSSHeadline(caption);
+        || hasOverloadedRSSHeadline(caption)
+        || mirrorsRSSHeadlineTooClosely(caption, context)
+        || lacksRSSLineTerminalPunctuation(caption);
 }
 
 export async function generateRSSCaption(
@@ -1181,6 +1399,8 @@ export async function generateRSSCaption(
     customSystemPrompt?: string,
     customTemperature?: number
 ): Promise<string> {
+    const extraction = buildHeuristicRssCaptionExtraction(context);
+    const bodyExcerpt = (extraction.article_body_clean || '').slice(0, 1400);
     const defaultSystemPrompt = `You are a social media curator sharing news/articles.
 Goal: Summarize the value prop and encourage a click (without saying "click here").
 - Use 1 relevant emoji.
@@ -1201,7 +1421,30 @@ Goal: Summarize the value prop and encourage a click (without saying "click here
         ? `Allowed named entities for the caption:\n${context.allowedEntities.map((entry) => `- ${entry}`).join('\n')}\n`
         : '';
 
-    const prompt = `Generate a caption for this article:
+    const prompt = `Generate a caption for this article from structured facts, not from article wording.
+
+STRUCTURED FACTS
+Article Title: ${extraction.article_title}
+Event Type: ${extraction.event_type}
+Primary Subject: ${extraction.primary_subject || 'Unknown'}
+Secondary Subject: ${extraction.secondary_subject || 'Unknown'}
+Media Title: ${extraction.media_title || 'Unknown'}
+Franchise / Universe: ${extraction.franchise_or_universe || 'Unknown'}
+Named People: ${(extraction.named_people || []).join(', ') || 'None'}
+Named Characters: ${(extraction.named_characters || []).join(', ') || 'None'}
+Studio / Platform: ${extraction.studio_or_platform || 'Unknown'}
+Release / Event: ${extraction.release_or_event || 'Unknown'}
+Direct Quote: ${extraction.direct_quote || 'None'}
+Quote Speaker: ${extraction.quote_speaker || 'Unknown'}
+Supporting Facts: ${(extraction.supporting_facts || []).join(' | ') || 'None'}
+Spoiler Level: ${extraction.spoiler_level || 'low'}
+Extraction Confidence: ${typeof extraction.extraction_confidence === 'number' ? extraction.extraction_confidence.toFixed(2) : '0.00'}
+Ambiguity Flags: ${(extraction.ambiguity_flags || []).join(', ') || 'None'}
+
+ARTICLE BODY EXCERPT
+${bodyExcerpt || 'None'}
+
+Generate a caption for this article:
 Feed: ${context.feedName}
 Title: ${context.articleTitle}
 Summary: ${context.summary.slice(0, 500)}...
@@ -1210,7 +1453,9 @@ ${visualContext}
 ${allowedEntitiesContext}
 
 Rules:
+- Build from the structured facts and body excerpt, not from the article title alone.
 - The first line must be exactly one clean headline sentence.
+- The headline line must name the most specific reliable subject when one exists.
 - If you include a direct quote from the article, place it on its own separate line after the headline.
 - Use a second line only for one factual supporting sentence, one standalone quote, or up to two bullet points.
 - Name the concrete subject immediately when the article title/summary or allowed entities contain a specific movie, series, character, or person.
@@ -1218,6 +1463,8 @@ Rules:
 - Do not add commentary, trend analysis, or opinion. Report only the event stated in the article.
 - Do not mention a movie, series, character, or person that is not supported by the article title/summary or the allowed named entities list.
 - If the selected visuals clearly represent one title, keep the caption anchored to that title instead of substituting a different one.
+- Do not mirror the article headline phrasing or clause order.
+- Every sentence line must end with a full stop.
 
 Write ONLY the caption.`;
 
@@ -1225,15 +1472,17 @@ Write ONLY the caption.`;
         model,
         prompt,
         systemPrompt,
-        maxTokens: 150,
-        temperature: customTemperature !== undefined ? customTemperature : 0.6,
+        maxTokens: 220,
+        temperature: customTemperature !== undefined ? customTemperature : 0.35,
         jsonMode: false
     });
 
     if (!response.success) {
-        return `📰 ${context.articleTitle}`;
+        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
     }
-    const normalizedCaption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    const normalizedCaption = enforceRSSCaptionPunctuation(
+        normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
+    );
     if (!failsRSSCaptionFormatting(normalizedCaption, context)) {
         return normalizedCaption;
     }
@@ -1242,6 +1491,10 @@ Write ONLY the caption.`;
 
 Article Title: ${context.articleTitle}
 Article Summary: ${context.summary.slice(0, 500)}
+Article Body Excerpt: ${bodyExcerpt || 'None'}
+Structured Primary Subject: ${extraction.primary_subject || 'Unknown'}
+Structured Media Title: ${extraction.media_title || 'Unknown'}
+Structured Event Type: ${extraction.event_type}
 Allowed named entities: ${Array.isArray(context.allowedEntities) ? context.allowedEntities.join(', ') : 'None'}
 Original caption: ${normalizedCaption}
 
@@ -1249,9 +1502,12 @@ Requirements:
 - Keep the first line to exactly one clean headline sentence.
 - If you include a quote, put it on its own line and do not embed it inside another sentence.
 - Use only factual supporting detail after the headline.
-- Name the concrete subject directly if one is available in the title, summary, or allowed entities.
+- Name the concrete subject directly if one is available in the title, summary, body, or allowed entities.
+- Use the body excerpt to resolve the real subject when the title is vague.
 - Remove vague phrases like "a Marvel character" or "a major actor".
 - Remove commentary, interpretation, and opinion.
+- Restructure the syntax completely instead of lightly rewriting the headline.
+- Every sentence line must end with a full stop.
 - Keep it concise and factual.
 
 Write ONLY the corrected caption.`;
@@ -1260,22 +1516,32 @@ Write ONLY the corrected caption.`;
         model,
         prompt: validationPrompt,
         systemPrompt,
-        maxTokens: 150,
-        temperature: 0.2,
+        maxTokens: 220,
+        temperature: 0.15,
         jsonMode: false
     });
 
     if (!retryResponse.success) {
-        return context.articleTitle;
+        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
     }
 
-    const correctedCaption = normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content']);
+    const correctedCaption = enforceRSSCaptionPunctuation(
+        normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content'])
+    );
     if (failsRSSCaptionFormatting(correctedCaption, context)) {
-        return context.articleTitle;
+        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
     }
 
     return correctedCaption;
 }
+
+export const __rssCaptionTestUtils = {
+    buildHeuristicRssCaptionExtraction,
+    enforceRSSCaptionPunctuation,
+    failsRSSCaptionFormatting,
+    mirrorsRSSHeadlineTooClosely,
+    normalizeRSSHeadlineInput,
+};
 
 
 // ============================================

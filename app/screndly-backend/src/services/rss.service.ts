@@ -645,6 +645,21 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
     sanitized = sanitized.slice(0, maxLength).replace(/\s+\S*$/, '').trim();
   }
 
+  sanitized = sanitized
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return '';
+      if (/^[\u2022]\s*/.test(trimmed)) {
+        return trimmed.replace(/^(\u2022\s*)(.*)$/u, (_m, bullet, text) =>
+          /[.!?…"”'"]$/.test(String(text).trim()) ? `${bullet}${String(text).trim()}` : `${bullet}${String(text).trim()}.`
+        );
+      }
+      return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
   return sanitized;
 }
 
@@ -1879,7 +1894,7 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
     imageUrls: Array.isArray(value.imageUrls)
       ? value.imageUrls.filter((entry): entry is string => typeof entry === 'string')
       : [],
-    imageSource: value.imageSource === 'tmdb' || value.imageSource === 'serper' || value.imageSource === 'feed'
+    imageSource: value.imageSource === 'tmdb' || value.imageSource === 'serper' || value.imageSource === 'openai_web_search' || value.imageSource === 'feed'
       ? value.imageSource
       : undefined,
     imageReason: typeof value.imageReason === 'string' ? value.imageReason : undefined,
@@ -2020,7 +2035,9 @@ async function resolveRSSItemImages(
     {
       title: item.title,
       description: item.description,
+      contentHtml: item.contentHtml,
       author: item.author,
+      generatedCaption: item.generatedCaption,
       fallbackImages: dedupeUrls([...(item.imageUrls || []), item.imageUrl]),
     },
     {
@@ -2305,7 +2322,7 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
     contentHtml: typeof metadata.contentHtml === 'string' ? metadata.contentHtml : undefined,
     imageUrl: typeof metadata.imageUrl === 'string' ? metadata.imageUrl : undefined,
     imageUrls: parseRSSActivityImageUrls(metadata.imageUrls),
-    imageSource: metadata.imageSource === 'tmdb' || metadata.imageSource === 'serper' || metadata.imageSource === 'feed'
+    imageSource: metadata.imageSource === 'tmdb' || metadata.imageSource === 'serper' || metadata.imageSource === 'openai_web_search' || metadata.imageSource === 'feed'
       ? metadata.imageSource
       : undefined,
     imageReason: typeof metadata.imageReason === 'string' ? metadata.imageReason : undefined,
@@ -2802,6 +2819,8 @@ async function attemptRSSPublish(
         articleTitle: item.title,
         feedName: feed.name,
         summary: sanitizeRSSPlainText(item.description),
+        articleBody: sanitizeRSSPlainText(item.contentHtml),
+        articleContentHtml: item.contentHtml,
         platform: 'X',
         selectedVisuals: buildRSSCaptionVisualContext(publishImages),
         allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
@@ -4199,6 +4218,8 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       articleTitle: previewItem.title,
       feedName: feed.name,
       summary: sanitizeRSSPlainText(previewItem.description),
+      articleBody: sanitizeRSSPlainText(previewItem.contentHtml),
+      articleContentHtml: previewItem.contentHtml,
       platform: 'X',
       selectedVisuals: buildRSSCaptionVisualContext(resolvedImages),
       allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),

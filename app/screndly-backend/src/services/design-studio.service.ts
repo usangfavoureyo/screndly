@@ -1654,12 +1654,16 @@ export async function buildTextLayer(input: {
       ? Math.round(scaledTextBoxX + scaledBoxWidth)
       : scaledTextBoxX;
 
-  const fontFamily = input.template.fontFamily || 'PFDinTextCompPro';
+  const fontFamily = (input.template.fontFamily || 'PFDinTextCompPro').trim();
+  const renderFontFamily = getHeadlineFontDataUri() ? 'ScrendlyHeadline' : fontFamily;
+  const fontWeight = clamp(Math.round(input.template.fontWeight || 800), 100, 900);
+  const fontStyle = input.template.fontStyle?.toLowerCase().includes('italic') ? 'italic' : 'normal';
+  const fontSize = Math.max(1, Math.round(fit.fontSize));
+  const letterSpacing = input.template.tracking && Number.isFinite(input.template.tracking)
+    ? `${(input.template.tracking / Math.max(fontSize, 1)) * 0.08}em`
+    : '-0.03em';
   const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
-  const fontRgb = hexToRgb(fontColor);
-  const fontFile = fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH) ? DESIGN_STUDIO_HEADLINE_FONT_PATH : undefined;
-
-  const baseLayer = sharp({
+  const emptyLayer = sharp({
     create: {
       width: input.width,
       height: input.height,
@@ -1668,70 +1672,87 @@ export async function buildTextLayer(input: {
     },
   });
 
-  const composites: Array<{ input: Buffer; left: number; top: number }> = [];
-
-  for (let index = 0; index < fit.lines.length; index += 1) {
-    const line = fit.lines[index];
-    const lineBuffer = await sharp({
-      text: {
-        text: line,
-        rgba: true,
-        align: 'left',
-        font: `${fontFamily} ${Math.max(1, Math.round(fit.fontSize))}`,
-        fontfile: fontFile,
-      } as any,
-    }).png().toBuffer();
-
-    const metadata = await sharp(lineBuffer).metadata();
-    const lineWidth = Math.max(1, metadata.width || scaledBoxWidth);
-    const lineHeight = Math.max(1, metadata.height || Math.round(fit.lineHeight));
-    const lineAlpha = await sharp(lineBuffer)
-      .ensureAlpha()
-      .extractChannel('alpha')
-      .png()
-      .toBuffer();
-    const coloredLineBuffer = await sharp({
-      create: {
-        width: lineWidth,
-        height: lineHeight,
-        channels: 3,
-        background: fontRgb,
-      },
-    })
-      .joinChannel(lineAlpha)
-      .png()
-      .toBuffer();
-    const left = alignment === 'center'
-      ? Math.round(x - (lineWidth / 2))
-      : alignment === 'right'
-        ? Math.round(x - lineWidth)
-        : x;
-    const lineTop = top + Math.round(index * fit.lineHeight);
-    const safeLeft = clamp(left, 0, Math.max(0, input.width - lineWidth));
-    const safeTop = clamp(lineTop, 0, Math.max(0, input.height - lineHeight));
-
-    if (shadowOpacity > 0) {
-      const shadowSvg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${lineWidth + 6}" height="${lineHeight + 6}" viewBox="0 0 ${lineWidth + 6} ${lineHeight + 6}">
-          <image href="data:image/png;base64,${lineBuffer.toString('base64')}" x="2" y="2" opacity="${shadowOpacity}" />
-        </svg>
-      `.trim();
-      const shadowBuffer = await sharp(Buffer.from(shadowSvg)).blur(1.2).png().toBuffer();
-      composites.push({
-        input: shadowBuffer,
-        left: clamp(safeLeft - 2, 0, Math.max(0, input.width - (lineWidth + 6))),
-        top: clamp(safeTop - 2, 0, Math.max(0, input.height - (lineHeight + 6))),
-      });
-    }
-
-    composites.push({
-      input: coloredLineBuffer,
-      left: safeLeft,
-      top: safeTop,
-    });
+  if (fit.lines.length === 0) {
+    return emptyLayer.png().toBuffer();
   }
 
-  return baseLayer.composite(composites).png().toBuffer();
+  const textSpans = fit.lines
+    .map((line, index) => {
+      const lineTop = Math.round(top + (index * fit.lineHeight));
+      return `
+        <text
+          x="${x}"
+          y="${lineTop}"
+          fill="${fontColor}"
+          font-family="${escapeXml(renderFontFamily)}"
+          font-size="${fontSize}"
+          font-style="${fontStyle}"
+          font-weight="${fontWeight}"
+          letter-spacing="${letterSpacing}"
+          text-anchor="${anchor}"
+          dominant-baseline="text-before-edge"
+        >${escapeXml(line)}</text>
+      `.trim();
+    })
+    .join('');
+
+  const shadowSpans = shadowOpacity > 0
+    ? fit.lines
+      .map((line, index) => {
+        const lineTop = Math.round(top + (index * fit.lineHeight) + 2);
+        return `
+          <text
+            x="${x + 1}"
+            y="${lineTop}"
+            fill="#000000"
+            fill-opacity="${shadowOpacity}"
+            font-family="${escapeXml(renderFontFamily)}"
+            font-size="${fontSize}"
+            font-style="${fontStyle}"
+            font-weight="${fontWeight}"
+            letter-spacing="${letterSpacing}"
+            text-anchor="${anchor}"
+            dominant-baseline="text-before-edge"
+            filter="url(#headlineShadow)"
+          >${escapeXml(line)}</text>
+        `.trim();
+      })
+      .join('')
+    : '';
+
+  const embeddedFontFace = getHeadlineFontDataUri()
+    ? `
+      <style>
+        @font-face {
+          font-family: 'ScrendlyHeadline';
+          src: url('${getHeadlineFontDataUri()}') format('truetype');
+          font-weight: 100 900;
+          font-style: normal;
+        }
+      </style>
+    `.trim()
+    : '';
+
+  const shadowFilter = shadowOpacity > 0
+    ? `
+      <filter id="headlineShadow" x="-20%" y="-20%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="1.1" />
+      </filter>
+    `.trim()
+    : '';
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      <defs>
+        ${embeddedFontFace}
+        ${shadowFilter}
+      </defs>
+      ${shadowSpans}
+      ${textSpans}
+    </svg>
+  `.trim();
+
+  return sharp(Buffer.from(svg)).png().toBuffer();
 }
 
 function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {

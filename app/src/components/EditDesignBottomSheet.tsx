@@ -644,6 +644,12 @@ export function EditDesignBottomSheet({
     setExpandedPreviewOffset({ x: 0, y: 0 });
   };
 
+  const openExpandedPreview = useCallback(() => {
+    haptics.light();
+    resetExpandedPreviewTransform();
+    setIsImageExpanded(true);
+  }, []);
+
   const handleExpandedPreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     if (event.touches.length === 1 && expandedPreviewZoom > 1) {
       const touch = event.touches[0];
@@ -1521,11 +1527,8 @@ export function EditDesignBottomSheet({
                     </Label>
                     <button
                       type="button"
-                      onClick={() => {
-                        haptics.light();
-                        resetExpandedPreviewTransform();
-                        setIsImageExpanded(true);
-                      }}
+                      onClick={openExpandedPreview}
+                      aria-label="Expand composition preview"
                       className={`relative block w-full ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}
                     >
                       <LiveDesignPreview
@@ -1705,15 +1708,20 @@ export function EditDesignBottomSheet({
                   <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
                     Overlay Preview
                   </Label>
-                  <div className={`relative ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}>
+                  <button
+                    type="button"
+                    onClick={openExpandedPreview}
+                    aria-label="Expand overlay preview"
+                    className={`relative block w-full ${getAspectRatioClass()} rounded-lg overflow-hidden border border-gray-200 dark:border-[#333333]`}
+                  >
                     <LiveDesignPreview
                       templatePreviewUrl={resolvedPreviewBackgroundSrc}
                       designData={currentPreviewData}
                     />
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                      Live Preview
+                      Tap to Expand
                     </div>
-                  </div>
+                  </button>
                 </div>
 
                 {/* Reset Button */}
