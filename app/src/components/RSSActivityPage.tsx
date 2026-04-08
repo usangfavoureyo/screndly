@@ -444,10 +444,22 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             filteredItems.map(({ item, derivedStatus, platformStates, retryablePlatforms, publishSummary }) => {
               const statusConfig = getStatusConfig(derivedStatus);
               const StatusIcon = statusConfig.icon;
-              const primaryImageUrl = item.imageUrl || item.imageUrls?.[0];
+              const finalImageUrls = Array.isArray(item.imageUrls) && item.imageUrls.length > 0
+                ? item.imageUrls
+                : (item.imageUrl ? [item.imageUrl] : []);
+              const primaryImageUrl = finalImageUrls[0];
               const imageSourceLabel = formatImageSource(item.imageSource);
               const selectionConfidenceLabel = formatSelectionConfidence(item.imageSelectionConfidence);
-              const alternateImages = (item.selectedImages || []).filter((image) => image.url !== primaryImageUrl);
+              const selectedImagesByUrl = new Map((item.selectedImages || []).map((image) => [image.url, image]));
+              const publishedAdditionalImages = finalImageUrls
+                .slice(1)
+                .map((url) => selectedImagesByUrl.get(url) || {
+                  url,
+                  reason: 'Additional selected image',
+                  source: item.imageSource || 'feed',
+                  score: undefined,
+                });
+              const unusedAlternateImages = (item.selectedImages || []).filter((image) => !finalImageUrls.includes(image.url));
 
               return (
                 <div
@@ -513,7 +525,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                             />
                           </div>
                         )}
-                        {(imageSourceLabel || item.imageReason || selectionConfidenceLabel || typeof item.imageScore === 'number') && (
+                        {(imageSourceLabel || item.imageReason || selectionConfidenceLabel || typeof item.imageScore === 'number' || finalImageUrls.length > 1) && (
                           <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                             {imageSourceLabel && (
                               <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
@@ -530,17 +542,47 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                                 Score {Math.round(item.imageScore)}
                               </span>
                             )}
+                            {finalImageUrls.length > 1 && (
+                              <span className="rounded bg-gray-200 px-2 py-1 text-gray-700 dark:bg-[#1F1F1F] dark:text-[#D1D5DB]">
+                                {finalImageUrls.length}-image post
+                              </span>
+                            )}
                             {item.imageReason && <span>{item.imageReason}</span>}
                           </div>
                         )}
-                        {alternateImages.length > 0 && (
+                        {publishedAdditionalImages.length > 0 && (
                           <div className="mb-3">
-                            <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected alternates</p>
+                            <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Additional selected images</p>
                             <div className="grid grid-cols-2 gap-2">
-                              {alternateImages.slice(0, 2).map((image) => (
+                              {publishedAdditionalImages.slice(0, 2).map((image) => (
                                 <div
                                   key={image.url}
                                   className="overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-[#333333] dark:bg-[#050505]"
+                                >
+                                  <OptimizedImage
+                                    src={image.url}
+                                    alt={image.reason}
+                                    className="h-24 w-full"
+                                  />
+                                  <div className="p-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                    <p className="line-clamp-2">{image.reason}</p>
+                                    {typeof image.score === 'number' && (
+                                      <p className="mt-1">Score {Math.round(image.score)}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {publishedAdditionalImages.length === 0 && unusedAlternateImages.length > 0 && (
+                          <div className="mb-3">
+                            <p className="mb-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Unused alternates</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {unusedAlternateImages.slice(0, 2).map((image) => (
+                                <div
+                                  key={image.url}
+                                  className="overflow-hidden rounded-lg border border-dashed border-gray-200 bg-gray-50 opacity-80 dark:border-[#333333] dark:bg-[#050505]"
                                 >
                                   <OptimizedImage
                                     src={image.url}

@@ -1233,6 +1233,8 @@ const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
     /\bplot details are under wraps\b/i,
     /\bcharacter details are still under wraps\b/i,
     /\bunder wraps\b/i,
+    /\[\.\.\.\]/,
+    /\(\.\.\.\)/,
 ];
 
 function hasGroundedRSSNamedEntities(context: RSSContext): boolean {
@@ -1321,7 +1323,21 @@ function isRejectedRSSSupportingFact(value: string): boolean {
         return true;
     }
 
-    return RSS_SUPPORTING_FACT_REJECTION_PATTERNS.some((pattern) => pattern.test(normalized));
+    return RSS_SUPPORTING_FACT_REJECTION_PATTERNS.some((pattern) => pattern.test(normalized))
+        || hasTruncatedRSSContent(normalized);
+}
+
+function hasTruncatedRSSContent(value: string): boolean {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    if (/\[\.\.\.\]|\(\.\.\.\)/.test(normalized)) {
+        return true;
+    }
+
+    return /(?:^|[\s"'])\.{3,}$/.test(normalized) || /…$/.test(normalized);
 }
 
 function extractQuotedRSSTitles(value: string): string[] {
@@ -1866,6 +1882,7 @@ function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolea
         || isEditorializedRSSCaption(caption)
         || hasUnsupportedRSSDemographicMutation(caption, context)
         || hasInvalidRSSJoinLead(caption)
+        || hasTruncatedRSSContent(caption)
         || hasMissingRSSBlankLineSeparation(caption)
         || hasUnsupportedRSSStructure(caption)
         || lacksSingleQuotedDetectedRSSTitles(caption, context)

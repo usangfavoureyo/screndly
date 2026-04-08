@@ -209,6 +209,25 @@ test('deterministic casting fallback prefers the project headline when the subje
   assert.doesNotMatch(caption, /\bDeadline joins\b/i);
 });
 
+test('caption validation rejects truncated excerpt markers and ellipsis endings', () => {
+  const context = {
+    articleTitle: "'Nobody Wants This' Season 3 sets new cast",
+    feedName: 'Variety',
+    summary: "'Nobody Wants This' Season 3 has added nine new cast members.",
+    articleBody: "Variety has learned the season added more guest stars, who are: Avas Jogia ('56 [...])",
+    platform: 'Threads' as const,
+    allowedEntities: ['Nobody Wants This'],
+  };
+
+  assert.equal(
+    failsRSSCaptionFormatting(
+      "'Nobody Wants This' Season 3 has added nine new cast members.\n\nVariety has learned more guest stars are joining the show [...]",
+      context
+    ),
+    true
+  );
+});
+
 test('feed fallback is no longer forced for reveal-driven headlines', () => {
   assert.notEqual(
     __rssImageSelectionTestUtils.getRevealDrivenArticleMode({
