@@ -279,6 +279,34 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
             </p>
           </div>
 
+          <div>
+            <Label htmlFor="rss-image-web-search-model" className="text-[#6B7280] dark:text-[#9CA3AF]">OpenAI Image Web Search Model</Label>
+            <Select
+              value={settings.rssImageWebSearchModel || 'gpt-5.4-mini'}
+              onValueChange={(value) => {
+                haptics.light();
+                updateSetting('rssImageWebSearchModel', value);
+                toast.success(`Image search model changed to ${getModelDisplayName(value)}`);
+              }}
+            >
+              <SelectTrigger id="rss-image-web-search-model" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AI_MODELS
+                  .filter((model) => model.id !== 'flash-3')
+                  .map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.displayName}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Used only for RSS OpenAI web-search image recovery. GPT-5.4 Mini is the default recommended model.
+            </p>
+          </div>
+
           {/* Caption Creativity */}
           <div>
             <div className="flex items-center justify-between mb-2">

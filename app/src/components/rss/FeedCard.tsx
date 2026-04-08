@@ -40,7 +40,9 @@ export interface Feed {
   };
   serperEnabled: boolean;
   tmdbEnabled: boolean;
+  openaiWebSearchEnabled: boolean;
   serperPriority: boolean;
+  imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
   rehostImages: boolean;
   lastProcessedAt?: string;
   nextRunAt?: string;

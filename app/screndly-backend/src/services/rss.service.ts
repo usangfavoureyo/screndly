@@ -58,7 +58,9 @@ export interface RSSFeedInput {
   filters?: RSSFeedFilters;
   serperEnabled?: boolean;
   tmdbEnabled?: boolean;
+  openaiWebSearchEnabled?: boolean;
   serperPriority?: boolean;
+  imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
   rehostImages?: boolean;
   autoPost?: boolean;
   platformsEnabled?: PlatformsEnabled;
@@ -191,6 +193,7 @@ interface RSSRuntimeSettings {
   globalRSSPosting: boolean;
   rssDeduplication: boolean;
   rssCaptionModel: string;
+  rssImageWebSearchModel: string;
   rssCaptionPrompt?: string;
   rssCaptionTemperature?: number;
   rssCaptionTone?: string;
@@ -227,6 +230,7 @@ const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
   'rssCaptionModel',
+  'rssImageWebSearchModel',
   'rssCaptionPrompt',
   'rssCaptionTemperature',
   'rssCaptionTone',
@@ -518,6 +522,8 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
   trickle: 'newest_first' | 'oldest_first';
   serperEnabled: boolean;
   tmdbEnabled: boolean;
+  openaiWebSearchEnabled: boolean;
+  imageSourcePriority: 'tmdb' | 'serper' | 'openai_web_search';
 }) | null {
   if (!feed) {
     return null;
@@ -543,6 +549,12 @@ function applyRSSFeedCompatibility<T extends Record<string, any> | null>(feed: T
       : typeof storedImageSourceSettings.tmdbEnabled === 'boolean'
         ? storedImageSourceSettings.tmdbEnabled
         : true,
+    openaiWebSearchEnabled: typeof storedImageSourceSettings.openaiWebSearchEnabled === 'boolean'
+      ? storedImageSourceSettings.openaiWebSearchEnabled
+      : false,
+    imageSourcePriority: storedImageSourceSettings.imageSourcePriority ?? (
+      typeof feed.serperPriority === 'boolean' && feed.serperPriority ? 'serper' : 'tmdb'
+    ),
   };
 }
 
@@ -556,6 +568,8 @@ function applyRSSFeedCompatibilityList<T extends Record<string, any>>(feeds: T[]
   trickle: 'newest_first' | 'oldest_first';
   serperEnabled: boolean;
   tmdbEnabled: boolean;
+  openaiWebSearchEnabled: boolean;
+  imageSourcePriority: 'tmdb' | 'serper' | 'openai_web_search';
 }> {
   return feeds.map((feed) => applyRSSFeedCompatibility(feed)).filter(isPresent);
 }
@@ -752,6 +766,8 @@ function extractStoredImageSourceSettings(
 ): {
   serperEnabled?: boolean;
   tmdbEnabled?: boolean;
+  openaiWebSearchEnabled?: boolean;
+  imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
 } {
   if (!filters || typeof filters !== 'object' || Array.isArray(filters)) {
     return {};
@@ -766,6 +782,8 @@ function extractStoredImageSourceSettings(
   const resolved: {
     serperEnabled?: boolean;
     tmdbEnabled?: boolean;
+    openaiWebSearchEnabled?: boolean;
+    imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
   } = {};
 
   if (typeof parsedSettings.serperEnabled === 'boolean') {
@@ -776,6 +794,18 @@ function extractStoredImageSourceSettings(
     resolved.tmdbEnabled = parsedSettings.tmdbEnabled;
   }
 
+  if (typeof parsedSettings.openaiWebSearchEnabled === 'boolean') {
+    resolved.openaiWebSearchEnabled = parsedSettings.openaiWebSearchEnabled;
+  }
+
+  if (
+    parsedSettings.imageSourcePriority === 'tmdb'
+    || parsedSettings.imageSourcePriority === 'serper'
+    || parsedSettings.imageSourcePriority === 'openai_web_search'
+  ) {
+    resolved.imageSourcePriority = parsedSettings.imageSourcePriority;
+  }
+
   return resolved;
 }
 
@@ -784,12 +814,14 @@ function withStoredImageSourceSettings(
   sourceSettings: {
     serperEnabled?: boolean;
     tmdbEnabled?: boolean;
+    openaiWebSearchEnabled?: boolean;
+    imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
   }
 ): Prisma.InputJsonValue {
   const persistedFilters: Record<string, unknown> = {
     ...filters,
   };
-  const persistedSettings: Record<string, boolean> = {};
+  const persistedSettings: Record<string, boolean | string> = {};
 
   if (typeof sourceSettings.serperEnabled === 'boolean') {
     persistedSettings.serperEnabled = sourceSettings.serperEnabled;
@@ -797,6 +829,14 @@ function withStoredImageSourceSettings(
 
   if (typeof sourceSettings.tmdbEnabled === 'boolean') {
     persistedSettings.tmdbEnabled = sourceSettings.tmdbEnabled;
+  }
+
+  if (typeof sourceSettings.openaiWebSearchEnabled === 'boolean') {
+    persistedSettings.openaiWebSearchEnabled = sourceSettings.openaiWebSearchEnabled;
+  }
+
+  if (sourceSettings.imageSourcePriority) {
+    persistedSettings.imageSourcePriority = sourceSettings.imageSourcePriority;
   }
 
   if (Object.keys(persistedSettings).length > 0) {
@@ -2009,27 +2049,35 @@ async function resolveRSSItemImages(
     id?: string;
     serperEnabled?: boolean | null;
     tmdbEnabled?: boolean | null;
+    openaiWebSearchEnabled?: boolean | null;
     serperPriority: boolean;
+    imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search' | null;
     imageCount?: string | null;
     rehostImages?: boolean | null;
   },
   item: RSSItem,
-  limit: number
+  limit: number,
+  runtimeSettings: RSSRuntimeSettings
 ): Promise<RSSResolvedImage[]> {
   const resolvedImages = await resolveRelevantRSSImages(
     {
       title: item.title,
       description: item.description,
       author: item.author,
+      contentHtml: item.contentHtml,
+      generatedCaption: item.generatedCaption,
       fallbackImages: dedupeUrls([...(item.imageUrls || []), item.imageUrl]),
     },
     {
       serperEnabled: feed.serperEnabled ?? true,
       tmdbEnabled: feed.tmdbEnabled ?? true,
+      openaiWebSearchEnabled: feed.openaiWebSearchEnabled ?? false,
       serperPriority: feed.serperPriority,
+      imageSourcePriority: feed.imageSourcePriority ?? (feed.serperPriority ? 'serper' : 'tmdb'),
       limit,
       smartCount: feed.imageCount === 'random',
       model: RSS_IMAGE_ANALYSIS_MODEL,
+      openaiWebSearchModel: runtimeSettings.rssImageWebSearchModel,
     }
   );
 
@@ -2040,6 +2088,21 @@ function buildRSSCaptionSystemPrompt(
   basePrompt: string | undefined,
   options: { tone?: string; maxLength?: number }
 ): string | undefined {
+  const subjectClarityPatch = [
+    'Subject clarity rule:',
+    '- Never use vague phrases such as "a Marvel character", "a fan-favorite character", "a major franchise film", or "a popular actor" when the article contains the actual name.',
+    '- If the article identifies a character, film, show, game, or person, the caption must name it in the headline sentence.',
+    '- Always prioritize the most specific identifiable subject.',
+    '- Do not replace a known subject with a broader generic label.',
+  ].join('\n');
+
+  const editorialNeutralityPatch = [
+    'Editorial neutrality rule:',
+    '- Do not add interpretation, trend analysis, or opinion.',
+    '- Only report the development stated in the article.',
+    '- Do not add commentary such as "starting to feel like a pattern" unless it appears as a real quote in the article.',
+  ].join('\n');
+
   const constraints = [
     options.tone ? `- Preferred tone: ${options.tone}.` : null,
     options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
@@ -2049,6 +2112,8 @@ function buildRSSCaptionSystemPrompt(
     '- Only name titles, characters, or people that are actually represented by the selected visuals.',
     '- If the selected visuals cover fewer examples than the headline or article summary mentions, use broader wording instead of listing unsupported examples.',
     '- Never substitute a different movie, show, character, or person name than the one grounded by the article context and selected visuals.',
+    subjectClarityPatch,
+    editorialNeutralityPatch,
   ].filter(Boolean).join('\n');
 
   if (!basePrompt && !constraints) {
@@ -2145,6 +2210,8 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
     ...extractQuotedRSSCaptionEntities(item.description || ''),
     ...extractNamedRSSCaptionEntities(item.title || ''),
     ...extractNamedRSSCaptionEntities(item.description || ''),
+    ...extractQuotedRSSCaptionEntities(sanitizeRSSPlainText(item.contentHtml || '').slice(0, 2000)),
+    ...extractNamedRSSCaptionEntities(sanitizeRSSPlainText(item.contentHtml || '').slice(0, 2000)),
   ].forEach(pushEntity);
 
   for (const image of images) {
@@ -2169,6 +2236,7 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
     globalRSSPosting: asBoolean(settingsMap.get('globalRSSPosting'), true),
     rssDeduplication: asBoolean(settingsMap.get('rssDeduplication'), true),
     rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
+    rssImageWebSearchModel: asString(settingsMap.get('rssImageWebSearchModel')) || 'gpt-5.4-mini',
     rssCaptionPrompt: asString(settingsMap.get('rssCaptionPrompt')),
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
     rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
@@ -2777,7 +2845,8 @@ async function attemptRSSPublish(
     const publishImages = await resolveRSSItemImages(
       feed,
       item,
-      imagePlan.maxImageCount
+      imagePlan.maxImageCount,
+      runtimeSettings
     );
     const publishImageUrls = publishImages.map((image) => image.url);
     const publishImageUrl = publishImageUrls[0];
@@ -2802,6 +2871,8 @@ async function attemptRSSPublish(
         articleTitle: item.title,
         feedName: feed.name,
         summary: sanitizeRSSPlainText(item.description),
+        articleBodyClean: sanitizeRSSPlainText(item.contentHtml || '').slice(0, 5000),
+        author: item.author,
         platform: 'X',
         selectedVisuals: buildRSSCaptionVisualContext(publishImages),
         allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
@@ -3065,9 +3136,12 @@ async function createFeed(data: RSSFeedInput) {
     explicitOnlyFetchNewItems: data.onlyFetchNewItems,
     explicitStartFromNowAt: data.startFromNowAt,
   });
+  const defaultImageSourcePriority = data.imageSourcePriority ?? (data.serperPriority ? 'serper' : 'tmdb');
   const persistedImageSourceSettings = {
     serperEnabled: data.serperEnabled ?? true,
     tmdbEnabled: data.tmdbEnabled ?? true,
+    openaiWebSearchEnabled: data.openaiWebSearchEnabled ?? false,
+    imageSourcePriority: defaultImageSourcePriority,
   };
   const support = await getRSSFeedColumnSupport();
   const select = await getRSSFeedSelect();
@@ -3087,7 +3161,7 @@ async function createFeed(data: RSSFeedInput) {
     imageCount: data.imageCount ?? '2',
     dedupeDays: data.dedupeDays ?? 30,
     filters: withStoredImageSourceSettings(resolvedFilters, persistedImageSourceSettings),
-    serperPriority: data.serperPriority ?? true,
+    serperPriority: defaultImageSourcePriority === 'serper',
     rehostImages: data.rehostImages ?? false,
     autoPost: data.autoPost ?? true,
     platformsEnabled: ensurePlatformsEnabled(data.platformsEnabled) as unknown as Prisma.InputJsonValue,
@@ -3209,6 +3283,17 @@ async function updateFeed(
       (typeof (existingFeed as Record<string, unknown>).tmdbEnabled === 'boolean'
         ? (existingFeed as Record<string, unknown>).tmdbEnabled as boolean
         : existingStoredImageSourceSettings.tmdbEnabled ?? true),
+    openaiWebSearchEnabled: data.openaiWebSearchEnabled ??
+      existingStoredImageSourceSettings.openaiWebSearchEnabled ??
+      false,
+    imageSourcePriority: data.imageSourcePriority ??
+      existingStoredImageSourceSettings.imageSourcePriority ??
+      ((data.serperPriority ??
+        (typeof (existingFeed as Record<string, unknown>).serperPriority === 'boolean'
+          ? (existingFeed as Record<string, unknown>).serperPriority as boolean
+          : true))
+        ? 'serper'
+        : 'tmdb'),
   };
 
   if (shouldResolveFilters || shouldPersistImageSourceSettings) {
@@ -3226,7 +3311,9 @@ async function updateFeed(
   }
   if (support.serperEnabled && data.serperEnabled !== undefined) updateData.serperEnabled = data.serperEnabled;
   if (support.tmdbEnabled && data.tmdbEnabled !== undefined) updateData.tmdbEnabled = data.tmdbEnabled;
-  if (data.serperPriority !== undefined) updateData.serperPriority = data.serperPriority;
+  if (data.serperPriority !== undefined || data.imageSourcePriority !== undefined) {
+    updateData.serperPriority = (data.imageSourcePriority ?? nextStoredImageSourceSettings.imageSourcePriority) === 'serper';
+  }
   if (data.rehostImages !== undefined) updateData.rehostImages = data.rehostImages;
   if (data.autoPost !== undefined) updateData.autoPost = data.autoPost;
   if (data.platformsEnabled !== undefined) updateData.platformsEnabled = data.platformsEnabled;
@@ -4187,7 +4274,8 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   const resolvedImages = await resolveRSSItemImages(
     feed as any,
     previewItem,
-    imagePlan.maxImageCount
+    imagePlan.maxImageCount,
+    runtimeSettings
   );
   const imageUrls = resolvedImages.map((image) => image.url);
   const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
@@ -4199,6 +4287,8 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       articleTitle: previewItem.title,
       feedName: feed.name,
       summary: sanitizeRSSPlainText(previewItem.description),
+      articleBodyClean: sanitizeRSSPlainText(previewItem.contentHtml || '').slice(0, 5000),
+      author: previewItem.author,
       platform: 'X',
       selectedVisuals: buildRSSCaptionVisualContext(resolvedImages),
       allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),

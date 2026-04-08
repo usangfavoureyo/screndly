@@ -59,11 +59,63 @@ export interface StructuredRSSTMDbSelectionInput {
   excludeUrls?: string[];
 }
 
+export type TmdbLookupCandidate = {
+  media_type_hint?: 'movie' | 'tv' | 'person';
+  primary_title?: string;
+  alternate_titles?: string[];
+  franchise?: string;
+  character_name?: string;
+  actor_names?: string[];
+  director_names?: string[];
+  writer_names?: string[];
+  release_year?: number;
+  season_number?: number;
+  episode_number?: number;
+  studio_or_platform?: string;
+  event_type?:
+    | 'reveal'
+    | 'casting'
+    | 'renewal'
+    | 'cancellation'
+    | 'development'
+    | 'in_production'
+    | 'trailer'
+    | 'release_date'
+    | 'box_office'
+    | 'interview_quote'
+    | 'first_look'
+    | 'platform_move'
+    | 'director_attachment'
+    | 'writer_attachment'
+    | 'return'
+    | 'reflection'
+    | 'other';
+  extraction_confidence?: number;
+  ambiguity_flags?: string[];
+};
+
+export type TMDbMissReasonCode =
+  | 'TMDB_NO_ENTITY_EXTRACTED'
+  | 'TMDB_TITLE_TOO_NOISY'
+  | 'TMDB_AMBIGUOUS_MULTI_MATCH'
+  | 'TMDB_WRONG_MEDIA_TYPE'
+  | 'TMDB_YEAR_MISMATCH'
+  | 'TMDB_LOW_CONFIDENCE_MATCH'
+  | 'TMDB_NO_USABLE_ASSETS'
+  | 'TMDB_ONLY_PERSON_MATCHED'
+  | 'TMDB_ASSET_TYPE_MISSING'
+  | 'TMDB_FELL_BACK_TO_BRANDED'
+  | 'TMDB_FELL_BACK_TO_ARTICLE_IMAGE'
+  | 'TMDB_FELL_BACK_TO_FEED_IMAGE';
+
 export interface ResolvedStructuredTMDbImage {
   url: string;
   reason: string;
   score: number;
   role: StructuredTMDbImageRole;
+  confidenceBand?: 'high' | 'medium' | 'low';
+  lookupCandidate?: TmdbLookupCandidate;
+  missReason?: TMDbMissReasonCode;
 }
 
 interface TMDbSearchResult {
@@ -165,6 +217,21 @@ interface ResolvedTMDbTitleCandidate {
   posterUrl?: string;
   logoUrl?: string;
   projectContextOnly?: boolean;
+  confidenceScore?: number;
+  confidenceBand?: 'high' | 'medium' | 'low';
+  lookupCandidate?: TmdbLookupCandidate;
+}
+
+interface TMDbTitleSearchPass {
+  label: string;
+  query: string;
+  mediaTypes: Array<'movie' | 'tv' | 'multi'>;
+}
+
+interface TMDbResolvedTitleLookup {
+  candidate: ResolvedTMDbTitleCandidate | null;
+  missReason?: TMDbMissReasonCode;
+  lookupCandidate: TmdbLookupCandidate;
 }
 
 interface BackdropRotationState {
@@ -192,6 +259,26 @@ const TITLE_ANCHOR_STOPWORDS = new Set([
   'with',
 ]);
 
+const TMDB_TITLE_NOISE_PATTERNS = [
+  /\bexclusive\b/gi,
+  /\breview\b/gi,
+  /\bending explained\b/gi,
+  /\bfirst look\b/gi,
+  /\bmajor update\b/gi,
+  /\bfinally confirms?\b/gi,
+  /\breport\b/gi,
+  /\btrailer\b/gi,
+  /\bteaser\b/gi,
+  /\bin development\b/gi,
+  /\bbegins production\b/gi,
+  /\bjoins cast\b/gi,
+  /\brelease date\b/gi,
+  /\brenewed\b/gi,
+  /\bcancel(?:ed|led)\b/gi,
+  /\bupdate\b/gi,
+  /\bexplained\b/gi,
+];
+
 function normalizeText(value: string): string {
   return value
     .toLowerCase()
@@ -199,6 +286,88 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function normalizeRomanNumeralSequel(value: string): string {
+  return value
+    .replace(/\bpart\s+ii\b/gi, 'Part 2')
+    .replace(/\bpart\s+iii\b/gi, 'Part 3')
+    .replace(/\bpart\s+iv\b/gi, 'Part 4');
+}
+
+function normalizeSeasonNumbering(value: string): string {
+  return value
+    .replace(/\bseason\s+one\b/gi, 'Season 1')
+    .replace(/\bseason\s+two\b/gi, 'Season 2')
+    .replace(/\bseason\s+three\b/gi, 'Season 3')
+    .replace(/\bseason\s+four\b/gi, 'Season 4')
+    .replace(/\bseason\s+five\b/gi, 'Season 5')
+    .replace(/\bseason\s+six\b/gi, 'Season 6');
+}
+
+export function normalizeTMDbLookupTitle(value: string): string {
+  let cleaned = value
+    .replace(/[“”"]/g, '')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  cleaned = normalizeRomanNumeralSequel(cleaned);
+  cleaned = normalizeSeasonNumbering(cleaned);
+
+  for (const pattern of TMDB_TITLE_NOISE_PATTERNS) {
+    cleaned = cleaned.replace(pattern, ' ');
+  }
+
+  cleaned = cleaned
+    .replace(/\b(live-action|animated)\b/gi, ' ')
+    .replace(/\s*[:\-]\s*(major|big|huge|latest)\s+(update|look|news)\b/gi, ' ')
+    .replace(/^\s*[:\-]\s*/g, '')
+    .replace(/^\s*for\s+/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return cleaned;
+}
+
+function stripTMDbSubtitleNoise(value: string): string {
+  const normalized = normalizeTMDbLookupTitle(value);
+  const colonIndex = normalized.indexOf(':');
+  if (colonIndex <= 0) {
+    return normalized;
+  }
+
+  const stripped = normalized.slice(0, colonIndex).trim();
+  return stripped.length >= 4 ? stripped : normalized;
+}
+
+function extractSeasonNumber(value: string): number | undefined {
+  const match = value.match(/\bseason\s+(\d+)\b/i);
+  return match ? Number(match[1]) : undefined;
+}
+
+function inferMediaTypeHint(input: StructuredRSSTMDbSelectionInput): 'movie' | 'tv' | 'person' | undefined {
+  if (input.primarySubject.type === 'actor' || input.primarySubject.type === 'director' || input.primarySubject.type === 'producer') {
+    return 'person';
+  }
+
+  if (input.targetFormat === 'movie') {
+    return 'movie';
+  }
+
+  if (input.targetFormat === 'series') {
+    return 'tv';
+  }
+
+  if (input.primarySubject.type === 'movie') {
+    return 'movie';
+  }
+
+  if (input.primarySubject.type === 'tv_show') {
+    return 'tv';
+  }
+
+  return undefined;
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -551,6 +720,82 @@ function hasGenericShortProjectAnchor(anchor: string): boolean {
   return tokens.every((token) => genericTokens.has(token) || token.length <= 4);
 }
 
+export function buildTmdbLookupCandidateFromInput(
+  input: StructuredRSSTMDbSelectionInput
+): TmdbLookupCandidate {
+  const primaryName = input.primarySubject.name.trim();
+  const rankedTitleCandidates = uniqueStrings([
+    input.visualSubject,
+    input.contextProject || null,
+    ...input.queries,
+    (input.primarySubject.type === 'movie' || input.primarySubject.type === 'tv_show' || input.primarySubject.type === 'franchise')
+      ? primaryName
+      : null,
+  ])
+    .map((title, index) => {
+      const normalized = normalizeTMDbLookupTitle(title);
+      const score = scoreTitleAnchorCandidate(normalized, index === 0)
+        - (normalizeText(normalized).includes('what happened') ? 120 : 0)
+        - (normalizeText(normalized).includes('missing character') ? 120 : 0)
+        - (normalizeText(normalized).includes('major actor') ? 80 : 0)
+        + (normalized.includes(':') ? 16 : 0)
+        + (/^'.+'$/.test(normalized) ? 12 : 0);
+
+      return { original: title, normalized, score };
+    })
+    .filter((candidate) => candidate.normalized.length >= 2)
+    .sort((left, right) => right.score - left.score);
+  const primaryTitle = rankedTitleCandidates[0]?.normalized;
+  const alternateTitles = rankedTitleCandidates
+    .slice(1)
+    .map((candidate) => candidate.normalized);
+  const franchise = input.primarySubject.type === 'franchise'
+    ? primaryName
+    : uniqueStrings(input.requiredContextTerms)
+      .find((term) => {
+        const normalized = normalizeText(term);
+        return normalized.includes('marvel')
+          || normalized.includes('dc')
+          || normalized.includes('star wars')
+          || normalized.includes('mcu')
+          || normalized.includes('franchise');
+      });
+  const personNames = isPersonLedInput(input) ? [primaryName] : [];
+  const combinedText = [
+    primaryName,
+    input.visualSubject,
+    input.contextProject,
+    ...input.requiredContextTerms,
+    ...input.queries,
+  ].filter(Boolean).join(' ');
+  const years = extractYearTokens(combinedText);
+  const ambiguityFlags: string[] = [];
+
+  if (alternateTitles.length > 3) {
+    ambiguityFlags.push('multiple_title_candidates');
+  }
+
+  if (!primaryTitle && alternateTitles.length === 0) {
+    ambiguityFlags.push('no_clean_title_candidate');
+  }
+
+  return {
+    media_type_hint: inferMediaTypeHint(input),
+    primary_title: primaryTitle,
+    alternate_titles: uniqueStrings(alternateTitles.filter((title) => normalizeText(title) !== normalizeText(primaryTitle || ''))),
+    franchise,
+    character_name: input.primarySubject.type === 'character' ? primaryName : undefined,
+    actor_names: input.primarySubject.type === 'actor' ? [primaryName] : personNames,
+    director_names: input.primarySubject.type === 'director' ? [primaryName] : [],
+    writer_names: [],
+    release_year: years[0] ? Number(years[0]) : undefined,
+    season_number: extractSeasonNumber(combinedText),
+    studio_or_platform: uniqueStrings(input.relevantStudios)[0],
+    extraction_confidence: primaryTitle ? 0.86 : alternateTitles.length > 0 ? 0.62 : 0.28,
+    ambiguity_flags: ambiguityFlags.length > 0 ? ambiguityFlags : undefined,
+  };
+}
+
 function scoreTitleAnchorCandidate(value: string, preferPrimary = false): number {
   const tokens = getMeaningfulTitleTokens(value);
   return (preferPrimary ? 60 : 0)
@@ -625,6 +870,70 @@ function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string 
     .sort((left, right) => right.score - left.score);
 
   return ranked[0]?.value || null;
+}
+
+export function buildTMDbSearchPasses(lookupCandidate: TmdbLookupCandidate): TMDbSearchPass[] {
+  const passes: TMDbSearchPass[] = [];
+  const primaryTitle = lookupCandidate.primary_title?.trim();
+  const alternateTitles = lookupCandidate.alternate_titles || [];
+  const mediaTypeHint = lookupCandidate.media_type_hint;
+  const hintedMediaTypes = mediaTypeHint === 'movie'
+    ? ['movie', 'multi'] as Array<'movie' | 'tv' | 'multi'>
+    : mediaTypeHint === 'tv'
+      ? ['tv', 'multi']
+      : ['multi'];
+  const crossCheckTypes = mediaTypeHint === 'movie'
+    ? ['movie', 'tv']
+    : mediaTypeHint === 'tv'
+      ? ['tv', 'movie']
+      : ['movie', 'tv'];
+
+  if (primaryTitle) {
+    passes.push({
+      label: 'exact_title',
+      query: primaryTitle,
+      mediaTypes: hintedMediaTypes,
+    });
+
+    if (lookupCandidate.release_year) {
+      passes.push({
+        label: 'title_with_year',
+        query: `${primaryTitle} ${lookupCandidate.release_year}`,
+        mediaTypes: hintedMediaTypes,
+      });
+    }
+
+    const strippedTitle = stripTMDbSubtitleNoise(primaryTitle);
+    if (strippedTitle && normalizeText(strippedTitle) !== normalizeText(primaryTitle)) {
+      passes.push({
+        label: 'stripped_title',
+        query: strippedTitle,
+        mediaTypes: hintedMediaTypes,
+      });
+    }
+
+    passes.push({
+      label: 'media_type_cross_check',
+      query: primaryTitle,
+      mediaTypes: crossCheckTypes,
+    });
+  }
+
+  for (const alternateTitle of alternateTitles) {
+    passes.push({
+      label: 'alternate_title',
+      query: alternateTitle,
+      mediaTypes: hintedMediaTypes,
+    });
+  }
+
+  return passes.filter((pass, index, allPasses) =>
+    pass.query.trim().length >= 2 &&
+    allPasses.findIndex((candidate) =>
+      normalizeText(candidate.query) === normalizeText(pass.query) &&
+      candidate.mediaTypes.join(',') === pass.mediaTypes.join(',')
+    ) === index
+  );
 }
 
 function buildTitleSupportingContextTerms(
@@ -702,21 +1011,34 @@ function titleCandidateMatchesPersonContext(
   return contextMatchScore >= 55 && personMatchScore >= 120;
 }
 
-async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Promise<ResolvedTMDbTitleCandidate | null> {
-  const anchor = buildTitleSearchAnchor(input);
+async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Promise<TMDbResolvedTitleLookup> {
+  const lookupCandidate = buildTmdbLookupCandidateFromInput(input);
+  const anchor = lookupCandidate.primary_title || buildTitleSearchAnchor(input);
   if (!anchor) {
-    return null;
+    return {
+      candidate: null,
+      missReason: 'TMDB_NO_ENTITY_EXTRACTED',
+      lookupCandidate,
+    };
+  }
+
+  const normalizedAnchor = normalizeTMDbLookupTitle(anchor);
+  if (getMeaningfulTitleTokens(normalizedAnchor).length === 0) {
+    return {
+      candidate: null,
+      missReason: 'TMDB_TITLE_TOO_NOISY',
+      lookupCandidate,
+    };
   }
 
   const preferredFormat = input.targetFormat ?? 'general';
-
-  const queries = uniqueStrings([
-    anchor,
-    ...input.queries,
-  ]).slice(0, 4);
-
-  if (queries.length === 0) {
-    return null;
+  const searchPasses = buildTMDbSearchPasses(lookupCandidate).slice(0, 7);
+  if (searchPasses.length === 0) {
+    return {
+      candidate: null,
+      missReason: 'TMDB_NO_ENTITY_EXTRACTED',
+      lookupCandidate,
+    };
   }
 
   const supportingContextTerms = buildTitleSupportingContextTerms(input, anchor);
@@ -726,49 +1048,103 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
     input.visualSubject,
     input.contextProject,
     ...input.requiredContextTerms,
+    lookupCandidate.release_year ? String(lookupCandidate.release_year) : null,
   ].filter(Boolean).join(' '));
+  let sawTypedMismatch = false;
+  let sawYearMismatch = false;
+  let sawAnyResults = false;
+  let sawAssetlessMatch = false;
+  let rankedCandidateCount = 0;
 
   try {
     const searchResponses = await Promise.all(
-      queries.map((query) =>
-        tmdbFetch<{ results?: TMDbSearchResult[] }>('/search/multi', {
-          query,
-          language: 'en-US',
-          include_adult: 'false',
-          page: '1',
-        }).catch(() => ({ results: [] }))
+      searchPasses.flatMap((pass) =>
+        pass.mediaTypes.map((mediaType) => {
+          const endpoint = mediaType === 'movie'
+            ? '/search/movie'
+            : mediaType === 'tv'
+              ? '/search/tv'
+              : '/search/multi';
+
+          return tmdbFetch<{ results?: TMDbSearchResult[] }>(endpoint, {
+            query: pass.query,
+            language: 'en-US',
+            include_adult: 'false',
+            page: '1',
+          })
+            .then((response) => ({
+              pass,
+              mediaType,
+              results: (response.results || []).map((candidate) => ({
+                ...candidate,
+                media_type: candidate.media_type || (mediaType === 'multi' ? candidate.media_type : mediaType),
+              })),
+            }))
+            .catch(() => ({
+              pass,
+              mediaType,
+              results: [],
+            }));
+        })
       )
     );
 
-    const candidates = new Map<string, TMDbSearchResult>();
+    const candidates = new Map<string, { candidate: TMDbSearchResult; passLabels: Set<string> }>();
     for (const response of searchResponses) {
       for (const candidate of response.results || []) {
+        sawAnyResults = true;
         if (candidate.media_type !== 'movie' && candidate.media_type !== 'tv') {
           continue;
         }
 
         const key = `${candidate.media_type}:${candidate.id}`;
         if (!candidates.has(key)) {
-          candidates.set(key, candidate);
+          candidates.set(key, {
+            candidate,
+            passLabels: new Set([`${response.pass.label}:${response.mediaType}`]),
+          });
+        } else {
+          candidates.get(key)?.passLabels.add(`${response.pass.label}:${response.mediaType}`);
         }
       }
     }
 
     const ranked = [...candidates.values()]
-      .map((candidate) => {
+      .map(({ candidate, passLabels }) => {
         const candidateMediaType =
           candidate.media_type === 'movie' || candidate.media_type === 'tv'
             ? candidate.media_type
             : undefined;
+        const candidateTitle = candidate.title || candidate.name || candidate.original_title || candidate.original_name || '';
+        const normalizedCandidateTitle = normalizeTMDbLookupTitle(candidateTitle);
+        const normalizedPassBonus = [...passLabels].some((label) => label.startsWith('exact_title')) ? 14 : 0;
+        const strippedPassBonus = [...passLabels].some((label) => label.startsWith('stripped_title')) ? 8 : 0;
+        const alternatePassBonus = [...passLabels].some((label) => label.startsWith('alternate_title')) ? 6 : 0;
+        const yearMatchBonus = lookupCandidate.release_year &&
+          [candidate.release_date, candidate.first_air_date].some((value) => value?.startsWith(String(lookupCandidate.release_year)))
+          ? 15
+          : 0;
+        const studioSupportBonus = lookupCandidate.studio_or_platform
+          ? scoreContextTerms(
+              [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
+              [lookupCandidate.studio_or_platform],
+              []
+            ) / 5
+          : 0;
 
         return {
           candidate,
-          score: scoreAliasMatch(anchor, [
+          score: scoreAliasMatch(normalizedAnchor, [
+            normalizedCandidateTitle,
             candidate.title,
             candidate.name,
             candidate.original_title,
             candidate.original_name,
           ])
+            + normalizedPassBonus
+            + strippedPassBonus
+            + alternatePassBonus
+            + yearMatchBonus
             + scoreTargetFormatMatch(preferredFormat, candidateMediaType)
             + scoreContextTerms(
               [candidate.overview, candidate.title, candidate.name].filter(Boolean).join(' '),
@@ -780,15 +1156,26 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
               supportingContextTerms,
               []
             )
+            + studioSupportBonus
             + Math.min(candidate.popularity || 0, 80) / 2,
+          passLabels,
         };
       })
       .sort((left, right) => right.score - left.score)
-      .slice(0, 4);
+      .slice(0, 6);
+    rankedCandidateCount = ranked.length;
 
     for (const { candidate, score } of ranked) {
       if (score < MIN_TMDB_TITLE_SCORE) {
         continue;
+      }
+
+      if (
+        preferredFormat !== 'general' &&
+        ((preferredFormat === 'movie' && candidate.media_type === 'tv') ||
+          (preferredFormat === 'series' && candidate.media_type === 'movie'))
+      ) {
+        sawTypedMismatch = true;
       }
 
       const details = candidate.media_type === 'movie'
@@ -825,6 +1212,18 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
         ...(details.production_companies || []).map((entity) => entity.name),
         ...('networks' in details ? (details.networks || []).map((entity) => entity.name) : []),
       ].filter((name): name is string => Boolean(name));
+      const resolvedTitleYear = details.release_date || details.first_air_date || '';
+      const yearMatchBonus = lookupCandidate.release_year && resolvedTitleYear.startsWith(String(lookupCandidate.release_year))
+        ? 15
+        : 0;
+      const confidenceScore = Math.min(
+        100,
+        (scoreAliasMatch(normalizedAnchor, [title]) >= 250 ? 40 : scoreAliasMatch(normalizedAnchor, [title]) >= 210 ? 25 : 10)
+          + yearMatchBonus
+          + (scoreTargetFormatMatch(preferredFormat, candidate.media_type) > 0 ? 15 : 0)
+          + Math.min(scoreContextTerms([title, overview].join(' '), supportingContextTerms, []), 20)
+          + Math.min(scoreContextTerms([...castNames, ...crewNames, ...productionNames].join(' '), input.requiredContextTerms, []), 15)
+      );
 
       const enrichedScore = score
         + scoreContextTerms(
@@ -849,7 +1248,8 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
           supportingContextTerms,
           []
         )
-        + scoreAliasMatch(anchor, [title]);
+        + scoreAliasMatch(normalizedAnchor, [title])
+        + yearMatchBonus;
 
       if (enrichedScore < MIN_TMDB_TITLE_SCORE) {
         continue;
@@ -867,23 +1267,54 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
         entityKey,
         collectBackdropCandidates(details.backdrop_path, details.images?.backdrops, [null, 'en'])
       );
+      const posterUrl = selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]);
+      const logoUrl = selectBestImageAsset(undefined, details.images?.logos, ['en', null]);
+      const confidenceBand = confidenceScore >= 75 ? 'high' : confidenceScore >= 55 ? 'medium' : 'low';
+      if (lookupCandidate.release_year && !resolvedTitleYear.startsWith(String(lookupCandidate.release_year))) {
+        sawYearMismatch = true;
+      }
+
+      if (!backdropUrls[0] && !posterUrl && !logoUrl) {
+        sawAssetlessMatch = true;
+        continue;
+      }
 
       return {
-        entityKey,
-        title,
-        score: enrichedScore,
-        backdropUrls,
-        backdropUrl: backdropUrls[0],
-        posterUrl: selectBestImageAsset(details.poster_path, details.images?.posters, ['en', null]),
-        logoUrl: selectBestImageAsset(undefined, details.images?.logos, ['en', null]),
-        projectContextOnly,
+        candidate: {
+          entityKey,
+          title,
+          score: enrichedScore,
+          backdropUrls,
+          backdropUrl: backdropUrls[0],
+          posterUrl,
+          logoUrl,
+          projectContextOnly,
+          confidenceScore,
+          confidenceBand,
+          lookupCandidate,
+        },
+        lookupCandidate,
       };
     }
   } catch (error) {
     console.error('[RSS][TMDb] Failed to resolve title asset:', error);
   }
 
-  return null;
+  return {
+    candidate: null,
+    missReason: !sawAnyResults
+      ? 'TMDB_NO_ENTITY_EXTRACTED'
+      : sawAssetlessMatch
+        ? 'TMDB_NO_USABLE_ASSETS'
+        : sawTypedMismatch
+          ? 'TMDB_WRONG_MEDIA_TYPE'
+          : sawYearMismatch
+            ? 'TMDB_YEAR_MISMATCH'
+            : rankedCandidateCount > 1
+              ? 'TMDB_AMBIGUOUS_MULTI_MATCH'
+              : 'TMDB_LOW_CONFIDENCE_MATCH',
+    lookupCandidate,
+  };
 }
 
 async function resolvePersonProfile(input: StructuredRSSTMDbSelectionInput): Promise<ResolvedStructuredTMDbImage | null> {
@@ -1092,7 +1523,8 @@ export async function resolveStructuredTMDbImages(
     }
   }
 
-  const titleCandidate = await resolveTitleCandidate(input);
+  const titleLookup = await resolveTitleCandidate(input);
+  const titleCandidate = titleLookup.candidate;
   if (titleCandidate) {
     const projectOnlyTitleFallback =
       titleCandidate.projectContextOnly &&
@@ -1127,6 +1559,8 @@ export async function resolveStructuredTMDbImages(
         score: titleCandidate.score,
         role: preferredRole,
         reason: `TMDb ${preferredRole === 'poster' ? 'poster' : preferredRole === 'logo' || preferredRole === 'brand_backdrop' ? 'logo' : 'backdrop'} for ${titleCandidate.title}`,
+        confidenceBand: titleCandidate.confidenceBand,
+        lookupCandidate: titleCandidate.lookupCandidate,
       });
     }
 
@@ -1147,6 +1581,8 @@ export async function resolveStructuredTMDbImages(
           score: titleCandidate.score - (index * 2 + 1),
           role: titleRole,
           reason: `TMDb backdrop variant for ${titleCandidate.title}`,
+          confidenceBand: titleCandidate.confidenceBand,
+          lookupCandidate: titleCandidate.lookupCandidate,
         });
       }
     }
@@ -1157,8 +1593,17 @@ export async function resolveStructuredTMDbImages(
         score: titleCandidate.score - 10,
         role: input.imageIntent === 'brand_backdrop' ? 'brand_backdrop' : 'logo',
         reason: `TMDb logo for ${titleCandidate.title}`,
+        confidenceBand: titleCandidate.confidenceBand,
+        lookupCandidate: titleCandidate.lookupCandidate,
       });
     }
+  } else if (titleLookup.missReason) {
+    console.info('[RSS][TMDb] Title resolution miss:', {
+      missReason: titleLookup.missReason,
+      lookupCandidate: titleLookup.lookupCandidate,
+      primarySubject: input.primarySubject.name,
+      visualSubject: input.visualSubject,
+    });
   }
 
   const deduped = dedupeResolvedImages(

@@ -11,14 +11,24 @@ import sharp from 'sharp';
 export interface RSSImageSelectionArticle {
   title: string;
   description?: string;
+  contentHtml?: string;
   author?: string;
+  generatedCaption?: string;
   fallbackImages?: string[];
 }
+
+export type ImageSourcePolicy = {
+  mode: 'tmdb_strict' | 'tmdb_preferred' | 'mixed';
+  allow_article_fallback: boolean;
+  allow_article_if_tmdb_missing: boolean;
+  allow_article_if_low_confidence_match: boolean;
+  allow_branded_fallback: boolean;
+};
 
 export interface RSSResolvedImage {
   url: string;
   reason: string;
-  source: 'tmdb' | 'serper' | 'feed';
+  source: 'tmdb' | 'serper' | 'openai_web_search' | 'feed';
   score?: number;
 }
 
@@ -71,10 +81,20 @@ interface SerperImageResult {
   thumbnailUrl?: string;
   thumbnailWidth?: number;
   thumbnailHeight?: number;
-  source?: string;
+  source?: 'serper' | 'openai_web_search';
   domain?: string;
   link?: string;
   position?: number;
+}
+
+interface OpenAIWebSearchImageResponse {
+  images?: Array<{
+    imageUrl?: string;
+    title?: string;
+    sourcePage?: string;
+    domain?: string;
+    rationale?: string;
+  }>;
 }
 
 interface SerperImagesResponse {
@@ -653,7 +673,62 @@ const HEADLINE_PROJECT_GENERIC_TERMS = new Set([
   'villain',
 ]);
 
-type RSSImageSource = 'tmdb' | 'serper';
+type RSSImageSource = 'tmdb' | 'openai_web_search' | 'serper';
+
+function sanitizeRSSImageAnalysisText(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function buildRSSImageAnalysisText(article: RSSImageSelectionArticle): string {
+  return [
+    `Title: ${article.title}`,
+    article.description ? `Description: ${article.description}` : null,
+    article.generatedCaption ? `Generated Caption: ${article.generatedCaption}` : null,
+    article.author ? `Author: ${article.author}` : null,
+    article.contentHtml
+      ? `Article Body: ${sanitizeRSSImageAnalysisText(article.contentHtml).slice(0, 4000)}`
+      : null,
+  ].filter(Boolean).join('\n');
+}
+
+export function getDefaultImageSourcePolicy(options: {
+  serperEnabled?: boolean;
+  tmdbEnabled?: boolean;
+}): ImageSourcePolicy {
+  if (options.tmdbEnabled === true) {
+    return {
+      mode: 'tmdb_preferred',
+      allow_article_fallback: true,
+      allow_article_if_tmdb_missing: true,
+      allow_article_if_low_confidence_match: false,
+      allow_branded_fallback: false,
+    };
+  }
+
+  return {
+    mode: 'mixed',
+    allow_article_fallback: true,
+    allow_article_if_tmdb_missing: true,
+    allow_article_if_low_confidence_match: true,
+    allow_branded_fallback: false,
+  };
+}
+
+export function policyAllowsArticleFallback(policy: ImageSourcePolicy): boolean {
+  if (!policy.allow_article_fallback || policy.mode === 'tmdb_strict') {
+    return false;
+  }
+
+  return policy.allow_article_if_tmdb_missing || policy.allow_article_if_low_confidence_match;
+}
 
 type RevealDrivenArticleMode =
   | 'poster'
@@ -2749,12 +2824,16 @@ function isMemorialNeutralProjectRole(role: ImageRole): boolean {
 
 async function collectScoredImages(
   analysis: RSSSubjectAnalysis,
-  limit: number
+  limit: number,
+  source: 'serper' | 'openai_web_search' = 'serper',
+  openaiWebSearchModel?: AIModel | string
 ): Promise<ScoredImage[]> {
   const scoredByUrl = new Map<string, ScoredImage>();
 
   for (const query of analysis.queries.slice(0, 4)) {
-    const results = await searchSerperImages(query, Math.max(limit * 4, 8));
+    const results = source === 'openai_web_search'
+      ? await searchOpenAIWebImages(query, analysis, Math.max(limit * 3, 6), openaiWebSearchModel)
+      : await searchSerperImages(query, Math.max(limit * 4, 8));
 
     for (const result of results) {
       if (!result.imageUrl) continue;
@@ -2816,7 +2895,7 @@ function buildResolvedImagesFromScored(
     .map((item) => ({
       url: item.image.imageUrl!,
       reason: item.reason,
-      source: 'serper' as const,
+      source: item.image.source || 'serper',
       score: item.score,
     }));
 
@@ -2871,24 +2950,35 @@ function buildResolvedImagesFromScored(
 function getEnabledImageSources(options: {
   serperEnabled?: boolean;
   tmdbEnabled?: boolean;
+  openaiWebSearchEnabled?: boolean;
   serperPriority?: boolean;
+  imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
 }): RSSImageSource[] {
   const serperEnabled = options.serperEnabled !== false;
   const tmdbEnabled = options.tmdbEnabled === true;
+  const openaiWebSearchEnabled = options.openaiWebSearchEnabled === true;
+  const preferredSource = options.imageSourcePriority
+    ?? (options.serperPriority ? 'serper' : 'tmdb');
+  const enabledSources: RSSImageSource[] = [];
 
-  if (serperEnabled && tmdbEnabled) {
-    return ['tmdb', 'serper'];
+  if (tmdbEnabled) enabledSources.push('tmdb');
+  if (openaiWebSearchEnabled) enabledSources.push('openai_web_search');
+  if (serperEnabled) enabledSources.push('serper');
+
+  if (enabledSources.length <= 1) {
+    return enabledSources;
   }
 
-  if (tmdbEnabled) {
-    return ['tmdb'];
-  }
+  const fallbackOrder: RSSImageSource[] = preferredSource === 'openai_web_search'
+    ? ['tmdb', 'serper']
+    : preferredSource === 'serper'
+      ? ['tmdb', 'openai_web_search']
+      : ['openai_web_search', 'serper'];
 
-  if (serperEnabled) {
-    return ['serper'];
-  }
-
-  return [];
+  return [
+    preferredSource,
+    ...fallbackOrder,
+  ].filter((source, index, all) => enabledSources.includes(source) && all.indexOf(source) === index);
 }
 
 function mergeResolvedImages(
@@ -2994,7 +3084,9 @@ async function resolveSingleSlotImages(
   analysis: RSSSubjectAnalysis,
   fallbackImages: string[],
   sources: RSSImageSource[],
-  limit: number
+  limit: number,
+  policy: ImageSourcePolicy,
+  openaiWebSearchModel?: AIModel | string
 ): Promise<RSSResolvedImage[]> {
   let resolved: RSSResolvedImage[] = [];
 
@@ -3034,13 +3126,18 @@ async function resolveSingleSlotImages(
       continue;
     }
 
-    const serperResolved = buildResolvedImagesFromScored(
-      await collectScoredImages(analysis, limit - resolved.length),
+    const sourceResolved = buildResolvedImagesFromScored(
+      await collectScoredImages(
+        analysis,
+        limit - resolved.length,
+        source === 'openai_web_search' ? 'openai_web_search' : 'serper',
+        openaiWebSearchModel
+      ),
       fallbackImages,
       limit - resolved.length,
       fallbackImages.length > 0
     );
-    resolved = mergeResolvedImages(resolved, serperResolved, limit);
+    resolved = mergeResolvedImages(resolved, sourceResolved, limit);
   }
 
   if (resolved.length < limit) {
@@ -3062,7 +3159,7 @@ async function resolveSingleSlotImages(
       }
     }
 
-    if (shouldAppendFeedFallbackImages(analysis, resolved)) {
+    if (policyAllowsArticleFallback(policy) && shouldAppendFeedFallbackImages(analysis, resolved)) {
       resolved = mergeResolvedImages(
         resolved,
         buildFeedFallbackImages(
@@ -3074,7 +3171,12 @@ async function resolveSingleSlotImages(
     }
   }
 
-  if (resolved[0] && fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(analysis, resolved[0])) {
+  if (
+    policyAllowsArticleFallback(policy) &&
+    resolved[0] &&
+    fallbackImages.length > 0 &&
+    shouldReplaceBrandingPrimaryWithFeedFallback(analysis, resolved[0])
+  ) {
     const fallbackPrimary = buildFeedFallbackImages(
       fallbackImages.filter((url) => getImageIdentity(url) !== getImageIdentity(resolved[0]?.url || '')),
       1
@@ -3118,7 +3220,8 @@ async function resolveSmartPrimaryCandidate(
   article: RSSImageSelectionArticle,
   analysis: RSSSubjectAnalysis,
   sources: RSSImageSource[],
-  fallbackImages: string[]
+  fallbackImages: string[],
+  openaiWebSearchModel?: AIModel | string
 ): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
   for (const source of sources) {
     if (source === 'tmdb') {
@@ -3132,7 +3235,12 @@ async function resolveSmartPrimaryCandidate(
       continue;
     }
 
-    const primaryScored = await collectScoredImages(analysis, 4);
+    const primaryScored = await collectScoredImages(
+      analysis,
+      4,
+      source === 'openai_web_search' ? 'openai_web_search' : 'serper',
+      openaiWebSearchModel
+    );
     const preferredSmartPrimary = primaryScored.find((item) => item.score >= MIN_SMART_PRIMARY_SERPER_SCORE);
     const rescuedBrandPrimary = (!preferredSmartPrimary &&
       (analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop'))
@@ -3154,28 +3262,28 @@ async function resolveSmartPrimaryCandidate(
       ? {
           url: preferredSmartPrimary.image.imageUrl,
           reason: preferredSmartPrimary.reason,
-          source: 'serper' as const,
+          source: preferredSmartPrimary.image.source || 'serper',
           score: preferredSmartPrimary.score,
         }
       : rescuedBrandPrimary?.image.imageUrl
         ? {
             url: rescuedBrandPrimary.image.imageUrl,
             reason: rescuedBrandPrimary.reason,
-            source: 'serper' as const,
+            source: rescuedBrandPrimary.image.source || 'serper',
             score: rescuedBrandPrimary.score,
           }
         : rescuedTrailerPrimary?.image.imageUrl
           ? {
               url: rescuedTrailerPrimary.image.imageUrl,
               reason: rescuedTrailerPrimary.reason,
-              source: 'serper' as const,
+              source: rescuedTrailerPrimary.image.source || 'serper',
               score: rescuedTrailerPrimary.score,
             }
           : rescuedGeneralListPrimary?.image.imageUrl
             ? {
                 url: rescuedGeneralListPrimary.image.imageUrl,
                 reason: rescuedGeneralListPrimary.reason,
-                source: 'serper' as const,
+                source: rescuedGeneralListPrimary.image.source || 'serper',
                 score: rescuedGeneralListPrimary.score,
               }
             : fallbackPrimary;
@@ -3213,7 +3321,8 @@ async function resolveSmartSecondaryCandidate(
   analysis: RSSSubjectAnalysis,
   primaryImage: RSSResolvedImage,
   primaryRole: ImageRole,
-  sources: RSSImageSource[]
+  sources: RSSImageSource[],
+  openaiWebSearchModel?: AIModel | string
 ): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
   const primaryIdentity = getImageIdentity(primaryImage.url);
 
@@ -3233,7 +3342,12 @@ async function resolveSmartSecondaryCandidate(
       continue;
     }
 
-    const secondaryScored = await collectScoredImages(analysis, 6);
+    const secondaryScored = await collectScoredImages(
+      analysis,
+      6,
+      source === 'openai_web_search' ? 'openai_web_search' : 'serper',
+      openaiWebSearchModel
+    );
     const candidate = secondaryScored.find((item) => {
       if (!item.image.imageUrl || getImageIdentity(item.image.imageUrl) === primaryIdentity) {
         return false;
@@ -3254,7 +3368,7 @@ async function resolveSmartSecondaryCandidate(
         image: {
           url: candidate.image.imageUrl,
           reason: candidate.reason,
-          source: 'serper',
+          source: candidate.image.source || 'serper',
           score: candidate.score,
         },
         role: getImageRole(getSerperImageText(candidate.image), analysis),
@@ -3269,11 +3383,7 @@ async function extractSubjectAnalysis(
   article: RSSImageSelectionArticle,
   model: string | undefined
 ): Promise<RSSSubjectAnalysis> {
-  const articleText = [
-    `Title: ${article.title}`,
-    article.description ? `Description: ${article.description}` : null,
-    article.author ? `Author: ${article.author}` : null,
-  ].filter(Boolean).join('\n');
+  const articleText = buildRSSImageAnalysisText(article);
 
   try {
     const response = await aiService.generateCompletion({
@@ -3333,7 +3443,12 @@ async function searchSerperImages(query: string, limit: number): Promise<SerperI
       return [];
     }
 
-    return data.images.filter((image) => typeof image?.imageUrl === 'string');
+    return data.images
+      .filter((image) => typeof image?.imageUrl === 'string')
+      .map((image) => ({
+        ...image,
+        source: 'serper' as const,
+      }));
   } catch (error) {
     if (!tracked) {
       await trackApiUsage({
@@ -3343,6 +3458,87 @@ async function searchSerperImages(query: string, limit: number): Promise<SerperI
       });
     }
     console.error('[RSS] Serper image lookup failed:', error);
+    return [];
+  }
+}
+
+async function hydrateOpenAIImageCandidate(
+  candidate: NonNullable<OpenAIWebSearchImageResponse['images']>[number]
+): Promise<SerperImageResult | null> {
+  const imageUrl = typeof candidate.imageUrl === 'string' ? candidate.imageUrl.trim() : '';
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    return null;
+  }
+
+  const probe = await probeFeedFallbackUrl(imageUrl);
+  if (!probe.allowed) {
+    return null;
+  }
+
+  const link = typeof candidate.sourcePage === 'string' && /^https?:\/\//i.test(candidate.sourcePage.trim())
+    ? candidate.sourcePage.trim()
+    : undefined;
+  const inferredDomain = typeof candidate.domain === 'string' && candidate.domain.trim()
+    ? candidate.domain.trim()
+    : (() => {
+        try {
+          return new URL(link || imageUrl).hostname;
+        } catch {
+          return undefined;
+        }
+      })();
+
+  return {
+    title: [candidate.title, candidate.rationale].filter(Boolean).join(' ').trim() || undefined,
+    imageUrl,
+    imageWidth: probe.width,
+    imageHeight: probe.height,
+    domain: inferredDomain,
+    link,
+    source: 'openai_web_search',
+  };
+}
+
+async function searchOpenAIWebImages(
+  query: string,
+  analysis: RSSSubjectAnalysis,
+  limit: number,
+  model?: AIModel | string
+): Promise<SerperImageResult[]> {
+  const prompt = [
+    'Find editorially relevant image URLs for this entertainment-news visual lookup.',
+    `Primary subject: ${analysis.primarySubject.name}`,
+    `Visual subject: ${analysis.visualSubject}`,
+    `Image intent: ${analysis.imageIntent}`,
+    analysis.contextProject ? `Project context: ${analysis.contextProject}` : null,
+    analysis.requiredContextTerms.length > 0 ? `Required context terms: ${analysis.requiredContextTerms.join(', ')}` : null,
+    `Search query: ${query}`,
+    `Return JSON as {"images":[{"imageUrl":"https://...","title":"...","sourcePage":"https://...","domain":"...","rationale":"..."}]}.`,
+    `Rules: prefer official, studio, network, distributor, TMDb-adjacent, or trusted entertainment editorial sources. Exclude article screenshots, watermarked composites, fan art, Pinterest collages, and social UI screenshots. Return up to ${Math.max(2, limit)} image candidates.`,
+  ].filter(Boolean).join('\n');
+
+  const response = await aiService.generateCompletion({
+    model: normalizeAIModel(model, 'gpt-5.4-mini'),
+    prompt,
+    systemPrompt: 'You discover candidate image URLs for entertainment-news posts. Return only JSON.',
+    jsonMode: true,
+    temperature: 0.1,
+    maxTokens: 1200,
+    enableWebSearch: true,
+    cacheKey: `rss:openai-web-image:${normalizeText(query)}:${normalizeText(analysis.visualSubject)}:${analysis.imageIntent}`,
+    cacheTTLms: 30 * 60 * 1000,
+  });
+
+  if (!response.success || !response.content) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(response.content) as OpenAIWebSearchImageResponse;
+    const hydrated = await Promise.all((parsed.images || []).slice(0, Math.max(2, limit)).map(hydrateOpenAIImageCandidate));
+    return hydrated.filter((item): item is SerperImageResult => Boolean(item));
+  } catch (error) {
+    console.warn('[RSS] OpenAI web image search returned invalid JSON.', error);
     return [];
   }
 }
@@ -3768,13 +3964,17 @@ export async function resolveRelevantRSSImages(
   options: {
     serperEnabled?: boolean;
     tmdbEnabled?: boolean;
+    openaiWebSearchEnabled?: boolean;
     serperPriority?: boolean;
+    imageSourcePriority?: 'tmdb' | 'serper' | 'openai_web_search';
     limit: number;
     smartCount?: boolean;
     model?: AIModel | string;
+    openaiWebSearchModel?: AIModel | string;
   }
 ): Promise<RSSResolvedImage[]> {
   const limit = Math.max(options.limit, 1);
+  const policy = getDefaultImageSourcePolicy(options);
   const sources = getEnabledImageSources(options);
   const analysis = await extractSubjectAnalysis(article, options.model);
   const rawProjectLinkedFeedFallback = shouldAllowRawProjectLinkedFeedFallback(article);
@@ -3801,22 +4001,10 @@ export async function resolveRelevantRSSImages(
     : [];
   const revealDrivenMode = getRevealDrivenArticleMode(article);
 
-  if (revealDrivenMode && fallbackImages.length > 0) {
-    const fallbackReason = revealDrivenMode === 'poster'
-      ? 'Article poster image'
-      : revealDrivenMode === 'multi_image'
-        ? 'Article gallery image'
-        : 'Article reveal image';
-
-    return buildFeedFallbackImages(
-      fallbackImages,
-      getRevealDrivenFallbackLimit(article, limit),
-      fallbackReason
-    );
-  }
-
   if (sources.length === 0) {
-    return buildFeedFallbackImages(fallbackImages, limit);
+    return policyAllowsArticleFallback(policy)
+      ? buildFeedFallbackImages(fallbackImages, limit)
+      : [];
   }
 
   const shouldUseStructuredPairing = limit >= 2 &&
@@ -3825,11 +4013,27 @@ export async function resolveRelevantRSSImages(
   if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);
     const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
-    const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources, fallbackImages);
+    const primaryResolved = await resolveSmartPrimaryCandidate(article, primaryAnalysis, sources, fallbackImages, options.openaiWebSearchModel);
     const memorialStory = isMemorialStory(article);
 
     if (!primaryResolved) {
-      return buildFeedFallbackImages(fallbackImages, limit);
+      if (policyAllowsArticleFallback(policy) && fallbackImages.length > 0) {
+        const fallbackReason = revealDrivenMode === 'poster'
+          ? 'Article poster image'
+          : revealDrivenMode === 'multi_image'
+            ? 'Article gallery image'
+            : revealDrivenMode === 'single_image'
+              ? 'Article reveal image'
+              : 'Article body image';
+
+        return buildFeedFallbackImages(
+          fallbackImages,
+          revealDrivenMode ? getRevealDrivenFallbackLimit(article, limit) : limit,
+          fallbackReason
+        );
+      }
+
+      return [];
     }
 
     if (memorialStory && plan.primary.intent === 'person_portrait' && primaryResolved.role !== 'person') {
@@ -3843,7 +4047,11 @@ export async function resolveRelevantRSSImages(
       return neutralProjectImage ? [neutralProjectImage] : [];
     }
 
-    if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(primaryAnalysis, primaryResolved.image, primaryResolved.role)) {
+    if (
+      policyAllowsArticleFallback(policy) &&
+      fallbackImages.length > 0 &&
+      shouldReplaceBrandingPrimaryWithFeedFallback(primaryAnalysis, primaryResolved.image, primaryResolved.role)
+    ) {
       return buildFeedFallbackImages(fallbackImages, limit);
     }
 
@@ -3856,11 +4064,12 @@ export async function resolveRelevantRSSImages(
       secondaryAnalysis,
       primaryResolved.image,
       primaryResolved.role,
-      sources
+      sources,
+      options.openaiWebSearchModel
     );
 
     if (!secondaryResolved) {
-      if (!shouldFallbackToFeedImageForSecondary(plan.secondary)) {
+      if (!policyAllowsArticleFallback(policy) || !shouldFallbackToFeedImageForSecondary(plan.secondary)) {
         return [primaryResolved.image];
       }
 
@@ -3886,8 +4095,12 @@ export async function resolveRelevantRSSImages(
       : [primaryResolved.image];
   }
 
-  const resolved = await resolveSingleSlotImages(article, analysis, fallbackImages, sources, limit);
+  const resolved = await resolveSingleSlotImages(article, analysis, fallbackImages, sources, limit, policy, options.openaiWebSearchModel);
   if (resolved.length === 0 && (allowProjectLinkedFeedFallback || rawProjectLinkedFeedFallback) && fallbackImages.length > 0) {
+    if (!policyAllowsArticleFallback(policy)) {
+      return [];
+    }
+
     return buildFeedFallbackImages(fallbackImages, 1, 'Article project context image');
   }
 
