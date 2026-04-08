@@ -26,6 +26,7 @@ import {
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { LiveDesignPreview } from './LiveDesignPreview';
 import { markNextPopStateAsHandled } from '../hooks/useTransientHistoryState';
+import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
 import undoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
 import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
@@ -462,30 +463,44 @@ export function EditDesignBottomSheet({
     exportFormat,
   ]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBackgroundFile = async (file: File) => {
     haptics.light();
-    const file = e.target.files?.[0];
-    if (file) {
-      const localPreviewUrl = URL.createObjectURL(file);
-      if (previewBackgroundImage.startsWith('blob:')) {
-        URL.revokeObjectURL(previewBackgroundImage);
-      }
-      setPreviewBackgroundImage(localPreviewUrl);
-      setIsUploadingBackground(true);
-      try {
-        const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
-        setBackgroundImage(uploadedImage.url);
-        toast.success('Image uploaded');
-      } catch (error) {
-        console.error('Background upload failed:', error);
-        setPreviewBackgroundImage(backgroundImage);
-        toast.error(error instanceof Error ? error.message : 'Failed to upload image');
-      } finally {
-        setIsUploadingBackground(false);
-        e.target.value = '';
-      }
+    const localPreviewUrl = URL.createObjectURL(file);
+    if (previewBackgroundImage.startsWith('blob:')) {
+      URL.revokeObjectURL(previewBackgroundImage);
+    }
+    setPreviewBackgroundImage(localPreviewUrl);
+    setIsUploadingBackground(true);
+    try {
+      const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
+      setBackgroundImage(uploadedImage.url);
+      toast.success('Image uploaded');
+    } catch (error) {
+      console.error('Background upload failed:', error);
+      setPreviewBackgroundImage(backgroundImage);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload image');
+    } finally {
+      setIsUploadingBackground(false);
     }
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await handleBackgroundFile(file);
+      e.target.value = '';
+    }
+  };
+
+  const backgroundDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    isEnabled: !isUploadingBackground,
+    onFiles: (files) => {
+      if (files[0]) {
+        void handleBackgroundFile(files[0]);
+      }
+    },
+  });
 
   const handleTmdbSearch = async () => {
     if (!tmdbSearchQuery.trim()) return;
@@ -1200,7 +1215,10 @@ export function EditDesignBottomSheet({
             
             {/* Upload from Device */}
             <div className="mb-3">
-              <label className="block">
+              <label
+                className={`block ${backgroundDrop.isDragging ? 'rounded-lg ring-1 ring-[#ec1e24]/50' : ''}`}
+                {...backgroundDrop.bind}
+              >
                 <input
                   type="file"
                   accept="image/*"
@@ -1208,7 +1226,11 @@ export function EditDesignBottomSheet({
                   disabled={isUploadingBackground}
                   className="hidden"
                 />
-                <div className="border border-gray-200 dark:border-[#333333] rounded-lg p-4 text-center cursor-pointer hover:border-[#ec1e24] transition-colors">
+                <div
+                  className={`border border-gray-200 dark:border-[#333333] rounded-lg p-4 text-center cursor-pointer hover:border-[#ec1e24] transition-colors ${
+                    backgroundDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                  }`}
+                >
                   <Upload className="w-6 h-6 text-gray-400 dark:text-[#666666] mx-auto mb-2" />
                   <p className="text-sm text-gray-600 dark:text-[#9CA3AF]">
                     {isUploadingBackground ? 'Uploading background...' : 'Upload from device'}

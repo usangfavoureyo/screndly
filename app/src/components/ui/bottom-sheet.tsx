@@ -48,6 +48,10 @@ interface BottomSheetProps {
    * Unique ID for back navigation tracking
    */
   sheetId?: string;
+  /**
+   * Skip transient browser-history integration for lightweight nested sheets.
+   */
+  disableTransientHistory?: boolean;
 }
 
 // Physics constants
@@ -73,6 +77,7 @@ export function BottomSheet({
   disableAnimations = false,
   disableBackdropClose = false,
   sheetId,
+  disableTransientHistory = false,
 }: BottomSheetProps) {
   const [mounted, setMounted] = React.useState(false);
   const sheetRef = React.useRef<HTMLDivElement>(null);
@@ -111,7 +116,11 @@ export function BottomSheet({
 
   // BackNavigationContext integration
   const { registerBottomSheetWithCloseHandler, unregisterBottomSheet } = useBackNavigation();
-  const rearmTransientHistoryState = useTransientHistoryState(open, uniqueId, 'bottom-sheet');
+  const rearmTransientHistoryState = useTransientHistoryState(
+    open && !disableTransientHistory,
+    uniqueId,
+    'bottom-sheet',
+  );
 
   // Register with context when open
   React.useEffect(() => {
@@ -142,7 +151,7 @@ export function BottomSheet({
   }, [open, uniqueId, rearmTransientHistoryState, registerBottomSheetWithCloseHandler, unregisterBottomSheet]);
 
   React.useEffect(() => {
-    if (!open) {
+    if (!open || disableTransientHistory) {
       return;
     }
 
@@ -171,7 +180,7 @@ export function BottomSheet({
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, [open, rearmTransientHistoryState, uniqueId]);
+  }, [disableTransientHistory, open, rearmTransientHistoryState, uniqueId]);
 
   // Reset dismissing state when sheet closes
   React.useEffect(() => {

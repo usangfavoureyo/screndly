@@ -10,6 +10,15 @@ interface UploadComposeAssetResponse {
   size: number;
 }
 
+interface ImportComposeRemoteImageResponse {
+  url: string;
+  previewUrl?: string;
+  fileName: string;
+  fileId?: string;
+  contentType: string;
+  size: number;
+}
+
 const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPOSE_CROP_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -55,6 +64,35 @@ export async function uploadComposeAsset(file: File): Promise<{ url: string; pre
     url: response.data.url,
     previewUrl: response.data.previewUrl,
     fileId: response.data.fileId || response.data.fileName,
+  };
+}
+
+export async function importComposeRemoteImage(payload: {
+  imageUrl: string;
+  category: 'backdrops' | 'posters' | 'profiles' | 'logos';
+  resultTitle: string;
+}): Promise<{ url: string; previewUrl?: string; fileId: string; fileName: string; contentType: string; size: number }> {
+  if (!apiClient.isBackendAvailable()) {
+    throw new Error('Backend is not available for TMDb imports.');
+  }
+
+  const response = await apiClient.post<ImportComposeRemoteImageResponse>(
+    '/api/create/import-remote-image',
+    payload,
+    { timeout: COMPOSE_UPLOAD_TIMEOUT_MS },
+  );
+
+  if (!response.success || !response.data?.url) {
+    throw new Error(response.error?.message || 'Failed to import the selected TMDb image.');
+  }
+
+  return {
+    url: response.data.url,
+    previewUrl: response.data.previewUrl,
+    fileId: response.data.fileId || response.data.fileName,
+    fileName: response.data.fileName,
+    contentType: response.data.contentType,
+    size: response.data.size,
   };
 }
 

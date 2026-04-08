@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { apiClient } from '../lib/api/client';
 import { DEFAULT_MODELS } from '../lib/ai/models';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetDescription, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
+import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
 
 interface EditMetadataBottomSheetProps {
   open: boolean;
@@ -102,29 +103,41 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
     });
   };
 
+  const handleThumbnailFile = (file: File) => {
+    haptics.medium();
+
+    const uploadedUrl = URL.createObjectURL(file);
+    setThumbnailUrl(uploadedUrl);
+
+    toast.success('Thumbnail attached', {
+      description: 'The selected image is attached locally to this metadata edit.'
+    });
+  };
+
   const handleUpload = () => {
     haptics.light();
-    
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    
-    input.onchange = async (e) => {
+
+    input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-
-      haptics.medium();
-      
-      const uploadedUrl = URL.createObjectURL(file);
-      setThumbnailUrl(uploadedUrl);
-
-      toast.success('Thumbnail attached', {
-        description: 'The selected image is attached locally to this metadata edit.'
-      });
+      handleThumbnailFile(file);
     };
 
     input.click();
   };
+
+  const thumbnailDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      if (files[0]) {
+        handleThumbnailFile(files[0]);
+      }
+    },
+  });
 
   const handleRegenerateTitle = async () => {
     haptics.light();
@@ -254,7 +267,7 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
             <div>
               <div className="flex items-center justify-between mb-2">
                 <Label className="text-gray-900 dark:text-white">Thumbnail URL</Label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" {...thumbnailDrop.bind}>
                   {/* Regenerate Button (Icon Only) */}
                   <button
                     onClick={handleRegenerate}
@@ -267,7 +280,9 @@ export function EditMetadataBottomSheet({ open, onOpenChange, post, onSave }: Ed
                   {/* Upload Button */}
                   <button
                     onClick={handleUpload}
-                    className="px-3 py-2 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-all flex items-center gap-2 text-sm"
+                    className={`px-3 py-2 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-lg text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-[#1A1A1A] transition-all flex items-center gap-2 text-sm ${
+                      thumbnailDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                    }`}
                   >
                     Upload Thumbnail
                   </button>

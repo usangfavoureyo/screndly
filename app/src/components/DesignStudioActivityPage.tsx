@@ -8,6 +8,7 @@ import {
   type DesignStudioAutoEditorialRecord,
   fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
+  type DesignStudioTemplateRecord,
   type DesignStudioRenderedDesignRecord,
   type DesignStudioManualRenderJob,
 } from '../lib/api/designStudio';
@@ -248,6 +249,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   });
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>(cachedActivityState?.activities || []);
   const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>(cachedActivityState?.manualRenderJobs || []);
+  const [designTemplates, setDesignTemplates] = useState<DesignStudioTemplateRecord[]>(cachedActivityState?.designTemplates || []);
   const [templatePreviewUrls, setTemplatePreviewUrls] = useState<Record<string, string>>(cachedActivityState?.templatePreviewUrls || {});
   const [renderedDesigns, setRenderedDesigns] = useState<DesignStudioRenderedDesignRecord[]>(cachedActivityState?.renderedDesigns || []);
   const [autoEditorials, setAutoEditorials] = useState<DesignStudioAutoEditorialRecord[]>(cachedActivityState?.autoEditorials || []);
@@ -305,6 +307,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       setManualRenderJobs(renderJobs);
       if (!silent || hasActiveManualRender) {
         const designStudioState = await fetchDesignStudioState();
+        setDesignTemplates(designStudioState.templates || []);
         setTemplatePreviewUrls(
           Object.fromEntries(
             (designStudioState.templates || []).map((template) => [template.id, template.previewUrl]),
@@ -318,6 +321,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       if (!silent) {
         setActivities([]);
         setManualRenderJobs([]);
+        setDesignTemplates([]);
         setTemplatePreviewUrls({});
         setRenderedDesigns([]);
         setAutoEditorials([]);
@@ -355,11 +359,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     window.localStorage.setItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY, JSON.stringify({
       activities,
       manualRenderJobs,
+      designTemplates,
       templatePreviewUrls,
       renderedDesigns,
       autoEditorials,
     }));
-  }, [activities, autoEditorials, manualRenderJobs, renderedDesigns, templatePreviewUrls]);
+  }, [activities, autoEditorials, designTemplates, manualRenderJobs, renderedDesigns, templatePreviewUrls]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -509,6 +514,18 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     () => new Map(renderedDesigns.map((renderedDesign) => [renderedDesign.id, renderedDesign])),
     [renderedDesigns],
   );
+  const designTemplateById = useMemo(
+    () => new Map(designTemplates.map((template) => [template.id, template])),
+    [designTemplates],
+  );
+  const designTemplateByName = useMemo(
+    () => new Map(designTemplates.map((template) => [template.name, template])),
+    [designTemplates],
+  );
+  const renderJobById = useMemo(
+    () => new Map(manualRenderJobs.map((job) => [job.id, job])),
+    [manualRenderJobs],
+  );
   const autoEditorialByImageUrl = useMemo(
     () => new Map(autoEditorials.map((editorial) => [editorial.renderedImage, editorial])),
     [autoEditorials],
@@ -617,16 +634,21 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         .replace(/^-|-$/g, '')
         .toLowerCase() || 'design-render';
 
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to download rendered image (${response.status})`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
-      anchor.href = downloadUrl;
+      anchor.href = objectUrl;
       anchor.download = `${safeName}.${extension}`;
       anchor.rel = 'noopener';
-      if (/^https?:\/\//i.test(downloadUrl)) {
-        anchor.target = '_blank';
-      }
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
       toast.success('Rendered image downloaded');
     } catch (error) {
       console.error('Failed to download rendered image:', error);
@@ -717,6 +739,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const autoEditorialFromActivity = findAutoEditorialForActivity(activity);
     const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorialFromActivity?.renderedImage;
     const normalizedOutputUrl = normalizeMediaKey(outputUrl);
+    const matchedRenderJob = activity.details.renderJobId
+      ? renderJobById.get(activity.details.renderJobId)
+      : manualRenderJobs.find((job) => job.templateName === activity.details.templateName);
     const renderedDesign = outputUrl
       ? renderedDesignByOutputUrl.get(outputUrl)
         || renderedDesignByOutputUrlNormalized.get(normalizedOutputUrl)
@@ -744,6 +769,19 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         templateId: autoEditorial.templateId,
         tab: 'auto',
         initialData: buildAutoEditData(autoEditorial),
+      });
+      return;
+    }
+
+    const fallbackTemplateId = matchedRenderJob?.templateId
+      || designTemplateByName.get(activity.details.templateName || '')?.id
+      || (activity.details.designId ? designTemplateById.get(activity.details.designId)?.id : undefined);
+
+    if (fallbackTemplateId) {
+      openEditorTarget({
+        templateId: fallbackTemplateId,
+        tab: 'manual',
+        initialData: null,
       });
       return;
     }

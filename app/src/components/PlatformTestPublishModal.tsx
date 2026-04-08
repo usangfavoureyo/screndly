@@ -16,6 +16,7 @@ import { PlatformType } from '../utils/platformConnections';
 import { haptics } from '../utils/haptics';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 import { RedSpinner } from './PageLoader';
+import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
 
 interface PlatformTestPublishModalProps {
   platform: PlatformType;
@@ -177,6 +178,24 @@ export function PlatformTestPublishModal({
   const isXVideoPublishAttempt =
     platform === 'X' && (mediaFileKind === 'video' || Boolean(normalizedVideoUrl));
   const publishTimeoutMs = isXVideoPublishAttempt ? 600000 : 180000;
+
+  const handleMediaFileSelected = (nextFile: File | null) => {
+    setMediaFile(nextFile);
+    if (nextFile?.type.startsWith('image/')) {
+      setImageUrl('');
+      setVideoUrl('');
+    } else if (nextFile?.type.startsWith('video/')) {
+      setVideoUrl('');
+      setImageUrl('');
+    }
+  };
+
+  const mediaFileDrop = useDesktopFileDrop({
+    accept: fileAccept || undefined,
+    onFiles: (files) => {
+      handleMediaFileSelected(files[0] ?? null);
+    },
+  });
 
   useEffect(() => {
     if (!isOpen) {
@@ -385,21 +404,21 @@ export function PlatformTestPublishModal({
                   ? 'Image file'
                   : 'Video file'}
             </label>
-            <Input
-              type="file"
-              accept={fileAccept || undefined}
-              onChange={(event) => {
-                const nextFile = event.target.files?.[0] || null;
-                setMediaFile(nextFile);
-                if (nextFile?.type.startsWith('image/')) {
-                  setImageUrl('');
-                  setVideoUrl('');
-                } else if (nextFile?.type.startsWith('video/')) {
-                  setVideoUrl('');
-                  setImageUrl('');
-                }
-              }}
-            />
+            <div
+              className={`rounded-md ${mediaFileDrop.isDragging ? 'ring-1 ring-[#ec1e24]/50' : ''}`}
+              {...mediaFileDrop.bind}
+            >
+              <Input
+                type="file"
+                accept={fileAccept || undefined}
+                className={mediaFileDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : undefined}
+                onChange={(event) => {
+                  const nextFile = event.target.files?.[0] || null;
+                  handleMediaFileSelected(nextFile);
+                  event.target.value = '';
+                }}
+              />
+            </div>
             {mediaFile && (
               <p className="break-all text-xs text-[#6B7280] dark:text-[#9CA3AF]">{mediaFile.name}</p>
             )}

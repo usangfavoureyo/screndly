@@ -6,18 +6,147 @@ import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { Readable } from 'stream';
+import sharp from 'sharp';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
 import { getComposeState, mergeComposeState } from '../services/compose.service';
+import { trimTMDbLogoOuterBorderBuffer } from '../services/rss-logo-render.service';
 
 const router = Router();
 const execFileAsync = promisify(execFile);
+const REMOTE_IMAGE_IMPORT_TIMEOUT_MS = 60_000;
+const LOGO_IMPORT_OUTPUT_SIZE = 1600;
+const LOGO_IMPORT_PADDING = Math.round(LOGO_IMPORT_OUTPUT_SIZE * 0.16);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 128 * 1024 * 1024,
   },
 });
+
+type RemoteTmdbImageCategory = 'backdrops' | 'posters' | 'profiles' | 'logos';
+
+function slugifyAssetName(value: string): string {
+  return value
+    .replace(/[^a-z0-9-_]+/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase() || 'tmdb-image';
+}
+
+function inferExtensionFromContentType(contentType: string): string {
+  const normalized = contentType.split(';')[0].trim().toLowerCase();
+
+  switch (normalized) {
+    case 'image/png':
+      return 'png';
+    case 'image/webp':
+      return 'webp';
+    case 'image/gif':
+      return 'gif';
+    case 'image/svg+xml':
+      return 'svg';
+    case 'image/avif':
+      return 'avif';
+    default:
+      return 'jpg';
+  }
+}
+
+function chooseLogoBackground(stats: sharp.Stats): string {
+  const averageRed = stats.channels[0]?.mean ?? 255;
+  const averageGreen = stats.channels[1]?.mean ?? 255;
+  const averageBlue = stats.channels[2]?.mean ?? 255;
+  const averageBrightness = (averageRed + averageGreen + averageBlue) / 3;
+  const averageChroma = (
+    Math.abs(averageRed - averageGreen) +
+    Math.abs(averageGreen - averageBlue) +
+    Math.abs(averageRed - averageBlue)
+  ) / 3;
+  const isMostlyMonochrome = averageChroma < 18;
+
+  if (isMostlyMonochrome) {
+    return averageBrightness < 110 ? '#FFFFFF' : '#101010';
+  }
+
+  return averageBrightness > 170 ? '#111111' : '#FFFFFF';
+}
+
+async function fetchRemoteImageBuffer(sourceUrl: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REMOTE_IMAGE_IMPORT_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(sourceUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch selected TMDb image (${response.status})`);
+    }
+
+    const contentType = (response.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+    if (!contentType.startsWith('image/')) {
+      throw new Error(`TMDb returned unsupported content type: ${contentType || 'unknown'}`);
+    }
+
+    return {
+      buffer: Buffer.from(await response.arrayBuffer()),
+      contentType,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function normalizeImportedTmdbImage(
+  buffer: Buffer,
+  contentType: string,
+  category: RemoteTmdbImageCategory,
+): Promise<{ buffer: Buffer; contentType: string; extension: string }> {
+  if (category === 'logos') {
+    const trimmedBuffer = await trimTMDbLogoOuterBorderBuffer(buffer);
+    const resizedLogo = await sharp(trimmedBuffer, { animated: false })
+      .resize({
+        width: LOGO_IMPORT_OUTPUT_SIZE - (LOGO_IMPORT_PADDING * 2),
+        height: LOGO_IMPORT_OUTPUT_SIZE - (LOGO_IMPORT_PADDING * 2),
+        fit: 'inside',
+        withoutEnlargement: false,
+      })
+      .png()
+      .toBuffer();
+    const stats = await sharp(resizedLogo, { animated: false }).stats();
+    const background = chooseLogoBackground(stats);
+    const outputBuffer = await sharp({
+      create: {
+        width: LOGO_IMPORT_OUTPUT_SIZE,
+        height: LOGO_IMPORT_OUTPUT_SIZE,
+        channels: 4,
+        background,
+      },
+    })
+      .composite([{ input: resizedLogo, gravity: 'center' }])
+      .png()
+      .toBuffer();
+
+    return {
+      buffer: outputBuffer,
+      contentType: 'image/png',
+      extension: 'png',
+    };
+  }
+
+  if (contentType === 'image/svg+xml') {
+    return {
+      buffer: await sharp(buffer, { animated: false }).png().toBuffer(),
+      contentType: 'image/png',
+      extension: 'png',
+    };
+  }
+
+  return {
+    buffer,
+    contentType,
+    extension: inferExtensionFromContentType(contentType),
+  };
+}
 
 function even(value: number) {
   return Math.max(2, Math.floor(value / 2) * 2);
@@ -167,6 +296,74 @@ router.post('/upload-asset', authenticate, upload.single('mediaFile'), async (re
     res.status(500).json({
       success: false,
       error: { message: error instanceof Error ? error.message : 'Failed to upload asset' },
+    });
+  }
+});
+
+router.post('/import-remote-image', authenticate, async (req, res) => {
+  try {
+    const imageUrl = typeof req.body?.imageUrl === 'string' ? req.body.imageUrl.trim() : '';
+    const category = typeof req.body?.category === 'string' ? req.body.category.trim() as RemoteTmdbImageCategory : 'posters';
+    const resultTitle = typeof req.body?.resultTitle === 'string' ? req.body.resultTitle.trim() : 'tmdb-image';
+
+    if (!imageUrl) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'TMDb image URL is required.' },
+      });
+    }
+
+    if (!['backdrops', 'posters', 'profiles', 'logos'].includes(category)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'Unsupported TMDb image category.' },
+      });
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(imageUrl);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'TMDb image URL is invalid.' },
+      });
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'TMDb image URL must use http or https.' },
+      });
+    }
+
+    const safeName = slugifyAssetName(resultTitle);
+    const fetched = await fetchRemoteImageBuffer(imageUrl);
+    const normalized = await normalizeImportedTmdbImage(fetched.buffer, fetched.contentType, category);
+    const fileName = `${safeName}-${category}.${normalized.extension}`;
+    const uploadResult = await uploadBufferToBackblaze(normalized.buffer, fileName, {
+      bucketTypes: ['general', 'videos'],
+      prefix: 'compose/images',
+      contentType: normalized.contentType,
+    });
+    const previewUrl = await getBackblazeAuthorizedDownloadUrl(uploadResult.url, 7 * 24 * 60 * 60);
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        url: uploadResult.url,
+        previewUrl,
+        fileName: uploadResult.fileName,
+        fileId: uploadResult.fileName,
+        contentType: normalized.contentType,
+        size: normalized.buffer.length,
+      },
+    });
+  } catch (error) {
+    console.error('Error importing remote TMDb image:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to import TMDb image' },
     });
   }
 });

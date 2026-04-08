@@ -157,6 +157,7 @@ function SelectContent({ className, children, ...props }: React.HTMLAttributes<H
       open={open}
       onOpenChange={setOpen}
       heightMode="auto"
+      disableTransientHistory
       className={cn("bg-white dark:bg-[#000000] text-gray-900 dark:text-white", className)}
     >
       <div className="flex flex-col gap-1 p-2" {...props}>

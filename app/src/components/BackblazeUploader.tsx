@@ -4,6 +4,7 @@ import { uploadToBackblaze } from '../utils/backblaze';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { RedSpinner } from './PageLoader';
+import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
 
 interface BackblazeUploaderProps {
   onUploadComplete?: (url: string, fileId: string) => void;
@@ -31,9 +32,7 @@ export function BackblazeUploader({
 
   void _fileNamePrefix;
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const handleFileUpload = async (file: File) => {
 
     setError(null);
     setUploadedUrl(null);
@@ -110,6 +109,23 @@ export function BackblazeUploader({
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    void handleFileUpload(file);
+  };
+
+  const dropZone = useDesktopFileDrop({
+    accept: acceptedFileTypes,
+    isEnabled: !uploading,
+    onFiles: (files) => {
+      if (files[0]) {
+        void handleFileUpload(files[0]);
+      }
+    },
+  });
+
   return (
     <div className={`space-y-3 ${className}`}>
       <div className="relative">
@@ -128,9 +144,12 @@ export function BackblazeUploader({
             border-2 border-dashed cursor-pointer transition-all
             ${uploading
               ? 'border-gray-300 dark:border-[#333333] bg-gray-50 dark:bg-[#0A0A0A] cursor-not-allowed'
-              : 'border-[#ec1e24] hover:bg-[#ec1e24]/5 dark:hover:bg-[#ec1e24]/10'
+              : dropZone.isDragging
+                ? 'border-[#ec1e24] bg-[#ec1e24]/10 dark:bg-[#ec1e24]/15'
+                : 'border-[#ec1e24] hover:bg-[#ec1e24]/5 dark:hover:bg-[#ec1e24]/10'
             }
           `}
+          {...dropZone.bind}
         >
           {uploading ? (
             <>

@@ -5,6 +5,7 @@ import { haptics } from '../../utils/haptics';
 import { MusicGenre, AspectRatio, VideoTitleData, AudioFile, DetectedTitle, PromptStatus, musicGenres, aspectRatios } from './types';
 import { AutoAssignTitlesDialog } from '../AutoAssignTitlesDialog';
 import { LetterboxControl } from '../LetterboxControl';
+import { useDesktopFileDrop } from '../../hooks/useDesktopFileDrop';
 
 interface ReviewModuleProps {
     // Video Files State
@@ -119,6 +120,48 @@ export function ReviewModule({
         setVideoTime(newTime);
         haptics.light();
     };
+
+    const videoDrop = useDesktopFileDrop({
+        accept: 'video/*',
+        onFiles: (files) => {
+            const remainingSlots = 10 - videoFiles.length;
+            const filesToAdd = files.slice(0, remainingSlots);
+            if (!filesToAdd.length) return;
+            const newFiles = [...videoFiles, ...filesToAdd];
+            setVideoFiles(newFiles);
+            haptics.light();
+            if (detectedTitles.length > 0 && newFiles.length === detectedTitles.length) {
+                setShowAutoAssign(true);
+            }
+        },
+    });
+
+    const voiceoverDrop = useDesktopFileDrop({
+        accept: 'audio/*',
+        onFiles: (files) => {
+            if (files[0]) {
+                haptics.light();
+                onVoiceoverUpload(files[0]);
+            }
+        },
+    });
+
+    const musicDrop = useDesktopFileDrop({
+        accept: 'audio/*',
+        onFiles: (files) => {
+            haptics.light();
+            onMusicUpload(files[0] ?? null);
+        },
+    });
+
+    const thumbnailDrop = useDesktopFileDrop({
+        accept: 'image/*',
+        onFiles: (files) => {
+            if (files[0]) {
+                setThumbnail(files[0]);
+            }
+        },
+    });
 
     return (
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-shadow duration-200">
@@ -302,7 +345,12 @@ export function ReviewModule({
 
                         {/* Upload Button */}
                         {videoFiles.length < 10 && (
-                            <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200">
+                            <label
+                                className={`flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200 ${
+                                    videoDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                                }`}
+                                {...videoDrop.bind}
+                            >
                                 <Upload className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                                 <span className="text-sm text-gray-600 dark:text-[#9CA3AF] text-center">
                                     {videoFiles.length === 0 ? 'Upload Videos' : 'Upload More Videos'}
@@ -349,7 +397,12 @@ export function ReviewModule({
                                 <span className="text-xs text-[#ec1e24]">Analyzing...</span>
                             )}
                         </label>
-                        <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200">
+                        <label
+                            className={`flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200 ${
+                                voiceoverDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                            }`}
+                            {...voiceoverDrop.bind}
+                        >
                             <Upload className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                             <span className="text-sm text-gray-600 dark:text-[#9CA3AF] text-center">
                                 {voiceover ? voiceover.name : 'Upload Audio'}
@@ -385,7 +438,12 @@ export function ReviewModule({
                         <label className="text-gray-900 dark:text-white mb-2 block">
                             Music Track
                         </label>
-                        <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200">
+                        <label
+                            className={`flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200 ${
+                                musicDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                            }`}
+                            {...musicDrop.bind}
+                        >
                             <Upload className="w-6 h-6 text-gray-500 dark:text-gray-400" />
                             <span className="text-sm text-gray-600 dark:text-[#9CA3AF] text-center">
                                 {music ? music.name : 'Upload Music'}
@@ -755,7 +813,12 @@ export function ReviewModule({
                                 <label className="text-gray-900 dark:text-white mb-2 block">
                                     Upload Thumbnail (Auto-sized for each platform)
                                 </label>
-                                <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200">
+                                <label
+                                    className={`flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200 ${
+                                        thumbnailDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                                    }`}
+                                    {...thumbnailDrop.bind}
+                                >
                                     <Upload className="w-6 h-6 text-[#ec1e24]" />
                                     <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">
                                         {thumbnail ? thumbnail.name : 'Upload Thumbnail'}

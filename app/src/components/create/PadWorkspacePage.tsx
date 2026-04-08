@@ -22,6 +22,7 @@ import type { PadAttachment, PadMessage, PadSession } from '../../types/pad';
 import { haptics } from '../../utils/haptics';
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
+import { useDesktopFileDrop } from '../../hooks/useDesktopFileDrop';
 
 interface PadWorkspacePageProps {
   onNavigate: (page: string, fromPage?: string) => void;
@@ -89,6 +90,14 @@ export function PadWorkspacePage({
   const [touchStartX, setTouchStartX] = useState<number | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const hasPendingInput = draft.trim().length > 0 || attachments.length > 0;
+  const attachmentsDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      if (!files.length) return;
+      setAttachments((current) => [...current, ...files.map(buildAttachment)]);
+      haptics.light();
+    },
+  });
 
   const unsavedDraftGuard = useUnsavedBackGuard({
     isDirty: hasPendingInput,
@@ -418,12 +427,18 @@ export function PadWorkspacePage({
               />
 
               <div className="mt-3 flex items-center justify-between gap-3">
-                <Label htmlFor="pad-attachments" className="cursor-pointer">
-                  <span className="sr-only">Upload images</span>
-                  <div className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-900 dark:border-[#333333] dark:text-white">
-                    <ImagePlus className="h-4 w-4" />
-                  </div>
-                </Label>
+              <Label
+                htmlFor="pad-attachments"
+                className={`cursor-pointer ${attachmentsDrop.isDragging ? 'rounded-full ring-1 ring-[#ec1e24]/50' : ''}`}
+                {...attachmentsDrop.bind}
+              >
+                <span className="sr-only">Upload images</span>
+                <div className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-900 dark:border-[#333333] dark:text-white ${
+                  attachmentsDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                }`}>
+                  <ImagePlus className="h-4 w-4" />
+                </div>
+              </Label>
                 <input id="pad-attachments" type="file" accept="image/*" multiple className="hidden" onChange={handleAttachmentChange} />
                 <Button onClick={handleSend} disabled={isGenerating} className="ml-auto">
                   <Send className="h-4 w-4" />

@@ -8,6 +8,7 @@ import { AspectRatio, Scene } from './types';
 import { LetterboxControl } from '../LetterboxControl';
 import { SceneImportDialog } from '../SceneImportDialog';
 import { SubtitleTimestampAssist } from '../SubtitleTimestampAssist';
+import { useDesktopFileDrop } from '../../hooks/useDesktopFileDrop';
 
 interface ScenesModuleProps {
     movieTitle: string;
@@ -78,6 +79,32 @@ export function ScenesModule({
 }: ScenesModuleProps) {
 
     const videoInputRef = useRef<HTMLInputElement>(null);
+    const applyDroppedVideoFile = (file: File) => {
+        const input = videoInputRef.current;
+        if (!input) return;
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(file);
+        input.files = dataTransfer.files;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    const localVideoDrop = useDesktopFileDrop({
+        accept: 'video/*',
+        onFiles: (files) => {
+            if (files[0]) {
+                applyDroppedVideoFile(files[0]);
+            }
+        },
+    });
+
+    const thumbnailDrop = useDesktopFileDrop({
+        accept: 'image/*',
+        onFiles: (files) => {
+            if (files[0]) {
+                haptics.light();
+            }
+        },
+    });
 
     // Helper functions
     const validateTimestampFormat = (timestamp: string): boolean => {
@@ -237,10 +264,15 @@ export function ScenesModule({
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                         {/* Upload Local File */}
-                        <label className={`flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 rounded-xl cursor-pointer transition-all duration-200 ${videoSource === 'local' && videoFile
+                        <label
+                            className={`flex flex-col items-center justify-center gap-2 px-4 py-6 border-2 rounded-xl cursor-pointer transition-all duration-200 ${videoSource === 'local' && videoFile
                             ? 'border-[#ec1e24] bg-red-50 dark:bg-red-900/10'
-                            : 'bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] hover:border-[#ec1e24]'
-                            }`}>
+                            : localVideoDrop.isDragging
+                                ? 'border-[#ec1e24] bg-[#ec1e24]/10 dark:bg-[#ec1e24]/15'
+                                : 'bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] hover:border-[#ec1e24]'
+                            }`}
+                            {...localVideoDrop.bind}
+                        >
                             <Upload className={`w-6 h-6 ${videoSource === 'local' && videoFile ? 'text-[#ec1e24]' : 'text-gray-400'}`} />
                             <span className="text-sm text-gray-600 dark:text-[#9CA3AF] text-center">
                                 {videoSource === 'local' && videoFile ? videoFile.name : 'Upload Local File'}
@@ -634,7 +666,12 @@ export function ScenesModule({
                             <label className="text-gray-900 dark:text-white mb-2 block">
                                 Thumbnail (Optional)
                             </label>
-                            <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200">
+                            <label
+                                className={`flex flex-col items-center justify-center gap-2 px-4 py-6 bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-xl cursor-pointer hover:border-[#ec1e24] transition-all duration-200 ${
+                                    thumbnailDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                                }`}
+                                {...thumbnailDrop.bind}
+                            >
                                 <Upload className="w-6 h-6 text-[#ec1e24]" />
                                 <span className="text-sm text-gray-600 dark:text-[#9CA3AF] text-center">
                                     Upload Thumbnail

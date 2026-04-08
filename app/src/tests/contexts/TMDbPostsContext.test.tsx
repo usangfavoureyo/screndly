@@ -142,6 +142,44 @@ describe('TMDbPostsContext', () => {
     expect(backendPosts[0].title).toBe('After Update');
   });
 
+  it('sanitizes injected source links from backend TMDb captions', async () => {
+    backendPosts = [
+      createPost({
+        id: 'post-caption-link',
+        source: 'tmdb_weekly',
+        releaseDate: '2026-04-14',
+        caption:
+          "'Margo's Got Money Troubles' premieres this week on April 14 with Elle Fanning. (apple.com) (https://www.apple.com/tv-pr/news/2026/02/apple-tv-reveals-teaser-for-margos-got-money-troubles/?utm_source=openai)",
+      }),
+    ];
+
+    const { result } = renderHook(() => useTMDbPosts(), { wrapper });
+
+    await waitFor(() => expect(result.current.posts).toHaveLength(1));
+
+    expect(result.current.posts[0].caption).toContain("Margo's Got Money Troubles");
+    expect(result.current.posts[0].caption).not.toMatch(/https?:\/\//i);
+    expect(result.current.posts[0].caption).not.toMatch(/\bapple\.com\b/i);
+  });
+
+  it('sanitizes injected source links when updating a TMDb caption', async () => {
+    backendPosts = [createPost({ id: 'post-update-caption' })];
+
+    const { result } = renderHook(() => useTMDbPosts(), { wrapper });
+
+    await waitFor(() => expect(result.current.posts).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updatePost('post-update-caption', {
+        caption:
+          "'The Testaments' premieres today. (newsweek.com) https://www.newsweek.com/entertainment/testaments-season-1-episode-1-release-date?utm_source=openai",
+      });
+    });
+
+    expect(result.current.posts[0].caption).toBe("'The Testaments' premieres today.");
+    expect(backendPosts[0].caption).toBe("'The Testaments' premieres today.");
+  });
+
   it('schedules and reschedules a post', async () => {
     backendPosts = [createPost({ id: 'post-schedule', status: 'queued' })];
 

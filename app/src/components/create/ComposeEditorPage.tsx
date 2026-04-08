@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { ArrowLeft, ArrowUp, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowUp, CalendarDays, Film, Image as ImageIcon, RotateCcw, Upload, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
 import { MediaPreviewDialog } from '../media/MediaPreviewDialog';
@@ -49,7 +49,12 @@ import {
   buildComposePublishSuccessNotification,
   buildComposeScheduledNotification,
 } from '../../lib/create/composeNotifications';
-import { buildComposeAssetStreamUrl, resolveComposeAssetPreview, uploadComposeAsset } from '../../lib/create/composeStorage';
+import {
+  buildComposeAssetStreamUrl,
+  importComposeRemoteImage,
+  resolveComposeAssetPreview,
+  uploadComposeAsset,
+} from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 import type {
   ComposeItem,
@@ -70,6 +75,7 @@ import {
 } from '../../lib/api/ai';
 import { useBackEntry } from '../../hooks/useBackEntry';
 import { useUnsavedBackGuard } from '../../hooks/useUnsavedBackGuard';
+import { useDesktopFileDrop } from '../../hooks/useDesktopFileDrop';
 import { PageLoader, RedSpinner } from '../PageLoader';
 import { extractVideoMetadata } from '../../utils/videoMetadata';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -150,134 +156,6 @@ const PLATFORM_ICON_SIZES: Record<ComposePlatformKey, string> = {
   youtube_shorts: 'w-6 h-6',
   pinterest: 'w-5.5 h-5.5',
 };
-
-function loadImageElement(url: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.crossOrigin = 'anonymous';
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Failed to load TMDb logo preview.'));
-    image.src = url;
-  });
-}
-
-async function buildTmdbFileFromSelection(
-  imageUrl: string,
-  category: TmdbImageCategory,
-  resultTitle: string,
-): Promise<File> {
-  const response = await fetch(imageUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch selected TMDb image (${response.status})`);
-  }
-
-  const blob = await response.blob();
-  const safeName = resultTitle
-    .replace(/[^a-z0-9-_]+/gi, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .toLowerCase() || 'tmdb-image';
-
-  if (category !== 'logos') {
-    const extension = blob.type.includes('png') ? 'png' : 'jpg';
-    return new File([blob], `${safeName}-${category}.${extension}`, {
-      type: blob.type || 'image/jpeg',
-    });
-  }
-
-  const blobUrl = URL.createObjectURL(blob);
-
-  try {
-    const image = await loadImageElement(blobUrl);
-    const sampleCanvas = document.createElement('canvas');
-    sampleCanvas.width = Math.max(1, image.naturalWidth || image.width);
-    sampleCanvas.height = Math.max(1, image.naturalHeight || image.height);
-    const sampleContext = sampleCanvas.getContext('2d');
-
-    if (!sampleContext) {
-      throw new Error('Canvas is not available for logo processing.');
-    }
-
-    sampleContext.clearRect(0, 0, sampleCanvas.width, sampleCanvas.height);
-    sampleContext.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
-
-    const { data } = sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height);
-    let visiblePixelCount = 0;
-    let redTotal = 0;
-    let greenTotal = 0;
-    let blueTotal = 0;
-    let chromaTotal = 0;
-
-    for (let index = 0; index < data.length; index += 4) {
-      const alpha = data[index + 3];
-      if (alpha < 24) continue;
-
-      const red = data[index];
-      const green = data[index + 1];
-      const blue = data[index + 2];
-
-      visiblePixelCount += 1;
-      redTotal += red;
-      greenTotal += green;
-      blueTotal += blue;
-      chromaTotal += (Math.abs(red - green) + Math.abs(green - blue) + Math.abs(red - blue)) / 3;
-    }
-
-    const averageRed = visiblePixelCount ? redTotal / visiblePixelCount : 255;
-    const averageGreen = visiblePixelCount ? greenTotal / visiblePixelCount : 255;
-    const averageBlue = visiblePixelCount ? blueTotal / visiblePixelCount : 255;
-    const averageBrightness = (averageRed + averageGreen + averageBlue) / 3;
-    const averageChroma = visiblePixelCount ? chromaTotal / visiblePixelCount : 0;
-    const isMostlyMonochrome = averageChroma < 18;
-
-    const backgroundColor = isMostlyMonochrome
-      ? averageBrightness < 110
-        ? '#FFFFFF'
-        : '#101010'
-      : averageBrightness > 170
-        ? '#111111'
-        : '#FFFFFF';
-
-    const outputSize = 1600;
-    const padding = Math.round(outputSize * 0.16);
-    const contentWidth = outputSize - padding * 2;
-    const contentHeight = outputSize - padding * 2;
-    const scale = Math.min(contentWidth / sampleCanvas.width, contentHeight / sampleCanvas.height);
-    const drawWidth = Math.max(1, Math.round(sampleCanvas.width * scale));
-    const drawHeight = Math.max(1, Math.round(sampleCanvas.height * scale));
-    const offsetX = Math.round((outputSize - drawWidth) / 2);
-    const offsetY = Math.round((outputSize - drawHeight) / 2);
-
-    const outputCanvas = document.createElement('canvas');
-    outputCanvas.width = outputSize;
-    outputCanvas.height = outputSize;
-    const outputContext = outputCanvas.getContext('2d');
-
-    if (!outputContext) {
-      throw new Error('Canvas is not available for logo processing.');
-    }
-
-    outputContext.fillStyle = backgroundColor;
-    outputContext.fillRect(0, 0, outputSize, outputSize);
-    outputContext.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
-
-    const processedBlob = await new Promise<Blob>((resolve, reject) => {
-      outputCanvas.toBlob((value) => {
-        if (!value) {
-          reject(new Error('Failed to render the selected logo.'));
-          return;
-        }
-        resolve(value);
-      }, 'image/png');
-    });
-
-    return new File([processedBlob], `${safeName}-logo.png`, {
-      type: 'image/png',
-    });
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
-}
 
 const PINTEREST_BOARDS = ['Movie Picks', 'TV Roundup', 'Campaigns'];
 
@@ -419,6 +297,7 @@ export function ComposeEditorPage({
   const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
   const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
   const [tmdbImagePool, setTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
+  const tmdbSearchRequestRef = useRef(0);
   const [tmdbImageCategory, setTmdbImageCategory] = useState<TmdbImageCategory>('backdrops');
   const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
   const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
@@ -852,15 +731,14 @@ export function ComposeEditorPage({
     }));
   };
 
-  const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files ?? []).filter(
+  const handleMediaFiles = async (files: File[]) => {
+    const acceptedFiles = files.filter(
       (file) => file.type.startsWith('image/') || file.type.startsWith('video/'),
     );
-    if (!files.length) return;
+    if (!acceptedFiles.length) return;
 
-    event.target.value = '';
     const pendingAssets = await Promise.all(
-      files.map(async (file, index) => {
+      acceptedFiles.map(async (file, index) => {
         if (!file.type.startsWith('video/')) {
           return buildComposeMediaAsset(file, formState.mediaAssets.length + index);
         }
@@ -887,7 +765,7 @@ export function ComposeEditorPage({
 
     await Promise.all(
       pendingAssets.map(async (asset, index) => {
-        const file = files[index];
+        const file = acceptedFiles[index];
 
         try {
           const uploaded = await uploadComposeAsset(file);
@@ -928,6 +806,21 @@ export function ComposeEditorPage({
     setIsUploadingMedia(false);
   };
 
+  const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+    event.target.value = '';
+    await handleMediaFiles(files);
+  };
+
+  const mediaDrop = useDesktopFileDrop({
+    accept: 'image/*,video/*',
+    isEnabled: !isUploadingMedia,
+    onFiles: (files) => {
+      void handleMediaFiles(files);
+    },
+  });
+
   const activeTmdbImages = useMemo(() => {
     if (!tmdbImagePool) return [];
     if (tmdbImageCategory === 'profiles') return tmdbImagePool.profiles || [];
@@ -939,6 +832,7 @@ export function ComposeEditorPage({
   const handleTmdbSearch = async () => {
     if (!tmdbSearchQuery.trim()) return;
 
+    const requestId = ++tmdbSearchRequestRef.current;
     haptics.medium();
     setIsSearchingTmdb(true);
     setSelectedTmdbResult(null);
@@ -946,6 +840,9 @@ export function ComposeEditorPage({
 
     try {
       const results = await searchDesignStudioTMDb(tmdbSearchQuery);
+      if (requestId !== tmdbSearchRequestRef.current) {
+        return;
+      }
       setTmdbResults(results);
       if (!results.length) {
         toast('No TMDb matches found', {
@@ -953,21 +850,30 @@ export function ComposeEditorPage({
         });
       }
     } catch (error) {
+      if (requestId !== tmdbSearchRequestRef.current) {
+        return;
+      }
       console.error('TMDb search failed:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to search TMDb');
       setTmdbResults([]);
     } finally {
-      setIsSearchingTmdb(false);
+      if (requestId === tmdbSearchRequestRef.current) {
+        setIsSearchingTmdb(false);
+      }
     }
   };
 
   const handleSelectTmdbResult = async (result: DesignStudioTMDbSearchResult) => {
+    const requestId = ++tmdbSearchRequestRef.current;
     haptics.light();
     setSelectedTmdbResult(result);
     setIsLoadingTmdbImages(true);
 
     try {
       const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      if (requestId !== tmdbSearchRequestRef.current) {
+        return;
+      }
       setTmdbImagePool(pool);
       const nextCategory = result.mediaType === 'person'
         ? 'profiles'
@@ -978,19 +884,37 @@ export function ComposeEditorPage({
             : 'logos';
       setTmdbImageCategory(nextCategory);
     } catch (error) {
+      if (requestId !== tmdbSearchRequestRef.current) {
+        return;
+      }
       console.error('Failed to load TMDb image pool:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to load TMDb images');
       setSelectedTmdbResult(null);
       setTmdbImagePool(null);
     } finally {
-      setIsLoadingTmdbImages(false);
+      if (requestId === tmdbSearchRequestRef.current) {
+        setIsLoadingTmdbImages(false);
+      }
     }
   };
 
   const handleBackToTmdbResults = () => {
+    tmdbSearchRequestRef.current += 1;
     haptics.light();
     setSelectedTmdbResult(null);
     setTmdbImagePool(null);
+    setIsLoadingTmdbImages(false);
+  };
+
+  const handleClearTmdbSearch = () => {
+    tmdbSearchRequestRef.current += 1;
+    haptics.light();
+    setTmdbSearchQuery('');
+    setTmdbResults([]);
+    setSelectedTmdbResult(null);
+    setTmdbImagePool(null);
+    setIsSearchingTmdb(false);
+    setIsLoadingTmdbImages(false);
   };
 
   const handleSelectTmdbImage = async (imageUrl: string) => {
@@ -998,40 +922,30 @@ export function ComposeEditorPage({
 
     try {
       const resultTitle = selectedTmdbResult?.title || 'tmdb-image';
-      const file = await buildTmdbFileFromSelection(imageUrl, tmdbImageCategory, resultTitle);
-      const pendingAsset = await buildComposeMediaAsset(file, formState.mediaAssets.length);
+      const imported = await importComposeRemoteImage({
+        imageUrl,
+        category: tmdbImageCategory,
+        resultTitle,
+      });
+
       setFormState((current) => ({
         ...current,
-        mediaAssets: [...current.mediaAssets, pendingAsset],
+        mediaAssets: [
+          ...current.mediaAssets,
+          {
+            id: `${Date.now()}-${current.mediaAssets.length}-${imported.fileName}`,
+            kind: 'image',
+            fileName: imported.fileName,
+            mimeType: imported.contentType,
+            size: imported.size,
+            order: current.mediaAssets.length,
+            previewUrl: imported.previewUrl || imported.url,
+            storageUrl: imported.url,
+            storageFileId: imported.fileId,
+            uploadStatus: 'uploaded',
+          },
+        ],
       }));
-
-      try {
-        const uploaded = await uploadComposeAsset(file);
-        updateAsset(pendingAsset.id, (currentAsset) => ({
-          ...currentAsset,
-          previewUrl: uploaded.previewUrl || currentAsset.previewUrl,
-          storageUrl: uploaded.url,
-          storageFileId: uploaded.fileId,
-          uploadStatus: 'uploaded',
-          uploadError: undefined,
-        }));
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Upload failed';
-        if (message.toLowerCase().includes('not configured')) {
-          updateAsset(pendingAsset.id, (currentAsset) => ({
-            ...currentAsset,
-            uploadStatus: 'idle',
-            uploadError: undefined,
-          }));
-        } else {
-          updateAsset(pendingAsset.id, (currentAsset) => ({
-            ...currentAsset,
-            uploadStatus: 'failed',
-            uploadError: message,
-          }));
-          toast.error(message);
-        }
-      }
 
       toast.success(tmdbImageCategory === 'logos' ? 'TMDb logo added to media' : 'TMDb image added to media');
     } catch (error) {
@@ -1042,19 +956,15 @@ export function ComposeEditorPage({
     }
   };
 
-  const handleThumbnailSelected = async (
-    event: ChangeEvent<HTMLInputElement>,
+  const handleThumbnailFile = async (
+    file: File,
     key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail',
   ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
     if (!file.type.startsWith('image/')) {
       toast.error('Upload an image file for the thumbnail.');
-      event.target.value = '';
       return;
     }
 
-    event.target.value = '';
     let previewUrl: string | undefined;
     try {
       previewUrl = await readFileAsDataUrl(file);
@@ -1120,6 +1030,43 @@ export function ComposeEditorPage({
       toast.error(message);
     }
   };
+
+  const handleThumbnailSelected = async (
+    event: ChangeEvent<HTMLInputElement>,
+    key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail',
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    event.target.value = '';
+    await handleThumbnailFile(file, key);
+  };
+
+  const sharedThumbnailDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      if (files[0]) {
+        void handleThumbnailFile(files[0], 'sharedThumbnail');
+      }
+    },
+  });
+
+  const youtubeThumbnailDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      if (files[0]) {
+        void handleThumbnailFile(files[0], 'youtubeThumbnail');
+      }
+    },
+  });
+
+  const xThumbnailDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      if (files[0]) {
+        void handleThumbnailFile(files[0], 'xThumbnail');
+      }
+    },
+  });
 
   const removeThumbnail = (key: 'sharedThumbnail' | 'youtubeThumbnail' | 'xThumbnail') => {
     updateThumbnail(key, () => null);
@@ -1652,6 +1599,14 @@ export function ComposeEditorPage({
       scheduledAt: scheduledAtPreview,
     },
   );
+  const scheduledPreviewDate = scheduledAtPreview ? new Date(scheduledAtPreview) : null;
+  const scheduledPreviewableAssets = formState.mediaAssets.filter((asset) => Boolean(getComposeAssetPreviewUrl(asset)));
+  const scheduledPrimaryAsset = scheduledPreviewableAssets[0] ?? formState.mediaAssets[0];
+  const scheduledPrimaryPreviewUrl = getComposeAssetPreviewUrl(scheduledPrimaryAsset);
+  const scheduledCardPreviewUrl = buildComposeAssetStreamUrl(scheduledPrimaryPreviewUrl) || scheduledPrimaryPreviewUrl;
+  const scheduledExtraAssetCount = Math.max(scheduledPreviewableAssets.length - 1, 0);
+  const scheduledCardTitle = buildItemTitle(formState);
+  const scheduledCardMeta = scheduledPreviewDate ? `Scheduled ${scheduledPreviewDate.toLocaleString()}` : '';
 
   const validate = (mode: 'draft' | 'scheduled' | 'published') => {
     if (isGeneratingThreadsXCrop) {
@@ -1846,9 +1801,17 @@ export function ComposeEditorPage({
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Label htmlFor="compose-media" className="cursor-pointer">
+                <Label
+                  htmlFor="compose-media"
+                  className={`cursor-pointer ${mediaDrop.isDragging ? 'rounded-lg ring-1 ring-[#ec1e24]/50' : ''}`}
+                  {...mediaDrop.bind}
+                >
                   <span className="sr-only">Upload media</span>
-                  <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
+                  <div
+                    className={`inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111] ${
+                      mediaDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                    }`}
+                  >
                     {isUploadingMedia ? (
                       <RedSpinner size="sm" label="Uploading media..." />
                     ) : (
@@ -1860,11 +1823,25 @@ export function ComposeEditorPage({
                 <input id="compose-media" type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaSelected} />
               </div>
               <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
-                <div>
-                  <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
-                  <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                    Find a movie, TV show, person, network, or company, then add posters, backdrops, profiles, or logos directly to this post.
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      Find a movie, TV show, person, network, or company, then add posters, backdrops, profiles, or logos directly to this post.
+                    </p>
+                  </div>
+                  {(tmdbSearchQuery.trim() || tmdbResults.length || selectedTmdbResult) ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleClearTmdbSearch}
+                      className="h-8 w-8 shrink-0 rounded-full border border-gray-200 text-[#6B7280] hover:bg-white hover:text-[#ec1e24] dark:border-[#333333] dark:hover:bg-black"
+                      aria-label="Clear TMDb search"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   <Input
@@ -2663,6 +2640,11 @@ export function ComposeEditorPage({
                   const thumbnail = formState[key];
                   const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
                   const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
+                  const thumbnailDrop = key === 'sharedThumbnail'
+                    ? sharedThumbnailDrop
+                    : key === 'youtubeThumbnail'
+                      ? youtubeThumbnailDrop
+                      : xThumbnailDrop;
 
                   return (
                     <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
@@ -2702,9 +2684,17 @@ export function ComposeEditorPage({
                       </div>
 
                       <div className="mt-3 flex items-center gap-3">
-                        <Label htmlFor={`compose-thumbnail-${key}`} className="cursor-pointer">
+                        <Label
+                          htmlFor={`compose-thumbnail-${key}`}
+                          className={`cursor-pointer ${thumbnailDrop.isDragging ? 'rounded-lg ring-1 ring-[#ec1e24]/50' : ''}`}
+                          {...thumbnailDrop.bind}
+                        >
                           <span className="sr-only">Upload {label}</span>
-                          <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]">
+                          <div
+                            className={`inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111] ${
+                              thumbnailDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                            }`}
+                          >
                             {thumbnail?.uploadStatus === 'uploading' ? (
                               <RedSpinner size="sm" label="Uploading thumbnail..." />
                             ) : (
@@ -2794,6 +2784,80 @@ export function ComposeEditorPage({
             </div>
             {publishBlockingMessage ? (
               <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF]">{publishBlockingMessage}</p>
+            ) : null}
+
+            {scheduledPreviewDate ? (
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <div className="flex items-start gap-3">
+                  {scheduledCardPreviewUrl ? (
+                    <div className="relative mt-0.5 h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-[#ec1e24]/10 text-[#ec1e24]">
+                      {scheduledPrimaryAsset?.kind === 'video' ? (
+                        <>
+                          <video
+                            src={scheduledCardPreviewUrl}
+                            className="pointer-events-none h-full w-full object-cover"
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
+                            <Film className="h-4 w-4 text-white" />
+                          </div>
+                        </>
+                      ) : (
+                        <img
+                          src={scheduledCardPreviewUrl}
+                          alt={scheduledPrimaryAsset?.fileName || scheduledCardTitle}
+                          className="pointer-events-none h-full w-full object-cover"
+                        />
+                      )}
+                      {scheduledExtraAssetCount > 0 ? (
+                        <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">
+                          +{scheduledExtraAssetCount}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="relative mt-0.5 flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-[#ec1e24]/10 text-[#ec1e24]">
+                      {scheduledPrimaryAsset?.kind === 'video' ? <Film className="h-5 w-5" /> : scheduledPrimaryAsset ? <ImageIcon className="h-5 w-5" /> : <CalendarDays className="h-5 w-5" />}
+                    </div>
+                  )}
+                  <div className="flex min-w-0 flex-1 items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h4 className="mb-1 truncate text-gray-900 dark:text-white">{scheduledCardTitle}</h4>
+                      <p className="mb-2 text-sm text-[#6B7280] dark:text-[#9CA3AF]">{scheduledCardMeta}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {formState.platforms.length ? (
+                          formState.platforms.map((platform) => (
+                            <span
+                              key={platform}
+                              className="rounded bg-gray-200 px-2 py-1 text-xs uppercase text-gray-700 dark:bg-[#1F1F1F] dark:text-[#9CA3AF]"
+                            >
+                              {getComposePlatformLabel(platform)}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="rounded bg-gray-200 px-2 py-1 text-xs uppercase text-gray-700 dark:bg-[#1F1F1F] dark:text-[#9CA3AF]">
+                            No platform
+                          </span>
+                        )}
+                        {isThreadsXCropEnabled ? (
+                          <span className={`rounded px-2 py-1 text-xs ${
+                            isThreadsXCropReady
+                              ? 'bg-[#ec1e24]/10 text-[#ec1e24]'
+                              : 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#3A2A00] dark:text-[#FBBF24]'
+                          }`}>
+                            {isThreadsXCropReady ? 'Threads/X 3:4 Ready' : 'Threads/X 3:4 Pending'}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <span className="shrink-0 inline-flex items-center rounded-lg bg-gray-200 px-3 py-1.5 text-sm text-gray-700 dark:bg-[#1f1f1f] dark:text-[#9CA3AF]">
+                      Scheduled
+                    </span>
+                  </div>
+                </div>
+              </div>
             ) : null}
 
             <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">

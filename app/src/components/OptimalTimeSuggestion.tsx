@@ -21,6 +21,7 @@ interface TimeRecommendation {
     dayOfWeek: number;
     confidence: number;
     formattedTime: string;
+    recommendedAt: Date;
 }
 
 const PLATFORM_MAP: Record<string, Platform> = {
@@ -52,18 +53,19 @@ export function OptimalTimeSuggestion({
             if (!platform) continue;
 
             const optimal = postTimeOptimizer.getOptimalPostTime(platform);
-            if (optimal) {
-                // Format the hour nicely
-                const hour = optimal.hour;
+            if (optimal instanceof Date && !Number.isNaN(optimal.getTime())) {
+                const hour = optimal.getHours();
                 const period = hour >= 12 ? 'PM' : 'AM';
                 const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+                const { confidence } = postTimeOptimizer.getHeatmap(platform);
 
                 recs.push({
                     platform: platformId,
-                    hour: optimal.hour,
-                    dayOfWeek: optimal.dayOfWeek,
-                    confidence: optimal.confidence,
+                    hour,
+                    dayOfWeek: optimal.getDay(),
+                    confidence,
                     formattedTime: `${displayHour}:00 ${period}`,
+                    recommendedAt: optimal,
                 });
             }
         }
@@ -86,26 +88,7 @@ export function OptimalTimeSuggestion({
     // Calculate next occurrence of the best time
     const nextOptimalDate = useMemo(() => {
         if (!bestTime) return null;
-
-        const now = new Date();
-        const targetHour = bestTime.hour;
-        const targetDay = bestTime.dayOfWeek;
-
-        // Create a date for the next occurrence
-        const result = new Date(now);
-        result.setHours(targetHour, 0, 0, 0);
-
-        // Find the next occurrence of the target day
-        const currentDay = now.getDay();
-        let daysUntil = targetDay - currentDay;
-
-        if (daysUntil < 0 || (daysUntil === 0 && now.getHours() >= targetHour)) {
-            daysUntil += 7;
-        }
-
-        result.setDate(result.getDate() + daysUntil);
-
-        return result;
+        return new Date(bestTime.recommendedAt);
     }, [bestTime]);
 
     const handleApplyTime = () => {
@@ -139,15 +122,15 @@ export function OptimalTimeSuggestion({
                         </span>
                         {bestTime && (
                             <span className="ml-2 text-xs text-[#ec1e24]">
-                                {bestTime.formattedTime} ({DAY_NAMES[bestTime.dayOfWeek].slice(0, 3)})
+                                {bestTime.formattedTime} ({DAY_NAMES[bestTime.dayOfWeek]?.slice(0, 3) ?? 'Day'})
                             </span>
                         )}
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {avgConfidence >= 0.5 && (
+                    {avgConfidence >= 50 && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
-                            {Math.round(avgConfidence * 100)}% confident
+                            {Math.round(avgConfidence)}% confident
                         </span>
                     )}
                     {isExpanded ? (
@@ -183,17 +166,17 @@ export function OptimalTimeSuggestion({
                                             {rec.formattedTime}
                                         </span>
                                         <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">
-                                            {DAY_NAMES[rec.dayOfWeek].slice(0, 3)}
+                                            {DAY_NAMES[rec.dayOfWeek]?.slice(0, 3) ?? 'Day'}
                                         </span>
                                         <span
-                                            className={`text-xs px-1.5 py-0.5 rounded ${rec.confidence >= 0.7
+                                            className={`text-xs px-1.5 py-0.5 rounded ${rec.confidence >= 70
                                                     ? 'bg-[#ec1e24]/10 text-[#ec1e24]'
-                                                    : rec.confidence >= 0.4
+                                                    : rec.confidence >= 40
                                                         ? 'bg-gray-200 dark:bg-[#333333] text-gray-600 dark:text-gray-400'
                                                         : 'bg-gray-100 dark:bg-[#222222] text-gray-500 dark:text-[#6B7280]'
                                                 }`}
                                         >
-                                            {Math.round(rec.confidence * 100)}%
+                                            {Math.round(rec.confidence)}%
                                         </span>
                                     </div>
                                 </div>

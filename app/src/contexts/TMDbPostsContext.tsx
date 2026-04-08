@@ -13,6 +13,7 @@ import {
 } from '../utils/tmdbOfflineStore';
 import { deriveTMDbImageStyle, normalizeTMDbImageTypes, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
 import { type TMDbPlatformResultRecord } from '../lib/tmdb/activityStatus';
+import { __tmdbCaptionSanitizer, type FeedType } from '../utils/tmdbCaptionGenerator';
 
 interface FetchPostsOptions {
   silent?: boolean;
@@ -72,6 +73,47 @@ interface TMDbPostsContextType {
 
 const TMDbPostsContext = createContext<TMDbPostsContextType | undefined>(undefined);
 
+function getFeedTypeFromTMDbPost(post: Partial<TMDbPost>): FeedType {
+  if (post.moduleType) {
+    return post.moduleType;
+  }
+
+  switch (post.source) {
+    case 'tmdb_weekly':
+      return 'weekly';
+    case 'tmdb_monthly':
+      return 'monthly';
+    case 'tmdb_anniversary':
+      return 'anniversary';
+    case 'tmdb_today':
+    default:
+      return 'today';
+  }
+}
+
+function sanitizeTMDbPostCaption(post: Partial<TMDbPost>): string {
+  const caption = typeof post.caption === 'string' ? post.caption : '';
+
+  return __tmdbCaptionSanitizer.sanitizeTMDbCaption(
+    caption,
+    {
+      title: post.title || '',
+      mediaType: post.mediaType === 'tv' ? 'tv' : 'movie',
+      releaseDate: post.releaseDate || '',
+      cast: Array.isArray(post.cast) ? post.cast : [],
+      year: typeof post.year === 'number' ? post.year : undefined,
+    },
+    {
+      model: '',
+      prompt: '',
+      maxLength: 200,
+      includeCast: true,
+      includeDate: true,
+      feedType: getFeedTypeFromTMDbPost(post),
+    },
+  );
+}
+
 function normalizeTmdbPayload(payload: Record<string, any>) {
   const normalized: Record<string, any> = { ...payload };
 
@@ -102,7 +144,7 @@ function normalizeTMDbPostRecord(post: any): TMDbPost {
     title: post.title,
     year: post.year,
     releaseDate: post.releaseDate,
-    caption: post.caption,
+    caption: sanitizeTMDbPostCaption(post),
     imageUrl: post.imageUrl,
     imageType: (post.imageType === 'custom' ? 'custom' : imageTypes[0]) || 'poster',
     imageUrls,
@@ -290,60 +332,73 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   }, [fetchPosts, flushPendingMutations]);
 
   const schedulePost = async (post: TMDbPost) => {
+    const sanitizedPost = {
+      ...post,
+      caption: sanitizeTMDbPostCaption(post),
+    };
+
     // Optimistic update
     setPosts(prev => {
-      const existingIndex = prev.findIndex(p => p.id === post.id);
+      const existingIndex = prev.findIndex(p => p.id === sanitizedPost.id);
       const updated = [...prev];
       if (existingIndex !== -1) {
-        updated[existingIndex] = { ...post, status: 'scheduled' };
+        updated[existingIndex] = { ...sanitizedPost, status: 'scheduled' };
       } else {
-        updated.push({ ...post, status: 'scheduled' });
+        updated.push({ ...sanitizedPost, status: 'scheduled' });
       }
       return updated;
     });
 
     try {
       const response = await apiClient.put(
-        `/api/tmdb/posts/${post.id}`,
-        normalizeTmdbPayload({ ...post, status: 'scheduled' })
+        `/api/tmdb/posts/${sanitizedPost.id}`,
+        normalizeTmdbPayload({ ...sanitizedPost, status: 'scheduled' })
       );
       if (!response.success) throw new Error(response.error?.message || 'Failed to schedule post');
     } catch (err) {
       console.error('Failed to schedule post:', err);
       await enqueueTMDbMutation('update-post', {
-        postId: post.id,
-        updates: normalizeTmdbPayload({ ...post, status: 'scheduled' }),
+        postId: sanitizedPost.id,
+        updates: normalizeTmdbPayload({ ...sanitizedPost, status: 'scheduled' }),
       });
     }
   };
 
   const addPost = async (post: TMDbPost) => {
+    const sanitizedPost = {
+      ...post,
+      caption: sanitizeTMDbPostCaption(post),
+    };
     await unmarkTMDbPostDeleted(post.id);
     setPosts(prev => {
-      const existingIndex = prev.findIndex(p => p.id === post.id);
+      const existingIndex = prev.findIndex(p => p.id === sanitizedPost.id);
       if (existingIndex !== -1) {
         const updated = [...prev];
-        updated[existingIndex] = post;
+        updated[existingIndex] = sanitizedPost;
         return updated;
       }
-      return [...prev, post];
+      return [...prev, sanitizedPost];
     });
   };
 
   const restorePost = async (post: TMDbPost, index: number) => {
+    const sanitizedPost = {
+      ...post,
+      caption: sanitizeTMDbPostCaption(post),
+    };
     await unmarkTMDbPostDeleted(post.id);
     setPosts(prev => {
       const updated = [...prev];
-      updated.splice(index, 0, post);
+      updated.splice(index, 0, sanitizedPost);
       return updated;
     });
 
     try {
-      const response = await apiClient.post('/api/tmdb/posts', normalizeTmdbPayload(post as unknown as Record<string, any>));
+      const response = await apiClient.post('/api/tmdb/posts', normalizeTmdbPayload(sanitizedPost as unknown as Record<string, any>));
       if (!response.success) throw new Error(response.error?.message || 'Failed to restore post');
     } catch (err) {
       console.error('Failed to restore post:', err);
-      await enqueueTMDbMutation('restore', post as unknown as Record<string, unknown>);
+      await enqueueTMDbMutation('restore', sanitizedPost as unknown as Record<string, unknown>);
     }
   };
 
@@ -397,12 +452,24 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   };
 
   const updatePost = async (postId: string, updates: Partial<TMDbPost>) => {
+    const normalizeUpdates = (post: TMDbPost) => {
+      const merged = { ...post, ...updates };
+      if (!Object.prototype.hasOwnProperty.call(updates, 'caption')) {
+        return updates;
+      }
+
+      return {
+        ...updates,
+        caption: sanitizeTMDbPostCaption(merged),
+      };
+    };
+
     setPosts(prev =>
       prev.map(post =>
         post.id === postId
           ? {
             ...post,
-            ...updates,
+            ...normalizeUpdates(post),
             imageStyle: deriveTMDbImageStyle(
               updates.imageType ?? post.imageType,
               updates.imageTypes ?? post.imageTypes,
@@ -413,11 +480,15 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
     );
 
     try {
-      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, normalizeTmdbPayload(updates));
+      const currentPost = posts.find((post) => post.id === postId);
+      const normalizedUpdates = currentPost ? normalizeUpdates(currentPost) : updates;
+      const response = await apiClient.put(`/api/tmdb/posts/${postId}`, normalizeTmdbPayload(normalizedUpdates));
       if (!response.success) throw new Error(response.error?.message || 'Failed to update post');
     } catch (err) {
       console.error('Failed to update post:', err);
-      await enqueueTMDbMutation('update-post', { postId, updates: normalizeTmdbPayload(updates) });
+      const currentPost = posts.find((post) => post.id === postId);
+      const normalizedUpdates = currentPost ? normalizeUpdates(currentPost) : updates;
+      await enqueueTMDbMutation('update-post', { postId, updates: normalizeTmdbPayload(normalizedUpdates) });
     }
   };
 

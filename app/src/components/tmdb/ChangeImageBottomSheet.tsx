@@ -16,6 +16,7 @@ import { RedSpinner } from '../PageLoader';
 import { ImageStyleSelector } from './ImageStyleSelector';
 import { TMDbImagePreviewDialog } from './TMDbImagePreviewDialog';
 import { useTmdbImageCycler } from '../../hooks/useTmdbImageCycler';
+import { useDesktopFileDrop } from '../../hooks/useDesktopFileDrop';
 import {
   getTMDbImageStyleLabel,
   type TMDbFeedImageStyle,
@@ -207,8 +208,7 @@ export function ChangeImageBottomSheet({
     fileInputRef.current?.click();
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleSelectedImageFile = (file?: File | null) => {
     if (!file) {
       return;
     }
@@ -236,8 +236,20 @@ export function ChangeImageBottomSheet({
       toast.error('Failed to read image file');
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    handleSelectedImageFile(file);
     event.target.value = '';
   };
+
+  const uploadDrop = useDesktopFileDrop({
+    accept: 'image/*',
+    onFiles: (files) => {
+      handleSelectedImageFile(files[0]);
+    },
+  });
 
   const handleCycle = (assetType: TMDbImageAssetType) => {
     haptics.selection();
@@ -554,14 +566,21 @@ export function ChangeImageBottomSheet({
               onSelect={handleStyleSelect}
             />
 
-            <button
-              type="button"
-              onClick={handleUploadTrigger}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+            <div
+              className={`rounded-2xl ${uploadDrop.isDragging ? 'ring-1 ring-[#ec1e24]/50' : ''}`}
+              {...uploadDrop.bind}
             >
-              <Upload className="h-4 w-4" />
-              Upload your own image
-            </button>
+              <button
+                type="button"
+                onClick={handleUploadTrigger}
+                className={`flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111] ${
+                  uploadDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                }`}
+              >
+                <Upload className="h-4 w-4" />
+                Upload your own image
+              </button>
+            </div>
 
             <input
               ref={fileInputRef}

@@ -429,6 +429,16 @@ function hexToRgba(value: string, alpha: number): string {
   return `rgba(${red}, ${green}, ${blue}, ${clamp(alpha, 0, 1)})`;
 }
 
+function hexToRgb(value: string): { r: number; g: number; b: number } {
+  const normalized = colorToHex(value, '#ffffff').replace('#', '');
+  const safe = normalized.length === 6 ? normalized : 'ffffff';
+  return {
+    r: Number.parseInt(safe.slice(0, 2), 16),
+    g: Number.parseInt(safe.slice(2, 4), 16),
+    b: Number.parseInt(safe.slice(4, 6), 16),
+  };
+}
+
 function escapeXml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -1590,7 +1600,7 @@ function fitTextBlock(input: {
   return { fontSize, lines, lineHeight };
 }
 
-async function buildTextLayer(input: {
+export async function buildTextLayer(input: {
   width: number;
   height: number;
   variant: DesignStudioVariantRecord;
@@ -1646,6 +1656,7 @@ async function buildTextLayer(input: {
 
   const fontFamily = input.template.fontFamily || 'PFDinTextCompPro';
   const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
+  const fontRgb = hexToRgb(fontColor);
   const fontFile = fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH) ? DESIGN_STUDIO_HEADLINE_FONT_PATH : undefined;
 
   const baseLayer = sharp({
@@ -1674,6 +1685,22 @@ async function buildTextLayer(input: {
     const metadata = await sharp(lineBuffer).metadata();
     const lineWidth = Math.max(1, metadata.width || scaledBoxWidth);
     const lineHeight = Math.max(1, metadata.height || Math.round(fit.lineHeight));
+    const lineAlpha = await sharp(lineBuffer)
+      .ensureAlpha()
+      .extractChannel('alpha')
+      .png()
+      .toBuffer();
+    const coloredLineBuffer = await sharp({
+      create: {
+        width: lineWidth,
+        height: lineHeight,
+        channels: 3,
+        background: fontRgb,
+      },
+    })
+      .joinChannel(lineAlpha)
+      .png()
+      .toBuffer();
     const left = alignment === 'center'
       ? Math.round(x - (lineWidth / 2))
       : alignment === 'right'
@@ -1698,7 +1725,7 @@ async function buildTextLayer(input: {
     }
 
     composites.push({
-      input: lineBuffer,
+      input: coloredLineBuffer,
       left: safeLeft,
       top: safeTop,
     });
@@ -2001,7 +2028,7 @@ async function getRenderExportSettings(preferredFormat?: DesignStudioExportForma
   return { format, jpegQuality };
 }
 
-async function renderDesignStudioImage(
+export async function renderDesignStudioImage(
   template: DesignStudioTemplateRecord,
   payload: DesignStudioRenderPayload,
 ): Promise<ResolvedRenderOutput> {
