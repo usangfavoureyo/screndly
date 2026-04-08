@@ -16,6 +16,7 @@ import { useSettings } from '../contexts/SettingsContext';
 import { useRSSFeeds, RSSActivityItem, RSSActivitySummary, PlatformsEnabled } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
 import { PageLoader } from './PageLoader';
+import { getPublishedTodayCount } from '../utils/rssActivityStats';
 import reorderIcon from '../public/icons/icons/hugeroundedicons/arrow-all-direction-stroke-rounded.svg';
 
 const DASHBOARD_RSS_FEED_TARGET_STORAGE_KEY = 'screndly_dashboard_rss_feed_target';
@@ -139,10 +140,10 @@ export function RSSPage({ onNavigate }: RSSPageProps) {
     return {
       totalFeeds: feeds.length,
       activeFeeds: feeds.filter((feed) => feed.status === 'active').length,
-      publishedToday: activitySummary?.published ?? 0,
+      publishedToday: getPublishedTodayCount(activityItems),
       failedItems: activitySummary?.failed ?? 0,
     };
-  }, [activitySummary, feeds]);
+  }, [activityItems, activitySummary, feeds]);
 
   const handleAddFeed = () => {
     haptics.medium();

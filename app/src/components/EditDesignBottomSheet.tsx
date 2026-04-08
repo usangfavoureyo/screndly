@@ -141,10 +141,13 @@ export function EditDesignBottomSheet({
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [expandedPreviewZoom, setExpandedPreviewZoom] = useState(1);
   const [expandedPreviewOffset, setExpandedPreviewOffset] = useState({ x: 0, y: 0 });
+  const expandedPreviewViewportRef = useRef<HTMLDivElement | null>(null);
   const expandedPreviewOffsetRef = useRef({ x: 0, y: 0 });
+  const expandedPreviewZoomRef = useRef(1);
   const expandedPreviewPinchDistanceRef = useRef<number | null>(null);
   const expandedPreviewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const expandedPreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const expandedPreviewTapStartRef = useRef<{ x: number; y: number } | null>(null);
   const appliedInitialDataRef = useRef<string>('');
   const historyRef = useRef<DesignData[]>([]);
   const redoHistoryRef = useRef<DesignData[]>([]);
@@ -248,6 +251,10 @@ export function EditDesignBottomSheet({
   useEffect(() => {
     expandedPreviewOffsetRef.current = expandedPreviewOffset;
   }, [expandedPreviewOffset]);
+
+  useEffect(() => {
+    expandedPreviewZoomRef.current = expandedPreviewZoom;
+  }, [expandedPreviewZoom]);
 
   const resolvedPreviewBackgroundSrc = useMemo(() => {
     const source = previewBackgroundImage || backgroundImage || '';
@@ -640,9 +647,38 @@ export function EditDesignBottomSheet({
   const resetExpandedPreviewTransform = () => {
     expandedPreviewPinchDistanceRef.current = null;
     expandedPreviewPanStartRef.current = null;
+    expandedPreviewTapStartRef.current = null;
+    expandedPreviewZoomRef.current = 1;
     setExpandedPreviewZoom(1);
     setExpandedPreviewOffset({ x: 0, y: 0 });
   };
+
+  const clampExpandedPreviewOffset = useCallback((offset: { x: number; y: number }, zoom: number) => {
+    const viewport = expandedPreviewViewportRef.current;
+    if (!viewport || zoom <= 1) {
+      return { x: 0, y: 0 };
+    }
+
+    const maxX = Math.max(0, (viewport.clientWidth * (zoom - 1)) / 2);
+    const maxY = Math.max(0, (viewport.clientHeight * (zoom - 1)) / 2);
+
+    return {
+      x: Math.min(maxX, Math.max(-maxX, offset.x)),
+      y: Math.min(maxY, Math.max(-maxY, offset.y)),
+    };
+  }, []);
+
+  const applyExpandedPreviewZoom = useCallback((nextZoom: number, nextOffset = expandedPreviewOffsetRef.current) => {
+    const clampedZoom = Math.max(1, Math.min(4, nextZoom));
+    expandedPreviewZoomRef.current = clampedZoom;
+    setExpandedPreviewZoom(clampedZoom);
+    setExpandedPreviewOffset(clampExpandedPreviewOffset(nextOffset, clampedZoom));
+  }, [clampExpandedPreviewOffset]);
+
+  const toggleExpandedPreviewZoom = useCallback(() => {
+    const nextZoom = expandedPreviewZoomRef.current > 1 ? 1 : 2;
+    applyExpandedPreviewZoom(nextZoom, { x: 0, y: 0 });
+  }, [applyExpandedPreviewZoom]);
 
   const openExpandedPreview = useCallback(() => {
     haptics.light();
@@ -651,14 +687,22 @@ export function EditDesignBottomSheet({
   }, []);
 
   const handleExpandedPreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length === 1 && expandedPreviewZoom > 1) {
+    if (event.touches.length === 1) {
       const touch = event.touches[0];
-      expandedPreviewPanStartRef.current = {
+      expandedPreviewTapStartRef.current = {
         x: touch.clientX,
         y: touch.clientY,
-        offsetX: expandedPreviewOffsetRef.current.x,
-        offsetY: expandedPreviewOffsetRef.current.y,
       };
+      if (expandedPreviewZoomRef.current > 1) {
+        expandedPreviewPanStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          offsetX: expandedPreviewOffsetRef.current.x,
+          offsetY: expandedPreviewOffsetRef.current.y,
+        };
+      } else {
+        expandedPreviewPanStartRef.current = null;
+      }
       expandedPreviewPinchDistanceRef.current = null;
       return;
     }
@@ -666,11 +710,13 @@ export function EditDesignBottomSheet({
     if (event.touches.length !== 2) {
       expandedPreviewPinchDistanceRef.current = null;
       expandedPreviewPanStartRef.current = null;
+      expandedPreviewTapStartRef.current = null;
       return;
     }
 
     const [firstTouch, secondTouch] = event.touches;
     expandedPreviewPanStartRef.current = null;
+    expandedPreviewTapStartRef.current = null;
     expandedPreviewPinchDistanceRef.current = Math.hypot(
       secondTouch.clientX - firstTouch.clientX,
       secondTouch.clientY - firstTouch.clientY,
@@ -678,13 +724,22 @@ export function EditDesignBottomSheet({
   };
 
   const handleExpandedPreviewTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length === 1 && expandedPreviewPanStartRef.current && expandedPreviewZoom > 1) {
+    if (event.touches.length === 1 && expandedPreviewTapStartRef.current) {
+      const touch = event.touches[0];
+      const movedX = Math.abs(touch.clientX - expandedPreviewTapStartRef.current.x);
+      const movedY = Math.abs(touch.clientY - expandedPreviewTapStartRef.current.y);
+      if (movedX > 12 || movedY > 12) {
+        expandedPreviewTapStartRef.current = null;
+      }
+    }
+
+    if (event.touches.length === 1 && expandedPreviewPanStartRef.current && expandedPreviewZoomRef.current > 1) {
       event.preventDefault();
       const touch = event.touches[0];
-      setExpandedPreviewOffset({
+      setExpandedPreviewOffset(clampExpandedPreviewOffset({
         x: expandedPreviewPanStartRef.current.offsetX + (touch.clientX - expandedPreviewPanStartRef.current.x),
         y: expandedPreviewPanStartRef.current.offsetY + (touch.clientY - expandedPreviewPanStartRef.current.y),
-      });
+      }, expandedPreviewZoomRef.current));
       return;
     }
 
@@ -700,34 +755,30 @@ export function EditDesignBottomSheet({
     );
     const scaleRatio = nextDistance / expandedPreviewPinchDistanceRef.current;
     expandedPreviewPinchDistanceRef.current = nextDistance;
-    setExpandedPreviewZoom((current) => Math.max(1, Math.min(4, current * scaleRatio)));
+    applyExpandedPreviewZoom(expandedPreviewZoomRef.current * scaleRatio);
   };
 
-  const handleExpandedPreviewTouchEnd = () => {
-    const activeTap = expandedPreviewPanStartRef.current;
-    if (activeTap) {
+  const handleExpandedPreviewTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const activeTap = expandedPreviewTapStartRef.current;
+    const changedTouch = event.changedTouches[0];
+    if (activeTap && changedTouch) {
       const now = Date.now();
       const lastTap = expandedPreviewLastTapRef.current;
-      const tapX = activeTap.x;
-      const tapY = activeTap.y;
+      const tapX = changedTouch.clientX;
+      const tapY = changedTouch.clientY;
       if (
         lastTap &&
         now - lastTap.time <= 300 &&
         Math.abs(lastTap.x - tapX) <= 24 &&
         Math.abs(lastTap.y - tapY) <= 24
       ) {
-        setExpandedPreviewZoom((current) => {
-          const nextZoom = current > 1 ? 1 : 2;
-          if (nextZoom === 1) {
-            setExpandedPreviewOffset({ x: 0, y: 0 });
-          }
-          return nextZoom;
-        });
+        toggleExpandedPreviewZoom();
         expandedPreviewLastTapRef.current = null;
       } else {
         expandedPreviewLastTapRef.current = { time: now, x: tapX, y: tapY };
       }
     }
+    expandedPreviewTapStartRef.current = null;
     expandedPreviewPinchDistanceRef.current = null;
     expandedPreviewPanStartRef.current = null;
   };
@@ -747,15 +798,15 @@ export function EditDesignBottomSheet({
   };
 
   const handleExpandedPreviewMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!expandedPreviewPanStartRef.current || expandedPreviewZoom <= 1) {
+    if (!expandedPreviewPanStartRef.current || expandedPreviewZoomRef.current <= 1) {
       return;
     }
 
     event.preventDefault();
-    setExpandedPreviewOffset({
+    setExpandedPreviewOffset(clampExpandedPreviewOffset({
       x: expandedPreviewPanStartRef.current.offsetX + (event.clientX - expandedPreviewPanStartRef.current.x),
       y: expandedPreviewPanStartRef.current.offsetY + (event.clientY - expandedPreviewPanStartRef.current.y),
-    });
+    }, expandedPreviewZoomRef.current));
   };
 
   const handleExpandedPreviewMouseUp = () => {
@@ -1933,6 +1984,7 @@ export function EditDesignBottomSheet({
               <X className="w-6 h-6" />
             </button>
             <div
+              ref={expandedPreviewViewportRef}
               className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-hidden touch-pan-y"
               onTouchStart={handleExpandedPreviewTouchStart}
               onTouchMove={handleExpandedPreviewTouchMove}
@@ -1941,6 +1993,10 @@ export function EditDesignBottomSheet({
               onMouseMove={handleExpandedPreviewMouseMove}
               onMouseUp={handleExpandedPreviewMouseUp}
               onMouseLeave={handleExpandedPreviewMouseUp}
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                toggleExpandedPreviewZoom();
+              }}
             >
               <div
                 className="relative w-[min(100%,calc(85vh*0.8))] aspect-[4/5] max-h-[80vh] overflow-hidden rounded-lg"

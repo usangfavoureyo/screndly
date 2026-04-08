@@ -521,7 +521,18 @@ function getLocalSettings(): Partial<Settings> {
     const saved =
       localStorage.getItem(LOCAL_SETTINGS_KEY) ??
       localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
-    return saved ? JSON.parse(saved) : {};
+    const base = saved ? JSON.parse(saved) : {};
+
+    for (const platform of ['youtube', 'x'] as const) {
+      const dedicatedKey = `screndly_thumbnailConfig_${platform}`;
+      const settingsKey = `thumbnailConfig_${platform}` as const;
+      const dedicatedValue = localStorage.getItem(dedicatedKey);
+      if (typeof dedicatedValue === 'string' && dedicatedValue.trim().length > 0) {
+        (base as Record<string, unknown>)[settingsKey] = dedicatedValue;
+      }
+    }
+
+    return base;
   } catch {
     return {};
   }
@@ -554,6 +565,13 @@ export function mergeSettings(
     const backendValue = backendSettings[key as keyof Settings];
     if (hasMeaningfulValue(localValue) && !hasMeaningfulValue(backendValue)) {
       merged[key as keyof Settings] = localValue as Settings[keyof Settings];
+    }
+  }
+
+  for (const key of ['thumbnailConfig_youtube', 'thumbnailConfig_x'] as const) {
+    const localValue = localSettings[key];
+    if (hasMeaningfulValue(localValue)) {
+      merged[key] = localValue;
     }
   }
 

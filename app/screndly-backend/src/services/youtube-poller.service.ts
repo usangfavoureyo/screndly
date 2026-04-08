@@ -222,6 +222,11 @@ interface SchedulerTickSummary {
     scheduleReason?: string;
 }
 
+interface PublishIntervalReservation {
+    token: string;
+    reservedAt: string;
+}
+
 const PLATFORM_SETTING_KEYS: Record<string, string> = {
     X: 'x',
     Facebook: 'facebook',
@@ -308,6 +313,8 @@ const YOUTUBE_INFO_OPTIONS = {
 };
 const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
 const TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES = 180;
+const YOUTUBE_PUBLISH_INTERVAL_STATE_KEY = 'youtubePublishIntervalState';
+const PUBLISH_INTERVAL_RESERVATION_EXTRA_MINUTES = 5;
 const RECENT_MOVIE_RELEASE_WINDOW_DAYS = 540;
 const RECENT_SERIES_DEBUT_WINDOW_DAYS = 730;
 const execFileAsync = promisify(execFile);
@@ -2207,8 +2214,8 @@ export class YouTubePollerService {
             };
         }
 
-        const recentPublishBlock = await this.getRecentPublishBlock(settings.postInterval);
-        if (recentPublishBlock) {
+        const publishIntervalReservation = await this.reservePublishIntervalSlot(settings.postInterval, videoId);
+        if (!publishIntervalReservation.granted) {
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'queued', {
                 decisionPath: decisionResult.decisionPath,
                 promoFingerprint: dedupResult.dedupFingerprint,
@@ -2218,6 +2225,7 @@ export class YouTubePollerService {
                     dedup: dedupResult,
                     queueReason: 'post_interval_active',
                     queueDelayMinutes: settings.postInterval,
+                    queueBlockedUntil: publishIntervalReservation.blockedUntil,
                     queueBlockedAt: new Date().toISOString(),
                 },
             });
@@ -2425,6 +2433,10 @@ export class YouTubePollerService {
             );
 
             if (publishResult.publishedPlatforms.length > 0) {
+                await this.commitPublishIntervalSlot(
+                    publishIntervalReservation.reservation,
+                    publishResult.publishedPlatforms
+                );
                 const publishedPlatformLabels = this.formatPlatformNotificationLabels(publishResult.publishedPlatforms);
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'accepted', {
                     decisionPath: decisionResult.decisionPath,
@@ -2467,6 +2479,7 @@ export class YouTubePollerService {
             }
 
             if (publishResult.failedPlatforms.length > 0) {
+                await this.releasePublishIntervalSlot(publishIntervalReservation.reservation);
                 const failedPlatformLabels = this.formatPlatformNotificationLabels(publishResult.failedPlatforms);
                 await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed', {
                     decisionPath: decisionResult.decisionPath,
@@ -2493,6 +2506,7 @@ export class YouTubePollerService {
                 };
             }
 
+            await this.releasePublishIntervalSlot(publishIntervalReservation.reservation);
             await this.recordFeedItem(videoId, activeChannel.channelId, videoTitle, pubDate, 'failed', {
                 decisionPath: decisionResult.decisionPath,
                 promoFingerprint: dedupResult.dedupFingerprint,
@@ -2516,6 +2530,9 @@ export class YouTubePollerService {
                     message: `No platforms accepted the publish request for ${videoTitle}; it will retry on the next polling cycle`
                 }
             };
+        } catch (error) {
+            await this.releasePublishIntervalSlot(publishIntervalReservation.reservation);
+            throw error;
         } finally {
             this.cleanupGeneratedFiles(downloadPath, [youtubeThumbnail, xThumbnail, socialPoster]);
         }
@@ -2922,27 +2939,201 @@ Respond ONLY as strict JSON:
         };
     }
 
-    private async getRecentPublishBlock(postIntervalMinutes: number): Promise<string | null> {
-        if (!postIntervalMinutes || postIntervalMinutes <= 0) {
+    private parsePublishIntervalState(value: unknown): {
+        reservedByVideoId?: string;
+        reservationToken?: string;
+        reservedAt?: string;
+        reservedUntil?: string;
+        lastPublishedAt?: string;
+        lastPublishedVideoId?: string;
+        lastPublishedPlatforms?: string[];
+    } {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            return {};
+        }
+
+        const record = value as Record<string, unknown>;
+        return {
+            reservedByVideoId: typeof record.reservedByVideoId === 'string' ? record.reservedByVideoId : undefined,
+            reservationToken: typeof record.reservationToken === 'string' ? record.reservationToken : undefined,
+            reservedAt: typeof record.reservedAt === 'string' ? record.reservedAt : undefined,
+            reservedUntil: typeof record.reservedUntil === 'string' ? record.reservedUntil : undefined,
+            lastPublishedAt: typeof record.lastPublishedAt === 'string' ? record.lastPublishedAt : undefined,
+            lastPublishedVideoId: typeof record.lastPublishedVideoId === 'string' ? record.lastPublishedVideoId : undefined,
+            lastPublishedPlatforms: Array.isArray(record.lastPublishedPlatforms)
+                ? record.lastPublishedPlatforms.filter((item): item is string => typeof item === 'string')
+                : undefined,
+        };
+    }
+
+    private parseOptionalDate(value?: string): Date | null {
+        if (!value) {
             return null;
         }
 
-        const recentPublish = await prisma.notification.findFirst({
-            where: {
-                source: 'youtube',
-                title: 'New Trailer Published',
-                createdAt: {
-                    gte: new Date(Date.now() - postIntervalMinutes * 60 * 1000)
-                }
-            },
-            orderBy: { createdAt: 'desc' }
+        const parsed = new Date(value);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    private getPublishIntervalReservationExpiry(now: Date, postIntervalMinutes: number): Date {
+        const effectiveMinutes = Math.max(1, postIntervalMinutes) + PUBLISH_INTERVAL_RESERVATION_EXTRA_MINUTES;
+        return new Date(now.getTime() + effectiveMinutes * 60 * 1000);
+    }
+
+    private async reservePublishIntervalSlot(
+        postIntervalMinutes: number,
+        videoId: string
+    ): Promise<
+        | { granted: true; reservation: PublishIntervalReservation }
+        | { granted: false; blockedUntil?: string }
+    > {
+        if (!postIntervalMinutes || postIntervalMinutes <= 0) {
+            return {
+                granted: true,
+                reservation: {
+                    token: `disabled-${videoId}-${Date.now()}`,
+                    reservedAt: new Date().toISOString(),
+                },
+            };
+        }
+
+        const now = new Date();
+        const reservationToken = `${videoId}:${now.getTime()}:${Math.random().toString(36).slice(2, 10)}`;
+        const reservedUntil = this.getPublishIntervalReservationExpiry(now, postIntervalMinutes);
+
+        const result = await prisma.$transaction(async (tx) => {
+            const setting = await tx.setting.findUnique({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+            });
+
+            const state = this.parsePublishIntervalState(setting?.value);
+            const activeReservationUntil = this.parseOptionalDate(state.reservedUntil);
+            const lastPublishedAt = this.parseOptionalDate(state.lastPublishedAt);
+
+            if (
+                state.reservedByVideoId
+                && state.reservedByVideoId !== videoId
+                && activeReservationUntil
+                && activeReservationUntil.getTime() > now.getTime()
+            ) {
+                return {
+                    granted: false as const,
+                    blockedUntil: activeReservationUntil.toISOString(),
+                };
+            }
+
+            if (
+                lastPublishedAt
+                && now.getTime() - lastPublishedAt.getTime() < postIntervalMinutes * 60 * 1000
+            ) {
+                return {
+                    granted: false as const,
+                    blockedUntil: new Date(lastPublishedAt.getTime() + postIntervalMinutes * 60 * 1000).toISOString(),
+                };
+            }
+
+            const nextState = {
+                ...state,
+                reservedByVideoId: videoId,
+                reservationToken,
+                reservedAt: now.toISOString(),
+                reservedUntil: reservedUntil.toISOString(),
+            };
+
+            await tx.setting.upsert({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+                update: { value: nextState as any },
+                create: {
+                    key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY,
+                    value: nextState as any,
+                },
+            });
+
+            return {
+                granted: true as const,
+                reservation: {
+                    token: reservationToken,
+                    reservedAt: now.toISOString(),
+                },
+            };
         });
 
-        if (!recentPublish) {
-            return null;
+        return result;
+    }
+
+    private async releasePublishIntervalSlot(reservation?: PublishIntervalReservation): Promise<void> {
+        if (!reservation || reservation.token.startsWith('disabled-')) {
+            return;
         }
 
-        return `Waiting for the ${postIntervalMinutes}-minute post interval before the next trailer publish`;
+        await prisma.$transaction(async (tx) => {
+            const setting = await tx.setting.findUnique({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+            });
+
+            if (!setting) {
+                return;
+            }
+
+            const state = this.parsePublishIntervalState(setting.value);
+            if (state.reservationToken !== reservation.token) {
+                return;
+            }
+
+            const nextState = {
+                ...state,
+                reservedByVideoId: null,
+                reservationToken: null,
+                reservedAt: null,
+                reservedUntil: null,
+            };
+
+            await tx.setting.update({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+                data: { value: nextState as any },
+            });
+        });
+    }
+
+    private async commitPublishIntervalSlot(
+        reservation: PublishIntervalReservation | undefined,
+        publishedPlatforms: string[]
+    ): Promise<void> {
+        if (!reservation || reservation.token.startsWith('disabled-')) {
+            return;
+        }
+
+        const now = new Date();
+        await prisma.$transaction(async (tx) => {
+            const setting = await tx.setting.findUnique({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+            });
+
+            if (!setting) {
+                return;
+            }
+
+            const state = this.parsePublishIntervalState(setting.value);
+            if (state.reservationToken !== reservation.token) {
+                return;
+            }
+
+            const nextState = {
+                ...state,
+                reservedByVideoId: null,
+                reservationToken: null,
+                reservedAt: null,
+                reservedUntil: null,
+                lastPublishedAt: now.toISOString(),
+                lastPublishedVideoId: state.reservedByVideoId || state.lastPublishedVideoId || null,
+                lastPublishedPlatforms: publishedPlatforms,
+            };
+
+            await tx.setting.update({
+                where: { key: YOUTUBE_PUBLISH_INTERVAL_STATE_KEY },
+                data: { value: nextState as any },
+            });
+        });
     }
 
     private async detectPlaylists(

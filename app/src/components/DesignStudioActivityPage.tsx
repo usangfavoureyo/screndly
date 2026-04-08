@@ -273,9 +273,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [previewTarget, setPreviewTarget] = useState<ActivityPreviewTarget | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
+  const previewViewportRef = useRef<HTMLDivElement | null>(null);
+  const previewImageRef = useRef<HTMLImageElement | null>(null);
   const pinchDistanceRef = useRef<number | null>(null);
   const previewOffsetRef = useRef({ x: 0, y: 0 });
+  const previewZoomRef = useRef(1);
   const previewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
+  const previewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const previewTapStartRef = useRef<{ x: number; y: number } | null>(null);
   const [dismissedActivityIds, setDismissedActivityIds] = useState<string[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -793,6 +798,38 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     previewOffsetRef.current = previewOffset;
   }, [previewOffset]);
 
+  useEffect(() => {
+    previewZoomRef.current = previewZoom;
+  }, [previewZoom]);
+
+  const clampPreviewOffset = (offset: { x: number; y: number }, zoom: number) => {
+    const viewport = previewViewportRef.current;
+    const image = previewImageRef.current;
+    if (!viewport || !image || zoom <= 1) {
+      return { x: 0, y: 0 };
+    }
+
+    const maxX = Math.max(0, ((image.clientWidth || viewport.clientWidth) * (zoom - 1)) / 2);
+    const maxY = Math.max(0, ((image.clientHeight || viewport.clientHeight) * (zoom - 1)) / 2);
+
+    return {
+      x: Math.min(maxX, Math.max(-maxX, offset.x)),
+      y: Math.min(maxY, Math.max(-maxY, offset.y)),
+    };
+  };
+
+  const applyPreviewZoom = (nextZoom: number, nextOffset = previewOffsetRef.current) => {
+    const clampedZoom = Math.max(1, Math.min(4, nextZoom));
+    previewZoomRef.current = clampedZoom;
+    setPreviewZoom(clampedZoom);
+    setPreviewOffset(clampPreviewOffset(nextOffset, clampedZoom));
+  };
+
+  const togglePreviewZoom = () => {
+    const nextZoom = previewZoomRef.current > 1 ? 1 : 2;
+    applyPreviewZoom(nextZoom, { x: 0, y: 0 });
+  };
+
   const handleSaveSchedule = async () => {
     if (!scheduleActivity || !scheduledDate || !scheduledTime) {
       toast.error('Choose a date and time first');
@@ -866,14 +903,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length === 1 && previewZoom > 1) {
+    if (event.touches.length === 1) {
       const touch = event.touches[0];
-      previewPanStartRef.current = {
+      previewTapStartRef.current = {
         x: touch.clientX,
         y: touch.clientY,
-        offsetX: previewOffsetRef.current.x,
-        offsetY: previewOffsetRef.current.y,
       };
+      if (previewZoomRef.current > 1) {
+        previewPanStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          offsetX: previewOffsetRef.current.x,
+          offsetY: previewOffsetRef.current.y,
+        };
+      } else {
+        previewPanStartRef.current = null;
+      }
       pinchDistanceRef.current = null;
       return;
     }
@@ -881,11 +926,13 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (event.touches.length !== 2) {
       pinchDistanceRef.current = null;
       previewPanStartRef.current = null;
+      previewTapStartRef.current = null;
       return;
     }
 
     const [firstTouch, secondTouch] = event.touches;
     previewPanStartRef.current = null;
+    previewTapStartRef.current = null;
     pinchDistanceRef.current = Math.hypot(
       secondTouch.clientX - firstTouch.clientX,
       secondTouch.clientY - firstTouch.clientY,
@@ -893,13 +940,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length === 1 && previewPanStartRef.current && previewZoom > 1) {
+    if (event.touches.length === 1 && previewTapStartRef.current) {
+      const touch = event.touches[0];
+      const movedX = Math.abs(touch.clientX - previewTapStartRef.current.x);
+      const movedY = Math.abs(touch.clientY - previewTapStartRef.current.y);
+      if (movedX > 12 || movedY > 12) {
+        previewTapStartRef.current = null;
+      }
+    }
+
+    if (event.touches.length === 1 && previewPanStartRef.current && previewZoomRef.current > 1) {
       event.preventDefault();
       const touch = event.touches[0];
-      setPreviewOffset({
+      setPreviewOffset(clampPreviewOffset({
         x: previewPanStartRef.current.offsetX + (touch.clientX - previewPanStartRef.current.x),
         y: previewPanStartRef.current.offsetY + (touch.clientY - previewPanStartRef.current.y),
-      });
+      }, previewZoomRef.current));
       return;
     }
 
@@ -916,10 +972,30 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
     const scaleRatio = nextDistance / pinchDistanceRef.current;
     pinchDistanceRef.current = nextDistance;
-    setPreviewZoom((current) => Math.max(1, Math.min(4, current * scaleRatio)));
+    applyPreviewZoom(previewZoomRef.current * scaleRatio);
   };
 
-  const handlePreviewTouchEnd = () => {
+  const handlePreviewTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const tapStart = previewTapStartRef.current;
+    const changedTouch = event.changedTouches[0];
+    if (tapStart && changedTouch) {
+      const now = Date.now();
+      const tapX = changedTouch.clientX;
+      const tapY = changedTouch.clientY;
+      const lastTap = previewLastTapRef.current;
+      if (
+        lastTap &&
+        now - lastTap.time <= 300 &&
+        Math.abs(lastTap.x - tapX) <= 24 &&
+        Math.abs(lastTap.y - tapY) <= 24
+      ) {
+        togglePreviewZoom();
+        previewLastTapRef.current = null;
+      } else {
+        previewLastTapRef.current = { time: now, x: tapX, y: tapY };
+      }
+    }
+    previewTapStartRef.current = null;
     pinchDistanceRef.current = null;
     previewPanStartRef.current = null;
   };
@@ -939,15 +1015,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!previewPanStartRef.current || previewZoom <= 1) {
+    if (!previewPanStartRef.current || previewZoomRef.current <= 1) {
       return;
     }
 
     event.preventDefault();
-    setPreviewOffset({
+    setPreviewOffset(clampPreviewOffset({
       x: previewPanStartRef.current.offsetX + (event.clientX - previewPanStartRef.current.x),
       y: previewPanStartRef.current.offsetY + (event.clientY - previewPanStartRef.current.y),
-    });
+    }, previewZoomRef.current));
   };
 
   const handlePreviewMouseUp = () => {
@@ -1531,7 +1607,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               </div>
 
               <div
-                className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-auto touch-pan-y"
+                ref={previewViewportRef}
+                className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-hidden touch-pan-y"
                 onTouchStart={handlePreviewTouchStart}
                 onTouchMove={handlePreviewTouchMove}
                 onTouchEnd={handlePreviewTouchEnd}
@@ -1539,8 +1616,13 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 onMouseMove={handlePreviewMouseMove}
                 onMouseUp={handlePreviewMouseUp}
                 onMouseLeave={handlePreviewMouseUp}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  togglePreviewZoom();
+                }}
               >
                 <img
+                  ref={previewImageRef}
                   src={previewTarget.imageUrl}
                   alt={previewTarget.title}
                   draggable={false}

@@ -869,6 +869,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                     case 'Facebook':
                     case 'FacebookFeed':
                         if (connection?.accessToken && connection.userId) {
+                            const preparedImageSources = await getPreparedImageUrls();
                             const fbResult = (hasUploadedVideo || videoUrl)
                                 ? await metaService.postVideoToFacebook(
                                     connection.userId,
@@ -879,7 +880,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                                 : await metaService.postToFacebook(
                                     connection.userId,
                                     text,
-                                    (await getPreparedImageUrl()) ?? null,
+                                    preparedImageSources.length > 0 ? preparedImageSources : ((await getPreparedImageUrl()) ?? null),
                                     connection.accessToken,
                                     link
                                 );

@@ -684,11 +684,33 @@ export async function initCronJobs() {
 
             for (const post of postsToPublish) {
                 try {
-                    const platforms = post.platforms || [];
+                    const latestPost = await prisma.tMDbPost.findUnique({
+                        where: { id: post.id },
+                    });
+
+                    if (!latestPost) {
+                        await logCron('warn', `Skipping TMDb post ${post.id} because it no longer exists`);
+                        continue;
+                    }
+
+                    if (latestPost.status !== 'scheduled') {
+                        await logCron('info', `Skipping TMDb post ${latestPost.id} because its status is now ${latestPost.status}`);
+                        continue;
+                    }
+
+                    if (latestPost.scheduledTime > now) {
+                        await logCron(
+                            'info',
+                            `Skipping TMDb post ${latestPost.id} because it was rescheduled to ${latestPost.scheduledTime.toISOString()}`
+                        );
+                        continue;
+                    }
+
+                    const platforms = latestPost.platforms || [];
                     if (platforms.length === 0) {
-                        await logCron('warn', `Post ${post.id} has no target platforms, marking skipped`);
+                        await logCron('warn', `Post ${latestPost.id} has no target platforms, marking skipped`);
                         await prisma.tMDbPost.update({
-                            where: { id: post.id },
+                            where: { id: latestPost.id },
                             data: {
                                 status: 'failed',
                                 errorMessage: 'No target platforms configured for this TMDb post'
@@ -697,11 +719,29 @@ export async function initCronJobs() {
                         continue;
                     }
 
-                    const publishImageUrls = await resolveTMDbPublishImageUrls(post);
+                    const publishImageUrls = await resolveTMDbPublishImageUrls(latestPost);
+                    const primaryImageUrl = publishImageUrls[0] || latestPost.imageUrl || undefined;
+                    if (!primaryImageUrl) {
+                        const missingImageMessage = 'Auto-post skipped: no image available for this TMDb post';
+                        await updateTMDbPost(latestPost.id, {
+                            status: 'failed',
+                            errorMessage: missingImageMessage,
+                        });
+                        await logCron('warn', `Skipped TMDb auto-post for ${latestPost.title}: no image available`);
+                        await notificationService.notifyUser({
+                            title: 'TMDb auto-post skipped',
+                            message: `"${latestPost.title}" was due to publish, but it has no image so it was skipped.`,
+                            type: 'warning',
+                            source: 'tmdb',
+                            actionPage: '/tmdb-feeds'
+                        });
+                        continue;
+                    }
+
                     const content = {
-                        text: post.caption || post.title,
-                        title: post.title,
-                        imageUrl: publishImageUrls[0] || post.imageUrl || undefined,
+                        text: latestPost.caption || latestPost.title,
+                        title: latestPost.title,
+                        imageUrl: primaryImageUrl,
                         imageUrls: publishImageUrls.length > 0 ? publishImageUrls : undefined,
                     };
 
@@ -713,7 +753,7 @@ export async function initCronJobs() {
                         .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
                         .join(', ');
 
-                    await updateTMDbPost(post.id, {
+                    await updateTMDbPost(latestPost.id, {
                         status: success ? 'published' : 'failed',
                         publishedTime: now,
                         dispatchedAt: now,
@@ -721,23 +761,23 @@ export async function initCronJobs() {
                     });
 
                     if (success && !partialSuccess) {
-                        await logCron('info', `Successfully published post: ${post.title}`);
+                        await logCron('info', `Successfully published post: ${latestPost.title}`);
                     } else if (partialSuccess) {
-                        await logCron('warn', `Partially published post ${post.title}: ${failureMessage}`);
+                        await logCron('warn', `Partially published post ${latestPost.title}: ${failureMessage}`);
                         await notificationService.notifyUser({
                             title: 'Auto-Post partially published',
-                            message: `"${post.title}" posted to some platforms, but failed on: ${failureMessage}`,
+                            message: `"${latestPost.title}" posted to some platforms, but failed on: ${failureMessage}`,
                             type: 'warning',
                             source: 'tmdb',
                             actionPage: '/tmdb-feeds'
                         });
                     } else {
                         const errors = results.map(r => `${r.platform}: ${r.error}`).join(', ');
-                        await logCron('error', `Failed to publish post ${post.title}: ${errors}`);
+                        await logCron('error', `Failed to publish post ${latestPost.title}: ${errors}`);
 
                         await notificationService.notifyUser({
                             title: 'Auto-Post Failed',
-                            message: `Failed to publish "${post.title}". Check logs.`,
+                            message: `Failed to publish "${latestPost.title}". Check logs.`,
                             type: 'error',
                             source: 'tmdb',
                             actionPage: '/tmdb-feeds'

@@ -10,6 +10,7 @@ const settingsApiMock = vi.hoisted(() => ({
   checkBackendHealth: vi.fn(),
   mergeSettings: vi.fn(),
   isSensitiveSetting: vi.fn(),
+  isBackendPersistedSetting: vi.fn(),
 }));
 
 const analyticsIngesterMock = vi.hoisted(() => ({
@@ -28,6 +29,7 @@ vi.mock('../../lib/api/settings', () => ({
   checkBackendHealth: settingsApiMock.checkBackendHealth,
   mergeSettings: settingsApiMock.mergeSettings,
   isSensitiveSetting: settingsApiMock.isSensitiveSetting,
+  isBackendPersistedSetting: settingsApiMock.isBackendPersistedSetting,
 }));
 
 vi.mock('../../lib/optimization/analyticsIngester', () => ({
@@ -56,6 +58,7 @@ describe('SettingsContext', () => {
     settingsApiMock.isSensitiveSetting.mockImplementation((key: string) =>
       ['youtubeKey', 'openaiKey', 'serperKey', 'tmdbKey'].includes(key)
     );
+    settingsApiMock.isBackendPersistedSetting.mockImplementation(() => false);
   });
 
   it('loads backend settings when the backend is available', async () => {
@@ -96,6 +99,28 @@ describe('SettingsContext', () => {
     expect(result.current.settings.darkMode).toBe(false);
     expect(result.current.settings.hapticsEnabled).toBe(false);
     expect(result.current.settings.desktopNotifications).toBe(true);
+  });
+
+  it('prefers dedicated thumbnail config storage over stale backend copies', async () => {
+    settingsApiMock.checkBackendHealth.mockResolvedValue(true);
+    settingsApiMock.fetchSettings.mockResolvedValue({
+      success: true,
+      data: {
+        thumbnailConfig_youtube: '{"platform":"youtube","logoDisplayMode":"boxed"}',
+      },
+    });
+
+    localStorage.setItem(
+      'screndly_thumbnailConfig_youtube',
+      '{"platform":"youtube","logoDisplayMode":"branded","brandedOverlayAssets":{"trailer_white":"https://example.com/trailer-white.png"}}'
+    );
+
+    const { result } = renderHook(() => useSettings(), { wrapper });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.settings.thumbnailConfig_youtube).toContain('"logoDisplayMode":"branded"');
+    expect(result.current.settings.thumbnailConfig_youtube).toContain('"trailer_white"');
   });
 
   it('updates settings immediately in memory', async () => {

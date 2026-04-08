@@ -871,7 +871,18 @@ function getLocalSettings(): Partial<Settings> {
     const saved =
       localStorage.getItem(LOCAL_SETTINGS_KEY) ??
       localStorage.getItem(LEGACY_LOCAL_SETTINGS_KEY);
-    return saved ? normalizeSettingsModels(JSON.parse(saved)) : {};
+    const base = saved ? normalizeSettingsModels(JSON.parse(saved)) : {};
+
+    for (const platform of ['youtube', 'x'] as const) {
+      const dedicatedKey = `screndly_thumbnailConfig_${platform}`;
+      const settingsKey = `thumbnailConfig_${platform}` as const;
+      const dedicatedValue = localStorage.getItem(dedicatedKey);
+      if (typeof dedicatedValue === 'string' && dedicatedValue.trim().length > 0) {
+        (base as Record<string, unknown>)[settingsKey] = dedicatedValue;
+      }
+    }
+
+    return base;
   } catch {
     return {};
   }
