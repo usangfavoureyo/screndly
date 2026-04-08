@@ -1325,9 +1325,7 @@ function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSCon
 
     if (/\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
         if (/\bvillain\b/i.test(body)) {
-            return formattedMediaTitle
-                ? `The extra footage is changing part of ${formattedMediaTitle}'s villain story.`
-                : 'The extra footage is changing part of the story.';
+            return 'The added scenes revise part of the villain storyline.';
         }
 
         if (/\blondon\b/i.test(body)) {

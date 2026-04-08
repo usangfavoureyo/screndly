@@ -82,6 +82,7 @@ test('deterministic fallback caption does not collapse to the raw article title'
     normalizeRSSHeadlineInput(context.articleTitle)
   );
   assert.match(caption, /Reshoots for 'Spider-Man: Brand New Day' have been confirmed\./);
+  assert.match(caption, /The added scenes revise part of the villain storyline\./);
 });
 
 test('headline normalization strips publisher prefix tokens', () => {
