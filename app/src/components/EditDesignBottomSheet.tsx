@@ -687,6 +687,10 @@ export function EditDesignBottomSheet({
   }, []);
 
   const handleExpandedPreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     if (event.touches.length === 1) {
       const touch = event.touches[0];
       expandedPreviewTapStartRef.current = {
@@ -759,6 +763,10 @@ export function EditDesignBottomSheet({
   };
 
   const handleExpandedPreviewTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     const activeTap = expandedPreviewTapStartRef.current;
     const changedTouch = event.changedTouches[0];
     if (activeTap && changedTouch) {
@@ -778,6 +786,16 @@ export function EditDesignBottomSheet({
         expandedPreviewLastTapRef.current = { time: now, x: tapX, y: tapY };
       }
     }
+    expandedPreviewTapStartRef.current = null;
+    expandedPreviewPinchDistanceRef.current = null;
+    expandedPreviewPanStartRef.current = null;
+  };
+
+  const handleExpandedPreviewTouchCancel = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     expandedPreviewTapStartRef.current = null;
     expandedPreviewPinchDistanceRef.current = null;
     expandedPreviewPanStartRef.current = null;
@@ -1985,14 +2003,16 @@ export function EditDesignBottomSheet({
             </button>
             <div
               ref={expandedPreviewViewportRef}
-              className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-hidden touch-pan-y"
+              className="flex max-h-[85vh] min-h-[60vh] select-none items-center justify-center overflow-hidden"
               onTouchStart={handleExpandedPreviewTouchStart}
               onTouchMove={handleExpandedPreviewTouchMove}
               onTouchEnd={handleExpandedPreviewTouchEnd}
+              onTouchCancel={handleExpandedPreviewTouchCancel}
               onMouseDown={handleExpandedPreviewMouseDown}
               onMouseMove={handleExpandedPreviewMouseMove}
               onMouseUp={handleExpandedPreviewMouseUp}
               onMouseLeave={handleExpandedPreviewMouseUp}
+              style={{ touchAction: 'none' }}
               onDoubleClick={(event) => {
                 event.preventDefault();
                 toggleExpandedPreviewZoom();
@@ -2004,6 +2024,7 @@ export function EditDesignBottomSheet({
                   transform: `translate(${expandedPreviewOffset.x}px, ${expandedPreviewOffset.y}px) scale(${expandedPreviewZoom})`,
                   transformOrigin: 'center center',
                   cursor: expandedPreviewZoom > 1 ? 'grab' : 'default',
+                  willChange: 'transform',
                 }}
               >
                 <LiveDesignPreview

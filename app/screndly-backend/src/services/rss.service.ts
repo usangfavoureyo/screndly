@@ -3453,6 +3453,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         : b.pubDate.getTime() - a.pubDate.getTime()
     );
     const manualLatestSelection = options.manualRun;
+    const support = await getRSSFeedColumnSupport();
     const activityLookbackDays = Math.max(feed.dedupeDays, 1);
     const recentActivityLogs = await prisma.log.findMany({
       where: {
@@ -3470,15 +3471,41 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     const recentActivities = recentActivityLogs
       .map((log) => parseRSSActivityLog(log))
       .filter((activity): activity is RSSActivityItem => Boolean(activity));
+    const recentCrossFeedQueueItems = support.feedItemsTable
+      ? await prisma.rSSFeedItem.findMany({
+          where: {
+            feedId: { not: feed.id },
+            status: { in: ['pending', 'published'] },
+            firstSeenAt: { gte: new Date(Date.now() - activityLookbackDays * 24 * 60 * 60 * 1000) },
+          },
+          orderBy: { firstSeenAt: 'desc' },
+          take: 1000,
+          select: {
+            itemData: true,
+            firstSeenAt: true,
+          },
+        })
+      : [];
+    const recentCrossFeedTitles = recentCrossFeedQueueItems
+      .map((record) => deserializeRSSItem(record.itemData))
+      .filter((item): item is RSSItem => Boolean(item))
+      .map((item) => item.title)
+      .filter((title): title is string => Boolean(title && title.trim()));
     const recentTopicFingerprints = recentActivities
       .filter((activity) => activity.status === 'pending' || activity.status === 'published')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
       .map((activity) => buildRSSTopicFingerprint(activity.title))
+      .concat(
+        recentCrossFeedTitles.map((title) => buildRSSTopicFingerprint(title))
+      )
       .filter((fingerprint) => fingerprint.signature);
     const recentSubjectCooldownFingerprints = recentActivities
       .filter((activity) => activity.status === 'pending' || activity.status === 'published')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_SUBJECT_COOLDOWN_MS)
       .map((activity) => buildRSSTopicFingerprint(activity.title))
+      .concat(
+        recentCrossFeedTitles.map((title) => buildRSSTopicFingerprint(title))
+      )
       .filter((fingerprint) => fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0);
     const getCrossSourceTopicDuplicateReason = (item: RSSItem): string | null => {
       const itemFingerprint = buildRSSTopicFingerprint(item.title);
@@ -3521,7 +3548,6 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
 
     const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
-    const support = await getRSSFeedColumnSupport();
     const pendingQueueRecords = support.feedItemsTable
       ? await prisma.rSSFeedItem.findMany({
           where: {
@@ -4674,4 +4700,10 @@ export default {
   retryRSSActivity,
   deleteRSSActivity,
   reorderFeeds,
+};
+
+export const __rssDedupeTestUtils = {
+  buildRSSTopicFingerprint,
+  areRSSTopicFingerprintsSimilar,
+  areRSSSubjectsInCooldown,
 };

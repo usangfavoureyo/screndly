@@ -903,6 +903,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     if (event.touches.length === 1) {
       const touch = event.touches[0];
       previewTapStartRef.current = {
@@ -976,6 +980,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handlePreviewTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     const tapStart = previewTapStartRef.current;
     const changedTouch = event.changedTouches[0];
     if (tapStart && changedTouch) {
@@ -995,6 +1003,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         previewLastTapRef.current = { time: now, x: tapX, y: tapY };
       }
     }
+    previewTapStartRef.current = null;
+    pinchDistanceRef.current = null;
+    previewPanStartRef.current = null;
+  };
+
+  const handlePreviewTouchCancel = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+
     previewTapStartRef.current = null;
     pinchDistanceRef.current = null;
     previewPanStartRef.current = null;
@@ -1608,14 +1626,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
               <div
                 ref={previewViewportRef}
-                className="flex max-h-[85vh] min-h-[60vh] items-center justify-center overflow-hidden touch-pan-y"
+                className="flex max-h-[85vh] min-h-[60vh] select-none items-center justify-center overflow-hidden"
                 onTouchStart={handlePreviewTouchStart}
                 onTouchMove={handlePreviewTouchMove}
                 onTouchEnd={handlePreviewTouchEnd}
+                onTouchCancel={handlePreviewTouchCancel}
                 onMouseDown={handlePreviewMouseDown}
                 onMouseMove={handlePreviewMouseMove}
                 onMouseUp={handlePreviewMouseUp}
                 onMouseLeave={handlePreviewMouseUp}
+                style={{ touchAction: 'none' }}
                 onDoubleClick={(event) => {
                   event.preventDefault();
                   togglePreviewZoom();
@@ -1631,6 +1651,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                     transform: `translate(${previewOffset.x}px, ${previewOffset.y}px) scale(${previewZoom})`,
                     transformOrigin: 'center center',
                     cursor: previewZoom > 1 ? 'grab' : 'default',
+                    willChange: 'transform',
                   }}
                 />
               </div>

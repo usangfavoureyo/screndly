@@ -13,6 +13,23 @@ export function getPublishedTodayCount(
   referenceDate: Date = new Date()
 ): number {
   return items.filter((item) => {
+    const postedPlatformResult = (item.platformResults || []).find((result) => {
+      if (result.status !== 'posted' || !result.postedAt) {
+        return false;
+      }
+
+      const postedDate = new Date(result.postedAt);
+      if (Number.isNaN(postedDate.getTime())) {
+        return false;
+      }
+
+      return isSameLocalDay(postedDate, referenceDate);
+    });
+
+    if (postedPlatformResult) {
+      return true;
+    }
+
     if (item.status !== 'published') {
       return false;
     }

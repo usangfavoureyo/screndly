@@ -49,4 +49,29 @@ describe('getPublishedTodayCount', () => {
 
     expect(getPublishedTodayCount(items, new Date('2026-04-08T12:00:00.000Z'))).toBe(1);
   });
+
+  it('counts partially failed items when at least one platform was posted today', () => {
+    const items = [
+      buildActivity({
+        id: 'partially-posted',
+        status: 'failed',
+        timestamp: '2026-04-07T08:30:00.000Z',
+        platformResults: [
+          {
+            platform: 'facebook',
+            status: 'posted',
+            postedAt: '2026-04-08T09:15:00.000Z',
+          },
+          {
+            platform: 'threads',
+            status: 'failed',
+            postedAt: '2026-04-08T09:16:00.000Z',
+            error: 'Param text must be at most 500 chars long.',
+          },
+        ],
+      }),
+    ];
+
+    expect(getPublishedTodayCount(items, new Date('2026-04-08T12:00:00.000Z'))).toBe(1);
+  });
 });

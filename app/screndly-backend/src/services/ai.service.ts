@@ -1296,6 +1296,19 @@ function ensureRSSSentenceTerminal(value: string): string {
     return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
+function looksLikeRSSPersonName(value: string): boolean {
+    const parts = value.trim().split(/\s+/).filter(Boolean);
+    if (parts.length < 2 || parts.length > 4) {
+        return false;
+    }
+
+    return parts.every((part) => /^[A-Z][A-Za-z'&.-]+$/.test(part));
+}
+
+function isRSSStudioOrPlatform(value: string): boolean {
+    return /\b(Netflix|Prime Video|Amazon MGM|Amazon|Apple TV\+|Apple TV|Disney\+|Disney|HBO|Max|CBS|NBC|ABC|Fox|Lucasfilm|Marvel Studios|Warner Bros\.?|Paramount|Universal Pictures|Sony Pictures|FX|Hulu|Peacock)\b/i.test(value);
+}
+
 function formatRssMediaTitle(value?: string): string | undefined {
     const trimmed = String(value || '').trim();
     if (!trimmed) {
@@ -1316,6 +1329,36 @@ function getPreferredRssTitleEntity(context: RSSContext, extraction: RssCaptionE
     return candidates.sort((left, right) => right.length - left.length).find((entry) => {
         return /\s/.test(entry) || /[:'-]/.test(entry);
     });
+}
+
+function getExpectedRssTitleEntities(context: RSSContext, extraction?: RssCaptionExtraction): string[] {
+    const resolvedExtraction = extraction || buildHeuristicRssCaptionExtraction(context);
+    const sourceText = [
+        context.articleTitle,
+        context.summary,
+        context.articleBody || '',
+        context.articleContentHtml || '',
+    ].join(' ');
+    const quotedSourceTitles = extractQuotedRSSTitles(sourceText);
+    const anchoredTitleKeys = new Set(
+        [resolvedExtraction.media_title, ...quotedSourceTitles]
+            .map((entry) => String(entry || '').trim().toLowerCase())
+            .filter(Boolean)
+    );
+
+    const candidates = [
+        resolvedExtraction.media_title,
+        ...quotedSourceTitles,
+        ...(Array.isArray(context.allowedEntities) ? context.allowedEntities : []),
+    ]
+        .map((entry) => String(entry || '').trim())
+        .filter(Boolean)
+        .filter((entry) => anchoredTitleKeys.has(entry.toLowerCase()) || !looksLikeRSSPersonName(entry))
+        .filter((entry) => !isRSSStudioOrPlatform(entry))
+        .filter((entry) => entry.length >= 2)
+        .filter((entry) => /\s/.test(entry) || /[:'-]/.test(entry));
+
+    return Array.from(new Map(candidates.map((entry) => [entry.toLowerCase(), entry])).values());
 }
 
 function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSContext): string | undefined {
@@ -1457,19 +1500,28 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
         lines.push(ensureRSSSentenceTerminal(supportingLine));
     }
 
-    return enforceRSSCaptionPunctuation(lines.join('\n'));
+    return enforceRSSCaptionPunctuation(
+        lines.length > 1
+            ? `${lines[0]}\n\n${lines.slice(1).join('\n')}`
+            : lines[0] || ''
+    );
 }
 
 function enforceRSSCaptionPunctuation(caption: string): string {
     return caption
         .replace(/\r\n?/g, '\n')
-        .split('\n')
-        .map((line) => line.trim())
+        .trim()
+        .split(/\n\s*\n/)
+        .map((block) => block
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => /^[\u2022*-]\s*/.test(line)
+                ? line.replace(/^([*\-])\s*/, '\u2022 ').replace(/^(\u2022\s*)(.*)$/u, (_m, bullet, text) => `${bullet}${ensureRSSSentenceTerminal(text)}`)
+                : ensureRSSSentenceTerminal(line))
+            .join('\n'))
         .filter(Boolean)
-        .map((line) => /^[\u2022*-]\s*/.test(line)
-            ? line.replace(/^([*\-])\s*/, '\u2022 ').replace(/^(\u2022\s*)(.*)$/u, (_m, bullet, text) => `${bullet}${ensureRSSSentenceTerminal(text)}`)
-            : ensureRSSSentenceTerminal(line))
-        .join('\n');
+        .join('\n\n');
 }
 
 function isVagueRSSCaption(caption: string): boolean {
@@ -1508,6 +1560,92 @@ function getRSSCaptionLines(caption: string): string[] {
 
 function getRSSHeadlineLine(caption: string): string {
     return getRSSCaptionLines(caption).find((line) => !/^[\u2022*-]\s*/.test(line)) || '';
+}
+
+function hasMissingRSSBlankLineSeparation(caption: string): boolean {
+    const normalized = caption.replace(/\r\n?/g, '\n');
+    const lines = normalized.split('\n');
+    const nonEmptyLineIndexes = lines
+        .map((line, index) => ({ line: line.trim(), index }))
+        .filter((entry) => entry.line.length > 0)
+        .map((entry) => entry.index);
+
+    if (nonEmptyLineIndexes.length <= 1) {
+        return false;
+    }
+
+    const firstLineIndex = nonEmptyLineIndexes[0]!;
+    const secondLineIndex = nonEmptyLineIndexes[1]!;
+    return secondLineIndex !== firstLineIndex + 2 || lines[firstLineIndex + 1]?.trim() !== '';
+}
+
+function hasUnsupportedRSSStructure(caption: string): boolean {
+    const normalized = caption.replace(/\r\n?/g, '\n').trim();
+    if (!normalized) {
+        return true;
+    }
+
+    const blocks = normalized
+        .split(/\n\s*\n/)
+        .map((block) => block.split('\n').map((line) => line.trim()).filter(Boolean))
+        .filter((block) => block.length > 0);
+
+    if (blocks.length === 0 || blocks.length > 2) {
+        return true;
+    }
+
+    const headlineBlock = blocks[0] || [];
+    if (headlineBlock.length !== 1 || /^[\u2022*-]\s*/.test(headlineBlock[0] || '')) {
+        return true;
+    }
+
+    const allNonBulletLines = getRSSCaptionLines(caption).filter((line) => !/^[\u2022*-]\s*/.test(line));
+    if (allNonBulletLines.length > 4) {
+        return true;
+    }
+
+    if (blocks.length === 1) {
+        return false;
+    }
+
+    const secondBlock = blocks[1] || [];
+    const bulletLines = secondBlock.filter((line) => /^[\u2022*-]\s*/.test(line));
+    const plainLines = secondBlock.filter((line) => !/^[\u2022*-]\s*/.test(line));
+
+    if (bulletLines.length > 0 && plainLines.length > 0) {
+        return true;
+    }
+
+    if (bulletLines.length > 2) {
+        return true;
+    }
+
+    if (plainLines.length > 2) {
+        return true;
+    }
+
+    return false;
+}
+
+function lacksSingleQuotedDetectedRSSTitles(caption: string, context: RSSContext): boolean {
+    const extraction = buildHeuristicRssCaptionExtraction(context);
+    const titleEntities = getExpectedRssTitleEntities(context, extraction);
+    if (titleEntities.length === 0) {
+        return false;
+    }
+
+    return titleEntities.some((title) => {
+        const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const quotedPattern = new RegExp(`'${escaped}'`, 'i');
+        const doubleQuotedPattern = new RegExp(`"${escaped}"|“${escaped}”`, 'i');
+        const barePattern = new RegExp(`\\b${escaped}\\b`, 'i');
+
+        if (!barePattern.test(caption)) {
+            return false;
+        }
+
+        return !quotedPattern.test(caption) || doubleQuotedPattern.test(caption);
+    });
 }
 
 function hasInlineRSSQuote(caption: string): boolean {
@@ -1568,6 +1706,9 @@ function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolea
     return hasUnsupportedRSSVagueSubject(caption, context)
         || isEditorializedRSSCaption(caption)
         || hasUnsupportedRSSDemographicMutation(caption, context)
+        || hasMissingRSSBlankLineSeparation(caption)
+        || hasUnsupportedRSSStructure(caption)
+        || lacksSingleQuotedDetectedRSSTitles(caption, context)
         || hasInlineRSSQuote(caption)
         || hasOverloadedRSSHeadline(caption)
         || mirrorsRSSHeadlineTooClosely(caption, context)
@@ -1684,8 +1825,11 @@ Original caption: ${normalizedCaption}
 
 Requirements:
 - Keep the first line to exactly one clean headline sentence.
+- If there is any second block after the headline, it must be separated by one blank line.
 - If you include a quote, put it on its own line and do not embed it inside another sentence.
 - Use only factual supporting detail after the headline.
+- Use single quotes around detected movie, TV show, or game titles.
+- Reject any structure that does not match the saved prompt shape, even if it sounds acceptable.
 - Name the concrete subject directly if one is available in the title, summary, body, or allowed entities.
 - Use the body excerpt to resolve the real subject when the title is vague.
 - Remove vague phrases like "a Marvel character" or "a major actor".
@@ -1724,6 +1868,9 @@ export const __rssCaptionTestUtils = {
     buildDeterministicRssCaption,
     enforceRSSCaptionPunctuation,
     failsRSSCaptionFormatting,
+    hasMissingRSSBlankLineSeparation,
+    hasUnsupportedRSSStructure,
+    lacksSingleQuotedDetectedRSSTitles,
     hasUnsupportedRSSDemographicMutation,
     mirrorsRSSHeadlineTooClosely,
     normalizeRSSHeadlineInput,

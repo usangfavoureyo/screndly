@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __rssTmdbDisambiguationTestUtils } from '../services/rss-tmdb-image-selection.service';
 
-const { resolveCanonicalTMDbEntity } = __rssTmdbDisambiguationTestUtils;
+const { buildInstallmentFallbackQueries, resolveCanonicalTMDbEntity, titleMatchesProjectContext } = __rssTmdbDisambiguationTestUtils;
 
 test('disambiguates Harry Potter HBO series from films and books', () => {
   const resolved = resolveCanonicalTMDbEntity({
@@ -187,4 +187,64 @@ test('does not treat You as a TMDb title when context is ordinary language', () 
 
   assert.equal(resolved.tmdbQuery, '');
   assert.match(resolved.ambiguityFlags.join(','), /context_sensitive_term_not_a_tmdb_entity/);
+});
+
+test('requires an explicit project match instead of accepting a studio-only TMDb title', () => {
+  const input = {
+    primarySubject: { name: 'Jeff Kinney', type: 'actor' as const },
+    visualSubject: 'Jeff Kinney',
+    secondarySubjects: [],
+    imageIntent: 'still' as const,
+    targetFormat: 'movie' as const,
+    contextProject: 'Diary of a Wimpy Kid',
+    requiredContextTerms: ['Disney', 'film'],
+    relevantStudios: ['Disney'],
+    queries: ['Jeff Kinney confirms Disney is making the next Diary of a Wimpy Kid film'],
+    limit: 1,
+  };
+
+  assert.equal(
+    titleMatchesProjectContext(
+      input,
+      'Walt Disney Treasures: The Chronological Donald, Volume One',
+      'A Disney home video collection featuring Donald Duck shorts.'
+    ),
+    false
+  );
+});
+
+test('accepts a TMDb title when it explicitly matches the context project', () => {
+  const input = {
+    primarySubject: { name: 'Jeff Kinney', type: 'actor' as const },
+    visualSubject: 'Jeff Kinney',
+    secondarySubjects: [],
+    imageIntent: 'still' as const,
+    targetFormat: 'movie' as const,
+    contextProject: 'Diary of a Wimpy Kid',
+    requiredContextTerms: ['Disney', 'film'],
+    relevantStudios: ['Disney'],
+    queries: ['Jeff Kinney confirms Disney is making the next Diary of a Wimpy Kid film'],
+    limit: 1,
+  };
+
+  assert.equal(
+    titleMatchesProjectContext(
+      input,
+      'Diary of a Wimpy Kid',
+      'A family comedy based on the book series.'
+    ),
+    true
+  );
+});
+
+test('builds prior installment fallback queries for numbered sequels and seasons', () => {
+  assert.deepEqual(
+    buildInstallmentFallbackQueries('Extraction 3', 'movie'),
+    ['Extraction 2']
+  );
+
+  assert.deepEqual(
+    buildInstallmentFallbackQueries('The Last of Us Season 5', 'tv'),
+    ['The Last of Us', 'The Last of Us Season 4']
+  );
 });

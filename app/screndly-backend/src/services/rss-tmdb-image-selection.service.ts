@@ -893,6 +893,51 @@ function buildEntityCandidates(input: StructuredRSSTMDbSelectionInput): string[]
   ]).filter((candidate) => classifyContextSensitiveEntityUsage(candidate, combinedText) !== 'generic');
 }
 
+function buildInstallmentFallbackQueries(title: string, mediaType: CanonicalTMDbEntity['mediaType']): string[] {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return [];
+  }
+
+  const results: string[] = [];
+  const seasonMatch = trimmed.match(/^(.*?)(?:\s+season\s+)(\d+)$/i);
+  if (seasonMatch) {
+    const baseTitle = seasonMatch[1]?.trim();
+    const seasonNumber = Number(seasonMatch[2]);
+    if (baseTitle) {
+      results.push(baseTitle);
+      if (seasonNumber > 1) {
+        results.push(`${baseTitle} Season ${seasonNumber - 1}`);
+      }
+    }
+    return uniqueStrings(results);
+  }
+
+  const partMatch = trimmed.match(/^(.*?)(?:\s+part\s+)(\d+)$/i);
+  if (partMatch) {
+    const baseTitle = partMatch[1]?.trim();
+    const partNumber = Number(partMatch[2]);
+    if (baseTitle && partNumber > 1) {
+      results.push(`${baseTitle} Part ${partNumber - 1}`);
+    }
+    return uniqueStrings(results);
+  }
+
+  const numericMatch = trimmed.match(/^(.*?)(?:\s+)(\d+)$/);
+  if (numericMatch) {
+    const baseTitle = numericMatch[1]?.trim();
+    const installmentNumber = Number(numericMatch[2]);
+    if (baseTitle && installmentNumber > 1) {
+      results.push(`${baseTitle} ${installmentNumber - 1}`);
+      if (mediaType === 'tv') {
+        results.push(baseTitle);
+      }
+    }
+  }
+
+  return uniqueStrings(results);
+}
+
 function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): CanonicalTMDbEntity {
   const combinedText = buildDisambiguationText(input);
   const candidates = buildEntityCandidates(input);
@@ -940,6 +985,7 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
 
   const specificTitle = input.contextProject?.trim() || input.visualSubject.trim() || primaryName;
   const tmdbType = inferredMediaType === 'tv' ? 'tv' : inferredMediaType === 'movie' ? 'movie' : 'multi';
+  const installmentFallbackQueries = buildInstallmentFallbackQueries(specificTitle, inferredMediaType);
   return {
     name: primaryName,
     specificTitle,
@@ -947,7 +993,10 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
     franchise: input.primarySubject.type === 'franchise' ? primaryName : undefined,
     tmdbType,
     tmdbQuery: specificTitle,
-    alternateQueries: candidates.filter((candidate) => normalizeText(candidate) !== normalizeText(specificTitle)).slice(0, 4),
+    alternateQueries: uniqueStrings([
+      ...candidates.filter((candidate) => normalizeText(candidate) !== normalizeText(specificTitle)).slice(0, 4),
+      ...installmentFallbackQueries,
+    ]).slice(0, 6),
     confidence: input.contextProject ? 0.82 : 0.64,
     ambiguityFlags: input.contextProject ? [] : ['unresolved_specific_project'],
   };
@@ -1044,6 +1093,18 @@ function titleMatchesProjectContext(
   title: string,
   overview: string
 ): boolean {
+  const normalizedContextProject = normalizeText(input.contextProject || '');
+  if (normalizedContextProject) {
+    const explicitProjectMatch = scoreAliasMatch(input.contextProject || '', [title, overview]);
+    if (explicitProjectMatch >= 140) {
+      return true;
+    }
+
+    if (explicitProjectMatch < 70) {
+      return false;
+    }
+  }
+
   const contextTerms = uniqueStrings([
     input.contextProject || null,
     input.visualSubject,
@@ -1473,6 +1534,12 @@ export async function resolveStructuredTMDbImages(
   input: StructuredRSSTMDbSelectionInput
 ): Promise<ResolvedStructuredTMDbImage[]> {
   const candidates: ResolvedStructuredTMDbImage[] = [];
+  const companyFallbackEligible = Boolean(
+    input.contextProject &&
+    input.relevantStudios.length > 0 &&
+    input.imageIntent !== 'person_portrait'
+  );
+  let deferredCompanyLogo: ResolvedStructuredTMDbImage | null = null;
 
   const companyFirst =
     input.primarySubject.type === 'studio' ||
@@ -1485,6 +1552,8 @@ export async function resolveStructuredTMDbImages(
     if (companyLogo) {
       candidates.push(companyLogo);
     }
+  } else if (companyFallbackEligible) {
+    deferredCompanyLogo = await resolveCompanyLogo(input);
   }
 
   if (
@@ -1567,6 +1636,14 @@ export async function resolveStructuredTMDbImages(
         reason: `TMDb logo for ${titleCandidate.title}`,
       });
     }
+  } else if (deferredCompanyLogo) {
+    deferredCompanyLogo.score += isPersonLedInput(input) ? 90 : 70;
+    candidates.push(deferredCompanyLogo);
+  }
+
+  if (titleCandidate && deferredCompanyLogo && companyFallbackEligible && titleCandidate.projectContextOnly) {
+    deferredCompanyLogo.score += isPersonLedInput(input) ? 24 : 12;
+    candidates.push(deferredCompanyLogo);
   }
 
   const deduped = dedupeResolvedImages(
@@ -1583,5 +1660,7 @@ export async function resolveStructuredTMDbImages(
 }
 
 export const __rssTmdbDisambiguationTestUtils = {
+  buildInstallmentFallbackQueries,
   resolveCanonicalTMDbEntity,
+  titleMatchesProjectContext,
 };

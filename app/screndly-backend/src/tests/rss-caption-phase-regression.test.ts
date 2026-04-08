@@ -8,6 +8,9 @@ const {
   buildDeterministicRssCaption,
   enforceRSSCaptionPunctuation,
   failsRSSCaptionFormatting,
+  hasMissingRSSBlankLineSeparation,
+  hasUnsupportedRSSStructure,
+  lacksSingleQuotedDetectedRSSTitles,
   hasUnsupportedRSSDemographicMutation,
   mirrorsRSSHeadlineTooClosely,
   normalizeRSSHeadlineInput,
@@ -60,6 +63,17 @@ test('rss caption punctuation enforcer adds periods to each line', () => {
   assert.equal(
     caption,
     "'Spider-Man: Brand New Day' adds new scenes to expand its villain story.\nTom Holland discussed the extra photography."
+  );
+});
+
+test('rss punctuation enforcer preserves paragraph breaks between caption blocks', () => {
+  const caption = enforceRSSCaptionPunctuation(
+    "'Spider-Man: Brand New Day' adds new scenes after production wrapped\n\nTom Holland discussed the extra photography"
+  );
+
+  assert.equal(
+    caption,
+    "'Spider-Man: Brand New Day' adds new scenes after production wrapped.\n\nTom Holland discussed the extra photography."
   );
 });
 
@@ -116,6 +130,44 @@ test('caption validation rejects unsupported demographic mutations like Gen Zers
     ),
     true
   );
+});
+
+test('caption validation rejects captions missing the required blank line before a second block', () => {
+  const context = {
+    articleTitle: "'Spider-Man: Brand New Day' adds new scenes after production wrapped",
+    feedName: 'Variety',
+    summary: 'Tom Holland discussed the extra footage.',
+    articleBody: "Tom Holland says 'Spider-Man: Brand New Day' added scenes in London.",
+    platform: 'Threads' as const,
+    allowedEntities: ['Spider-Man: Brand New Day', 'Tom Holland'],
+  };
+
+  const caption = "'Spider-Man: Brand New Day' adds new scenes after production wrapped.\nTom Holland discussed the extra footage.";
+
+  assert.equal(hasMissingRSSBlankLineSeparation(caption), true);
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+});
+
+test('caption validation rejects unquoted detected titles', () => {
+  const context = {
+    articleTitle: "First trailer released for 'The Running Man'",
+    feedName: 'Variety',
+    summary: "The first trailer for 'The Running Man' has been released.",
+    articleBody: "The first trailer for 'The Running Man' has arrived.",
+    platform: 'Threads' as const,
+    allowedEntities: ['The Running Man'],
+  };
+
+  const caption = "First trailer released for The Running Man.\n\nDirected by Edgar Wright.";
+
+  assert.equal(lacksSingleQuotedDetectedRSSTitles(caption, context), true);
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+});
+
+test('caption validation rejects structures that exceed the saved prompt shape', () => {
+  const caption = "'The Running Man' trailer arrives.\n\nDirected by Edgar Wright.\nIn theaters November 7.\nTickets on sale now.";
+
+  assert.equal(hasUnsupportedRSSStructure(caption), true);
 });
 
 test('feed fallback is no longer forced for reveal-driven headlines', () => {
