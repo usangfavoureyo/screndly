@@ -747,6 +747,42 @@ const HEADLINE_PROJECT_GENERIC_TERMS = new Set([
   'update',
   'villain',
 ]);
+const GENERIC_DEMOGRAPHIC_TERMS = new Set([
+  'gen z',
+  'gen alpha',
+  'gen x',
+  'millennial',
+  'millennials',
+  'baby boomer',
+  'baby boomers',
+  'young audiences',
+  'young people',
+  'audiences',
+  'moviegoers',
+  'viewers',
+  'consumers',
+]);
+const GENERIC_DEMOGRAPHIC_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+)\b/i;
+const CONTEXT_SENSITIVE_ENTITY_TERMS = new Set([
+  ...GENERIC_DEMOGRAPHIC_TERMS,
+  'avatar',
+  'foundation',
+  'ghosts',
+  'bridgerton',
+  'you',
+  'her',
+  'them',
+  'shogun',
+  'the bear',
+  'bear',
+]);
+const HIGH_AMBIGUITY_CONTEXT_TERMS = new Set([
+  'you',
+  'her',
+  'them',
+]);
+const CONTEXT_SENSITIVE_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|directed|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+|movie|film|feature|box office|streaming|first look|poster|logo|adaptation|remake|reboot|spinoff|spin-off|character|villain|hero|role|plays|returning|returns as|in theaters|tv)\b/i;
+const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing)\b/i;
 
 type RSSImageSource = 'tmdb' | 'serper';
 
@@ -1356,6 +1392,10 @@ function isGenericHeadlineProjectCandidate(candidate: string): boolean {
     return true;
   }
 
+  if (GENERIC_DEMOGRAPHIC_TERMS.has(normalizedCandidate)) {
+    return true;
+  }
+
   const tokens = normalizedCandidate.split(' ').filter(Boolean);
   if (tokens.length === 0 || tokens.length > 6) {
     return true;
@@ -1364,12 +1404,101 @@ function isGenericHeadlineProjectCandidate(candidate: string): boolean {
   return tokens.every((token) => HEADLINE_PROJECT_GENERIC_TERMS.has(token));
 }
 
+function getSubjectContextSnippet(articleText: string, subject: string): string {
+  const normalizedArticle = normalizeText(articleText);
+  const normalizedSubject = normalizeText(subject);
+  if (!normalizedArticle || !normalizedSubject) {
+    return normalizedArticle;
+  }
+
+  const pattern = new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\b`, 'g');
+  const snippets: string[] = [];
+
+  for (const match of normalizedArticle.matchAll(pattern)) {
+    const index = match.index ?? -1;
+    if (index < 0) {
+      continue;
+    }
+
+    const start = Math.max(0, index - 120);
+    const end = Math.min(normalizedArticle.length, index + normalizedSubject.length + 120);
+    snippets.push(normalizedArticle.slice(start, end).trim());
+    if (snippets.length >= 3) {
+      break;
+    }
+  }
+
+  return snippets.join(' ');
+}
+
+function hasExplicitTitleFormatting(articleText: string, subject: string): boolean {
+  if (!articleText || !subject.trim()) {
+    return false;
+  }
+
+  const escaped = escapeRegExp(subject.trim());
+  return new RegExp(`["'â€œâ€]${escaped}["'â€œâ€]`, 'i').test(articleText);
+}
+
+function classifyContextSensitiveSubjectUsage(
+  articleText: string,
+  subject: string
+): 'media_entity' | 'generic' | 'ambiguous' {
+  const normalizedSubject = normalizeText(subject);
+  if (!normalizedSubject || !CONTEXT_SENSITIVE_ENTITY_TERMS.has(normalizedSubject)) {
+    return 'media_entity';
+  }
+
+  if (hasExplicitTitleFormatting(articleText, subject)) {
+    return 'media_entity';
+  }
+
+  const contextSnippet = getSubjectContextSnippet(articleText, subject);
+  const contextText = `${normalizeText(articleText)} ${contextSnippet}`.trim();
+  const hasProjectCue = CONTEXT_SENSITIVE_PROJECT_CUES.test(contextText);
+  const hasGenericCue = CONTEXT_SENSITIVE_GENERIC_CUES.test(contextText);
+
+  if (GENERIC_DEMOGRAPHIC_TERMS.has(normalizedSubject)) {
+    if (hasProjectCue) {
+      return 'media_entity';
+    }
+
+    return hasGenericCue ? 'generic' : 'ambiguous';
+  }
+
+  if (HIGH_AMBIGUITY_CONTEXT_TERMS.has(normalizedSubject)) {
+    return hasProjectCue ? 'media_entity' : 'generic';
+  }
+
+  if (hasProjectCue && !hasGenericCue) {
+    return 'media_entity';
+  }
+
+  if (hasGenericCue && !hasProjectCue) {
+    return 'generic';
+  }
+
+  return 'ambiguous';
+}
+
+function shouldTreatAsGenericDemographicSubject(articleText: string, subject: string): boolean {
+  const normalizedSubject = normalizeText(subject);
+  if (!GENERIC_DEMOGRAPHIC_TERMS.has(normalizedSubject)) {
+    return false;
+  }
+
+  return classifyContextSensitiveSubjectUsage(articleText, subject) !== 'media_entity'
+    && !GENERIC_DEMOGRAPHIC_PROJECT_CUES.test(articleText);
+}
+
 function extractHeadlineProjectCandidate(
   title: string,
   articleText: string,
   studios: string[]
 ): string | null {
+  const quotedSubjects = extractQuotedSubjects(title);
   const titleMatches = uniqueStrings([
+    ...quotedSubjects,
     title.match(/^([A-Z][A-Za-z0-9'’:&-]+(?:\s+[A-Z][A-Za-z0-9'’:&-]+){0,5})['’]s\b/)?.[1],
     ...Array.from(
       title.matchAll(
@@ -1383,7 +1512,10 @@ function extractHeadlineProjectCandidate(
 
   const leadWindow = normalizeText(getLeadContextWindow(articleText));
   const ranked = titleMatches
-    .map((candidate) => normalizeHeadlineProjectCandidate(candidate))
+    .map((candidate) => {
+      const isQuoted = quotedSubjects.some((quoted) => normalizeText(quoted) === normalizeText(candidate));
+      return isQuoted ? candidate.trim() : normalizeHeadlineProjectCandidate(candidate);
+    })
     .filter(Boolean)
     .filter((candidate) => {
       const normalizedCandidate = normalizeText(candidate);
@@ -1403,6 +1535,10 @@ function extractHeadlineProjectCandidate(
         return false;
       }
 
+      if (classifyContextSensitiveSubjectUsage(articleText, candidate) !== 'media_entity') {
+        return false;
+      }
+
       const inferredType = inferContentSubjectType(articleText, candidate);
       return inferredType === 'movie' || inferredType === 'tv_show' || inferredType === 'franchise';
     })
@@ -1413,6 +1549,7 @@ function extractHeadlineProjectCandidate(
         (entityMatches(normalizeText(title), candidate) ? 120 : 0)
         + (leadWindow.includes(normalizedCandidate) ? 70 : 0)
         + Math.min(tokens.length * 12, 48)
+        + (quotedSubjects.some((quoted) => normalizeText(quoted) === normalizedCandidate) ? 120 : 0)
         - (HEADLINE_PROJECT_GENERIC_TERMS.has(tokens[0] || '') ? 40 : 0);
 
       return { candidate, score };
@@ -1474,6 +1611,17 @@ function isContainerSubjectType(type: SubjectType): boolean {
 function inferContentSubjectType(articleText: string, subject: string): SubjectType {
   const normalizedArticle = normalizeText(articleText);
   const normalizedSubject = normalizeText(subject);
+  const contextualUsage = classifyContextSensitiveSubjectUsage(articleText, subject);
+  if (
+    contextualUsage === 'generic'
+    || (contextualUsage === 'ambiguous' && CONTEXT_SENSITIVE_ENTITY_TERMS.has(normalizedSubject))
+  ) {
+    return 'general';
+  }
+
+  if (shouldTreatAsGenericDemographicSubject(articleText, subject)) {
+    return 'general';
+  }
   const subjectAppears = normalizedSubject &&
     new RegExp(`\\b${escapeRegExp(normalizedSubject)}\\b`).test(normalizedArticle);
 
@@ -1509,7 +1657,7 @@ function inferContentSubjectType(articleText: string, subject: string): SubjectT
   return 'franchise';
 }
 
-function extractContainerOwnedContentSubject(title: string, studios: string[]): string | null {
+function extractContainerOwnedContentSubject(title: string, studios: string[], articleText = title): string | null {
   if (studios.length === 0) {
     return null;
   }
@@ -1546,6 +1694,10 @@ function extractContainerOwnedContentSubject(title: string, studios: string[]): 
     }
 
     if (GENERIC_CONTAINER_SUBJECT_TERMS.includes(normalizedCandidate)) {
+      continue;
+    }
+
+    if (classifyContextSensitiveSubjectUsage(articleText, cleaned) !== 'media_entity') {
       continue;
     }
 
@@ -1744,6 +1896,12 @@ function resolveTargetFormat(articleText: string, primaryType: SubjectType): Tar
   return 'general';
 }
 
+function isUnanchoredGeneralStory(analysis: RSSSubjectAnalysis): boolean {
+  return analysis.primarySubject.type === 'general' &&
+    !analysis.contextProject &&
+    (analysis.contextType === 'industry' || analysis.contextType === 'boxoffice' || analysis.contextType === 'general');
+}
+
 function detectAnimatedSubject(articleText: string, primaryName: string, secondarySubjects: string[]): boolean {
   const normalizedText = normalizeText(articleText);
   if (containsKeyword(normalizedText, ANIMATED_SUBJECT_KEYWORDS)) {
@@ -1825,13 +1983,13 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
   const headlineProjectCandidate = extractHeadlineProjectCandidate(normalizedTitle, articleText, studios);
   const leadPersonCandidate = extractLeadPersonSubject(normalizedTitle);
-  const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios);
+  const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios, articleText);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
 
   let primaryName = quotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
-  let primaryType: SubjectType = 'movie';
+  let primaryType: SubjectType = 'general';
   const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
 
   if (containerOwnedSubject) {
@@ -2030,7 +2188,7 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
 
     return true;
   }) || null;
-  const containerOwnedSubject = extractContainerOwnedContentSubject(article.title, relevantStudios);
+  const containerOwnedSubject = extractContainerOwnedContentSubject(article.title, relevantStudios, articleText);
   const headlineProjectCandidate = extractHeadlineProjectCandidate(article.title, articleText, relevantStudios)
     || secondaryProjectCandidate
     || fallbackProjectCandidate;
@@ -3847,6 +4005,10 @@ function validateImageCandidate(
     return { approved: false, reason: 'missing image url' };
   }
 
+  if (isUnanchoredGeneralStory(analysis) && analysis.imageIntent !== 'logo' && analysis.imageIntent !== 'brand_backdrop') {
+    return { approved: false, reason: 'generic industry story requires a clearly anchored subject before using title art' };
+  }
+
   if (!isTrustedImageDomain(domain)) {
     return { approved: false, reason: 'untrusted image domain' };
   }
@@ -4304,4 +4466,5 @@ export const __rssImageSelectionTestUtils = {
   normalizeSubjectAnalysis,
   getRevealDrivenArticleMode,
   shouldUseFeedFallbackImages,
+  isUnanchoredGeneralStory,
 };

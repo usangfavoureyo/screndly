@@ -5,7 +5,7 @@ import {
   type RSSImageSelectionArticle,
 } from '../services/rss-image-selection.service';
 
-const { validateImageCandidate, guessPrimarySubject } = __rssImageSelectionTestUtils;
+const { validateImageCandidate, guessPrimarySubject, isUnanchoredGeneralStory } = __rssImageSelectionTestUtils;
 
 function buildAnalysis(article: RSSImageSelectionArticle) {
   return guessPrimarySubject(article);
@@ -110,3 +110,46 @@ test('rejects illustrative art for non-animated live-action stories', () => {
   assert.match(result.reason || '', /illustration/i);
 });
 
+test('rejects title art for unanchored generic box office or industry stories', () => {
+  const analysis = buildAnalysis({
+    title: 'Gen Z Goes to the Movies! Younger Audiences Are Driving the Box Office, Study Shows',
+    description: 'A new study tied to the box office says Gen Z is now the most active moviegoing demographic.',
+  });
+
+  assert.equal(isUnanchoredGeneralStory(analysis), true);
+
+  const result = validateImageCandidate({
+    title: 'Bei gen zong de xiao nu official poster',
+    imageUrl: 'https://image.tmdb.org/t/p/w1280/example.jpg',
+    imageWidth: 1280,
+    imageHeight: 720,
+    domain: 'themoviedb.org',
+    link: 'https://www.themoviedb.org/movie/example',
+    source: 'serper',
+  }, analysis);
+
+  assert.equal(result.approved, false);
+  assert.match(result.reason || '', /generic industry story/i);
+});
+
+test('treats Foundation as a project when explicit TV-series context exists', () => {
+  const analysis = buildAnalysis({
+    title: "'Foundation' Season 3 begins filming at Apple TV+",
+    description: 'Production is underway on the Apple TV+ sci-fi series.',
+  });
+
+  assert.equal(analysis.primarySubject.name, 'Foundation');
+  assert.equal(analysis.primarySubject.type, 'tv_show');
+  assert.equal(isUnanchoredGeneralStory(analysis), false);
+});
+
+test('treats The Bear as a project when renewal context is explicit', () => {
+  const analysis = buildAnalysis({
+    title: "'The Bear' renewed for Season 5 by FX",
+    description: 'The FX series will return for another season.',
+  });
+
+  assert.equal(analysis.primarySubject.name, 'The Bear');
+  assert.equal(analysis.primarySubject.type, 'tv_show');
+  assert.equal(isUnanchoredGeneralStory(analysis), false);
+});

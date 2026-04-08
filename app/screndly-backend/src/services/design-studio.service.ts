@@ -8,7 +8,7 @@ import { readPsdSafely } from '../lib/psd';
 import { generateStudioCaption } from './ai.service';
 import { uploadBufferToBackblaze, getBackblazeAuthorizedDownloadUrl } from './backblaze';
 import { publisherService } from './publisher.service';
-import { getRSSActivity } from './rss.service';
+import { getRSSActivity, type RSSActivityItem } from './rss.service';
 import sharp from 'sharp';
 import {
   REFERENCE_BRAND_HEIGHT,
@@ -23,6 +23,24 @@ const DESIGN_STUDIO_RENDER_JOBS_KEY = 'designStudioRenderJobs';
 const DESIGN_STUDIO_QUEUE_NAME = 'design-studio-renders';
 const DESIGN_STUDIO_REMOTE_FETCH_TIMEOUT_MS = 30000;
 const DESIGN_STUDIO_RENDER_TIMEOUT_MS = 180000;
+const DESIGN_STUDIO_NON_NARRATIVE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+  { pattern: /\b(?:wwe|wrestling|pro wrestling)\b/i, reason: 'Wrestling content is out of scope' },
+  { pattern: /\b(?:ufc|mma|boxing|weigh[\s-]?in|press conference|matchday|postgame|pregame|highlights?)\b/i, reason: 'Sports coverage is out of scope' },
+  { pattern: /\b(?:documentary|docuseries|docu-series|true crime)\b/i, reason: 'Documentaries and docuseries are out of scope' },
+  { pattern: /\b(?:reality|unscripted|competition series|dating show|game show)\b/i, reason: 'Reality and unscripted shows are out of scope' },
+  { pattern: /\b(?:love island|big brother|survivor|the bachelor|the bachelorette|real housewives|kardashians?)\b/i, reason: 'Reality franchise coverage is out of scope' },
+  { pattern: /\b(?:lifestyle|home renovation|makeover|cooking show|food series|travel series)\b/i, reason: 'Lifestyle programming is out of scope' },
+  { pattern: /\b(?:stand[\s-]?up|comedy special|one[\s-]?hour special|roast special|live special)\b/i, reason: 'Stand-up and comedy specials are out of scope' },
+  { pattern: /\b(?:talk show|late night|podcast|vodcast|interview series|daytime show)\b/i, reason: 'Talk and podcast-style coverage is out of scope' },
+  { pattern: /\b(?:concert film|music video|official audio|lyric video|live performance)\b/i, reason: 'Music/performance releases are out of scope' },
+];
+const DESIGN_STUDIO_SCRIPTED_INDICATOR_PATTERNS = [
+  /\b(?:movie|film|feature film|feature|in theaters|in cinemas|box office)\b/i,
+  /\b(?:tv series|tv show|series|season|episode|finale|miniseries|limited series|showrunner)\b/i,
+  /\b(?:trailer|teaser|featurette|first look|poster|casting|director|writer|actor|actress|character|spin-?off|spinoff|sequel|prequel|adaptation|renewed|renewal|canceled|cancelled|premiere)\b/i,
+  /\b(?:netflix|hbo|max|apple tv\+?|prime video|disney\+|hulu|peacock|paramount\+)\b/i,
+  /\b(?:marvel|dc|pixar|dreamworks|illumination|a24|searchlight|universal|warner bros|sony pictures|paramount pictures|neon)\b/i,
+];
 function resolveDesignStudioAssetPath(fileName: string): string {
   const candidates = [
     path.join(__dirname, '..', 'design-studio', 'assets', fileName),
@@ -1703,7 +1721,7 @@ export async function buildTextLayer(input: {
 
   for (const [index, line] of fit.lines.entries()) {
     const lineTop = Math.round(top + (index * fit.lineHeight));
-    const renderedLine = await sharp({
+    const { data: renderedLine, info: renderedLineInfo } = await sharp({
       text: {
         text: line,
         rgba: true,
@@ -1713,7 +1731,13 @@ export async function buildTextLayer(input: {
         font: fontFamily,
         ...(fontFile ? { fontfile: fontFile } : {}),
       },
-    }).png().toBuffer();
+    }).png().toBuffer({ resolveWithObject: true });
+
+    const lineLeft = alignment === 'center'
+      ? Math.round(scaledTextBoxX + ((scaledBoxWidth - renderedLineInfo.width) / 2))
+      : alignment === 'right'
+        ? Math.round(scaledTextBoxX + scaledBoxWidth - renderedLineInfo.width)
+        : scaledTextBoxX;
 
     if (shadowOpacity > 0) {
       const shadowLine = await sharp(await colorizeTextBuffer(renderedLine, '#000000', shadowOpacity))
@@ -1722,14 +1746,14 @@ export async function buildTextLayer(input: {
         .toBuffer();
       composites.push({
         input: shadowLine,
-        left: scaledTextBoxX + 1,
+        left: lineLeft + 1,
         top: lineTop + 2,
       });
     }
 
     composites.push({
       input: await colorizeTextBuffer(renderedLine, fontColor),
-      left: scaledTextBoxX,
+      left: lineLeft,
       top: lineTop,
     });
   }
@@ -2127,6 +2151,49 @@ function deriveEditorialScore(title: string, matchedKeyword: string, hasImage: b
   return Math.min(100, score);
 }
 
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, ' ');
+}
+
+function evaluateAutoEditorialNarrativeEligibility(
+  item: RSSActivityItem,
+  matchedKeyword?: string,
+): { eligible: boolean; reason?: string } {
+  const haystack = [
+    item.title,
+    item.description || '',
+    stripHtml(item.contentHtml || ''),
+    item.feedName || '',
+    matchedKeyword || '',
+  ].join(' ');
+
+  for (const blocked of DESIGN_STUDIO_NON_NARRATIVE_PATTERNS) {
+    if (blocked.pattern.test(haystack)) {
+      return { eligible: false, reason: blocked.reason };
+    }
+  }
+
+  const hasNarrativeTmdbSignal = item.imageSource === 'tmdb'
+    || Boolean(item.selectedImages?.some((image) => image.source === 'tmdb'));
+
+  if (hasNarrativeTmdbSignal) {
+    return { eligible: true };
+  }
+
+  if (DESIGN_STUDIO_SCRIPTED_INDICATOR_PATTERNS.some((pattern) => pattern.test(haystack))) {
+    return { eligible: true };
+  }
+
+  return {
+    eligible: false,
+    reason: 'Item does not clearly match scripted narrative film or TV coverage',
+  };
+}
+
+export const __designStudioAutoTestUtils = {
+  evaluateAutoEditorialNarrativeEligibility,
+};
+
 function deriveHeaderText(title: string): string {
   return title.trim().length <= 120 ? title.trim() : `${title.trim().slice(0, 117).trim()}...`;
 }
@@ -2472,6 +2539,10 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
         return null;
       }
       seenTitles.add(normalizedTitle);
+      const eligibility = evaluateAutoEditorialNarrativeEligibility(item, matchedKeyword);
+      if (!eligibility.eligible) {
+        return null;
+      }
       const backgroundSource = item.imageUrl || item.imageUrls?.[0];
       const score = deriveEditorialScore(item.title, matchedKeyword, Boolean(backgroundSource));
       if (score < settings.minimumScoreThreshold) {

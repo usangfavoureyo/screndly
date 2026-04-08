@@ -5,10 +5,11 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Clock, TrendingUp } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import { postTimeOptimizer } from '../lib/optimization';
 import type { Platform } from '../lib/optimization/types';
 import arrowDownIcon from '../public/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg';
+import arrowUpIcon from '../public/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg';
 
 interface OptimalTimeSuggestionProps {
     selectedPlatforms: string[];
@@ -111,7 +112,7 @@ export function OptimalTimeSuggestion({
             <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
-                className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-[#111111] hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors"
+                className="w-full px-4 py-3 flex items-center justify-between bg-white dark:bg-black hover:bg-gray-50 dark:hover:bg-[#111111] transition-colors"
             >
                 <div className="flex items-center gap-2">
                     <div className="text-left">
@@ -143,11 +144,16 @@ export function OptimalTimeSuggestion({
 
             {/* Expanded Content */}
             {isExpanded && (
-                <div className="px-4 py-3 bg-white dark:bg-[#0a0a0a] space-y-3 border-t border-gray-200 dark:border-[#333333]">
+                <div className="px-4 py-3 bg-white dark:bg-black space-y-3 border-t border-gray-200 dark:border-[#333333]">
                     {/* Per-Platform Breakdown */}
                     <div className="space-y-2">
-                        <p className="text-xs text-gray-500 dark:text-[#9CA3AF] flex items-center gap-1">
-                            <TrendingUp className="w-3 h-3" />
+                        <p className="text-xs text-gray-500 dark:text-[#9CA3AF] flex items-center gap-1 bg-white dark:bg-black">
+                            <img
+                                src={arrowUpIcon}
+                                alt=""
+                                aria-hidden="true"
+                                className="h-3 w-3 shrink-0 dark:invert"
+                            />
                             Based on your analytics data
                         </p>
 
@@ -155,7 +161,7 @@ export function OptimalTimeSuggestion({
                             {recommendations.map((rec) => (
                                 <div
                                     key={rec.platform}
-                                    className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg bg-gray-50 dark:bg-[#111111]"
+                                    className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg bg-gray-100 dark:bg-[#111111]"
                                 >
                                     <span className="text-gray-700 dark:text-gray-300 capitalize">
                                         {rec.platform}

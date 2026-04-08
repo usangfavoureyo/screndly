@@ -1325,7 +1325,9 @@ function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSCon
 
     if (/\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
         if (/\bvillain\b/i.test(body)) {
-            return 'The added scenes revise part of the villain storyline.';
+            return formattedMediaTitle
+                ? `The extra footage is changing part of ${formattedMediaTitle}'s villain story.`
+                : 'The extra footage is changing part of the story.';
         }
 
         if (/\blondon\b/i.test(body)) {
@@ -1480,6 +1482,22 @@ function isEditorializedRSSCaption(caption: string): boolean {
     return /\bstarting to feel like\b|\bfeels like a pattern\b|\blooks like a pattern\b|\bseems like a pattern\b|\bslow[- ]burn returns\b|\bpattern again\b/.test(normalized);
 }
 
+function hasUnsupportedRSSDemographicMutation(caption: string, context: RSSContext): boolean {
+    const sourceText = `${context.articleTitle} ${context.summary} ${context.articleBody || ''} ${context.articleContentHtml || ''}`;
+    const normalizedSource = sourceText.toLowerCase();
+    const normalizedCaption = caption.toLowerCase();
+
+    if (normalizedSource.includes('gen z') && !normalizedSource.includes('gen zers') && normalizedCaption.includes('gen zers')) {
+        return true;
+    }
+
+    if (normalizedSource.includes('gen alpha') && !normalizedSource.includes('gen alphas') && normalizedCaption.includes('gen alphas')) {
+        return true;
+    }
+
+    return false;
+}
+
 function getRSSCaptionLines(caption: string): string[] {
     return caption
         .replace(/\r\n?/g, '\n')
@@ -1549,6 +1567,7 @@ function lacksRSSLineTerminalPunctuation(caption: string): boolean {
 function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolean {
     return hasUnsupportedRSSVagueSubject(caption, context)
         || isEditorializedRSSCaption(caption)
+        || hasUnsupportedRSSDemographicMutation(caption, context)
         || hasInlineRSSQuote(caption)
         || hasOverloadedRSSHeadline(caption)
         || mirrorsRSSHeadlineTooClosely(caption, context)
@@ -1616,9 +1635,11 @@ ${visualContext}
 ${allowedEntitiesContext}
 
 Rules:
+- Treat the system prompt as authoritative for editorial voice, structure, spacing, title formatting, quote formatting, and final output shape.
 - Build from the structured facts and body excerpt, not from the article title alone.
 - The first line must be exactly one clean headline sentence.
 - The headline line must name the most specific reliable subject when one exists.
+- If there is a second text block after the headline, separate it with a blank line.
 - If you include a direct quote from the article, place it on its own separate line after the headline.
 - Use a second line only for one factual supporting sentence, one standalone quote, or up to two bullet points.
 - Name the concrete subject immediately when the article title/summary or allowed entities contain a specific movie, series, character, or person.
@@ -1703,6 +1724,7 @@ export const __rssCaptionTestUtils = {
     buildDeterministicRssCaption,
     enforceRSSCaptionPunctuation,
     failsRSSCaptionFormatting,
+    hasUnsupportedRSSDemographicMutation,
     mirrorsRSSHeadlineTooClosely,
     normalizeRSSHeadlineInput,
 };

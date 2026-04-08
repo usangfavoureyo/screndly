@@ -204,6 +204,42 @@ const TITLE_ANCHOR_STOPWORDS = new Set([
   'to',
   'with',
 ]);
+const GENERIC_DEMOGRAPHIC_TERMS = new Set([
+  'gen z',
+  'gen alpha',
+  'gen x',
+  'millennial',
+  'millennials',
+  'baby boomer',
+  'baby boomers',
+  'young audiences',
+  'young people',
+  'audiences',
+  'moviegoers',
+  'viewers',
+  'consumers',
+]);
+const GENERIC_DEMOGRAPHIC_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+)\b/i;
+const CONTEXT_SENSITIVE_ENTITY_TERMS = new Set([
+  ...GENERIC_DEMOGRAPHIC_TERMS,
+  'avatar',
+  'foundation',
+  'ghosts',
+  'bridgerton',
+  'you',
+  'her',
+  'them',
+  'shogun',
+  'the bear',
+  'bear',
+]);
+const HIGH_AMBIGUITY_CONTEXT_TERMS = new Set([
+  'you',
+  'her',
+  'them',
+]);
+const CONTEXT_SENSITIVE_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|directed|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+|movie|film|feature|box office|streaming|first look|poster|logo|adaptation|remake|reboot|spinoff|spin-off|character|villain|hero|role|plays|returning|returns as|in theaters|tv)\b/i;
+const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing)\b/i;
 
 const DISAMBIGUATION_RULES: Array<{
   match: RegExp;
@@ -374,6 +410,10 @@ function normalizeText(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function uniqueStrings(values: Array<string | null | undefined>): string[] {
@@ -734,6 +774,82 @@ function scoreTitleAnchorCandidate(value: string, preferPrimary = false): number
     + Math.min(tokens.join(' ').length, 60);
 }
 
+function isGenericDemographicTerm(value: string, contextText?: string): boolean {
+  if (!GENERIC_DEMOGRAPHIC_TERMS.has(normalizeText(value))) {
+    return false;
+  }
+
+  return !GENERIC_DEMOGRAPHIC_PROJECT_CUES.test(contextText || '');
+}
+
+function getContextualCandidateSnippet(contextText: string, candidate: string): string {
+  const normalizedContext = normalizeText(contextText);
+  const normalizedCandidate = normalizeText(candidate);
+  if (!normalizedContext || !normalizedCandidate) {
+    return normalizedContext;
+  }
+
+  const pattern = new RegExp(`\\b${escapeRegExp(normalizedCandidate)}\\b`, 'g');
+  const snippets: string[] = [];
+
+  for (const match of normalizedContext.matchAll(pattern)) {
+    const index = match.index ?? -1;
+    if (index < 0) {
+      continue;
+    }
+
+    const start = Math.max(0, index - 120);
+    const end = Math.min(normalizedContext.length, index + normalizedCandidate.length + 120);
+    snippets.push(normalizedContext.slice(start, end).trim());
+    if (snippets.length >= 3) {
+      break;
+    }
+  }
+
+  return snippets.join(' ');
+}
+
+function classifyContextSensitiveEntityUsage(
+  candidate: string,
+  contextText: string
+): 'media_entity' | 'generic' | 'ambiguous' {
+  const normalizedCandidate = normalizeText(candidate);
+  if (!normalizedCandidate || !CONTEXT_SENSITIVE_ENTITY_TERMS.has(normalizedCandidate)) {
+    return 'media_entity';
+  }
+
+  if (new RegExp(`["'â€œâ€]${escapeRegExp(candidate.trim())}["'â€œâ€]`, 'i').test(contextText)) {
+    return 'media_entity';
+  }
+
+  const snippet = getContextualCandidateSnippet(contextText, candidate);
+  const combined = `${normalizeText(contextText)} ${snippet}`.trim();
+  const hasProjectCue = CONTEXT_SENSITIVE_PROJECT_CUES.test(combined);
+  const hasGenericCue = CONTEXT_SENSITIVE_GENERIC_CUES.test(combined);
+
+  if (GENERIC_DEMOGRAPHIC_TERMS.has(normalizedCandidate)) {
+    if (hasProjectCue) {
+      return 'media_entity';
+    }
+
+    return hasGenericCue ? 'generic' : 'ambiguous';
+  }
+
+  if (HIGH_AMBIGUITY_CONTEXT_TERMS.has(normalizedCandidate)) {
+    return hasProjectCue ? 'media_entity' : 'generic';
+  }
+
+  if (hasProjectCue && !hasGenericCue) {
+    return 'media_entity';
+  }
+
+  if (hasGenericCue && !hasProjectCue) {
+    return 'generic';
+  }
+
+  return 'ambiguous';
+}
+
 function buildDisambiguationText(input: StructuredRSSTMDbSelectionInput): string {
   return uniqueStrings([
     input.primarySubject.name,
@@ -766,6 +882,7 @@ function inferDisambiguationMediaType(input: StructuredRSSTMDbSelectionInput, co
 }
 
 function buildEntityCandidates(input: StructuredRSSTMDbSelectionInput): string[] {
+  const combinedText = buildDisambiguationText(input);
   return uniqueStrings([
     input.contextProject || null,
     input.primarySubject.name,
@@ -773,7 +890,7 @@ function buildEntityCandidates(input: StructuredRSSTMDbSelectionInput): string[]
     ...(input.secondarySubjects || []),
     ...input.requiredContextTerms,
     ...input.queries,
-  ]);
+  ]).filter((candidate) => classifyContextSensitiveEntityUsage(candidate, combinedText) !== 'generic');
 }
 
 function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): CanonicalTMDbEntity {
@@ -781,6 +898,26 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
   const candidates = buildEntityCandidates(input);
   const primaryName = input.primarySubject.name.trim() || input.visualSubject.trim() || input.contextProject?.trim() || candidates[0] || '';
   const inferredMediaType = inferDisambiguationMediaType(input, combinedText);
+  const primaryUsage = classifyContextSensitiveEntityUsage(primaryName, combinedText);
+
+  if (
+    isGenericDemographicTerm(primaryName, combinedText)
+    || primaryUsage === 'generic'
+    || (candidates.length > 0 && candidates.every((candidate) => classifyContextSensitiveEntityUsage(candidate, combinedText) === 'generic'))
+  ) {
+    return {
+      name: primaryName || 'general topic',
+      specificTitle: primaryName || 'general topic',
+      mediaType: 'unknown',
+      tmdbType: 'multi',
+      tmdbQuery: '',
+      alternateQueries: [],
+      confidence: 0.1,
+      ambiguityFlags: primaryUsage === 'generic' && !isGenericDemographicTerm(primaryName, combinedText)
+        ? ['context_sensitive_term_not_a_tmdb_entity']
+        : ['generic_demographic_not_a_tmdb_entity'],
+    };
+  }
 
   for (const rule of DISAMBIGUATION_RULES) {
     if (rule.match.test(combinedText)) {

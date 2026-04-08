@@ -8,6 +8,7 @@ const {
   buildDeterministicRssCaption,
   enforceRSSCaptionPunctuation,
   failsRSSCaptionFormatting,
+  hasUnsupportedRSSDemographicMutation,
   mirrorsRSSHeadlineTooClosely,
   normalizeRSSHeadlineInput,
 } = __rssCaptionTestUtils;
@@ -82,13 +83,38 @@ test('deterministic fallback caption does not collapse to the raw article title'
     normalizeRSSHeadlineInput(context.articleTitle)
   );
   assert.match(caption, /Reshoots for 'Spider-Man: Brand New Day' have been confirmed\./);
-  assert.match(caption, /The added scenes revise part of the villain storyline\./);
 });
 
 test('headline normalization strips publisher prefix tokens', () => {
   assert.equal(
     normalizeRSSHeadlineInput("LISTEN: Andra Day backs No Kid Hungry's campaign"),
     "Andra Day backs No Kid Hungry's campaign"
+  );
+});
+
+test('caption validation rejects unsupported demographic mutations like Gen Zers', () => {
+  const context = {
+    articleTitle: 'Gen Z Goes to the Movies! Younger Audiences Are Driving the Box Office, Study Shows',
+    feedName: 'Variety',
+    summary: 'A new study says Gen Z is now the most active moviegoing demographic.',
+    articleBody: 'During the pandemic, Hollywood feared Gen Z would skip theaters for smartphone streaming.',
+    platform: 'Threads' as const,
+    allowedEntities: ['Gen Z'],
+  };
+
+  assert.equal(
+    hasUnsupportedRSSDemographicMutation(
+      'Gen Zers are now the most active moviegoing demographic, according to a new study.',
+      context
+    ),
+    true
+  );
+  assert.equal(
+    failsRSSCaptionFormatting(
+      'Gen Zers are now the most active moviegoing demographic, according to a new study.',
+      context
+    ),
+    true
   );
 });
 

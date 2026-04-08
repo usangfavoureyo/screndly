@@ -657,8 +657,23 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
       }
       return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
     })
-    .filter(Boolean)
     .join('\n');
+
+  sanitized = sanitized
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const nonEmptyLines = sanitized
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (nonEmptyLines.length >= 2 && !sanitized.includes('\n\n')) {
+    const [headline, ...rest] = nonEmptyLines;
+    sanitized = [headline, '', ...rest].join('\n');
+  }
+
+  sanitized = sanitized.replace(/\n{3,}/g, '\n\n');
 
   return sanitized;
 }
@@ -985,7 +1000,7 @@ function applyResolvedImagesToRSSItem(item: RSSItem, images: RSSResolvedImage[])
     }
 
     if (primaryImage.source === 'feed') {
-      return 'medium' as const;
+      return 'low' as const;
     }
 
     if (typeof primaryScore !== 'number') {
@@ -2057,9 +2072,13 @@ function buildRSSCaptionSystemPrompt(
   basePrompt: string | undefined,
   options: { tone?: string; maxLength?: number }
 ): string | undefined {
+  const hasExplicitLengthInstruction = typeof basePrompt === 'string'
+    && /character range|under\s+\d+\s*characters?|max(?:imum)?\s+length|\b\d+\s*[–-]\s*\d+\s*characters?\b/i.test(basePrompt);
   const constraints = [
+    basePrompt ? '- The saved RSS caption prompt above is authoritative for voice, structure, spacing, quotes, title formatting, and output style.' : null,
+    basePrompt ? '- Follow the saved prompt exactly unless a supplemental rule below is needed to preserve factual accuracy or subject clarity.' : null,
     options.tone ? `- Preferred tone: ${options.tone}.` : null,
-    options.maxLength ? `- Keep the final caption under ${options.maxLength} characters.` : null,
+    options.maxLength && !hasExplicitLengthInstruction ? `- Keep the final caption under ${options.maxLength} characters.` : null,
     '- Focus on the single strongest lead angle from the headline rather than summarizing every sub-story in the article.',
     '- If the article is a roundup, mention secondary items only when they are essential to the lead angle.',
     '- Keep the wording aligned with the selected image so the caption and visual feel like the same story.',
@@ -2181,15 +2200,18 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
   });
 
   const settingsMap = new Map(settings.map((entry) => [entry.key, entry.value]));
+  const savedCaptionPrompt = asString(settingsMap.get('rssCaptionPrompt'));
+  const savedCaptionMaxLength = asNumber(settingsMap.get('rssCaptionMaxLength'));
+  const defaultCaptionMaxLength = savedCaptionPrompt ? 800 : 280;
 
   return {
     globalRSSPosting: asBoolean(settingsMap.get('globalRSSPosting'), true),
     rssDeduplication: asBoolean(settingsMap.get('rssDeduplication'), true),
     rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
-    rssCaptionPrompt: asString(settingsMap.get('rssCaptionPrompt')),
+    rssCaptionPrompt: savedCaptionPrompt,
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
     rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
-    rssCaptionMaxLength: Math.max(50, asNumber(settingsMap.get('rssCaptionMaxLength'), 280) || 280),
+    rssCaptionMaxLength: Math.max(50, savedCaptionMaxLength ?? defaultCaptionMaxLength),
     rssPostingIntervalMinutes: (() => {
       const configuredValue = asNumber(settingsMap.get('rssPostingInterval'), 10);
       if (configuredValue === undefined || configuredValue === null || Number.isNaN(configuredValue)) {
@@ -2814,7 +2836,8 @@ async function attemptRSSPublish(
       tone: runtimeSettings.rssCaptionTone,
       maxLength: runtimeSettings.rssCaptionMaxLength,
     });
-    const captionSource = item.generatedCaption || await aiService.generateRSSCaption(
+    const shouldReuseStoredCaption = Object.keys(previousPlatformPostIds).length > 0 && Boolean(item.generatedCaption?.trim());
+    const captionSource = shouldReuseStoredCaption ? item.generatedCaption! : await aiService.generateRSSCaption(
       {
         articleTitle: item.title,
         feedName: feed.name,

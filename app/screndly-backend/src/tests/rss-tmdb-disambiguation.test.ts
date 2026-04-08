@@ -98,3 +98,93 @@ test('falls back to franchise-level query when exact Matrix project is unresolve
   assert.equal(resolved.tmdbQuery, 'The Matrix franchise');
 });
 
+test('does not treat Gen Z demographics as a TMDb title entity', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'Gen Z', type: 'general' },
+    visualSubject: 'Gen Z',
+    secondarySubjects: [],
+    imageIntent: 'backdrop',
+    targetFormat: 'general',
+    contextProject: null,
+    requiredContextTerms: ['box office', 'study'],
+    relevantStudios: [],
+    queries: ['Gen Z box office study'],
+    limit: 1,
+  });
+
+  assert.equal(resolved.tmdbQuery, '');
+  assert.match(resolved.ambiguityFlags.join(','), /generic_demographic_not_a_tmdb_entity/);
+});
+
+test('allows Gen Z to remain a title candidate when series context is explicit', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'Gen Z', type: 'tv_show' },
+    visualSubject: 'Gen Z',
+    secondarySubjects: [],
+    imageIntent: 'backdrop',
+    targetFormat: 'series',
+    contextProject: 'Gen Z',
+    requiredContextTerms: ['series', 'season 2', 'cast'],
+    relevantStudios: ['HBO'],
+    queries: ['Gen Z series season 2'],
+    limit: 1,
+  });
+
+  assert.notEqual(resolved.tmdbQuery, '');
+  assert.equal(/generic_demographic_not_a_tmdb_entity/.test(resolved.ambiguityFlags.join(',')), false);
+});
+
+test('allows Foundation to resolve as a TV entity when Apple TV+ series cues exist', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'Foundation', type: 'tv_show' },
+    visualSubject: 'Foundation',
+    secondarySubjects: [],
+    imageIntent: 'backdrop',
+    targetFormat: 'series',
+    contextProject: 'Foundation',
+    requiredContextTerms: ['Apple TV+', 'series', 'season 3'],
+    relevantStudios: ['Apple TV+'],
+    queries: ['Foundation season 3 begins filming at Apple TV+'],
+    limit: 1,
+  });
+
+  assert.equal(resolved.tmdbType, 'tv');
+  assert.notEqual(resolved.tmdbQuery, '');
+  assert.equal(/context_sensitive_term_not_a_tmdb_entity/.test(resolved.ambiguityFlags.join(',')), false);
+});
+
+test('allows Avatar to remain a movie entity in box office context', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'Avatar', type: 'movie' },
+    visualSubject: 'Avatar',
+    secondarySubjects: [],
+    imageIntent: 'poster',
+    targetFormat: 'movie',
+    contextProject: 'Avatar',
+    requiredContextTerms: ['box office', 'James Cameron', 'theaters'],
+    relevantStudios: ['Disney'],
+    queries: ['Avatar remains a box office force in theaters'],
+    limit: 1,
+  });
+
+  assert.equal(resolved.tmdbType, 'movie');
+  assert.notEqual(resolved.tmdbQuery, '');
+});
+
+test('does not treat You as a TMDb title when context is ordinary language', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'You', type: 'general' },
+    visualSubject: 'You',
+    secondarySubjects: [],
+    imageIntent: 'backdrop',
+    targetFormat: 'general',
+    contextProject: null,
+    requiredContextTerms: ['study', 'audience'],
+    relevantStudios: [],
+    queries: ['You are the audience studios want, study says'],
+    limit: 1,
+  });
+
+  assert.equal(resolved.tmdbQuery, '');
+  assert.match(resolved.ambiguityFlags.join(','), /context_sensitive_term_not_a_tmdb_entity/);
+});
