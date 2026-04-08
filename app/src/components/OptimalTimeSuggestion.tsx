@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Clock, TrendingUp, Brain } from 'lucide-react';
+import { Clock, TrendingUp } from 'lucide-react';
 import { postTimeOptimizer } from '../lib/optimization';
 import type { Platform } from '../lib/optimization/types';
 import arrowDownIcon from '../public/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg';
@@ -114,9 +114,6 @@ export function OptimalTimeSuggestion({
                 className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 dark:bg-[#111111] hover:bg-gray-100 dark:hover:bg-[#1a1a1a] transition-colors"
             >
                 <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-full bg-[#ec1e24]/10">
-                        <Brain className="w-3.5 h-3.5 text-[#ec1e24]" />
-                    </div>
                     <div className="text-left">
                         <span className="text-sm font-medium text-gray-900 dark:text-white">
                             Optimal Posting Time
@@ -138,7 +135,8 @@ export function OptimalTimeSuggestion({
                         src={arrowDownIcon}
                         alt=""
                         aria-hidden="true"
-                        className={`w-4 h-4 opacity-70 dark:opacity-60 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        className={`h-4 w-4 shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        style={{ filter: 'brightness(0) invert(1)' }}
                     />
                 </div>
             </button>

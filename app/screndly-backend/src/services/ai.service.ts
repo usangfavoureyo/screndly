@@ -1296,6 +1296,170 @@ function ensureRSSSentenceTerminal(value: string): string {
     return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
+function formatRssMediaTitle(value?: string): string | undefined {
+    const trimmed = String(value || '').trim();
+    if (!trimmed) {
+        return undefined;
+    }
+
+    return /^['"].+['"]$/.test(trimmed) ? trimmed : `'${trimmed}'`;
+}
+
+function getPreferredRssTitleEntity(context: RSSContext, extraction: RssCaptionExtraction): string | undefined {
+    const candidates = [
+        extraction.media_title,
+        ...(Array.isArray(context.allowedEntities) ? context.allowedEntities : []),
+    ]
+        .map((entry) => String(entry || '').trim())
+        .filter(Boolean);
+
+    return candidates.sort((left, right) => right.length - left.length).find((entry) => {
+        return /\s/.test(entry) || /[:'-]/.test(entry);
+    });
+}
+
+function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSContext): string | undefined {
+    const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+    const summary = String(context.summary || '').trim();
+    const formattedMediaTitle = formatRssMediaTitle(extraction.media_title);
+
+    if (/\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
+        if (/\bvillain\b/i.test(body)) {
+            return formattedMediaTitle
+                ? `The extra footage is changing part of ${formattedMediaTitle}'s villain story.`
+                : 'The extra footage is changing part of the story.';
+        }
+
+        if (/\blondon\b/i.test(body)) {
+            return 'Additional photography took place in London.';
+        }
+
+        return 'Additional photography is part of the latest update.';
+    }
+
+    if (/\bproduction\b|\bfilming\b/i.test(body) && extraction.event_type === 'in_production') {
+        if (/\buk\b/i.test(body)) {
+            return 'Filming is underway in the UK.';
+        }
+
+        return 'Production is now underway.';
+    }
+
+    const firstFact = (extraction.supporting_facts || [])
+        .map((entry) => String(entry || '').replace(/\s+/g, ' ').trim())
+        .find((entry) => entry && !mirrorsRSSHeadlineTooClosely(ensureRSSSentenceTerminal(entry), context));
+
+    if (firstFact) {
+        return ensureRSSSentenceTerminal(firstFact);
+    }
+
+    if (summary && !mirrorsRSSHeadlineTooClosely(ensureRSSSentenceTerminal(summary), context)) {
+        return ensureRSSSentenceTerminal(summary);
+    }
+
+    return undefined;
+}
+
+function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context: RSSContext): string {
+    const preferredTitle = getPreferredRssTitleEntity(context, extraction);
+    const formattedMediaTitle = formatRssMediaTitle(preferredTitle || extraction.media_title);
+    const primarySubject = preferredTitle || extraction.primary_subject || extraction.media_title || normalizeRSSHeadlineInput(context.articleTitle);
+    const secondarySubject = extraction.secondary_subject;
+    const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+
+    let headline: string;
+
+    if (formattedMediaTitle && /\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
+        headline = `Reshoots for ${formattedMediaTitle} have been confirmed.`;
+    } else {
+        switch (extraction.event_type) {
+            case 'casting':
+                headline = formattedMediaTitle && primarySubject && primarySubject !== extraction.media_title
+                    ? `${primarySubject} joins ${formattedMediaTitle}.`
+                    : formattedMediaTitle
+                        ? `${formattedMediaTitle} has added a new cast member.`
+                        : `${primarySubject} has joined a new project.`;
+                break;
+            case 'renewal':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} has been renewed.`
+                    : `${primarySubject} has been renewed.`;
+                break;
+            case 'cancellation':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} has been canceled.`
+                    : `${primarySubject} has been canceled.`;
+                break;
+            case 'development':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} is in development.`
+                    : `${primarySubject} is in development.`;
+                break;
+            case 'in_production':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} has entered production.`
+                    : `${primarySubject} has entered production.`;
+                break;
+            case 'trailer':
+                headline = formattedMediaTitle
+                    ? `A new trailer for ${formattedMediaTitle} has been released.`
+                    : `A new trailer has been released for ${primarySubject}.`;
+                break;
+            case 'first_look':
+                headline = formattedMediaTitle
+                    ? `A first look at ${formattedMediaTitle} has been revealed.`
+                    : `A first look has been revealed for ${primarySubject}.`;
+                break;
+            case 'release_date':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} has a new release date.`
+                    : `${primarySubject} has a new release date.`;
+                break;
+            case 'interview_quote':
+                headline = formattedMediaTitle && secondarySubject
+                    ? `${secondarySubject} has spoken about ${formattedMediaTitle}.`
+                    : `${primarySubject} has addressed the latest update.`;
+                break;
+            case 'reveal':
+                headline = formattedMediaTitle
+                    ? `${formattedMediaTitle} has revealed a new story update.`
+                    : `${primarySubject} has been addressed in the latest update.`;
+                break;
+            case 'return':
+                headline = formattedMediaTitle && primarySubject && primarySubject !== extraction.media_title
+                    ? `${primarySubject} is returning in ${formattedMediaTitle}.`
+                    : `${primarySubject} is returning.`;
+                break;
+            case 'reflection':
+                headline = `${primarySubject} has reflected on the latest update.`;
+                break;
+            default:
+                if (formattedMediaTitle) {
+                    headline = `${formattedMediaTitle} is the focus of the latest update.`;
+                } else if (secondarySubject && primarySubject !== secondarySubject) {
+                    headline = `${primarySubject} has addressed ${secondarySubject}.`;
+                } else {
+                    headline = ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
+                }
+                break;
+        }
+    }
+
+    const quote = extraction.direct_quote && extraction.quote_speaker
+        ? ensureRSSSentenceTerminal(`"${extraction.direct_quote}"`)
+        : undefined;
+    const supportingLine = pickRSSSupportingLine(extraction, context);
+    const lines = [ensureRSSSentenceTerminal(headline)];
+
+    if (quote && quote.length <= 220) {
+        lines.push(quote);
+    } else if (supportingLine && supportingLine !== headline) {
+        lines.push(ensureRSSSentenceTerminal(supportingLine));
+    }
+
+    return enforceRSSCaptionPunctuation(lines.join('\n'));
+}
+
 function enforceRSSCaptionPunctuation(caption: string): string {
     return caption
         .replace(/\r\n?/g, '\n')
@@ -1401,6 +1565,7 @@ export async function generateRSSCaption(
 ): Promise<string> {
     const extraction = buildHeuristicRssCaptionExtraction(context);
     const bodyExcerpt = (extraction.article_body_clean || '').slice(0, 1400);
+    const deterministicFallback = buildDeterministicRssCaption(extraction, context);
     const defaultSystemPrompt = `You are a social media curator sharing news/articles.
 Goal: Summarize the value prop and encourage a click (without saying "click here").
 - Use 1 relevant emoji.
@@ -1478,7 +1643,7 @@ Write ONLY the caption.`;
     });
 
     if (!response.success) {
-        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
+        return deterministicFallback;
     }
     const normalizedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
@@ -1522,14 +1687,14 @@ Write ONLY the corrected caption.`;
     });
 
     if (!retryResponse.success) {
-        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
+        return deterministicFallback;
     }
 
     const correctedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content'])
     );
     if (failsRSSCaptionFormatting(correctedCaption, context)) {
-        return ensureRSSSentenceTerminal(normalizeRSSHeadlineInput(context.articleTitle));
+        return deterministicFallback;
     }
 
     return correctedCaption;
@@ -1537,6 +1702,7 @@ Write ONLY the corrected caption.`;
 
 export const __rssCaptionTestUtils = {
     buildHeuristicRssCaptionExtraction,
+    buildDeterministicRssCaption,
     enforceRSSCaptionPunctuation,
     failsRSSCaptionFormatting,
     mirrorsRSSHeadlineTooClosely,

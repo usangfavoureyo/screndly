@@ -5,6 +5,7 @@ import { __rssImageSelectionTestUtils } from '../services/rss-image-selection.se
 
 const {
   buildHeuristicRssCaptionExtraction,
+  buildDeterministicRssCaption,
   enforceRSSCaptionPunctuation,
   failsRSSCaptionFormatting,
   mirrorsRSSHeadlineTooClosely,
@@ -59,6 +60,28 @@ test('rss caption punctuation enforcer adds periods to each line', () => {
     caption,
     "'Spider-Man: Brand New Day' adds new scenes to expand its villain story.\nTom Holland discussed the extra photography."
   );
+});
+
+test('deterministic fallback caption does not collapse to the raw article title', () => {
+  const context = {
+    articleTitle: "Spider-Man: Brand New Day Reshoots Officially Confirmed, And They're Changing a Villain Story",
+    feedName: 'ComicBook',
+    summary: "As one of only two new Marvel Cinematic Universe movies hitting theaters this year, Spider-Man: Brand New Day is an important release for the franchise.",
+    articleBody: "Spider-Man: Brand New Day recently returned for additional photography. The reshoots are changing part of the film's villain story.",
+    platform: 'Threads' as const,
+    allowedEntities: ['Spider-Man: Brand New Day'],
+  };
+
+  const caption = buildDeterministicRssCaption(
+    buildHeuristicRssCaptionExtraction(context),
+    context
+  );
+
+  assert.notEqual(
+    normalizeRSSHeadlineInput(caption.split('\n')[0] || ''),
+    normalizeRSSHeadlineInput(context.articleTitle)
+  );
+  assert.match(caption, /Reshoots for 'Spider-Man: Brand New Day' have been confirmed\./);
 });
 
 test('headline normalization strips publisher prefix tokens', () => {

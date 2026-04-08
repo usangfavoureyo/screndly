@@ -431,12 +431,49 @@ function hexToRgba(value: string, alpha: number): string {
 
 function hexToRgb(value: string): { r: number; g: number; b: number } {
   const normalized = colorToHex(value, '#ffffff').replace('#', '');
-  const safe = normalized.length === 6 ? normalized : 'ffffff';
   return {
-    r: Number.parseInt(safe.slice(0, 2), 16),
-    g: Number.parseInt(safe.slice(2, 4), 16),
-    b: Number.parseInt(safe.slice(4, 6), 16),
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
   };
+}
+
+async function colorizeTextBuffer(
+  textBuffer: Buffer,
+  color: string,
+  alphaScale = 1,
+): Promise<Buffer> {
+  const { data, info } = await sharp(textBuffer)
+    .ensureAlpha()
+    .extractChannel(3)
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const alpha = Buffer.from(data);
+  if (alphaScale !== 1) {
+    for (let index = 0; index < alpha.length; index += 1) {
+      alpha[index] = Math.round(alpha[index] * clamp(alphaScale, 0, 1));
+    }
+  }
+
+  const rgb = hexToRgb(color);
+  return sharp({
+    create: {
+      width: info.width,
+      height: info.height,
+      channels: 3,
+      background: rgb,
+    },
+  })
+    .joinChannel(alpha, {
+      raw: {
+        width: info.width,
+        height: info.height,
+        channels: 1,
+      },
+    })
+    .png()
+    .toBuffer();
 }
 
 function escapeXml(value: string): string {
@@ -1643,25 +1680,8 @@ export async function buildTextLayer(input: {
     ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
     : input.variant.textBox.y;
 
-  const anchor = alignment === 'center'
-    ? 'middle'
-    : alignment === 'right'
-      ? 'end'
-      : 'start';
-  const x = alignment === 'center'
-    ? Math.round(scaledTextBoxX + (scaledBoxWidth / 2))
-    : alignment === 'right'
-      ? Math.round(scaledTextBoxX + scaledBoxWidth)
-      : scaledTextBoxX;
-
   const fontFamily = (input.template.fontFamily || 'PFDinTextCompPro').trim();
-  const renderFontFamily = getHeadlineFontDataUri() ? 'ScrendlyHeadline' : fontFamily;
-  const fontWeight = clamp(Math.round(input.template.fontWeight || 800), 100, 900);
-  const fontStyle = input.template.fontStyle?.toLowerCase().includes('italic') ? 'italic' : 'normal';
   const fontSize = Math.max(1, Math.round(fit.fontSize));
-  const letterSpacing = input.template.tracking && Number.isFinite(input.template.tracking)
-    ? `${(input.template.tracking / Math.max(fontSize, 1)) * 0.08}em`
-    : '-0.03em';
   const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
   const emptyLayer = sharp({
     create: {
@@ -1676,83 +1696,45 @@ export async function buildTextLayer(input: {
     return emptyLayer.png().toBuffer();
   }
 
-  const textSpans = fit.lines
-    .map((line, index) => {
-      const lineTop = Math.round(top + (index * fit.lineHeight));
-      return `
-        <text
-          x="${x}"
-          y="${lineTop}"
-          fill="${fontColor}"
-          font-family="${escapeXml(renderFontFamily)}"
-          font-size="${fontSize}"
-          font-style="${fontStyle}"
-          font-weight="${fontWeight}"
-          letter-spacing="${letterSpacing}"
-          text-anchor="${anchor}"
-          dominant-baseline="text-before-edge"
-        >${escapeXml(line)}</text>
-      `.trim();
-    })
-    .join('');
+  const fontFile = fs.existsSync(DESIGN_STUDIO_HEADLINE_FONT_PATH)
+    ? DESIGN_STUDIO_HEADLINE_FONT_PATH
+    : undefined;
+  const composites: Array<{ input: Buffer; left: number; top: number }> = [];
 
-  const shadowSpans = shadowOpacity > 0
-    ? fit.lines
-      .map((line, index) => {
-        const lineTop = Math.round(top + (index * fit.lineHeight) + 2);
-        return `
-          <text
-            x="${x + 1}"
-            y="${lineTop}"
-            fill="#000000"
-            fill-opacity="${shadowOpacity}"
-            font-family="${escapeXml(renderFontFamily)}"
-            font-size="${fontSize}"
-            font-style="${fontStyle}"
-            font-weight="${fontWeight}"
-            letter-spacing="${letterSpacing}"
-            text-anchor="${anchor}"
-            dominant-baseline="text-before-edge"
-            filter="url(#headlineShadow)"
-          >${escapeXml(line)}</text>
-        `.trim();
-      })
-      .join('')
-    : '';
+  for (const [index, line] of fit.lines.entries()) {
+    const lineTop = Math.round(top + (index * fit.lineHeight));
+    const renderedLine = await sharp({
+      text: {
+        text: line,
+        rgba: true,
+        align: alignment,
+        width: scaledBoxWidth,
+        dpi: Math.max(72, Math.round(fontSize * 7)),
+        font: fontFamily,
+        ...(fontFile ? { fontfile: fontFile } : {}),
+      },
+    }).png().toBuffer();
 
-  const embeddedFontFace = getHeadlineFontDataUri()
-    ? `
-      <style>
-        @font-face {
-          font-family: 'ScrendlyHeadline';
-          src: url('${getHeadlineFontDataUri()}') format('truetype');
-          font-weight: 100 900;
-          font-style: normal;
-        }
-      </style>
-    `.trim()
-    : '';
+    if (shadowOpacity > 0) {
+      const shadowLine = await sharp(await colorizeTextBuffer(renderedLine, '#000000', shadowOpacity))
+        .blur(1.1)
+        .png()
+        .toBuffer();
+      composites.push({
+        input: shadowLine,
+        left: scaledTextBoxX + 1,
+        top: lineTop + 2,
+      });
+    }
 
-  const shadowFilter = shadowOpacity > 0
-    ? `
-      <filter id="headlineShadow" x="-20%" y="-20%" width="160%" height="160%">
-        <feGaussianBlur stdDeviation="1.1" />
-      </filter>
-    `.trim()
-    : '';
+    composites.push({
+      input: await colorizeTextBuffer(renderedLine, fontColor),
+      left: scaledTextBoxX,
+      top: lineTop,
+    });
+  }
 
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
-      <defs>
-        ${embeddedFontFace}
-        ${shadowFilter}
-      </defs>
-      ${shadowSpans}
-      ${textSpans}
-    </svg>
-  `.trim();
-
-  return sharp(Buffer.from(svg)).png().toBuffer();
+  return emptyLayer.composite(composites).png().toBuffer();
 }
 
 function buildBrandSvg(width: number, height: number, variant: DesignStudioVariantRecord): Buffer {
