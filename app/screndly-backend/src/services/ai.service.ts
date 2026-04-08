@@ -1183,6 +1183,58 @@ const RSS_EVENT_PATTERNS: Array<{ type: RssCaptionExtraction['event_type']; patt
     { type: 'reveal', patterns: [/\bconfirmed\b/i, /\brevealed\b/i, /\bfinally addressed\b/i, /\bexplained\b/i] },
 ];
 
+const RSS_OUTLET_NAMES = [
+    'Deadline',
+    'Variety',
+    'ComicBook',
+    'The Hollywood Reporter',
+    'Hollywood Reporter',
+    'THR',
+    'Entertainment Weekly',
+    'EW',
+    'IGN',
+    'Collider',
+    'IndieWire',
+    'Tudum',
+    'ScreenRant',
+    'TVLine',
+];
+
+const RSS_REFERENCE_ONLY_TITLE_CUES = [
+    'known for',
+    'best known for',
+    'from',
+    'including',
+    'such as',
+    'produced by',
+    'produce alongside',
+    'will produce',
+    'produce',
+    'producer',
+    'producer of',
+    'producer behind',
+    'written by',
+    'writer of',
+    'created by',
+    'creator',
+    'creator of',
+    'helmed by',
+    'directed by',
+    'credits include',
+    'resume includes',
+    'broke the news',
+    'more to come',
+];
+
+const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
+    /\bmore to come\b/i,
+    /\bbroke the news\b/i,
+    /\bdetails are still under wraps\b/i,
+    /\bplot details are under wraps\b/i,
+    /\bcharacter details are still under wraps\b/i,
+    /\bunder wraps\b/i,
+];
+
 function hasGroundedRSSNamedEntities(context: RSSContext): boolean {
     return Array.isArray(context.allowedEntities) && context.allowedEntities.some((entry) => entry.trim().length >= 3);
 }
@@ -1210,6 +1262,68 @@ function normalizeRSSHeadlineInput(value: string): string {
     return normalized.replace(/\s+/g, ' ').trim();
 }
 
+function containsRSSOutletName(value: string): boolean {
+    const normalized = String(value || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    return RSS_OUTLET_NAMES.some((entry) => new RegExp(`\\b${entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(normalized));
+}
+
+function sanitizeRSSNamedEntityCandidate(value: string): string {
+    let cleaned = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!cleaned) {
+        return cleaned;
+    }
+
+    for (const outlet of RSS_OUTLET_NAMES) {
+        const escaped = outlet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        cleaned = cleaned
+            .replace(new RegExp(`(?:,?\\s*${escaped})$`, 'i'), '')
+            .replace(new RegExp(`^${escaped}(?:,?\\s+)`, 'i'), '')
+            .trim();
+    }
+
+    return cleaned;
+}
+
+function getRSSTextSentences(value: string): string[] {
+    return String(value || '')
+        .split(/(?<=[.!?])\s+/)
+        .map((entry) => entry.trim())
+        .filter((entry) => Boolean(entry) && !containsRSSOutletName(entry));
+}
+
+function escapeRSSRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isReferenceOnlyRSSTitle(title: string, text: string): boolean {
+    const normalizedTitle = String(title || '').trim();
+    if (!normalizedTitle) {
+        return false;
+    }
+
+    return getRSSTextSentences(text).some((sentence) => {
+        if (!new RegExp(escapeRSSRegExp(normalizedTitle), 'i').test(sentence)) {
+            return false;
+        }
+
+        const normalizedSentence = sentence.toLowerCase();
+        return RSS_REFERENCE_ONLY_TITLE_CUES.some((cue) => normalizedSentence.includes(cue));
+    });
+}
+
+function isRejectedRSSSupportingFact(value: string): boolean {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    if (!normalized) {
+        return true;
+    }
+
+    return RSS_SUPPORTING_FACT_REJECTION_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 function extractQuotedRSSTitles(value: string): string[] {
     return Array.from(value.matchAll(/['"“]([^'"”]{2,80})['"”]/g))
         .map((match) => (match[1] || '').trim())
@@ -1218,8 +1332,10 @@ function extractQuotedRSSTitles(value: string): string[] {
 
 function extractNamedPeopleFromText(value: string): string[] {
     const matches = Array.from(value.matchAll(/\b(?:[A-Z][A-Za-z'&.-]+)(?:\s+[A-Z][A-Za-z'&.-]+){1,3}\b/g))
-        .map((match) => (match[0] || '').trim())
-        .filter((entry) => entry.length >= 5);
+        .map((match) => sanitizeRSSNamedEntityCandidate((match[0] || '').trim()))
+        .filter((entry) => entry.length >= 5)
+        .filter((entry) => !containsRSSOutletName(entry))
+        .filter((entry) => !isRSSStudioOrPlatform(entry));
     return Array.from(new Set(matches));
 }
 
@@ -1261,13 +1377,26 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
     const summary = String(context.summary || '').trim();
     const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
     const combined = [normalizedTitle, summary, body].filter(Boolean).join(' ');
-    const quotedTitles = extractQuotedRSSTitles(`${normalizedTitle} ${summary} ${body}`);
+    const quotedTitles = extractQuotedRSSTitles(`${normalizedTitle} ${summary} ${body}`)
+        .filter((entry) => !isRSSStudioOrPlatform(entry))
+        .filter((entry) => !isReferenceOnlyRSSTitle(entry, combined));
     const namedPeople = extractNamedPeopleFromText(`${normalizedTitle} ${summary} ${body}`);
     const { quote, speaker } = extractDirectQuote(`${summary} ${body}`);
     const eventType = classifyRSSEventType(combined);
     const mediaTitle = quotedTitles.find((entry) => entry.length >= 2);
-    const primarySubject = mediaTitle || namedPeople[0] || normalizedTitle;
+    const leadPerson = namedPeople[0];
+    const primarySubject = (
+        eventType === 'casting' || eventType === 'interview_quote' || eventType === 'reflection'
+            ? leadPerson || mediaTitle || normalizedTitle
+            : mediaTitle || leadPerson || normalizedTitle
+    );
     const secondarySubject = mediaTitle && namedPeople[0] && namedPeople[0] !== primarySubject ? namedPeople[0] : namedPeople[1];
+    const supportingFacts = [summary, ...getRSSTextSentences(body).slice(0, 3)]
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+        .filter((entry) => !containsRSSOutletName(entry))
+        .filter((entry) => !isRejectedRSSSupportingFact(entry))
+        .slice(0, 2);
 
     return {
         article_title: normalizedTitle,
@@ -1281,7 +1410,7 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
         studio_or_platform: /\b(Netflix|Prime Video|Apple TV\+|Disney\+|HBO|Max|CBS|NBC|ABC|Fox|Lucasfilm|Marvel Studios|Warner Bros\.?|Paramount)\b/i.exec(combined)?.[1],
         direct_quote: quote,
         quote_speaker: speaker,
-        supporting_facts: [summary, body].filter(Boolean).map((entry) => entry.trim()).slice(0, 2),
+        supporting_facts: supportingFacts,
         spoiler_level: detectRSSSpoilerLevel(combined),
         extraction_confidence: mediaTitle || namedPeople.length > 0 ? 0.8 : 0.45,
         ambiguity_flags: primarySubject === normalizedTitle ? ['headline_led_subject'] : [],
@@ -1327,6 +1456,10 @@ function getPreferredRssTitleEntity(context: RSSContext, extraction: RssCaptionE
         .filter(Boolean);
 
     return candidates.sort((left, right) => right.length - left.length).find((entry) => {
+        if (looksLikeRSSPersonName(entry) || isRSSStudioOrPlatform(entry) || containsRSSOutletName(entry)) {
+            return false;
+        }
+
         return /\s/.test(entry) || /[:'-]/.test(entry);
     });
 }
@@ -1390,6 +1523,7 @@ function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSCon
 
     const firstFact = (extraction.supporting_facts || [])
         .map((entry) => String(entry || '').replace(/\s+/g, ' ').trim())
+        .filter((entry) => !isRejectedRSSSupportingFact(entry))
         .find((entry) => entry && !mirrorsRSSHeadlineTooClosely(ensureRSSSentenceTerminal(entry), context));
 
     if (firstFact) {
@@ -1417,7 +1551,7 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
     } else {
         switch (extraction.event_type) {
             case 'casting':
-                headline = formattedMediaTitle && primarySubject && primarySubject !== extraction.media_title
+                headline = formattedMediaTitle && primarySubject && primarySubject !== extraction.media_title && looksLikeRSSPersonName(primarySubject)
                     ? `${primarySubject} joins ${formattedMediaTitle}.`
                     : formattedMediaTitle
                         ? `${formattedMediaTitle} has added a new cast member.`
@@ -1672,6 +1806,31 @@ function hasOverloadedRSSHeadline(caption: string): boolean {
     return /\bbut\b|\bwith\b|\bas\b/.test(headline.toLowerCase()) && headline.length > 120;
 }
 
+function hasInvalidRSSJoinLead(caption: string): boolean {
+    const headline = getRSSHeadlineLine(caption);
+    const joinMatch = headline.match(/^(.+?) joins (.+?)\.$/i);
+    if (!joinMatch) {
+        return false;
+    }
+
+    const left = sanitizeRSSNamedEntityCandidate(joinMatch[1] || '').replace(/[.,]+$/g, '').trim();
+    const right = sanitizeRSSNamedEntityCandidate(joinMatch[2] || '').replace(/[.,]+$/g, '').trim();
+    if (!left || !right) {
+        return true;
+    }
+
+    const normalizedLeft = left.toLowerCase().replace(/['"]/g, '').trim();
+    const normalizedRight = right.toLowerCase().replace(/['"]/g, '').trim();
+    if (normalizedLeft === normalizedRight) {
+        return true;
+    }
+
+    return containsRSSOutletName(left)
+        || containsRSSOutletName(right)
+        || !looksLikeRSSPersonName(left)
+        || normalizedRight.includes(normalizedLeft) && containsRSSOutletName(joinMatch[2] || '');
+}
+
 function hasUnsupportedRSSVagueSubject(caption: string, context: RSSContext): boolean {
     return hasGroundedRSSNamedEntities(context) && isVagueRSSCaption(caption);
 }
@@ -1706,6 +1865,7 @@ function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolea
     return hasUnsupportedRSSVagueSubject(caption, context)
         || isEditorializedRSSCaption(caption)
         || hasUnsupportedRSSDemographicMutation(caption, context)
+        || hasInvalidRSSJoinLead(caption)
         || hasMissingRSSBlankLineSeparation(caption)
         || hasUnsupportedRSSStructure(caption)
         || lacksSingleQuotedDetectedRSSTitles(caption, context)
@@ -1872,6 +2032,7 @@ export const __rssCaptionTestUtils = {
     hasUnsupportedRSSStructure,
     lacksSingleQuotedDetectedRSSTitles,
     hasUnsupportedRSSDemographicMutation,
+    hasInvalidRSSJoinLead,
     mirrorsRSSHeadlineTooClosely,
     normalizeRSSHeadlineInput,
 };

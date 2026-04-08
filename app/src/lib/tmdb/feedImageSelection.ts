@@ -157,77 +157,74 @@ export function buildTMDbImageSelectionPayload(input: {
   posterUrl?: string | null;
   backdropUrl?: string | null;
   logoUrl?: string | null;
-  uploadedImageUrl?: string | null;
+  uploadedPosterUrl?: string | null;
+  uploadedBackdropUrl?: string | null;
+  uploadedLogoUrl?: string | null;
 }): TMDbImageSelectionPayload | null {
   const {
     imageStyle,
     posterUrl,
     backdropUrl,
     logoUrl,
-    uploadedImageUrl,
+    uploadedPosterUrl,
+    uploadedBackdropUrl,
+    uploadedLogoUrl,
   } = input;
-
-  if (uploadedImageUrl) {
-    return {
-      imageStyle,
-      imageUrl: uploadedImageUrl,
-      imageType: 'custom',
-      imageUrls: [uploadedImageUrl],
-      imageTypes: ['custom'],
-    };
-  }
+  const resolvedPosterUrl = uploadedPosterUrl || posterUrl;
+  const resolvedBackdropUrl = uploadedBackdropUrl || backdropUrl;
+  const resolvedLogoUrl = uploadedLogoUrl || logoUrl;
 
   if (imageStyle === 'poster') {
-    if (!posterUrl) {
+    if (!resolvedPosterUrl) {
       return null;
     }
 
     return {
       imageStyle,
-      imageUrl: posterUrl,
+      imageUrl: resolvedPosterUrl,
       imageType: 'poster',
-      imageUrls: [posterUrl],
+      imageUrls: [resolvedPosterUrl],
       imageTypes: ['poster'],
     };
   }
 
   if (imageStyle === 'backdrop') {
-    if (!backdropUrl) {
+    if (!resolvedBackdropUrl) {
       return null;
     }
 
     return {
       imageStyle,
-      imageUrl: backdropUrl,
+      imageUrl: resolvedBackdropUrl,
       imageType: 'backdrop',
-      imageUrls: [backdropUrl],
+      imageUrls: [resolvedBackdropUrl],
       imageTypes: ['backdrop'],
     };
   }
 
   if (imageStyle === 'poster_backdrop') {
-    if (!posterUrl || !backdropUrl) {
+    if (!resolvedPosterUrl || !resolvedBackdropUrl) {
       return null;
     }
 
     return {
       imageStyle,
-      imageUrl: posterUrl,
+      imageUrl: resolvedPosterUrl,
       imageType: 'poster',
-      imageUrls: [posterUrl, backdropUrl],
+      imageUrls: [resolvedPosterUrl, resolvedBackdropUrl],
       imageTypes: ['poster', 'backdrop'],
     };
   }
 
-  if (!backdropUrl || !logoUrl) {
+  if (!resolvedBackdropUrl || !resolvedLogoUrl) {
     return null;
   }
 
   return {
     imageStyle,
-    imageUrl: backdropUrl,
+    imageUrl: resolvedBackdropUrl,
     imageType: 'backdrop',
-    imageUrls: [backdropUrl, logoUrl],
+    imageUrls: [resolvedBackdropUrl, resolvedLogoUrl],
     imageTypes: ['backdrop', 'logo'],
   };
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Film, Image as ImageIcon, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { BackIconButton } from '../BackIconButton';
@@ -67,6 +67,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
   const [previewState, setPreviewState] = useState<{ itemId: string; assets: ComposeMediaAsset[]; initialIndex: number } | null>(null);
   const [rememberedPreviewIndexes, setRememberedPreviewIndexes] = useState<Record<string, number>>({});
   const [publishingIds, setPublishingIds] = useState<string[]>([]);
+  const cardActionLockUntilRef = useRef(0);
 
   const filteredItems = useMemo(
     () => items.filter((item) => (filter === 'all' ? true : item.status === filter)),
@@ -93,6 +94,38 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
 
   const stopCardTouchPropagation = (event: CardInteractionEvent) => {
     event.stopPropagation();
+  };
+
+  const triggerCardAction = (action: () => void) => {
+    const now = Date.now();
+    if (now < cardActionLockUntilRef.current) {
+      return;
+    }
+
+    cardActionLockUntilRef.current = now + 400;
+    action();
+  };
+
+  const handleCardActionPointerDown = (
+    event: React.PointerEvent<HTMLElement>,
+    action: () => void,
+  ) => {
+    event.stopPropagation();
+    if (event.pointerType === 'mouse' || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    triggerCardAction(action);
+  };
+
+  const handleCardActionClick = (
+    event: React.MouseEvent<HTMLElement>,
+    action: () => void,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    triggerCardAction(action);
   };
 
   const handleDeleteItem = (itemId?: string) => {
@@ -398,15 +431,11 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handlePublish(item.id);
-                              }}
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
                                 <>
@@ -418,32 +447,34 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
                             >
                               Schedule
                             </Button>
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
                             >
                               Edit
                             </Button>
@@ -455,15 +486,11 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handlePublish(item.id);
-                              }}
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
                                 <>
@@ -475,16 +502,17 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
                             >
                               Edit
                             </Button>
@@ -496,16 +524,17 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 w-full px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
                             >
                               Edit
                             </Button>

@@ -28,7 +28,7 @@ describe('useTmdbImageCycler', () => {
     });
 
     act(() => {
-      result.current.setUploadedImageUrl('data:image/jpeg;base64,custom-image');
+      result.current.setUploadedImageForType('poster', 'data:image/jpeg;base64,custom-image');
     });
 
     rerender({
@@ -51,8 +51,41 @@ describe('useTmdbImageCycler', () => {
       }),
     });
 
-    expect(result.current.uploadedImageUrl).toBe('data:image/jpeg;base64,custom-image');
-    expect(result.current.selection?.imageType).toBe('custom');
+    expect(result.current.uploadedImages.poster).toBe('data:image/jpeg;base64,custom-image');
+    expect(result.current.selection?.imageType).toBe('poster');
     expect(result.current.selection?.imageUrl).toBe('data:image/jpeg;base64,custom-image');
+  });
+
+  it('allows replacing only the backdrop slot in a poster plus backdrop selection', () => {
+    const { result } = renderHook(() => useTmdbImageCycler({
+      open: true,
+      pools: createPools({
+        posters: [
+          { path: '/poster-a.jpg', url: 'https://image.tmdb.org/t/p/w780/poster-a.jpg', type: 'poster' },
+        ],
+        backdrops: [
+          { path: '/backdrop-a.jpg', url: 'https://image.tmdb.org/t/p/w1280/backdrop-a.jpg', type: 'backdrop' },
+        ],
+      }),
+      currentImageUrl: 'https://image.tmdb.org/t/p/w780/poster-a.jpg',
+      currentImageType: 'poster',
+      currentImageUrls: [
+        'https://image.tmdb.org/t/p/w780/poster-a.jpg',
+        'https://image.tmdb.org/t/p/w1280/backdrop-a.jpg',
+      ],
+      currentImageTypes: ['poster', 'backdrop'],
+    }));
+
+    act(() => {
+      result.current.setUploadedImageForType('backdrop', 'data:image/jpeg;base64,custom-backdrop');
+    });
+
+    expect(result.current.effectivePosterUrl).toBe('https://image.tmdb.org/t/p/w780/poster-a.jpg');
+    expect(result.current.effectiveBackdropUrl).toBe('data:image/jpeg;base64,custom-backdrop');
+    expect(result.current.selection?.imageUrls).toEqual([
+      'https://image.tmdb.org/t/p/w780/poster-a.jpg',
+      'data:image/jpeg;base64,custom-backdrop',
+    ]);
+    expect(result.current.selection?.imageTypes).toEqual(['poster', 'backdrop']);
   });
 });

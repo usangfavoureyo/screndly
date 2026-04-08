@@ -182,11 +182,28 @@ interface RSSActivityMetadata {
   imageSelectionConfidence?: 'high' | 'medium' | 'low';
   selectedImages?: RSSResolvedImage[];
   publishedAt?: string;
-  status: 'pending' | 'published' | 'failed';
+  status: 'pending' | 'published' | 'failed' | 'filtered';
   platforms: string[];
   platformPostIds?: Record<string, string>;
   platformResults?: PublishResult[];
   errorMessage?: string;
+}
+
+type RSSSpeculationClassification =
+  | 'confirmed_news'
+  | 'semi_confirmed'
+  | 'analysis'
+  | 'speculation'
+  | 'rumor';
+
+interface RSSSpeculationAssessment {
+  classification: RSSSpeculationClassification;
+  score: number;
+  detectedPhrases: string[];
+  reasonCodes: string[];
+  hardEvidencePhrases: string[];
+  shouldSkipPublish: boolean;
+  shouldUseUncertaintyTone: boolean;
 }
 
 interface RSSRuntimeSettings {
@@ -217,6 +234,38 @@ const RSS_TOPIC_DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_SUBJECT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
+const RSS_SPECULATION_HEADLINE_PATTERNS: Array<{ pattern: RegExp; phrase: string; score: number; reasonCode: string }> = [
+  { pattern: /\bsounds?\s+more\s+likely\b/i, phrase: 'sounds more likely', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bmay\s+(?:return|appear|feature|happen|land|join)\b/i, phrase: 'may return', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bmight\s+(?:return|appear|feature|happen|land|join)\b/i, phrase: 'might return', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bcould\s+(?:return|appear|feature|happen|land|join)\b/i, phrase: 'could appear', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bfans?\s+(?:think|speculate|believe)\b/i, phrase: 'fans speculate', score: 2, reasonCode: 'ARTICLE_FAN_THEORY' },
+  { pattern: /\btheory\b|\bprediction\b/i, phrase: 'theory', score: 2, reasonCode: 'ARTICLE_FAN_THEORY' },
+  { pattern: /\breportedly\b/i, phrase: 'reportedly', score: 1, reasonCode: 'ARTICLE_WEAK_EVIDENCE' },
+];
+const RSS_SPECULATION_PATTERNS: Array<{ pattern: RegExp; phrase: string; score: number; reasonCode: string }> = [
+  { pattern: /\bmay\b/i, phrase: 'may', score: 1, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bmight\b/i, phrase: 'might', score: 1, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bcould\b/i, phrase: 'could', score: 1, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bpossibly\b|\bpotentially\b/i, phrase: 'potentially', score: 1, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\brumou?red?\b|\brumou?r\b/i, phrase: 'rumor', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bspeculation\b/i, phrase: 'speculation', score: 1, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
+  { pattern: /\bsuggests?\b|\bseems\b|\bappears?\b|\blikely\b|\bunlikely\b/i, phrase: 'suggests', score: 1, reasonCode: 'ARTICLE_WEAK_EVIDENCE' },
+  { pattern: /\bunconfirmed\b|\bnot\s+confirmed\b|\bhasn['’]t\s+been\s+announced\b/i, phrase: 'not confirmed', score: 2, reasonCode: 'ARTICLE_NO_CONFIRMATION' },
+  { pattern: /\bexpected\s+to\b/i, phrase: 'expected to', score: 1, reasonCode: 'ARTICLE_WEAK_EVIDENCE' },
+];
+const RSS_SPECULATION_WEAK_EVIDENCE_PATTERNS: Array<{ pattern: RegExp; phrase: string; score: number; reasonCode: string }> = [
+  { pattern: /\b(?:dodged?|dodging)\s+(?:the\s+)?question\b|\bdidn['’]?t\s+deny\b|\bcouldn['’]?t\s+confirm\b|\blaughed\s+off\b/i, phrase: 'interview dodging', score: 2, reasonCode: 'ARTICLE_INTERVIEW_DODGE' },
+  { pattern: /\b(?:many\s+)?fans?\s+(?:still\s+)?(?:believe|think|noticed|speculate)\b|\binternet\s+believes\b|\bsocial\s+media\s+thinks\b/i, phrase: 'fan theory', score: 1, reasonCode: 'ARTICLE_FAN_THEORY' },
+  { pattern: /\bthis\s+(?:suggests|implies|could\s+mean|hints)\b|\bhints?\s+that\b/i, phrase: 'reporter inference', score: 1, reasonCode: 'ARTICLE_WEAK_EVIDENCE' },
+];
+const RSS_SPECULATION_HARD_EVIDENCE_PATTERNS: Array<{ pattern: RegExp; phrase: string }> = [
+  { pattern: /\bofficial\s+(?:announcement|statement|teaser|trailer|poster|images?)\b/i, phrase: 'official announcement' },
+  { pattern: /\bconfirmed\b|\bannounced\b|\brevealed\b/i, phrase: 'confirmed' },
+  { pattern: /\bpress\s+release\b|\bstudio\s+statement\b|\bnetwork\s+confirmation\b/i, phrase: 'press release' },
+  { pattern: /\bdirector\s+confirmed\b|\bactor\s+confirmed\b|\bstudio\s+confirmed\b|\bnetwork\s+confirmed\b/i, phrase: 'direct confirmation' },
+  { pattern: /\bcasting\s+report\b|\brelease\s+date\s+confirmed\b/i, phrase: 'hard evidence report' },
+];
 const activeRSSFeedRefreshes = new Map<string, Promise<RefreshResult>>();
 const activeRSSPublishClaims = new Set<string>();
 let activeScheduledRSSRefresh: Promise<{
@@ -681,7 +730,8 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
   const nonEmptyLines = sanitized
     .split('\n')
     .map((line) => line.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((entry) => !containsOutletLikeRSSCaptionEntity(entry));
 
   if (nonEmptyLines.length >= 2 && !sanitized.includes('\n\n')) {
     const [headline, ...rest] = nonEmptyLines;
@@ -1383,6 +1433,88 @@ function evaluateFeedRules(item: RSSItem, filters: RSSFeedFilters): { allowed: b
   }
 
   return { allowed: true };
+}
+
+function collectRSSSpeculationMatches(
+  text: string,
+  patterns: Array<{ pattern: RegExp; phrase: string; score?: number; reasonCode?: string }>
+): Array<{ phrase: string; score: number; reasonCode?: string }> {
+  return patterns
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ phrase, score = 0, reasonCode }) => ({ phrase, score, reasonCode }));
+}
+
+function assessRSSArticleSpeculation(item: RSSItem): RSSSpeculationAssessment {
+  const title = sanitizeRSSPlainText(item.title || '');
+  const body = sanitizeRSSPlainText([
+    item.description || '',
+    item.contentHtml || '',
+  ].filter(Boolean).join(' '));
+  const titleText = title.replace(/\s+/g, ' ').trim();
+  const bodyText = body.replace(/\s+/g, ' ').trim();
+  const fullText = `${titleText}\n${bodyText}`.trim();
+
+  let score = 0;
+  const detectedPhrases = new Set<string>();
+  const reasonCodes = new Set<string>();
+
+  const applyMatches = (matches: Array<{ phrase: string; score: number; reasonCode?: string }>): void => {
+    for (const match of matches) {
+      score += match.score;
+      detectedPhrases.add(match.phrase);
+      if (match.reasonCode) {
+        reasonCodes.add(match.reasonCode);
+      }
+    }
+  };
+
+  applyMatches(collectRSSSpeculationMatches(titleText, RSS_SPECULATION_HEADLINE_PATTERNS));
+  applyMatches(collectRSSSpeculationMatches(fullText, RSS_SPECULATION_PATTERNS));
+  applyMatches(collectRSSSpeculationMatches(fullText, RSS_SPECULATION_WEAK_EVIDENCE_PATTERNS));
+
+  const hardEvidenceMatches = collectRSSSpeculationMatches(fullText, RSS_SPECULATION_HARD_EVIDENCE_PATTERNS);
+  const hardEvidencePhrases = Array.from(new Set(hardEvidenceMatches.map((entry) => entry.phrase)));
+
+  if (score > 0 && hardEvidencePhrases.length === 0) {
+    score += 2;
+    reasonCodes.add('ARTICLE_NO_CONFIRMATION');
+  }
+
+  let classification: RSSSpeculationClassification;
+  if (score <= 2) {
+    classification = 'confirmed_news';
+  } else if (score <= 5) {
+    classification = 'semi_confirmed';
+  } else if (score <= 8) {
+    classification = 'analysis';
+  } else if (
+    reasonCodes.has('ARTICLE_FAN_THEORY') ||
+    reasonCodes.has('ARTICLE_INTERVIEW_DODGE') ||
+    /\brumou?red?\b|\brumou?r\b/i.test(fullText)
+  ) {
+    classification = 'rumor';
+  } else {
+    classification = 'speculation';
+  }
+
+  return {
+    classification,
+    score,
+    detectedPhrases: Array.from(detectedPhrases),
+    reasonCodes: Array.from(reasonCodes),
+    hardEvidencePhrases,
+    shouldSkipPublish: classification === 'analysis' || classification === 'speculation' || classification === 'rumor',
+    shouldUseUncertaintyTone: classification === 'semi_confirmed' || classification === 'analysis',
+  };
+}
+
+function buildRSSSpeculationFilterReason(assessment: RSSSpeculationAssessment): string {
+  const reasonCodes = assessment.reasonCodes.length > 0 ? assessment.reasonCodes.join(', ') : 'SPECULATION_ARTICLE';
+  const phrases = assessment.detectedPhrases.length > 0
+    ? ` Detected phrases: ${assessment.detectedPhrases.join(', ')}.`
+    : '';
+
+  return `${reasonCodes}: Filtered as ${assessment.classification} (score ${assessment.score}).${phrases}`;
 }
 
 function extractImageUrls(item: Record<string, any>): string[] {
@@ -2136,7 +2268,7 @@ async function resolveRSSItemImages(
 
 function buildRSSCaptionSystemPrompt(
   basePrompt: string | undefined,
-  options: { tone?: string; maxLength?: number }
+  options: { tone?: string; maxLength?: number; speculationAssessment?: RSSSpeculationAssessment | null }
 ): string | undefined {
   const hasExplicitLengthInstruction = typeof basePrompt === 'string'
     && /character range|under\s+\d+\s*characters?|max(?:imum)?\s+length|\b\d+\s*[–-]\s*\d+\s*characters?\b/i.test(basePrompt);
@@ -2151,6 +2283,12 @@ function buildRSSCaptionSystemPrompt(
     '- Only name titles, characters, or people that are actually represented by the selected visuals.',
     '- If the selected visuals cover fewer examples than the headline or article summary mentions, use broader wording instead of listing unsupported examples.',
     '- Never substitute a different movie, show, character, or person name than the one grounded by the article context and selected visuals.',
+    options.speculationAssessment?.shouldUseUncertaintyTone
+      ? '- This article is not fully confirmed. Make the uncertainty explicit and do not present unconfirmed developments as fact.'
+      : null,
+    options.speculationAssessment?.shouldUseUncertaintyTone
+      ? '- Prefer cautious wording such as "reports suggest", "could", "may", "comments on rumors", or "speculation grows" when appropriate.'
+      : null,
   ].filter(Boolean).join('\n');
 
   if (!basePrompt && !constraints) {
@@ -2200,7 +2338,53 @@ function buildRSSCaptionVisualContext(item: RSSItem, images: RSSResolvedImage[])
 function extractQuotedRSSCaptionEntities(value: string): string[] {
   return Array.from(value.matchAll(/["'“”]([^"'“”]{2,100})["'“”]/g))
     .map((match) => sanitizeRSSPlainText(match[1] || '').trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((entry) => !containsOutletLikeRSSCaptionEntity(entry));
+}
+
+const RSS_CAPTION_ENTITY_OUTLETS = [
+  'Deadline',
+  'Variety',
+  'ComicBook',
+  'The Hollywood Reporter',
+  'Hollywood Reporter',
+  'THR',
+  'Entertainment Weekly',
+  'EW',
+  'IGN',
+  'Collider',
+  'IndieWire',
+  'Tudum',
+  'ScreenRant',
+  'TVLine',
+];
+
+function containsOutletLikeRSSCaptionEntity(value: string): boolean {
+  const cleaned = sanitizeRSSPlainText(value).trim();
+  if (!cleaned) {
+    return false;
+  }
+
+  return RSS_CAPTION_ENTITY_OUTLETS.some((entry) =>
+    new RegExp(`\\b${entry.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(cleaned)
+  );
+}
+
+function sanitizeRSSCaptionEntityCandidate(value: string): string {
+  let cleaned = sanitizeRSSPlainText(value).replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return cleaned;
+  }
+
+  for (const outlet of RSS_CAPTION_ENTITY_OUTLETS) {
+    const escaped = outlet.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    cleaned = cleaned
+      .replace(new RegExp(`(?:,?\\s*${escaped})$`, 'i'), '')
+      .replace(new RegExp(`^${escaped}(?:,?\\s+)`, 'i'), '')
+      .trim();
+  }
+
+  return cleaned;
 }
 
 function extractNamedRSSCaptionEntities(value: string): string[] {
@@ -2212,9 +2396,13 @@ function extractNamedRSSCaptionEntities(value: string): string[] {
   return Array.from(
     sanitizeRSSPlainText(value).matchAll(/\b(?:[A-Z0-9][A-Za-z0-9:'&.-]*)(?:\s+(?:[A-Z0-9][A-Za-z0-9:'&.-]*)){0,5}\b/g)
   )
-    .map((match) => (match[0] || '').trim())
+    .map((match) => sanitizeRSSCaptionEntityCandidate((match[0] || '').trim()))
     .filter((entry) => {
       if (!entry) {
+        return false;
+      }
+
+      if (containsOutletLikeRSSCaptionEntity(entry) || /\bmore to come\b|\bbroke the news\b/i.test(entry)) {
         return false;
       }
 
@@ -2252,8 +2440,11 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
   const entities: string[] = [];
 
   const pushEntity = (value?: string | null): void => {
-    const cleaned = sanitizeRSSPlainText(String(value || '')).replace(/\s+/g, ' ').trim();
+    const cleaned = sanitizeRSSCaptionEntityCandidate(String(value || '')).replace(/\s+/g, ' ').trim();
     if (!cleaned) {
+      return;
+    }
+    if (containsOutletLikeRSSCaptionEntity(cleaned) || /\bmore to come\b|\bbroke the news\b/i.test(cleaned)) {
       return;
     }
     const key = cleaned.toLowerCase();
@@ -2852,7 +3043,8 @@ async function attemptRSSPublish(
   item: RSSItem,
   platforms: string[],
   imagePlan: { maxImageCount: number },
-  runtimeSettings: RSSRuntimeSettings
+  runtimeSettings: RSSRuntimeSettings,
+  speculationAssessment?: RSSSpeculationAssessment | null
 ): Promise<
   | {
       status: 'published';
@@ -2929,6 +3121,7 @@ async function attemptRSSPublish(
     const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
       tone: runtimeSettings.rssCaptionTone,
       maxLength: runtimeSettings.rssCaptionMaxLength,
+      speculationAssessment,
     });
     const shouldReuseStoredCaption = Object.keys(previousPlatformPostIds).length > 0 && Boolean(item.generatedCaption?.trim());
     const captionSource = shouldReuseStoredCaption ? item.generatedCaption! : await aiService.generateRSSCaption(
@@ -3751,9 +3944,11 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     const latestEligibleItem = manualLatestSelection
       ? manualSelectionCandidates
           .find((item) => {
+            const speculationAssessment = assessRSSArticleSpeculation(item);
             return !hasRSSItemLocalSeenKeys(manualRunBlockedKeys, item)
               && !getRecentSubjectCooldownReason(item)
               && !getCrossSourceTopicDuplicateReason(item)
+              && !speculationAssessment.shouldSkipPublish
               && evaluateFeedRules(item, feedFilters).allowed;
           })
       : undefined;
@@ -3822,6 +4017,22 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
+      const pendingSpeculationAssessment = assessRSSArticleSpeculation(item);
+      if (pendingSpeculationAssessment.shouldSkipPublish) {
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'filtered',
+              lastAttemptedAt: new Date(),
+              errorMessage: buildRSSSpeculationFilterReason(pendingSpeculationAssessment),
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
+        continue;
+      }
+
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
         rememberRecentTopic(item);
@@ -3857,7 +4068,14 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           continue;
         }
 
-        const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+        const publishAttempt = await attemptRSSPublish(
+          feed as any,
+          item,
+          platforms,
+          imagePlan,
+          runtimeSettings,
+          pendingSpeculationAssessment
+        );
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
       resolvedActivityItem.generatedCaption = publishAttempt.caption;
       resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
@@ -4024,6 +4242,16 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
+      const speculationAssessment = assessRSSArticleSpeculation(item);
+      if (speculationAssessment.shouldSkipPublish) {
+        await upsertRSSFeedItem(feed.id, item, 'filtered', {
+          errorMessage: buildRSSSpeculationFilterReason(speculationAssessment),
+          firstSeenAt: item.pubDate,
+        });
+        addRSSItemLocalSeenKeys(seenKeys, item);
+        continue;
+      }
+
       if (!runtimeSettings.globalRSSPosting || !feed.autoPost || platforms.length === 0) {
         pendingCount += 1;
         const pendingImageUrls = dedupeUrls([...(item.imageUrls || []), item.imageUrl]);
@@ -4111,7 +4339,14 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           continue;
         }
 
-        const publishAttempt = await attemptRSSPublish(feed as any, item, platforms, imagePlan, runtimeSettings);
+        const publishAttempt = await attemptRSSPublish(
+          feed as any,
+          item,
+          platforms,
+          imagePlan,
+          runtimeSettings,
+          speculationAssessment
+        );
         addRSSItemLocalSeenKeys(seenKeys, item);
       const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
       resolvedActivityItem.generatedCaption = publishAttempt.caption;
@@ -4370,6 +4605,19 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   }
 
   const runtimeSettings = await getRuntimeSettings();
+  const speculationAssessment = assessRSSArticleSpeculation(previewItem);
+  if (speculationAssessment.shouldSkipPublish) {
+    const message = buildRSSSpeculationFilterReason(speculationAssessment);
+    return {
+      title: previewItem.title,
+      link: previewItem.link,
+      pubDate: previewItem.pubDate.toISOString(),
+      snippet: sanitizeRSSPlainText(previewItem.description),
+      images: [],
+      caption: message,
+      captionCharCount: message.length,
+    };
+  }
   const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
   const imagePlan = getRSSPublishImagePlan(feed, platforms);
   const resolvedImages = await resolveRSSItemImages(
@@ -4382,6 +4630,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   const systemPrompt = buildRSSCaptionSystemPrompt(runtimeSettings.rssCaptionPrompt, {
     tone: runtimeSettings.rssCaptionTone,
     maxLength: runtimeSettings.rssCaptionMaxLength,
+    speculationAssessment,
   });
   const caption = await aiService.generateRSSCaption(
     {
@@ -4564,6 +4813,11 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
     throw new Error('This RSS activity item has no failed platforms to retry.');
   }
 
+  const speculationAssessment = assessRSSArticleSpeculation(item);
+  if (speculationAssessment.shouldSkipPublish) {
+    throw new Error(buildRSSSpeculationFilterReason(speculationAssessment));
+  }
+
   if (!acquireRSSPublishClaim(feed.id, item)) {
     throw new Error('This RSS activity item is already being retried.');
   }
@@ -4577,7 +4831,14 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
       previousPlatformResults: item.platformResults || [],
     });
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
-    const publishAttempt = await attemptRSSPublish(feed as any, item, retryPlatforms, imagePlan, runtimeSettings);
+    const publishAttempt = await attemptRSSPublish(
+      feed as any,
+      item,
+      retryPlatforms,
+      imagePlan,
+      runtimeSettings,
+      speculationAssessment
+    );
     const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
     resolvedActivityItem.generatedCaption = publishAttempt.caption;
     resolvedActivityItem.platformPostIds = publishAttempt.platformPostIds;
@@ -4830,4 +5091,6 @@ export const __rssDedupeTestUtils = {
   getRSSItemLocalSeenKeys,
   buildRSSCaptionAllowedEntities,
   buildRSSCaptionVisualContext,
+  assessRSSArticleSpeculation,
+  buildRSSSpeculationFilterReason,
 };

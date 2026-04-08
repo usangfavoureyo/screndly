@@ -401,6 +401,24 @@ const DISAMBIGUATION_RULES: Array<{
       return null;
     },
   },
+  {
+    match: /\bman of tomorrow\b/i,
+    resolve: (combinedText) => {
+      if (/\b(superman|james gunn|david corenswet|nicholas hoult|brainiac|john stewart|aaron pierre)\b/i.test(combinedText)) {
+        return {
+          specificTitle: 'Superman',
+          mediaType: 'movie',
+          tmdbType: 'movie',
+          tmdbQuery: 'Superman 2025',
+          alternateQueries: ['Superman', 'James Gunn Superman', 'Superman David Corenswet'],
+          franchise: 'Superman',
+          confidence: 0.89,
+          ambiguityFlags: ['upcoming_sequel_fallback_to_prior_installment'],
+        };
+      }
+      return null;
+    },
+  },
 ];
 
 function normalizeText(value: string): string {

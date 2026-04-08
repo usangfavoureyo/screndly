@@ -123,6 +123,7 @@ export function ChangeImageBottomSheet({
   const [isSavingImage, setIsSavingImage] = useState(false);
   const [pools, setPools] = useState<TMDbImagePools>(createEmptyPools);
   const [previewDialog, setPreviewDialog] = useState<PreviewDialogState>({ open: false });
+  const [pendingUploadType, setPendingUploadType] = useState<'poster' | 'backdrop' | 'logo' | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -173,12 +174,15 @@ export function ChangeImageBottomSheet({
     selectedPoster,
     selectedBackdrop,
     selectedLogo,
+    effectivePosterUrl,
+    effectiveBackdropUrl,
+    effectiveLogoUrl,
     cyclePoster,
     cycleBackdrop,
     cycleLogo,
-    uploadedImageUrl,
-    setUploadedImageUrl,
-    clearUploadedImage,
+    uploadedImages,
+    setUploadedImageForType,
+    clearUploadedImageForType,
     canSave,
     selection,
     availability,
@@ -205,6 +209,16 @@ export function ChangeImageBottomSheet({
 
   const handleUploadTrigger = () => {
     haptics.light();
+    setPendingUploadType(selectedStyle === 'backdrop' ? 'backdrop' : 'poster');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleSlotUploadTrigger = (assetType: 'poster' | 'backdrop' | 'logo') => {
+    haptics.light();
+    setPendingUploadType(assetType);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -230,9 +244,10 @@ export function ChangeImageBottomSheet({
     reader.onload = (loadEvent) => {
       const dataUrl = loadEvent.target?.result;
       if (typeof dataUrl === 'string' && dataUrl.length > 0) {
-        setUploadedImageUrl(dataUrl);
+        const targetType = pendingUploadType || (selectedStyle === 'backdrop' ? 'backdrop' : 'poster');
+        setUploadedImageForType(targetType, dataUrl);
         haptics.light();
-        toast.success('Uploaded image ready to save');
+        toast.success(`${targetType[0].toUpperCase()}${targetType.slice(1)} uploaded and ready to save`);
       }
     };
     reader.onerror = () => {
@@ -245,6 +260,7 @@ export function ChangeImageBottomSheet({
     const file = event.target.files?.[0];
     handleSelectedImageFile(file);
     event.target.value = '';
+    setPendingUploadType(null);
   };
 
   const uploadDrop = useDesktopFileDrop({
@@ -253,6 +269,41 @@ export function ChangeImageBottomSheet({
       handleSelectedImageFile(files[0]);
     },
   });
+
+  const renderSlotActions = (
+    assetType: 'poster' | 'backdrop' | 'logo',
+    cycleLabel: string,
+    onCycle: () => void,
+    disabled: boolean,
+  ) => {
+    const hasUploadedImage = Boolean(uploadedImages[assetType]);
+
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => handleSlotUploadTrigger(assetType)}
+          className="border-gray-200 dark:border-[#333333]"
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Upload {cycleLabel}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={hasUploadedImage ? () => {
+            haptics.light();
+            clearUploadedImageForType(assetType);
+          } : onCycle}
+          disabled={!hasUploadedImage && disabled}
+          className="border-gray-200 dark:border-[#333333]"
+        >
+          {hasUploadedImage ? 'Use TMDb Image' : cycleLabel}
+        </Button>
+      </div>
+    );
+  };
 
   const handleCycle = (assetType: TMDbImageAssetType) => {
     haptics.selection();
@@ -332,63 +383,17 @@ export function ChangeImageBottomSheet({
   };
 
   const renderModeControls = () => {
-    if (uploadedImageUrl) {
-      return (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between rounded-2xl border border-[#ec1e24]/30 bg-[#ec1e24]/5 px-4 py-3">
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Uploaded image active</p>
-              <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
-                Save now or switch back to a TMDb image style.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                haptics.light();
-                clearUploadedImage();
-              }}
-              className="border-gray-200 dark:border-[#333333]"
-            >
-              Clear
-            </Button>
-          </div>
-
-          <PreviewCard
-            label="Uploaded Image"
-            imageUrl={uploadedImageUrl}
-            alt={`${title} uploaded`}
-            emptyMessage="No uploaded image selected."
-            onPreview={uploadedImageUrl ? () => openPreview({
-              imageUrls: [uploadedImageUrl],
-              imageTypes: ['custom'],
-            }) : undefined}
-          />
-        </div>
-      );
-    }
-
     if (selectedStyle === 'poster') {
       return (
         <div className="space-y-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleCycle('poster')}
-            disabled={!availability.hasPosters}
-            className="w-full border-gray-200 dark:border-[#333333]"
-          >
-            Poster
-          </Button>
+          {renderSlotActions('poster', 'Poster', () => handleCycle('poster'), !availability.hasPosters)}
           <PreviewCard
             label="Poster"
-            imageUrl={selectedPoster?.url}
+            imageUrl={effectivePosterUrl}
             alt={`${title} poster`}
             emptyMessage="No posters available for this title."
-            onPreview={selectedPoster?.url ? () => openPreview({
-              imageUrls: [selectedPoster.url],
+            onPreview={effectivePosterUrl ? () => openPreview({
+              imageUrls: [effectivePosterUrl],
               imageTypes: ['poster'],
             }) : undefined}
           />
@@ -399,22 +404,14 @@ export function ChangeImageBottomSheet({
     if (selectedStyle === 'backdrop') {
       return (
         <div className="space-y-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleCycle('backdrop')}
-            disabled={!availability.hasBackdrops}
-            className="w-full border-gray-200 dark:border-[#333333]"
-          >
-            Backdrop
-          </Button>
+          {renderSlotActions('backdrop', 'Backdrop', () => handleCycle('backdrop'), !availability.hasBackdrops)}
           <PreviewCard
             label="Backdrop"
-            imageUrl={selectedBackdrop?.url}
+            imageUrl={effectiveBackdropUrl}
             alt={`${title} backdrop`}
             emptyMessage="No backdrops available for this title."
-            onPreview={selectedBackdrop?.url ? () => openPreview({
-              imageUrls: [selectedBackdrop.url],
+            onPreview={effectiveBackdropUrl ? () => openPreview({
+              imageUrls: [effectiveBackdropUrl],
               imageTypes: ['backdrop'],
             }) : undefined}
           />
@@ -425,55 +422,41 @@ export function ChangeImageBottomSheet({
     if (selectedStyle === 'poster_backdrop') {
       return (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleCycle('poster')}
-              disabled={!availability.hasPosters}
-              className="border-gray-200 dark:border-[#333333]"
-            >
-              Poster
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleCycle('backdrop')}
-              disabled={!availability.hasBackdrops}
-              className="border-gray-200 dark:border-[#333333]"
-            >
-              Backdrop
-            </Button>
-          </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <PreviewCard
-              label="Poster"
-              imageUrl={selectedPoster?.url}
-              alt={`${title} poster`}
-              emptyMessage="No posters available for this title."
-              onPreview={selectedPoster?.url && selectedBackdrop?.url ? () => openPreview({
-                imageUrls: [selectedPoster.url, selectedBackdrop.url],
-                imageTypes: ['poster', 'backdrop'],
-                initialIndex: 0,
-              }) : selectedPoster?.url ? () => openPreview({
-                imageUrls: [selectedPoster.url],
-                imageTypes: ['poster'],
-              }) : undefined}
-            />
-            <PreviewCard
-              label="Backdrop"
-              imageUrl={selectedBackdrop?.url}
-              alt={`${title} backdrop`}
-              emptyMessage="No backdrops available for this title."
-              onPreview={selectedPoster?.url && selectedBackdrop?.url ? () => openPreview({
-                imageUrls: [selectedPoster.url, selectedBackdrop.url],
-                imageTypes: ['poster', 'backdrop'],
-                initialIndex: 1,
-              }) : selectedBackdrop?.url ? () => openPreview({
-                imageUrls: [selectedBackdrop.url],
-                imageTypes: ['backdrop'],
-              }) : undefined}
-            />
+            <div className="space-y-3">
+              {renderSlotActions('poster', 'Poster', () => handleCycle('poster'), !availability.hasPosters)}
+              <PreviewCard
+                label="Poster"
+                imageUrl={effectivePosterUrl}
+                alt={`${title} poster`}
+                emptyMessage="No posters available for this title."
+                onPreview={effectivePosterUrl && effectiveBackdropUrl ? () => openPreview({
+                  imageUrls: [effectivePosterUrl, effectiveBackdropUrl],
+                  imageTypes: ['poster', 'backdrop'],
+                  initialIndex: 0,
+                }) : effectivePosterUrl ? () => openPreview({
+                  imageUrls: [effectivePosterUrl],
+                  imageTypes: ['poster'],
+                }) : undefined}
+              />
+            </div>
+            <div className="space-y-3">
+              {renderSlotActions('backdrop', 'Backdrop', () => handleCycle('backdrop'), !availability.hasBackdrops)}
+              <PreviewCard
+                label="Backdrop"
+                imageUrl={effectiveBackdropUrl}
+                alt={`${title} backdrop`}
+                emptyMessage="No backdrops available for this title."
+                onPreview={effectivePosterUrl && effectiveBackdropUrl ? () => openPreview({
+                  imageUrls: [effectivePosterUrl, effectiveBackdropUrl],
+                  imageTypes: ['poster', 'backdrop'],
+                  initialIndex: 1,
+                }) : effectiveBackdropUrl ? () => openPreview({
+                  imageUrls: [effectiveBackdropUrl],
+                  imageTypes: ['backdrop'],
+                }) : undefined}
+              />
+            </div>
           </div>
         </div>
       );
@@ -481,55 +464,41 @@ export function ChangeImageBottomSheet({
 
     return (
       <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleCycle('backdrop')}
-            disabled={!availability.hasBackdrops}
-            className="border-gray-200 dark:border-[#333333]"
-          >
-            Backdrop
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => handleCycle('logo')}
-            disabled={!availability.hasLogos}
-            className="border-gray-200 dark:border-[#333333]"
-          >
-            Logo
-          </Button>
-        </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <PreviewCard
-            label="Backdrop"
-            imageUrl={selectedBackdrop?.url}
-            alt={`${title} backdrop`}
-            emptyMessage="No backdrops available for this title."
-            onPreview={selectedBackdrop?.url && selectedLogo?.url ? () => openPreview({
-              imageUrls: [selectedBackdrop.url, selectedLogo.url],
-              imageTypes: ['backdrop', 'logo'],
-              initialIndex: 0,
-            }) : selectedBackdrop?.url ? () => openPreview({
-              imageUrls: [selectedBackdrop.url],
-              imageTypes: ['backdrop'],
-            }) : undefined}
-          />
-          <PreviewCard
-            label="Logo"
-            imageUrl={selectedLogo?.url}
-            alt={`${title} logo`}
-            emptyMessage="No logos available for this title."
-            onPreview={selectedBackdrop?.url && selectedLogo?.url ? () => openPreview({
-              imageUrls: [selectedBackdrop.url, selectedLogo.url],
-              imageTypes: ['backdrop', 'logo'],
-              initialIndex: 1,
-            }) : selectedLogo?.url ? () => openPreview({
-              imageUrls: [selectedLogo.url],
-              imageTypes: ['logo'],
-            }) : undefined}
-          />
+          <div className="space-y-3">
+            {renderSlotActions('backdrop', 'Backdrop', () => handleCycle('backdrop'), !availability.hasBackdrops)}
+            <PreviewCard
+              label="Backdrop"
+              imageUrl={effectiveBackdropUrl}
+              alt={`${title} backdrop`}
+              emptyMessage="No backdrops available for this title."
+              onPreview={effectiveBackdropUrl && effectiveLogoUrl ? () => openPreview({
+                imageUrls: [effectiveBackdropUrl, effectiveLogoUrl],
+                imageTypes: ['backdrop', 'logo'],
+                initialIndex: 0,
+              }) : effectiveBackdropUrl ? () => openPreview({
+                imageUrls: [effectiveBackdropUrl],
+                imageTypes: ['backdrop'],
+              }) : undefined}
+            />
+          </div>
+          <div className="space-y-3">
+            {renderSlotActions('logo', 'Logo', () => handleCycle('logo'), !availability.hasLogos)}
+            <PreviewCard
+              label="Logo"
+              imageUrl={effectiveLogoUrl}
+              alt={`${title} logo`}
+              emptyMessage="No logos available for this title."
+              onPreview={effectiveBackdropUrl && effectiveLogoUrl ? () => openPreview({
+                imageUrls: [effectiveBackdropUrl, effectiveLogoUrl],
+                imageTypes: ['backdrop', 'logo'],
+                initialIndex: 1,
+              }) : effectiveLogoUrl ? () => openPreview({
+                imageUrls: [effectiveLogoUrl],
+                imageTypes: ['logo'],
+              }) : undefined}
+            />
+          </div>
         </div>
       </div>
     );
@@ -569,21 +538,23 @@ export function ChangeImageBottomSheet({
               onSelect={handleStyleSelect}
             />
 
-            <div
-              className={`rounded-2xl ${uploadDrop.isDragging ? 'ring-1 ring-[#ec1e24]/50' : ''}`}
-              {...uploadDrop.bind}
-            >
-              <button
-                type="button"
-                onClick={handleUploadTrigger}
-                className={`flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111] ${
-                  uploadDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
-                }`}
+            {(selectedStyle === 'poster' || selectedStyle === 'backdrop') ? (
+              <div
+                className={`rounded-2xl ${uploadDrop.isDragging ? 'ring-1 ring-[#ec1e24]/50' : ''}`}
+                {...uploadDrop.bind}
               >
-                <Upload className="h-4 w-4" />
-                Upload your own image
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={handleUploadTrigger}
+                  className={`flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111] ${
+                    uploadDrop.isDragging ? 'border-[#ec1e24] bg-[#ec1e24]/10' : ''
+                  }`}
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload for current slot
+                </button>
+              </div>
+            ) : null}
 
             <input
               ref={fileInputRef}
@@ -605,7 +576,7 @@ export function ChangeImageBottomSheet({
               renderModeControls()
             )}
 
-            {!uploadedImageUrl && !isLoadingAssets && !canSave && (
+            {!isLoadingAssets && !canSave && (
               <div className="flex items-start gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-[#333333] dark:bg-black">
                 <ImageIcon className="mt-0.5 h-4 w-4 text-[#ec1e24]" />
                 <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">

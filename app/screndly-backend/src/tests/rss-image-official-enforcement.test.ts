@@ -192,3 +192,44 @@ test('treats executive departure stories as person-led and pairs portrait with c
   assert.equal(plan.secondary?.intent, 'logo');
   assert.match(plan.secondary?.subject || '', /Paramount/i);
 });
+
+test('ignores producer credit titles when resolving a sequel story subject', () => {
+  const analysis = buildAnalysis({
+    title: "Cameron Diaz to star in 'Troop Beverly Hills' sequel",
+    description: 'Laurence Mark ("The Greatest Showman," "Dreamgirls") will produce alongside Diaz.',
+  });
+
+  assert.notEqual(analysis.primarySubject.name, 'The Greatest Showman');
+  assert.notEqual(analysis.contextProject, 'The Greatest Showman');
+});
+
+test('keeps casting analysis anchored to the actual project instead of outlet or creator credits', () => {
+  const analysis = buildAnalysis({
+    title: "Peter Dinklage joins 'Alien: Earth' Season 2",
+    description: "The Game of Thrones Emmy winner will be a series regular on the sci-fi series from 'Fargo' creator Noah Hawley. Deadline broke the news. More to come.",
+  });
+
+  assert.equal(analysis.primarySubject.name, 'Alien: Earth');
+  assert.equal(analysis.visualSubject, 'Alien: Earth');
+  assert.doesNotMatch(`${analysis.primarySubject.name} ${analysis.visualSubject} ${analysis.contextProject || ''}`, /Deadline|Noah Hawley, Deadline|Fargo/i);
+});
+
+test('treats James Gunn debunk story as person-led with Superman sequel fallback context', () => {
+  const article = {
+    title: 'James Gunn Debunks Major Man of Tomorrow Casting Report, "Bullsh-t" (But Confirms 1 Character Left to Cast)',
+    description:
+      'Things are moving fast for the upcoming Superman sequel film, officially titled Man of Tomorrow, which will not only bring back David Corenswet as the Kryptonian superhero but also Nicholas Hoult as Lex Luthor.',
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.primarySubject.name, 'James Gunn');
+  assert.equal(analysis.primarySubject.type, 'actor');
+  assert.equal(analysis.contextProject, 'Superman');
+  assert.equal(plan.useTwoImages, true);
+  assert.equal(plan.primary.subject, 'James Gunn');
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.secondary?.subject, 'Superman');
+  assert.equal(plan.secondary?.intent, 'still');
+});

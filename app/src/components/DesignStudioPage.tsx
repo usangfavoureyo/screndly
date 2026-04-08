@@ -112,6 +112,175 @@ interface DesignStudioEditorTarget {
   initialData?: DesignData | null;
 }
 
+function safeStorageSetItem(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn(`Failed to persist Design Studio cache for ${key}:`, error);
+  }
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+}
+
+function normalizeIsoString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function normalizeDate(value: unknown, fallback = new Date()): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed;
+    }
+  }
+  return fallback;
+}
+
+function compactBackgroundImage(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('data:')) {
+    return '';
+  }
+  return trimmed;
+}
+
+function normalizeManualRenderJob(job: any): ManualRenderJob | null {
+  if (!job || typeof job !== 'object') {
+    return null;
+  }
+
+  const id = typeof job.id === 'string' ? job.id.trim() : '';
+  const templateId = typeof job.templateId === 'string' ? job.templateId.trim() : '';
+  const templateName = typeof job.templateName === 'string' ? job.templateName.trim() : 'Untitled template';
+  if (!id || !templateId) {
+    return null;
+  }
+
+  const status = job.status === 'rendering'
+    || job.status === 'completed'
+    || job.status === 'failed'
+    ? job.status
+    : 'queued';
+
+  return {
+    id,
+    templateId,
+    templateName,
+    status,
+    createdAt: normalizeIsoString(job.createdAt) || new Date().toISOString(),
+    updatedAt: normalizeIsoString(job.updatedAt) || normalizeIsoString(job.createdAt) || new Date().toISOString(),
+    renderedDesignId: typeof job.renderedDesignId === 'string' && job.renderedDesignId.trim().length > 0
+      ? job.renderedDesignId
+      : null,
+    outputUrl: typeof job.outputUrl === 'string' && job.outputUrl.trim().length > 0 ? job.outputUrl : null,
+    failureReason: typeof job.failureReason === 'string' && job.failureReason.trim().length > 0 ? job.failureReason : null,
+  };
+}
+
+function compactTemplateForCache(template: ReturnType<typeof serializeTemplates>[number]) {
+  return {
+    id: template.id,
+    name: template.name,
+    sourceType: template.sourceType,
+    sourceFilePath: template.sourceFilePath,
+    previewImage: template.previewImage,
+    previewUrl: template.previewUrl,
+    aspectRatio: template.aspectRatio,
+    width: template.width,
+    height: template.height,
+    source: template.source,
+    lastEdited: template.lastEdited,
+    hasHeader: template.hasHeader,
+    hasBackground: template.hasBackground,
+    hasSubtext: template.hasSubtext,
+    hasOverlay: template.hasOverlay,
+    hasCategory: template.hasCategory,
+    hasSource: template.hasSource,
+    baseVariant: template.baseVariant,
+    layoutVariant: template.layoutVariant,
+    fontFamily: template.fontFamily,
+    fontStyle: template.fontStyle,
+    fontWeight: template.fontWeight,
+    baseFontSize: template.baseFontSize,
+    fontColor: template.fontColor,
+    lineHeightMultiplier: template.lineHeightMultiplier,
+    tracking: template.tracking,
+    isPointText: template.isPointText,
+    overlayDirection: template.overlayDirection,
+    overlayStrength: template.overlayStrength,
+    safeMargin: template.safeMargin,
+    isValidated: template.isValidated,
+    validationState: template.validationState,
+    validationErrors: template.validationErrors,
+    isDefaultManual: template.isDefaultManual,
+    isDefaultAuto: template.isDefaultAuto,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+function compactRenderedDesignForCache(renderedDesign: ReturnType<typeof serializeRenderedDesigns>[number]) {
+  const data = asRecord(renderedDesign.data);
+  return {
+    ...renderedDesign,
+    data: {
+      ...data,
+      backgroundImage: compactBackgroundImage(data.backgroundImage),
+    },
+  };
+}
+
+function compactAutoEditorialForCache(editorial: AutoEditorial) {
+  return {
+    id: editorial.id,
+    sourceFeedItemId: editorial.sourceFeedItemId,
+    sourceFeedId: editorial.sourceFeedId,
+    sourceFeedName: editorial.sourceFeedName,
+    sourceTitle: editorial.sourceTitle,
+    sourceUrl: editorial.sourceUrl,
+    matchedKeyword: editorial.matchedKeyword,
+    templateId: editorial.templateId,
+    templateName: editorial.templateName,
+    templateVariant: editorial.templateVariant,
+    renderedImage: editorial.renderedImage,
+    headerText: editorial.headerText,
+    subheaderText: editorial.subheaderText,
+    contentType: editorial.contentType,
+    caption: editorial.caption,
+    captions: editorial.captions,
+    backgroundSource: editorial.backgroundSource,
+    backgroundOffsetX: editorial.backgroundOffsetX,
+    backgroundOffsetY: editorial.backgroundOffsetY,
+    zoomLevel: editorial.zoomLevel,
+    headerTextColor: editorial.headerTextColor,
+    brandBlockMode: editorial.brandBlockMode,
+    overlayDirection: editorial.overlayDirection,
+    overlayStrength: editorial.overlayStrength,
+    scheduleTime: editorial.scheduleTime,
+    targetPlatforms: editorial.targetPlatforms,
+    status: editorial.status,
+    createdAt: editorial.createdAt,
+    updatedAt: editorial.updatedAt,
+    postedAt: editorial.postedAt,
+    failureReason: editorial.failureReason,
+  };
+}
+
 function readPendingEditorTarget(): DesignStudioEditorTarget | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -165,24 +334,44 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
 }
 
 function parseTemplate(template: any): Template {
+  const source = asRecord(template);
   const lastEditedSource = template.lastEdited || template.updatedAt || template.createdAt || new Date().toISOString();
   return {
-    ...template,
-    previewUrl: template.previewUrl || template.previewImage,
-    hasHeader: template.hasHeader ?? true,
-    hasBackground: template.hasBackground ?? true,
-    hasSubtext: template.hasSubtext ?? false,
-    hasOverlay: template.hasOverlay ?? Boolean(template.psdData?.detectedLayers?.hasOverlay),
+    ...source,
+    id: typeof source.id === 'string' ? source.id : `template-${Math.random().toString(36).slice(2, 10)}`,
+    name: typeof source.name === 'string' && source.name.trim().length > 0 ? source.name : 'Untitled template',
+    previewUrl: source.previewUrl || source.previewImage,
+    hasHeader: source.hasHeader ?? true,
+    hasBackground: source.hasBackground ?? true,
+    hasSubtext: source.hasSubtext ?? false,
+    hasOverlay: source.hasOverlay ?? Boolean(asRecord(source.psdData).detectedLayers?.hasOverlay),
     lastEdited: new Date(lastEditedSource),
-    createdAt: template.createdAt ? new Date(template.createdAt) : undefined,
-    updatedAt: template.updatedAt ? new Date(template.updatedAt) : undefined,
+    createdAt: source.createdAt ? normalizeDate(source.createdAt) : undefined,
+    updatedAt: source.updatedAt ? normalizeDate(source.updatedAt) : undefined,
   };
 }
 
 function parseRenderedDesign(renderedDesign: any): RenderedDesign {
+  const source = asRecord(renderedDesign);
+  const data = asRecord(source.data);
+  const outputUrl = typeof source.outputUrl === 'string'
+    ? source.outputUrl.trim()
+    : typeof source.previewUrl === 'string'
+      ? source.previewUrl.trim()
+      : '';
   return {
-    ...renderedDesign,
-    createdAt: new Date(renderedDesign.createdAt),
+    ...source,
+    id: typeof source.id === 'string' ? source.id : `rendered-design-${Math.random().toString(36).slice(2, 10)}`,
+    templateId: typeof source.templateId === 'string' ? source.templateId : '',
+    templateName: typeof source.templateName === 'string' && source.templateName.trim().length > 0
+      ? source.templateName
+      : 'Untitled design',
+    outputUrl,
+    data: {
+      ...data,
+      backgroundImage: compactBackgroundImage(data.backgroundImage),
+    },
+    createdAt: normalizeDate(source.createdAt),
   };
 }
 
@@ -198,16 +387,26 @@ function serializeTemplates(templates: Template[]) {
 function serializeRenderedDesigns(renderedDesigns: RenderedDesign[]) {
   return renderedDesigns.map((renderedDesign) => ({
     ...renderedDesign,
-    createdAt: renderedDesign.createdAt.toISOString(),
+    createdAt: normalizeDate(renderedDesign.createdAt).toISOString(),
   }));
 }
 
 function parseAutoEditorial(editorial: any): AutoEditorial {
+  const source = asRecord(editorial);
   return {
-    ...editorial,
-    targetPlatforms: Array.isArray(editorial.targetPlatforms) ? editorial.targetPlatforms : [],
-    createdAt: editorial.createdAt || new Date().toISOString(),
-    updatedAt: editorial.updatedAt || editorial.createdAt || new Date().toISOString(),
+    ...source,
+    id: typeof source.id === 'string' ? source.id : `auto-editorial-${Math.random().toString(36).slice(2, 10)}`,
+    sourceFeedItemId: typeof source.sourceFeedItemId === 'string' ? source.sourceFeedItemId : '',
+    sourceTitle: typeof source.sourceTitle === 'string' && source.sourceTitle.trim().length > 0
+      ? source.sourceTitle
+      : 'Editorial item',
+    templateId: typeof source.templateId === 'string' ? source.templateId : '',
+    renderedImage: typeof source.renderedImage === 'string' ? source.renderedImage : '',
+    headerText: typeof source.headerText === 'string' ? source.headerText : '',
+    caption: typeof source.caption === 'string' ? source.caption : '',
+    targetPlatforms: Array.isArray(source.targetPlatforms) ? source.targetPlatforms : [],
+    createdAt: normalizeIsoString(source.createdAt) || new Date().toISOString(),
+    updatedAt: normalizeIsoString(source.updatedAt) || normalizeIsoString(source.createdAt) || new Date().toISOString(),
   };
 }
 
@@ -224,10 +423,16 @@ function readDesignStudioPageCache(): {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return {
-      templates: Array.isArray(parsed.templates) ? parsed.templates.map(parseTemplate) : [],
-      renderedDesigns: Array.isArray(parsed.renderedDesigns) ? parsed.renderedDesigns.map(parseRenderedDesign) : [],
-      autoEditorials: Array.isArray(parsed.autoEditorials) ? parsed.autoEditorials.map(parseAutoEditorial) : [],
-      manualRenderJobs: Array.isArray(parsed.manualRenderJobs) ? parsed.manualRenderJobs : [],
+      templates: Array.isArray(parsed.templates) ? parsed.templates.map(parseTemplate).filter((template) => template.id && template.previewUrl) : [],
+      renderedDesigns: Array.isArray(parsed.renderedDesigns)
+        ? parsed.renderedDesigns.map(parseRenderedDesign).filter((design) => design.templateId && design.outputUrl)
+        : [],
+      autoEditorials: Array.isArray(parsed.autoEditorials)
+        ? parsed.autoEditorials.map(parseAutoEditorial).filter((editorial) => editorial.templateId)
+        : [],
+      manualRenderJobs: Array.isArray(parsed.manualRenderJobs)
+        ? parsed.manualRenderJobs.map(normalizeManualRenderJob).filter((job): job is ManualRenderJob => Boolean(job))
+        : [],
     };
   } catch {
     return null;
@@ -311,7 +516,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const renderJobStatusRef = useRef<Map<string, ManualRenderJob['status']>>(new Map());
 
   useEffect(() => {
-    localStorage.setItem('designStudioActiveTab', activeTab);
+    safeStorageSetItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
 
   useEffect(() => {
@@ -374,11 +579,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    window.localStorage.setItem(DESIGN_STUDIO_PAGE_CACHE_KEY, JSON.stringify({
-      templates: serializeTemplates(templates),
-      renderedDesigns: serializeRenderedDesigns(renderedDesigns),
-      autoEditorials,
-      manualRenderJobs,
+    safeStorageSetItem(DESIGN_STUDIO_PAGE_CACHE_KEY, JSON.stringify({
+      templates: serializeTemplates(templates).map(compactTemplateForCache),
+      renderedDesigns: serializeRenderedDesigns(renderedDesigns).map(compactRenderedDesignForCache),
+      autoEditorials: autoEditorials.map(compactAutoEditorialForCache),
+      manualRenderJobs: manualRenderJobs
+        .map(normalizeManualRenderJob)
+        .filter((job): job is ManualRenderJob => Boolean(job)),
     }));
   }, [autoEditorials, manualRenderJobs, renderedDesigns, templates]);
 
@@ -441,7 +648,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         setTemplates((state.templates || []).map(parseTemplate));
         setRenderedDesigns((state.renderedDesigns || []).map(parseRenderedDesign));
         setAutoEditorials((state.autoEditorials || []).map(parseAutoEditorial));
-        setManualRenderJobs(jobs);
+        setManualRenderJobs(jobs.map(normalizeManualRenderJob).filter((job): job is ManualRenderJob => Boolean(job)));
       } catch (error) {
         console.error('Failed to load Design Studio state:', error);
         if (mounted) {
@@ -471,7 +678,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       }
       try {
         const jobs = await fetchDesignStudioRenderJobs();
-        setManualRenderJobs(jobs);
+        setManualRenderJobs(jobs.map(normalizeManualRenderJob).filter((job): job is ManualRenderJob => Boolean(job)));
         if (hasActiveManualRender) {
           const state = await fetchDesignStudioState();
           setTemplates((state.templates || []).map(parseTemplate));
@@ -1106,7 +1313,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         <Button
           onClick={() => {
             haptics.light();
-            localStorage.setItem('designStudioActivityTab', activeTab);
+            safeStorageSetItem('designStudioActivityTab', activeTab);
             onNavigate('design-studio-activity', 'design-studio');
           }}
           variant="outline"

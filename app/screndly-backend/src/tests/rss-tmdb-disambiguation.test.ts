@@ -248,3 +248,23 @@ test('builds prior installment fallback queries for numbered sequels and seasons
     ['The Last of Us', 'The Last of Us Season 4']
   );
 });
+
+test('falls back from Man of Tomorrow sequel context to Superman prior-installment imagery', () => {
+  const resolved = resolveCanonicalTMDbEntity({
+    primarySubject: { name: 'James Gunn', type: 'actor' },
+    visualSubject: 'James Gunn',
+    secondarySubjects: ['Superman'],
+    imageIntent: 'person_portrait',
+    targetFormat: 'movie',
+    contextProject: 'Superman',
+    requiredContextTerms: ['Man of Tomorrow', 'David Corenswet', 'James Gunn', 'Nicholas Hoult'],
+    relevantStudios: ['DC Studios'],
+    queries: ['James Gunn debunks Man of Tomorrow casting report'],
+    limit: 2,
+  });
+
+  assert.equal(resolved.specificTitle, 'Superman');
+  assert.equal(resolved.tmdbType, 'movie');
+  assert.equal(resolved.tmdbQuery, 'Superman 2025');
+  assert.match(resolved.ambiguityFlags.join(','), /upcoming_sequel_fallback_to_prior_installment/);
+});

@@ -84,6 +84,196 @@ interface DesignStudioEditorTarget {
   initialData?: DesignData | null;
 }
 
+function safeStorageSetItem(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn(`Failed to persist Design Studio activity cache for ${key}:`, error);
+  }
+}
+
+function asRecord(value: unknown): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, any>
+    : {};
+}
+
+function normalizeIsoString(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    return undefined;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function compactBackgroundImage(value: unknown): string {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.startsWith('data:')) {
+    return '';
+  }
+  return trimmed;
+}
+
+function normalizeActivityDetails(value: unknown): DesignStudioActivityRecord['details'] {
+  const details = asRecord(value);
+  return {
+    templateName: typeof details.templateName === 'string' ? details.templateName : undefined,
+    headerText: typeof details.headerText === 'string' ? details.headerText : undefined,
+    sourceTitle: typeof details.sourceTitle === 'string' ? details.sourceTitle : undefined,
+    designId: typeof details.designId === 'string' ? details.designId : undefined,
+    platforms: typeof details.platforms === 'string' ? details.platforms : undefined,
+    source: typeof details.source === 'string' ? details.source : undefined,
+    count: typeof details.count === 'number' ? details.count : undefined,
+    matchedKeyword: typeof details.matchedKeyword === 'string' ? details.matchedKeyword : undefined,
+    status: typeof details.status === 'string' ? details.status : undefined,
+    field: typeof details.field === 'string' ? details.field : undefined,
+    failureReason: typeof details.failureReason === 'string' ? details.failureReason : null,
+    previewUrl: typeof details.previewUrl === 'string' ? details.previewUrl : undefined,
+    outputUrl: typeof details.outputUrl === 'string' ? details.outputUrl : undefined,
+    renderJobId: typeof details.renderJobId === 'string' ? details.renderJobId : undefined,
+    exportFormat: details.exportFormat === 'png' ? 'png' : details.exportFormat === 'jpeg' ? 'jpeg' : undefined,
+    scheduleTime: typeof details.scheduleTime === 'string' ? details.scheduleTime : undefined,
+  };
+}
+
+function normalizeActivityRecord(activity: any): DesignStudioActivityRecord | null {
+  if (!activity || typeof activity !== 'object') {
+    return null;
+  }
+
+  const id = typeof activity.id === 'string' ? activity.id.trim() : '';
+  const type = typeof activity.type === 'string' ? activity.type.trim() : '';
+  if (!id || !type) {
+    return null;
+  }
+
+  return {
+    id,
+    type,
+    details: normalizeActivityDetails(activity.details),
+    createdAt: normalizeIsoString(activity.createdAt) || new Date().toISOString(),
+  };
+}
+
+function normalizeManualRenderJob(job: any): DesignStudioManualRenderJob | null {
+  if (!job || typeof job !== 'object') {
+    return null;
+  }
+
+  const id = typeof job.id === 'string' ? job.id.trim() : '';
+  const templateId = typeof job.templateId === 'string' ? job.templateId.trim() : '';
+  const templateName = typeof job.templateName === 'string' ? job.templateName.trim() : 'Untitled template';
+  if (!id || !templateId) {
+    return null;
+  }
+
+  const status = job.status === 'rendering'
+    || job.status === 'completed'
+    || job.status === 'failed'
+    ? job.status
+    : 'queued';
+
+  return {
+    id,
+    templateId,
+    templateName,
+    status,
+    createdAt: normalizeIsoString(job.createdAt) || new Date().toISOString(),
+    updatedAt: normalizeIsoString(job.updatedAt) || normalizeIsoString(job.createdAt) || new Date().toISOString(),
+    renderedDesignId: typeof job.renderedDesignId === 'string' && job.renderedDesignId.trim().length > 0
+      ? job.renderedDesignId
+      : null,
+    outputUrl: typeof job.outputUrl === 'string' && job.outputUrl.trim().length > 0 ? job.outputUrl : null,
+    failureReason: typeof job.failureReason === 'string' && job.failureReason.trim().length > 0 ? job.failureReason : null,
+  };
+}
+
+function normalizeRenderedDesignRecord(renderedDesign: any): DesignStudioRenderedDesignRecord | null {
+  if (!renderedDesign || typeof renderedDesign !== 'object') {
+    return null;
+  }
+
+  const id = typeof renderedDesign.id === 'string' ? renderedDesign.id.trim() : '';
+  const templateId = typeof renderedDesign.templateId === 'string' ? renderedDesign.templateId.trim() : '';
+  const outputUrl = typeof renderedDesign.outputUrl === 'string'
+    ? renderedDesign.outputUrl.trim()
+    : typeof renderedDesign.previewUrl === 'string'
+      ? renderedDesign.previewUrl.trim()
+      : '';
+  if (!id || !templateId || !outputUrl) {
+    return null;
+  }
+
+  const data = asRecord(renderedDesign.data);
+  return {
+    ...renderedDesign,
+    id,
+    templateId,
+    templateName: typeof renderedDesign.templateName === 'string' && renderedDesign.templateName.trim().length > 0
+      ? renderedDesign.templateName
+      : 'Untitled design',
+    outputUrl,
+    previewUrl: typeof renderedDesign.previewUrl === 'string' ? renderedDesign.previewUrl : outputUrl,
+    data: {
+      ...data,
+      backgroundImage: compactBackgroundImage(data.backgroundImage),
+    },
+    createdAt: normalizeIsoString(renderedDesign.createdAt) || new Date().toISOString(),
+  };
+}
+
+function compactTemplateForCache(template: DesignStudioTemplateRecord) {
+  return {
+    id: template.id,
+    name: template.name,
+    previewImage: template.previewImage,
+    previewUrl: template.previewUrl,
+    aspectRatio: template.aspectRatio,
+    width: template.width,
+    height: template.height,
+    source: template.source,
+    lastEdited: template.lastEdited,
+    hasSubtext: template.hasSubtext,
+    hasCategory: template.hasCategory,
+    hasSource: template.hasSource,
+    layoutVariant: template.layoutVariant,
+    baseVariant: template.baseVariant,
+    fontFamily: template.fontFamily,
+    fontStyle: template.fontStyle,
+    fontWeight: template.fontWeight,
+    baseFontSize: template.baseFontSize,
+    fontColor: template.fontColor,
+    lineHeightMultiplier: template.lineHeightMultiplier,
+    tracking: template.tracking,
+    isPointText: template.isPointText,
+    overlayDirection: template.overlayDirection,
+    overlayStrength: template.overlayStrength,
+    safeMargin: template.safeMargin,
+    isValidated: template.isValidated,
+    validationState: template.validationState,
+    validationErrors: template.validationErrors,
+    isDefaultManual: template.isDefaultManual,
+    isDefaultAuto: template.isDefaultAuto,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
+  };
+}
+
+function compactRenderedDesignForCache(renderedDesign: DesignStudioRenderedDesignRecord) {
+  const data = asRecord(renderedDesign.data);
+  return {
+    ...renderedDesign,
+    data: {
+      ...data,
+      backgroundImage: compactBackgroundImage(data.backgroundImage),
+    },
+  };
+}
+
 function normalizeMediaKey(value?: string | null): string {
   if (!value) return '';
   try {
@@ -235,7 +425,26 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (typeof window === 'undefined') return null;
     try {
       const raw = window.localStorage.getItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY);
-      return raw ? JSON.parse(raw) : null;
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      return {
+        activities: Array.isArray(parsed.activities)
+          ? parsed.activities.map(normalizeActivityRecord).filter((activity): activity is DesignStudioActivityRecord => Boolean(activity))
+          : [],
+        manualRenderJobs: Array.isArray(parsed.manualRenderJobs)
+          ? parsed.manualRenderJobs.map(normalizeManualRenderJob).filter((job): job is DesignStudioManualRenderJob => Boolean(job))
+          : [],
+        designTemplates: Array.isArray(parsed.designTemplates)
+          ? parsed.designTemplates.map((template: any) => asRecord(template)).filter((template: Record<string, any>) => typeof template.id === 'string')
+          : [],
+        templatePreviewUrls: asRecord(parsed.templatePreviewUrls),
+        renderedDesigns: Array.isArray(parsed.renderedDesigns)
+          ? parsed.renderedDesigns.map(normalizeRenderedDesignRecord).filter((design): design is DesignStudioRenderedDesignRecord => Boolean(design))
+          : [],
+        autoEditorials: Array.isArray(parsed.autoEditorials) ? parsed.autoEditorials : [],
+      };
     } catch {
       return null;
     }
@@ -305,11 +514,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         fetchDesignStudioRenderJobs(),
       ]);
       if (response.success && Array.isArray(response.data)) {
-        setActivities(response.data);
+        setActivities(response.data.map(normalizeActivityRecord).filter((activity): activity is DesignStudioActivityRecord => Boolean(activity)));
       } else {
         setActivities([]);
       }
-      setManualRenderJobs(renderJobs);
+      setManualRenderJobs(renderJobs.map(normalizeManualRenderJob).filter((job): job is DesignStudioManualRenderJob => Boolean(job)));
       if (!silent || hasActiveManualRender) {
         const designStudioState = await fetchDesignStudioState();
         setDesignTemplates(designStudioState.templates || []);
@@ -318,7 +527,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             (designStudioState.templates || []).map((template) => [template.id, template.previewUrl]),
           ),
         );
-        setRenderedDesigns(designStudioState.renderedDesigns || []);
+        setRenderedDesigns((designStudioState.renderedDesigns || [])
+          .map(normalizeRenderedDesignRecord)
+          .filter((design): design is DesignStudioRenderedDesignRecord => Boolean(design)));
         setAutoEditorials(designStudioState.autoEditorials || []);
       }
     } catch (error) {
@@ -356,24 +567,28 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   }, [hasActiveManualRender]);
 
   useEffect(() => {
-    localStorage.setItem('designStudioActivityTab', activeTab);
+    safeStorageSetItem('designStudioActivityTab', activeTab);
   }, [activeTab]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY, JSON.stringify({
-      activities,
-      manualRenderJobs,
-      designTemplates,
+    safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY, JSON.stringify({
+      activities: activities
+        .map(normalizeActivityRecord)
+        .filter((activity): activity is DesignStudioActivityRecord => Boolean(activity)),
+      manualRenderJobs: manualRenderJobs
+        .map(normalizeManualRenderJob)
+        .filter((job): job is DesignStudioManualRenderJob => Boolean(job)),
+      designTemplates: designTemplates.map(compactTemplateForCache),
       templatePreviewUrls,
-      renderedDesigns,
+      renderedDesigns: renderedDesigns.map(compactRenderedDesignForCache),
       autoEditorials,
     }));
   }, [activities, autoEditorials, designTemplates, manualRenderJobs, renderedDesigns, templatePreviewUrls]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    window.localStorage.setItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY, JSON.stringify(dismissedActivityIds));
+    safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY, JSON.stringify(dismissedActivityIds));
   }, [dismissedActivityIds]);
 
   const visibleActivities = useMemo(() => {
@@ -606,8 +821,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const openEditorTarget = (target: DesignStudioEditorTarget) => {
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
-      window.localStorage.setItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
+      safeStorageSetItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
+      safeStorageSetItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
       window.dispatchEvent(new CustomEvent('screndly:design-studio-edit-target', { detail: target }));
     }
     onNavigate('design-studio');

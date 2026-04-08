@@ -678,6 +678,23 @@ const REFERENCE_ONLY_CUES = [
   'in the vein of',
   'from films such as',
   'from movies such as',
+  'produced by',
+  'produce alongside',
+  'will produce',
+  'produce',
+  'producer',
+  'producer of',
+  'producer behind',
+  'written by',
+  'writer of',
+  'created by',
+  'creator',
+  'creator of',
+  'helmed by',
+  'directed by',
+  'broke the news',
+  'more to come',
+  'under wraps',
 ];
 const FRANCHISE_VALIDATION_RULES: FranchiseValidationRule[] = [
   {
@@ -936,10 +953,27 @@ function uniqueStrings(values: Array<string | null | undefined>): string[] {
 }
 
 function extractQuotedSubjects(value: string): string[] {
-  return uniqueStrings(
+  const rawMatches = uniqueStrings(
     Array.from(value.matchAll(/["“']([^"”']{2,80})["”']/g))
       .map((match) => match[1]?.trim() || '')
   );
+
+  if (!value) {
+    return rawMatches;
+  }
+
+  const sentences = splitIntoSentences(value);
+  return rawMatches.filter((subject) => {
+    const normalizedSubject = normalizeText(subject);
+    return !sentences.some((sentence) => {
+      const normalizedSentence = normalizeText(sentence);
+      if (!normalizedSentence.includes(normalizedSubject)) {
+        return false;
+      }
+
+      return REFERENCE_ONLY_CUES.some((cue) => normalizedSentence.includes(normalizeText(cue)));
+    });
+  });
 }
 
 function splitIntoSentences(value: string): string[] {
@@ -1591,6 +1625,21 @@ function extractHeadlineCastingPerson(title: string): string | null {
   return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
 }
 
+function extractLeadReportResponsePersonSubject(title: string): string | null {
+  const match = title.match(
+    /^([A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){1,3})\s+(?:debunks?|denies?|denied|refutes?|refuted|dismisses?|dismissed|calls?|called|slams?|slammed)\b/i
+  );
+
+  const candidate = match?.[1]?.trim();
+  return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
+}
+
+function isPersonLedReportResponseStory(title: string, articleText: string): boolean {
+  const combined = `${title} ${articleText}`;
+  return /\b(debunks?|denies?|denied|refutes?|refuted|dismisses?|dismissed|calls?|called|slams?|slammed|shuts?\s+down|shoots?\s+down|reacts?\s+to|responds?\s+to|confirms?|confirmed)\b/i
+    .test(combined);
+}
+
 function extractNamedPeople(articleText: string, analysis: RSSSubjectAnalysis): string[] {
   return uniqueStrings(
     Array.from(articleText.matchAll(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})\b/g))
@@ -1732,6 +1781,29 @@ function extractContainerOwnedContentSubject(title: string, studios: string[], a
   return null;
 }
 
+function extractSequelBaseProjectAnchor(articleText: string): string | null {
+  const patterns = [
+    /\bupcoming\s+([A-Z][A-Za-z0-9'â€™:&\-]+(?:\s+[A-Z][A-Za-z0-9'â€™:&\-]+){0,5})\s+sequel\s+(?:film|movie|series|show)\b/i,
+    /\b([A-Z][A-Za-z0-9'â€™:&\-]+(?:\s+[A-Z][A-Za-z0-9'â€™:&\-]+){0,5})\s+sequel\s+(?:film|movie|series|show)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const candidate = articleText.match(pattern)?.[1]?.trim();
+    if (!candidate || looksLikeNamedPerson(candidate)) {
+      continue;
+    }
+
+    const normalizedCandidate = normalizeText(candidate);
+    if (!normalizedCandidate || GENERIC_CONTAINER_SUBJECT_TERMS.includes(normalizedCandidate)) {
+      continue;
+    }
+
+    return candidate;
+  }
+
+  return null;
+}
+
 function extractRelevantStudios(articleText: string): string[] {
   const normalized = normalizeText(articleText);
   return OFFICIAL_STUDIO_TERMS.filter((term) => normalized.includes(normalizeText(term)));
@@ -1798,6 +1870,15 @@ function extractContextProject(
   referenceOnlySubjects: string[],
   relevantStudios: string[]
 ): string | null {
+  const sequelBaseProject = extractSequelBaseProjectAnchor(articleText);
+  if (
+    sequelBaseProject &&
+    normalizeText(sequelBaseProject) !== normalizeText(primaryName) &&
+    !relevantStudios.some((studio) => normalizeText(studio) === normalizeText(sequelBaseProject))
+  ) {
+    return sequelBaseProject;
+  }
+
   const filteredQuoted = extractQuotedSubjects(articleText).filter((subject) => {
     const normalizedSubject = normalizeText(subject);
     if (!normalizedSubject || normalizedSubject === normalizeText(primaryName)) {
@@ -2008,8 +2089,11 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const leadTitleCandidate = extractLeadTitleCandidate(normalizedTitle);
   const headlineProjectCandidate = extractHeadlineProjectCandidate(normalizedTitle, articleText, studios);
   const leadPersonCandidate = extractLeadPersonSubject(normalizedTitle);
+  const leadReportResponsePersonCandidate = extractLeadReportResponsePersonSubject(normalizedTitle);
   const leadIndustryPersonCandidate = extractLeadIndustryPersonSubject(normalizedTitle);
   const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios, articleText);
+  const sequelBaseProject = extractSequelBaseProjectAnchor(articleText);
+  const personLedReportResponseStory = isPersonLedReportResponseStory(normalizedTitle, articleText);
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
@@ -2024,6 +2108,9 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
   } else if (leadIndustryPersonCandidate && quotedMatches.length === 0 && executiveIndustryStory) {
     primaryName = leadIndustryPersonCandidate;
+    primaryType = 'actor';
+  } else if ((leadPersonCandidate || leadReportResponsePersonCandidate) && !titleLooksLikeStudioStory && personLedReportResponseStory) {
+    primaryName = leadPersonCandidate || leadReportResponsePersonCandidate || primaryName;
     primaryType = 'actor';
   } else if (headlineProjectCandidate) {
     primaryName = headlineProjectCandidate;
@@ -2040,9 +2127,13 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     primaryType = 'tv_show';
   }
 
-  const secondarySubjects = uniqueStrings(
-    studios.filter((studio) => normalizeText(studio) !== normalizeText(primaryName))
-  );
+  const secondarySubjects = uniqueStrings([
+    ...studios.filter((studio) => normalizeText(studio) !== normalizeText(primaryName)),
+    ...(sequelBaseProject && normalizeText(sequelBaseProject) !== normalizeText(primaryName) ? [sequelBaseProject] : []),
+    ...((headlineProjectCandidate && !personLedReportResponseStory && normalizeText(headlineProjectCandidate) !== normalizeText(primaryName))
+      ? [headlineProjectCandidate]
+      : []),
+  ]);
 
   const contextType = classifyContextType(articleText);
   const targetFormat = resolveTargetFormat(articleText, primaryType);
@@ -2671,6 +2762,7 @@ function determineSmartImagePlan(
     : null;
   const isListArticle = isListLikeArticle(article);
   const memorialStory = isMemorialStory(article);
+  const personLedResponseStory = isPersonLedReportResponseStory(article.title, articleText);
 
   let primary = buildImageSlotPlan(
     analysis.visualSubject,
@@ -2777,9 +2869,9 @@ function determineSmartImagePlan(
     secondary = buildImageSlotPlan(
       inferredLeadProjectSubject,
       inferSlotType(inferredLeadProjectSubject, articleText, 'franchise', analysis),
-      analysis.contextType === 'casting' ? 'logo' : 'poster',
+      analysis.contextType === 'casting' && !personLedResponseStory ? 'logo' : 'still',
       analysis,
-      analysis.contextType === 'casting'
+      analysis.contextType === 'casting' && !personLedResponseStory
     );
     return {
       primary,
@@ -2824,9 +2916,9 @@ function determineSmartImagePlan(
       secondary = buildImageSlotPlan(
         projectAnchorForPersonStory,
         inferSlotType(projectAnchorForPersonStory, articleText, 'franchise', analysis),
-        'poster',
+        analysis.contextType === 'casting' && !personLedResponseStory ? 'logo' : 'still',
         analysis,
-        false
+        analysis.contextType === 'casting' && !personLedResponseStory
       );
       useTwoImages = true;
     }

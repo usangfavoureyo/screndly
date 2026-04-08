@@ -12,6 +12,7 @@ const {
   hasUnsupportedRSSStructure,
   lacksSingleQuotedDetectedRSSTitles,
   hasUnsupportedRSSDemographicMutation,
+  hasInvalidRSSJoinLead,
   mirrorsRSSHeadlineTooClosely,
   normalizeRSSHeadlineInput,
 } = __rssCaptionTestUtils;
@@ -168,6 +169,44 @@ test('caption validation rejects structures that exceed the saved prompt shape',
   const caption = "'The Running Man' trailer arrives.\n\nDirected by Edgar Wright.\nIn theaters November 7.\nTickets on sale now.";
 
   assert.equal(hasUnsupportedRSSStructure(caption), true);
+});
+
+test('caption validation rejects invalid repeated joins headlines', () => {
+  const context = {
+    articleTitle: "Peter Dinklage joins 'Alien: Earth' Season 2",
+    feedName: 'Deadline',
+    summary: "Peter Dinklage has joined the cast of FX's 'Alien: Earth' Season 2.",
+    articleBody: 'Deadline confirmed Peter Dinklage has joined the cast. More to come.',
+    platform: 'Threads' as const,
+    allowedEntities: ['Alien: Earth', 'Peter Dinklage'],
+  };
+
+  const caption = "Noah Hawley, Deadline joins 'Noah Hawley, Deadline'.";
+
+  assert.equal(hasInvalidRSSJoinLead(caption), true);
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+});
+
+test('deterministic casting fallback prefers the project headline when the subject is not a grounded person', () => {
+  const context = {
+    articleTitle: "Peter Dinklage joins 'Alien: Earth' Season 2",
+    feedName: 'Deadline',
+    summary: "Peter Dinklage has joined the cast of FX's 'Alien: Earth' Season 2.",
+    articleBody: 'Deadline confirmed the casting. More to come.',
+    platform: 'Threads' as const,
+    allowedEntities: ['Alien: Earth', 'Peter Dinklage'],
+  };
+
+  const caption = buildDeterministicRssCaption({
+    article_title: context.articleTitle,
+    event_type: 'casting',
+    primary_subject: 'Deadline',
+    media_title: 'Alien: Earth',
+    supporting_facts: ['More to come.'],
+  }, context as any);
+
+  assert.match(caption, /'Alien: Earth' has added a new cast member\./);
+  assert.doesNotMatch(caption, /\bDeadline joins\b/i);
 });
 
 test('feed fallback is no longer forced for reveal-driven headlines', () => {

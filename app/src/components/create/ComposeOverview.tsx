@@ -98,7 +98,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   const { items, setActiveItemId, deleteItem, updateStatus, saveItem } = useComposeStore();
   const { addNotification } = useNotifications();
   const addPostNavigationLockRef = useRef(0);
-  const addPostPointerStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const cardActionLockUntilRef = useRef(0);
   const [scheduleItemId, setScheduleItemId] = useState<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(undefined);
   const [scheduleTime, setScheduleTime] = useState('09:00');
@@ -149,6 +149,38 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
   const stopCardTouchPropagation = (event: CardInteractionEvent) => {
     event.stopPropagation();
+  };
+
+  const triggerCardAction = (action: () => void) => {
+    const now = Date.now();
+    if (now < cardActionLockUntilRef.current) {
+      return;
+    }
+
+    cardActionLockUntilRef.current = now + 400;
+    action();
+  };
+
+  const handleCardActionPointerDown = (
+    event: React.PointerEvent<HTMLElement>,
+    action: () => void,
+  ) => {
+    event.stopPropagation();
+    if (event.pointerType === 'mouse' || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    triggerCardAction(action);
+  };
+
+  const handleCardActionClick = (
+    event: React.MouseEvent<HTMLElement>,
+    action: () => void,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    triggerCardAction(action);
   };
 
   const handlePublish = async (itemId: string) => {
@@ -376,32 +408,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
         type="button"
         className="w-full touch-manipulation"
         onPointerDown={(event) => {
-          if (event.button !== 0) {
+          if (event.pointerType === 'mouse' || event.button !== 0) {
             return;
           }
 
-          addPostPointerStartRef.current = {
-            pointerId: event.pointerId,
-            x: event.clientX,
-            y: event.clientY,
-          };
-        }}
-        onPointerCancel={() => {
-          addPostPointerStartRef.current = null;
-        }}
-        onPointerUp={(event) => {
-          const pointerStart = addPostPointerStartRef.current;
-          addPostPointerStartRef.current = null;
-
-          if (!pointerStart || pointerStart.pointerId !== event.pointerId || event.pointerType === 'mouse') {
-            return;
-          }
-
-          const pointerTravel = Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y);
-          if (pointerTravel > 10) {
-            return;
-          }
-
+          event.preventDefault();
           triggerCreateNavigation();
         }}
         onClick={triggerCreateNavigation}
@@ -563,15 +574,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handlePublish(item.id);
-                              }}
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
                                 <>
@@ -583,31 +590,28 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handleOpenSchedule(item);
-                              }}
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => handleOpenSchedule(item))}
+                              onClick={(event) => handleCardActionClick(event, () => handleOpenSchedule(item))}
                             >
                               Schedule
                             </Button>
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
                             >
                               Edit
                             </Button>
@@ -619,15 +623,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                handlePublish(item.id);
-                              }}
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
                                 <>
@@ -639,16 +639,17 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
                             >
                               Edit
                             </Button>
@@ -660,16 +661,17 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                             <Button
                               type="button"
                               data-prevent-card-selection="true"
-                              onPointerDown={stopCardTouchPropagation}
-                              onTouchStart={stopCardTouchPropagation}
                               variant="outline"
                               size="sm"
                               className="h-10 w-full px-3 text-sm"
-                              onClick={(event) => {
-                                event.stopPropagation();
+                              onPointerDown={(event) => handleCardActionPointerDown(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
-                              }}
+                              })}
+                              onClick={(event) => handleCardActionClick(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
                             >
                               Edit
                             </Button>
