@@ -235,7 +235,7 @@ async function waitForInstagramMediaReady(containerId: string, accessToken: stri
 }
 
 async function waitForThreadsMediaReady(containerId: string, accessToken: string): Promise<void> {
-    const maxAttempts = 30;
+  const maxAttempts = 30;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const statusResponse = await axios.get(`${THREADS_BASE_URL}/${containerId}`, {
@@ -257,7 +257,49 @@ async function waitForThreadsMediaReady(containerId: string, accessToken: string
         await sleep(5_000);
     }
 
-    throw new Error('Threads media processing timed out');
+  throw new Error('Threads media processing timed out');
+}
+
+async function waitForFacebookVideoReady(videoId: string, accessToken: string): Promise<void> {
+    const maxAttempts = 30;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        const statusResponse = await axios.get(`${BASE_URL}/${videoId}`, {
+            params: {
+                fields: 'status',
+                access_token: accessToken,
+            },
+        });
+
+        const status = statusResponse.data?.status || {};
+        const videoStatus = String(status?.video_status || '').toUpperCase();
+        const uploadingStatus = String(status?.uploading_phase?.status || '').toUpperCase();
+        const processingStatus = String(status?.processing_phase?.status || '').toUpperCase();
+        const publishingStatus = String(status?.publishing_phase?.status || '').toUpperCase();
+        const statusValues = [videoStatus, uploadingStatus, processingStatus, publishingStatus].filter(Boolean);
+
+        if (
+            videoStatus === 'READY'
+            || videoStatus === 'PUBLISHED'
+            || videoStatus === 'FINISHED'
+            || videoStatus === 'COMPLETE'
+            || (
+                uploadingStatus === 'COMPLETE'
+                && processingStatus === 'COMPLETE'
+                && (!publishingStatus || publishingStatus === 'COMPLETE' || publishingStatus === 'PUBLISHED')
+            )
+        ) {
+            return;
+        }
+
+        if (statusValues.some((value) => value === 'ERROR' || value === 'FAILED' || value === 'EXPIRED')) {
+            throw new Error(`Facebook story video processing failed with status ${statusValues.join('/')}`);
+        }
+
+        await sleep(5_000);
+    }
+
+    throw new Error('Facebook story video processing timed out');
 }
 
 export const metaService = {
@@ -807,6 +849,8 @@ export const metaService = {
                         headers: FORM_URL_ENCODED_HEADERS,
                     }
                 );
+
+                await waitForFacebookVideoReady(videoId, accessToken);
 
                 return {
                     success: true,

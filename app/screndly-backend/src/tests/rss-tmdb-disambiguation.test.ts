@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { __rssTmdbDisambiguationTestUtils } from '../services/rss-tmdb-image-selection.service';
 
-const { buildInstallmentFallbackQueries, resolveCanonicalTMDbEntity, titleMatchesProjectContext } = __rssTmdbDisambiguationTestUtils;
+const {
+  buildInstallmentFallbackQueries,
+  resolveCanonicalTMDbEntity,
+  titleMatchesProjectContext,
+  titleCandidateMatchesResolvedContext,
+} = __rssTmdbDisambiguationTestUtils;
 
 test('disambiguates Harry Potter HBO series from films and books', () => {
   const resolved = resolveCanonicalTMDbEntity({
@@ -267,4 +272,33 @@ test('falls back from Man of Tomorrow sequel context to Superman prior-installme
   assert.equal(resolved.tmdbType, 'movie');
   assert.equal(resolved.tmdbQuery, 'Superman 2025');
   assert.match(resolved.ambiguityFlags.join(','), /upcoming_sequel_fallback_to_prior_installment/);
+});
+
+test('rejects unrelated person-linked titles when a project casting anchor exists', () => {
+  const input = {
+    primarySubject: { name: 'Ray Gunn', type: 'movie' as const },
+    canonicalEntity: {
+      primarySubject: 'Ray Gunn',
+      mediaTitle: 'Ray Gunn',
+      entityType: 'movie' as const,
+      eventType: 'casting',
+      namedPeople: ['Scarlett Johansson', 'Sam Rockwell', 'Tom Waits'],
+      namedCharacters: [],
+      allowedEntities: ['Ray Gunn', 'Scarlett Johansson', 'Sam Rockwell', 'Tom Waits'],
+      confidence: 0.95,
+      ambiguityFlags: ['casting_project_anchor_override'],
+    },
+    visualSubject: 'Ray Gunn',
+    secondarySubjects: ['Scarlett Johansson', 'Sam Rockwell', 'Tom Waits'],
+    imageIntent: 'still' as const,
+    targetFormat: 'movie' as const,
+    contextProject: 'Ray Gunn',
+    requiredContextTerms: ['Brad Bird', 'Skydance Animation', 'voice cast'],
+    relevantStudios: ['Skydance Animation'],
+    queries: ["Scarlett Johansson, Sam Rockwell and Tom Waits Join Brad Bird's Ray Gunn Voice Cast"],
+    limit: 1,
+  };
+
+  assert.equal(titleCandidateMatchesResolvedContext('Chris Grace: As Scarlett Johansson', input), false);
+  assert.equal(titleCandidateMatchesResolvedContext('Ray Gunn', input), true);
 });

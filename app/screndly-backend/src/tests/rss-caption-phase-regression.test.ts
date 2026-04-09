@@ -309,6 +309,49 @@ test('caption validation rejects malformed junk headline subjects', () => {
   assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_HEADLINE_JUNK/);
 });
 
+test('project-led casting extraction prefers the series title over malformed cast fragments', () => {
+  const context = {
+    articleTitle: "'Wednesday' Season 3 Casts Lena Headey, Andrew McCarthy, James Lance",
+    feedName: 'Variety',
+    summary: "'Wednesday' Season 3 has added three guest stars.",
+    articleBody: 'Lena Headey, Andrew McCarthy, and James Lance will appear in guest star roles in the Netflix series.',
+    platform: 'Threads' as const,
+    canonicalEntity: {
+      primarySubject: 'Wednesday',
+      mediaTitle: 'Wednesday',
+      entityType: 'tv' as const,
+      eventType: 'casting',
+      namedPeople: ['Lena Headey', 'Andrew McCarthy', 'James Lance'],
+      namedCharacters: [],
+      allowedEntities: ['Wednesday', 'Lena Headey', 'Andrew McCarthy', 'James Lance'],
+      confidence: 0.95,
+      ambiguityFlags: [],
+    },
+    allowedEntities: ['Wednesday', 'Lena Headey', 'Andrew McCarthy', 'James Lance'],
+  };
+
+  const extraction = buildHeuristicRssCaptionExtraction(context);
+
+  assert.equal(extraction.media_title, 'Wednesday');
+  assert.equal(extraction.primary_subject, 'Wednesday');
+});
+
+test('caption validation rejects malformed casting join headlines built from article fragments', () => {
+  const context = {
+    articleTitle: "'Wednesday' Season 3 Casts Lena Headey, Andrew McCarthy, James Lance",
+    feedName: 'Variety',
+    summary: "'Wednesday' Season 3 has added three guest stars.",
+    articleBody: 'Lena Headey, Andrew McCarthy, and James Lance will appear in guest star roles in the Netflix series.',
+    platform: 'Threads' as const,
+    allowedEntities: ['Wednesday', 'Lena Headey', 'Andrew McCarthy', 'James Lance'],
+  };
+
+  const caption = "Casts Lena Headey joins 'Season 3 Casts Lena Headey'.\n\n'Wednesday' Season 3 has added three guest stars [...]";
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_HEADLINE_JUNK/);
+});
+
 test('feed fallback is no longer forced for reveal-driven headlines', () => {
   assert.notEqual(
     __rssImageSelectionTestUtils.getRevealDrivenArticleMode({

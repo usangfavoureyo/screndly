@@ -196,6 +196,43 @@ test('treats executive departure stories as person-led and pairs portrait with c
   assert.match(plan.secondary?.subject || '', /Paramount/i);
 });
 
+test('treats corporate merger stories as industry/company context instead of title-led project context', () => {
+  const article = {
+    title: "Leading Shareholder Advisor ISS Backs WBD-Paramount Merger But Slams David Zaslav's 'Windfall' Payout",
+    description:
+      'Institutional Shareholder Services backed the WBD-Paramount merger while criticizing David Zaslav compensation.',
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.contextType, 'industry');
+  assert.notEqual(analysis.primarySubject.type, 'movie');
+  assert.notEqual(analysis.primarySubject.type, 'tv_show');
+  assert.notEqual(plan.primary.intent, 'poster');
+});
+
+test('rejects unrelated title posters for corporate Paramount merger stories', () => {
+  const analysis = buildAnalysis({
+    title: "Leading Shareholder Advisor ISS Backs WBD-Paramount Merger But Slams David Zaslav's 'Windfall' Payout",
+    description:
+      'Institutional Shareholder Services backed the merger while criticizing David Zaslav compensation.',
+  });
+
+  const result = validateImageCandidate({
+    title: 'Paramount Motel official poster',
+    imageUrl: 'https://image.tmdb.org/t/p/w1280/paramount-motel.jpg',
+    imageWidth: 1280,
+    imageHeight: 720,
+    domain: 'themoviedb.org',
+    link: 'https://www.themoviedb.org/movie/paramount-motel',
+    source: 'tmdb',
+  }, analysis);
+
+  assert.equal(result.approved, false);
+  assert.match(result.reasonCode || '', /IMAGE_CANONICAL_ENTITY_MISMATCH/);
+});
+
 test('person-led interview stories keep the speaking subject as the primary image', () => {
   const article = {
     title: "Olivia Munn says a male co-star refused to film a scene on 'The Drew Barrymore Show'",
@@ -324,4 +361,89 @@ test('project-led sequel stories do not promote supporting characters to the pri
   assert.notEqual(plan.primary.subject, 'Maxima');
   assert.notEqual(plan.primary.intent, 'character_still');
   assert.match(plan.primary.subject, /Superman|Man of Tomorrow/i);
+});
+
+test('review headlines stay anchored to the reviewed project instead of the lead actor name', () => {
+  const article = {
+    title: "'Outcome' Review: Keanu Reeves Gets To Play A Movie Star About To Get Canceled In Jonah Hill's Uneven Dark Hollywood Satire",
+    description: 'A review of Outcome starring Keanu Reeves and directed by Jonah Hill.',
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+
+  assert.equal(analysis.primarySubject.name, 'Outcome');
+  assert.equal(analysis.primarySubject.type, 'movie');
+});
+
+test('quoted project headlines beat platform branding for upcoming series announcements', () => {
+  const article = {
+    title: "Apple TV Assembles 'The Husbands': Joe Alwyn, Richard Gadd, Kingsley Ben-Adir, Joel Kinnaman, Daniel Ings, Bob Morley & Fehinti Balogun To Star In Upcoming A24 Series With Juno Temple",
+    description: "Apple TV+ is backing the A24 adaptation of 'The Husbands'.",
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+
+  assert.equal(analysis.primarySubject.name, 'The Husbands');
+  assert.notEqual(analysis.primarySubject.type, 'streaming_service');
+  assert.notEqual(analysis.primarySubject.type, 'studio');
+});
+
+test('project-led animated voice-cast stories keep the project as the primary visual anchor', () => {
+  const article = {
+    title: "Scarlett Johansson, Sam Rockwell and Tom Waits Join Brad Bird's 'Ray Gunn' Voice Cast",
+    description:
+      "Johansson, Rockwell and Waits join Brad Bird's Skydance Animation feature 'Ray Gunn' in the voice cast.",
+    canonicalEntity: {
+      primarySubject: 'Ray Gunn',
+      mediaTitle: 'Ray Gunn',
+      entityType: 'movie',
+      eventType: 'casting',
+      namedPeople: ['Scarlett Johansson', 'Sam Rockwell', 'Tom Waits', 'Brad Bird'],
+      allowedEntities: ['Ray Gunn', 'Scarlett Johansson', 'Sam Rockwell', 'Tom Waits', 'Brad Bird'],
+      confidence: 0.95,
+      ambiguityFlags: ['casting_project_anchor_override'],
+    },
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.primarySubject.name, 'Ray Gunn');
+  assert.equal(analysis.primarySubject.type, 'movie');
+  assert.equal(analysis.contextType, 'casting');
+  assert.equal(plan.primary.subject, 'Ray Gunn');
+  assert.equal(plan.primary.intent, 'still');
+  assert.match(plan.mode, /dual|ensemble/);
+  assert.equal(plan.secondary?.intent, 'person_portrait');
+});
+
+test('rejects text-dominant person-linked poster traps for project-led casting stories', () => {
+  const analysis = buildAnalysis({
+    title: "Scarlett Johansson, Sam Rockwell and Tom Waits Join Brad Bird's 'Ray Gunn' Voice Cast",
+    description:
+      "Johansson, Rockwell and Waits join Brad Bird's Skydance Animation feature 'Ray Gunn' in the voice cast.",
+    canonicalEntity: {
+      primarySubject: 'Ray Gunn',
+      mediaTitle: 'Ray Gunn',
+      entityType: 'movie',
+      eventType: 'casting',
+      namedPeople: ['Scarlett Johansson', 'Sam Rockwell', 'Tom Waits', 'Brad Bird'],
+      allowedEntities: ['Ray Gunn', 'Scarlett Johansson', 'Sam Rockwell', 'Tom Waits', 'Brad Bird'],
+      confidence: 0.95,
+      ambiguityFlags: ['casting_project_anchor_override'],
+    },
+  });
+
+  const result = validateImageCandidate({
+    title: 'Chris Grace: As Scarlett Johansson poster',
+    imageUrl: 'https://image.tmdb.org/t/p/w1280/chris-grace-poster.jpg',
+    imageWidth: 1280,
+    imageHeight: 720,
+    domain: 'themoviedb.org',
+    link: 'https://www.themoviedb.org/movie/chris-grace-as-scarlett-johansson',
+    source: 'tmdb',
+  }, analysis);
+
+  assert.equal(result.approved, false);
+  assert.match(result.reasonCode || '', /IMAGE_LOGO_OVERUSE/);
 });

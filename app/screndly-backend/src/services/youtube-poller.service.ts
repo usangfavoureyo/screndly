@@ -8,7 +8,9 @@ import { promisify } from 'util';
 import {
     describeYtDlpAuthConfiguration,
     getYtDlpAuthOptions,
+    getYtDlpNetworkContext,
     hasYtDlpAuthConfiguration,
+    type YouTubeNetworkContext,
     type YtDlpOptions,
 } from '../lib/yt-dlp';
 import ytDlp from '../lib/yt-dlp';
@@ -69,6 +71,23 @@ export interface PollSummary {
     successfulPublishes: number;
     failedPublishes: number;
     results: ChannelPollResult[];
+}
+
+interface YtDlpAttemptSummary {
+    mode: string;
+    proxyEnabled: boolean;
+    cookiesEnabled: boolean;
+    poTokenEnabled: boolean;
+    userAgent: string;
+    success: boolean;
+    errorSummary?: string;
+}
+
+interface DownloadResult {
+    path: string | null;
+    attempts: YtDlpAttemptSummary[];
+    issueKind?: YouTubeAccessIssueKind;
+    issueMessage?: string;
 }
 
 export interface PollStatus {
@@ -984,10 +1003,26 @@ export class YouTubePollerService {
             const autoPostPlatforms = this.getAutoPostPlatforms(settings);
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
+            const seenVideoIdsThisPoll = new Set<string>();
 
             for (let index = 0; index < latestVideos.length; index += 1) {
                 const video = latestVideos[index];
-                const videoLabel = `${video.title || 'Untitled YouTube upload'} (${this.extractVideoId(video.link || '', video.id || '') || 'unknown'})`;
+                const currentVideoId = this.extractVideoId(video.link || '', video.id || '');
+                const videoLabel = `${video.title || 'Untitled YouTube upload'} (${currentVideoId || 'unknown'})`;
+                if (currentVideoId) {
+                    if (seenVideoIdsThisPoll.has(currentVideoId)) {
+                        const duplicateStartedAtMs = Date.now();
+                        this.logStageDuration(activeChannel.name, `process_video:${videoLabel}`, duplicateStartedAtMs, {
+                            kind: 'continue',
+                            reason: `${video.title || 'Untitled YouTube upload'}: duplicate candidate already seen in this poll cycle`,
+                            sawFreshVideo: false,
+                            stopScanning: false,
+                        });
+                        continue;
+                    }
+
+                    seenVideoIdsThisPoll.add(currentVideoId);
+                }
                 const videoStartedAtMs = Date.now();
                 const processed = await this.processFeedVideo(
                     video,
@@ -1436,21 +1471,20 @@ export class YouTubePollerService {
     }
 
     private summarizeYtDlpError(error: unknown): string {
-        const fallback = 'Unknown yt-dlp error';
-        const rawMessage = error instanceof Error
-            ? error.message
-            : typeof error === 'string'
-                ? error
-                : fallback;
-        const normalized = rawMessage.replace(/\s+/g, ' ').trim();
-
-        if (!normalized) {
-            return fallback;
+        const errorText = this.getYouTubeErrorText(error);
+        if (errorText) {
+            return errorText.length > 280 ? `${errorText.slice(0, 280)}...` : errorText;
         }
 
-        return normalized.length > 280
-            ? `${normalized.slice(0, 280)}...`
-            : normalized;
+        if (error instanceof Error) {
+            return error.message;
+        }
+
+        if (typeof error === 'string') {
+            return error;
+        }
+
+        return 'Unknown yt-dlp error';
     }
 
     private async completeChannelCheck(
@@ -1934,9 +1968,29 @@ export class YouTubePollerService {
         );
 
         if (existing && !canRetryIgnoredVideo && !canRetryFailedVideo && !canRetryQueuedVideo) {
+            const existingStatus = String(existing.status || 'accepted');
+            const knownStateReason = existingStatus === 'ignored'
+                ? 'already rejected by eligibility rules'
+                : existingStatus === 'accepted'
+                    ? 'already known'
+                    : 'already processed';
             return {
                 kind: 'continue',
-                reason: `${videoTitle}: already processed`,
+                reason: `${videoTitle}: ${knownStateReason}`,
+                stopScanning: true,
+            };
+        }
+
+        const downloadRetryState = this.getDownloadRetryState(existing);
+        if (
+            canRetryFailedVideo
+            && !options.force
+            && downloadRetryState?.nextRetryAt
+            && downloadRetryState.nextRetryAt.getTime() > Date.now()
+        ) {
+            return {
+                kind: 'continue',
+                reason: `${videoTitle}: waiting until ${downloadRetryState.nextRetryAt.toISOString()} before retrying the blocked download`,
             };
         }
 
@@ -2110,9 +2164,11 @@ export class YouTubePollerService {
             channelName: activeChannel.name,
             rawTitle: videoTitle,
             normalizedTitle: decisionCandidate.normalizedTitle,
-            finalDecision: decisionResult.allow ? 'allow' : 'reject',
+            routingDecision: decisionResult.allow ? 'allow_candidate' : 'reject_candidate',
             decisionPath: decisionResult.decisionPath,
-            reasonSummary: decisionResult.reasonSummary,
+            routingReasonSummary: decisionResult.allow
+                ? `${decisionResult.reasonSummary}; awaiting downstream eligibility validation`
+                : decisionResult.reasonSummary,
             sourceAttribution,
             decisionLog: decisionResult.decisionLog,
         }));
@@ -2240,15 +2296,20 @@ export class YouTubePollerService {
         let downloadPath: string | null = null;
         let youtubeAccessIssueKind: YouTubeAccessIssueKind | null = null;
         let youtubeAccessIssueMessage: string | null = null;
+        let downloadAttempts: YtDlpAttemptSummary[] = [];
         let youtubeThumbnail: PlatformThumbnailAsset | null = null;
         let xThumbnail: PlatformThumbnailAsset | null = null;
         let socialPoster: PlatformThumbnailAsset | null = null;
 
         try {
             try {
-                downloadPath = metadataFetchFailed
+                const downloadResult = metadataFetchFailed
                     ? await this.downloadVideoWithoutMetadata(videoId, videoUrl)
                     : await this.downloadVideoWithInfo(videoInfo);
+                downloadPath = downloadResult.path;
+                downloadAttempts = downloadResult.attempts;
+                youtubeAccessIssueKind = downloadResult.issueKind || null;
+                youtubeAccessIssueMessage = downloadResult.issueMessage || null;
             } catch (error) {
                 const accessIssueKind = error instanceof YouTubeDownloadBlockedError
                     ? 'bot_challenge'
@@ -2271,6 +2332,10 @@ export class YouTubePollerService {
                 const authConfigured = hasYtDlpAuthConfiguration();
                 const shouldPauseRetries = this.shouldPauseDownloadRetries(youtubeAccessIssueKind, authConfigured);
                 const failedStatus = this.getDownloadFailureFeedStatus(youtubeAccessIssueKind, authConfigured);
+                const previousDownloadAttemptCount = downloadRetryState?.attemptCount || 0;
+                const downloadAttemptCount = previousDownloadAttemptCount + 1;
+                const nextRetryDelayMinutes = this.getDownloadRetryDelayMinutes(downloadAttemptCount);
+                const nextRetryAt = new Date(Date.now() + nextRetryDelayMinutes * 60 * 1000).toISOString();
                 await this.recordFeedItem(
                     videoId,
                     activeChannel.channelId,
@@ -2289,6 +2354,11 @@ export class YouTubePollerService {
                                 message: youtubeAccessIssueMessage,
                                 shouldPauseRetries,
                                 authConfigured,
+                                attemptCount: downloadAttemptCount,
+                                lastFailedAt: new Date().toISOString(),
+                                nextRetryDelayMinutes,
+                                nextRetryAt,
+                                attempts: downloadAttempts,
                             },
                         },
                     }
@@ -3304,9 +3374,93 @@ Respond ONLY as strict JSON:
         };
     }
 
-    private getYtDlpPublicOptions(): YtDlpOptions {
-        const { cookies: _cookies, ...options } = getYtDlpAuthOptions();
-        return options;
+    private getYtDlpPublicOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): YtDlpOptions {
+        const {
+            cookies: _cookies,
+            cookiesFromBrowser: _cookiesFromBrowser,
+            ...options
+        } = getYtDlpAuthOptions();
+
+        return {
+            ...options,
+            userAgent: networkContext.userAgent,
+        };
+    }
+
+    private getYtDlpAuthenticatedOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): YtDlpOptions {
+        return {
+            ...getYtDlpAuthOptions(),
+            userAgent: networkContext.userAgent,
+        };
+    }
+
+    private logYtDlpAttempt(videoId: string | undefined, attempt: YtDlpAttemptSummary) {
+        console.log('[YouTubePoller] yt-dlp attempt', JSON.stringify({
+            videoId,
+            mode: attempt.mode,
+            proxyEnabled: attempt.proxyEnabled,
+            cookiesEnabled: attempt.cookiesEnabled,
+            poTokenEnabled: attempt.poTokenEnabled,
+            userAgent: attempt.userAgent,
+            success: attempt.success,
+            ...(attempt.errorSummary ? { errorSummary: attempt.errorSummary } : {}),
+        }));
+    }
+
+    private buildYtDlpAttemptSummary(
+        mode: string,
+        networkContext: YouTubeNetworkContext,
+        options: { cookiesEnabled: boolean; poTokenEnabled: boolean; success: boolean; error?: unknown }
+    ): YtDlpAttemptSummary {
+        return {
+            mode,
+            proxyEnabled: Boolean(networkContext.proxyUrl),
+            cookiesEnabled: options.cookiesEnabled,
+            poTokenEnabled: options.poTokenEnabled,
+            userAgent: networkContext.userAgent,
+            success: options.success,
+            ...(options.error ? { errorSummary: this.summarizeYtDlpError(options.error) } : {}),
+        };
+    }
+
+    private getDownloadRetryDelayMinutes(attemptCount: number): number {
+        if (attemptCount <= 1) {
+            return 2;
+        }
+
+        if (attemptCount === 2) {
+            return 10;
+        }
+
+        if (attemptCount === 3) {
+            return 30;
+        }
+
+        return 120;
+    }
+
+    private getDownloadRetryState(existing: { status?: string; decisionLog?: unknown } | null | undefined): {
+        attemptCount: number;
+        nextRetryAt: Date | null;
+    } | null {
+        if (!existing || existing.status !== 'failed' || !existing.decisionLog || typeof existing.decisionLog !== 'object') {
+            return null;
+        }
+
+        const downloadFailure = (existing.decisionLog as Record<string, any>)?.downloadFailure;
+        if (!downloadFailure || typeof downloadFailure !== 'object') {
+            return null;
+        }
+
+        const attemptCount = Number(downloadFailure.attemptCount || 0);
+        const nextRetryAt = typeof downloadFailure.nextRetryAt === 'string'
+            ? new Date(downloadFailure.nextRetryAt)
+            : null;
+
+        return {
+            attemptCount: Number.isFinite(attemptCount) ? attemptCount : 0,
+            nextRetryAt: nextRetryAt && Number.isFinite(nextRetryAt.getTime()) ? nextRetryAt : null,
+        };
     }
 
     private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[], baseOptions: YtDlpOptions = getYtDlpAuthOptions()): Promise<any> {
@@ -3321,14 +3475,16 @@ Respond ONLY as strict JSON:
     }
 
     private async fetchYtDlpVideoInfo(videoUrl: string, videoId?: string): Promise<any> {
+        const networkContext = getYtDlpNetworkContext();
+
         try {
-            return await this.fetchYtDlpInfo(videoUrl, YT_DLP_ANDROID_SDKLESS_ARGS, this.getYtDlpPublicOptions());
+            return await this.fetchYtDlpInfo(videoUrl, YT_DLP_ANDROID_SDKLESS_ARGS, this.getYtDlpPublicOptions(networkContext));
         } catch (error) {
             console.warn(`[YouTubePoller] yt-dlp android-sdkless metadata fetch failed for ${videoId || videoUrl}; trying default yt-dlp metadata`, error);
         }
 
         try {
-            return await this.fetchYtDlpInfo(videoUrl);
+            return await this.fetchYtDlpInfo(videoUrl, undefined, this.getYtDlpAuthenticatedOptions(networkContext));
         } catch (error) {
             if (!videoId || !this.isYouTubeBotChallengeError(error)) {
                 throw error;
@@ -3337,7 +3493,11 @@ Respond ONLY as strict JSON:
             console.warn(`[YouTubePoller] yt-dlp metadata fetch hit a YouTube challenge for ${videoId}; retrying with PO token support`, error);
         }
 
-        return this.fetchYtDlpInfo(videoUrl, await youtubePoTokenService.getExtractorArgs(videoId));
+        return this.fetchYtDlpInfo(
+            videoUrl,
+            await youtubePoTokenService.getExtractorArgs(videoId, networkContext),
+            this.getYtDlpAuthenticatedOptions(networkContext)
+        );
     }
 
     private async getVideoInfo(videoUrl: string, videoId: string): Promise<NormalizedVideoInfo> {
@@ -3553,83 +3713,123 @@ Respond ONLY as strict JSON:
         }
     }
 
-    private async downloadWithYtDlp(videoUrl: string, filePath: string, videoId?: string): Promise<boolean> {
-        const authOptions = getYtDlpAuthOptions();
-        const publicOptions = this.getYtDlpPublicOptions();
+    private async downloadWithYtDlp(videoUrl: string, filePath: string, videoId?: string): Promise<DownloadResult> {
+        const networkContext = getYtDlpNetworkContext();
+        const authOptions = this.getYtDlpAuthenticatedOptions(networkContext);
+        const publicOptions = this.getYtDlpPublicOptions(networkContext);
+        const attempts: YtDlpAttemptSummary[] = [];
+        const formatSelector = 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]';
+        let lastIssueKind: YouTubeAccessIssueKind | undefined;
+        let lastIssueMessage: string | undefined;
 
-        try {
-            await ytDlp(videoUrl, {
-                ...publicOptions,
-                output: filePath,
-                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
-                mergeOutputFormat: 'mp4',
-                noProgress: true,
-                noWarnings: true,
-                quiet: true,
-                extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
-            });
+        const runAttempt = async (
+            mode: string,
+            options: YtDlpOptions,
+            flags: { cookiesEnabled: boolean; poTokenEnabled: boolean }
+        ): Promise<boolean> => {
+            try {
+                this.removeYtDlpArtifacts(filePath);
 
-            return this.meetsDownloadedResolutionFloor(filePath);
-        } catch (error) {
-            console.warn('[YouTubePoller] yt-dlp android-sdkless download failed; trying authenticated yt-dlp fallback', error);
-        }
+                await ytDlp(videoUrl, {
+                    ...options,
+                    output: filePath,
+                    format: formatSelector,
+                    mergeOutputFormat: 'mp4',
+                    noProgress: true,
+                    noWarnings: true,
+                    quiet: true,
+                } as any);
 
-        try {
-            this.removeYtDlpArtifacts(filePath);
+                const success = await this.meetsDownloadedResolutionFloor(filePath);
+                const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
+                    ...flags,
+                    success,
+                });
+                attempts.push(attempt);
+                this.logYtDlpAttempt(videoId, attempt);
 
-            await ytDlp(videoUrl, {
-                ...authOptions,
-                output: filePath,
-                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
-                mergeOutputFormat: 'mp4',
-                noProgress: true,
-                noWarnings: true,
-                quiet: true,
-            } as any);
-
-            return this.meetsDownloadedResolutionFloor(filePath);
-        } catch (error) {
-            if (!this.isYouTubeBotChallengeError(error)) {
-                console.error('[YouTubePoller] yt-dlp fallback download error:', error);
+                return success;
+            } catch (error) {
+                const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
+                    ...flags,
+                    success: false,
+                    error,
+                });
+                attempts.push(attempt);
+                this.logYtDlpAttempt(videoId, attempt);
+                lastIssueKind = this.getYouTubeAccessIssueKind(error);
+                lastIssueMessage = error instanceof Error ? error.message : String(error);
                 return false;
             }
+        };
 
-            console.warn('[YouTubePoller] yt-dlp download hit a YouTube challenge; retrying with PO token support', error);
+        if (await runAttempt('auth', authOptions, {
+            cookiesEnabled: networkContext.cookiesEnabled,
+            poTokenEnabled: false,
+        })) {
+            return { path: filePath, attempts };
         }
 
-        try {
-            this.removeYtDlpArtifacts(filePath);
-
-            await ytDlp(videoUrl, {
-                ...authOptions,
-                output: filePath,
-                format: 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]',
-                mergeOutputFormat: 'mp4',
-                noProgress: true,
-                noWarnings: true,
-                quiet: true,
-                extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId),
-            } as any);
-
-            return this.meetsDownloadedResolutionFloor(filePath);
-        } catch (error) {
-            if (this.isYouTubeBotChallengeError(error)) {
-                throw new YouTubeDownloadBlockedError(
-                    `YouTube is rejecting automated downloads for ${videoId || videoUrl}. Configure YT_DLP_PROXY_URL and optionally YT_DLP_COOKIE_FILE_BASE64 or YT_DLP_COOKIE_FILE_PATH.`
-                );
-            }
-
-            console.error('[YouTubePoller] yt-dlp PO token download error:', error);
-            return false;
+        if (await runAttempt('auth_po_token', {
+            ...authOptions,
+            extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, networkContext),
+        }, {
+            cookiesEnabled: networkContext.cookiesEnabled,
+            poTokenEnabled: true,
+        })) {
+            return { path: filePath, attempts };
         }
+
+        if (await runAttempt('proxy_po_token', {
+            ...publicOptions,
+            extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, {
+                ...networkContext,
+                cookieFilePath: null,
+                cookiesFromBrowser: null,
+                cookiesEnabled: false,
+                cacheKey: `${networkContext.proxyUrl || 'direct'}|${networkContext.userAgent}|nocookies`,
+            }),
+        }, {
+            cookiesEnabled: false,
+            poTokenEnabled: true,
+        })) {
+            return { path: filePath, attempts };
+        }
+
+        if (await runAttempt('android_sdkless', {
+            ...publicOptions,
+            extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+        }, {
+            cookiesEnabled: false,
+            poTokenEnabled: false,
+        })) {
+            return { path: filePath, attempts };
+        }
+
+        if (lastIssueKind === 'bot_challenge') {
+            return {
+                path: null,
+                attempts,
+                issueKind: lastIssueKind,
+                issueMessage: lastIssueMessage
+                    || `YouTube is rejecting automated downloads for ${videoId || videoUrl}. Configure YT_DLP_PROXY_URL and optionally YT_DLP_COOKIE_FILE_BASE64 or YT_DLP_COOKIE_FILE_PATH.`,
+            };
+        }
+
+        return {
+            path: null,
+            attempts,
+            ...(lastIssueKind ? { issueKind: lastIssueKind } : {}),
+            ...(lastIssueMessage ? { issueMessage: lastIssueMessage } : {}),
+        };
     }
 
-    private async downloadVideoWithInfo(info: NormalizedVideoInfo): Promise<string | null> {
+    private async downloadVideoWithInfo(info: NormalizedVideoInfo): Promise<DownloadResult> {
         const videoId = info?.videoDetails?.videoId;
         const videoUrl = info?.videoDetails?.video_url || (videoId ? `https://www.youtube.com/watch?v=${videoId}` : '');
 
         if (!videoId || !videoUrl) {
-            return null;
+            return { path: null, attempts: [] };
         }
 
         const tempDir = this.ensureTempDir();
@@ -3637,34 +3837,35 @@ Respond ONLY as strict JSON:
         this.removeFileIfExists(filePath);
 
         if (info.source === 'ytdl' && info.raw && await this.downloadWithYtdl(info.raw, filePath)) {
-            return filePath;
+            return { path: filePath, attempts: [] };
         }
 
         this.removeFileIfExists(filePath);
-
-        if (await this.downloadWithYtDlp(videoUrl, filePath, videoId)) {
-            return filePath;
+        const result = await this.downloadWithYtDlp(videoUrl, filePath, videoId);
+        if (result.path) {
+            return result;
         }
 
         this.removeFileIfExists(filePath);
-        return null;
+        return result;
     }
 
-    private async downloadVideoWithoutMetadata(videoId: string, videoUrl: string): Promise<string | null> {
+    private async downloadVideoWithoutMetadata(videoId: string, videoUrl: string): Promise<DownloadResult> {
         if (!videoId || !videoUrl) {
-            return null;
+            return { path: null, attempts: [] };
         }
 
         const tempDir = this.ensureTempDir();
         const filePath = path.join(tempDir, `${videoId}.mp4`);
         this.removeFileIfExists(filePath);
 
-        if (await this.downloadWithYtDlp(videoUrl, filePath, videoId)) {
-            return filePath;
+        const result = await this.downloadWithYtDlp(videoUrl, filePath, videoId);
+        if (result.path) {
+            return result;
         }
 
         this.removeFileIfExists(filePath);
-        return null;
+        return result;
     }
 
     private extractVideoId(link: string, id: string): string {

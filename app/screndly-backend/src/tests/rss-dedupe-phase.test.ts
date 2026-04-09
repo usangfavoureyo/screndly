@@ -60,6 +60,29 @@ test('canonical event fingerprint catches cross-source same-news stories with di
   assert.equal(areRSSNewsEventsSimilar(variety, deadline), true);
 });
 
+test('canonical event fingerprint clusters cross-source Ray Gunn casting stories with different headlines', () => {
+  const variety = buildRSSNewsEventFingerprint({
+    title: "Scarlett Johansson, Sam Rockwell and Tom Waits Join Brad Bird's 'Ray Gunn' Voice Cast",
+    description: "Johansson, Rockwell and Waits will join Brad Bird's 'Ray Gunn' voice cast for Skydance Animation.",
+    contentHtml: '<p>Brad Bird directs the animated feature for Skydance Animation.</p>',
+    link: 'https://variety.com/ray-gunn-a',
+    pubDate: new Date(),
+    imageUrls: [],
+  });
+  const comicbook = buildRSSNewsEventFingerprint({
+    title: "Netflix's Ray Gunn From Incredibles Director Recruits Major Marvel Stars",
+    description: "Variety reports Scarlett Johansson, Sam Rockwell and Tom Waits have joined Brad Bird's Ray Gunn voice cast.",
+    contentHtml: '<p>The animated feature from Brad Bird has added Scarlett Johansson, Sam Rockwell and Tom Waits.</p>',
+    link: 'https://comicbook.com/ray-gunn-b',
+    pubDate: new Date(),
+    imageUrls: [],
+  });
+
+  assert.equal(variety.projectAnchor, 'ray gunn');
+  assert.equal(comicbook.projectAnchor, 'ray gunn');
+  assert.equal(areRSSNewsEventsSimilar(variety, comicbook), true);
+});
+
 test('caption grounding ignores image-derived entities that do not appear in the article', () => {
   const item = {
     title: "Jeff Shell Officially Out as Paramount's President",

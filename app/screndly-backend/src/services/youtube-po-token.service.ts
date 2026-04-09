@@ -1,11 +1,15 @@
 import { BG } from 'bgutils-js';
 import { JSDOM } from 'jsdom';
+import { ProxyAgent, type Dispatcher } from 'undici';
+import {
+    DEFAULT_YT_DLP_USER_AGENT,
+    type YouTubeNetworkContext,
+} from '../lib/yt-dlp';
 
 const YOUTUBE_PO_TOKEN_REQUEST_KEY = 'O43z0dpjhgX20SCx4KAo';
 const YOUTUBE_PO_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const YOUTUBE_PO_TOKEN_FALLBACK_TTL_MS = 6 * 60 * 60 * 1000;
 const YOUTUBE_PO_TOKEN_SOURCE_URL = 'https://www.youtube.com/';
-const YOUTUBE_BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const YOUTUBE_ACCEPT_LANGUAGE = 'en-US,en;q=0.9';
 const YOUTUBE_VISITOR_DATA_PATTERN = /"visitorData":"([^"]+)/;
 
@@ -18,15 +22,24 @@ interface YouTubePoTokenSession {
     playerTokens: Map<string, Promise<string> | string>;
 }
 
-class YouTubePoTokenService {
-    private cachedSession: YouTubePoTokenSession | null = null;
-    private pendingSession: Promise<YouTubePoTokenSession> | null = null;
+interface ResolvedYouTubeNetworkContext {
+    proxyUrl: string | null;
+    userAgent: string;
+    cacheKey: string;
+    dispatcher?: Dispatcher;
+}
 
-    async getExtractorArgs(videoId?: string): Promise<string[]> {
-        const session = await this.getSession();
+class YouTubePoTokenService {
+    private cachedSessions = new Map<string, YouTubePoTokenSession>();
+    private pendingSessions = new Map<string, Promise<YouTubePoTokenSession>>();
+    private proxyDispatchers = new Map<string, Dispatcher>();
+
+    async getExtractorArgs(videoId?: string, networkContext?: YouTubeNetworkContext): Promise<string[]> {
+        const resolvedContext = this.resolveNetworkContext(networkContext);
+        const session = await this.getSession(resolvedContext);
         const poTokens = [`mweb.gvs+${session.poToken}`];
         if (videoId) {
-            poTokens.push(`mweb.player+${await this.getPlayerToken(session, videoId)}`);
+            poTokens.push(`mweb.player+${await this.getPlayerToken(session, videoId, resolvedContext)}`);
         }
 
         return [
@@ -34,23 +47,52 @@ class YouTubePoTokenService {
         ];
     }
 
-    private async getSession(): Promise<YouTubePoTokenSession> {
-        if (this.isSessionValid(this.cachedSession)) {
-            return this.cachedSession;
+    private resolveNetworkContext(networkContext?: YouTubeNetworkContext): ResolvedYouTubeNetworkContext {
+        const proxyUrl = networkContext?.proxyUrl?.trim() || null;
+        const userAgent = networkContext?.userAgent?.trim() || DEFAULT_YT_DLP_USER_AGENT;
+        const cacheKey = networkContext?.cacheKey || `${proxyUrl || 'direct'}|${userAgent}`;
+
+        return {
+            proxyUrl,
+            userAgent,
+            cacheKey,
+            ...(proxyUrl ? { dispatcher: this.getProxyDispatcher(proxyUrl) } : {}),
+        };
+    }
+
+    private getProxyDispatcher(proxyUrl: string): Dispatcher {
+        const cached = this.proxyDispatchers.get(proxyUrl);
+        if (cached) {
+            return cached;
         }
 
-        if (!this.pendingSession) {
-            this.pendingSession = this.mintSession()
+        const dispatcher = new ProxyAgent(proxyUrl);
+        this.proxyDispatchers.set(proxyUrl, dispatcher);
+        return dispatcher;
+    }
+
+    private async getSession(networkContext: ResolvedYouTubeNetworkContext): Promise<YouTubePoTokenSession> {
+        const cachedSession = this.cachedSessions.get(networkContext.cacheKey) || null;
+        if (this.isSessionValid(cachedSession)) {
+            return cachedSession;
+        }
+
+        const pendingSession = this.pendingSessions.get(networkContext.cacheKey);
+        if (!pendingSession) {
+            const nextPendingSession = this.mintSession(networkContext)
                 .then((session) => {
-                    this.cachedSession = session;
+                    this.cachedSessions.set(networkContext.cacheKey, session);
                     return session;
                 })
                 .finally(() => {
-                    this.pendingSession = null;
+                    this.pendingSessions.delete(networkContext.cacheKey);
                 });
+
+            this.pendingSessions.set(networkContext.cacheKey, nextPendingSession);
+            return nextPendingSession;
         }
 
-        return this.pendingSession;
+        return pendingSession;
     }
 
     private isSessionValid(session: YouTubePoTokenSession | null): session is YouTubePoTokenSession {
@@ -62,7 +104,11 @@ class YouTubePoTokenService {
         );
     }
 
-    private async getPlayerToken(session: YouTubePoTokenSession, videoId: string): Promise<string> {
+    private async getPlayerToken(
+        session: YouTubePoTokenSession,
+        videoId: string,
+        networkContext: ResolvedYouTubeNetworkContext
+    ): Promise<string> {
         const cached = session.playerTokens.get(videoId);
         if (typeof cached === 'string') {
             return cached;
@@ -72,7 +118,7 @@ class YouTubePoTokenService {
             return cached;
         }
 
-        const pendingToken = this.mintPoToken(videoId)
+        const pendingToken = this.mintPoToken(videoId, networkContext)
             .then((result) => {
                 session.playerTokens.set(videoId, result.poToken);
                 return result.poToken;
@@ -86,15 +132,18 @@ class YouTubePoTokenService {
         return pendingToken;
     }
 
-    private async mintSession(): Promise<YouTubePoTokenSession> {
-        console.log('[YouTubePoToken] Minting a new session token for yt-dlp fallback');
+    private async mintSession(networkContext: ResolvedYouTubeNetworkContext): Promise<YouTubePoTokenSession> {
+        console.log('[YouTubePoToken] Minting a new session token for yt-dlp fallback', {
+            proxyEnabled: Boolean(networkContext.proxyUrl),
+            userAgent: networkContext.userAgent,
+        });
 
-        const visitorData = await this.fetchVisitorData();
+        const visitorData = await this.fetchVisitorData(networkContext);
         if (!visitorData) {
             throw new Error('YouTube visitor data is unavailable');
         }
 
-        const poTokenResult = await this.mintPoToken(visitorData);
+        const poTokenResult = await this.mintPoToken(visitorData, networkContext);
 
         const ttlMs = Math.max(
             60 * 1000,
@@ -109,10 +158,13 @@ class YouTubePoTokenService {
         };
     }
 
-    private async mintPoToken(identifier: string): Promise<{ poToken: string; ttlMs: number }> {
-        const poTokenResult = await this.withYouTubeDomGlobals(async () => {
+    private async mintPoToken(
+        identifier: string,
+        networkContext: ResolvedYouTubeNetworkContext
+    ): Promise<{ poToken: string; ttlMs: number }> {
+        const poTokenResult = await this.withYouTubeDomGlobals(networkContext.userAgent, async () => {
             const bgConfig = {
-                fetch: globalThis.fetch.bind(globalThis),
+                fetch: this.createFetchWithNetworkContext(networkContext),
                 globalObj: globalThis,
                 identifier,
                 requestKey: YOUTUBE_PO_TOKEN_REQUEST_KEY,
@@ -146,13 +198,32 @@ class YouTubePoTokenService {
         };
     }
 
-    private async fetchVisitorData(): Promise<string> {
+    private createFetchWithNetworkContext(networkContext: ResolvedYouTubeNetworkContext) {
+        return async (input: string | URL | Request, init?: RequestInit) => {
+            const requestHeaders = new Headers(init?.headers || {});
+            if (!requestHeaders.has('user-agent')) {
+                requestHeaders.set('user-agent', networkContext.userAgent);
+            }
+            if (!requestHeaders.has('accept-language')) {
+                requestHeaders.set('accept-language', YOUTUBE_ACCEPT_LANGUAGE);
+            }
+
+            return fetch(input, {
+                ...init,
+                headers: requestHeaders,
+                ...(networkContext.dispatcher ? { dispatcher: networkContext.dispatcher } : {}),
+            } as RequestInit & { dispatcher?: Dispatcher });
+        };
+    }
+
+    private async fetchVisitorData(networkContext: ResolvedYouTubeNetworkContext): Promise<string> {
         const response = await fetch(YOUTUBE_PO_TOKEN_SOURCE_URL, {
             headers: {
-                'user-agent': YOUTUBE_BROWSER_USER_AGENT,
+                'user-agent': networkContext.userAgent,
                 'accept-language': YOUTUBE_ACCEPT_LANGUAGE,
             },
-        });
+            ...(networkContext.dispatcher ? { dispatcher: networkContext.dispatcher } : {}),
+        } as RequestInit & { dispatcher?: Dispatcher });
 
         if (!response.ok) {
             throw new Error(`YouTube visitor data request failed: ${response.status} ${response.statusText}`);
@@ -167,7 +238,7 @@ class YouTubePoTokenService {
         return visitorData;
     }
 
-    private async withYouTubeDomGlobals<T>(operation: () => Promise<T>): Promise<T> {
+    private async withYouTubeDomGlobals<T>(userAgent: string, operation: () => Promise<T>): Promise<T> {
         const dom = new JSDOM('', { url: YOUTUBE_PO_TOKEN_SOURCE_URL });
         const keys: GlobalDomKey[] = ['window', 'document', 'location', 'origin', 'navigator'];
         const originalDescriptors = new Map<GlobalDomKey, PropertyDescriptor | undefined>();
@@ -178,7 +249,7 @@ class YouTubePoTokenService {
 
         Object.defineProperty(dom.window.navigator, 'userAgent', {
             configurable: true,
-            value: YOUTUBE_BROWSER_USER_AGENT,
+            value: userAgent,
         });
 
         Object.defineProperty(globalThis, 'window', { configurable: true, writable: true, value: dom.window });

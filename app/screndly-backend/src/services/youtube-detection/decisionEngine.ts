@@ -361,28 +361,28 @@ export async function decideYouTubeCandidate(
         if (standardPass) {
             allow = true;
             decisionPath = 'standard';
-            reasonSummary = 'Allowed through strict standard route';
+            reasonSummary = 'Passed strict standard routing checks';
         }
     } else if (standardPass) {
         allow = true;
         decisionPath = 'standard';
-        reasonSummary = 'Allowed through standard route';
+        reasonSummary = 'Passed standard routing checks';
     } else if (premiumPass) {
         allow = true;
         decisionPath = 'premium_platform_exception';
-        reasonSummary = 'Allowed through premium platform exception';
+        reasonSummary = 'Passed premium platform exception routing';
     } else if (distributorPass) {
         allow = true;
         decisionPath = 'distributor_exception';
-        reasonSummary = 'Allowed through distributor-backed English-speaking exception';
+        reasonSummary = 'Passed distributor-backed English-speaking exception routing';
     } else if (foreignPremiumPass) {
         allow = true;
         decisionPath = 'english_foreign_premium';
-        reasonSummary = 'Allowed through English-speaking foreign premium path';
+        reasonSummary = 'Passed English-speaking foreign premium routing';
     } else if (globalExceptionPass) {
         allow = true;
         decisionPath = 'global_exception';
-        reasonSummary = 'Allowed through strict global-exception path';
+        reasonSummary = 'Passed strict global-exception routing';
     }
 
     score.pathUsed = decisionPath;

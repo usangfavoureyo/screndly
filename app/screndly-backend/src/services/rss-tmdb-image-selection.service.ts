@@ -241,7 +241,7 @@ const HIGH_AMBIGUITY_CONTEXT_TERMS = new Set([
   'them',
 ]);
 const CONTEXT_SENSITIVE_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|directed|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+|movie|film|feature|box office|streaming|first look|poster|logo|adaptation|remake|reboot|spinoff|spin-off|character|villain|hero|role|plays|returning|returns as|in theaters|tv)\b/i;
-const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing)\b/i;
+const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing|merger|acquisition|shareholder|proxy advisor|board|ceo|chief executive|executive|payout|earnings|financial|lawsuit)\b/i;
 
 const DISAMBIGUATION_RULES: Array<{
   match: RegExp;
@@ -763,6 +763,24 @@ function isPersonLedInput(input: StructuredRSSTMDbSelectionInput): boolean {
     || input.primarySubject.type === 'producer';
 }
 
+function isCorporateCompanyInput(input: StructuredRSSTMDbSelectionInput): boolean {
+  const combined = uniqueStrings([
+    input.primarySubject.name,
+    input.visualSubject,
+    input.contextProject || null,
+    ...input.secondarySubjects || [],
+    ...input.requiredContextTerms,
+    ...input.relevantStudios,
+    ...input.queries,
+  ]).join(' ');
+
+  return (
+    input.primarySubject.type === 'studio' ||
+    input.primarySubject.type === 'streaming_service' ||
+    /\b(?:merger|acquisition|shareholder|proxy advisor|institutional shareholder services|board|ceo|chief executive|executive pay|payout|earnings|financial|lawsuit)\b/i.test(combined)
+  ) && input.relevantStudios.length > 0;
+}
+
 function hasGenericShortProjectAnchor(anchor: string): boolean {
   const tokens = normalizeText(anchor).split(' ').filter(Boolean);
   if (tokens.length === 0 || tokens.length > 3) {
@@ -1031,6 +1049,10 @@ function buildTitleSearchAnchor(input: StructuredRSSTMDbSelectionInput): string 
     return canonicalEntity.tmdbQuery;
   }
 
+  if (isCorporateCompanyInput(input)) {
+    return null;
+  }
+
   const candidates: Array<{ value: string; preferPrimary?: boolean }> = [];
   const primaryName = input.primarySubject.name.trim();
 
@@ -1140,6 +1162,66 @@ function titleMatchesProjectContext(
 
   const matchScore = scoreContextTerms([title, overview].join(' '), contextTerms, []);
   return matchScore >= 55;
+}
+
+function titleCandidateMatchesResolvedContext(
+  candidateTitle: string,
+  input: StructuredRSSTMDbSelectionInput
+): boolean {
+  const normalizedCandidate = normalizeText(candidateTitle);
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  const projectAnchors = uniqueStrings([
+    input.canonicalEntity?.mediaTitle,
+    input.contextProject || null,
+    isPersonLedInput(input) ? null : input.visualSubject,
+  ]).filter(Boolean);
+
+  if (projectAnchors.length === 0) {
+    return true;
+  }
+
+  const normalizedProjectAnchors = projectAnchors.map((anchor) => normalizeText(anchor));
+  if (normalizedProjectAnchors.some((anchor) => anchor === normalizedCandidate || normalizedCandidate.includes(anchor))) {
+    return true;
+  }
+
+  const articleContext = uniqueStrings([
+    input.canonicalEntity?.mediaTitle,
+    input.contextProject || null,
+    input.visualSubject,
+    ...(input.requiredContextTerms || []),
+    ...(input.secondarySubjects || []),
+  ]).join(' ');
+  const normalizedArticleContext = normalizeText(articleContext);
+
+  return normalizedProjectAnchors.some((anchor) =>
+    normalizedArticleContext.includes(anchor) && normalizedCandidate.includes(anchor)
+  );
+}
+
+function isRejectedBrandingTitleCandidate(
+  candidateTitle: string,
+  input: StructuredRSSTMDbSelectionInput
+): boolean {
+  const normalizedCandidate = normalizeText(candidateTitle);
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  if (!/\b(first look|presentation|preview|promo|upfront|network)\b/i.test(candidateTitle)) {
+    return false;
+  }
+
+  const projectAnchors = uniqueStrings([
+    input.canonicalEntity?.mediaTitle,
+    input.contextProject || null,
+    isPersonLedInput(input) ? null : input.visualSubject,
+  ]).map((anchor) => normalizeText(anchor));
+
+  return !projectAnchors.some((anchor) => anchor && normalizedCandidate.includes(anchor));
 }
 
 function titleCandidateMatchesPersonContext(
@@ -1302,6 +1384,15 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
       const title = movieDetails
         ? (movieDetails.title || candidate.title || 'Untitled')
         : (tvDetails?.name || candidate.name || 'Untitled');
+
+      if (!titleCandidateMatchesResolvedContext(title, input)) {
+        continue;
+      }
+
+      if (isRejectedBrandingTitleCandidate(title, input)) {
+        continue;
+      }
+
       const overview = normalizeText(details.overview || candidate.overview || '');
       const castNames = movieDetails
         ? (movieDetails.credits?.cast || [])
@@ -1402,6 +1493,10 @@ async function resolvePersonProfile(input: StructuredRSSTMDbSelectionInput): Pro
 
     const best = ranked[0];
     if (!best || best.score < MIN_TMDB_PERSON_SCORE) {
+      return null;
+    }
+
+    if (normalizeText(best.candidate.name || '') !== normalizeText(personName) && best.score < 260) {
       return null;
     }
 
@@ -1571,6 +1666,7 @@ export async function resolveStructuredTMDbImages(
 ): Promise<ResolvedStructuredTMDbImage[]> {
   const candidates: ResolvedStructuredTMDbImage[] = [];
   const stronglyPersonLed = isPersonLedInput(input);
+  const corporateCompanyInput = isCorporateCompanyInput(input);
   const companyFallbackEligible = Boolean(
     input.contextProject &&
     input.relevantStudios.length > 0 &&
@@ -1579,6 +1675,7 @@ export async function resolveStructuredTMDbImages(
   let deferredCompanyLogo: ResolvedStructuredTMDbImage | null = null;
 
   const companyFirst =
+    corporateCompanyInput ||
     input.primarySubject.type === 'studio' ||
     input.primarySubject.type === 'streaming_service' ||
     input.imageIntent === 'logo' ||
@@ -1606,7 +1703,7 @@ export async function resolveStructuredTMDbImages(
     }
   }
 
-  const titleCandidate = await resolveTitleCandidate(input);
+  const titleCandidate = corporateCompanyInput ? null : await resolveTitleCandidate(input);
   if (titleCandidate) {
     const projectOnlyTitleFallback =
       titleCandidate.projectContextOnly &&
@@ -1720,4 +1817,5 @@ export const __rssTmdbDisambiguationTestUtils = {
   buildInstallmentFallbackQueries,
   resolveCanonicalTMDbEntity,
   titleMatchesProjectContext,
+  titleCandidateMatchesResolvedContext,
 };

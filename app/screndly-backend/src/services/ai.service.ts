@@ -1262,6 +1262,7 @@ const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }>
     { pattern: /\bCo-Star Refused\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bIt['’]s Time is the focus\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bPrequel With Season \d+\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /^(?:['"][^'"]+['"]\s+)?(?:Season \d+\s+)?Casts?\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,5}\s+joins\b/i, code: 'CAPTION_HEADLINE_JUNK' },
 ];
 
 const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
@@ -1373,6 +1374,10 @@ function isMalformedRSSEntityJunk(value: string): boolean {
     }
 
     if (/^(TV Revi|Co-Star Refused|It['’]s Time)$/i.test(normalized)) {
+        return true;
+    }
+
+    if (/^(?:season \d+\s+)?casts?\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,5}$/i.test(normalized)) {
         return true;
     }
 
@@ -1527,6 +1532,7 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
     ]).filter((entry) => !isMalformedRSSEntityJunk(entry));
     const { quote, speaker } = extractDirectQuote(`${summary} ${body}`);
     const eventType = classifyRSSEventType(combined);
+    const projectLedCastingStory = eventType === 'casting' && isProjectLedRSSCastingStory(normalizedTitle);
     const mediaTitle = uniqueStrings([
         context.canonicalEntity?.mediaTitle,
         ...quotedTitles,
@@ -1538,11 +1544,13 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
         context.canonicalEntity?.mediaTitle,
         ...(context.allowedEntities || []),
     ]).find((entry) => !isMalformedRSSEntityJunk(entry));
-    const primarySubject = (
-        eventType === 'casting' || eventType === 'interview_quote' || eventType === 'reflection'
-            ? preferredCanonicalPrimary || leadPerson || mediaTitle || normalizedTitle
-            : preferredCanonicalPrimary || mediaTitle || leadPerson || normalizedTitle
-    );
+    const primarySubject = projectLedCastingStory
+        ? mediaTitle || preferredCanonicalPrimary || leadPerson || normalizedTitle
+        : (
+            eventType === 'casting' || eventType === 'interview_quote' || eventType === 'reflection'
+                ? preferredCanonicalPrimary || leadPerson || mediaTitle || normalizedTitle
+                : preferredCanonicalPrimary || mediaTitle || leadPerson || normalizedTitle
+        );
     const secondarySubject = context.canonicalEntity?.secondarySubject ||
         (mediaTitle && namedPeople[0] && namedPeople[0] !== primarySubject ? namedPeople[0] : namedPeople[1]);
     const supportingFacts = [summary, ...getRSSTextSentences(body).slice(0, 3)]
@@ -1588,6 +1596,12 @@ function looksLikeRSSPersonName(value: string): boolean {
     }
 
     return parts.every((part) => /^[A-Z][A-Za-z'&.-]+$/.test(part));
+}
+
+function isProjectLedRSSCastingStory(title: string): boolean {
+    const normalized = normalizeRSSHeadlineInput(title);
+    return /^(?:['"][^'"]+['"]|[A-Z][A-Za-z0-9'’:&.-]+(?:\s+[A-Z][A-Za-z0-9'’:&.-]+){0,5})\s+(?:Season\s+\d+\s+)?(?:casts?|adds?|added|sets?)\b/i.test(normalized)
+        || /\bvoice cast\b/i.test(normalized);
 }
 
 function isRSSStudioOrPlatform(value: string): boolean {
@@ -2049,6 +2063,10 @@ function hasOverloadedRSSHeadline(caption: string): boolean {
 
 function hasInvalidRSSJoinLead(caption: string): boolean {
     const headline = getRSSHeadlineLine(caption);
+    if (/^(?:['"][^'"]+['"]\s+)?(?:Season \d+\s+)?Casts?\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,5}\s+joins\b/i.test(headline)) {
+        return true;
+    }
+
     const joinMatch = headline.match(/^(.+?) joins (.+?)\.$/i);
     if (!joinMatch) {
         return false;

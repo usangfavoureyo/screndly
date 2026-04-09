@@ -60,6 +60,33 @@ test('keeps bot-challenge download failures retryable even without auth configur
     assert.equal(service.getDownloadFailureFeedStatus('bot_challenge', false), 'failed');
 });
 
+test('applies escalating download retry backoff delays', () => {
+    const service = new YouTubePollerService() as any;
+
+    assert.equal(service.getDownloadRetryDelayMinutes(1), 2);
+    assert.equal(service.getDownloadRetryDelayMinutes(2), 10);
+    assert.equal(service.getDownloadRetryDelayMinutes(3), 30);
+    assert.equal(service.getDownloadRetryDelayMinutes(4), 120);
+});
+
+test('reads queued download retry state from an existing failed feed item', () => {
+    const service = new YouTubePollerService() as any;
+    const nextRetryAt = '2026-04-09T18:15:00.000Z';
+
+    const state = service.getDownloadRetryState({
+        status: 'failed',
+        decisionLog: {
+            downloadFailure: {
+                attemptCount: 3,
+                nextRetryAt,
+            },
+        },
+    });
+
+    assert.equal(state?.attemptCount, 3);
+    assert.equal(state?.nextRetryAt?.toISOString(), nextRetryAt);
+});
+
 test('respects the configured polling schedule window', () => {
     const service = new YouTubePollerService() as any;
     const schedule = {

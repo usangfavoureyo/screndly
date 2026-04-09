@@ -569,6 +569,9 @@ const OFFICIAL_STUDIO_TERMS = [
   'disney',
   'disney+',
   'lucasfilm',
+  'warner bros discovery',
+  'warner bros. discovery',
+  'wbd',
   'warner bros',
   'warner bros.',
   'paramount',
@@ -820,7 +823,7 @@ const HIGH_AMBIGUITY_CONTEXT_TERMS = new Set([
   'them',
 ]);
 const CONTEXT_SENSITIVE_PROJECT_CUES = /\b(series|show|season|episode|cast|starring|stars|creator|showrunner|director|directed|trailer|teaser|premiere|renewed|canceled|cancelled|production|filming|hbo|max|netflix|disney\+|prime video|paramount\+|apple tv\+|movie|film|feature|box office|streaming|first look|poster|logo|adaptation|remake|reboot|spinoff|spin-off|character|villain|hero|role|plays|returning|returns as|in theaters|tv)\b/i;
-const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing)\b/i;
+const CONTEXT_SENSITIVE_GENERIC_CUES = /\b(study|survey|report|demographic|demographics|audience|audiences|consumer|consumers|trend|trends|research|analysis|data|statistics|market|behavior|behaviour|habits|generation|young people|moviegoing|merger|acquisition|shareholder|proxy advisor|board|ceo|chief executive|executive|payout|earnings|financial|lawsuit)\b/i;
 
 type RSSImageSource = 'tmdb' | 'serper' | 'openai_web_search';
 
@@ -1030,6 +1033,21 @@ function splitIntoSentences(value: string): string[] {
     .split(/(?<=[.!?])\s+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
+}
+
+function extractStrictTitleQuotedSubjects(value: string): string[] {
+  return uniqueStrings(
+    Array.from(
+      value.matchAll(/(?:["â€œâ€]|(?<![A-Za-z0-9])['â€˜â€™])([^"'â€œâ€â€˜â€™]{2,80}?)(?:["â€œâ€]|['â€˜â€™](?![A-Za-z0-9]))/g)
+    )
+      .map((match) => match[1]?.trim() || '')
+      .filter((subject) => {
+        const normalized = normalizeText(subject);
+        return normalized.length >= 2
+          && !/^(?:s|t|re|ve|ll|d|m)$/.test(normalized)
+          && /[a-z]/i.test(subject);
+      })
+  );
 }
 
 function getLeadContextWindow(description?: string): string {
@@ -1323,7 +1341,7 @@ function shouldAllowProjectLinkedFeedFallback(
   }
 
   const articleText = buildArticleAnalysisText(article);
-  const quotedProject = extractQuotedSubjects(article.title).find((subject) => !looksLikeNamedPerson(subject));
+  const quotedProject = extractStrictTitleQuotedSubjects(article.title).find((subject) => !looksLikeNamedPerson(subject));
   const leadProject = extractLeadProjectAnchor(article, analysis);
   const projectAnchor = quotedProject || leadProject || analysis.contextProject;
 
@@ -1346,7 +1364,7 @@ function shouldAllowRawProjectLinkedFeedFallback(article: RSSImageSelectionArtic
   }
 
   const articleText = buildArticleAnalysisText(article);
-  const quotedProject = extractQuotedSubjects(article.title).find((subject) => !looksLikeNamedPerson(subject));
+  const quotedProject = extractStrictTitleQuotedSubjects(article.title).find((subject) => !looksLikeNamedPerson(subject));
   const leadProject = extractLeadProjectAnchor(article, {
     editorialPrimary: '',
     primarySubject: { name: '', type: 'general' },
@@ -1579,7 +1597,7 @@ function extractHeadlineProjectCandidate(
   articleText: string,
   studios: string[]
 ): string | null {
-  const quotedSubjects = extractQuotedSubjects(title);
+  const quotedSubjects = extractStrictTitleQuotedSubjects(title);
   const titleMatches = uniqueStrings([
     ...quotedSubjects,
     title.match(/^([A-Z][A-Za-z0-9'’:&-]+(?:\s+[A-Z][A-Za-z0-9'’:&-]+){0,5})['’]s\b/)?.[1],
@@ -1663,6 +1681,44 @@ function extractLeadIndustryPersonSubject(title: string): string | null {
 function isExecutiveIndustryStory(title: string, articleText: string): boolean {
   return /\b(?:president|ceo|chief executive|chair(?:man|woman|person)?|board|executive|boss|studio head|company head)\b/i.test(title)
     || /\b(?:president|ceo|chief executive|chair(?:man|woman|person)?|board|executive|boss|studio head|company head)\b/i.test(articleText);
+}
+
+function isCorporateIndustryStory(title: string, articleText: string): boolean {
+  return /\b(?:merger|acquisition|shareholder|proxy advisor|institutional shareholder services|board|ceo|chief executive|executive pay|payout|earnings|financial|lawsuit)\b/i.test(title)
+    || /\b(?:merger|acquisition|shareholder|proxy advisor|institutional shareholder services|board|ceo|chief executive|executive pay|payout|earnings|financial|lawsuit)\b/i.test(articleText);
+}
+
+function isProjectLedCastingStory(title: string, articleText: string): boolean {
+  const combined = `${title} ${articleText}`;
+  const hasJoinAndCast = /\b(join|joins|joined|joining)\b/i.test(combined)
+    && /\b(cast|voice cast|voice ensemble|starring|voice role)\b/i.test(combined);
+  const multiPersonLead = /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3}(?:,\s*[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})*(?:\s+and\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})?\s+join/i
+    .test(title);
+  const explicitVoiceCast = /\b(voice cast|voice ensemble|voice role)\b/i.test(combined);
+  const quotedProject = extractStrictTitleQuotedSubjects(title).find((subject) => !looksLikeNamedPerson(subject));
+
+  return hasJoinAndCast && Boolean(quotedProject || explicitVoiceCast || multiPersonLead);
+}
+
+function isTextDominantPersonLinkedTitleTrap(
+  text: string,
+  analysis: RSSSubjectAnalysis
+): boolean {
+  const value = text.toLowerCase();
+  const exactAllowedTitle = [
+    analysis.canonicalEntity?.mediaTitle,
+    analysis.contextProject,
+    analysis.visualSubject,
+    analysis.primarySubject.name,
+  ].find((candidate) => candidate && value.includes(candidate.toLowerCase()));
+
+  if (exactAllowedTitle) {
+    return false;
+  }
+
+  return /\bas\s+[a-z][a-z\s'.-]{2,80}\b/i.test(value)
+    || (/\bposter\b/i.test(value) && /\bas\b/i.test(value))
+    || /\btitle card\b|\btitle treatment\b|\bbranding\b|\bthumbnail\b|\bmeme\b/i.test(value);
 }
 
 function extractHeadlineCastingPerson(title: string): string | null {
@@ -2151,32 +2207,96 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
+  const safeQuotedMatches = quotedMatches.length > 0
+    ? extractStrictTitleQuotedSubjects(normalizedTitle)
+    : [];
+  const colonQuotedProjectAnchor = normalizedTitle.match(/^[^"'â€œâ€â€˜â€™]{0,80}(?:["â€œâ€]|(?<![A-Za-z0-9])['â€˜â€™])([^"'â€œâ€â€˜â€™]{2,80}?)(?:["â€œâ€]|['â€˜â€™](?![A-Za-z0-9]))\s*:/)?.[1]?.trim() || null;
+  const quotedHeadlineProjectAnchor = safeQuotedMatches.find((subject) => {
+    if (looksLikeNamedPerson(subject)) {
+      return false;
+    }
 
-  let primaryName = canonical?.primarySubject || canonical?.mediaTitle || quotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
+    if (/\b(?:bullsh-?t|windfall)\b/i.test(subject)) {
+      return false;
+    }
+
+    const inferredType = inferContentSubjectType(articleText, subject);
+    if (!isProjectAnchorType(inferredType)) {
+      return false;
+    }
+
+    return /:/.test(normalizedTitle)
+      || /\b(review|season|series|show|movie|film|adaptation|cast|voice cast|voice ensemble|starring|upcoming|trailer|renewed|production|premiere|release)\b/i.test(`${normalizedTitle} ${articleText}`);
+  }) || null;
+  const projectLedCastingStory = isProjectLedCastingStory(normalizedTitle, articleText);
+  const projectLedCastingAnchor = canonical?.mediaTitle
+    || headlineProjectCandidate
+    || safeQuotedMatches.find((subject) => !looksLikeNamedPerson(subject))
+    || null;
+  const reviewProjectAnchor = /\breview\b/i.test(normalizedTitle)
+    ? headlineProjectCandidate || safeQuotedMatches.find((subject) => !looksLikeNamedPerson(subject)) || canonical?.mediaTitle || null
+    : null;
+  const stronglyQuotedProjectAnchor = headlineProjectCandidate && safeQuotedMatches.some((subject) => normalizeText(subject) === normalizeText(headlineProjectCandidate))
+    ? headlineProjectCandidate
+    : null;
+
+  let primaryName = canonical?.primarySubject || canonical?.mediaTitle || safeQuotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
   let primaryType: SubjectType = mapCanonicalEntityTypeToSubjectType(canonical?.entityType) || 'general';
   const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
   const executiveIndustryStory = isExecutiveIndustryStory(normalizedTitle, articleText);
+  const corporateIndustryStory = isCorporateIndustryStory(normalizedTitle, articleText);
+  const primaryCorporateStudio = studios[0] || null;
+  const canonicalMediaTitle = canonical?.mediaTitle || null;
+  const shouldOverrideCanonicalForCorporateStory = Boolean(
+    corporateIndustryStory &&
+    primaryCorporateStudio &&
+    (!canonical ||
+      canonical.entityType === 'movie' ||
+      canonical.entityType === 'tv' ||
+      canonical.entityType === 'franchise' ||
+      (canonicalMediaTitle && !studios.some((studio) => normalizeText(studio) === normalizeText(canonicalMediaTitle))))
+  );
 
-  if (canonical?.primarySubject || canonical?.mediaTitle) {
+  if (leadIndustryPersonCandidate && safeQuotedMatches.length === 0 && executiveIndustryStory && !/\b(?:merger|acquisition|shareholder|proxy advisor)\b/i.test(articleText)) {
+    primaryName = leadIndustryPersonCandidate;
+    primaryType = 'actor';
+  } else if (shouldOverrideCanonicalForCorporateStory) {
+    primaryName = primaryCorporateStudio!;
+    primaryType = /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock|paramount\+)\b/i.test(primaryName)
+      ? 'streaming_service'
+      : 'studio';
+  } else if ((leadPersonCandidate || leadReportResponsePersonCandidate) && !titleLooksLikeStudioStory && (personLedReportResponseStory || explicitPersonQuoteStory)) {
+    primaryName = leadPersonCandidate || leadReportResponsePersonCandidate || primaryName;
+    primaryType = 'actor';
+  } else if (reviewProjectAnchor) {
+    primaryName = reviewProjectAnchor;
+    primaryType = /\bseason|series|episode|show\b/i.test(articleText) ? 'tv_show' : 'movie';
+  } else if (projectLedCastingStory && projectLedCastingAnchor) {
+    primaryName = projectLedCastingAnchor;
+    primaryType = /\bseason|series|episode|show\b/i.test(articleText) ? 'tv_show' : 'movie';
+  } else if (colonQuotedProjectAnchor) {
+    primaryName = colonQuotedProjectAnchor;
+    primaryType = inferContentSubjectType(articleText, colonQuotedProjectAnchor);
+  } else if (quotedHeadlineProjectAnchor) {
+    primaryName = quotedHeadlineProjectAnchor;
+    primaryType = inferContentSubjectType(articleText, quotedHeadlineProjectAnchor);
+  } else if (stronglyQuotedProjectAnchor) {
+    primaryName = stronglyQuotedProjectAnchor;
+    primaryType = inferContentSubjectType(articleText, stronglyQuotedProjectAnchor);
+  } else if (canonical?.primarySubject || canonical?.mediaTitle) {
     primaryName = canonical.mediaTitle || canonical.primarySubject || primaryName;
     primaryType = mapCanonicalEntityTypeToSubjectType(canonical.entityType) || primaryType;
   } else if (containerOwnedSubject) {
     primaryName = containerOwnedSubject;
     primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
-  } else if (leadIndustryPersonCandidate && quotedMatches.length === 0 && executiveIndustryStory) {
-    primaryName = leadIndustryPersonCandidate;
-    primaryType = 'actor';
-  } else if ((leadPersonCandidate || leadReportResponsePersonCandidate) && !titleLooksLikeStudioStory && (personLedReportResponseStory || explicitPersonQuoteStory)) {
-    primaryName = leadPersonCandidate || leadReportResponsePersonCandidate || primaryName;
-    primaryType = 'actor';
   } else if (headlineProjectCandidate) {
     primaryName = headlineProjectCandidate;
     primaryType = inferContentSubjectType(articleText, headlineProjectCandidate);
-  } else if (leadPersonCandidate && quotedMatches.length === 0 && !titleLooksLikeStudioStory) {
+  } else if (leadPersonCandidate && safeQuotedMatches.length === 0 && !titleLooksLikeStudioStory) {
     primaryName = leadPersonCandidate;
     primaryType = 'actor';
-  } else if (studios.length > 0 && titleLooksLikeStudioStory && quotedMatches.length === 0) {
-    primaryName = studios[0];
+  } else if (primaryCorporateStudio && titleLooksLikeStudioStory && safeQuotedMatches.length === 0) {
+    primaryName = primaryCorporateStudio;
     primaryType = /\b(disney\+|netflix|max|prime video|apple tv|hulu|peacock)\b/i.test(primaryName)
       ? 'streaming_service'
       : 'studio';
@@ -2862,9 +2982,13 @@ function determineSmartImagePlan(
   const leadPerson = extractLeadPersonSubject(article.title);
   const headlineCastingPerson = extractHeadlineCastingPerson(article.title);
   const heuristicPeople = extractNamedPeople(articleText, analysis);
-  const quotedSubjects = extractQuotedSubjects(articleText).filter((subject) => {
+  const quotedSubjects = uniqueStrings([
+    ...extractStrictTitleQuotedSubjects(article.title),
+    ...extractQuotedSubjects(articleText),
+  ]).filter((subject) => {
     const normalizedSubject = normalizeText(subject);
     return normalizedSubject &&
+      !/^(?:s|t|re|ve|ll|d|m)$/.test(normalizedSubject) &&
       normalizedSubject !== normalizeText(analysis.primarySubject.name) &&
       !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject);
   });
@@ -2931,6 +3055,7 @@ function determineSmartImagePlan(
   let secondary: ImageSlotPlan | null = null;
   let useTwoImages = false;
   const primaryStreamingPlatform = getPrimaryStreamingPlatform(articleText);
+  const projectLedCastingStory = isProjectLedCastingStory(article.title, articleText);
 
   if (
     primaryStreamingPlatform &&
@@ -2953,6 +3078,36 @@ function determineSmartImagePlan(
 
   if (isListArticle) {
     return buildVisualPlan('single', analysis, primary, null, 'list article kept to a single dominant visual');
+  }
+
+  if (analysis.contextType === 'casting' && titleAnchor && (projectLedCastingStory || (analysis.animatedSubject && ensemblePeople.length >= 2))) {
+    const castingProjectAnchor =
+      analysis.canonicalEntity?.mediaTitle ||
+      analysis.contextProject ||
+      (isProjectAnchorType(analysis.primarySubject.type) ? analysis.primarySubject.name : null) ||
+      titleAnchor;
+    const canonicalProjectType = mapCanonicalEntityTypeToSubjectType(analysis.canonicalEntity?.entityType);
+    const projectType =
+      (canonicalProjectType && isProjectAnchorType(canonicalProjectType))
+        ? canonicalProjectType
+        : inferSlotType(castingProjectAnchor, articleText, analysis.primarySubject.type, analysis);
+    const leadCastPortrait =
+      (analysis.canonicalEntity?.namedPeople || []).find((subject) => normalizeText(subject) !== normalizeText(castingProjectAnchor))
+      || ensemblePeople.find((subject) => normalizeText(subject) !== normalizeText(castingProjectAnchor))
+      || null;
+    const projectIntent: ImageIntent = analysis.animatedSubject ? 'still' : 'backdrop';
+
+    return buildVisualPlan(
+      leadCastPortrait ? (ensemblePeople.length >= 3 ? 'ensemble' : 'dual') : 'single',
+      analysis,
+      buildImageSlotPlan(castingProjectAnchor, projectType, projectIntent, analysis, false),
+      leadCastPortrait
+        ? buildImageSlotPlan(leadCastPortrait, 'actor', 'person_portrait', analysis, false)
+        : null,
+      leadCastPortrait
+        ? 'project-led casting story keeps the title as the primary visual anchor'
+        : 'project-led casting story uses project art when no portrait support is needed'
+    );
   }
 
   if (memorialStory) {
@@ -3252,7 +3407,7 @@ async function collectRawTitleTMDbFallbackImages(
   limit: number
 ): Promise<Array<RSSResolvedImage & { role: ImageRole }>> {
   const articleText = buildArticleAnalysisText(article);
-  const quotedSubjects = extractQuotedSubjects(article.title).filter((subject) => {
+  const quotedSubjects = extractStrictTitleQuotedSubjects(article.title).filter((subject) => {
     const normalizedSubject = normalizeText(subject);
     return normalizedSubject &&
       !looksLikeNamedPerson(subject) &&
@@ -4473,6 +4628,10 @@ function validateImageCandidate(
 
   if (unofficialEdit) {
     return { approved: false, reason: 'unofficial edited or thumbnail-style asset', reasonCode: 'IMAGE_NON_OFFICIAL_STYLE_REJECTED' };
+  }
+
+  if (isTextDominantPersonLinkedTitleTrap(text, analysis)) {
+    return { approved: false, reason: 'text-dominant person-linked title trap', reasonCode: 'IMAGE_LOGO_OVERUSE' };
   }
 
   if (

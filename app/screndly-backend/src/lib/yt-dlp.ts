@@ -10,10 +10,22 @@ const DEFAULT_BINARY_NAME = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dl
 const MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 90 * 1000;
 const MAX_ERROR_OUTPUT_CHARS = 2000;
+export const DEFAULT_YT_DLP_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 
 type YtDlpArrayValue = Array<string | number>;
 export type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
 export type YtDlpOptions = Record<string, YtDlpOptionValue>;
+
+export interface YouTubeNetworkContext {
+    proxyUrl?: string | null;
+    userAgent: string;
+    cookieFilePath?: string | null;
+    cookiesFromBrowser?: string | null;
+    cookiesEnabled: boolean;
+    cacheKey: string;
+}
+
+let ytDlpReadyPromise: Promise<void> | null = null;
 
 function ensureLocalCookieFile(contents: string): string {
     fs.mkdirSync(path.dirname(LOCAL_COOKIE_FILE_PATH), { recursive: true });
@@ -80,6 +92,25 @@ export function getYtDlpAuthOptions(): YtDlpOptions {
     }
 
     return options;
+}
+
+export function getYtDlpNetworkContext(): YouTubeNetworkContext {
+    const options = getYtDlpAuthOptions();
+    const proxyUrl = typeof options.proxy === 'string' ? options.proxy : null;
+    const userAgent = typeof options.userAgent === 'string' && options.userAgent.trim().length > 0
+        ? options.userAgent
+        : DEFAULT_YT_DLP_USER_AGENT;
+    const cookieFilePath = typeof options.cookies === 'string' ? options.cookies : null;
+    const cookiesFromBrowser = typeof options.cookiesFromBrowser === 'string' ? options.cookiesFromBrowser : null;
+
+    return {
+        proxyUrl,
+        userAgent,
+        cookieFilePath,
+        cookiesFromBrowser,
+        cookiesEnabled: Boolean(cookieFilePath || cookiesFromBrowser),
+        cacheKey: `${proxyUrl || 'direct'}|${userAgent}`,
+    };
 }
 
 export function hasYtDlpAuthConfiguration(): boolean {
@@ -164,7 +195,33 @@ function truncateErrorOutput(value: string): string {
     return `${value.slice(0, MAX_ERROR_OUTPUT_CHARS)}\n...[truncated ${value.length - MAX_ERROR_OUTPUT_CHARS} chars]`;
 }
 
+async function ensureYtDlpReady(): Promise<void> {
+    if (ytDlpReadyPromise) {
+        return ytDlpReadyPromise;
+    }
+
+    ytDlpReadyPromise = (async () => {
+        if (process.env.YT_DLP_SKIP_AUTO_UPDATE === '1') {
+            return;
+        }
+
+        try {
+            await execFileAsync(resolveBinaryPath(), ['-U'], {
+                maxBuffer: MAX_BUFFER_BYTES,
+                timeout: Math.min(resolveTimeoutMs(), 60 * 1000),
+                windowsHide: true,
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn('[yt-dlp] Auto-update check failed; continuing with existing binary:', message);
+        }
+    })();
+
+    return ytDlpReadyPromise;
+}
+
 export default async function ytDlp(url: string, options: YtDlpOptions = {}): Promise<any> {
+    await ensureYtDlpReady();
     const args = buildArgs(url, options);
 
     try {
