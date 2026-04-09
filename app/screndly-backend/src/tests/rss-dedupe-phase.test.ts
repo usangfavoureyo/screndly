@@ -4,7 +4,9 @@ import { __rssDedupeTestUtils } from '../services/rss.service';
 
 const {
   buildRSSTopicFingerprint,
+  buildRSSNewsEventFingerprint,
   areRSSTopicFingerprintsSimilar,
+  areRSSNewsEventsSimilar,
   areRSSSubjectsInCooldown,
   getRSSItemLocalSeenKeys,
   buildRSSCaptionAllowedEntities,
@@ -34,6 +36,28 @@ test('local seen keys include a topic key so same-story link variants can be blo
 
   assert.equal(keys.some((key: string) => key.startsWith('link:')), true);
   assert.equal(keys.some((key: string) => key.startsWith('topic:')), true);
+  assert.equal(keys.some((key: string) => key.startsWith('event:')), true);
+});
+
+test('canonical event fingerprint catches cross-source same-news stories with different wording', () => {
+  const variety = buildRSSNewsEventFingerprint({
+    title: "Chris Hemsworth's Extraction 3 Confirmed At Netflix",
+    description: "Chris Hemsworth will return for Netflix's Extraction 3.",
+    contentHtml: '<p>Sam Hargrave will direct the sequel.</p>',
+    link: 'https://variety.com/story-a',
+    pubDate: new Date(),
+    imageUrls: [],
+  });
+  const deadline = buildRSSNewsEventFingerprint({
+    title: "Chris Hemsworth is set to return for Netflix's Extraction 3 as Deadline reports the reprise",
+    description: 'Sam Hargrave is returning to direct, with Idris Elba and Golshifteh Farahani also closing deals.',
+    contentHtml: '<p>Netflix is moving forward with Extraction 3.</p>',
+    link: 'https://deadline.com/story-b',
+    pubDate: new Date(),
+    imageUrls: [],
+  });
+
+  assert.equal(areRSSNewsEventsSimilar(variety, deadline), true);
 });
 
 test('caption grounding ignores image-derived entities that do not appear in the article', () => {
