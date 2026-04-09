@@ -118,6 +118,23 @@ function compactPersistedComposeValue(rawValue: string) {
   });
 }
 
+function buildMinimalPersistedComposeValue(rawValue: string) {
+  const parsed = JSON.parse(rawValue) as PersistedComposeState;
+  const items = Array.isArray(parsed?.state?.items) ? parsed.state.items : [];
+  const activeItemId = parsed?.state?.activeItemId ?? null;
+  const minimalItems = compactComposeItemsForPersistence(items).filter(
+    (item) => item.status !== 'published' || item.id === activeItemId,
+  );
+
+  return JSON.stringify({
+    ...parsed,
+    state: {
+      ...parsed.state,
+      items: minimalItems,
+    },
+  });
+}
+
 const composeStateStorage: StateStorage = {
   getItem: (name) => {
     if (typeof window === 'undefined') {
@@ -148,20 +165,15 @@ const composeStateStorage: StateStorage = {
       }
 
       console.warn('[ComposeStore] Local storage quota exceeded. Falling back to a minimal persisted compose snapshot.');
-      const parsed = JSON.parse(value) as PersistedComposeState;
-      const items = Array.isArray(parsed?.state?.items) ? parsed.state.items : [];
-      const activeItemId = parsed?.state?.activeItemId ?? null;
-      const minimalItems = compactComposeItemsForPersistence(items).filter(
-        (item) => item.status !== 'published' || item.id === activeItemId,
-      );
+      try {
+        window.localStorage.setItem(name, buildMinimalPersistedComposeValue(value));
+      } catch (minimalError) {
+        if (name !== COMPOSE_STORAGE_KEY || !isStorageQuotaError(minimalError)) {
+          throw minimalError;
+        }
 
-      window.localStorage.setItem(name, JSON.stringify({
-        ...parsed,
-        state: {
-          ...parsed.state,
-          items: minimalItems,
-        },
-      }));
+        console.warn('[ComposeStore] Persisting compose state was skipped because browser storage is full. Using in-memory state only for this session.');
+      }
     }
   },
   removeItem: (name) => {
