@@ -943,6 +943,35 @@ export class PublisherService {
         return hostedUrl;
     }
 
+    private async resolveLocalVideoUploadPath(
+        content: PublishContent,
+        mediaFilePath: string | null | undefined,
+        directVideoUrl: string | undefined,
+    ): Promise<{ videoFilePath: string | null; shouldCleanup: boolean }> {
+        if (mediaFilePath && this.isVideo(mediaFilePath)) {
+            return {
+                videoFilePath: mediaFilePath,
+                shouldCleanup: false,
+            };
+        }
+
+        const remoteVideoSource =
+            (this.isDirectVideoUrl(directVideoUrl) ? directVideoUrl : undefined)
+            || this.getResolvedVideoUrls(content)[0];
+
+        if (!remoteVideoSource) {
+            return {
+                videoFilePath: null,
+                shouldCleanup: false,
+            };
+        }
+
+        return {
+            videoFilePath: await this.downloadRemoteVideoToTemp(remoteVideoSource),
+            shouldCleanup: true,
+        };
+    }
+
     /**
      * Publish content to multiple platforms w/ Retry Logic
      */
@@ -1015,7 +1044,10 @@ export class PublisherService {
                     const remoteCoverImageUrl = await this.getResolvedRemoteCoverImageUrl(platformContent);
                     const localVideoFile = mediaFilePath && this.isVideo(mediaFilePath) ? mediaFilePath : null;
                     const directVideoUrl = platformContent.videoUrl;
+                    let uploadVideoFilePath: string | null = null;
+                    let shouldCleanupUploadVideoFile = false;
 
+                    try {
                     switch (platform) {
                         case 'X':
                             if (connection.accessToken) {
@@ -1088,11 +1120,18 @@ export class PublisherService {
                             if (hasPublishablePlatformConnection(connection)) {
                                 const facebookUserId = connection.userId as string;
                                 const facebookAccessToken = connection.accessToken as string;
-                                const fbResult = localVideoFile
+                                const resolvedVideoUpload = await this.resolveLocalVideoUploadPath(
+                                    platformContent,
+                                    mediaFilePath,
+                                    directVideoUrl,
+                                );
+                                uploadVideoFilePath = resolvedVideoUpload.videoFilePath;
+                                shouldCleanupUploadVideoFile = resolvedVideoUpload.shouldCleanup;
+                                const fbResult = uploadVideoFilePath
                                     ? await metaService.postVideoToFacebook(
                                         facebookUserId,
                                         platformContent.text,
-                                        localVideoFile,
+                                        uploadVideoFilePath,
                                         facebookAccessToken
                                     )
                                     : await metaService.postToFacebook(
@@ -1270,10 +1309,20 @@ export class PublisherService {
                         case 'YouTube':
                         case 'YouTubeLongform':
                         case 'YouTubeShorts':
-                            if (connection.accessToken && mediaFilePath && !this.isImage(mediaFilePath)) {
+                            if (connection.accessToken) {
+                                const resolvedVideoUpload = await this.resolveLocalVideoUploadPath(
+                                    platformContent,
+                                    mediaFilePath,
+                                    directVideoUrl,
+                                );
+                                uploadVideoFilePath = resolvedVideoUpload.videoFilePath;
+                                shouldCleanupUploadVideoFile = resolvedVideoUpload.shouldCleanup;
+                            }
+
+                            if (connection.accessToken && uploadVideoFilePath && !this.isImage(uploadVideoFilePath)) {
                                 const ytResult = await youtubeService.uploadVideo(
                                     connection.accessToken,
-                                    mediaFilePath,
+                                    uploadVideoFilePath,
                                     {
                                         title: platformContent.title || platformContent.text.slice(0, 100),
                                         description: platformContent.description || platformContent.text,
@@ -1336,6 +1385,11 @@ export class PublisherService {
 
                         default:
                             result.error = 'Unknown platform';
+                    }
+                    } finally {
+                        if (shouldCleanupUploadVideoFile) {
+                            await this.cleanupTempPath(uploadVideoFilePath);
+                        }
                     }
 
                     if (result.status === 'posted') {
