@@ -1291,6 +1291,8 @@ function stripHtmlTags(value: string): string {
 
 function decodeRSSHtmlEntities(value: string): string {
     return String(value || '')
+        .replace(/[\u2018\u2019]/g, "'")
+        .replace(/[\u201C\u201D]/g, '"')
         .replace(/&#8217;|&#39;/gi, "'")
         .replace(/&#8220;|&#8221;|&quot;/gi, '"')
         .replace(/&#8211;|&#8212;/gi, '-')
@@ -1475,6 +1477,18 @@ function extractQuotedRSSTitles(value: string): string[] {
         .filter(Boolean);
 }
 
+function extractStrictQuotedRSSTitles(value: string): string[] {
+    return Array.from(
+        value.matchAll(/(?:["“”]|(?<![A-Za-z0-9])['‘’])([^"'“”‘’]{2,80}?)(?:["“”]|['‘’](?![A-Za-z0-9]))/g)
+    )
+        .map((match) => (match[1] || '').trim())
+        .filter((entry) => {
+            const normalized = normalizeRSSHeadlineInput(entry);
+            return normalized.length >= 2 && !/^(?:s|t|re|ve|ll|d|m)$/i.test(normalized);
+        })
+        .filter(Boolean);
+}
+
 function extractNamedPeopleFromText(value: string): string[] {
     const matches = Array.from(value.matchAll(/\b(?:[A-Z][A-Za-z'&.-]+)(?:\s+[A-Z][A-Za-z'&.-]+){1,3}\b/g))
         .map((match) => sanitizeRSSNamedEntityCandidate((match[0] || '').trim()))
@@ -1522,7 +1536,7 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
     const summary = stripRSSArticlePackagePrefixes(String(context.summary || '').trim());
     const body = stripRSSArticlePackagePrefixes(stripHtmlTags(context.articleBody || context.articleContentHtml || ''));
     const combined = [normalizedTitle, summary, body].filter(Boolean).join(' ');
-    const quotedTitles = extractQuotedRSSTitles(`${normalizedTitle} ${summary} ${body}`)
+    const quotedTitles = extractStrictQuotedRSSTitles(`${normalizedTitle} ${summary} ${body}`)
         .filter((entry) => !isRSSStudioOrPlatform(entry))
         .filter((entry) => !isMalformedRSSEntityJunk(entry))
         .filter((entry) => !isReferenceOnlyRSSTitle(entry, combined));
@@ -1645,6 +1659,10 @@ function isIncompleteRSSQuote(value: string): boolean {
         return true;
     }
 
+    if (/^'[^']{2,120}'\s+[A-Za-z0-9]/.test(normalized)) {
+        return false;
+    }
+
     if (hasTruncatedRSSContent(normalized)) {
         return true;
     }
@@ -1694,7 +1712,7 @@ function getExpectedRssTitleEntities(context: RSSContext, extraction?: RssCaptio
         context.articleBody || '',
         context.articleContentHtml || '',
     ].join(' ');
-    const quotedSourceTitles = extractQuotedRSSTitles(sourceText);
+    const quotedSourceTitles = extractStrictQuotedRSSTitles(sourceText);
     const anchoredTitleKeys = new Set(
         [resolvedExtraction.media_title, ...quotedSourceTitles]
             .map((entry) => String(entry || '').trim().toLowerCase())
@@ -2038,6 +2056,8 @@ function lacksSingleQuotedDetectedRSSTitles(caption: string, context: RSSContext
 }
 
 function hasInlineRSSQuote(caption: string): boolean {
+    return hasInlineRSSDoubleQuote(caption);
+
     return getRSSCaptionLines(caption).some((line, index) => {
         if (index === 0 || /^[\u2022*-]\s*/.test(line)) {
             return false;
@@ -2045,6 +2065,29 @@ function hasInlineRSSQuote(caption: string): boolean {
 
         return /["'“”][^"'“”]{8,}["'“”]/.test(line) && !/^["'“”]/.test(line);
     });
+}
+
+function hasInlineRSSDoubleQuote(caption: string): boolean {
+    return getRSSCaptionLines(caption).some((line, index) => {
+        if (index === 0 || /^[\u2022*-]\s*/.test(line)) {
+            return false;
+        }
+
+        return /["“”][^"“”]{8,}["“”]/.test(line) && !/^["“”]/.test(line);
+    });
+}
+
+function isLikelyStandaloneRSSQuoteLine(line: string): boolean {
+    const trimmed = String(line || '').trim();
+    if (!trimmed) {
+        return false;
+    }
+
+    if (!/^["“”]/.test(trimmed)) {
+        return false;
+    }
+
+    return /["“”]/.test(trimmed.slice(1));
 }
 
 function hasOverloadedRSSHeadline(caption: string): boolean {
@@ -2205,6 +2248,8 @@ export async function generateRSSCaption(
 ): Promise<string> {
     const extraction = buildHeuristicRssCaptionExtraction(context);
     const bodyExcerpt = (extraction.article_body_clean || '').slice(0, 1400);
+    const normalizedPromptTitle = extraction.article_title || normalizeRSSHeadlineInput(context.articleTitle);
+    const normalizedPromptSummary = stripHtmlTags(context.summary || '').slice(0, 500);
     const deterministicFallback = buildDeterministicRssCaption(extraction, context);
     const defaultSystemPrompt = `You are a social media curator sharing news/articles.
 Goal: Summarize the value prop and encourage a click (without saying "click here").
@@ -2251,8 +2296,8 @@ ${bodyExcerpt || 'None'}
 
 Generate a caption for this article:
 Feed: ${context.feedName}
-Title: ${context.articleTitle}
-Summary: ${context.summary.slice(0, 500)}...
+Title: ${normalizedPromptTitle}
+Summary: ${normalizedPromptSummary || 'None'}.
 Platform: ${context.platform}
 ${visualContext}
 ${allowedEntitiesContext}
@@ -2296,8 +2341,8 @@ Write ONLY the caption.`;
 
     const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
 
-Article Title: ${context.articleTitle}
-Article Summary: ${context.summary.slice(0, 500)}
+Article Title: ${normalizedPromptTitle}
+Article Summary: ${normalizedPromptSummary || 'None'}
 Article Body Excerpt: ${bodyExcerpt || 'None'}
 Structured Primary Subject: ${extraction.primary_subject || 'Unknown'}
 Structured Media Title: ${extraction.media_title || 'Unknown'}

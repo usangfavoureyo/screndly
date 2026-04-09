@@ -1164,6 +1164,17 @@ function titleMatchesProjectContext(
   return matchScore >= 55;
 }
 
+function getTitleTokenOverlapScore(left: string, right: string): number {
+  const leftTokens = new Set(getMeaningfulTitleTokens(left));
+  const rightTokens = new Set(getMeaningfulTitleTokens(right));
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return 0;
+  }
+
+  const overlap = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  return overlap / Math.max(leftTokens.size, rightTokens.size);
+}
+
 function titleCandidateMatchesResolvedContext(
   candidateTitle: string,
   input: StructuredRSSTMDbSelectionInput
@@ -1185,6 +1196,10 @@ function titleCandidateMatchesResolvedContext(
 
   const normalizedProjectAnchors = projectAnchors.map((anchor) => normalizeText(anchor));
   if (normalizedProjectAnchors.some((anchor) => anchor === normalizedCandidate || normalizedCandidate.includes(anchor))) {
+    return true;
+  }
+
+  if (projectAnchors.some((anchor) => getTitleTokenOverlapScore(anchor, candidateTitle) >= 0.4)) {
     return true;
   }
 
@@ -1677,9 +1692,7 @@ export async function resolveStructuredTMDbImages(
   const companyFirst =
     corporateCompanyInput ||
     input.primarySubject.type === 'studio' ||
-    input.primarySubject.type === 'streaming_service' ||
-    input.imageIntent === 'logo' ||
-    input.imageIntent === 'brand_backdrop';
+    input.primarySubject.type === 'streaming_service';
 
   if (companyFirst) {
     const companyLogo = await resolveCompanyLogo(input);

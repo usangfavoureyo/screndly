@@ -293,6 +293,32 @@ test('caption validation rejects broken quote fragments', () => {
   assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_BROKEN_QUOTE/);
 });
 
+test('caption validation allows single-quoted title mentions inside factual supporting lines', () => {
+  const context = {
+    articleTitle: "Kevin Bacon to star in 'Southern Bastards' pilot at Hulu",
+    feedName: 'Variety',
+    summary: "Kevin Bacon will lead Hulu pilot 'Southern Bastards'.",
+    articleBody: "The Onyx Collective pilot 'Southern Bastards' at Hulu has cast Kevin Bacon in a lead role.",
+    platform: 'Facebook' as const,
+    canonicalEntity: {
+      primarySubject: 'Kevin Bacon',
+      mediaTitle: 'Southern Bastards',
+      entityType: 'tv' as const,
+      eventType: 'casting',
+      namedPeople: ['Kevin Bacon'],
+      namedCharacters: [],
+      allowedEntities: ['Kevin Bacon', 'Southern Bastards'],
+      confidence: 0.95,
+      ambiguityFlags: [],
+    },
+    allowedEntities: ['Kevin Bacon', 'Southern Bastards'],
+  };
+
+  const caption = "Kevin Bacon to star in 'Southern Bastards' pilot at Hulu.\n\nThe Onyx Collective pilot 'Southern Bastards' has cast Kevin Bacon in a lead role.";
+
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(caption, context).includes('CAPTION_BROKEN_QUOTE'), false);
+});
+
 test('caption validation rejects malformed junk headline subjects', () => {
   const context = {
     articleTitle: "The Boys prequel gets a new release date",

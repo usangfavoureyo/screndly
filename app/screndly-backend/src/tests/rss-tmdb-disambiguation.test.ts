@@ -218,6 +218,29 @@ test('requires an explicit project match instead of accepting a studio-only TMDb
   );
 });
 
+test('rejects cross-franchise TMDb titles that do not overlap the project anchor', () => {
+  const input = {
+    primarySubject: { name: 'Highlander', type: 'movie' as const },
+    visualSubject: 'Highlander',
+    secondarySubjects: ['Henry Cavill'],
+    imageIntent: 'still' as const,
+    targetFormat: 'movie' as const,
+    contextProject: 'Highlander',
+    requiredContextTerms: ['remake', 'Henry Cavill'],
+    relevantStudios: ['Amazon MGM'],
+    queries: ['Highlander remake star confirms a lot of decapitations'],
+    limit: 1,
+  };
+
+  assert.equal(
+    titleCandidateMatchesResolvedContext(
+      'The Cat in the Hat Knows a Lot About That!',
+      input,
+    ),
+    false
+  );
+});
+
 test('accepts a TMDb title when it explicitly matches the context project', () => {
   const input = {
     primarySubject: { name: 'Jeff Kinney', type: 'actor' as const },
