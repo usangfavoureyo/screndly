@@ -343,7 +343,7 @@ export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
     return asset.previewUrl;
   }
 
-  return asset.previewUrl || asset.storageUrl;
+  return asset.storageUrl || asset.previewUrl;
 }
 
 export function getComposeAssetPublishUrl(asset?: ComposeMediaAsset) {

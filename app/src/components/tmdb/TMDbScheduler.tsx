@@ -5,6 +5,10 @@ export function TMDbScheduler() {
   const { settings } = useSettings();
   const timezone = settings.timezone || 'UTC';
   const refreshTime = (settings as any).tmdbDailyRefreshTime || '07:00';
+  const secondaryRefreshTime = '12:00';
+  const refreshRuns = refreshTime === secondaryRefreshTime
+    ? [refreshTime]
+    : [refreshTime, secondaryRefreshTime];
 
   return (
     <div className="space-y-6">
@@ -29,15 +33,20 @@ export function TMDbScheduler() {
           </p>
         </div>
 
-        <div className="flex items-center gap-6">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-[#ec1e24]" />
             <span className="text-sm font-medium text-gray-900 dark:text-white">Daily</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-[#ec1e24]" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">{refreshTime} {timezone}</span>
-          </div>
+          {refreshRuns.map((runTime, index) => (
+            <div key={runTime} className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-[#ec1e24]" />
+              <span className="text-sm font-medium text-gray-900 dark:text-white">
+                {runTime} {timezone}
+                {index === 1 ? ' catch-up refresh' : ''}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
 

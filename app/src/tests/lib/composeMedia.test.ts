@@ -4,6 +4,7 @@ import {
   estimateComposeStoryItemCount,
   getComposePlatformCompatibility,
   getComposeCompatibilityMap,
+  getComposeAssetPreviewUrl,
   sanitizeComposeItem,
 } from '../../lib/create/composeMedia';
 import { compactComposeItemsForPersistence } from '../../store/useComposeStore';
@@ -170,5 +171,15 @@ describe('composeMedia story compatibility', () => {
     expect(compactedFailed?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
     expect(compactedPublished?.mediaAssets[0]?.previewUrl).toBeUndefined();
     expect(compactedPublished?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
+  });
+
+  it('prefers stable storage URLs over expiring authorized preview URLs for rendered previews', () => {
+    const asset: ComposeMediaAsset = {
+      ...buildVideoAsset('video-rendered', 95),
+      previewUrl: 'https://authorized.example.com/video-rendered.mp4?Authorization=expired-token',
+      storageUrl: 'https://cdn.example.com/video-rendered.mp4',
+    };
+
+    expect(getComposeAssetPreviewUrl(asset)).toBe('https://cdn.example.com/video-rendered.mp4');
   });
 });

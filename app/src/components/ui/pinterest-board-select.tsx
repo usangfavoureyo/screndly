@@ -23,13 +23,23 @@ export function PinterestBoardSelect({
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadBoards() {
       setIsLoading(true);
       const fetchedBoards = await fetchPinterestBoards();
+      if (cancelled) {
+        return;
+      }
       setBoards(fetchedBoards);
       setIsLoading(false);
     }
-    loadBoards();
+
+    void loadBoards();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from "sonner";
 import { RefreshCw } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
@@ -19,11 +19,24 @@ export function TmdbFeedsSettings({ onBack }: TmdbFeedsSettingsProps) {
   const [isConfigured, setIsConfigured] = useState<boolean | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Checking whether the backend can reach TMDb...');
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     const loadStatus = async () => {
       try {
         const response = await apiClient.get<{ configured: boolean; message?: string }>('/api/tmdb/status');
+        if (cancelled) {
+          return;
+        }
+
         if (response.success && response.data) {
           setIsConfigured(response.data.configured);
           setStatusMessage(
@@ -38,12 +51,19 @@ export function TmdbFeedsSettings({ onBack }: TmdbFeedsSettingsProps) {
         setIsConfigured(false);
         setStatusMessage(response.error?.message || 'Failed to load TMDb status');
       } catch (error: any) {
+        if (cancelled) {
+          return;
+        }
         setIsConfigured(false);
         setStatusMessage(error?.message || 'Failed to load TMDb status');
       }
     };
 
     void loadStatus();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleRefreshNow = async () => {
@@ -70,13 +90,18 @@ export function TmdbFeedsSettings({ onBack }: TmdbFeedsSettingsProps) {
     } catch (error: any) {
       toast.error(error?.message || 'Failed to refresh TMDb feeds');
     } finally {
-      setIsRefreshing(false);
+      if (isMountedRef.current) {
+        setIsRefreshing(false);
+      }
     }
   };
 
   return (
-    <div className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto">
-      <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] p-4 flex items-center gap-3 z-10">
+    <div
+      className="fixed top-0 right-0 bottom-0 w-full lg:w-[600px] bg-white dark:bg-[#000000] z-50 overflow-y-auto overscroll-y-contain touch-pan-y"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
+      <div className="sticky top-0 bg-white dark:bg-[#000000] border-b border-gray-200 dark:border-[#333333] px-4 pb-4 pt-[calc(env(safe-area-inset-top,0px)+1rem)] flex items-center gap-3 z-10">
         <BackIconButton
           onClick={() => {
             onBack();
@@ -85,7 +110,7 @@ export function TmdbFeedsSettings({ onBack }: TmdbFeedsSettingsProps) {
         <h2 className="text-gray-900 dark:text-white text-xl">TMDb Feeds</h2>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-6 px-6 pb-[calc(env(safe-area-inset-bottom,0px)+1.5rem)] pt-6">
         <AnalyticsSelfOptimization
           storageKey="tmdb_settings"
           description="Enable AI-powered optimization to automatically improve captions, posting times, and model selection for TMDb content based on performance analytics."
