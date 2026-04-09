@@ -32,12 +32,65 @@ function isStorageQuotaError(error: unknown) {
     && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
 }
 
-function compactComposeItemsForPersistence(items: ComposeItem[]) {
-  const sanitizedItems = items.map(sanitizeComposeItem);
-  const nonPublishedItems = sanitizedItems.filter((item) => item.status !== 'published');
-  const recentPublishedItems = sanitizedItems
+function stripRedundantRemotePreviewUrl<T extends { previewUrl?: string; storageUrl?: string }>(asset: T): T {
+  if (!asset.previewUrl || !asset.storageUrl) {
+    return asset;
+  }
+
+  if (asset.previewUrl.startsWith('blob:') || asset.previewUrl === asset.storageUrl) {
+    return asset;
+  }
+
+  return {
+    ...asset,
+    previewUrl: undefined,
+  };
+}
+
+function compactComposeItemForPersistence(item: ComposeItem, preservePreviewUrls: boolean) {
+  const sanitizedItem = sanitizeComposeItem(item);
+  if (preservePreviewUrls) {
+    return sanitizedItem;
+  }
+
+  return {
+    ...sanitizedItem,
+    mediaAssets: sanitizedItem.mediaAssets.map((asset) => stripRedundantRemotePreviewUrl(asset)),
+    platformFields: {
+      ...sanitizedItem.platformFields,
+      thumbnails: sanitizedItem.platformFields.thumbnails
+        ? {
+            shared: sanitizedItem.platformFields.thumbnails.shared
+              ? stripRedundantRemotePreviewUrl(sanitizedItem.platformFields.thumbnails.shared)
+              : undefined,
+            youtube: sanitizedItem.platformFields.thumbnails.youtube
+              ? stripRedundantRemotePreviewUrl(sanitizedItem.platformFields.thumbnails.youtube)
+              : undefined,
+            x: sanitizedItem.platformFields.thumbnails.x
+              ? stripRedundantRemotePreviewUrl(sanitizedItem.platformFields.thumbnails.x)
+              : undefined,
+          }
+        : undefined,
+      videoProcessing: sanitizedItem.platformFields.videoProcessing
+        ? {
+            ...sanitizedItem.platformFields.videoProcessing,
+            threadsXCrop: sanitizedItem.platformFields.videoProcessing.threadsXCrop
+              ? stripRedundantRemotePreviewUrl(sanitizedItem.platformFields.videoProcessing.threadsXCrop)
+              : undefined,
+          }
+        : undefined,
+    },
+  };
+}
+
+export function compactComposeItemsForPersistence(items: ComposeItem[]) {
+  const nonPublishedItems = items
+    .filter((item) => item.status !== 'published')
+    .map((item) => compactComposeItemForPersistence(item, true));
+  const recentPublishedItems = items
     .filter((item) => item.status === 'published')
-    .slice(0, COMPOSE_PERSISTED_PUBLISHED_LIMIT);
+    .slice(0, COMPOSE_PERSISTED_PUBLISHED_LIMIT)
+    .map((item) => compactComposeItemForPersistence(item, false));
 
   return [...nonPublishedItems, ...recentPublishedItems].map((item) => ({
     ...item,

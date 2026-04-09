@@ -6,6 +6,7 @@ import {
   getComposeCompatibilityMap,
   sanitizeComposeItem,
 } from '../../lib/create/composeMedia';
+import { compactComposeItemsForPersistence } from '../../store/useComposeStore';
 import type { ComposeItem } from '../../types/compose';
 import type { ComposeMediaAsset } from '../../types/compose';
 
@@ -109,11 +110,11 @@ describe('composeMedia story compatibility', () => {
     expect(facebookStories.reason).toContain('story items after splitting videos longer than 60 seconds');
   });
 
-  it('drops duplicate remote preview URLs from persisted compose items', () => {
+  it('preserves authorized remote preview URLs on sanitized actionable items', () => {
     const item: ComposeItem = {
       id: 'persisted-item',
       title: 'Persisted item',
-      status: 'draft',
+      status: 'failed',
       mediaAssets: [
         {
           ...buildImageAsset('asset-persisted'),
@@ -130,7 +131,44 @@ describe('composeMedia story compatibility', () => {
 
     const sanitized = sanitizeComposeItem(item);
 
-    expect(sanitized.mediaAssets[0]?.previewUrl).toBe('https://cdn.example.com/asset-persisted.jpg');
+    expect(sanitized.mediaAssets[0]?.previewUrl).toBe('https://authorized.example.com/asset-persisted.jpg?Authorization=abc123');
     expect(sanitized.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/asset-persisted.jpg');
+  });
+
+  it('keeps authorized preview URLs for actionable items while compacting published items', () => {
+    const failedItem: ComposeItem = {
+      id: 'failed-item',
+      title: 'Failed item',
+      status: 'failed',
+      mediaAssets: [
+        {
+          ...buildVideoAsset('video-failed', 95),
+          previewUrl: 'https://authorized.example.com/video-failed.mp4?Authorization=abc123',
+          storageUrl: 'https://cdn.example.com/video-failed.mp4',
+        },
+      ],
+      platforms: ['facebook_stories'],
+      sharedCaption: 'Caption',
+      platformFields: {},
+      createdAt: '2026-04-09T10:00:00.000Z',
+      updatedAt: '2026-04-09T10:00:00.000Z',
+      error: 'Video failed',
+    };
+    const publishedItem: ComposeItem = {
+      ...failedItem,
+      id: 'published-item',
+      title: 'Published item',
+      status: 'published',
+      error: undefined,
+    };
+
+    const compacted = compactComposeItemsForPersistence([failedItem, publishedItem]);
+    const compactedFailed = compacted.find((item) => item.id === 'failed-item');
+    const compactedPublished = compacted.find((item) => item.id === 'published-item');
+
+    expect(compactedFailed?.mediaAssets[0]?.previewUrl).toBe('https://authorized.example.com/video-failed.mp4?Authorization=abc123');
+    expect(compactedFailed?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
+    expect(compactedPublished?.mediaAssets[0]?.previewUrl).toBeUndefined();
+    expect(compactedPublished?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
   });
 });

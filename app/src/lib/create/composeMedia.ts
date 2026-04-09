@@ -182,14 +182,19 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
 
   return {
     ...normalized,
-    mediaAssets: normalized.mediaAssets.map((asset) => ({
-      ...asset,
-      previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
-      storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
-      uploadStatus:
-        asset.uploadStatus ??
-        (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
-    })),
+    mediaAssets: normalized.mediaAssets.map((asset) => {
+      const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
+      const storageUrl = asset.storageUrl ?? previewUrl;
+
+      return {
+        ...asset,
+        previewUrl: previewUrl ?? storageUrl,
+        storageUrl,
+        uploadStatus:
+          asset.uploadStatus ??
+          (storageUrl || previewUrl ? 'uploaded' : 'idle'),
+      };
+    }),
     platformFields: {
       ...normalized.platformFields,
       thumbnails: sanitizeThumbnails(normalized.platformFields?.thumbnails),
@@ -252,13 +257,16 @@ function normalizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): Compo
 
 function sanitizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
   if (!asset) return undefined;
+  const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
+  const storageUrl = asset.storageUrl ?? previewUrl;
+
   return {
     ...asset,
-    previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
-    storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+    previewUrl: previewUrl ?? storageUrl,
+    storageUrl,
     uploadStatus:
       asset.uploadStatus ??
-      (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
+      (storageUrl || previewUrl ? 'uploaded' : 'idle'),
   };
 }
 
@@ -277,13 +285,16 @@ function sanitizeThumbnails(thumbnails?: {
 
 function sanitizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): ComposeProcessedVideoAsset | undefined {
   if (!asset) return undefined;
+  const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
+  const storageUrl = asset.storageUrl ?? previewUrl;
+
   return {
     ...asset,
-    previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
-    storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
+    previewUrl: previewUrl ?? storageUrl,
+    storageUrl,
     uploadStatus:
       asset.uploadStatus ??
-      (asset.storageUrl || (asset.previewUrl && !asset.previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle'),
+      (storageUrl || previewUrl ? 'uploaded' : 'idle'),
   };
 }
 
