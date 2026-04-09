@@ -245,6 +245,22 @@ test('caption validation rejects HTML entity leakage', () => {
   assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_CONTAINS_HTML_ENTITY/);
 });
 
+test('caption validation rejects named HTML entities in final output', () => {
+  const context = {
+    articleTitle: "Jenna Ortega joins Netflix's 'You'",
+    feedName: 'Deadline',
+    summary: "Jenna Ortega joins Netflix's 'You'.",
+    articleBody: 'A new casting update has been announced.',
+    platform: 'Threads' as const,
+    allowedEntities: ['Jenna Ortega', 'You'],
+  };
+
+  const caption = 'Jenna Ortega &amp; Netflix confirm a new update for "You".';
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_CONTAINS_HTML_ENTITY/);
+});
+
 test('caption validation rejects publisher marker leakage in final output', () => {
   const context = {
     articleTitle: "EXCLUSIVE: Jenna Ortega joins Netflix's 'You'",
@@ -275,6 +291,22 @@ test('caption validation rejects broken quote fragments', () => {
 
   assert.equal(failsRSSCaptionFormatting(caption, context), true);
   assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_BROKEN_QUOTE/);
+});
+
+test('caption validation rejects malformed junk headline subjects', () => {
+  const context = {
+    articleTitle: "The Boys prequel gets a new release date",
+    feedName: 'Variety',
+    summary: "The Boys prequel has a new release date.",
+    articleBody: 'The prequel tied to The Boys is moving forward at Prime Video.',
+    platform: 'Threads' as const,
+    allowedEntities: ['The Boys'],
+  };
+
+  const caption = "'Prequel With Season 5' has a new release date.";
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_HEADLINE_JUNK/);
 });
 
 test('feed fallback is no longer forced for reveal-driven headlines', () => {

@@ -1570,6 +1570,7 @@ export async function resolveStructuredTMDbImages(
   input: StructuredRSSTMDbSelectionInput
 ): Promise<ResolvedStructuredTMDbImage[]> {
   const candidates: ResolvedStructuredTMDbImage[] = [];
+  const stronglyPersonLed = isPersonLedInput(input);
   const companyFallbackEligible = Boolean(
     input.contextProject &&
     input.relevantStudios.length > 0 &&
@@ -1600,7 +1601,7 @@ export async function resolveStructuredTMDbImages(
   ) {
     const personProfile = await resolvePersonProfile(input);
     if (personProfile) {
-      personProfile.score += 24;
+      personProfile.score += stronglyPersonLed ? 80 : 24;
       candidates.push(personProfile);
     }
   }
@@ -1622,6 +1623,10 @@ export async function resolveStructuredTMDbImages(
           ? 'character'
           : 'still';
 
+    const titleScore = projectOnlyTitleFallback && stronglyPersonLed
+      ? titleCandidate.score - 36
+      : titleCandidate.score;
+
     const preferredUrl = projectOnlyTitleFallback
       ? titleCandidate.logoUrl || titleCandidate.posterUrl
       : titleRole === 'poster'
@@ -1637,7 +1642,7 @@ export async function resolveStructuredTMDbImages(
     if (preferredUrl) {
       candidates.push({
         url: preferredUrl,
-        score: titleCandidate.score,
+        score: titleScore,
         role: preferredRole,
         reason: `TMDb ${preferredRole === 'poster' ? 'poster' : preferredRole === 'logo' || preferredRole === 'brand_backdrop' ? 'logo' : 'backdrop'} for ${titleCandidate.title}`,
       });
@@ -1657,7 +1662,7 @@ export async function resolveStructuredTMDbImages(
 
         candidates.push({
           url,
-          score: titleCandidate.score - (index * 2 + 1),
+          score: titleScore - (index * 2 + 1),
           role: titleRole,
           reason: `TMDb backdrop variant for ${titleCandidate.title}`,
         });
@@ -1667,18 +1672,34 @@ export async function resolveStructuredTMDbImages(
     if (input.limit > 1 && titleCandidate.logoUrl && preferredUrl !== titleCandidate.logoUrl) {
       candidates.push({
         url: titleCandidate.logoUrl,
-        score: titleCandidate.score - 10,
+        score: titleScore - 10,
         role: input.imageIntent === 'brand_backdrop' ? 'brand_backdrop' : 'logo',
         reason: `TMDb logo for ${titleCandidate.title}`,
       });
     }
+
+    if (
+      !stronglyPersonLed &&
+      input.primarySubject.type !== 'character' &&
+      Boolean(input.canonicalEntity?.franchise) &&
+      titleCandidate.logoUrl &&
+      input.imageIntent !== 'poster' &&
+      input.imageIntent !== 'person_portrait'
+    ) {
+      candidates.push({
+        url: titleCandidate.logoUrl,
+        score: titleScore + 10,
+        role: 'logo',
+        reason: `TMDb franchise logo fallback for ${titleCandidate.title}`,
+      });
+    }
   } else if (deferredCompanyLogo) {
-    deferredCompanyLogo.score += isPersonLedInput(input) ? 90 : 70;
+    deferredCompanyLogo.score += stronglyPersonLed ? 90 : 70;
     candidates.push(deferredCompanyLogo);
   }
 
   if (titleCandidate && deferredCompanyLogo && companyFallbackEligible && titleCandidate.projectContextOnly) {
-    deferredCompanyLogo.score += isPersonLedInput(input) ? 24 : 12;
+    deferredCompanyLogo.score += stronglyPersonLed ? 24 : 12;
     candidates.push(deferredCompanyLogo);
   }
 

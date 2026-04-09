@@ -1255,11 +1255,13 @@ const RSS_ARTICLE_PACKAGE_LABEL_PATTERNS = [
 const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
     { pattern: /\[\.\.\.\]/, code: 'CAPTION_RAW_SNIPPET_LEAK' },
     { pattern: /&#\d+;/, code: 'CAPTION_CONTAINS_HTML_ENTITY' },
+    { pattern: /&(?:#x[0-9a-f]+|[a-z]+);/i, code: 'CAPTION_CONTAINS_HTML_ENTITY' },
     { pattern: /\b(?:EXCLUSIVE|LISTEN|WATCH|REPORT|SCOOP|BREAKING|FIRST LOOK|SPOILER ALERT)\s*:/i, code: 'CAPTION_ARTICLE_PACKAGE_LABEL' },
     { pattern: /\bTV Revi\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\b0{3,}\s+Employees\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bCo-Star Refused\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bIt['’]s Time is the focus\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bPrequel With Season \d+\b/i, code: 'CAPTION_HEADLINE_JUNK' },
 ];
 
 const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
@@ -1278,16 +1280,12 @@ function hasGroundedRSSNamedEntities(context: RSSContext): boolean {
 }
 
 function stripHtmlTags(value: string): string {
-    return value
+    return decodeRSSHtmlEntities(value
         .replace(/<script[\s\S]*?<\/script>/gi, ' ')
         .replace(/<style[\s\S]*?<\/style>/gi, ' ')
         .replace(/<[^>]+>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;/gi, "'")
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim());
 }
 
 function decodeRSSHtmlEntities(value: string): string {
@@ -1641,7 +1639,15 @@ function isIncompleteRSSQuote(value: string): boolean {
         return true;
     }
 
+    if (/[,;:]$/.test(normalized)) {
+        return true;
+    }
+
     if (!/[.!?]$/.test(normalized) && /^[a-z"'â€œ]/.test(normalized) && normalized.length <= 60) {
+        return true;
+    }
+
+    if (!/[.!?]$/.test(normalized) && normalized.split(/\s+/).length <= 8) {
         return true;
     }
 
@@ -2076,6 +2082,7 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
     const extraction = buildHeuristicRssCaptionExtraction(context);
     const safePrimary = getSafeRSSResolvedSubject(context, extraction);
     const headline = getRSSHeadlineLine(normalized);
+    const normalizedHeadline = normalizeRSSHeadlineInput(headline);
 
     for (const entry of RSS_HARD_BLOCKED_OUTPUT_PATTERNS) {
         if (entry.pattern.test(caption)) {
@@ -2091,6 +2098,14 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
         reasonCodes.add('CAPTION_ARTICLE_PACKAGE_LABEL');
     }
 
+    if (
+        normalizedHeadline &&
+        (isMalformedRSSEntityJunk(normalizedHeadline) ||
+            RSS_ARTICLE_PACKAGE_LABEL_PATTERNS.some((pattern) => pattern.test(normalizedHeadline)))
+    ) {
+        reasonCodes.add('CAPTION_HEADLINE_JUNK');
+    }
+
     if (hasInvalidRSSJoinLead(normalized)) {
         reasonCodes.add('CAPTION_HEADLINE_JUNK');
     }
@@ -2101,6 +2116,11 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
 
     if (!safePrimary) {
         reasonCodes.add('CAPTION_UNRESOLVED_TITLE');
+    }
+
+    if (safePrimary && isMalformedRSSEntityJunk(safePrimary)) {
+        reasonCodes.add('CAPTION_UNRESOLVED_TITLE');
+        reasonCodes.add('CAPTION_HEADLINE_JUNK');
     }
 
     if (safePrimary && headline && !entityMatches(normalizeRSSHeadlineInput(headline), safePrimary) && context.canonicalEntity?.confidence && context.canonicalEntity.confidence >= 0.7) {

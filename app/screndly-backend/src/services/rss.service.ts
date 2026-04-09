@@ -1006,6 +1006,17 @@ function validateRSSFinalPublishState(
     resolvedImages = resolvedImages.slice(0, 1);
   }
 
+  if (
+    resolvedImages.length > 1 &&
+    (
+      resolvedImages.slice(1).some((image) => image.source === 'feed') ||
+      resolvedImages.slice(1).some((image) => image.url.trim() === resolvedImages[0]?.url.trim())
+    )
+  ) {
+    reasonCodes.add('IMAGE_INVALID_DUAL_SLOT');
+    resolvedImages = resolvedImages.slice(0, 1);
+  }
+
   for (const code of getRSSImageReasonCodes(resolvedImages, canonicalEntity)) {
     reasonCodes.add(code);
   }

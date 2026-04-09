@@ -2912,6 +2912,7 @@ function determineSmartImagePlan(
   const isListArticle = isListLikeArticle(article);
   const memorialStory = isMemorialStory(article);
   const personLedResponseStory = isPersonLedReportResponseStory(article.title, articleText);
+  const sequelOrCastingProjectStory = /\b(sequel|prequel|spin-?off|casting|left to cast|in development|entered production|production|filming)\b/i.test(articleText);
   const ensemblePeople = uniqueStrings([
     headlineCastingPerson,
     leadPerson,
@@ -3002,6 +3003,7 @@ function determineSmartImagePlan(
   ) {
     const personSubject = analysis.primarySubject.name;
     const projectSubject = projectAnchorForPersonStory || titleAnchor || inferredLeadProjectSubject;
+    const projectSupportIntent = (analysis.contextType === 'interview' || sequelOrCastingProjectStory) ? 'logo' : 'still';
     return buildVisualPlan(
       projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject) ? 'dual' : 'single',
       analysis,
@@ -3010,9 +3012,9 @@ function determineSmartImagePlan(
         ? buildImageSlotPlan(
             projectSubject,
             inferSlotType(projectSubject, articleText, 'franchise', analysis),
-            analysis.contextType === 'interview' ? 'logo' : 'still',
+            projectSupportIntent,
             analysis,
-            analysis.contextType === 'interview'
+            projectSupportIntent === 'logo'
           )
         : null,
       projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject)
@@ -3088,7 +3090,9 @@ function determineSmartImagePlan(
   } else if (
     (analysis.primarySubject.type === 'movie' || analysis.primarySubject.type === 'tv_show' || analysis.primarySubject.type === 'franchise') &&
     preferredCharacterSubject &&
-    titleAnchor
+    titleAnchor &&
+    subjectAppearsProminently(preferredCharacterSubject, article) &&
+    /\b(character|villain|hero|as|reprising|returning|returns?|plays?)\b/i.test(articleText)
   ) {
     primary = buildImageSlotPlan(preferredCharacterSubject, 'character', 'character_still', analysis, false);
     secondary = buildImageSlotPlan(
@@ -4813,6 +4817,29 @@ function buildFeedFallbackImages(
   }));
 }
 
+function canUseExplicitFeedFallback(
+  analysis: RSSSubjectAnalysis,
+  slot?: ImageSlotPlan | null
+): boolean {
+  if (
+    analysis.imageIntent === 'person_portrait' ||
+    analysis.contextType === 'interview' ||
+    analysis.contextType === 'industry'
+  ) {
+    return false;
+  }
+
+  if (!slot) {
+    return !(
+      analysis.primarySubject.type === 'actor' ||
+      analysis.primarySubject.type === 'director' ||
+      analysis.primarySubject.type === 'producer'
+    );
+  }
+
+  return slot.intent !== 'person_portrait' && slot.role !== 'person';
+}
+
 export async function resolveRelevantRSSImages(
   article: RSSImageSelectionArticle,
   options: {
@@ -4853,7 +4880,9 @@ export async function resolveRelevantRSSImages(
     )
     : [];
   if (sources.length === 0) {
-    return buildFeedFallbackImages(fallbackImages, limit);
+    return canUseExplicitFeedFallback(analysis)
+      ? buildFeedFallbackImages(fallbackImages, limit)
+      : [];
   }
 
   const shouldUseStructuredPairing = limit >= 2 &&
@@ -4890,7 +4919,9 @@ export async function resolveRelevantRSSImages(
         }
       }
 
-      return buildFeedFallbackImages(fallbackImages, limit);
+      return canUseExplicitFeedFallback(analysis, plan.primary)
+        ? buildFeedFallbackImages(fallbackImages, limit)
+        : [];
     }
 
     if (memorialStory && plan.primary.intent === 'person_portrait' && primaryResolved.role !== 'person') {
@@ -4905,7 +4936,9 @@ export async function resolveRelevantRSSImages(
     }
 
     if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(buildAnalysisForSlot(analysis, plan.primary), primaryResolved.image, primaryResolved.role)) {
-      return buildFeedFallbackImages(fallbackImages, limit);
+      return canUseExplicitFeedFallback(analysis, plan.primary)
+        ? buildFeedFallbackImages(fallbackImages, limit)
+        : [primaryResolved.image];
     }
 
     if (!plan.useTwoImages || !plan.secondary) {
@@ -4957,7 +4990,9 @@ export async function resolveRelevantRSSImages(
     options.openaiWebSearchModel
   );
   if (resolved.length === 0 && (allowProjectLinkedFeedFallback || rawProjectLinkedFeedFallback) && fallbackImages.length > 0) {
-    return buildFeedFallbackImages(fallbackImages, 1, 'Article project context image');
+    return canUseExplicitFeedFallback(analysis)
+      ? buildFeedFallbackImages(fallbackImages, 1, 'Article project context image')
+      : [];
   }
 
   return resolved;

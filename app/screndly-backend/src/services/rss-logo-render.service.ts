@@ -424,16 +424,35 @@ export async function renderTMDbLogoCard(
 }
 
 export function shouldRenderTMDbLogoCard(options: LogoRenderPolicyInput): boolean {
-  if (options.allowAsPrimary === false && options.canonicalEntityType === 'person') {
+  if (
+    options.allowAsPrimary === false &&
+    (options.intent === 'logo' || options.intent === 'brand_backdrop')
+  ) {
     return false;
   }
+
+  const normalizedPrimary = options.primarySubjectName?.trim().toLowerCase() || '';
+  const normalizedVisual = options.visualSubject?.trim().toLowerCase() || '';
 
   if (
     options.canonicalEntityType === 'person' &&
     options.intent === 'logo' &&
-    options.primarySubjectName &&
-    options.visualSubject &&
-    options.primarySubjectName.trim().toLowerCase() === options.visualSubject.trim().toLowerCase()
+    normalizedPrimary &&
+    normalizedVisual &&
+    normalizedPrimary === normalizedVisual
+  ) {
+    return false;
+  }
+
+  if (
+    (options.intent === 'logo' || options.intent === 'brand_backdrop') &&
+    options.canonicalEntityType &&
+    options.canonicalEntityType !== 'company' &&
+    options.canonicalEntityType !== 'platform' &&
+    options.canonicalEntityType !== 'franchise' &&
+    normalizedPrimary &&
+    normalizedVisual &&
+    normalizedPrimary !== normalizedVisual
   ) {
     return false;
   }

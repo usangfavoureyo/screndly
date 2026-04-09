@@ -112,6 +112,39 @@ function normalizeNumberArray(value: unknown): number[] {
   ));
 }
 
+function normalizeStringSetting(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeBooleanSetting(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
+}
+
+function normalizeNumberSetting(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeEnumString<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : fallback;
+}
+
+function readLocalStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch (error) {
+    console.error(`Failed to read localStorage key "${key}"`, error);
+    return null;
+  }
+}
+
+function writeLocalStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch (error) {
+    console.error(`Failed to write localStorage key "${key}"`, error);
+  }
+}
+
 function normalizePlatformSettings(
   value: unknown,
   fallback: Record<'x' | 'threads' | 'facebook' | 'youtube' | 'pinterest', boolean>,
@@ -131,11 +164,16 @@ function normalizePlatformSettings(
 
 function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
   const normalizedAnniversaryYears = getNormalizedUniqueAnniversaryYears(settings.anniversaryYears);
+  const validTmdbRegionOptions = TMDB_REGION_OPTIONS.map((option) => option.value);
 
   return {
     ...settings,
     openaiModel: normalizeAIModelId(settings.openaiModel, DEFAULT_MODELS.tmdb),
     tmdbCaptionModel: normalizeAIModelId(settings.tmdbCaptionModel, DEFAULT_MODELS.tmdb),
+    enableToday: normalizeBooleanSetting(settings.enableToday, defaultSettings.enableToday),
+    enableWeekly: normalizeBooleanSetting(settings.enableWeekly, defaultSettings.enableWeekly),
+    enableMonthly: normalizeBooleanSetting(settings.enableMonthly, defaultSettings.enableMonthly),
+    enableAnniversaries: normalizeBooleanSetting(settings.enableAnniversaries, defaultSettings.enableAnniversaries),
     preferredImageTypes: normalizePreferredImageTypes(
       settings.preferredImageTypes,
       settings.preferredImage,
@@ -150,10 +188,77 @@ function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
     movieGenres: normalizeNumberArray(settings.movieGenres),
     tvGenres: normalizeNumberArray(settings.tvGenres),
     selectedGenres: normalizeNumberArray(settings.selectedGenres),
+    anniversaryStartYear: normalizeStringSetting(settings.anniversaryStartYear, defaultSettings.anniversaryStartYear),
+    maxPerAnniversary: normalizeStringSetting(settings.maxPerAnniversary, defaultSettings.maxPerAnniversary),
+    todayMaxItems: normalizeStringSetting(settings.todayMaxItems, defaultSettings.todayMaxItems),
+    weeklyMaxItems: normalizeStringSetting(settings.weeklyMaxItems, defaultSettings.weeklyMaxItems),
+    monthlyMaxItems: normalizeStringSetting(settings.monthlyMaxItems, defaultSettings.monthlyMaxItems),
+    anniversaryMaxItems: normalizeStringSetting(settings.anniversaryMaxItems, defaultSettings.anniversaryMaxItems),
+    captionMaxLength: normalizeStringSetting(settings.captionMaxLength, defaultSettings.captionMaxLength),
+    includeCast: normalizeBooleanSetting(settings.includeCast, defaultSettings.includeCast),
+    includeDate: normalizeBooleanSetting(settings.includeDate, defaultSettings.includeDate),
+    rehostImages: normalizeBooleanSetting(settings.rehostImages, defaultSettings.rehostImages),
+    dedupeWindow: normalizeStringSetting(settings.dedupeWindow, defaultSettings.dedupeWindow),
+    tmdbQueuedRetentionHours: normalizeStringSetting(settings.tmdbQueuedRetentionHours, defaultSettings.tmdbQueuedRetentionHours),
+    tmdbActivityRetention: normalizeNumberSetting(settings.tmdbActivityRetention, defaultSettings.tmdbActivityRetention),
+    tmdbLogLevel: normalizeEnumString(settings.tmdbLogLevel, ['minimal', 'standard', 'full'] as const, defaultSettings.tmdbLogLevel),
+    discoveryCacheTTL: normalizeStringSetting(settings.discoveryCacheTTL, defaultSettings.discoveryCacheTTL),
+    creditsCacheTTL: normalizeStringSetting(settings.creditsCacheTTL, defaultSettings.creditsCacheTTL),
+    captionCacheTTL: normalizeStringSetting(settings.captionCacheTTL, defaultSettings.captionCacheTTL),
+    timezone: normalizeStringSetting(settings.timezone, defaultSettings.timezone),
+    tmdbDailyRefreshTime: normalizeStringSetting(settings.tmdbDailyRefreshTime, defaultSettings.tmdbDailyRefreshTime),
+    tmdbSchedulingMode: normalizeEnumString(settings.tmdbSchedulingMode, ['adaptive', 'fixed'] as const, defaultSettings.tmdbSchedulingMode),
+    postingWindowStart: normalizeStringSetting(settings.postingWindowStart, defaultSettings.postingWindowStart),
+    postingWindowEnd: normalizeStringSetting(settings.postingWindowEnd, defaultSettings.postingWindowEnd),
+    minGapBetweenPostsMinutes: normalizeStringSetting(settings.minGapBetweenPostsMinutes, defaultSettings.minGapBetweenPostsMinutes),
+    preferredGapBetweenSameModuleMinutes: normalizeStringSetting(settings.preferredGapBetweenSameModuleMinutes, defaultSettings.preferredGapBetweenSameModuleMinutes),
+    maxPostsPerDayOverall: normalizeStringSetting(settings.maxPostsPerDayOverall, defaultSettings.maxPostsPerDayOverall),
+    maxPostsPerModulePerDay: normalizeStringSetting(settings.maxPostsPerModulePerDay, defaultSettings.maxPostsPerModulePerDay),
+    reserveUrgentSlots: normalizeStringSetting(settings.reserveUrgentSlots, defaultSettings.reserveUrgentSlots),
+    weeklyOverflowPolicy: normalizeEnumString(settings.weeklyOverflowPolicy, ['DROP', 'HOLD_FOR_REVIEW', 'RESCHEDULE_WITH_REGEN'] as const, defaultSettings.weeklyOverflowPolicy),
+    monthlyOverflowPolicy: normalizeEnumString(settings.monthlyOverflowPolicy, ['DROP', 'HOLD_FOR_REVIEW', 'RESCHEDULE_WITH_REGEN'] as const, defaultSettings.monthlyOverflowPolicy),
+    weeklyRescheduleValidityDays: normalizeStringSetting(settings.weeklyRescheduleValidityDays, defaultSettings.weeklyRescheduleValidityDays),
+    monthlyRescheduleValidityDays: normalizeStringSetting(settings.monthlyRescheduleValidityDays, defaultSettings.monthlyRescheduleValidityDays),
+    todayAnniversaryUrgentPriority: normalizeBooleanSetting(settings.todayAnniversaryUrgentPriority, defaultSettings.todayAnniversaryUrgentPriority),
+    interleaveModules: normalizeBooleanSetting(settings.interleaveModules, defaultSettings.interleaveModules),
+    captionRegenOnScheduleChange: normalizeBooleanSetting(settings.captionRegenOnScheduleChange, defaultSettings.captionRegenOnScheduleChange),
+    minPopularityThreshold: normalizeNumberSetting(settings.minPopularityThreshold, defaultSettings.minPopularityThreshold),
+    anniversaryMinPopularityThreshold: normalizeNumberSetting(settings.anniversaryMinPopularityThreshold, defaultSettings.anniversaryMinPopularityThreshold),
+    onlyPopular: normalizeBooleanSetting(settings.onlyPopular, defaultSettings.onlyPopular),
+    tmdbRegion: normalizeEnumString(
+      typeof settings.tmdbRegion === 'string' ? settings.tmdbRegion.toUpperCase() : settings.tmdbRegion,
+      validTmdbRegionOptions,
+      defaultSettings.tmdbRegion,
+    ),
+    languageFilter: normalizeEnumString(settings.languageFilter, ['en', 'all'] as const, defaultSettings.languageFilter),
+    todayAutoPost: normalizeBooleanSetting(settings.todayAutoPost, defaultSettings.todayAutoPost),
+    weeklyAutoPost: normalizeBooleanSetting(settings.weeklyAutoPost, defaultSettings.weeklyAutoPost),
+    monthlyAutoPost: normalizeBooleanSetting(settings.monthlyAutoPost, defaultSettings.monthlyAutoPost),
+    anniversaryAutoPost: normalizeBooleanSetting(settings.anniversaryAutoPost, defaultSettings.anniversaryAutoPost),
     todayPlatforms: normalizePlatformSettings(settings.todayPlatforms, defaultSettings.todayPlatforms),
     weeklyPlatforms: normalizePlatformSettings(settings.weeklyPlatforms, defaultSettings.weeklyPlatforms),
     monthlyPlatforms: normalizePlatformSettings(settings.monthlyPlatforms, defaultSettings.monthlyPlatforms),
     anniversaryPlatforms: normalizePlatformSettings(settings.anniversaryPlatforms, defaultSettings.anniversaryPlatforms),
+    todayPrompt: normalizeStringSetting(settings.todayPrompt, defaultSettings.todayPrompt),
+    weeklyPrompt: normalizeStringSetting(settings.weeklyPrompt, defaultSettings.weeklyPrompt),
+    monthlyPrompt: normalizeStringSetting(settings.monthlyPrompt, defaultSettings.monthlyPrompt),
+    anniversaryPrompt: normalizeStringSetting(settings.anniversaryPrompt, defaultSettings.anniversaryPrompt),
+    todayPinterestTitlePrompt: normalizeStringSetting(settings.todayPinterestTitlePrompt, defaultSettings.todayPinterestTitlePrompt),
+    todayPinterestDescriptionPrompt: normalizeStringSetting(settings.todayPinterestDescriptionPrompt, defaultSettings.todayPinterestDescriptionPrompt),
+    todayPinterestBoard: normalizeStringSetting(settings.todayPinterestBoard, defaultSettings.todayPinterestBoard),
+    todayPinterestLinkStrategy: normalizeEnumString(settings.todayPinterestLinkStrategy, ['tmdb', 'screenrender'] as const, defaultSettings.todayPinterestLinkStrategy),
+    weeklyPinterestTitlePrompt: normalizeStringSetting(settings.weeklyPinterestTitlePrompt, defaultSettings.weeklyPinterestTitlePrompt),
+    weeklyPinterestDescriptionPrompt: normalizeStringSetting(settings.weeklyPinterestDescriptionPrompt, defaultSettings.weeklyPinterestDescriptionPrompt),
+    weeklyPinterestBoard: normalizeStringSetting(settings.weeklyPinterestBoard, defaultSettings.weeklyPinterestBoard),
+    weeklyPinterestLinkStrategy: normalizeEnumString(settings.weeklyPinterestLinkStrategy, ['tmdb', 'screenrender'] as const, defaultSettings.weeklyPinterestLinkStrategy),
+    monthlyPinterestTitlePrompt: normalizeStringSetting(settings.monthlyPinterestTitlePrompt, defaultSettings.monthlyPinterestTitlePrompt),
+    monthlyPinterestDescriptionPrompt: normalizeStringSetting(settings.monthlyPinterestDescriptionPrompt, defaultSettings.monthlyPinterestDescriptionPrompt),
+    monthlyPinterestBoard: normalizeStringSetting(settings.monthlyPinterestBoard, defaultSettings.monthlyPinterestBoard),
+    monthlyPinterestLinkStrategy: normalizeEnumString(settings.monthlyPinterestLinkStrategy, ['tmdb', 'screenrender'] as const, defaultSettings.monthlyPinterestLinkStrategy),
+    anniversaryPinterestTitlePrompt: normalizeStringSetting(settings.anniversaryPinterestTitlePrompt, defaultSettings.anniversaryPinterestTitlePrompt),
+    anniversaryPinterestDescriptionPrompt: normalizeStringSetting(settings.anniversaryPinterestDescriptionPrompt, defaultSettings.anniversaryPinterestDescriptionPrompt),
+    anniversaryPinterestBoard: normalizeStringSetting(settings.anniversaryPinterestBoard, defaultSettings.anniversaryPinterestBoard),
+    anniversaryPinterestLinkStrategy: normalizeEnumString(settings.anniversaryPinterestLinkStrategy, ['tmdb', 'screenrender'] as const, defaultSettings.anniversaryPinterestLinkStrategy),
     preferredImage: undefined,
   };
 }
@@ -663,12 +768,12 @@ export function TMDbSettings() {
   // Load settings from Backend + LocalStorage on mount
   useEffect(() => {
     async function load() {
-      const shouldInjectCultureCravePrompts = !localStorage.getItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
+      const shouldInjectCultureCravePrompts = !readLocalStorage(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY);
       const sharedSettings = initialSharedSettingsRef.current || {};
 
       // 1. Load Local (Fastest)
       let merged = normalizeTMDbSettings({ ...defaultSettings, ...sharedSettings });
-      const local = localStorage.getItem('screndly_tmdb_settings');
+      const local = readLocalStorage('screndly_tmdb_settings');
       if (local) {
         try {
           merged = normalizeTMDbSettings({ ...merged, ...JSON.parse(local) });
@@ -679,7 +784,7 @@ export function TMDbSettings() {
 
       if (!Array.isArray(merged.customAnniversaryYears) || merged.customAnniversaryYears.length === 0) {
         try {
-          const legacyCustomYears = localStorage.getItem('screndly_custom_anniversary_years');
+          const legacyCustomYears = readLocalStorage('screndly_custom_anniversary_years');
           if (legacyCustomYears) {
             const parsedLegacyYears = JSON.parse(legacyCustomYears);
             if (Array.isArray(parsedLegacyYears)) {
@@ -713,7 +818,7 @@ export function TMDbSettings() {
       }
 
       if (shouldInjectCultureCravePrompts) {
-        localStorage.setItem(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
+        writeLocalStorage(TMDB_CULTURE_CRAVE_PROMPTS_MIGRATION_KEY, 'true');
       }
       if (typeof merged.minPopularityThreshold !== 'number') {
         merged.minPopularityThreshold = (merged as { onlyPopular?: boolean }).onlyPopular === false ? 0 : 1;
@@ -746,8 +851,8 @@ export function TMDbSettings() {
     if (!isLoaded) return;
 
     // 1. LocalStorage (Instant)
-    localStorage.setItem('screndly_tmdb_settings', JSON.stringify(normalizeTMDbSettings(tmdbSettings)));
-    localStorage.setItem(
+    writeLocalStorage('screndly_tmdb_settings', JSON.stringify(normalizeTMDbSettings(tmdbSettings)));
+    writeLocalStorage(
       'screndly_custom_anniversary_years',
       JSON.stringify(tmdbSettings.customAnniversaryYears || [])
     );

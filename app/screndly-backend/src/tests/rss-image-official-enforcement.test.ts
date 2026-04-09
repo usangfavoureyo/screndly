@@ -308,5 +308,20 @@ test('treats James Gunn debunk story as person-led with Superman sequel fallback
   assert.equal(plan.primary.subject, 'James Gunn');
   assert.equal(plan.primary.intent, 'person_portrait');
   assert.equal(plan.secondary?.subject, 'Superman');
-  assert.equal(plan.secondary?.intent, 'still');
+  assert.equal(plan.secondary?.intent, 'logo');
+});
+
+test('project-led sequel stories do not promote supporting characters to the primary visual slot', () => {
+  const article = {
+    title: "'Superman' sequel 'Man of Tomorrow' is in casting as James Gunn narrows his search for Maxima",
+    description:
+      "Maxima is an alien queen in the film's storyline, with Adria Arjona, Eva De Dominici, Sydney Chandler, and Grace Van Patten among the finalists.",
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.notEqual(plan.primary.subject, 'Maxima');
+  assert.notEqual(plan.primary.intent, 'character_still');
+  assert.match(plan.primary.subject, /Superman|Man of Tomorrow/i);
 });
