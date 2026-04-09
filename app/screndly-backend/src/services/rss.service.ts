@@ -3409,17 +3409,18 @@ async function attemptRSSPublish(
       errorMessage: partialFailureMessage,
     };
   } catch (error) {
-    const fallbackImages = dedupeUrls([...(item.imageUrls || []), item.imageUrl]).map((url) => ({
-      url,
-      reason: 'Article body image',
-      source: 'feed' as const,
-    }));
+    const preservedResolvedImages = (item.selectedImages || [])
+      .filter((image) => typeof image?.url === 'string' && image.url.trim().length > 0)
+      .map((image) => ({
+        ...image,
+        reason: image.reason || 'Previously resolved image',
+      }));
     return {
       status: 'failed',
       caption: item.generatedCaption,
-      imageUrl: fallbackImages[0]?.url,
-      imageUrls: fallbackImages.map((image) => image.url),
-      resolvedImages: fallbackImages,
+      imageUrl: preservedResolvedImages[0]?.url,
+      imageUrls: preservedResolvedImages.map((image) => image.url),
+      resolvedImages: preservedResolvedImages,
       platformPostIds: item.platformPostIds || {},
       platformResults: item.platformResults || [],
       errorMessage: error instanceof Error ? error.message : 'Failed to process RSS item.',

@@ -4,7 +4,9 @@ import {
   estimateComposeStoryItemCount,
   getComposePlatformCompatibility,
   getComposeCompatibilityMap,
+  sanitizeComposeItem,
 } from '../../lib/create/composeMedia';
+import type { ComposeItem } from '../../types/compose';
 import type { ComposeMediaAsset } from '../../types/compose';
 
 function buildImageAsset(id: string): ComposeMediaAsset {
@@ -105,5 +107,30 @@ describe('composeMedia story compatibility', () => {
     expect(instagramStories.reason).toContain('story items after splitting videos longer than 60 seconds');
     expect(facebookStories.supported).toBe(false);
     expect(facebookStories.reason).toContain('story items after splitting videos longer than 60 seconds');
+  });
+
+  it('drops duplicate remote preview URLs from persisted compose items', () => {
+    const item: ComposeItem = {
+      id: 'persisted-item',
+      title: 'Persisted item',
+      status: 'draft',
+      mediaAssets: [
+        {
+          ...buildImageAsset('asset-persisted'),
+          previewUrl: 'https://authorized.example.com/asset-persisted.jpg?Authorization=abc123',
+          storageUrl: 'https://cdn.example.com/asset-persisted.jpg',
+        },
+      ],
+      platforms: ['instagram_stories'],
+      sharedCaption: 'Caption',
+      platformFields: {},
+      createdAt: '2026-04-09T10:00:00.000Z',
+      updatedAt: '2026-04-09T10:00:00.000Z',
+    };
+
+    const sanitized = sanitizeComposeItem(item);
+
+    expect(sanitized.mediaAssets[0]?.previewUrl).toBe('https://cdn.example.com/asset-persisted.jpg');
+    expect(sanitized.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/asset-persisted.jpg');
   });
 });

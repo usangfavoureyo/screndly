@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist, type StateStorage } from 'zustand/middleware';
 import type { ComposeItem, ComposeStatus } from '../types/compose';
 import { normalizeComposeItem, sanitizeComposeItem } from '../lib/create/composeMedia';
 
@@ -14,6 +14,111 @@ interface ComposeStoreState {
   getItemById: (itemId: string | null) => ComposeItem | undefined;
   updateStatus: (itemId: string, status: ComposeStatus, scheduledAt?: string) => void;
 }
+
+const COMPOSE_STORAGE_KEY = 'screndly-compose-store';
+const COMPOSE_PERSISTED_PUBLISHED_LIMIT = 8;
+
+type PersistedComposeState = {
+  state?: {
+    items?: ComposeItem[];
+    activeItemId?: string | null;
+    lastModifiedAt?: string | null;
+  };
+  version?: number;
+};
+
+function isStorageQuotaError(error: unknown) {
+  return error instanceof DOMException
+    && (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED');
+}
+
+function compactComposeItemsForPersistence(items: ComposeItem[]) {
+  const sanitizedItems = items.map(sanitizeComposeItem);
+  const nonPublishedItems = sanitizedItems.filter((item) => item.status !== 'published');
+  const recentPublishedItems = sanitizedItems
+    .filter((item) => item.status === 'published')
+    .slice(0, COMPOSE_PERSISTED_PUBLISHED_LIMIT);
+
+  return [...nonPublishedItems, ...recentPublishedItems].map((item) => ({
+    ...item,
+    sourceMetadata:
+      typeof item.sourceMetadata === 'string' && item.sourceMetadata.length > 2000
+        ? item.sourceMetadata.slice(0, 2000)
+        : item.sourceMetadata,
+    error:
+      typeof item.error === 'string' && item.error.length > 600
+        ? item.error.slice(0, 600)
+        : item.error,
+  }));
+}
+
+function compactPersistedComposeValue(rawValue: string) {
+  const parsed = JSON.parse(rawValue) as PersistedComposeState;
+  const items = Array.isArray(parsed?.state?.items) ? parsed.state.items : [];
+
+  return JSON.stringify({
+    ...parsed,
+    state: {
+      ...parsed.state,
+      items: compactComposeItemsForPersistence(items),
+    },
+  });
+}
+
+const composeStateStorage: StateStorage = {
+  getItem: (name) => {
+    if (typeof window === 'undefined') {
+      return null;
+    }
+
+    return window.localStorage.getItem(name);
+  },
+  setItem: (name, value) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(name, value);
+      return;
+    } catch (error) {
+      if (name !== COMPOSE_STORAGE_KEY || !isStorageQuotaError(error)) {
+        throw error;
+      }
+    }
+
+    try {
+      window.localStorage.setItem(name, compactPersistedComposeValue(value));
+    } catch (fallbackError) {
+      if (name !== COMPOSE_STORAGE_KEY || !isStorageQuotaError(fallbackError)) {
+        throw fallbackError;
+      }
+
+      console.warn('[ComposeStore] Local storage quota exceeded. Falling back to a minimal persisted compose snapshot.');
+      const parsed = JSON.parse(value) as PersistedComposeState;
+      const items = Array.isArray(parsed?.state?.items) ? parsed.state.items : [];
+      const activeItemId = parsed?.state?.activeItemId ?? null;
+      const minimalItems = compactComposeItemsForPersistence(items).filter(
+        (item) => item.status !== 'published' || item.id === activeItemId,
+      );
+
+      window.localStorage.setItem(name, JSON.stringify({
+        ...parsed,
+        state: {
+          ...parsed.state,
+          items: minimalItems,
+        },
+      }));
+    }
+  },
+  removeItem: (name) => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.removeItem(name);
+  },
+};
 
 export const useComposeStore = create<ComposeStoreState>()(
   persist(
@@ -71,9 +176,10 @@ export const useComposeStore = create<ComposeStoreState>()(
         })),
     }),
     {
-      name: 'screndly-compose-store',
+      name: COMPOSE_STORAGE_KEY,
+      storage: createJSONStorage(() => composeStateStorage),
       partialize: (state) => ({
-        items: state.items.map(sanitizeComposeItem),
+        items: compactComposeItemsForPersistence(state.items),
         activeItemId: state.activeItemId,
         lastModifiedAt: state.lastModifiedAt,
       }),

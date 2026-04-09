@@ -184,7 +184,7 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
     ...normalized,
     mediaAssets: normalized.mediaAssets.map((asset) => ({
       ...asset,
-      previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+      previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
       storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
       uploadStatus:
         asset.uploadStatus ??
@@ -254,7 +254,7 @@ function sanitizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnail
   if (!asset) return undefined;
   return {
     ...asset,
-    previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+    previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
     storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
     uploadStatus:
       asset.uploadStatus ??
@@ -279,7 +279,7 @@ function sanitizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): Compos
   if (!asset) return undefined;
   return {
     ...asset,
-    previewUrl: asset.previewUrl?.startsWith('blob:') ? asset.storageUrl : asset.previewUrl,
+    previewUrl: asset.storageUrl || (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
     storageUrl: asset.storageUrl ?? (asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl),
     uploadStatus:
       asset.uploadStatus ??
