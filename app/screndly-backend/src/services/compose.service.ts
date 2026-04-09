@@ -3,6 +3,9 @@ import { publisherService, type PublishContent, type PublishResult } from './pub
 
 const COMPOSE_STATE_KEY = 'composeState.v1';
 const THREADS_X_PLATFORMS = new Set(['threads', 'x']);
+const STORY_PLATFORMS = new Set(['instagram_stories', 'facebook_stories']);
+const STORY_MAX_ITEMS = 4;
+const STORY_VIDEO_SEGMENT_SECONDS = 60;
 
 type ComposeStateItem = Record<string, any>;
 
@@ -235,6 +238,22 @@ function getAssetUrls(item: ComposeStateItem): string[] {
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
 }
 
+function getAssetDurationSeconds(asset?: Record<string, any> | null): number | undefined {
+  const duration = Number(asset?.durationSeconds);
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+}
+
+function estimateStoryItemCount(mediaAssets: Array<Record<string, any>>): number {
+  return mediaAssets.reduce((total, asset) => {
+    if (asset.kind !== 'video') {
+      return total + 1;
+    }
+
+    const durationSeconds = getAssetDurationSeconds(asset) ?? STORY_VIDEO_SEGMENT_SECONDS;
+    return total + Math.max(1, Math.ceil(durationSeconds / STORY_VIDEO_SEGMENT_SECONDS));
+  }, 0);
+}
+
 function buildAssetSignature(asset?: Record<string, any> | null): string {
   if (!asset) return '';
   return [
@@ -300,7 +319,7 @@ function getPinterestBoardId(item: ComposeStateItem): string | undefined {
   return typeof board === 'string' && board.trim().length > 0 ? board.trim() : undefined;
 }
 
-function validateScheduledComposeItem(item: ComposeStateItem): string | undefined {
+export function validateScheduledComposeItem(item: ComposeStateItem): string | undefined {
   const platforms = Array.isArray(item.platforms) ? item.platforms : [];
   if (platforms.length === 0) {
     return 'Select at least one platform before scheduling.';
@@ -317,31 +336,61 @@ function validateScheduledComposeItem(item: ComposeStateItem): string | undefine
   }
 
   if (mediaSummary.kind === 'multi-image') {
-    const supportsMultiImage = new Set(['x', 'threads', 'facebook_feed']);
     for (const platform of platforms) {
-      if (supportsMultiImage.has(platform)) {
-        continue;
+      switch (platform) {
+        case 'x':
+        case 'threads':
+          if (mediaSummary.totalAssets > 4) {
+            return 'X and Threads currently support up to 4 images in this post flow.';
+          }
+          break;
+        case 'facebook_feed':
+          if (mediaSummary.totalAssets > 3) {
+            return 'Facebook Feed currently supports up to 3 images in this post flow.';
+          }
+          break;
+        case 'instagram_stories':
+        case 'facebook_stories':
+          if (mediaSummary.totalAssets > STORY_MAX_ITEMS) {
+            return 'Instagram Stories and Facebook Stories currently support up to 4 story items in this post flow.';
+          }
+          break;
+        default:
+          return 'Only Facebook Feed, Instagram Stories, Facebook Stories, X, and Threads support multiple images in the current scheduling flow.';
       }
-      return 'Only Facebook Feed, X, and Threads support multiple images in the current scheduling flow.';
-    }
-
-    const maxItems = platforms.includes('facebook_feed') ? 3 : 4;
-    if (mediaSummary.totalAssets > maxItems) {
-      return platforms.includes('facebook_feed')
-        ? 'Facebook Feed currently supports up to 3 images in this post flow.'
-        : 'X and Threads currently support up to 4 images in this post flow.';
     }
 
     return undefined;
   }
 
-  if (mediaSummary.kind === 'mixed-media' || mediaSummary.kind === 'multi-video') {
+  if (mediaSummary.kind === 'mixed-media') {
     return 'Mixed image/video sets and multiple videos are not supported for scheduling in this post flow.';
+  }
+
+  if (mediaSummary.kind === 'multi-video') {
+    for (const platform of platforms) {
+      if (!STORY_PLATFORMS.has(platform)) {
+        return 'Multiple videos are only supported for Instagram Stories and Facebook Stories in this post flow.';
+      }
+    }
+
+    if (estimateStoryItemCount(mediaSummary.mediaAssets) > STORY_MAX_ITEMS) {
+      return 'Instagram Stories and Facebook Stories support up to 4 story items after splitting videos longer than 60 seconds.';
+    }
+
+    return undefined;
   }
 
   const primaryAsset = getPrimaryAsset(item);
   if (!primaryAsset) {
     return 'Upload one media item before scheduling.';
+  }
+
+  if (primaryAsset.kind === 'video') {
+    const storyPlatformsSelected = platforms.some((platform) => STORY_PLATFORMS.has(platform));
+    if (storyPlatformsSelected && estimateStoryItemCount(mediaSummary.mediaAssets) > STORY_MAX_ITEMS) {
+      return 'Instagram Stories and Facebook Stories support up to 4 story items after splitting videos longer than 60 seconds.';
+    }
   }
 
   if (primaryAsset.kind === 'video') {
@@ -380,6 +429,7 @@ function buildPublishContent(item: ComposeStateItem, platform: string, primaryAs
       || caption,
     imageUrl,
     imageUrls: mediaSummary.kind === 'multi-image' ? assetUrls : undefined,
+    videoUrls: mediaSummary.kind === 'multi-video' ? assetUrls : undefined,
     videoUrl,
   };
 }
@@ -393,7 +443,7 @@ function formatFailedResults(results: PublishResult[] = []): Array<{ platform: s
     }));
 }
 
-export async function publishComposeItemFromState(item: ComposeStateItem): Promise<ComposePublishOutcome> {
+async function publishComposeItemInternal(item: ComposeStateItem): Promise<ComposePublishOutcome> {
   const validationError = validateScheduledComposeItem(item);
   if (validationError) {
     throw new Error(validationError);
@@ -451,4 +501,22 @@ export async function publishComposeItemFromState(item: ComposeStateItem): Promi
     failedResults,
     errorMessage,
   };
+}
+
+export async function publishComposeItemFromState(item: ComposeStateItem): Promise<ComposePublishOutcome> {
+  const normalizedItem = normalizeComposeItem(item);
+  if (!normalizedItem) {
+    throw new Error('Invalid compose item.');
+  }
+
+  return publishComposeItemInternal(normalizedItem);
+}
+
+export async function publishComposeItemInput(item: unknown): Promise<ComposePublishOutcome> {
+  const normalizedItem = normalizeComposeItem(item);
+  if (!normalizedItem) {
+    throw new Error('Invalid compose item payload.');
+  }
+
+  return publishComposeItemInternal(normalizedItem);
 }

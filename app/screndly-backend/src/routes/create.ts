@@ -9,7 +9,7 @@ import { Readable } from 'stream';
 import sharp from 'sharp';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
-import { getComposeState, mergeComposeState } from '../services/compose.service';
+import { getComposeState, mergeComposeState, publishComposeItemInput } from '../services/compose.service';
 import { trimTMDbLogoOuterBorderBuffer } from '../services/rss-logo-render.service';
 
 const router = Router();
@@ -258,6 +258,23 @@ router.put('/state', authenticate, async (req, res) => {
     res.status(500).json({
       success: false,
       error: { message: error instanceof Error ? error.message : 'Failed to save compose state' },
+    });
+  }
+});
+
+router.post('/publish-item', authenticate, async (req, res) => {
+  try {
+    const outcome = await publishComposeItemInput(req.body?.item);
+
+    return res.json({
+      success: true,
+      data: outcome,
+    });
+  } catch (error) {
+    console.error('Error publishing compose item:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to publish compose item' },
     });
   }
 });

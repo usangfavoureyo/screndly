@@ -747,6 +747,7 @@ export function ComposeEditorPage({
         try {
           const metadata = await extractVideoMetadata(file);
           return buildComposeMediaAsset(file, formState.mediaAssets.length + index, {
+            durationSeconds: metadata.duration,
             width: metadata.width,
             height: metadata.height,
             aspectRatioValue: metadata.aspectRatioValue,

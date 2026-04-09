@@ -3,6 +3,13 @@ import sharp from 'sharp';
 import { uploadBufferToBackblaze } from './backblaze';
 
 type LogoCardIntent = 'logo' | 'brand_backdrop';
+type LogoRenderPolicyInput = {
+  intent: LogoCardIntent;
+  canonicalEntityType?: 'movie' | 'tv' | 'person' | 'character' | 'franchise' | 'company' | 'platform' | 'unknown';
+  primarySubjectName?: string;
+  visualSubject?: string;
+  allowAsPrimary?: boolean;
+};
 
 type RGB = { r: number; g: number; b: number };
 type LogoBounds = { left: number; top: number; width: number; height: number };
@@ -414,6 +421,24 @@ export async function renderTMDbLogoCard(
   );
 
   return uploaded.url;
+}
+
+export function shouldRenderTMDbLogoCard(options: LogoRenderPolicyInput): boolean {
+  if (options.allowAsPrimary === false && options.canonicalEntityType === 'person') {
+    return false;
+  }
+
+  if (
+    options.canonicalEntityType === 'person' &&
+    options.intent === 'logo' &&
+    options.primarySubjectName &&
+    options.visualSubject &&
+    options.primarySubjectName.trim().toLowerCase() === options.visualSubject.trim().toLowerCase()
+  ) {
+    return false;
+  }
+
+  return true;
 }
 
 export async function renderTMDbBackdropLogoComposite(

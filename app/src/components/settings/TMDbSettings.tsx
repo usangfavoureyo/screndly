@@ -100,7 +100,38 @@ function normalizePreferredImageTypes(
   return ['poster'];
 }
 
+function normalizeNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(new Set(
+    value
+      .map((entry) => Number(entry))
+      .filter((entry) => Number.isFinite(entry))
+  ));
+}
+
+function normalizePlatformSettings(
+  value: unknown,
+  fallback: Record<'x' | 'threads' | 'facebook' | 'youtube' | 'pinterest', boolean>,
+) {
+  if (!value || typeof value !== 'object') {
+    return { ...fallback };
+  }
+
+  return {
+    x: typeof (value as Record<string, unknown>).x === 'boolean' ? (value as Record<string, boolean>).x : fallback.x,
+    threads: typeof (value as Record<string, unknown>).threads === 'boolean' ? (value as Record<string, boolean>).threads : fallback.threads,
+    facebook: typeof (value as Record<string, unknown>).facebook === 'boolean' ? (value as Record<string, boolean>).facebook : fallback.facebook,
+    youtube: typeof (value as Record<string, unknown>).youtube === 'boolean' ? (value as Record<string, boolean>).youtube : fallback.youtube,
+    pinterest: typeof (value as Record<string, unknown>).pinterest === 'boolean' ? (value as Record<string, boolean>).pinterest : fallback.pinterest,
+  };
+}
+
 function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
+  const normalizedAnniversaryYears = getNormalizedUniqueAnniversaryYears(settings.anniversaryYears);
+
   return {
     ...settings,
     openaiModel: normalizeAIModelId(settings.openaiModel, DEFAULT_MODELS.tmdb),
@@ -109,6 +140,20 @@ function normalizeTMDbSettings<T extends Record<string, any>>(settings: T): T {
       settings.preferredImageTypes,
       settings.preferredImage,
     ),
+    anniversaryYears: normalizedAnniversaryYears.length > 0
+      ? normalizedAnniversaryYears
+      : [...DEFAULT_ANNIVERSARY_YEARS],
+    customAnniversaryYears: getVisibleCustomAnniversaryYears(
+      normalizedAnniversaryYears.length > 0 ? normalizedAnniversaryYears : DEFAULT_ANNIVERSARY_YEARS,
+      settings.customAnniversaryYears,
+    ),
+    movieGenres: normalizeNumberArray(settings.movieGenres),
+    tvGenres: normalizeNumberArray(settings.tvGenres),
+    selectedGenres: normalizeNumberArray(settings.selectedGenres),
+    todayPlatforms: normalizePlatformSettings(settings.todayPlatforms, defaultSettings.todayPlatforms),
+    weeklyPlatforms: normalizePlatformSettings(settings.weeklyPlatforms, defaultSettings.weeklyPlatforms),
+    monthlyPlatforms: normalizePlatformSettings(settings.monthlyPlatforms, defaultSettings.monthlyPlatforms),
+    anniversaryPlatforms: normalizePlatformSettings(settings.anniversaryPlatforms, defaultSettings.anniversaryPlatforms),
     preferredImage: undefined,
   };
 }

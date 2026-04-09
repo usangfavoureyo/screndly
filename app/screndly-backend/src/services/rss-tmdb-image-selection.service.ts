@@ -1,6 +1,7 @@
 import { getTmdbApiKey } from './tmdb.service';
 import { trackApiUsage } from './api-usage.service';
-import { renderTMDbLogoCard } from './rss-logo-render.service';
+import { type RSSCanonicalEntity } from './ai.service';
+import { renderTMDbLogoCard, shouldRenderTMDbLogoCard } from './rss-logo-render.service';
 import { uploadBufferToBackblaze } from './backblaze';
 import sharp from 'sharp';
 
@@ -48,6 +49,7 @@ export interface StructuredRSSTMDbSelectionInput {
     name: string;
     type: RSSSubjectType;
   };
+  canonicalEntity?: RSSCanonicalEntity;
   visualSubject: string;
   secondarySubjects?: string[];
   imageIntent: RSSImageIntent;
@@ -959,7 +961,10 @@ function buildInstallmentFallbackQueries(title: string, mediaType: CanonicalTMDb
 function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): CanonicalTMDbEntity {
   const combinedText = buildDisambiguationText(input);
   const candidates = buildEntityCandidates(input);
-  const primaryName = input.primarySubject.name.trim() || input.visualSubject.trim() || input.contextProject?.trim() || candidates[0] || '';
+  const canonicalPrimary = input.canonicalEntity?.primarySubject?.trim();
+  const canonicalMediaTitle = input.canonicalEntity?.mediaTitle?.trim();
+  const canonicalFranchise = input.canonicalEntity?.franchise?.trim();
+  const primaryName = canonicalPrimary || canonicalMediaTitle || input.primarySubject.name.trim() || input.visualSubject.trim() || input.contextProject?.trim() || candidates[0] || '';
   const inferredMediaType = inferDisambiguationMediaType(input, combinedText);
   const primaryUsage = classifyContextSensitiveEntityUsage(primaryName, combinedText);
 
@@ -1001,14 +1006,14 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
     }
   }
 
-  const specificTitle = input.contextProject?.trim() || input.visualSubject.trim() || primaryName;
+  const specificTitle = canonicalMediaTitle || input.contextProject?.trim() || input.visualSubject.trim() || primaryName;
   const tmdbType = inferredMediaType === 'tv' ? 'tv' : inferredMediaType === 'movie' ? 'movie' : 'multi';
   const installmentFallbackQueries = buildInstallmentFallbackQueries(specificTitle, inferredMediaType);
   return {
     name: primaryName,
     specificTitle,
     mediaType: inferredMediaType,
-    franchise: input.primarySubject.type === 'franchise' ? primaryName : undefined,
+    franchise: canonicalFranchise || (input.primarySubject.type === 'franchise' ? primaryName : undefined),
     tmdbType,
     tmdbQuery: specificTitle,
     alternateQueries: uniqueStrings([
@@ -1483,7 +1488,10 @@ function dedupeResolvedImages(images: ResolvedStructuredTMDbImage[], excludeUrls
   });
 }
 
-async function finalizeResolvedImage(image: ResolvedStructuredTMDbImage): Promise<ResolvedStructuredTMDbImage> {
+async function finalizeResolvedImage(
+  image: ResolvedStructuredTMDbImage,
+  input: StructuredRSSTMDbSelectionInput
+): Promise<ResolvedStructuredTMDbImage> {
   if (image.role === 'person') {
     try {
       const response = await fetch(image.url);
@@ -1527,6 +1535,16 @@ async function finalizeResolvedImage(image: ResolvedStructuredTMDbImage): Promis
   }
 
   if (image.role !== 'logo' && image.role !== 'brand_backdrop') {
+    return image;
+  }
+
+  if (!shouldRenderTMDbLogoCard({
+    intent: image.role === 'brand_backdrop' ? 'brand_backdrop' : 'logo',
+    canonicalEntityType: input.canonicalEntity?.entityType,
+    primarySubjectName: input.canonicalEntity?.primarySubject || input.primarySubject.name,
+    visualSubject: input.visualSubject,
+    allowAsPrimary: input.imageIntent === 'logo' || input.imageIntent === 'brand_backdrop',
+  })) {
     return image;
   }
 
@@ -1671,7 +1689,7 @@ export async function resolveStructuredTMDbImages(
 
   const finalized: ResolvedStructuredTMDbImage[] = [];
   for (const image of deduped) {
-    finalized.push(await finalizeResolvedImage(image));
+    finalized.push(await finalizeResolvedImage(image, input));
   }
 
   return finalized;

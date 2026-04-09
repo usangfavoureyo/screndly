@@ -6,12 +6,16 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { JSDOM } from 'jsdom';
 import Parser from 'rss-parser';
-import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, __rssCaptionTestUtils } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
 
 const RSS_IMAGE_ANALYSIS_MODEL = DEFAULT_OPENAI_MODEL;
+const {
+  buildHeuristicRssCaptionExtraction,
+  getRSSCaptionHardInvalidReasonCodes,
+} = __rssCaptionTestUtils;
 
 export interface RSSFeedFilters {
   scope: 'title' | 'body' | 'title_or_body' | 'title_and_body';
@@ -88,6 +92,7 @@ interface RSSItem {
   contentHtml?: string;
   author?: string;
   guid?: string;
+  canonicalEntity?: RSSCanonicalEntity;
 }
 
 interface RSSFeedData {
@@ -888,6 +893,128 @@ function extractStoredImageSourceSettings(
   }
 
   return resolved;
+}
+
+function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSCanonicalEntity {
+  const extraction = buildHeuristicRssCaptionExtraction({
+    articleTitle: item.title,
+    feedName: '',
+    summary: sanitizeRSSPlainText(item.description || ''),
+    articleBody: sanitizeRSSPlainText(item.contentHtml || ''),
+    articleContentHtml: item.contentHtml,
+    platform: 'Threads',
+  });
+
+  const namedPeople = (extraction.named_people || []).filter(Boolean);
+  const namedCharacters = (extraction.named_characters || []).filter(Boolean);
+  const allowedEntities = Array.from(new Set([
+    extraction.primary_subject,
+    extraction.secondary_subject,
+    extraction.media_title,
+    extraction.franchise_or_universe,
+    ...namedPeople,
+    ...namedCharacters,
+  ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)));
+
+  let entityType: RSSCanonicalEntity['entityType'] = 'unknown';
+  if (extraction.media_title) {
+    entityType = /\bseason|episode|series|show\b/i.test(`${item.title} ${item.description || ''} ${item.contentHtml || ''}`) ? 'tv' : 'movie';
+  } else if (namedPeople.length > 0) {
+    entityType = 'person';
+  } else if (extraction.franchise_or_universe) {
+    entityType = 'franchise';
+  } else if (extraction.studio_or_platform) {
+    entityType = /\b(netflix|max|prime|apple tv|disney\+|hulu|peacock|paramount\+)\b/i.test(extraction.studio_or_platform)
+      ? 'platform'
+      : 'company';
+  }
+
+  return {
+    primarySubject: extraction.primary_subject,
+    secondarySubject: extraction.secondary_subject,
+    mediaTitle: extraction.media_title,
+    franchise: extraction.franchise_or_universe,
+    entityType,
+    eventType: extraction.event_type,
+    spoilerLevel: extraction.spoiler_level,
+    namedPeople,
+    namedCharacters,
+    allowedEntities,
+    confidence: extraction.extraction_confidence,
+    ambiguityFlags: extraction.ambiguity_flags,
+  };
+}
+
+function ensureRSSCanonicalEntity(item: RSSItem): RSSCanonicalEntity {
+  if (item.canonicalEntity) {
+    return item.canonicalEntity;
+  }
+
+  const canonical = buildRSSCanonicalEntity(item);
+  item.canonicalEntity = canonical;
+  return canonical;
+}
+
+function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSSCanonicalEntity): string[] {
+  const reasonCodes = new Set<string>();
+  const allowed = (canonicalEntity.allowedEntities || []).map((entry) => entry.toLowerCase());
+  const expectedPrimary = (canonicalEntity.primarySubject || canonicalEntity.mediaTitle || '').toLowerCase();
+
+  if (images.length > 1 && images.some((image) => !image.url || !image.url.trim())) {
+    reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
+  }
+
+  for (const image of images) {
+    const normalizedReason = `${image.reason || ''}`.toLowerCase();
+    if (/\banime\b|\billustration\b|\bcartoon\b/.test(normalizedReason) && canonicalEntity.entityType !== 'character') {
+      reasonCodes.add('IMAGE_MEDIA_TYPE_MISMATCH');
+    }
+    if ((/logo/.test(normalizedReason) || /brand backdrop/.test(normalizedReason)) && canonicalEntity.entityType === 'person') {
+      reasonCodes.add('IMAGE_LOGO_OVERUSE');
+    }
+    if (
+      expectedPrimary &&
+      image.source !== 'feed' &&
+      allowed.length > 0 &&
+      !allowed.some((entity) => normalizedReason.includes(entity.toLowerCase())) &&
+      !normalizedReason.includes(expectedPrimary)
+    ) {
+      reasonCodes.add('IMAGE_CANONICAL_ENTITY_MISMATCH');
+    }
+  }
+
+  return [...reasonCodes];
+}
+
+function validateRSSFinalPublishState(
+  caption: string,
+  images: RSSResolvedImage[],
+  canonicalEntity: RSSCanonicalEntity,
+): { valid: boolean; reasonCodes: string[]; resolvedImages: RSSResolvedImage[] } {
+  const reasonCodes = new Set<string>(getRSSCaptionHardInvalidReasonCodes(caption, {
+    articleTitle: canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
+    feedName: '',
+    summary: '',
+    platform: 'Threads',
+    allowedEntities: canonicalEntity.allowedEntities,
+    canonicalEntity,
+  }));
+  let resolvedImages = [...images];
+
+  if (resolvedImages.length > 1 && resolvedImages.slice(1).some((image) => !image.url || !image.url.trim())) {
+    reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
+    resolvedImages = resolvedImages.slice(0, 1);
+  }
+
+  for (const code of getRSSImageReasonCodes(resolvedImages, canonicalEntity)) {
+    reasonCodes.add(code);
+  }
+
+  return {
+    valid: reasonCodes.size === 0,
+    reasonCodes: [...reasonCodes],
+    resolvedImages,
+  };
 }
 
 function withStoredImageSourceSettings(
@@ -2050,7 +2177,7 @@ function releaseRSSPublishClaim(feedId: string, item: RSSItem): void {
 }
 
 function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
-  return {
+  return ({
     title: item.title,
     link: item.link,
     description: item.description,
@@ -2080,7 +2207,8 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     contentHtml: item.contentHtml ?? null,
     author: item.author ?? null,
     guid: item.guid ?? null,
-  } satisfies Prisma.InputJsonValue;
+    canonicalEntity: item.canonicalEntity ?? null,
+  }) as Prisma.InputJsonValue;
 }
 
 function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
@@ -2172,6 +2300,9 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
     contentHtml: typeof value.contentHtml === 'string' ? value.contentHtml : undefined,
     author: typeof value.author === 'string' ? value.author : undefined,
     guid: typeof value.guid === 'string' ? value.guid : undefined,
+    canonicalEntity: value.canonicalEntity && typeof value.canonicalEntity === 'object' && !Array.isArray(value.canonicalEntity)
+      ? value.canonicalEntity as RSSCanonicalEntity
+      : undefined,
   };
 }
 
@@ -2241,6 +2372,7 @@ async function resolveRSSItemImages(
   limit: number,
   runtimeSettings?: Pick<RSSRuntimeSettings, 'rssImageWebSearchModel'>
 ): Promise<RSSResolvedImage[]> {
+  const canonicalEntity = ensureRSSCanonicalEntity(item);
   const resolvedImages = await resolveRelevantRSSImages(
     {
       title: item.title,
@@ -2249,6 +2381,7 @@ async function resolveRSSItemImages(
       author: item.author,
       generatedCaption: item.generatedCaption,
       fallbackImages: dedupeUrls([...(item.imageUrls || []), item.imageUrl]),
+      canonicalEntity,
     },
     {
       serperEnabled: feed.serperEnabled ?? true,
@@ -2456,6 +2589,11 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
   };
 
   [
+    ...(item.canonicalEntity?.allowedEntities || []),
+    item.canonicalEntity?.primarySubject,
+    item.canonicalEntity?.secondarySubject,
+    item.canonicalEntity?.mediaTitle,
+    item.canonicalEntity?.franchise,
     ...extractQuotedRSSCaptionEntities(item.title || ''),
     ...extractQuotedRSSCaptionEntities(item.description || ''),
     ...extractNamedRSSCaptionEntities(item.title || ''),
@@ -3081,6 +3219,7 @@ async function attemptRSSPublish(
     }
 > {
   try {
+    const canonicalEntity = ensureRSSCanonicalEntity(item);
     const previousPlatformPostIds = item.platformPostIds || {};
     const previousPlatformResults = item.platformResults || [];
     const remainingPlatforms = platforms.filter((platform) => !previousPlatformPostIds[platform]);
@@ -3123,7 +3262,19 @@ async function attemptRSSPublish(
       maxLength: runtimeSettings.rssCaptionMaxLength,
       speculationAssessment,
     });
-    const shouldReuseStoredCaption = Object.keys(previousPlatformPostIds).length > 0 && Boolean(item.generatedCaption?.trim());
+    const shouldReuseStoredCaption =
+      Object.keys(previousPlatformPostIds).length > 0 &&
+      Boolean(item.generatedCaption?.trim()) &&
+      getRSSCaptionHardInvalidReasonCodes(item.generatedCaption || '', {
+        articleTitle: item.title,
+        feedName: feed.name,
+        summary: sanitizeRSSPlainText(item.description),
+        articleBody: sanitizeRSSPlainText(item.contentHtml),
+        articleContentHtml: item.contentHtml,
+        platform: 'X',
+        allowedEntities: canonicalEntity.allowedEntities,
+        canonicalEntity,
+      }).length === 0;
     const captionSource = shouldReuseStoredCaption ? item.generatedCaption! : await aiService.generateRSSCaption(
       {
         articleTitle: item.title,
@@ -3134,12 +3285,30 @@ async function attemptRSSPublish(
         platform: 'X',
         selectedVisuals: buildRSSCaptionVisualContext(item, publishImages),
         allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
+        canonicalEntity,
       },
       normalizeAIModel(runtimeSettings.rssCaptionModel),
       systemPrompt,
       runtimeSettings.rssCaptionTemperature
     );
     const caption = sanitizeRSSCaptionText(captionSource, runtimeSettings.rssCaptionMaxLength);
+    const publishValidation = validateRSSFinalPublishState(caption, publishImages, canonicalEntity);
+    const resolvedPublishImages = publishValidation.resolvedImages;
+    const resolvedPublishImageUrls = resolvedPublishImages.map((image) => image.url).filter(Boolean);
+    const resolvedPublishImageUrl = resolvedPublishImageUrls[0];
+
+    if (!publishValidation.valid) {
+      return {
+        status: 'failed',
+        caption,
+        imageUrl: resolvedPublishImageUrl,
+        imageUrls: resolvedPublishImageUrls,
+        resolvedImages: resolvedPublishImages,
+        platformPostIds: previousPlatformPostIds,
+        platformResults: prunePlatformResultsForPrePublishFailure(previousPlatformResults),
+        errorMessage: `Publishing blocked by RSS validation: ${publishValidation.reasonCodes.join(', ') || 'invalid final state'}.`,
+      };
+    }
 
     console.log('[RSS][Publish] Starting platform publish batch', {
       feedId: feed.id,
@@ -3151,7 +3320,7 @@ async function attemptRSSPublish(
     });
     const publishResults = await publisherService.publish(
       remainingPlatforms,
-      buildRSSPublishPayload(item, caption, publishImageUrls, feed, remainingPlatforms)
+      buildRSSPublishPayload(item, caption, resolvedPublishImageUrls, feed, remainingPlatforms)
     );
     console.log('[RSS][Publish] Completed platform publish batch', {
       feedId: feed.id,
@@ -3191,9 +3360,9 @@ async function attemptRSSPublish(
       return {
         status: 'failed',
         caption,
-        imageUrl: publishImageUrl,
-        imageUrls: publishImageUrls,
-        resolvedImages: publishImages,
+        imageUrl: resolvedPublishImageUrl,
+        imageUrls: resolvedPublishImageUrls,
+        resolvedImages: resolvedPublishImages,
         platformPostIds,
         platformResults,
         errorMessage: publishResults
@@ -3206,9 +3375,9 @@ async function attemptRSSPublish(
       return {
         status: 'pending',
         caption,
-        imageUrl: publishImageUrl,
-        imageUrls: publishImageUrls,
-        resolvedImages: publishImages,
+        imageUrl: resolvedPublishImageUrl,
+        imageUrls: resolvedPublishImageUrls,
+        resolvedImages: resolvedPublishImages,
         successfulPlatforms,
         remainingPlatforms: unresolvedPlatforms,
         platformPostIds,
@@ -3220,9 +3389,9 @@ async function attemptRSSPublish(
     return {
       status: 'published',
       caption,
-      imageUrl: publishImageUrl,
-      imageUrls: publishImageUrls,
-      resolvedImages: publishImages,
+        imageUrl: resolvedPublishImageUrl,
+        imageUrls: resolvedPublishImageUrls,
+        resolvedImages: resolvedPublishImages,
       successfulPlatforms,
       platformPostIds,
       platformResults,
@@ -4605,6 +4774,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   }
 
   const runtimeSettings = await getRuntimeSettings();
+  previewItem.canonicalEntity = ensureRSSCanonicalEntity(previewItem);
   const speculationAssessment = assessRSSArticleSpeculation(previewItem);
   if (speculationAssessment.shouldSkipPublish) {
     const message = buildRSSSpeculationFilterReason(speculationAssessment);
@@ -4642,24 +4812,34 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       platform: 'X',
       selectedVisuals: buildRSSCaptionVisualContext(previewItem, resolvedImages),
       allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),
+      canonicalEntity: previewItem.canonicalEntity,
     },
     normalizeAIModel(runtimeSettings.rssCaptionModel),
     systemPrompt,
     runtimeSettings.rssCaptionTemperature
   );
   const sanitizedCaption = sanitizeRSSCaptionText(caption, runtimeSettings.rssCaptionMaxLength);
+  const previewValidation = validateRSSFinalPublishState(
+    sanitizedCaption,
+    resolvedImages,
+    previewItem.canonicalEntity
+  );
 
   return {
     title: previewItem.title,
     link: previewItem.link,
     pubDate: previewItem.pubDate.toISOString(),
     snippet: sanitizeRSSPlainText(previewItem.description),
-    images: resolvedImages.map((image) => ({
+    images: previewValidation.resolvedImages.map((image) => ({
       url: image.url,
       reason: image.reason,
     })),
-    caption: sanitizedCaption,
-    captionCharCount: sanitizedCaption.length,
+    caption: previewValidation.valid
+      ? sanitizedCaption
+      : `Preview blocked by RSS validation: ${previewValidation.reasonCodes.join(', ')}.`,
+    captionCharCount: (previewValidation.valid
+      ? sanitizedCaption
+      : `Preview blocked by RSS validation: ${previewValidation.reasonCodes.join(', ')}.`).length,
   };
 }
 

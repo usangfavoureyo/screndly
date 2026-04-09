@@ -22,6 +22,7 @@ export interface ComposeMediaAsset {
   mimeType: string;
   size: number;
   order: number;
+  durationSeconds?: number;
   width?: number;
   height?: number;
   aspectRatioValue?: number;

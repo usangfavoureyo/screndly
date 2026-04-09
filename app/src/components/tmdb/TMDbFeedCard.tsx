@@ -580,7 +580,7 @@ function TMDbFeedCardComponent({
             <div className="bg-white dark:bg-black border border-gray-200 dark:border-[#333333] rounded-xl p-4 mb-4">
               <div className="flex items-start gap-2">
                 <div className="flex-1">
-                  <p className="text-gray-900 dark:text-white mb-1">
+                  <p className="mb-1 whitespace-pre-wrap text-gray-900 dark:text-white">
                     {feed.caption}
                   </p>
                   <span className="text-xs text-gray-500 dark:text-[#6B7280]">

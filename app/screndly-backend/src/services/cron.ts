@@ -28,6 +28,8 @@ const LOCAL_CLEANUP_DIRECTORIES = ['temp', 'uploads'];
 const GLOBAL_CLEANUP_INTERVALS = new Set(['daily', 'weekly', 'monthly', 'never']);
 const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 60;
 const YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES = 45;
+const DEFAULT_TMDB_MASTER_REFRESH_TIME = '07:00';
+const DEFAULT_TMDB_SECONDARY_REFRESH_TIME = '12:00';
 
 const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
     {
@@ -293,6 +295,22 @@ function parseScheduleMinutes(value: string | null | undefined, fallback: number
     return (hours * 60) + minutes;
 }
 
+function isValidDailyTime(value: string | null | undefined): value is string {
+    return typeof value === 'string' && /^\d{2}:\d{2}$/.test(value);
+}
+
+function toDailyCronExpression(value: string, fallback = DEFAULT_TMDB_MASTER_REFRESH_TIME): string {
+    const normalized = isValidDailyTime(value) ? value : fallback;
+    const [hours, minutes] = normalized.split(':').map((part) => Number(part));
+
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) {
+        const [fallbackHours, fallbackMinutes] = fallback.split(':').map((part) => Number(part));
+        return `${fallbackMinutes} ${fallbackHours} * * *`;
+    }
+
+    return `${minutes} ${hours} * * *`;
+}
+
 function isPollingScheduleOpenForHealthCheck(schedule: Awaited<ReturnType<typeof getYouTubeRuntimeSettings>>['pollingSchedule'], now = new Date()): boolean {
     if (!schedule.enabled) {
         return true;
@@ -506,9 +524,8 @@ export async function initCronJobs() {
         timezone
     };
 
-    // TMDb Master Daily Refresh - Daily at 07:00
-    cron.schedule('0 7 * * *', async () => {
-        await logCron('info', 'Starting TMDb master refresh...');
+    const runTMDbRefresh = async (jobLabel: string, notificationLabel: string) => {
+        await logCron('info', `Starting ${jobLabel}...`);
         try {
             const configured = await isTMDbConfigured();
             if (!configured) {
@@ -519,10 +536,10 @@ export async function initCronJobs() {
             const settings = await getTMDbSettings();
             const result = await refreshTMDbContent(settings);
 
-            await logCron('info', `TMDb master refresh completed: ${result.added} posts added (run ${result.runId})`);
+            await logCron('info', `${jobLabel} completed: ${result.added} posts added (run ${result.runId})`);
 
             if (result.added > 0) {
-                const notification = buildTmdbRefreshNotification('TMDb Daily Refresh', result);
+                const notification = buildTmdbRefreshNotification(notificationLabel, result);
                 await notificationService.notifyUser({
                     title: notification.title,
                     message: notification.message,
@@ -536,23 +553,45 @@ export async function initCronJobs() {
                 await logCron('warn', `TMDb refresh had errors: ${result.errors.join(', ')}`);
                 await notificationService.notifyUser({
                     title: 'TMDb Refresh Errors',
-                    message: `Encountered ${result.errors.length} errors during the daily TMDb run.`,
+                    message: `Encountered ${result.errors.length} errors during the ${notificationLabel.toLowerCase()} run.`,
                     type: 'warning',
                     source: 'tmdb',
                     actionPage: '/logs'
                 });
             }
         } catch (error) {
-            await logCron('error', `TMDb master refresh failed: ${error}`);
+            await logCron('error', `${jobLabel} failed: ${error}`);
             await notificationService.notifyUser({
                 title: 'TMDb Refresh Failed',
-                message: 'Daily TMDb refresh failed to execute.',
+                message: `${notificationLabel} failed to execute.`,
                 type: 'error',
                 source: 'tmdb',
                 actionPage: '/settings'
             });
         }
+    };
+
+    let tmdbMasterRefreshTime = DEFAULT_TMDB_MASTER_REFRESH_TIME;
+    try {
+        const tmdbSettings = await getTMDbSettings();
+        if (isValidDailyTime(tmdbSettings.tmdbDailyRefreshTime)) {
+            tmdbMasterRefreshTime = tmdbSettings.tmdbDailyRefreshTime;
+        }
+    } catch (error) {
+        await logCron('warn', `Failed to load TMDb refresh settings, defaulting to ${DEFAULT_TMDB_MASTER_REFRESH_TIME}: ${error}`);
+    }
+
+    // TMDb Master Daily Refresh - Default at 07:00, configurable via settings
+    cron.schedule(toDailyCronExpression(tmdbMasterRefreshTime), async () => {
+        await runTMDbRefresh('TMDb master refresh', 'TMDb Daily Refresh');
     }, cronOptions);
+
+    // TMDb Secondary Refresh - Daily at 12:00 to catch items that appear later in the day
+    if (tmdbMasterRefreshTime !== DEFAULT_TMDB_SECONDARY_REFRESH_TIME) {
+        cron.schedule(toDailyCronExpression(DEFAULT_TMDB_SECONDARY_REFRESH_TIME, DEFAULT_TMDB_SECONDARY_REFRESH_TIME), async () => {
+            await runTMDbRefresh('TMDb secondary refresh', 'TMDb Midday Refresh');
+        }, cronOptions);
+    }
 
     // YouTube Polling Scheduler - Every 10 seconds
     cron.schedule('*/10 * * * * *', async () => {

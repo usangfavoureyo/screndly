@@ -169,9 +169,65 @@ function buildSystemPrompt(item: TMDbItem, options: CaptionGenerationOptions): s
       ? '- You may mention the release date or year when helpful.'
       : '- Do not mention the exact release date or year unless absolutely necessary.',
     ...buildTemporalGuidance(item, options),
+    '- Paragraphing is allowed when it improves readability.',
+    '- Use at most 2 short paragraphs.',
+    '- If the first sentence is the release/premiere hook and the next sentence begins with cast context like "Starring", put that cast sentence in a new paragraph.',
+    '- Do not force paragraph breaks when the caption reads better as one compact paragraph.',
     '- Never include URLs, website names, citations, source attributions, or markdown links.',
     '- Return plain caption text only.',
   ].join('\n');
+}
+
+function splitCaptionSentences(value: string): string[] {
+  return value
+    .split(/(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function isReleaseLeadSentence(sentence: string, feedType: FeedType): boolean {
+  const normalized = sentence.toLowerCase();
+
+  if (feedType === 'today' && /\b(today|premieres today|releases today|arrives today|drops today|debuts today)\b/.test(normalized)) {
+    return true;
+  }
+
+  if (feedType === 'weekly' && /\b(this week|next week|premieres this week|premieres next week|releases this week|releases next week)\b/.test(normalized)) {
+    return true;
+  }
+
+  if (feedType === 'monthly' && /\b(this month|next month|in [a-z]+(?: \d{4})?)\b/.test(normalized)) {
+    return true;
+  }
+
+  return /\b(premieres|releases|debuts|arrives|lands|hits theaters|in theaters)\b/.test(normalized);
+}
+
+function startsCastLead(sentence: string): boolean {
+  return /^(starring|stars|featuring|with)\b/i.test(sentence.trim());
+}
+
+function applyEditorialParagraphing(value: string, options: CaptionGenerationOptions): string {
+  if (value.includes('\n')) {
+    return value;
+  }
+
+  const sentences = splitCaptionSentences(value);
+  if (sentences.length < 2) {
+    return value;
+  }
+
+  const [firstSentence, secondSentence, ...rest] = sentences;
+  if (!isReleaseLeadSentence(firstSentence, options.feedType) || !startsCastLead(secondSentence)) {
+    return value;
+  }
+
+  const secondParagraph = [secondSentence, ...rest].join(' ').trim();
+  if (!secondParagraph) {
+    return value;
+  }
+
+  return `${firstSentence.trim()}\n\n${secondParagraph}`;
 }
 
 function stripCaptionLinks(value: string): string {
@@ -223,15 +279,16 @@ function removeAnniversaryDateDuplication(value: string): string {
   return value
     .replace(/([,;]\s*)(premiered|released)\s+[A-Z][a-z]{2,9}\s+\d{1,2},\s+\d{4}\b/gi, '')
     .replace(/\b(premiered|released)\s+[A-Z][a-z]{2,9}\s+\d{1,2},\s+\d{4}\b/gi, '')
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+([,.!?;:])/g, '$1')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    .replace(/[^\S\n]+([,.!?;:])/g, '$1')
     .trim();
 }
 
 function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGenerationOptions): string {
   let sanitized = stripCaptionLinks(caption)
-    .replace(/\s{2,}/g, ' ')
-    .replace(/\s+([,.!?])/g, '$1')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[^\S\n]{2,}/g, ' ')
+    .replace(/[^\S\n]+([,.!?])/g, '$1')
     .replace(/\(\s*\)/g, '')
     .trim();
 
@@ -254,12 +311,16 @@ function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGe
   }
 
   sanitized = sanitized
-    .replace(/\s{2,}/g, ' ')
+    .replace(/[^\S\n]{2,}/g, ' ')
     .replace(/\n{3,}/g, '\n\n')
-    .replace(/\s+([)\]])/g, '$1')
-    .replace(/([([])\s+/g, '$1')
+    .replace(/[^\S\n]+([)\]])/g, '$1')
+    .replace(/([([])[^\S\n]+/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n')
     .replace(/[([]\s*$/g, '')
     .trim();
+
+  sanitized = applyEditorialParagraphing(sanitized, options);
 
   if (sanitized.length > options.maxLength) {
     sanitized = sanitized.slice(0, options.maxLength).trimEnd();

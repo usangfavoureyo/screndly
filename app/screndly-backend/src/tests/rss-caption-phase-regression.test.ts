@@ -8,6 +8,7 @@ const {
   buildDeterministicRssCaption,
   enforceRSSCaptionPunctuation,
   failsRSSCaptionFormatting,
+  getRSSCaptionHardInvalidReasonCodes,
   hasMissingRSSBlankLineSeparation,
   hasUnsupportedRSSStructure,
   lacksSingleQuotedDetectedRSSTitles,
@@ -226,6 +227,54 @@ test('caption validation rejects truncated excerpt markers and ellipsis endings'
     ),
     true
   );
+});
+
+test('caption validation rejects HTML entity leakage', () => {
+  const context = {
+    articleTitle: "Disney expected to lay off as many as 1,000 employees",
+    feedName: 'Variety',
+    summary: 'The Walt Disney Company could make deep cuts.',
+    articleBody: 'Disney&#8217;s cuts are expected to affect the marketing department.',
+    platform: 'Threads' as const,
+    allowedEntities: ['The Walt Disney Company', 'Disney'],
+  };
+
+  const caption = "Disney&#8217;s layoffs are expected to affect the marketing department.";
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_CONTAINS_HTML_ENTITY/);
+});
+
+test('caption validation rejects publisher marker leakage in final output', () => {
+  const context = {
+    articleTitle: "EXCLUSIVE: Jenna Ortega joins Netflix's 'You'",
+    feedName: 'Deadline',
+    summary: "Jenna Ortega is in talks to join Netflix's 'You'.",
+    articleBody: "Deadline reports Jenna Ortega is joining Netflix's 'You'.",
+    platform: 'Threads' as const,
+    allowedEntities: ['Jenna Ortega', 'You'],
+  };
+
+  const caption = "EXCLUSIVE: Jenna Ortega joins Netflix's 'You'.";
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_ARTICLE_PACKAGE_LABEL/);
+});
+
+test('caption validation rejects broken quote fragments', () => {
+  const context = {
+    articleTitle: "Olivia Munn says a male co-star refused to film a scene on 'The Drew Barrymore Show'",
+    feedName: 'Variety',
+    summary: "Olivia Munn discussed the incident on 'The Drew Barrymore Show'.",
+    articleBody: `"It's like, She Can't Save Me. We're Not Doing This."`,
+    platform: 'Threads' as const,
+    allowedEntities: ['Olivia Munn', 'The Drew Barrymore Show'],
+  };
+
+  const caption = "Olivia Munn comments on 'The Drew Barrymore Show'.\n\n\"fell in love with\"";
+
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+  assert.match(getRSSCaptionHardInvalidReasonCodes(caption, context).join(','), /CAPTION_BROKEN_QUOTE/);
 });
 
 test('feed fallback is no longer forced for reveal-driven headlines', () => {

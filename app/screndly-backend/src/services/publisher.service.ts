@@ -1,10 +1,13 @@
 import axios from 'axios';
 import fs from 'fs/promises';
+import os from 'os';
 import prisma from '../lib/prisma';
 import { findPlatformConnection } from '../lib/platformConnections';
 import path from 'path';
 import sharp from 'sharp';
+import { execFile } from 'child_process';
 import { createHash } from 'crypto';
+import { promisify } from 'util';
 import { xService } from './platforms/x';
 import { metaService } from './platforms/meta';
 import { youtubeService } from './platforms/youtube';
@@ -22,6 +25,7 @@ export interface PublishContent {
     imageUrl?: string;
     imageUrls?: string[];
     imagePath?: string;
+    videoUrls?: string[];
     videoUrl?: string; // For platforms that support URL (TikTok)
     platformOverrides?: Partial<Record<string, Partial<Omit<PublishContent, 'platformOverrides'>>>>;
 }
@@ -48,6 +52,20 @@ export interface PublishOptions {
     pinterestBoardId?: string;
     pinterestLink?: string;
 }
+
+interface StoryPublishQueueItem {
+    kind: 'image' | 'video';
+    mediaUrl: string;
+}
+
+interface StoryVideoSource {
+    source: string;
+    sourceType: 'local-file' | 'remote-url';
+}
+
+const execFileAsync = promisify(execFile);
+const STORY_VIDEO_SEGMENT_SECONDS = 60;
+const STORY_MAX_ITEMS = 4;
 
 function normalizePlatformName(platform: string): string {
     const normalized = platform.trim().toLowerCase();
@@ -242,6 +260,25 @@ export class PublisherService {
 
     private getRemoteCoverImageUrl(content: PublishContent): string | undefined {
         return this.getResolvedImageUrls(content).find((value) => /^https?:\/\//i.test(value));
+    }
+
+    private getResolvedVideoUrls(content: PublishContent): string[] {
+        const candidates = [
+            ...(Array.isArray(content.videoUrls) ? content.videoUrls : []),
+            content.videoUrl,
+        ];
+
+        const seen = new Set<string>();
+        const resolved: string[] = [];
+        for (const candidate of candidates) {
+            if (typeof candidate !== 'string') continue;
+            const trimmed = candidate.trim();
+            if (!trimmed || seen.has(trimmed)) continue;
+            seen.add(trimmed);
+            resolved.push(trimmed);
+        }
+
+        return resolved;
     }
 
     private async getResolvedPublishImageUrls(content: PublishContent, platform: string): Promise<string[]> {
@@ -546,6 +583,8 @@ export class PublisherService {
     private getPlatformImageLimit(platform: string): number {
         switch (platform) {
             case 'X':
+            case 'InstagramStories':
+            case 'FacebookStories':
                 return 4;
             case 'Threads':
             case 'Facebook':
@@ -562,6 +601,298 @@ export class PublisherService {
 
     private isDirectVideoUrl(value?: string): value is string {
         return typeof value === 'string' && /^https?:\/\/.+\.(mp4|mov|m4v|webm)(\?.*)?$/i.test(value.trim());
+    }
+
+    private isStoryPlatform(platform: string): boolean {
+        return platform === 'InstagramStories' || platform === 'FacebookStories';
+    }
+
+    private async getAccessibleRemoteVideoUrl(source: string): Promise<string> {
+        const normalized = this.normalizeRemoteMediaUrl(source.trim());
+        if (!this.isBackblazeHostedUrl(normalized)) {
+            return normalized;
+        }
+
+        try {
+            const parsed = new URL(normalized);
+            if (parsed.searchParams.has('Authorization')) {
+                return normalized;
+            }
+        } catch {
+            return normalized;
+        }
+
+        return getBackblazeAuthorizedDownloadUrl(normalized, 7 * 24 * 60 * 60);
+    }
+
+    private async downloadRemoteVideoToTemp(source: string): Promise<string> {
+        const remoteUrl = await this.getAccessibleRemoteVideoUrl(source);
+        const response = await fetch(remoteUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to download story video (${response.status})`);
+        }
+
+        const fileBuffer = Buffer.from(await response.arrayBuffer());
+        const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-story-video-'));
+        const extension = path.extname(new URL(remoteUrl, 'http://localhost').pathname) || '.mp4';
+        const targetPath = path.join(targetDir, `source${extension}`);
+        await fs.writeFile(targetPath, fileBuffer);
+        return targetPath;
+    }
+
+    private async probeVideoDurationSeconds(filePath: string): Promise<number> {
+        const { stdout } = await execFileAsync('ffprobe', [
+            '-v',
+            'error',
+            '-show_entries',
+            'format=duration',
+            '-of',
+            'default=noprint_wrappers=1:nokey=1',
+            filePath,
+        ]);
+
+        const duration = Number.parseFloat(stdout.trim());
+        if (!Number.isFinite(duration) || duration <= 0) {
+            throw new Error('Failed to read story video duration.');
+        }
+
+        return duration;
+    }
+
+    private buildStoryClipRanges(durationSeconds: number): Array<{ startSeconds: number; clipDurationSeconds: number }> {
+        const ranges: Array<{ startSeconds: number; clipDurationSeconds: number }> = [];
+        let startSeconds = 0;
+
+        while (startSeconds < durationSeconds) {
+            const clipDurationSeconds = Math.min(STORY_VIDEO_SEGMENT_SECONDS, durationSeconds - startSeconds);
+            ranges.push({
+                startSeconds,
+                clipDurationSeconds,
+            });
+            startSeconds += STORY_VIDEO_SEGMENT_SECONDS;
+        }
+
+        return ranges;
+    }
+
+    private buildStoryClipBaseName(source: string): string {
+        const rawName = source.split('?')[0].split('/').pop() || 'story-video';
+        const baseName = path.parse(rawName).name || 'story-video';
+        const normalized = baseName.replace(/[^a-z0-9-_]+/gi, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+        return normalized || 'story-video';
+    }
+
+    private async uploadStoryVideoClip(filePath: string, baseName: string, clipIndex: number, totalClips: number): Promise<string> {
+        const uploaded = await uploadLocalFileToBackblaze(filePath, `${baseName}-story-${clipIndex + 1}-of-${totalClips}.mp4`, {
+            bucketTypes: ['videos', 'general'],
+            prefix: 'platform-posts/story-clips',
+            contentType: 'video/mp4',
+        });
+
+        return getBackblazeAuthorizedDownloadUrl(uploaded.url, 7 * 24 * 60 * 60);
+    }
+
+    private async cleanupTempPath(targetPath?: string | null): Promise<void> {
+        if (!targetPath) {
+            return;
+        }
+
+        await fs.rm(path.dirname(targetPath), { recursive: true, force: true }).catch(() => undefined);
+    }
+
+    private async buildStoryVideoQueue(
+        content: PublishContent,
+        mediaFilePath: string | null | undefined,
+        cache: Map<string, string>
+    ): Promise<StoryPublishQueueItem[]> {
+        const videoSources: StoryVideoSource[] = [];
+
+        if (mediaFilePath && this.isVideo(mediaFilePath)) {
+            videoSources.push({ source: mediaFilePath, sourceType: 'local-file' });
+        }
+
+        for (const source of this.getResolvedVideoUrls(content)) {
+            videoSources.push({ source, sourceType: 'remote-url' });
+        }
+
+        const dedupe = new Set<string>();
+        const queue: StoryPublishQueueItem[] = [];
+
+        for (const source of videoSources) {
+            const dedupeKey = `${source.sourceType}:${source.source}`;
+            if (dedupe.has(dedupeKey)) {
+                continue;
+            }
+            dedupe.add(dedupeKey);
+
+            let localSourcePath: string | null = null;
+            try {
+                localSourcePath =
+                    source.sourceType === 'local-file'
+                        ? source.source
+                        : await this.downloadRemoteVideoToTemp(source.source);
+
+                const durationSeconds = await this.probeVideoDurationSeconds(localSourcePath);
+                const clipRanges = this.buildStoryClipRanges(durationSeconds);
+                const baseName = this.buildStoryClipBaseName(source.source);
+
+                if (clipRanges.length === 1) {
+                    const mediaUrl =
+                        source.sourceType === 'remote-url'
+                            ? await this.getAccessibleRemoteVideoUrl(source.source)
+                            : await this.resolveHostedVideoUrl(content, localSourcePath, undefined, cache);
+                    queue.push({ kind: 'video', mediaUrl });
+                } else {
+                    for (let index = 0; index < clipRanges.length; index += 1) {
+                        const clipRange = clipRanges[index];
+                        const clipDir = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-story-clip-'));
+                        const clipPath = path.join(clipDir, `${baseName}-${index + 1}.mp4`);
+
+                        try {
+                            await execFileAsync('ffmpeg', [
+                                '-y',
+                                '-ss',
+                                clipRange.startSeconds.toString(),
+                                '-i',
+                                localSourcePath,
+                                '-t',
+                                clipRange.clipDurationSeconds.toString(),
+                                '-c:v',
+                                'libx264',
+                                '-preset',
+                                'veryfast',
+                                '-crf',
+                                '22',
+                                '-c:a',
+                                'aac',
+                                '-movflags',
+                                '+faststart',
+                                clipPath,
+                            ], {
+                                timeout: 5 * 60 * 1000,
+                                maxBuffer: 10 * 1024 * 1024,
+                            });
+
+                            queue.push({
+                                kind: 'video',
+                                mediaUrl: await this.uploadStoryVideoClip(clipPath, baseName, index, clipRanges.length),
+                            });
+                        } finally {
+                            await this.cleanupTempPath(clipPath);
+                        }
+                    }
+                }
+            } finally {
+                if (source.sourceType === 'remote-url') {
+                    await this.cleanupTempPath(localSourcePath);
+                }
+            }
+        }
+
+        return queue;
+    }
+
+    private async buildStoryPublishQueue(
+        content: PublishContent,
+        platform: string,
+        mediaFilePath: string | null | undefined,
+        hostedVideoUrlCache: Map<string, string>,
+        hostedMetaImageUrlCache: Map<string, string>
+    ): Promise<StoryPublishQueueItem[]> {
+        const imageQueue = await this.getResolvedMetaPublishImageUrls(content, platform, hostedMetaImageUrlCache);
+        const hasLocalImage = Boolean(mediaFilePath && this.isImage(mediaFilePath));
+        const hasAnyVideo = Boolean((mediaFilePath && this.isVideo(mediaFilePath)) || this.getResolvedVideoUrls(content).length > 0);
+
+        if (hasAnyVideo && (imageQueue.length > 0 || hasLocalImage)) {
+            throw new Error('Story publishing does not support mixed image and video uploads in the same post.');
+        }
+
+        if (hasAnyVideo) {
+            const videoQueue = await this.buildStoryVideoQueue(content, mediaFilePath, hostedVideoUrlCache);
+            if (videoQueue.length > STORY_MAX_ITEMS) {
+                throw new Error(`Stories support up to ${STORY_MAX_ITEMS} items after splitting videos longer than 60 seconds.`);
+            }
+            return videoQueue;
+        }
+
+        const resolvedImages = imageQueue.length > 0
+            ? imageQueue
+            : hasLocalImage && mediaFilePath
+                ? [await this.prepareHostedMetaImageUrl(mediaFilePath, hostedMetaImageUrlCache)]
+                : [];
+
+        if (resolvedImages.length > STORY_MAX_ITEMS) {
+            throw new Error(`Stories support up to ${STORY_MAX_ITEMS} items per post.`);
+        }
+
+        return resolvedImages.map((mediaUrl) => ({ kind: 'image', mediaUrl }));
+    }
+
+    private async publishStorySequence(
+        platform: 'InstagramStories' | 'FacebookStories',
+        content: PublishContent,
+        mediaFilePath: string | null | undefined,
+        connection: Awaited<ReturnType<typeof findPlatformConnection>>,
+        hostedVideoUrlCache: Map<string, string>,
+        hostedMetaImageUrlCache: Map<string, string>
+    ): Promise<PublishResult> {
+        const queue = await this.buildStoryPublishQueue(
+            content,
+            platform,
+            mediaFilePath,
+            hostedVideoUrlCache,
+            hostedMetaImageUrlCache,
+        );
+
+        if (queue.length === 0) {
+            return {
+                platform,
+                status: 'failed',
+                error: `${platform === 'InstagramStories' ? 'Instagram Stories' : 'Facebook Stories'} requires at least one story image or video.`,
+                postedAt: new Date().toISOString(),
+            };
+        }
+
+        let postedCount = 0;
+        let lastId: string | undefined;
+
+        for (let index = 0; index < queue.length; index += 1) {
+            const entry = queue[index];
+            const storyResult =
+                platform === 'InstagramStories'
+                    ? await metaService.postToInstagramStory(
+                        connection?.userId as string,
+                        entry.mediaUrl,
+                        connection?.accessToken as string,
+                        entry.kind,
+                    )
+                    : await metaService.postToFacebookStory(
+                        connection?.userId as string,
+                        entry.mediaUrl,
+                        connection?.accessToken as string,
+                        entry.kind,
+                    );
+
+            if (!storyResult.success) {
+                const prefix = postedCount > 0 ? `Published ${postedCount} of ${queue.length} story items before failure. ` : '';
+                return {
+                    platform,
+                    status: 'failed',
+                    error: `${prefix}${storyResult.error || `Story item ${index + 1} failed.`}`.trim(),
+                    postedAt: new Date().toISOString(),
+                };
+            }
+
+            postedCount += 1;
+            lastId = storyResult.data?.id;
+        }
+
+        return {
+            platform,
+            status: 'posted',
+            id: lastId,
+            postedAt: new Date().toISOString(),
+        };
     }
 
     private buildHostedVideoOriginalName(content: PublishContent, mediaFilePath: string): string {
@@ -644,7 +975,7 @@ export class PublisherService {
                 ...content,
                 ...(content.platformOverrides?.[platform] || {})
             };
-            const platformMaxRetries = platform === 'X' ? 0 : maxRetries;
+            const platformMaxRetries = platform === 'X' || this.isStoryPlatform(platform) ? 0 : maxRetries;
 
             // Get platform connection
             const connectionPlatform = getConnectionPlatformName(platform);
@@ -789,35 +1120,14 @@ export class PublisherService {
 
                         case 'FacebookStories':
                             if (hasPublishablePlatformConnection(connection)) {
-                                const facebookUserId = connection.userId as string;
-                                const facebookAccessToken = connection.accessToken as string;
-                                const mediaKind = localVideoFile || this.isDirectVideoUrl(directVideoUrl) ? 'video' : 'image';
-                                const mediaUrl = mediaKind === 'video'
-                                    ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
-                                    : primaryImageUrl;
-
-                                if (!mediaUrl) {
-                                    result = {
-                                        platform,
-                                        status: 'failed',
-                                        error: 'Facebook Stories requires an image or video.',
-                                        postedAt: new Date().toISOString()
-                                    };
-                                    break;
-                                }
-
-                                const fbStoryResult = await metaService.postToFacebookStory(
-                                    facebookUserId,
-                                    mediaUrl,
-                                    facebookAccessToken,
-                                    mediaKind,
+                                result = await this.publishStorySequence(
+                                    'FacebookStories',
+                                    platformContent,
+                                    localVideoFile || mediaFilePath,
+                                    connection,
+                                    hostedVideoUrlCache,
+                                    hostedMetaImageUrlCache,
                                 );
-                                result = {
-                                    platform,
-                                    ...fbStoryResult,
-                                    status: fbStoryResult.success ? 'posted' : 'failed',
-                                    postedAt: new Date().toISOString()
-                                };
                             } else {
                                 result = {
                                     platform,
@@ -856,38 +1166,39 @@ export class PublisherService {
                                     break;
                                 }
 
-                                const igResult =
-                                    platform === 'InstagramStories'
-                                        ? await metaService.postToInstagramStory(
+                                if (platform === 'InstagramStories') {
+                                    result = await this.publishStorySequence(
+                                        'InstagramStories',
+                                        platformContent,
+                                        localVideoFile || mediaFilePath,
+                                        connection,
+                                        hostedVideoUrlCache,
+                                        hostedMetaImageUrlCache,
+                                    );
+                                } else {
+                                    const igResult = mediaKind === 'video'
+                                        ? await metaService.postVideoToInstagramReel(
                                             connection.userId,
-                                            mediaKind === 'video'
-                                                ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
-                                                : (primaryImageUrl || ''),
+                                            platformContent.text,
+                                            await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
                                             instagramAccessToken,
-                                            mediaKind,
+                                            remoteCoverImageUrl
                                         )
-                                        : mediaKind === 'video'
-                                            ? await metaService.postVideoToInstagramReel(
+                                        : primaryImageUrl
+                                            ? await metaService.postToInstagram(
                                                 connection.userId,
                                                 platformContent.text,
-                                                await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
-                                                instagramAccessToken,
-                                                remoteCoverImageUrl
+                                                primaryImageUrl,
+                                                instagramAccessToken
                                             )
-                                            : primaryImageUrl
-                                                ? await metaService.postToInstagram(
-                                                    connection.userId,
-                                                    platformContent.text,
-                                                    primaryImageUrl,
-                                                    instagramAccessToken
-                                                )
-                                                : { success: false as const, error: 'Instagram requires an image or video' };
-                                result = {
-                                    platform,
-                                    ...igResult,
-                                    status: igResult.success ? 'posted' : 'failed',
-                                    postedAt: new Date().toISOString()
-                                };
+                                            : { success: false as const, error: 'Instagram requires an image or video' };
+                                    result = {
+                                        platform,
+                                        ...igResult,
+                                        status: igResult.success ? 'posted' : 'failed',
+                                        postedAt: new Date().toISOString()
+                                    };
+                                }
                             } else {
                                 result = {
                                     platform,

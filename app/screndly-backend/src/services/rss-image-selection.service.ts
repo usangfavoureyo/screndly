@@ -1,5 +1,5 @@
 import { getSecretSetting } from '../lib/settings';
-import aiService, { DEFAULT_OPENAI_MODEL, type AIModel, normalizeAIModel } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, type AIModel, type RSSCanonicalEntity, normalizeAIModel } from './ai.service';
 import { trackApiUsage } from './api-usage.service';
 import {
   resolveStructuredTMDbImages,
@@ -15,6 +15,7 @@ export interface RSSImageSelectionArticle {
   author?: string;
   generatedCaption?: string;
   fallbackImages?: string[];
+  canonicalEntity?: RSSCanonicalEntity;
 }
 
 export interface RSSResolvedImage {
@@ -101,6 +102,7 @@ interface RSSSubjectAnalysis {
     name: string;
     type: SubjectType;
   };
+  canonicalEntity?: RSSCanonicalEntity;
   visualSubject: string;
   imageIntent: ImageIntent;
   secondarySubjects: string[];
@@ -124,16 +126,35 @@ interface ScoredImage {
 interface ImageValidationResult {
   approved: boolean;
   reason?: string;
+  reasonCode?: string;
 }
 
 interface ImageSlotPlan {
   subject: string;
   type: SubjectType;
   intent: ImageIntent;
+  role: 'project' | 'person' | 'character' | 'franchise' | 'platform' | 'company' | 'logo';
+  assetPreferences: Array<'backdrop' | 'poster' | 'profile' | 'logo'>;
   allowLogoOnly: boolean;
   requiredContextTerms: string[];
   queries: string[];
 }
+
+type VisualPlan = {
+  mode: 'single' | 'dual' | 'ensemble';
+  eventType?: ContextType;
+  primarySubject?: string;
+  secondarySubject?: string;
+  primaryRole?: ImageSlotPlan['role'];
+  secondaryRole?: ImageSlotPlan['role'];
+  primaryAssetPreferences: ImageSlotPlan['assetPreferences'];
+  secondaryAssetPreferences?: ImageSlotPlan['assetPreferences'];
+  downgradeAllowed: boolean;
+  reason?: string;
+  useTwoImages: boolean;
+  primary: ImageSlotPlan;
+  secondary: ImageSlotPlan | null;
+};
 
 interface FranchiseValidationRule {
   matchAny: string[];
@@ -919,7 +940,35 @@ function buildArticleAnalysisText(article: RSSImageSelectionArticle): string {
     article.generatedCaption,
     article.author,
     article.contentHtml,
+    article.canonicalEntity?.primarySubject,
+    article.canonicalEntity?.secondarySubject,
+    article.canonicalEntity?.mediaTitle,
+    article.canonicalEntity?.franchise,
+    ...(article.canonicalEntity?.namedPeople || []),
   ].filter(Boolean).join(' ');
+}
+
+function mapCanonicalEntityTypeToSubjectType(
+  entityType: RSSCanonicalEntity['entityType'] | undefined
+): SubjectType | null {
+  switch (entityType) {
+    case 'movie':
+      return 'movie';
+    case 'tv':
+      return 'tv_show';
+    case 'person':
+      return 'actor';
+    case 'character':
+      return 'character';
+    case 'franchise':
+      return 'franchise';
+    case 'company':
+      return 'studio';
+    case 'platform':
+      return 'streaming_service';
+    default:
+      return null;
+  }
 }
 
 function escapeRegExp(value: string): string {
@@ -2083,6 +2132,7 @@ function resolveImageIntent(
 
 function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const articleText = buildArticleAnalysisText(article);
+  const canonical = article.canonicalEntity;
   const studios = extractRelevantStudios(articleText);
   const referenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const normalizedTitle = article.title.trim();
@@ -2094,22 +2144,29 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const containerOwnedSubject = extractContainerOwnedContentSubject(normalizedTitle, studios, articleText);
   const sequelBaseProject = extractSequelBaseProjectAnchor(articleText);
   const personLedReportResponseStory = isPersonLedReportResponseStory(normalizedTitle, articleText);
+  const explicitPersonQuoteStory = Boolean(
+    (leadPersonCandidate || leadReportResponsePersonCandidate) &&
+    /\b(says|said|addresses|addressed|opens up|opened up|discusses|discussed|comments on|commented on|reflects on|reflected on|reacts to|reacted to)\b/i.test(normalizedTitle)
+  );
   const quotedMatches = Array.from(normalizedTitle.matchAll(/["“']([^"”']{2,80})["”']/g))
     .map((match) => match[1]?.trim())
     .filter(Boolean) as string[];
 
-  let primaryName = quotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
-  let primaryType: SubjectType = 'general';
+  let primaryName = canonical?.primarySubject || canonical?.mediaTitle || quotedMatches[0] || leadTitleCandidate || headlineProjectCandidate || normalizedTitle;
+  let primaryType: SubjectType = mapCanonicalEntityTypeToSubjectType(canonical?.entityType) || 'general';
   const titleLooksLikeStudioStory = /\b(studio|streaming|network|service|platform|ceo|merger|deal|subscriber|pricing|subscription|brand)\b/i.test(normalizedTitle);
   const executiveIndustryStory = isExecutiveIndustryStory(normalizedTitle, articleText);
 
-  if (containerOwnedSubject) {
+  if (canonical?.primarySubject || canonical?.mediaTitle) {
+    primaryName = canonical.mediaTitle || canonical.primarySubject || primaryName;
+    primaryType = mapCanonicalEntityTypeToSubjectType(canonical.entityType) || primaryType;
+  } else if (containerOwnedSubject) {
     primaryName = containerOwnedSubject;
     primaryType = inferContentSubjectType(articleText, containerOwnedSubject);
   } else if (leadIndustryPersonCandidate && quotedMatches.length === 0 && executiveIndustryStory) {
     primaryName = leadIndustryPersonCandidate;
     primaryType = 'actor';
-  } else if ((leadPersonCandidate || leadReportResponsePersonCandidate) && !titleLooksLikeStudioStory && personLedReportResponseStory) {
+  } else if ((leadPersonCandidate || leadReportResponsePersonCandidate) && !titleLooksLikeStudioStory && (personLedReportResponseStory || explicitPersonQuoteStory)) {
     primaryName = leadPersonCandidate || leadReportResponsePersonCandidate || primaryName;
     primaryType = 'actor';
   } else if (headlineProjectCandidate) {
@@ -2128,6 +2185,10 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   }
 
   const secondarySubjects = uniqueStrings([
+    canonical?.secondarySubject,
+    ...(canonical?.namedPeople || []).filter((person) => normalizeText(person) !== normalizeText(primaryName)),
+    ...(canonical?.namedCharacters || []).filter((character) => normalizeText(character) !== normalizeText(primaryName)),
+    canonical?.franchise && normalizeText(canonical.franchise) !== normalizeText(primaryName) ? canonical.franchise : null,
     ...studios.filter((studio) => normalizeText(studio) !== normalizeText(primaryName)),
     ...(sequelBaseProject && normalizeText(sequelBaseProject) !== normalizeText(primaryName) ? [sequelBaseProject] : []),
     ...((headlineProjectCandidate && !personLedReportResponseStory && normalizeText(headlineProjectCandidate) !== normalizeText(primaryName))
@@ -2136,9 +2197,10 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   ]);
 
   const contextType = classifyContextType(articleText);
+  const finalContextType = explicitPersonQuoteStory ? 'interview' : contextType;
   const targetFormat = resolveTargetFormat(articleText, primaryType);
   const animatedSubject = detectAnimatedSubject(articleText, primaryName, secondarySubjects);
-  const visual = resolveImageIntent(primaryType, contextType, primaryName, secondarySubjects, studios);
+  const visual = resolveImageIntent(primaryType, finalContextType, primaryName, secondarySubjects, studios);
   const contextProject = extractContextProject(
     articleText,
     primaryName,
@@ -2158,14 +2220,20 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     referenceOnlySubjects,
     studios
   );
+  const canonicalRequiredContextTerms = uniqueStrings([
+    canonical?.mediaTitle,
+    canonical?.franchise,
+    ...(canonical?.namedPeople || []),
+    ...(canonical?.namedCharacters || []),
+  ]);
   const queries = buildFallbackQueries(
     visual.visualSubject,
     primaryType,
     secondarySubjects,
-    contextType,
+    finalContextType,
     visual.imageIntent,
     contextProject,
-    requiredContextTerms
+    [...requiredContextTerms, ...canonicalRequiredContextTerms]
   );
 
   return {
@@ -2174,15 +2242,16 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
       name: primaryName,
       type: primaryType,
     },
+    canonicalEntity: canonical,
     visualSubject: visual.visualSubject,
     imageIntent: visual.imageIntent,
     secondarySubjects,
     relevantStudios: studios,
-    contextType,
+    contextType: finalContextType,
     targetFormat,
     animatedSubject,
     contextProject,
-    requiredContextTerms,
+    requiredContextTerms: uniqueStrings([...requiredContextTerms, ...canonicalRequiredContextTerms]),
     referenceOnlySubjects,
     allowLogoOnly: visual.allowLogoOnly,
     queries,
@@ -2443,6 +2512,7 @@ function normalizeSubjectAnalysis(value: any, article: RSSImageSelectionArticle)
       name: primaryName,
       type: primaryType,
     },
+    canonicalEntity: article.canonicalEntity,
     visualSubject,
     imageIntent,
     secondarySubjects,
@@ -2527,6 +2597,59 @@ function buildSlotQueries(
   ]);
 }
 
+function inferVisualRole(type: SubjectType, intent: ImageIntent): ImageSlotPlan['role'] {
+  if (intent === 'logo' || intent === 'brand_backdrop') {
+    return 'logo';
+  }
+
+  switch (type) {
+    case 'actor':
+    case 'director':
+    case 'producer':
+      return 'person';
+    case 'character':
+      return 'character';
+    case 'studio':
+      return 'company';
+    case 'streaming_service':
+      return 'platform';
+    case 'franchise':
+      return 'franchise';
+    case 'movie':
+    case 'tv_show':
+    default:
+      return 'project';
+  }
+}
+
+function buildAssetPreferences(
+  type: SubjectType,
+  intent: ImageIntent,
+  allowLogoOnly: boolean
+): Array<'backdrop' | 'poster' | 'profile' | 'logo'> {
+  switch (intent) {
+    case 'person_portrait':
+      return ['profile', 'logo', 'backdrop'];
+    case 'logo':
+    case 'brand_backdrop':
+      return allowLogoOnly ? ['logo', 'backdrop'] : ['backdrop', 'logo'];
+    case 'poster':
+      return ['poster', 'backdrop', 'logo'];
+    case 'character_still':
+      return ['backdrop', 'poster', 'profile'];
+    case 'still':
+    case 'backdrop':
+    default:
+      if (type === 'actor' || type === 'director' || type === 'producer') {
+        return ['profile', 'backdrop', 'logo'];
+      }
+      if (type === 'studio' || type === 'streaming_service') {
+        return ['logo', 'backdrop'];
+      }
+      return ['backdrop', 'poster', 'logo'];
+  }
+}
+
 function buildImageSlotPlan(
   subject: string,
   type: SubjectType,
@@ -2538,9 +2661,35 @@ function buildImageSlotPlan(
     subject,
     type,
     intent,
+    role: inferVisualRole(type, intent),
+    assetPreferences: buildAssetPreferences(type, intent, allowLogoOnly),
     allowLogoOnly,
     requiredContextTerms: analysis.requiredContextTerms,
     queries: buildSlotQueries(subject, type, intent, analysis),
+  };
+}
+
+function buildVisualPlan(
+  mode: VisualPlan['mode'],
+  analysis: RSSSubjectAnalysis,
+  primary: ImageSlotPlan,
+  secondary: ImageSlotPlan | null,
+  reason: string
+): VisualPlan {
+  return {
+    mode,
+    eventType: analysis.contextType,
+    primarySubject: primary.subject,
+    secondarySubject: secondary?.subject,
+    primaryRole: primary.role,
+    secondaryRole: secondary?.role,
+    primaryAssetPreferences: primary.assetPreferences,
+    secondaryAssetPreferences: secondary?.assetPreferences,
+    downgradeAllowed: mode !== 'single',
+    reason,
+    useTwoImages: mode !== 'single' && Boolean(secondary),
+    primary,
+    secondary,
   };
 }
 
@@ -2701,7 +2850,7 @@ function extractFranchiseCharacterAnchor(
 function determineSmartImagePlan(
   article: RSSImageSelectionArticle,
   analysis: RSSSubjectAnalysis
-): { primary: ImageSlotPlan; secondary: ImageSlotPlan | null; useTwoImages: boolean } {
+): VisualPlan {
   const articleText = buildArticleAnalysisText(article);
   const nonStudioSecondarySubjects = buildReferenceOnlyFreeSecondarySubjects(
     analysis.secondarySubjects,
@@ -2763,6 +2912,13 @@ function determineSmartImagePlan(
   const isListArticle = isListLikeArticle(article);
   const memorialStory = isMemorialStory(article);
   const personLedResponseStory = isPersonLedReportResponseStory(article.title, articleText);
+  const ensemblePeople = uniqueStrings([
+    headlineCastingPerson,
+    leadPerson,
+    preferredPersonSubject,
+    ...heuristicPeople,
+    ...nonStudioSecondarySubjects.filter((subject) => looksLikeNamedPerson(subject)),
+  ]).filter((subject) => isLikelyPersonSubject(subject, articleText, analysis));
 
   let primary = buildImageSlotPlan(
     analysis.visualSubject,
@@ -2790,20 +2946,12 @@ function determineSmartImagePlan(
         false
       );
 
-      return {
-        primary,
-        secondary,
-        useTwoImages: true,
-      };
+      return buildVisualPlan('dual', analysis, primary, secondary, 'project plus platform support');
     }
   }
 
   if (isListArticle) {
-    return {
-      primary,
-      secondary: null,
-      useTwoImages: false,
-    };
+    return buildVisualPlan('single', analysis, primary, null, 'list article kept to a single dominant visual');
   }
 
   if (memorialStory) {
@@ -2828,18 +2976,49 @@ function determineSmartImagePlan(
       memorialProjectSubject &&
       normalizeText(memorialPersonSubject) !== normalizeText(memorialProjectSubject)
     ) {
-      return {
-        primary: buildImageSlotPlan(memorialPersonSubject, memorialPersonType, 'person_portrait', analysis, false),
-        secondary: buildImageSlotPlan(
+      return buildVisualPlan(
+        'dual',
+        analysis,
+        buildImageSlotPlan(memorialPersonSubject, memorialPersonType, 'person_portrait', analysis, false),
+        buildImageSlotPlan(
           memorialProjectSubject,
           inferSlotType(memorialProjectSubject, articleText, 'franchise', analysis),
           'logo',
           analysis,
           true
         ),
-        useTwoImages: true,
-      };
+        'memorial story uses person plus project context'
+      );
     }
+  }
+
+  if (
+    (personLedResponseStory || analysis.contextType === 'interview') &&
+    (
+      analysis.primarySubject.type === 'actor' ||
+      analysis.primarySubject.type === 'director' ||
+      analysis.primarySubject.type === 'producer'
+    )
+  ) {
+    const personSubject = analysis.primarySubject.name;
+    const projectSubject = projectAnchorForPersonStory || titleAnchor || inferredLeadProjectSubject;
+    return buildVisualPlan(
+      projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject) ? 'dual' : 'single',
+      analysis,
+      buildImageSlotPlan(personSubject, analysis.primarySubject.type, 'person_portrait', analysis, false),
+      projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject)
+        ? buildImageSlotPlan(
+            projectSubject,
+            inferSlotType(projectSubject, articleText, 'franchise', analysis),
+            analysis.contextType === 'interview' ? 'logo' : 'still',
+            analysis,
+            analysis.contextType === 'interview'
+          )
+        : null,
+      projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject)
+        ? 'person-led story with strong project support'
+        : 'person-led story with one dominant speaking subject'
+    );
   }
 
   if (
@@ -2851,17 +3030,19 @@ function determineSmartImagePlan(
       normalizeText(studio) !== normalizeText(analysis.primarySubject.name)
     ) || analysis.relevantStudios[0];
 
-    return {
-      primary: buildImageSlotPlan(analysis.primarySubject.name, analysis.primarySubject.type, 'person_portrait', analysis, false),
-      secondary: buildImageSlotPlan(
+    return buildVisualPlan(
+      'dual',
+      analysis,
+      buildImageSlotPlan(analysis.primarySubject.name, analysis.primarySubject.type, 'person_portrait', analysis, false),
+      buildImageSlotPlan(
         companySubject,
         inferSlotType(companySubject, articleText, 'studio', analysis),
         'logo',
         analysis,
         true
       ),
-      useTwoImages: true,
-    };
+      'industry story pairs executive with company'
+    );
   }
 
   if (leadPerson && inferredLeadProjectSubject) {
@@ -2873,11 +3054,23 @@ function determineSmartImagePlan(
       analysis,
       analysis.contextType === 'casting' && !personLedResponseStory
     );
-    return {
-      primary,
-      secondary,
-      useTwoImages: true,
-    };
+    return buildVisualPlan('dual', analysis, primary, secondary, 'lead person and project are both central');
+  }
+
+  if (
+    analysis.contextType === 'casting' &&
+    ensemblePeople.length >= 3 &&
+    titleAnchor
+  ) {
+    primary = buildImageSlotPlan(
+      titleAnchor,
+      inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
+      'backdrop',
+      analysis,
+      false
+    );
+    secondary = buildImageSlotPlan(ensemblePeople[0], 'actor', 'person_portrait', analysis, false);
+    return buildVisualPlan('ensemble', analysis, primary, secondary, 'ensemble casting story prefers project anchor plus a lead cast portrait');
   }
 
   if (isContainerSubjectType(analysis.primarySubject.type)) {
@@ -2962,11 +3155,7 @@ function determineSmartImagePlan(
     useTwoImages = true;
   }
 
-  return {
-    primary,
-    secondary,
-    useTwoImages,
-  };
+  return buildVisualPlan(useTwoImages ? 'dual' : 'single', analysis, primary, secondary, useTwoImages ? 'primary subject plus meaningful secondary support' : 'single dominant visual subject');
 }
 
 function buildAnalysisForSlot(
@@ -3510,6 +3699,7 @@ async function collectStructuredTMDbImages(
 ): Promise<Array<RSSResolvedImage & { role: ImageRole }>> {
   const tmdbSelections = await resolveStructuredTMDbImages({
     primarySubject: analysis.primarySubject,
+    canonicalEntity: analysis.canonicalEntity,
     visualSubject: analysis.visualSubject,
     secondarySubjects: analysis.secondarySubjects,
     imageIntent: analysis.imageIntent,
@@ -3660,94 +3850,101 @@ function shouldReplaceBrandingPrimaryWithFeedFallback(
 async function resolveSmartPrimaryCandidate(
   article: RSSImageSelectionArticle,
   analysis: RSSSubjectAnalysis,
+  slot: ImageSlotPlan,
   sources: RSSImageSource[],
   fallbackImages: string[],
   openaiWebSearchModel?: AIModel | string
 ): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
-  for (const source of sources) {
-    if (source === 'tmdb') {
-      const tmdbResolved = await collectStructuredTMDbImages(analysis, 1);
-      if (tmdbResolved[0] && hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)) {
-        return {
-          image: tmdbResolved[0],
-          role: tmdbResolved[0].role,
-        };
-      }
-      continue;
-    }
-
-    const primaryScored = await collectScoredImages(analysis, 4, source, openaiWebSearchModel);
-    const preferredSmartPrimary = primaryScored.find((item) => item.score >= MIN_SMART_PRIMARY_SERPER_SCORE);
-    const rescuedBrandPrimary = (!preferredSmartPrimary &&
-      (analysis.imageIntent === 'logo' || analysis.imageIntent === 'brand_backdrop'))
-      ? primaryScored.find((item) => item.score >= MIN_BRAND_FALLBACK_SERPER_SCORE)
-      : null;
-    const rescuedTrailerPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary &&
-      (analysis.imageIntent === 'still' || analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'character_still') &&
-      analysis.contextType === 'trailer')
-      ? primaryScored.find((item) => item.score >= MIN_TRAILER_STILL_SERPER_SCORE)
-      : null;
-    const rescuedGeneralListPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary && !rescuedTrailerPrimary &&
-      (analysis.imageIntent === 'still' || analysis.imageIntent === 'backdrop' || analysis.imageIntent === 'character_still') &&
-      isListLikeArticle(article) &&
-      analysis.primarySubject.type === 'general')
-      ? primaryScored.find((item) => item.score >= MIN_GENERAL_LIST_SERPER_SCORE)
-      : null;
-    const fallbackPrimary = buildResolvedImagesFromScored(primaryScored, [], 1, false, source)[0];
-    const primaryResolvedImage = preferredSmartPrimary?.image.imageUrl
-      ? {
-          url: preferredSmartPrimary.image.imageUrl,
-          reason: preferredSmartPrimary.reason,
-          source,
-          score: preferredSmartPrimary.score,
+  for (const variant of buildAnalysisVariantsForSlot(analysis, slot)) {
+    for (const source of sources) {
+      if (source === 'tmdb') {
+        const tmdbResolved = await collectStructuredTMDbImages(variant, 1);
+        if (
+          tmdbResolved[0] &&
+          (variant.imageIntent !== 'person_portrait' || tmdbResolved[0].role === 'person') &&
+          hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)
+        ) {
+          return {
+            image: tmdbResolved[0],
+            role: tmdbResolved[0].role,
+          };
         }
-      : rescuedBrandPrimary?.image.imageUrl
+        continue;
+      }
+
+      const primaryScored = await collectScoredImages(variant, 4, source, openaiWebSearchModel);
+      const preferredSmartPrimary = primaryScored.find((item) => item.score >= MIN_SMART_PRIMARY_SERPER_SCORE);
+      const rescuedBrandPrimary = (!preferredSmartPrimary &&
+        (variant.imageIntent === 'logo' || variant.imageIntent === 'brand_backdrop'))
+        ? primaryScored.find((item) => item.score >= MIN_BRAND_FALLBACK_SERPER_SCORE)
+        : null;
+      const rescuedTrailerPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary &&
+        (variant.imageIntent === 'still' || variant.imageIntent === 'backdrop' || variant.imageIntent === 'character_still') &&
+        variant.contextType === 'trailer')
+        ? primaryScored.find((item) => item.score >= MIN_TRAILER_STILL_SERPER_SCORE)
+        : null;
+      const rescuedGeneralListPrimary = (!preferredSmartPrimary && !rescuedBrandPrimary && !rescuedTrailerPrimary &&
+        (variant.imageIntent === 'still' || variant.imageIntent === 'backdrop' || variant.imageIntent === 'character_still') &&
+        isListLikeArticle(article) &&
+        variant.primarySubject.type === 'general')
+        ? primaryScored.find((item) => item.score >= MIN_GENERAL_LIST_SERPER_SCORE)
+        : null;
+      const fallbackPrimary = buildResolvedImagesFromScored(primaryScored, [], 1, false, source)[0];
+      const primaryResolvedImage = preferredSmartPrimary?.image.imageUrl
         ? {
-            url: rescuedBrandPrimary.image.imageUrl,
-            reason: rescuedBrandPrimary.reason,
+            url: preferredSmartPrimary.image.imageUrl,
+            reason: preferredSmartPrimary.reason,
             source,
-            score: rescuedBrandPrimary.score,
+            score: preferredSmartPrimary.score,
           }
-        : rescuedTrailerPrimary?.image.imageUrl
+        : rescuedBrandPrimary?.image.imageUrl
           ? {
-              url: rescuedTrailerPrimary.image.imageUrl,
-              reason: rescuedTrailerPrimary.reason,
+              url: rescuedBrandPrimary.image.imageUrl,
+              reason: rescuedBrandPrimary.reason,
               source,
-              score: rescuedTrailerPrimary.score,
+              score: rescuedBrandPrimary.score,
             }
-          : rescuedGeneralListPrimary?.image.imageUrl
+          : rescuedTrailerPrimary?.image.imageUrl
             ? {
-                url: rescuedGeneralListPrimary.image.imageUrl,
-                reason: rescuedGeneralListPrimary.reason,
+                url: rescuedTrailerPrimary.image.imageUrl,
+                reason: rescuedTrailerPrimary.reason,
                 source,
-                score: rescuedGeneralListPrimary.score,
+                score: rescuedTrailerPrimary.score,
               }
-            : fallbackPrimary;
+            : rescuedGeneralListPrimary?.image.imageUrl
+              ? {
+                  url: rescuedGeneralListPrimary.image.imageUrl,
+                  reason: rescuedGeneralListPrimary.reason,
+                  source,
+                  score: rescuedGeneralListPrimary.score,
+                }
+              : fallbackPrimary;
 
-    if (!primaryResolvedImage) {
-      continue;
+      if (!primaryResolvedImage) {
+        continue;
+      }
+
+      if (
+        fallbackImages.length > 0 &&
+        !hasConfidentResolvedPrimary(
+          [{
+            ...primaryResolvedImage,
+          }],
+          source,
+          true
+        )
+      ) {
+        continue;
+      }
+
+      const matchedScoredImage = primaryScored.find((item) => item.image.imageUrl === primaryResolvedImage.url);
+      return {
+        image: primaryResolvedImage,
+        role: matchedScoredImage
+          ? getImageRole(getSerperImageText(matchedScoredImage.image), variant)
+          : getImageRole(normalizeText(primaryResolvedImage.reason), variant),
+      };
     }
-
-    if (
-      fallbackImages.length > 0 &&
-      !hasConfidentResolvedPrimary(
-        [{
-          ...primaryResolvedImage,
-        }],
-        source,
-        true
-      )
-    ) {
-      continue;
-    }
-
-    const matchedScoredImage = primaryScored.find((item) => item.image.imageUrl === primaryResolvedImage.url);
-    return {
-      image: primaryResolvedImage,
-      role: matchedScoredImage
-        ? getImageRole(getSerperImageText(matchedScoredImage.image), analysis)
-        : getImageRole(normalizeText(primaryResolvedImage.reason), analysis),
-    };
   }
 
   return null;
@@ -3755,6 +3952,7 @@ async function resolveSmartPrimaryCandidate(
 
 async function resolveSmartSecondaryCandidate(
   analysis: RSSSubjectAnalysis,
+  slot: ImageSlotPlan,
   primaryImage: RSSResolvedImage,
   primaryRole: ImageRole,
   sources: RSSImageSource[],
@@ -3762,48 +3960,50 @@ async function resolveSmartSecondaryCandidate(
 ): Promise<{ image: RSSResolvedImage; role: ImageRole } | null> {
   const primaryIdentity = getImageIdentity(primaryImage.url);
 
-  for (const source of sources) {
-    if (source === 'tmdb') {
-      const tmdbResolved = await collectStructuredTMDbImages(analysis, 4, [primaryImage.url]);
-      const candidate = tmdbResolved.find((item) =>
-        getImageIdentity(item.url) !== primaryIdentity &&
-        areImageRolesComplementary(primaryRole, item.role)
-      );
-      if (candidate) {
+  for (const variant of buildAnalysisVariantsForSlot(analysis, slot)) {
+    for (const source of sources) {
+      if (source === 'tmdb') {
+        const tmdbResolved = await collectStructuredTMDbImages(variant, 4, [primaryImage.url]);
+        const candidate = tmdbResolved.find((item) =>
+          getImageIdentity(item.url) !== primaryIdentity &&
+          areImageRolesComplementary(primaryRole, item.role)
+        );
+        if (candidate) {
+          return {
+            image: candidate,
+            role: candidate.role,
+          };
+        }
+        continue;
+      }
+
+      const secondaryScored = await collectScoredImages(variant, 6, source, openaiWebSearchModel);
+      const candidate = secondaryScored.find((item) => {
+        if (!item.image.imageUrl || getImageIdentity(item.image.imageUrl) === primaryIdentity) {
+          return false;
+        }
+
+        const secondaryRole = getImageRole(getSerperImageText(item.image), variant);
+        return isEligibleSmartSecondaryCandidate(
+          primaryRole,
+          secondaryRole,
+          item.image,
+          item.score,
+          variant.imageIntent
+        );
+      });
+
+      if (candidate?.image.imageUrl) {
         return {
-          image: candidate,
-          role: candidate.role,
+          image: {
+            url: candidate.image.imageUrl,
+            reason: candidate.reason,
+            source,
+            score: candidate.score,
+          },
+          role: getImageRole(getSerperImageText(candidate.image), variant),
         };
       }
-      continue;
-    }
-
-    const secondaryScored = await collectScoredImages(analysis, 6, source, openaiWebSearchModel);
-    const candidate = secondaryScored.find((item) => {
-      if (!item.image.imageUrl || getImageIdentity(item.image.imageUrl) === primaryIdentity) {
-        return false;
-      }
-
-      const secondaryRole = getImageRole(getSerperImageText(item.image), analysis);
-      return isEligibleSmartSecondaryCandidate(
-        primaryRole,
-        secondaryRole,
-        item.image,
-        item.score,
-        analysis.imageIntent
-      );
-    });
-
-    if (candidate?.image.imageUrl) {
-      return {
-        image: {
-          url: candidate.image.imageUrl,
-          reason: candidate.reason,
-          source,
-          score: candidate.score,
-        },
-        role: getImageRole(getSerperImageText(candidate.image), analysis),
-      };
     }
   }
 
@@ -3953,6 +4153,37 @@ async function hydrateOpenAIImageCandidate(
     link: sourcePage,
     source: 'openai_web_search',
   };
+}
+
+function mapAssetPreferenceToIntent(
+  preference: 'backdrop' | 'poster' | 'profile' | 'logo',
+  slot: ImageSlotPlan
+): ImageIntent {
+  switch (preference) {
+    case 'profile':
+      return 'person_portrait';
+    case 'poster':
+      return 'poster';
+    case 'logo':
+      return slot.type === 'studio' || slot.type === 'streaming_service' ? 'brand_backdrop' : 'logo';
+    case 'backdrop':
+    default:
+      return slot.type === 'character' ? 'character_still' : 'still';
+  }
+}
+
+function buildAnalysisVariantsForSlot(
+  base: RSSSubjectAnalysis,
+  slot: ImageSlotPlan
+): RSSSubjectAnalysis[] {
+  return Array.from(new Set(slot.assetPreferences))
+    .map((preference) => {
+      const intent = mapAssetPreferenceToIntent(preference, slot);
+      return buildAnalysisForSlot(
+        base,
+        buildImageSlotPlan(slot.subject, slot.type, intent, base, intent === 'logo' || intent === 'brand_backdrop')
+      );
+    });
 }
 
 async function searchOpenAIWebImages(
@@ -4200,49 +4431,82 @@ function validateImageCandidate(
   const mentionsProject = hasRelevantEntityMatch(text, entityTerms);
   const looksOfficial = containsKeyword(text, OFFICIAL_MARKERS) || isTrustedImageDomain(domain);
   const illustrationLikeResult = containsKeyword(text, ILLUSTRATION_STYLE_KEYWORDS);
+  const explicitAnimatedStyleResult = containsKeyword(text, ['anime', 'cartoon', 'animated']);
   const unofficialEdit = containsKeyword(text, UNOFFICIAL_EDIT_KEYWORDS);
   const aiGenerated = containsKeyword(text, AI_GENERATION_KEYWORDS);
+  const primaryPersonLed =
+    analysis.imageIntent === 'person_portrait' ||
+    analysis.contextType === 'interview' ||
+    (
+      (analysis.primarySubject.type === 'actor' || analysis.primarySubject.type === 'director' || analysis.primarySubject.type === 'producer') &&
+      Boolean(analysis.contextProject)
+    );
+  const mentionsPrimarySubject = entityMatches(text, analysis.primarySubject.name);
+  const mentionsContextProject = analysis.contextProject ? entityMatches(text, analysis.contextProject) : false;
+  const mentionsSecondaryOnly = !mentionsPrimarySubject && !mentionsContextProject && secondaryEntityTerms.some((term) => entityMatches(text, term));
   const animationOfficial = analysis.animatedSubject &&
     (containsKeyword(text, OFFICIAL_ANIMATION_MARKERS) || looksOfficial);
 
   if (!image.imageUrl) {
-    return { approved: false, reason: 'missing image url' };
+    return { approved: false, reason: 'missing image url', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
   if (isUnanchoredGeneralStory(analysis) && analysis.imageIntent !== 'logo' && analysis.imageIntent !== 'brand_backdrop') {
-    return { approved: false, reason: 'generic industry story requires a clearly anchored subject before using title art' };
+    return { approved: false, reason: 'generic industry story requires a clearly anchored subject before using title art', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
   if (!isTrustedImageDomain(domain)) {
-    return { approved: false, reason: 'untrusted image domain' };
+    return { approved: false, reason: 'untrusted image domain', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
   if (!hasMinimumImageDimensions(image, analysis.imageIntent)) {
-    return { approved: false, reason: 'image dimensions below editorial threshold' };
+    return { approved: false, reason: 'image dimensions below editorial threshold', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
   if (aiGenerated) {
-    return { approved: false, reason: 'ai-generated image signals detected' };
+    return { approved: false, reason: 'ai-generated image signals detected', reasonCode: 'IMAGE_NON_OFFICIAL_STYLE_REJECTED' };
   }
 
   if (unofficialEdit) {
-    return { approved: false, reason: 'unofficial edited or thumbnail-style asset' };
+    return { approved: false, reason: 'unofficial edited or thumbnail-style asset', reasonCode: 'IMAGE_NON_OFFICIAL_STYLE_REJECTED' };
   }
 
   if (
-    illustrationLikeResult &&
+    (illustrationLikeResult || explicitAnimatedStyleResult) &&
     !(analysis.animatedSubject && animationOfficial) &&
     analysis.primarySubject.type !== 'character'
   ) {
-    return { approved: false, reason: 'non-official illustration style detected' };
+    return { approved: false, reason: 'non-official illustration style detected', reasonCode: 'IMAGE_MEDIA_TYPE_MISMATCH' };
+  }
+
+  if (primaryPersonLed && !mentionsPrimarySubject) {
+    return {
+      approved: false,
+      reason: 'person-led story requires the speaking subject as the primary image anchor',
+      reasonCode: 'IMAGE_PERSON_PRIORITY_FAIL',
+    };
+  }
+
+  if (
+    isProjectAnchorType(analysis.primarySubject.type) &&
+    analysis.contextProject &&
+    !mentionsPrimarySubject &&
+    !mentionsContextProject &&
+    mentionsSecondaryOnly
+  ) {
+    return {
+      approved: false,
+      reason: 'supporting character or secondary entity cannot replace the project as the primary image',
+      reasonCode: 'IMAGE_WRONG_PRIMARY_SUBJECT',
+    };
   }
 
   if (!mentionsProject) {
-    return { approved: false, reason: 'image does not map to resolved article subject' };
+    return { approved: false, reason: 'image does not map to resolved article subject', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
   if (analysis.animatedSubject && !animationOfficial && containsKeyword(text, ['live action', 'photo', 'set photo'])) {
-    return { approved: false, reason: 'live-action image used for animated subject' };
+    return { approved: false, reason: 'live-action image used for animated subject', reasonCode: 'IMAGE_MEDIA_TYPE_MISMATCH' };
   }
 
   return { approved: true };
@@ -4540,7 +4804,7 @@ function scoreImage(
 function buildFeedFallbackImages(
   fallbackImages: string[],
   limit: number,
-  reason: string = 'Article body image'
+  reason: string = 'Explicit article/feed fallback image'
 ): RSSResolvedImage[] {
   return fallbackImages.slice(0, Math.max(limit, 1)).map((url) => ({
     url,
@@ -4597,10 +4861,10 @@ export async function resolveRelevantRSSImages(
 
   if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);
-    const primaryAnalysis = buildAnalysisForSlot(analysis, plan.primary);
     const primaryResolved = await resolveSmartPrimaryCandidate(
       article,
-      primaryAnalysis,
+      analysis,
+      plan.primary,
       sources,
       fallbackImages,
       options.openaiWebSearchModel
@@ -4608,7 +4872,10 @@ export async function resolveRelevantRSSImages(
     const memorialStory = isMemorialStory(article);
 
     if (!primaryResolved) {
-      const projectPrimaryFallbackAnalysis = buildSingleSlotProjectFallbackAnalysis(primaryAnalysis, article);
+      const projectPrimaryFallbackAnalysis = buildSingleSlotProjectFallbackAnalysis(
+        buildAnalysisForSlot(analysis, plan.primary),
+        article
+      );
       if (projectPrimaryFallbackAnalysis) {
         const projectFallbackResolved = await resolveSingleSlotImages(
           article,
@@ -4637,7 +4904,7 @@ export async function resolveRelevantRSSImages(
       return neutralProjectImage ? [neutralProjectImage] : [];
     }
 
-    if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(primaryAnalysis, primaryResolved.image, primaryResolved.role)) {
+    if (fallbackImages.length > 0 && shouldReplaceBrandingPrimaryWithFeedFallback(buildAnalysisForSlot(analysis, plan.primary), primaryResolved.image, primaryResolved.role)) {
       return buildFeedFallbackImages(fallbackImages, limit);
     }
 
@@ -4645,9 +4912,9 @@ export async function resolveRelevantRSSImages(
       return [primaryResolved.image];
     }
 
-    const secondaryAnalysis = buildAnalysisForSlot(analysis, plan.secondary);
     const secondaryResolved = await resolveSmartSecondaryCandidate(
-      secondaryAnalysis,
+      analysis,
+      plan.secondary,
       primaryResolved.image,
       primaryResolved.role,
       sources,

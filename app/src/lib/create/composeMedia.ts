@@ -20,6 +20,8 @@ type PlatformCapability = {
   maxItems: number;
 };
 
+export const COMPOSE_STORY_VIDEO_SEGMENT_SECONDS = 60;
+
 const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   instagram_feed: {
     supportsSingleImage: true,
@@ -40,10 +42,10 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   instagram_stories: {
     supportsSingleImage: true,
     supportsSingleVideo: true,
-    supportsMultiImage: false,
-    supportsMultiVideo: false,
+    supportsMultiImage: true,
+    supportsMultiVideo: true,
     supportsMixedMedia: false,
-    maxItems: 1,
+    maxItems: 4,
   },
   facebook_feed: {
     supportsSingleImage: true,
@@ -56,10 +58,10 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   facebook_stories: {
     supportsSingleImage: true,
     supportsSingleVideo: true,
-    supportsMultiImage: false,
-    supportsMultiVideo: false,
+    supportsMultiImage: true,
+    supportsMultiVideo: true,
     supportsMixedMedia: false,
-    maxItems: 1,
+    maxItems: 4,
   },
   tiktok: {
     supportsSingleImage: true,
@@ -288,7 +290,7 @@ function sanitizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): Compos
 export function buildComposeMediaAsset(
   file: File,
   order: number,
-  metadata?: Pick<ComposeMediaAsset, 'width' | 'height' | 'aspectRatioValue' | 'aspectRatioLabel'>,
+  metadata?: Pick<ComposeMediaAsset, 'durationSeconds' | 'width' | 'height' | 'aspectRatioValue' | 'aspectRatioLabel'>,
 ): ComposeMediaAsset {
   const kind: ComposeMediaKind = file.type.startsWith('video/') ? 'video' : 'image';
 
@@ -303,6 +305,25 @@ export function buildComposeMediaAsset(
     previewUrl: URL.createObjectURL(file),
     uploadStatus: 'uploading',
   };
+}
+
+export function estimateComposeStoryItemCount(assets: ComposeMediaAsset[]): number {
+  return assets.reduce((total, asset) => {
+    if (asset.kind === 'image') {
+      return total + 1;
+    }
+
+    const durationSeconds =
+      typeof asset.durationSeconds === 'number' && Number.isFinite(asset.durationSeconds) && asset.durationSeconds > 0
+        ? asset.durationSeconds
+        : COMPOSE_STORY_VIDEO_SEGMENT_SECONDS;
+
+    return total + Math.max(1, Math.ceil(durationSeconds / COMPOSE_STORY_VIDEO_SEGMENT_SECONDS));
+  }, 0);
+}
+
+function isStoryPlatform(platform: ComposePlatformKey) {
+  return platform === 'instagram_stories' || platform === 'facebook_stories';
 }
 
 export function getComposeAssetPreviewUrl(asset?: ComposeMediaAsset) {
@@ -358,6 +379,7 @@ export function getComposePlatformCompatibility(
 ): ComposePlatformCompatibility {
   const capability = PLATFORM_CAPABILITIES[platform];
   const summary = summarizeComposeMedia(assets);
+  const estimatedStoryItems = isStoryPlatform(platform) ? estimateComposeStoryItemCount(assets) : summary.totalAssets;
 
   if (summary.kind === 'empty') {
     return {
@@ -367,12 +389,14 @@ export function getComposePlatformCompatibility(
     };
   }
 
-  if (summary.totalAssets > capability.maxItems) {
+  if (estimatedStoryItems > capability.maxItems) {
     return {
       platform,
       supported: false,
       label: 'Unsupported',
-      reason: `Supports up to ${capability.maxItems} item${capability.maxItems === 1 ? '' : 's'} in this flow.`,
+      reason: isStoryPlatform(platform)
+        ? `Supports up to ${capability.maxItems} story item${capability.maxItems === 1 ? '' : 's'} after splitting videos longer than 60 seconds.`
+        : `Supports up to ${capability.maxItems} item${capability.maxItems === 1 ? '' : 's'} in this flow.`,
     };
   }
 

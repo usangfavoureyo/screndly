@@ -47,6 +47,34 @@ interface OptimizationState {
     enabled: Record<PlatformId, boolean>;
 }
 
+function createDefaultEnabledState(): Record<PlatformId, boolean> {
+    return PLATFORMS.reduce((acc, p) => {
+        acc[p.id] = true;
+        return acc;
+    }, {} as Record<PlatformId, boolean>);
+}
+
+function normalizeOptimizationState(raw: unknown): OptimizationState {
+    const defaultEnabled = createDefaultEnabledState();
+
+    if (!raw || typeof raw !== 'object') {
+        return { enabled: defaultEnabled };
+    }
+
+    const candidateEnabled = (raw as { enabled?: unknown }).enabled;
+    if (!candidateEnabled || typeof candidateEnabled !== 'object') {
+        return { enabled: defaultEnabled };
+    }
+
+    const normalizedEnabled = PLATFORMS.reduce((acc, platform) => {
+        const value = (candidateEnabled as Record<string, unknown>)[platform.id];
+        acc[platform.id] = typeof value === 'boolean' ? value : defaultEnabled[platform.id];
+        return acc;
+    }, {} as Record<PlatformId, boolean>);
+
+    return { enabled: normalizedEnabled };
+}
+
 /**
  * Load optimization settings from localStorage
  */
@@ -54,7 +82,7 @@ function loadSettings(storageKey: string): OptimizationState {
     try {
         const stored = localStorage.getItem(`${storageKey}_optimization`);
         if (stored) {
-            return JSON.parse(stored);
+            return normalizeOptimizationState(JSON.parse(stored));
         }
     } catch (_e) {
         // Use defaults
@@ -62,10 +90,7 @@ function loadSettings(storageKey: string): OptimizationState {
 
     // Default: all platforms enabled
     return {
-        enabled: PLATFORMS.reduce((acc, p) => {
-            acc[p.id] = true;
-            return acc;
-        }, {} as Record<PlatformId, boolean>),
+        enabled: createDefaultEnabledState(),
     };
 }
 
@@ -74,11 +99,12 @@ function loadSettings(storageKey: string): OptimizationState {
  */
 function saveSettings(storageKey: string, state: OptimizationState): void {
     try {
-        localStorage.setItem(`${storageKey}_optimization`, JSON.stringify(state));
+        const normalizedState = normalizeOptimizationState(state);
+        localStorage.setItem(`${storageKey}_optimization`, JSON.stringify(normalizedState));
 
         // Also update global optimization platform config
         const globalConfig = PLATFORMS.reduce((acc, p) => {
-            acc[p.id] = state.enabled[p.id];
+            acc[p.id] = normalizedState.enabled[p.id];
             return acc;
         }, {} as Record<string, boolean>);
 

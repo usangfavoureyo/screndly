@@ -57,6 +57,31 @@ describe('tmdb caption sanitizer', () => {
     }
   });
 
+  it('preserves paragraph breaks while still cleaning inline spacing', () => {
+    const input = 'First line with   extra spaces.\n\nSecond paragraph keeps its break.';
+
+    const output = __tmdbCaptionSanitizer.sanitizeTMDbCaption(
+      input,
+      { title: 'Example Movie', mediaType: 'movie', releaseDate: '2026-04-10' },
+      { model: 'gpt-5.4-nano', prompt: '', maxLength: 280, includeCast: true, includeDate: true, feedType: 'today' }
+    );
+
+    expect(output).toBe('First line with extra spaces.\n\nSecond paragraph keeps its break.');
+  });
+
+  it('splits a release lead and cast lead into two paragraphs when that improves readability', () => {
+    const input = 'Mortal Kombat II premieres next month on Friday, May 1. Starring Karl Urban, Adeline Rudolph, Jessica McNamee, and Josh Lawson.';
+
+    const output = __tmdbCaptionSanitizer.sanitizeTMDbCaption(
+      input,
+      { title: 'Mortal Kombat II', mediaType: 'movie', releaseDate: '2026-05-01' },
+      { model: 'gpt-5.4-nano', prompt: '', maxLength: 280, includeCast: true, includeDate: true, feedType: 'monthly' }
+    );
+
+    expect(output).toContain('premieres next month');
+    expect(output).toContain('\n\nStarring Karl Urban');
+  });
+
   it('builds weekly temporal guidance with weekday and date for next-week releases', () => {
     const RealDate = Date;
 

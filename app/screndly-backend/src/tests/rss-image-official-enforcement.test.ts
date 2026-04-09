@@ -166,11 +166,14 @@ test('prefers actor portrait plus project logo for casting stories with a strong
   const plan = determineSmartImagePlan(article, analysis);
 
   assert.equal(analysis.contextType, 'casting');
+  assert.equal(plan.mode, 'dual');
   assert.equal(plan.useTwoImages, true);
   assert.equal(plan.primary.subject, 'Tega Alexander');
   assert.equal(plan.primary.intent, 'person_portrait');
+  assert.deepEqual(plan.primaryAssetPreferences, ['profile', 'logo', 'backdrop']);
   assert.equal(plan.secondary?.subject, 'Bridgerton');
   assert.equal(plan.secondary?.intent, 'logo');
+  assert.deepEqual(plan.secondaryAssetPreferences, ['logo', 'backdrop']);
 });
 
 test('treats executive departure stories as person-led and pairs portrait with company logo', () => {
@@ -191,6 +194,80 @@ test('treats executive departure stories as person-led and pairs portrait with c
   assert.equal(plan.primary.intent, 'person_portrait');
   assert.equal(plan.secondary?.intent, 'logo');
   assert.match(plan.secondary?.subject || '', /Paramount/i);
+});
+
+test('person-led interview stories keep the speaking subject as the primary image', () => {
+  const article = {
+    title: "Olivia Munn says a male co-star refused to film a scene on 'The Drew Barrymore Show'",
+    description:
+      "Olivia Munn discussed the production incident during an appearance on 'The Drew Barrymore Show'.",
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(analysis.primarySubject.name, 'Olivia Munn');
+  assert.equal(plan.mode, 'dual');
+  assert.equal(plan.primary.subject, 'Olivia Munn');
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.deepEqual(plan.primaryAssetPreferences, ['profile', 'logo', 'backdrop']);
+  assert.equal(plan.secondary?.subject, 'The Drew Barrymore Show');
+});
+
+test('single-subject reaction stories stay in single-image mode', () => {
+  const article = {
+    title: 'James Gunn reacts to fan theories about the DCU',
+    description: 'James Gunn addressed DCU speculation in a new post.',
+  } satisfies RSSImageSelectionArticle;
+
+  const analysis = buildAnalysis(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(plan.mode, 'single');
+  assert.equal(plan.useTwoImages, false);
+  assert.equal(plan.primary.subject, 'James Gunn');
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.secondary, null);
+});
+
+test('rejects show-event art as the primary image for a person-led story', () => {
+  const analysis = buildAnalysis({
+    title: "Jenna Ortega says she nearly quit acting before landing Ellie Alves in Netflix's 'You'",
+    description: "Jenna Ortega discussed the role during an appearance tied to Netflix's Tudum event.",
+  });
+
+  const result = validateImageCandidate({
+    title: 'Netflix Tudum 2025 official event key art',
+    imageUrl: 'https://www.netflix.com/tudum-2025.jpg',
+    imageWidth: 1600,
+    imageHeight: 900,
+    domain: 'netflix.com',
+    link: 'https://www.netflix.com/tudum',
+    source: 'serper',
+  }, analysis);
+
+  assert.equal(result.approved, false);
+  assert.match(result.reasonCode || '', /IMAGE_PERSON_PRIORITY_FAIL/);
+});
+
+test('rejects anime-style image candidates for live-action Sam Asghari project stories', () => {
+  const analysis = buildAnalysis({
+    title: "Sam Asghari wraps starring role in action thriller short 'The Good American'",
+    description: 'He plays Ben, an Iranian refugee and rideshare driver in Los Angeles.',
+  });
+
+  const result = validateImageCandidate({
+    title: 'The Good American anime classroom scene',
+    imageUrl: 'https://example.com/anime-classroom.jpg',
+    imageWidth: 1600,
+    imageHeight: 900,
+    domain: 'deadline.com',
+    link: 'https://deadline.com/example',
+    source: 'openai_web_search',
+  }, analysis);
+
+  assert.equal(result.approved, false);
+  assert.match(result.reasonCode || '', /IMAGE_MEDIA_TYPE_MISMATCH/);
 });
 
 test('ignores producer credit titles when resolving a sequel story subject', () => {
