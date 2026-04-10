@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, Cloud, X, MoreVertical, Plus } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -7,6 +7,7 @@ import { EditDesignBottomSheet, DesignData } from './EditDesignBottomSheet';
 import { PublishBottomSheet } from './PublishBottomSheet';
 import { BackblazeTemplateBrowser } from './BackblazeTemplateBrowser';
 import { SwipeableTemplateCard } from './SwipeableTemplateCard';
+import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { VisuallyHidden } from './ui/visually-hidden';
 import { MediaPreviewDialog } from './media/MediaPreviewDialog';
 import { haptics } from '../utils/haptics';
@@ -24,13 +25,19 @@ import {
   createDesignStudioActivity,
   fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
+  fetchDesignStudioTMDbImages,
   importDesignStudioTemplate,
   saveDesignStudioState,
+  searchDesignStudioTMDb,
   startDesignStudioManualRender,
+  uploadDesignStudioAsset,
   uploadDesignStudioTemplate,
   type DesignStudioAutoEditorialRecord,
   type DesignStudioLayoutVariant,
   type DesignStudioManualRenderJob,
+  type DesignStudioTMDbImageAsset,
+  type DesignStudioTMDbImagePool,
+  type DesignStudioTMDbSearchResult,
 } from '../lib/api/designStudio';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 
@@ -306,6 +313,86 @@ type AutoEditorialAction =
   | 'template'
   | 'schedule';
 
+function formatPlatformLabel(platform: string): string {
+  const normalized = platform.trim().toLowerCase();
+  if (normalized === 'x' || normalized === 'twitter') return 'X';
+  if (normalized === 'threads') return 'Threads';
+  if (normalized === 'instagram') return 'Instagram';
+  if (normalized === 'facebook') return 'Facebook';
+  if (normalized === 'pinterest') return 'Pinterest';
+  return platform;
+}
+
+function formatEditorialDateTime(value?: string | null): string {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getActionButtonClass(isDestructive = false): string {
+  return [
+    'w-full rounded-2xl border px-4 py-4 text-left text-sm font-medium transition-colors',
+    isDestructive
+      ? 'border-[#ec1e24]/35 bg-[#ec1e24]/10 text-[#ec1e24] hover:bg-[#ec1e24]/15'
+      : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]',
+  ].join(' ');
+}
+
+function buildDatetimeLocalParts(value?: string | null): { date: string; time: string } {
+  if (!value) {
+    return { date: '', time: '' };
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: '', time: '' };
+  }
+
+  const year = parsed.getFullYear();
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+  };
+}
+
+function combineDatetimeLocal(date: string, time: string): string | null {
+  if (!date || !time) return null;
+  const parsed = new Date(`${date}T${time}`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function toBackgroundImagePoolList(
+  pool: DesignStudioTMDbImagePool,
+  mediaType: DesignStudioTMDbSearchResult['mediaType'],
+): Array<DesignStudioTMDbImageAsset & { kind: 'backdrop' | 'poster' | 'logo' | 'profile' }> {
+  if (mediaType === 'person') {
+    return (pool.profiles || []).map((asset) => ({ ...asset, kind: 'profile' as const }));
+  }
+
+  if (mediaType === 'company') {
+    return (pool.logos || []).map((asset) => ({ ...asset, kind: 'logo' as const }));
+  }
+
+  return [
+    ...(pool.backdrops || []).map((asset) => ({ ...asset, kind: 'backdrop' as const })),
+    ...(pool.posters || []).map((asset) => ({ ...asset, kind: 'poster' as const })),
+    ...(pool.logos || []).map((asset) => ({ ...asset, kind: 'logo' as const })),
+  ];
+}
+
 const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
 const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 
@@ -508,10 +595,23 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isEditorialEditorOpen, setIsEditorialEditorOpen] = useState(false);
   const [editorialEditorMode, setEditorialEditorMode] = useState<AutoEditorialAction>('caption');
   const [editorialDraftValue, setEditorialDraftValue] = useState('');
+  const [editorialScheduleDate, setEditorialScheduleDate] = useState('');
+  const [editorialScheduleTime, setEditorialScheduleTime] = useState('');
   const [editorialOverlayDirection, setEditorialOverlayDirection] = useState<'top' | 'bottom' | 'left' | 'right'>('top');
   const [editorialOverlayStrength, setEditorialOverlayStrength] = useState(75);
+  const [editorialOverlayColor, setEditorialOverlayColor] = useState('#000000');
+  const [isSavingEditorialEdit, setIsSavingEditorialEdit] = useState(false);
+  const [isGeneratingEditorialCaption, setIsGeneratingEditorialCaption] = useState(false);
+  const [isBackgroundDragging, setIsBackgroundDragging] = useState(false);
+  const [backgroundSearchQuery, setBackgroundSearchQuery] = useState('');
+  const [backgroundSearchResults, setBackgroundSearchResults] = useState<DesignStudioTMDbSearchResult[]>([]);
+  const [selectedBackgroundSearchResult, setSelectedBackgroundSearchResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [backgroundImageAssets, setBackgroundImageAssets] = useState<Array<DesignStudioTMDbImageAsset & { kind: 'backdrop' | 'poster' | 'logo' | 'profile' }>>([]);
+  const [isSearchingBackgrounds, setIsSearchingBackgrounds] = useState(false);
+  const [isLoadingBackgroundAssets, setIsLoadingBackgroundAssets] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const backgroundFileInputRef = useRef<HTMLInputElement>(null);
   const renderJobStatusRef = useRef<Map<string, ManualRenderJob['status']>>(new Map());
 
   useEffect(() => {
@@ -1208,6 +1308,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   };
 
   const openEditorialEditor = (editorial: AutoEditorial, mode: AutoEditorialAction) => {
+    const scheduleParts = buildDatetimeLocalParts(editorial.scheduleTime);
     setSelectedEditorial(editorial);
     setEditorialEditorMode(mode);
     setEditorialDraftValue(
@@ -1225,10 +1326,95 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   ? editorial.templateId
                   : '',
     );
+    setEditorialScheduleDate(scheduleParts.date);
+    setEditorialScheduleTime(scheduleParts.time);
     setEditorialOverlayDirection((editorial.overlayDirection as 'top' | 'bottom' | 'left' | 'right') || 'top');
     setEditorialOverlayStrength(editorial.overlayStrength || 75);
+    setEditorialOverlayColor(editorial.overlayColor || '#000000');
+    setBackgroundSearchQuery(editorial.sourceTitle || editorial.headerText || '');
+    setBackgroundSearchResults([]);
+    setSelectedBackgroundSearchResult(null);
+    setBackgroundImageAssets([]);
     setIsEditorialActionsOpen(false);
     setIsEditorialEditorOpen(true);
+  };
+
+  const handleGenerateEditorialCaption = async () => {
+    if (!selectedEditorial) {
+      return;
+    }
+
+    setIsGeneratingEditorialCaption(true);
+    try {
+      const sharedCaption = selectedEditorial.captions?.shared_caption;
+      const fallbackCaption = `${selectedEditorial.headerText}. ${selectedEditorial.subheaderText || selectedEditorial.sourceTitle}`.trim();
+      setEditorialDraftValue(sharedCaption || fallbackCaption);
+      toast.success('Caption refreshed');
+    } catch (error) {
+      console.error('Failed to generate editorial caption:', error);
+      toast.error('Failed to refresh caption');
+    } finally {
+      setIsGeneratingEditorialCaption(false);
+    }
+  };
+
+  const handleEditorialBackgroundFile = async (file?: File | null) => {
+    if (!file) {
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    try {
+      const uploaded = await uploadDesignStudioAsset(file, 'renders');
+      setEditorialDraftValue(uploaded.url);
+      toast.success('Background uploaded');
+    } catch (error) {
+      console.error('Failed to upload Design Studio background:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload background');
+    }
+  };
+
+  const handleSearchEditorialBackgrounds = async () => {
+    const query = backgroundSearchQuery.trim();
+    if (!query) {
+      toast.error('Enter a movie, TV show, logo, or person');
+      return;
+    }
+
+    setIsSearchingBackgrounds(true);
+    setSelectedBackgroundSearchResult(null);
+    setBackgroundImageAssets([]);
+    try {
+      const results = await searchDesignStudioTMDb(query);
+      setBackgroundSearchResults(results.slice(0, 8));
+      if (results.length === 0) {
+        toast.error('No matching images found');
+      }
+    } catch (error) {
+      console.error('Failed to search Design Studio backgrounds:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search images');
+    } finally {
+      setIsSearchingBackgrounds(false);
+    }
+  };
+
+  const handleSelectBackgroundResult = async (result: DesignStudioTMDbSearchResult) => {
+    setSelectedBackgroundSearchResult(result);
+    setIsLoadingBackgroundAssets(true);
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      setBackgroundImageAssets(toBackgroundImagePoolList(pool, result.mediaType));
+    } catch (error) {
+      console.error('Failed to load Design Studio image assets:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load images');
+      setBackgroundImageAssets([]);
+    } finally {
+      setIsLoadingBackgroundAssets(false);
+    }
   };
 
   const handleSaveEditorialEdit = async () => {
@@ -1236,51 +1422,60 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       return;
     }
 
+    setIsSavingEditorialEdit(true);
     const updates: Partial<AutoEditorial> = {};
 
-    switch (editorialEditorMode) {
-      case 'caption':
-        updates.caption = editorialDraftValue;
-        break;
-      case 'header':
-        updates.headerText = editorialDraftValue;
-        break;
-      case 'subheader':
-        updates.subheaderText = editorialDraftValue;
-        break;
-      case 'background':
-        updates.backgroundSource = editorialDraftValue;
-        break;
-      case 'schedule':
-        updates.scheduleTime = editorialDraftValue;
-        updates.status = editorialDraftValue ? 'queued' : 'detected';
-        break;
-      case 'template': {
-        const nextTemplate = templates.find((template) => template.id === editorialDraftValue);
-        if (nextTemplate) {
-          updates.templateId = nextTemplate.id;
-          updates.templateName = nextTemplate.name;
+    try {
+      switch (editorialEditorMode) {
+        case 'caption':
+          updates.caption = editorialDraftValue;
+          break;
+        case 'header':
+          updates.headerText = editorialDraftValue;
+          break;
+        case 'subheader':
+          updates.subheaderText = editorialDraftValue;
+          break;
+        case 'background':
+          updates.backgroundSource = editorialDraftValue;
+          break;
+        case 'schedule': {
+          const scheduleIso = combineDatetimeLocal(editorialScheduleDate, editorialScheduleTime);
+          updates.scheduleTime = scheduleIso;
+          updates.status = scheduleIso ? 'queued' : 'detected';
+          break;
         }
-        break;
+        case 'template': {
+          const nextTemplate = templates.find((template) => template.id === editorialDraftValue);
+          if (nextTemplate) {
+            updates.templateId = nextTemplate.id;
+            updates.templateName = nextTemplate.name;
+          }
+          break;
+        }
+        case 'overlay':
+          updates.overlayDirection = editorialOverlayDirection;
+          updates.overlayStrength = editorialOverlayStrength;
+          updates.overlayColor = editorialOverlayColor;
+          break;
+        default:
+          break;
       }
-      case 'overlay':
-        updates.overlayDirection = editorialOverlayDirection;
-        updates.overlayStrength = editorialOverlayStrength;
-        break;
-      default:
-        break;
-    }
 
-    await updateEditorial(selectedEditorial.id, updates);
-    await createDesignStudioActivity('auto_editorial_updated', {
-      sourceTitle: selectedEditorial.sourceTitle,
-      field: editorialEditorMode,
-    });
-    setIsEditorialEditorOpen(false);
-    toast.success('Auto editorial updated');
+      await updateEditorial(selectedEditorial.id, updates);
+      await createDesignStudioActivity('auto_editorial_updated', {
+        sourceTitle: selectedEditorial.sourceTitle,
+        field: editorialEditorMode,
+      });
+      setIsEditorialEditorOpen(false);
+      toast.success('Auto editorial updated');
+    } finally {
+      setIsSavingEditorialEdit(false);
+    }
   };
 
   const handleDeleteEditorial = async (editorial: AutoEditorial) => {
+    const previousAutoEditorials = [...autoEditorials];
     const nextAutoEditorials = autoEditorials.filter((item) => item.id !== editorial.id);
     await persistState(templates, renderedDesigns, nextAutoEditorials);
     setAutoEditorials(nextAutoEditorials);
@@ -1289,7 +1484,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       sourceTitle: editorial.sourceTitle,
       templateName: editorial.templateName,
     });
-    toast.success('Auto editorial deleted');
+    showUndo({
+      id: `undo-auto-editorial-${editorial.id}`,
+      itemName: editorial.sourceTitle,
+      onUndo: async () => {
+        await persistState(templates, renderedDesigns, previousAutoEditorials);
+        setAutoEditorials(previousAutoEditorials);
+        toast.success('Auto editorial restored');
+      },
+      onConfirm: () => {
+        toast.success('Auto editorial deleted');
+      },
+    });
   };
 
   return (
@@ -1524,15 +1730,19 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           ) : (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
               {autoEditorials.map((editorial) => (
-                <div
+                <SwipeableActivityCard
                   key={editorial.id}
-                  className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] overflow-hidden"
+                  id={editorial.id}
+                  onDelete={() => {
+                    void handleDeleteEditorial(editorial);
+                  }}
+                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
+                  deleteLabel="Delete auto editorial"
                 >
                   <button
                     type="button"
                     onClick={() => {
                       setPreviewEditorial(editorial);
-                      setPreviewZoom(1);
                     }}
                     className="w-full"
                   >
@@ -1554,7 +1764,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           setSelectedEditorial(editorial);
                           setIsEditorialActionsOpen(true);
                         }}
-                        className="rounded-full border border-gray-200 dark:border-[#333333] p-2 text-gray-900 dark:text-white"
+                        className="h-11 w-11 rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </button>
@@ -1574,16 +1784,36 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                       ) : null}
                     </div>
 
+                    <div className="flex flex-wrap items-center gap-2">
+                      {(editorial.targetPlatforms || []).map((platform) => (
+                        <span
+                          key={`${editorial.id}-${platform}`}
+                          className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-700 shadow-sm dark:border-[#333333] dark:bg-[#111111] dark:text-[#D1D5DB]"
+                        >
+                          {formatPlatformLabel(platform)}
+                        </span>
+                      ))}
+                      {(editorial.targetPlatforms || []).length === 0 ? (
+                        <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-700 shadow-sm dark:border-[#333333] dark:bg-[#111111] dark:text-[#D1D5DB]">
+                          No platforms
+                        </span>
+                      ) : null}
+                    </div>
+
                     <div className="grid grid-cols-1 gap-2 text-xs text-[#6B7280] dark:text-[#9CA3AF] sm:grid-cols-2">
-                      <p>Platforms: {(editorial.targetPlatforms || []).length > 0 ? editorial.targetPlatforms.join(', ') : 'None'}</p>
-                      <p>
-                        Schedule: {editorial.scheduleTime ? new Date(editorial.scheduleTime).toLocaleString() : 'Not scheduled'}
-                      </p>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 shadow-sm dark:border-[#333333] dark:bg-black dark:text-[#9CA3AF]">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        <span>Fetched {formatEditorialDateTime(editorial.createdAt)}</span>
+                      </div>
+                      <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 shadow-sm dark:border-[#333333] dark:bg-black dark:text-[#9CA3AF]">
+                        <Calendar className="h-3.5 w-3.5" />
+                        <span>Schedule {editorial.scheduleTime ? formatEditorialDateTime(editorial.scheduleTime) : 'Not scheduled'}</span>
+                      </div>
                     </div>
 
                     <p className="text-sm leading-6 text-[#6B7280] dark:text-[#9CA3AF] line-clamp-3">{editorial.caption}</p>
                   </div>
-                </div>
+                </SwipeableActivityCard>
               ))}
             </div>
           )}
@@ -1745,49 +1975,49 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'caption')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Edit Caption
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'header')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Edit Header
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'subheader')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Edit Subtext
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'background')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Change Background
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'overlay')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Adjust Overlay
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'template')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Change Template
                 </button>
                 <button
                   type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'schedule')}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Edit Schedule
                 </button>
@@ -1797,14 +2027,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     setIsEditorialActionsOpen(false);
                     void handlePublishAutoEditorial(selectedEditorial);
                   }}
-                  className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] px-4 py-4 text-left text-gray-900 dark:text-white"
+                  className={getActionButtonClass()}
                 >
                   Publish Now
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleDeleteEditorial(selectedEditorial)}
-                  className="w-full rounded-2xl border border-[#ec1e24]/40 px-4 py-4 text-left text-[#ec1e24]"
+                  className={getActionButtonClass(true)}
                 >
                   Delete
                 </button>
@@ -1834,8 +2064,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         <BottomSheetBody>
           <div className="space-y-4">
             {editorialEditorMode === 'template' ? (
-              <div className="space-y-2">
-                <Label>Validated Template</Label>
+              <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <Label className="text-gray-900 dark:text-white">Validated Template</Label>
                 <Select value={editorialDraftValue} onValueChange={setEditorialDraftValue}>
                   <SelectTrigger className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white">
                     <SelectValue placeholder="Select template" />
@@ -1850,49 +2080,263 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 </Select>
               </div>
             ) : editorialEditorMode === 'overlay' ? (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Overlay Direction</Label>
-                  <Select value={editorialOverlayDirection} onValueChange={(value) => setEditorialOverlayDirection(value as 'top' | 'bottom' | 'left' | 'right')}>
-                    <SelectTrigger className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white">
-                      <SelectValue placeholder="Select direction" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]">
-                      <SelectItem value="top">Top</SelectItem>
-                      <SelectItem value="bottom">Bottom</SelectItem>
-                      <SelectItem value="left">Left</SelectItem>
-                      <SelectItem value="right">Right</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <Label className="text-gray-900 dark:text-white">Overlay Color</Label>
+                    <span className="text-xs uppercase text-gray-500 dark:text-[#9CA3AF]">{editorialOverlayColor}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={editorialOverlayColor}
+                      onChange={(event) => setEditorialOverlayColor(event.target.value)}
+                      className="h-12 w-12 cursor-pointer rounded-full border border-gray-200 bg-transparent p-1 dark:border-[#333333]"
+                    />
+                    <Input
+                      value={editorialOverlayColor}
+                      onChange={(event) => setEditorialOverlayColor(event.target.value)}
+                      className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Overlay Strength</Label>
-                  <Input
-                    type="number"
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <Label className="text-gray-900 dark:text-white">Overlay Strength</Label>
+                    <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{editorialOverlayStrength}%</span>
+                  </div>
+                  <input
+                    type="range"
                     min={0}
                     max={100}
                     value={editorialOverlayStrength}
                     onChange={(event) => setEditorialOverlayStrength(Number.parseInt(event.target.value || '0', 10))}
+                    className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#ec1e24] dark:bg-[#333333]"
+                  />
+                </div>
+                <div>
+                  <Label className="mb-2 block text-gray-900 dark:text-white">Overlay Direction</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['top', 'bottom', 'left', 'right'] as const).map((direction) => (
+                      <button
+                        key={direction}
+                        type="button"
+                        onClick={() => setEditorialOverlayDirection(direction)}
+                        className={`rounded-full border px-4 py-2 text-sm font-medium capitalize transition-colors ${
+                          editorialOverlayDirection === direction
+                            ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                            : 'border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white'
+                        }`}
+                      >
+                        {direction}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : editorialEditorMode === 'caption' || editorialEditorMode === 'header' || editorialEditorMode === 'subheader' ? (
+              <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <Label className="text-gray-900 dark:text-white">
+                    {editorialEditorMode === 'caption' ? 'Social Caption' : editorialEditorMode === 'header' ? 'Header Text' : 'Subtext'}
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (editorialEditorMode === 'caption') {
+                        void handleGenerateEditorialCaption();
+                      }
+                    }}
+                    disabled={editorialEditorMode !== 'caption' || isGeneratingEditorialCaption}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                  >
+                    {isGeneratingEditorialCaption ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </button>
+                </div>
+                <textarea
+                  value={editorialDraftValue}
+                  onChange={(event) => setEditorialDraftValue(event.target.value)}
+                  rows={editorialEditorMode === 'caption' ? 6 : 5}
+                  className="min-h-[150px] w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-900 outline-none transition-colors focus:border-[#ec1e24] dark:border-[#333333] dark:bg-black dark:text-white"
+                  placeholder={editorialEditorMode === 'caption' ? 'Write the social caption...' : 'Write the design text...'}
+                />
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-[#6B7280]">
+                  <span>{editorialEditorMode === 'caption' ? 'Use the article title and summary tone.' : 'This updates the editorial text.'}</span>
+                  <span>{editorialDraftValue.length} chars</span>
+                </div>
+              </div>
+            ) : editorialEditorMode === 'background' ? (
+              <div className="space-y-4">
+                <input
+                  ref={backgroundFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    void handleEditorialBackgroundFile(event.target.files?.[0]);
+                    event.target.value = '';
+                  }}
+                />
+                <div
+                  className={`rounded-2xl border border-dashed p-5 text-center transition-colors ${
+                    isBackgroundDragging
+                      ? 'border-[#ec1e24] bg-[#ec1e24]/10'
+                      : 'border-gray-200 bg-white dark:border-[#333333] dark:bg-black'
+                  }`}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsBackgroundDragging(true);
+                  }}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsBackgroundDragging(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    setIsBackgroundDragging(false);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsBackgroundDragging(false);
+                    void handleEditorialBackgroundFile(event.dataTransfer.files?.[0]);
+                  }}
+                >
+                  <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
+                    <Upload className="h-5 w-5" />
+                  </div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Upload or drag an image here</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-[#9CA3AF]">Backdrops, posters, logos, and person images are supported.</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => backgroundFileInputRef.current?.click()}
+                    className="mt-4 rounded-full border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    Upload Image
+                  </Button>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                  <Label className="text-gray-900 dark:text-white">Search Movie, TV, Logo, or Person</Label>
+                  <div className="mt-3 flex gap-2">
+                    <Input
+                      value={backgroundSearchQuery}
+                      onChange={(event) => setBackgroundSearchQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          void handleSearchEditorialBackgrounds();
+                        }
+                      }}
+                      placeholder="Search TMDb..."
+                      className="bg-white text-gray-900 dark:bg-black dark:text-white"
+                    />
+                    <Button
+                      type="button"
+                      onClick={() => void handleSearchEditorialBackgrounds()}
+                      disabled={isSearchingBackgrounds}
+                      className="rounded-full bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+                    >
+                      {isSearchingBackgrounds ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    </Button>
+                  </div>
+
+                  {selectedBackgroundSearchResult ? (
+                    <div className="mt-4">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedBackgroundSearchResult.title}</p>
+                          <p className="text-xs uppercase tracking-[0.14em] text-gray-500 dark:text-[#9CA3AF]">{selectedBackgroundSearchResult.mediaType}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBackgroundSearchResult(null);
+                            setBackgroundImageAssets([]);
+                          }}
+                          className="rounded-full px-3 py-1 text-xs text-[#ec1e24]"
+                        >
+                          Change
+                        </button>
+                      </div>
+                      {isLoadingBackgroundAssets ? (
+                        <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">Loading images...</p>
+                      ) : (
+                        <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto">
+                          {backgroundImageAssets.map((asset) => (
+                            <button
+                              key={`${asset.kind}-${asset.url}`}
+                              type="button"
+                              onClick={() => setEditorialDraftValue(asset.url)}
+                              className={`relative overflow-hidden rounded-xl border-2 transition-colors ${
+                                editorialDraftValue === asset.url ? 'border-[#ec1e24]' : 'border-transparent hover:border-[#ec1e24]/70'
+                              } ${asset.kind === 'backdrop' ? 'aspect-video' : 'aspect-[4/5]'}`}
+                            >
+                              <img src={asset.url} alt={`${selectedBackgroundSearchResult.title} ${asset.kind}`} className="h-full w-full object-cover" />
+                              <span className="absolute bottom-2 left-2 rounded-full bg-black/75 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white">
+                                {asset.kind}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : backgroundSearchResults.length > 0 ? (
+                    <div className="mt-4 grid gap-2">
+                      {backgroundSearchResults.map((result) => (
+                        <button
+                          key={`${result.mediaType}-${result.id}`}
+                          type="button"
+                          onClick={() => void handleSelectBackgroundResult(result)}
+                          className="flex items-center justify-between rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left transition-colors hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">{result.title}</p>
+                            <p className="text-xs uppercase tracking-[0.12em] text-gray-500 dark:text-[#9CA3AF]">
+                              {result.mediaType}{result.releaseDate ? ` | ${result.releaseDate.slice(0, 4)}` : ''}
+                            </p>
+                          </div>
+                          <Search className="h-4 w-4 text-[#ec1e24]" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                  <Label className="text-gray-900 dark:text-white">Background URL</Label>
+                  <Input
+                    type="text"
+                    value={editorialDraftValue}
+                    onChange={(event) => setEditorialDraftValue(event.target.value)}
+                    className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+            ) : editorialEditorMode === 'schedule' ? (
+              <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <div className="space-y-2">
+                  <Label className="text-gray-900 dark:text-white">Schedule Date</Label>
+                  <Input
+                    type="date"
+                    value={editorialScheduleDate}
+                    onChange={(event) => setEditorialScheduleDate(event.target.value)}
+                    className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-gray-900 dark:text-white">Schedule Time</Label>
+                  <Input
+                    type="time"
+                    value={editorialScheduleTime}
+                    onChange={(event) => setEditorialScheduleTime(event.target.value)}
                     className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
                   />
                 </div>
               </div>
             ) : (
-              <div className="space-y-2">
-                <Label>
-                  {editorialEditorMode === 'schedule'
-                    ? 'Schedule Time'
-                    : editorialEditorMode === 'background'
-                      ? 'Background URL'
-                      : 'Value'}
-                </Label>
-                <Input
-                  type={editorialEditorMode === 'schedule' ? 'datetime-local' : 'text'}
-                  value={editorialDraftValue}
-                  onChange={(event) => setEditorialDraftValue(event.target.value)}
-                  className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white"
-                />
-              </div>
+              <div />
             )}
           </div>
         </BottomSheetBody>
@@ -1902,6 +2346,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               type="button"
               variant="outline"
               onClick={() => setIsEditorialEditorOpen(false)}
+              disabled={isSavingEditorialEdit}
               className="flex-1 border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white"
             >
               Cancel
@@ -1909,8 +2354,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             <Button
               type="button"
               onClick={() => void handleSaveEditorialEdit()}
+              disabled={isSavingEditorialEdit}
               className="flex-1 bg-[#ec1e24] hover:bg-[#d01a20] text-white"
             >
+              {isSavingEditorialEdit ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
               Save
             </Button>
           </div>
