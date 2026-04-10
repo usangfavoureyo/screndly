@@ -1879,6 +1879,7 @@ Release-context research rules:
             maxTokens: 120,
             temperature: 0.4,
             enableWebSearch: enableReleaseResearch,
+            webSearchUsageScope: 'video',
         }),
         aiService.generateCompletion({
             model,
@@ -1887,6 +1888,7 @@ Release-context research rules:
             maxTokens: 500,
             temperature: 0.6,
             enableWebSearch: enableReleaseResearch,
+            webSearchUsageScope: 'video',
         }),
     ]);
 

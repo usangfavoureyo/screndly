@@ -12,6 +12,8 @@
         "build": "node scripts/prepare-build-artifacts.js && prisma generate && tsc",
         "verify:server": "node --import tsx src/verify/server.ts",
         "verify:backend": "node --import tsx src/verify/backend-flow.ts",
+        "audit:rss": "node --import tsx src/audit/rss-audit-cli.ts --mode run",
+        "audit:rss:report": "node --import tsx src/audit/rss-audit-cli.ts --mode report",
         "test:tmdb": "node --import tsx --test src/tests/tmdb-feed.reliability.test.ts",
         "start": "node dist/index.js",
         "migrate": "prisma migrate deploy",

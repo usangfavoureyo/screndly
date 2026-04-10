@@ -219,6 +219,7 @@ interface RSSRuntimeSettings {
   rssCaptionTemperature?: number;
   rssCaptionTone?: string;
   rssCaptionMaxLength?: number;
+  rssOpenaiWebSearchEnabled: boolean;
   rssImageWebSearchModel?: string;
   rssPostingIntervalMinutes: number;
   dailyQuotaX: number;
@@ -284,6 +285,7 @@ const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
   'rssCaptionModel',
+  'rssOpenaiWebSearchEnabled',
   'rssImageWebSearchModel',
   'rssCaptionPrompt',
   'rssCaptionTemperature',
@@ -2686,7 +2688,7 @@ async function resolveRSSItemImages(
   },
   item: RSSItem,
   limit: number,
-  runtimeSettings?: Pick<RSSRuntimeSettings, 'rssImageWebSearchModel'>
+  runtimeSettings?: Pick<RSSRuntimeSettings, 'rssImageWebSearchModel' | 'rssOpenaiWebSearchEnabled'>
 ): Promise<RSSResolvedImage[]> {
   const canonicalEntity = ensureRSSCanonicalEntity(item);
   const resolvedImages = await resolveRelevantRSSImages(
@@ -2702,7 +2704,7 @@ async function resolveRSSItemImages(
     {
       serperEnabled: feed.serperEnabled ?? true,
       tmdbEnabled: feed.tmdbEnabled ?? true,
-      openaiWebSearchEnabled: feed.openaiWebSearchEnabled ?? false,
+      openaiWebSearchEnabled: Boolean(runtimeSettings?.rssOpenaiWebSearchEnabled) && (feed.openaiWebSearchEnabled ?? false),
       serperPriority: feed.serperPriority,
       imageSourcePriority: feed.imageSourcePriority ?? undefined,
       limit,
@@ -2945,6 +2947,7 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
     globalRSSPosting: asBoolean(settingsMap.get('globalRSSPosting'), true),
     rssDeduplication: asBoolean(settingsMap.get('rssDeduplication'), true),
     rssCaptionModel: asString(settingsMap.get('rssCaptionModel')) || DEFAULT_OPENAI_MODEL,
+    rssOpenaiWebSearchEnabled: asBoolean(settingsMap.get('rssOpenaiWebSearchEnabled'), false),
     rssImageWebSearchModel: asString(settingsMap.get('rssImageWebSearchModel')) || 'gpt-5.4-mini',
     rssCaptionPrompt: savedCaptionPrompt,
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
@@ -5670,4 +5673,17 @@ export const __rssDedupeTestUtils = {
   buildRSSCaptionVisualContext,
   assessRSSArticleSpeculation,
   buildRSSSpeculationFilterReason,
+};
+
+export const __rssAuditTestUtils = {
+  sanitizeRSSPlainText,
+  sanitizeRSSCaptionText,
+  buildRSSCanonicalEntity,
+  ensureRSSCanonicalEntity,
+  getRSSImageReasonCodes,
+  validateRSSFinalPublishState,
+  buildRSSCaptionAllowedEntities,
+  buildRSSCaptionVisualContext,
+  buildRSSNewsEventFingerprint,
+  areRSSNewsEventsSimilar,
 };

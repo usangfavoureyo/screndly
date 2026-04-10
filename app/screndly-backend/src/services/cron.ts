@@ -31,6 +31,52 @@ const YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES = 45;
 const DEFAULT_TMDB_MASTER_REFRESH_TIME = '07:00';
 const DEFAULT_TMDB_SECONDARY_REFRESH_TIME = '12:00';
 
+function quoteTMDbCaptionTitle(title: string): string {
+    return `'${String(title || '').trim()}'`;
+}
+
+function isGenericTMDbOutNowCaption(caption: string | null | undefined, title: string): boolean {
+    const normalized = String(caption || '').trim();
+    if (!normalized) {
+        return false;
+    }
+
+    const escapedTitle = String(title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`^\\W*OUT\\s+NOW:\\s*${escapedTitle}\\W*$`, 'i').test(normalized);
+}
+
+function buildTMDbPromptAlignedFallbackCaption(post: {
+    title: string;
+    mediaType: string;
+    moduleType?: string | null;
+    cast?: string[] | null;
+}): string {
+    const title = quoteTMDbCaptionTitle(post.title);
+    const cast = Array.isArray(post.cast)
+        ? post.cast.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 3)
+        : [];
+    const castLine = cast.length > 0 ? `\n\nStarring ${cast.join(', ')}.` : '';
+
+    if (post.moduleType === 'today') {
+        const releasePhrase = post.mediaType === 'tv' ? 'premieres today' : 'releases today';
+        return `${title} ${releasePhrase}.${castLine}`;
+    }
+
+    if (post.moduleType === 'weekly') {
+        return `${title} releases this week.${castLine}`;
+    }
+
+    if (post.moduleType === 'monthly') {
+        return `${title} releases next month.${castLine}`;
+    }
+
+    if (post.moduleType === 'anniversary') {
+        return `${title} marks an anniversary today.${castLine}`;
+    }
+
+    return `${title} arrives soon.${castLine}`;
+}
+
 const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
     {
         bucketTypes: ['videos', 'general'],
@@ -90,6 +136,19 @@ async function resolveTMDbPublishImageUrls(post: {
     return resolvedImageUrls;
 }
 let youtubePollingPauseReason: string | null = null;
+
+async function clearResolvedYouTubePollingHealthNotifications(): Promise<void> {
+    await prisma.notification.updateMany({
+        where: {
+            title: 'YouTube Polling Fully Delayed',
+            source: 'youtube',
+            read: false,
+        },
+        data: { read: true },
+    }).catch((error) => {
+        console.warn('[Cron] Failed to mark resolved YouTube polling health notifications as read:', error);
+    });
+}
 
 export function pauseYouTubePolling(minutes: number, reason = 'manual targeted poll'): Date {
     const safeMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 10;
@@ -352,6 +411,8 @@ async function checkYouTubePollingHealth() {
             name: true,
             nextPollAt: true,
             lastCheck: true,
+            lastPollStartedAt: true,
+            lockUntil: true,
         },
     });
 
@@ -374,6 +435,7 @@ async function checkYouTubePollingHealth() {
 
     if (overdueChannels.length === 0) {
         lastYouTubePollingHealthNotificationAt = null;
+        await clearResolvedYouTubePollingHealthNotifications();
         return;
     }
 
@@ -381,6 +443,22 @@ async function checkYouTubePollingHealth() {
         await logCron(
             'warn',
             `YouTube polling self-heal: ${overdueChannels.length}/${activeChannels.length} active channels are overdue by more than ${YOUTUBE_POLLING_GLOBAL_STALE_THRESHOLD_MINUTES} minutes`
+        );
+        return;
+    }
+
+    const recoveryInProgress = activeChannels.some((channel) => {
+        if (channel.lockUntil && channel.lockUntil > now) {
+            return true;
+        }
+
+        return Boolean(channel.lastPollStartedAt && channel.lastPollStartedAt >= staleBefore);
+    });
+
+    if (recoveryInProgress) {
+        await logCron(
+            'warn',
+            `YouTube polling self-heal in progress: all ${activeChannels.length} active channels are stale, but polling workers have recently claimed work`
         );
         return;
     }
@@ -777,8 +855,16 @@ export async function initCronJobs() {
                         continue;
                     }
 
+                    const publishCaption = isGenericTMDbOutNowCaption(latestPost.caption, latestPost.title)
+                        ? buildTMDbPromptAlignedFallbackCaption(latestPost)
+                        : latestPost.caption || latestPost.title;
+
+                    if (publishCaption !== latestPost.caption) {
+                        await updateTMDbPost(latestPost.id, { caption: publishCaption });
+                    }
+
                     const content = {
-                        text: latestPost.caption || latestPost.title,
+                        text: publishCaption,
                         title: latestPost.title,
                         imageUrl: primaryImageUrl,
                         imageUrls: publishImageUrls.length > 0 ? publishImageUrls : undefined,

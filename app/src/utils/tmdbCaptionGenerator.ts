@@ -244,6 +244,47 @@ function stripCaptionLinks(value: string): string {
     .replace(/[([]\s*$/g, '');
 }
 
+function quoteTMDbCaptionTitle(title: string): string {
+  return `'${String(title || '').trim()}'`;
+}
+
+function buildPromptAlignedFallbackCaption(item: TMDbItem, options: CaptionGenerationOptions): string {
+  const title = quoteTMDbCaptionTitle(item.title);
+  const cast = Array.isArray(item.cast)
+    ? item.cast.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 3)
+    : [];
+  const castLine = options.includeCast && cast.length > 0 ? `\n\nStarring ${cast.join(', ')}.` : '';
+
+  if (options.feedType === 'today') {
+    const releasePhrase = item.mediaType === 'tv' ? 'premieres today' : 'releases today';
+    return `${title} ${releasePhrase}.${castLine}`;
+  }
+
+  if (options.feedType === 'weekly') {
+    return `${title} releases this week.${castLine}`;
+  }
+
+  if (options.feedType === 'monthly') {
+    return `${title} releases next month.${castLine}`;
+  }
+
+  if (options.feedType === 'anniversary' && item.anniversaryYears) {
+    return `${title} marks its ${item.anniversaryYears}th anniversary today.${castLine}`;
+  }
+
+  return `${title} arrives soon.${castLine}`;
+}
+
+function isGenericOutNowCaption(value: string, item: TMDbItem): boolean {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+
+  const escapedTitle = String(item.title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^\\W*OUT\\s+NOW:\\s*${escapedTitle}\\W*$`, 'i').test(normalized);
+}
+
 function getMonthlyTimingReplacement(releaseDate: string, referenceDate = new Date()): string | null {
   const target = parseCalendarDate(releaseDate);
   if (!target) {
@@ -292,6 +333,10 @@ function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGe
     .replace(/\(\s*\)/g, '')
     .trim();
 
+  if (isGenericOutNowCaption(sanitized, item)) {
+    sanitized = buildPromptAlignedFallbackCaption(item, options);
+  }
+
   if (options.feedType === 'weekly') {
     const weeklyReplacement = getWeeklyTimingReplacement(item.releaseDate);
     if (weeklyReplacement && weeklyReplacement !== 'this week') {
@@ -333,6 +378,7 @@ export const __tmdbCaptionSanitizer = {
   stripCaptionLinks,
   sanitizeTMDbCaption,
   buildTemporalGuidance,
+  buildPromptAlignedFallbackCaption,
 };
 
 function getTMDbCaptionCacheTtlMs(): number {

@@ -4387,6 +4387,7 @@ async function searchOpenAIWebImages(
     temperature: 0.1,
     maxTokens: 1400,
     enableWebSearch: true,
+    webSearchUsageScope: 'rss',
     cacheKey: `rss:openai-web-image:${normalizeText(query)}:${normalizeText(analysis.visualSubject)}:${analysis.imageIntent}`,
     cacheTTLms: 30 * 60 * 1000,
   });

@@ -252,6 +252,23 @@ export function RssSettings({ settings, updateSetting, onBack }: RssSettingsProp
             </p>
           </div>
 
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label className="text-[#6B7280] dark:text-[#9CA3AF]">Enable RSS OpenAI Web Search</Label>
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+                Master switch for RSS feed image fallback only. When off, per-feed OpenAI Web Search toggles stay saved but no RSS web-search calls are made.
+              </p>
+            </div>
+            <Switch
+              checked={settings.rssOpenaiWebSearchEnabled ?? false}
+              onCheckedChange={(checked) => {
+                haptics.light();
+                updateSetting('rssOpenaiWebSearchEnabled', checked);
+                toast.info(checked ? 'RSS OpenAI web search enabled' : 'RSS OpenAI web search disabled');
+              }}
+            />
+          </div>
+
           <div>
             <Label htmlFor="rss-image-web-search-model" className="text-[#6B7280] dark:text-[#9CA3AF]">OpenAI Image Web Search Model</Label>
             <Select

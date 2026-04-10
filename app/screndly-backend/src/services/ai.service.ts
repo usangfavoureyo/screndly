@@ -72,6 +72,7 @@ export interface AIRequest {
     jsonMode?: boolean;
     reasoningEffort?: AIReasoningEffort;
     enableWebSearch?: boolean;
+    webSearchUsageScope?: 'rss' | 'youtube' | 'tmdb' | 'video' | 'compose' | 'general';
     cacheKey?: string;
     cacheTTLms?: number;
     useCache?: boolean;
@@ -98,6 +99,206 @@ const aiResponseCache = new Map<string, CachedAIResponse>();
 const pendingAIRequests = new Map<string, Promise<AIResponse>>();
 const DEFAULT_AI_CACHE_TTL_MS = 30 * 60 * 1000;
 const WEB_SEARCH_AI_CACHE_TTL_MS = 10 * 60 * 1000;
+const OPENAI_QUOTA_COOLDOWN_MS = 30 * 60 * 1000;
+const DEFAULT_OPENAI_WEB_SEARCH_DAILY_LIMIT = 50;
+const DEFAULT_RSS_OPENAI_WEB_SEARCH_DAILY_LIMIT = 10;
+const DEFAULT_YOUTUBE_OPENAI_WEB_SEARCH_DAILY_LIMIT = 20;
+const DEFAULT_TMDB_OPENAI_WEB_SEARCH_DAILY_LIMIT = 10;
+const DEFAULT_VIDEO_OPENAI_WEB_SEARCH_DAILY_LIMIT = 20;
+const DEFAULT_COMPOSE_OPENAI_WEB_SEARCH_DAILY_LIMIT = 10;
+
+let openAIQuotaBlockedUntil = 0;
+let lastOpenAIQuotaWarningAt = 0;
+const openAIWebSearchDailyUsageCache = new Map<string, { count: number; expiresAt: number }>();
+let openAIWebSearchBudgetWarningDay = '';
+
+function readNonNegativeIntEnv(name: string, fallback: number): number {
+    const raw = process.env[name];
+    const parsed = raw ? Number.parseInt(raw, 10) : fallback;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function getOpenAIWebSearchScope(request: AIRequest): NonNullable<AIRequest['webSearchUsageScope']> {
+    return request.webSearchUsageScope || 'general';
+}
+
+function getOpenAIWebSearchDailyLimit(scope?: string): number {
+    switch (scope) {
+        case 'rss':
+            return readNonNegativeIntEnv('RSS_OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_RSS_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+        case 'youtube':
+            return readNonNegativeIntEnv('YOUTUBE_OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_YOUTUBE_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+        case 'tmdb':
+            return readNonNegativeIntEnv('TMDB_OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_TMDB_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+        case 'video':
+            return readNonNegativeIntEnv('VIDEO_OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_VIDEO_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+        case 'compose':
+            return readNonNegativeIntEnv('COMPOSE_OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_COMPOSE_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+        default:
+            return readNonNegativeIntEnv('OPENAI_WEB_SEARCH_DAILY_LIMIT', DEFAULT_OPENAI_WEB_SEARCH_DAILY_LIMIT);
+    }
+}
+
+function getUTCDayKey(date = new Date()): string {
+    return date.toISOString().slice(0, 10);
+}
+
+function getUTCDayStart(date = new Date()): Date {
+    return new Date(`${getUTCDayKey(date)}T00:00:00.000Z`);
+}
+
+function getOpenAIWebSearchUsageEndpointForScope(scope: string): string {
+    const safeScope = scope.replace(/[^a-z0-9_-]/gi, '').toLowerCase() || 'general';
+    return `/v1/responses:web_search:${safeScope}`;
+}
+
+async function getOpenAIWebSearchDailyUsageCount(scope?: string): Promise<number> {
+    const dayKey = getUTCDayKey();
+    const scopedDayKey = scope ? `${dayKey}:${scope}` : `${dayKey}:global`;
+    const cached = openAIWebSearchDailyUsageCache.get(scopedDayKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.count;
+    }
+
+    const endpointWhere = scope
+        ? { equals: getOpenAIWebSearchUsageEndpointForScope(scope) }
+        : { startsWith: '/v1/responses:web_search' };
+    const count = await prisma.apiUsage.count({
+        where: {
+            service: 'openai',
+            endpoint: endpointWhere,
+            success: true,
+            createdAt: { gte: getUTCDayStart() },
+        },
+    });
+
+    openAIWebSearchDailyUsageCache.set(scopedDayKey, {
+        count,
+        expiresAt: Date.now() + 60 * 1000,
+    });
+
+    return count;
+}
+
+function incrementOpenAIWebSearchDailyUsageCache(scope?: string): void {
+    const dayKey = getUTCDayKey();
+    const scopedDayKey = scope ? `${dayKey}:${scope}` : `${dayKey}:global`;
+    const cached = openAIWebSearchDailyUsageCache.get(scopedDayKey);
+    if (!cached) {
+        openAIWebSearchDailyUsageCache.set(scopedDayKey, {
+            count: 1,
+            expiresAt: Date.now() + 60 * 1000,
+        });
+        return;
+    }
+
+    cached.count += 1;
+    cached.expiresAt = Date.now() + 60 * 1000;
+}
+
+async function getOpenAIWebSearchBudgetBlockedResponse(request: AIRequest): Promise<AIResponse | null> {
+    if (!request.enableWebSearch) {
+        return null;
+    }
+
+    const scope = getOpenAIWebSearchScope(request);
+    const scopedLimit = getOpenAIWebSearchDailyLimit(scope);
+    const globalLimit = getOpenAIWebSearchDailyLimit();
+    if (scopedLimit <= 0 || globalLimit <= 0) {
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: `OpenAI web search is disabled for ${scope} by daily limit settings`,
+        };
+    }
+
+    try {
+        const [scopedCount, globalCount] = await Promise.all([
+            getOpenAIWebSearchDailyUsageCount(scope),
+            getOpenAIWebSearchDailyUsageCount(),
+        ]);
+        if (scopedCount < scopedLimit && globalCount < globalLimit) {
+            return null;
+        }
+
+        const dayKey = getUTCDayKey();
+        const warningKey = `${dayKey}:${scope}`;
+        if (openAIWebSearchBudgetWarningDay !== warningKey) {
+            openAIWebSearchBudgetWarningDay = warningKey;
+            console.warn('[AI] OpenAI web search daily limit reached. Skipping web-search calls for cost safety.', {
+                scope,
+                scopedCount,
+                scopedLimit,
+                globalCount,
+                globalLimit,
+                dayKey,
+            });
+        }
+
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: `OpenAI web search daily limit reached for ${scope} (${scopedCount}/${scopedLimit}, global ${globalCount}/${globalLimit})`,
+        };
+    } catch (error) {
+        console.warn('[AI] Could not verify OpenAI web search daily usage. Skipping web-search call for cost safety.', error);
+        return {
+            success: false,
+            content: '',
+            model: request.model,
+            error: 'OpenAI web search skipped because usage budget could not be verified',
+        };
+    }
+}
+
+function getOpenAIUsageEndpoint(baseEndpoint: '/v1/responses' | '/v1/chat/completions', request: AIRequest): string {
+    return baseEndpoint === '/v1/responses' && request.enableWebSearch
+        ? getOpenAIWebSearchUsageEndpointForScope(getOpenAIWebSearchScope(request))
+        : baseEndpoint;
+}
+
+function isOpenAIQuotaErrorMessage(value: unknown): boolean {
+    const message = value instanceof Error
+        ? value.message
+        : typeof value === 'string'
+            ? value
+            : '';
+
+    const normalized = message.toLowerCase();
+    return (
+        normalized.includes('exceeded your current quota') ||
+        normalized.includes('insufficient_quota') ||
+        normalized.includes('billing details') ||
+        normalized.includes('quota exceeded')
+    );
+}
+
+function markOpenAIQuotaBlocked(error: unknown): void {
+    openAIQuotaBlockedUntil = Date.now() + OPENAI_QUOTA_COOLDOWN_MS;
+
+    if (Date.now() - lastOpenAIQuotaWarningAt > 60 * 1000) {
+        lastOpenAIQuotaWarningAt = Date.now();
+        console.warn('[AI] OpenAI quota/billing limit reached. Pausing OpenAI calls temporarily to avoid retry storms.', {
+            cooldownSeconds: Math.round(OPENAI_QUOTA_COOLDOWN_MS / 1000),
+            error: error instanceof Error ? error.message : String(error || ''),
+        });
+    }
+}
+
+function getOpenAIQuotaBlockedResponse(request: AIRequest): AIResponse | null {
+    if (openAIQuotaBlockedUntil <= Date.now()) {
+        return null;
+    }
+
+    return {
+        success: false,
+        content: '',
+        model: request.model,
+        error: `OpenAI quota cooldown active for ${Math.ceil((openAIQuotaBlockedUntil - Date.now()) / 1000)} more seconds`,
+    };
+}
 
 function getEffectiveAICacheTTLms(request: AIRequest): number {
     if (typeof request.cacheTTLms === 'number' && request.cacheTTLms > 0) {
@@ -497,6 +698,11 @@ export function shouldEnableReleaseResearch(context: ReleaseResearchContext): bo
 // ============================================
 
 async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse> {
+    const quotaBlocked = getOpenAIQuotaBlockedResponse(request);
+    if (quotaBlocked) {
+        return quotaBlocked;
+    }
+
     const apiKey = await getOpenAIKey();
 
     if (!apiKey) {
@@ -546,13 +752,17 @@ async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse
 
         if (!response.ok) {
             const errorData = await response.json() as { error?: { message?: string } };
+            const errorMessage = errorData.error?.message || 'OpenAI API error';
             await trackApiUsage({
                 service: 'openai',
-                endpoint: '/v1/chat/completions',
+                endpoint: getOpenAIUsageEndpoint('/v1/chat/completions', request),
                 success: false,
             });
             tracked = true;
-            throw new Error(errorData.error?.message || 'OpenAI API error');
+            if (isOpenAIQuotaErrorMessage(errorMessage)) {
+                markOpenAIQuotaBlocked(errorMessage);
+            }
+            throw new Error(errorMessage);
         }
 
         const data = await response.json() as {
@@ -563,7 +773,7 @@ async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse
 
         await trackApiUsage({
             service: 'openai',
-            endpoint: '/v1/chat/completions',
+            endpoint: getOpenAIUsageEndpoint('/v1/chat/completions', request),
             tokens: data.usage?.total_tokens || 0,
             success: true,
         });
@@ -583,9 +793,12 @@ async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse
         if (!tracked) {
             await trackApiUsage({
                 service: 'openai',
-                endpoint: '/v1/chat/completions',
+                endpoint: getOpenAIUsageEndpoint('/v1/chat/completions', request),
                 success: false,
             });
+        }
+        if (isOpenAIQuotaErrorMessage(error)) {
+            markOpenAIQuotaBlocked(error);
         }
         console.error('[AI] OpenAI error:', error);
         return {
@@ -602,6 +815,16 @@ async function callOpenAIChatCompletions(request: AIRequest): Promise<AIResponse
 // ============================================
 
 async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
+    const quotaBlocked = getOpenAIQuotaBlockedResponse(request);
+    if (quotaBlocked) {
+        return quotaBlocked;
+    }
+
+    const webSearchBudgetBlocked = await getOpenAIWebSearchBudgetBlockedResponse(request);
+    if (webSearchBudgetBlocked) {
+        return webSearchBudgetBlocked;
+    }
+
     const apiKey = await getOpenAIKey();
 
     if (!apiKey) {
@@ -664,13 +887,17 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
 
         if (!response.ok) {
             const errorData = await response.json() as { error?: { message?: string } };
+            const errorMessage = errorData.error?.message || 'OpenAI Responses API error';
             await trackApiUsage({
                 service: 'openai',
-                endpoint: '/v1/responses',
+                endpoint: getOpenAIUsageEndpoint('/v1/responses', request),
                 success: false,
             });
             tracked = true;
-            throw new Error(errorData.error?.message || 'OpenAI Responses API error');
+            if (isOpenAIQuotaErrorMessage(errorMessage)) {
+                markOpenAIQuotaBlocked(errorMessage);
+            }
+            throw new Error(errorMessage);
         }
 
         const data = await response.json() as {
@@ -704,10 +931,14 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
 
         await trackApiUsage({
             service: 'openai',
-            endpoint: '/v1/responses',
+            endpoint: getOpenAIUsageEndpoint('/v1/responses', request),
             tokens: data.usage?.total_tokens || 0,
             success: true,
         });
+        if (request.enableWebSearch) {
+            incrementOpenAIWebSearchDailyUsageCache(getOpenAIWebSearchScope(request));
+            incrementOpenAIWebSearchDailyUsageCache();
+        }
         tracked = true;
 
         return {
@@ -724,9 +955,19 @@ async function callOpenAIResponses(request: AIRequest): Promise<AIResponse> {
         if (!tracked) {
             await trackApiUsage({
                 service: 'openai',
-                endpoint: '/v1/responses',
+                endpoint: getOpenAIUsageEndpoint('/v1/responses', request),
                 success: false,
             });
+        }
+
+        if (isOpenAIQuotaErrorMessage(error)) {
+            markOpenAIQuotaBlocked(error);
+            return {
+                success: false,
+                content: '',
+                model: request.model,
+                error: error instanceof Error ? error.message : 'OpenAI quota exceeded',
+            };
         }
 
         console.warn('[AI] OpenAI Responses API failed, falling back to Chat Completions:', error);
@@ -977,7 +1218,8 @@ Respond in JSON:
         maxTokens: 300,
         temperature: 0.3,
         jsonMode: true,
-        enableWebSearch: true
+        enableWebSearch: true,
+        webSearchUsageScope: 'youtube',
     });
 
     if (!response.success) {
@@ -1026,6 +1268,42 @@ export interface CaptionContext {
     genres: string[];
     platform?: 'X' | 'Threads' | 'Facebook' | 'Instagram';
     tone?: string;
+}
+
+function quoteCaptionTitle(title: string): string {
+    return `'${String(title || '').trim()}'`;
+}
+
+function buildTMDbFallbackCaption(context: CaptionContext): string {
+    const title = quoteCaptionTitle(context.title);
+    const cast = Array.isArray(context.cast)
+        ? context.cast.map((name) => String(name || '').trim()).filter(Boolean).slice(0, 3)
+        : [];
+    const castLine = cast.length > 0 ? `\n\nStarring ${cast.join(', ')}.` : '';
+
+    if (context.temporalTag === 'releasing_today') {
+        const releasePhrase = context.mediaType === 'tv' ? 'premieres today' : 'releases today';
+        return `${title} ${releasePhrase}.${castLine}`;
+    }
+
+    if (context.temporalTag === 'releasing_this_week') {
+        return `${title} releases this week.${castLine}`;
+    }
+
+    if (context.temporalTag === 'releasing_this_month') {
+        return `${title} releases next month.${castLine}`;
+    }
+
+    if (context.temporalTag === 'anniversary' && context.anniversaryYears) {
+        return `${title} marks its ${context.anniversaryYears}th anniversary today.${castLine}`;
+    }
+
+    return `${title} arrives soon.${castLine}`;
+}
+
+function isGenericTMDbFallbackCaption(caption: string, context: CaptionContext): boolean {
+    const escapedTitle = String(context.title || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`^\\W*(?:OUT\\s+NOW:?|${escapedTitle}\\s*(?:\\(In \\d+ days\\))?)\\W*$`, 'i').test(caption.trim());
 }
 
 export async function generateTMDbCaption(
@@ -1090,14 +1368,17 @@ Write ONLY the caption text. No preamble.`;
         temperature: customTemperature !== undefined ? customTemperature : 0.7, // Custom temp or default high temp for creativity
         jsonMode: false,
         enableWebSearch: true,
+        webSearchUsageScope: 'tmdb',
     });
 
     if (!response.success) {
-        // Fallback to basic template if AI fails
-        return `${context.temporalTag === 'releasing_today' ? '🚨 OUT NOW:' : '🎬'} ${context.title} ${context.daysUntil > 0 ? `(In ${context.daysUntil} days)` : ''}`;
+        return buildTMDbFallbackCaption(context);
     }
 
-    return normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    const caption = normalizeGeneratedText(response.content, ['caption', 'text', 'content']);
+    return isGenericTMDbFallbackCaption(caption, context)
+        ? buildTMDbFallbackCaption(context)
+        : caption;
 }
 
 // ============================================
@@ -2523,6 +2804,7 @@ Write ONLY the caption.`;
         temperature: customTemperature !== undefined ? customTemperature : 0.8,
         jsonMode: false,
         enableWebSearch: enableReleaseResearch,
+        webSearchUsageScope: 'youtube',
     });
 
     if (!response.success) {
@@ -2974,6 +3256,7 @@ ${customPrompt || defaultPrompt}`;
         jsonMode: true,
         temperature: 0.1,
         enableWebSearch: true,
+        webSearchUsageScope: 'youtube',
     });
 
     if (!response.success) {
@@ -3290,6 +3573,7 @@ Return this exact JSON shape:
             jsonMode: true,
             temperature: 0.1,
             enableWebSearch: true,
+            webSearchUsageScope: 'compose',
         });
 
         if (!response.success) {
@@ -3451,6 +3735,7 @@ Return this exact JSON shape:
             jsonMode: true,
             temperature: 0.5,
             enableWebSearch: true,
+            webSearchUsageScope: 'compose',
         });
 
         if (!response.success) {
@@ -3557,6 +3842,7 @@ Return this exact JSON shape:
         jsonMode: true,
         temperature: 0.35,
         enableWebSearch: true,
+        webSearchUsageScope: 'compose',
     });
 
     if (!response.success) {
@@ -3746,8 +4032,8 @@ export async function generatePinterestMetadata(
     Return ONLY the description text.`;
 
     const [titleRes, descRes] = await Promise.all([
-        generateCompletion({ model, prompt: tPrompt, temperature: 0.7, enableWebSearch: true }),
-        generateCompletion({ model, prompt: dPrompt, temperature: 0.7, enableWebSearch: true })
+        generateCompletion({ model, prompt: tPrompt, temperature: 0.7, enableWebSearch: true, webSearchUsageScope: 'compose' }),
+        generateCompletion({ model, prompt: dPrompt, temperature: 0.7, enableWebSearch: true, webSearchUsageScope: 'compose' })
     ]);
 
     return {

@@ -112,6 +112,33 @@ test('respects the configured polling schedule window', () => {
     assert.equal(service.isPollingScheduleOpen(schedule, sundayEveningEt).open, true);
 });
 
+test('keeps polling open on Friday midnight in the configured New York schedule', () => {
+    const service = new YouTubePollerService() as any;
+    const schedule = {
+        enabled: true,
+        timezone: 'America/New_York',
+        windows: [
+            { day: 0, active: false, startTime: null, endTime: null },
+            { day: 1, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 2, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 3, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 4, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 5, active: true, startTime: '00:00', endTime: '23:59' },
+            { day: 6, active: false, startTime: null, endTime: null },
+        ],
+    };
+
+    const fridayMidnightEt = new Date('2026-04-10T04:00:00.000Z');
+    const fridayMorningEt = new Date('2026-04-10T09:00:00.000Z');
+
+    assert.deepEqual(service.getCurrentScheduleParts('America/New_York', fridayMidnightEt), {
+        day: 5,
+        minutes: 0,
+    });
+    assert.equal(service.isPollingScheduleOpen(schedule, fridayMidnightEt).open, true);
+    assert.equal(service.isPollingScheduleOpen(schedule, fridayMorningEt).open, true);
+});
+
 test('routes destination-aware trailer keywords independently per publish area', () => {
     const service = new YouTubePollerService() as any;
     const settings = {

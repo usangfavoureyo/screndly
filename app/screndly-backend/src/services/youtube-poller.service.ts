@@ -615,6 +615,19 @@ export class YouTubePollerService {
         return null;
     }
 
+    private async clearResolvedSchedulePauseNotifications(): Promise<void> {
+        await prisma.notification.updateMany({
+            where: {
+                title: 'YouTube Polling Paused by Schedule',
+                source: 'youtube',
+                read: false,
+            },
+            data: { read: true },
+        }).catch((error) => {
+            console.warn('[YouTubePoller] Failed to mark resolved schedule pause notifications as read:', error);
+        });
+    }
+
     private async tryClaimChannel(
         channel: any,
         settings: LoadedVideoSettings,
@@ -793,6 +806,7 @@ export class YouTubePollerService {
                     scheduleReason: scheduleState.reason,
                 };
             }
+            await this.clearResolvedSchedulePauseNotifications();
             const availableSlots = Math.max(0, MAX_CONCURRENT_CHANNEL_POLLS - this.activeChannelJobs.size);
 
             if (availableSlots === 0) {
@@ -2880,6 +2894,7 @@ Respond ONLY as strict JSON:
 {"allow":true,"classification":"scripted_movie|scripted_series|animation|anime|standup_special|sports|reality|talk_show|documentary|music|dubbed_reupload|fan_edit|other","reason":"short reason"}`,
             maxTokens: 120,
             enableWebSearch: true,
+            webSearchUsageScope: 'youtube',
         });
 
         if (!aiResult.success) {

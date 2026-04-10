@@ -61,6 +61,8 @@ const SENSITIVE_KEYS = [
   'rssCaptionTone',
   'rssCaptionMaxLength',
   'rssCaptionPrompt',
+  'rssOpenaiWebSearchEnabled',
+  'rssImageWebSearchModel',
   'rssDailyLimit',
   'rssStartHour',
   'rssEndHour',

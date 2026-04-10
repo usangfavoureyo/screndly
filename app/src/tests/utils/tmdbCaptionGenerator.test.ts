@@ -82,6 +82,22 @@ describe('tmdb caption sanitizer', () => {
     expect(output).toContain('\n\nStarring Karl Urban');
   });
 
+  it('rewrites generic OUT NOW fallback captions to match today-release prompt style', () => {
+    const output = __tmdbCaptionSanitizer.sanitizeTMDbCaption(
+      '🚨 OUT NOW: Newborn',
+      {
+        title: 'Newborn',
+        mediaType: 'movie',
+        releaseDate: '2026-04-10',
+        cast: ['David Oyelowo', 'Olivia Washington', 'Barry Pepper'],
+      },
+      { model: 'gpt-5.4-nano', prompt: '', maxLength: 280, includeCast: true, includeDate: false, feedType: 'today' }
+    );
+
+    expect(output).toBe("'Newborn' releases today.\n\nStarring David Oyelowo, Olivia Washington, Barry Pepper.");
+    expect(output).not.toContain('OUT NOW');
+  });
+
   it('builds weekly temporal guidance with weekday and date for next-week releases', () => {
     const RealDate = Date;
 

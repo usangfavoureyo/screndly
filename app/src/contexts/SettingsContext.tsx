@@ -231,6 +231,8 @@ export interface Settings {
   rssCaptionTone?: string;
   rssCaptionMaxLength?: number;
   rssCaptionPrompt?: string;
+  rssOpenaiWebSearchEnabled?: boolean;
+  rssImageWebSearchModel?: string;
   rssPinterestTitlePrompt?: string;
   rssPinterestDescriptionPrompt?: string;
   rssPinterestBoardPrompt?: string;
@@ -575,6 +577,8 @@ function getDefaultSettings(): Settings {
     rssCaptionTemperature: 0.7,
     rssCaptionTone: 'Engaging',
     rssCaptionMaxLength: 280,
+    rssOpenaiWebSearchEnabled: false,
+    rssImageWebSearchModel: 'gpt-5.4-mini',
     rssActivityRetention: 24,
     videoActivityRetention: 24,
     designStudioActivityRetention: 24,
