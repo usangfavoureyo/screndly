@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, Cloud, X, MoreVertical, ZoomIn, ZoomOut, Plus } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, Plus } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -8,6 +8,7 @@ import { PublishBottomSheet } from './PublishBottomSheet';
 import { BackblazeTemplateBrowser } from './BackblazeTemplateBrowser';
 import { SwipeableTemplateCard } from './SwipeableTemplateCard';
 import { VisuallyHidden } from './ui/visually-hidden';
+import { MediaPreviewDialog } from './media/MediaPreviewDialog';
 import { haptics } from '../utils/haptics';
 import { addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { useNotifications } from '../contexts/NotificationsContext';
@@ -501,9 +502,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [uploadingTemplateName, setUploadingTemplateName] = useState('');
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
   const [previewEditorial, setPreviewEditorial] = useState<AutoEditorial | null>(null);
-  const [previewZoom, setPreviewZoom] = useState(1);
   const templatePreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
-  const editorialPreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const [selectedEditorial, setSelectedEditorial] = useState<AutoEditorial | null>(null);
   const [isEditorialActionsOpen, setIsEditorialActionsOpen] = useState(false);
   const [isEditorialEditorOpen, setIsEditorialEditorOpen] = useState(false);
@@ -884,7 +883,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
   const handleDoubleTapZoom = (
     event: React.TouchEvent<HTMLElement>,
-    target: 'template' | 'editorial',
   ) => {
     if (event.touches.length > 1) {
       return;
@@ -896,7 +894,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
 
     const now = Date.now();
-    const ref = target === 'template' ? templatePreviewLastTapRef : editorialPreviewLastTapRef;
+    const ref = templatePreviewLastTapRef;
     const lastTap = ref.current;
 
     if (
@@ -905,11 +903,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       Math.abs(lastTap.x - touch.clientX) <= 24 &&
       Math.abs(lastTap.y - touch.clientY) <= 24
     ) {
-      if (target === 'template') {
-        setExpandedTemplateZoom((value) => (value > 1 ? 1 : 2));
-      } else {
-        setPreviewZoom((value) => (value > 1 ? 1 : 2));
-      }
+      setExpandedTemplateZoom((value) => (value > 1 ? 1 : 2));
       ref.current = null;
       return;
     }
@@ -1662,7 +1656,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 <img
                   src={expandedTemplate.previewUrl}
                   alt={expandedTemplate.name}
-                  onTouchEnd={(event) => handleDoubleTapZoom(event, 'template')}
+                      onTouchEnd={handleDoubleTapZoom}
                   className="w-full h-auto max-h-[90vh] object-contain rounded-lg transition-transform duration-200"
                   style={{ transform: `scale(${expandedTemplateZoom})`, transformOrigin: 'center center' }}
                 />
@@ -1923,65 +1917,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         </BottomSheetFooter>
       </BottomSheet>
 
-      <Dialog
+      <MediaPreviewDialog
         open={Boolean(previewEditorial)}
+        src={previewEditorial?.renderedImage}
+        mediaType="image"
+        title={previewEditorial?.headerText || previewEditorial?.sourceTitle || 'Auto editorial preview'}
+        badgeLabel="Rendered"
         onOpenChange={(open) => {
           if (!open) {
             setPreviewEditorial(null);
-            setPreviewZoom(1);
           }
         }}
-      >
-        <DialogContent className="max-w-5xl w-full p-0 overflow-hidden bg-transparent border-none" hideCloseButton>
-          <VisuallyHidden>
-            <DialogTitle>{previewEditorial?.headerText || 'Auto editorial preview'}</DialogTitle>
-            <DialogDescription>
-              Preview and inspect the generated editorial render.
-            </DialogDescription>
-          </VisuallyHidden>
-          {previewEditorial ? (
-            <div className="relative">
-              <div className="absolute right-4 top-4 z-50 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setPreviewZoom((value) => Math.max(1, Number((value - 0.1).toFixed(1))))}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white"
-                >
-                  <ZoomOut className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPreviewZoom((value) => Math.min(3, Number((value + 0.1).toFixed(1))))}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white"
-                >
-                  <ZoomIn className="h-5 w-5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    haptics.light();
-                    setPreviewEditorial(null);
-                    editorialPreviewLastTapRef.current = null;
-                    setPreviewZoom(1);
-                  }}
-                  className="flex h-11 w-11 items-center justify-center rounded-full bg-black/80 text-white"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <div className="max-h-[90vh] overflow-auto rounded-lg bg-black p-6">
-                <img
-                  src={previewEditorial.renderedImage}
-                  alt={previewEditorial.sourceTitle}
-                  onTouchEnd={(event) => handleDoubleTapZoom(event, 'editorial')}
-                  className="mx-auto h-auto max-w-full origin-center rounded-lg transition-transform duration-200"
-                  style={{ transform: `scale(${previewZoom})` }}
-                />
-              </div>
-            </div>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      />
     </div>
   );
 }

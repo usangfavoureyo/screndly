@@ -718,7 +718,8 @@ export function EditDesignBottomSheet({
       return;
     }
 
-    const [firstTouch, secondTouch] = event.touches;
+    const firstTouch = event.touches[0];
+    const secondTouch = event.touches[1];
     expandedPreviewPanStartRef.current = null;
     expandedPreviewTapStartRef.current = null;
     expandedPreviewPinchDistanceRef.current = Math.hypot(
@@ -752,7 +753,8 @@ export function EditDesignBottomSheet({
     }
 
     event.preventDefault();
-    const [firstTouch, secondTouch] = event.touches;
+    const firstTouch = event.touches[0];
+    const secondTouch = event.touches[1];
     const nextDistance = Math.hypot(
       secondTouch.clientX - firstTouch.clientX,
       secondTouch.clientY - firstTouch.clientY,

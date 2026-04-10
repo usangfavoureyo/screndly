@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertCircle, Calendar, Clock3, LoaderCircle, MoreVertical, Send, Trash2, X } from 'lucide-react';
+import { AlertCircle, Calendar, Clock3, Image as ImageIcon, ImagePlus, LoaderCircle, MoreVertical, RefreshCw, Search, Send, Trash2, Upload, X } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import {
@@ -8,9 +8,17 @@ import {
   type DesignStudioAutoEditorialRecord,
   fetchDesignStudioRenderJobs,
   fetchDesignStudioState,
+  fetchDesignStudioTMDbImages,
+  saveDesignStudioState,
+  searchDesignStudioTMDb,
+  startDesignStudioManualRender,
   type DesignStudioTemplateRecord,
+  type DesignStudioTMDbImageAsset,
+  type DesignStudioTMDbImagePool,
+  type DesignStudioTMDbSearchResult,
   type DesignStudioRenderedDesignRecord,
   type DesignStudioManualRenderJob,
+  uploadDesignStudioAsset,
 } from '../lib/api/designStudio';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import type { DesignData } from './EditDesignBottomSheet';
@@ -57,6 +65,11 @@ interface DesignStudioActivityRecord {
     renderJobId?: string;
     exportFormat?: 'jpeg' | 'png';
     scheduleTime?: string;
+    backgroundImage?: string;
+    overlayColor?: string;
+    overlayStrength?: number;
+    overlayDirection?: string;
+    targetPlatforms?: string[] | string;
   };
   createdAt: string;
 }
@@ -82,6 +95,18 @@ interface DesignStudioEditorTarget {
   templateId: string;
   tab?: DesignStudioActivityTab;
   initialData?: DesignData | null;
+}
+
+type CardEditorMode =
+  | 'caption'
+  | 'header'
+  | 'subtext'
+  | 'background'
+  | 'overlay';
+
+interface CardEditorState {
+  mode: CardEditorMode;
+  activity: DesignStudioActivityRecord;
 }
 
 function safeStorageSetItem(key: string, value: string) {
@@ -319,6 +344,72 @@ function formatTime(value: string): string {
   return formatDistanceToNow(date, { addSuffix: true });
 }
 
+function formatFetchedDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Unavailable';
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function normalizePlatformLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return '';
+  if (normalized === 'twitter') return 'X';
+  if (normalized === 'x') return 'X';
+  if (normalized === 'threads') return 'Threads';
+  if (normalized === 'instagram') return 'Instagram';
+  if (normalized === 'facebook') return 'Facebook';
+  if (normalized === 'pinterest') return 'Pinterest';
+  return value.trim();
+}
+
+function parseActivityPlatforms(activity: DesignStudioActivityRecord, editorial?: DesignStudioAutoEditorialRecord): string[] {
+  const fromDetails = Array.isArray(activity.details.targetPlatforms)
+    ? activity.details.targetPlatforms
+    : typeof activity.details.targetPlatforms === 'string'
+      ? activity.details.targetPlatforms.split(',')
+      : typeof activity.details.platforms === 'string'
+        ? activity.details.platforms.split(',')
+        : [];
+  const source = fromDetails.length > 0 ? fromDetails : editorial?.targetPlatforms || [];
+
+  return Array.from(new Set(
+    source
+      .map((platform) => normalizePlatformLabel(String(platform)))
+      .filter(Boolean),
+  ));
+}
+
+function toBackgroundImagePoolList(pool: DesignStudioTMDbImagePool, mediaType: DesignStudioTMDbSearchResult['mediaType']): Array<DesignStudioTMDbImageAsset & { kind: 'backdrop' | 'poster' | 'logo' | 'profile' }> {
+  if (mediaType === 'person') {
+    return (pool.profiles || []).map((asset) => ({ ...asset, kind: 'profile' as const }));
+  }
+
+  if (mediaType === 'company') {
+    return (pool.logos || []).map((asset) => ({ ...asset, kind: 'logo' as const }));
+  }
+
+  return [
+    ...(pool.backdrops || []).map((asset) => ({ ...asset, kind: 'backdrop' as const })),
+    ...(pool.posters || []).map((asset) => ({ ...asset, kind: 'poster' as const })),
+    ...(pool.logos || []).map((asset) => ({ ...asset, kind: 'logo' as const })),
+  ];
+}
+
+function getActionButtonClass(isDestructive = false) {
+  return [
+    'w-full rounded-2xl border px-4 py-3 text-center text-sm font-medium transition-colors',
+    isDestructive
+      ? 'border-[#ec1e24]/30 bg-[#ec1e24]/10 text-[#ec1e24] hover:bg-[#ec1e24]/15'
+      : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]',
+  ].join(' ');
+}
+
 function activityTitle(activity: DesignStudioActivityRecord): string {
   const renderTitle = activity.details?.headerText || activity.details?.templateName || 'Untitled design';
 
@@ -428,7 +519,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       if (!raw) {
         return null;
       }
-      const parsed = JSON.parse(raw);
+      const parsed: any = JSON.parse(raw);
       return {
         activities: Array.isArray(parsed.activities)
           ? parsed.activities.map(normalizeActivityRecord).filter((activity): activity is DesignStudioActivityRecord => Boolean(activity))
@@ -479,6 +570,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [renameActivity, setRenameActivity] = useState<DesignStudioActivityRecord | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isRenameSheetOpen, setIsRenameSheetOpen] = useState(false);
+  const [cardEditor, setCardEditor] = useState<CardEditorState | null>(null);
+  const [cardTextDraft, setCardTextDraft] = useState('');
+  const [isSavingCardEdit, setIsSavingCardEdit] = useState(false);
+  const [backgroundDraftUrl, setBackgroundDraftUrl] = useState('');
+  const [isBackgroundDragging, setIsBackgroundDragging] = useState(false);
+  const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
+  const [tmdbSearchResults, setTmdbSearchResults] = useState<DesignStudioTMDbSearchResult[]>([]);
+  const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [tmdbImageAssets, setTmdbImageAssets] = useState<Array<DesignStudioTMDbImageAsset & { kind: 'backdrop' | 'poster' | 'logo' | 'profile' }>>([]);
+  const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
+  const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
+  const [overlayDraft, setOverlayDraft] = useState({
+    color: '#000000',
+    opacity: 70,
+    direction: 'bottom' as 'top' | 'bottom' | 'left' | 'right',
+  });
   const [previewTarget, setPreviewTarget] = useState<ActivityPreviewTarget | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 });
@@ -490,6 +597,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const previewPanStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const previewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const previewTapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const backgroundFileInputRef = useRef<HTMLInputElement | null>(null);
   const [dismissedActivityIds, setDismissedActivityIds] = useState<string[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -807,17 +915,391 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     },
     imageZoom: typeof editorial.zoomLevel === 'number' ? editorial.zoomLevel : 1,
     overlayEnabled: true,
-    overlayColor: '#000000',
-    overlayOpacity: typeof editorial.overlayStrength === 'number' ? Math.round(editorial.overlayStrength * 100) : 70,
+    overlayColor: editorial.overlayColor || '#000000',
+    overlayOpacity: typeof editorial.overlayStrength === 'number'
+      ? Math.round(editorial.overlayStrength <= 1 ? editorial.overlayStrength * 100 : editorial.overlayStrength)
+      : 70,
     gradientPosition: (editorial.overlayDirection as DesignData['gradientPosition']) || 'top',
     templateVariant: editorial.templateVariant || 'bottom_center',
-    fadeEnabled: true,
-    fadeOpacity: 90,
+    fadeEnabled: editorial.fadeEnabled ?? true,
+    fadeOpacity: typeof editorial.fadeOpacity === 'number' ? editorial.fadeOpacity : 90,
     brandBlockMode: editorial.brandBlockMode || 'auto',
     caption: editorial.caption,
     contentType: editorial.contentType || 'announcement',
     exportFormat: 'jpeg',
   });
+
+  const resolveActivityEditContext = (activity: DesignStudioActivityRecord) => {
+    const autoEditorialFromActivity = findAutoEditorialForActivity(activity);
+    const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorialFromActivity?.renderedImage;
+    const normalizedOutputUrl = normalizeMediaKey(outputUrl);
+    const renderedDesign = outputUrl
+      ? renderedDesignByOutputUrl.get(outputUrl)
+        || renderedDesignByOutputUrlNormalized.get(normalizedOutputUrl)
+        || (activity.details.designId ? renderedDesignById.get(activity.details.designId) : undefined)
+      : activity.details.designId
+        ? renderedDesignById.get(activity.details.designId)
+        : undefined;
+    const autoEditorial = outputUrl
+      ? autoEditorialByImageUrl.get(outputUrl)
+        || autoEditorialByImageUrlNormalized.get(normalizedOutputUrl)
+        || autoEditorialFromActivity
+      : autoEditorialFromActivity;
+    const templateId = renderedDesign?.templateId
+      || autoEditorial?.templateId
+      || activity.details.designId
+      || designTemplateByName.get(activity.details.templateName || '')?.id;
+    const template = templateId ? designTemplateById.get(templateId) : undefined;
+    const data = renderedDesign
+      ? buildManualEditData(renderedDesign)
+      : autoEditorial
+        ? buildAutoEditData(autoEditorial)
+        : null;
+
+    return { autoEditorial, data, renderedDesign, template };
+  };
+
+  const buildRenderPayload = (data: DesignData) => ({
+    template_variant: data.templateVariant,
+    headerText: data.headerText,
+    subtext: data.subtext,
+    headerTextColor: data.headerTextColor,
+    subtextColor: data.subtextColor,
+    fontScale: data.fontScale,
+    headlineWidthScale: data.headlineWidthScale,
+    lineHeightMultiplier: data.lineHeightMultiplier,
+    backgroundImage: data.backgroundImage,
+    imageFocalPoint: data.imageFocalPoint,
+    imageZoom: data.imageZoom,
+    backgroundOffsetX: (data.imageFocalPoint?.x ?? 50) - 50,
+    backgroundOffsetY: (data.imageFocalPoint?.y ?? 50) - 50,
+    zoomLevel: data.imageZoom,
+    overlayColor: data.overlayColor,
+    overlayOpacity: data.overlayOpacity,
+    overlayStrength: data.overlayOpacity,
+    gradientPosition: data.gradientPosition,
+    overlayDirection: data.gradientPosition,
+    fadeEnabled: data.fadeEnabled,
+    fadeOpacity: data.fadeOpacity,
+    brandBlockMode: data.brandBlockMode,
+    caption: data.caption,
+    contentType: data.contentType,
+    exportFormat: data.exportFormat,
+  });
+
+  const buildFallbackEditData = (activity: DesignStudioActivityRecord, autoEditorial?: DesignStudioAutoEditorialRecord | null): DesignData => ({
+    headerText: activity.details.headerText || autoEditorial?.headerText || activity.details.templateName || '',
+    subtext: autoEditorial?.subheaderText || '',
+    headerTextColor: autoEditorial?.headerTextColor || '#FFFFFF',
+    subtextColor: '#000000',
+    fontScale: 1,
+    lineHeightMultiplier: 0.93,
+    backgroundImage: autoEditorial?.backgroundSource || getActivityImageUrl(activity),
+    imageFocalPoint: {
+      x: typeof autoEditorial?.backgroundOffsetX === 'number' ? 50 + autoEditorial.backgroundOffsetX : 50,
+      y: typeof autoEditorial?.backgroundOffsetY === 'number' ? 50 + autoEditorial.backgroundOffsetY : 50,
+    },
+    imageZoom: typeof autoEditorial?.zoomLevel === 'number' ? autoEditorial.zoomLevel : 1,
+    overlayEnabled: true,
+    overlayColor: activity.details.overlayColor || autoEditorial?.overlayColor || '#000000',
+    overlayOpacity: typeof activity.details.overlayStrength === 'number'
+      ? activity.details.overlayStrength
+      : typeof autoEditorial?.overlayStrength === 'number'
+        ? Math.round(autoEditorial.overlayStrength <= 1 ? autoEditorial.overlayStrength * 100 : autoEditorial.overlayStrength)
+        : 70,
+    gradientPosition: ((activity.details.overlayDirection || autoEditorial?.overlayDirection || 'bottom') as DesignData['gradientPosition']),
+    templateVariant: autoEditorial?.templateVariant || 'bottom_center',
+    fadeEnabled: autoEditorial?.fadeEnabled ?? true,
+    fadeOpacity: typeof autoEditorial?.fadeOpacity === 'number' ? autoEditorial.fadeOpacity : 90,
+    brandBlockMode: autoEditorial?.brandBlockMode || 'auto',
+    caption: autoEditorial?.caption || '',
+    contentType: autoEditorial?.contentType || 'announcement',
+    exportFormat: 'jpeg',
+  });
+
+  const persistCardEdit = async (
+    activity: DesignStudioActivityRecord,
+    nextData: DesignData,
+    fieldLabel: string,
+  ) => {
+    const { autoEditorial, template } = resolveActivityEditContext(activity);
+
+    if (!template) {
+      const response = await apiClient.put(`/api/design-studio/activity/${activity.id}`, {
+        details: {
+          ...activity.details,
+          headerText: nextData.headerText,
+          backgroundImage: nextData.backgroundImage,
+          overlayColor: nextData.overlayColor,
+          overlayStrength: nextData.overlayOpacity,
+          overlayDirection: nextData.gradientPosition,
+        },
+      });
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to save design edit');
+      }
+      return;
+    }
+
+    await startDesignStudioManualRender({
+      template,
+      data: buildRenderPayload(nextData),
+    });
+
+    if (autoEditorial) {
+      const nextAutoEditorials = autoEditorials.map((editorial) => (
+        editorial.id === autoEditorial.id
+          ? {
+              ...editorial,
+              headerText: nextData.headerText,
+              subheaderText: nextData.subtext,
+              caption: nextData.caption || editorial.caption,
+              backgroundSource: nextData.backgroundImage || editorial.backgroundSource,
+              backgroundOffsetX: (nextData.imageFocalPoint?.x ?? 50) - 50,
+              backgroundOffsetY: (nextData.imageFocalPoint?.y ?? 50) - 50,
+              zoomLevel: nextData.imageZoom,
+              overlayColor: nextData.overlayColor,
+              overlayDirection: nextData.gradientPosition,
+              overlayStrength: nextData.overlayOpacity,
+              updatedAt: new Date().toISOString(),
+            }
+          : editorial
+      ));
+      setAutoEditorials(nextAutoEditorials);
+      await saveDesignStudioState({
+        templates: designTemplates,
+        renderedDesigns,
+        autoEditorials: nextAutoEditorials,
+      });
+    }
+
+    await createDesignStudioActivity('auto_editorial_updated', {
+      ...activity.details,
+      headerText: nextData.headerText,
+      sourceTitle: autoEditorial?.sourceTitle || activity.details.sourceTitle,
+      previewUrl: activity.details.previewUrl,
+      outputUrl: activity.details.outputUrl,
+      field: fieldLabel,
+    });
+  };
+
+  const openCardEditor = (activity: DesignStudioActivityRecord, mode: CardEditorMode) => {
+    const { autoEditorial, data } = resolveActivityEditContext(activity);
+    const nextData = data || buildFallbackEditData(activity, autoEditorial);
+
+    setCardEditor({ activity, mode });
+    setCardTextDraft(
+      mode === 'caption'
+        ? nextData.caption || autoEditorial?.caption || activity.details.headerText || ''
+        : mode === 'header'
+          ? nextData.headerText || ''
+          : nextData.subtext || '',
+    );
+    setBackgroundDraftUrl(nextData.backgroundImage || getActivityImageUrl(activity));
+    setOverlayDraft({
+      color: nextData.overlayColor || '#000000',
+      opacity: typeof nextData.overlayOpacity === 'number' ? nextData.overlayOpacity : 70,
+      direction: ((nextData.gradientPosition || 'bottom') as 'top' | 'bottom' | 'left' | 'right'),
+    });
+    setTmdbSearchQuery(autoEditorial?.sourceTitle || activity.details.sourceTitle || activity.details.headerText || '');
+    setTmdbSearchResults([]);
+    setSelectedTmdbResult(null);
+    setTmdbImageAssets([]);
+  };
+
+  const closeCardEditor = () => {
+    if (isSavingCardEdit) return;
+    setCardEditor(null);
+    setSelectedTmdbResult(null);
+    setTmdbSearchResults([]);
+    setTmdbImageAssets([]);
+  };
+
+  const handleSaveCardTextEdit = async () => {
+    if (!cardEditor || (cardEditor.mode !== 'caption' && cardEditor.mode !== 'header' && cardEditor.mode !== 'subtext')) {
+      return;
+    }
+
+    const { activity, mode } = cardEditor;
+    const { data, autoEditorial } = resolveActivityEditContext(activity);
+    const baseData = data || buildFallbackEditData(activity, autoEditorial);
+    const value = cardTextDraft.trim();
+    if (!value && mode !== 'subtext') {
+      toast.error(mode === 'caption' ? 'Enter a caption first' : 'Enter header text first');
+      return;
+    }
+
+    const nextData: DesignData = {
+      ...baseData,
+      caption: mode === 'caption' ? value : baseData.caption,
+      headerText: mode === 'header' ? value : baseData.headerText,
+      subtext: mode === 'subtext' ? value : baseData.subtext,
+    };
+
+    setIsSavingCardEdit(true);
+    try {
+      await persistCardEdit(activity, nextData, mode === 'caption' ? 'caption' : mode === 'header' ? 'header' : 'subtext');
+      setActivities((current) => current.map((entry) => (
+        entry.id === activity.id
+          ? {
+              ...entry,
+              details: {
+                ...entry.details,
+                headerText: nextData.headerText,
+              },
+            }
+          : entry
+      )));
+      haptics.success();
+      toast.success(mode === 'caption' ? 'Caption saved' : 'Render queued with updated text');
+      setCardEditor(null);
+      await loadActivities({ silent: true });
+    } catch (error) {
+      console.error('Failed to save Design Studio card edit:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save edit');
+    } finally {
+      setIsSavingCardEdit(false);
+    }
+  };
+
+  const handleDesignBackgroundFile = async (file?: File | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please upload an image file');
+      return;
+    }
+
+    setIsSavingCardEdit(true);
+    try {
+      const uploaded = await uploadDesignStudioAsset(file, 'renders');
+      setBackgroundDraftUrl(uploaded.url);
+      haptics.success();
+      toast.success('Image uploaded and ready to save');
+    } catch (error) {
+      console.error('Failed to upload Design Studio background:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload image');
+    } finally {
+      setIsSavingCardEdit(false);
+    }
+  };
+
+  const handleSearchBackgroundImages = async () => {
+    const query = tmdbSearchQuery.trim();
+    if (!query) {
+      toast.error('Enter a title, logo, or person to search');
+      return;
+    }
+
+    setIsSearchingTmdb(true);
+    setSelectedTmdbResult(null);
+    setTmdbImageAssets([]);
+    try {
+      const results = await searchDesignStudioTMDb(query);
+      setTmdbSearchResults(results);
+      if (results.length === 0) {
+        toast.message('No TMDb results found');
+      }
+    } catch (error) {
+      console.error('Failed to search TMDb for Design Studio background:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search images');
+    } finally {
+      setIsSearchingTmdb(false);
+    }
+  };
+
+  const handleGenerateCardCaption = async () => {
+    if (!cardEditor) return;
+    const { autoEditorial } = resolveActivityEditContext(cardEditor.activity);
+    setIsGeneratingCaption(true);
+    try {
+      const result = await generateDesignStudioCaption({
+        title: autoEditorial?.headerText || cardEditor.activity.details.headerText || cardEditor.activity.details.templateName || 'Rendered Design',
+        contentType: autoEditorial?.contentType || 'announcement',
+        tagline: autoEditorial?.sourceTitle || cardEditor.activity.details.sourceTitle,
+        context: autoEditorial?.subheaderText || autoEditorial?.sourceTitle || cardEditor.activity.details.sourceTitle,
+      });
+      setCardTextDraft(result.caption);
+      haptics.success();
+      toast.success('Caption regenerated');
+    } catch (error) {
+      console.error('Failed to regenerate Design Studio card caption:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to regenerate caption');
+    } finally {
+      setIsGeneratingCaption(false);
+    }
+  };
+
+  const handleSelectBackgroundSearchResult = async (result: DesignStudioTMDbSearchResult) => {
+    setSelectedTmdbResult(result);
+    setIsLoadingTmdbImages(true);
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      const assets = toBackgroundImagePoolList(pool, result.mediaType);
+      setTmdbImageAssets(assets);
+      if (assets.length === 0) {
+        toast.message('No image assets found for this result');
+      }
+    } catch (error) {
+      console.error('Failed to fetch TMDb image assets:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to fetch images');
+    } finally {
+      setIsLoadingTmdbImages(false);
+    }
+  };
+
+  const handleSaveBackgroundEdit = async () => {
+    if (!cardEditor || cardEditor.mode !== 'background') return;
+    const { activity } = cardEditor;
+    const { data, autoEditorial } = resolveActivityEditContext(activity);
+    const baseData = data || buildFallbackEditData(activity, autoEditorial);
+    if (!backgroundDraftUrl) {
+      toast.error('Choose or upload a background first');
+      return;
+    }
+
+    setIsSavingCardEdit(true);
+    try {
+      await persistCardEdit(activity, {
+        ...baseData,
+        backgroundImage: backgroundDraftUrl,
+      }, 'background');
+      haptics.success();
+      toast.success('Background saved and render queued');
+      setCardEditor(null);
+      await loadActivities({ silent: true });
+    } catch (error) {
+      console.error('Failed to save Design Studio background:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save background');
+    } finally {
+      setIsSavingCardEdit(false);
+    }
+  };
+
+  const handleSaveOverlayEdit = async () => {
+    if (!cardEditor || cardEditor.mode !== 'overlay') return;
+    const { activity } = cardEditor;
+    const { data, autoEditorial } = resolveActivityEditContext(activity);
+    const baseData = data || buildFallbackEditData(activity, autoEditorial);
+
+    setIsSavingCardEdit(true);
+    try {
+      await persistCardEdit(activity, {
+        ...baseData,
+        overlayColor: overlayDraft.color,
+        overlayOpacity: overlayDraft.opacity,
+        gradientPosition: overlayDraft.direction,
+      }, 'overlay');
+      haptics.success();
+      toast.success('Overlay saved and render queued');
+      setCardEditor(null);
+      await loadActivities({ silent: true });
+    } catch (error) {
+      console.error('Failed to save Design Studio overlay:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save overlay');
+    } finally {
+      setIsSavingCardEdit(false);
+    }
+  };
 
   const openEditorTarget = (target: DesignStudioEditorTarget) => {
     if (typeof window !== 'undefined') {
@@ -936,12 +1418,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     setIsScheduleSheetOpen(true);
   };
 
-  const openRenameSheet = (activity: DesignStudioActivityRecord) => {
-    setRenameActivity(activity);
-    setRenameValue(activity.details.headerText || activity.details.templateName || '');
-    setIsRenameSheetOpen(true);
-  };
-
   const openPreview = (activity: DesignStudioActivityRecord) => {
     const imageUrl = getActivityImageUrl(activity);
     if (!imageUrl) {
@@ -1035,9 +1511,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const applyPreviewZoom = (nextZoom: number, nextOffset = previewOffsetRef.current) => {
     const clampedZoom = Math.max(1, Math.min(4, nextZoom));
+    const clampedOffset = clampPreviewOffset(nextOffset, clampedZoom);
     previewZoomRef.current = clampedZoom;
+    previewOffsetRef.current = clampedOffset;
     setPreviewZoom(clampedZoom);
-    setPreviewOffset(clampPreviewOffset(nextOffset, clampedZoom));
+    setPreviewOffset(clampedOffset);
   };
 
   const togglePreviewZoom = () => {
@@ -1149,7 +1627,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return;
     }
 
-    const [firstTouch, secondTouch] = event.touches;
+    const firstTouch = event.touches[0];
+    const secondTouch = event.touches[1];
     previewPanStartRef.current = null;
     previewTapStartRef.current = null;
     pinchDistanceRef.current = Math.hypot(
@@ -1171,10 +1650,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (event.touches.length === 1 && previewPanStartRef.current && previewZoomRef.current > 1) {
       event.preventDefault();
       const touch = event.touches[0];
-      setPreviewOffset(clampPreviewOffset({
+      const nextOffset = clampPreviewOffset({
         x: previewPanStartRef.current.offsetX + (touch.clientX - previewPanStartRef.current.x),
         y: previewPanStartRef.current.offsetY + (touch.clientY - previewPanStartRef.current.y),
-      }, previewZoomRef.current));
+      }, previewZoomRef.current);
+      previewOffsetRef.current = nextOffset;
+      setPreviewOffset(nextOffset);
       return;
     }
 
@@ -1183,7 +1664,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     event.preventDefault();
-    const [firstTouch, secondTouch] = event.touches;
+    const firstTouch = event.touches[0];
+    const secondTouch = event.touches[1];
     const nextDistance = Math.hypot(
       secondTouch.clientX - firstTouch.clientX,
       secondTouch.clientY - firstTouch.clientY,
@@ -1253,10 +1735,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     event.preventDefault();
-    setPreviewOffset(clampPreviewOffset({
+    const nextOffset = clampPreviewOffset({
       x: previewPanStartRef.current.offsetX + (event.clientX - previewPanStartRef.current.x),
       y: previewPanStartRef.current.offsetY + (event.clientY - previewPanStartRef.current.y),
-    }, previewZoomRef.current));
+    }, previewZoomRef.current);
+    previewOffsetRef.current = nextOffset;
+    setPreviewOffset(nextOffset);
   };
 
   const handlePreviewMouseUp = () => {
@@ -1333,9 +1817,33 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const handleDelete = async (id: string) => {
     haptics.medium();
     if (id.startsWith('render-job-')) {
+      const deletedJob = manualRenderJobs.find((job) => `render-job-${job.id}` === id);
+      const deletedIndex = manualRenderJobs.findIndex((job) => `render-job-${job.id}` === id);
+      if (!deletedJob || deletedIndex === -1) {
+        return;
+      }
+
       setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
       setManualRenderJobs((prev) => prev.filter((job) => `render-job-${job.id}` !== id));
-      toast.success('Activity deleted');
+
+      showUndo({
+        id,
+        itemName: deletedJob.templateName || 'Queued design activity',
+        onUndo: () => {
+          setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+          setManualRenderJobs((prev) => {
+            if (prev.some((job) => job.id === deletedJob.id)) {
+              return prev;
+            }
+            const next = [...prev];
+            next.splice(Math.min(deletedIndex, next.length), 0, deletedJob);
+            return next;
+          });
+        },
+        onConfirm: async () => {
+          toast.success('Activity deleted');
+        },
+      });
       return;
     }
 
@@ -1437,7 +1945,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         return <AlertCircle className="w-5 h-5 text-[#ec1e24]" />;
       case 'auto_editorial_generated':
       case 'auto_editorial_updated':
-        return <Image className="w-5 h-5 text-[#ec1e24]" />;
+        return <ImageIcon className="w-5 h-5 text-[#ec1e24]" />;
       case 'auto_editorial_posted':
         return <Send className="w-5 h-5 text-[#ec1e24]" />;
       case 'auto_editorial_failed':
@@ -1529,11 +2037,20 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 itemLabel="activity items"
               />
             )}
-            {visibleActivities.map((activity) => (
+            {visibleActivities.map((activity) => {
+              const linkedAutoEditorial = findAutoEditorialForActivity(activity);
+              const platformLabels = parseActivityPlatforms(activity, linkedAutoEditorial);
+              const isAutoActivity = activity.type.startsWith('auto_editorial_');
+
+              return (
               <div id={`design-studio-activity-card-${activity.id}`} key={activity.id}>
                 <SwipeableActivityCard
                   id={activity.id}
-                  onDelete={handleDelete}
+                  onDelete={(id) => {
+                    if (id) {
+                      void handleDelete(id);
+                    }
+                  }}
                   selectionMode={selection.selectionMode}
                   selected={selection.isSelected(activity.id)}
                   onEnterSelectionMode={selection.enterSelectionMode}
@@ -1567,9 +2084,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                               Export: {activity.details.exportFormat}
                             </p>
                           ) : null}
-                          <p className="mt-2 text-xs text-gray-500 dark:text-[#6B7280] whitespace-nowrap">
-                            {formatTime(activity.createdAt)}
-                          </p>
+                          {platformLabels.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {platformLabels.map((platform) => (
+                                <span
+                                  key={platform}
+                                  className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-700 shadow-sm dark:border-[#333333] dark:bg-[#111111] dark:text-[#D1D5DB]"
+                                >
+                                  {platform}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 shadow-sm dark:border-[#333333] dark:bg-black dark:text-[#9CA3AF]">
+                            <Clock3 className="h-3.5 w-3.5 text-[#ec1e24]" />
+                            <span>{isAutoActivity ? 'Fetched' : 'Created'} {formatFetchedDateTime(activity.createdAt)}</span>
+                          </div>
                         </div>
                       </div>
                       {(activity.type === 'design_rendered' || activity.type.startsWith('auto_editorial_')) ? (
@@ -1588,7 +2118,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             size="icon"
                             variant="outline"
                             onClick={() => openOptionsMenu(activity)}
-                            className="h-10 w-11 rounded-[14px] border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
+                            className="h-11 w-11 rounded-full border-gray-200 bg-white text-gray-900 shadow-sm transition-[transform,background-color,color] hover:scale-[1.03] hover:bg-gray-50 active:scale-95 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
@@ -1610,7 +2140,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 )}
                 </SwipeableActivityCard>
               </div>
-            ))}
+            );
+            })}
           </>
         )}
       </div>
@@ -1646,22 +2177,66 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
-                closeMenuThen(() => handleEditActivity(current));
+                closeMenuThen(() => openCardEditor(current, 'caption'));
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              className={getActionButtonClass()}
             >
-              Edit
+              Edit Caption
             </button>
             <button
               type="button"
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
-                closeMenuThen(() => handleOpenPublish(current));
+                closeMenuThen(() => openCardEditor(current, 'header'));
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              className={getActionButtonClass()}
             >
-              Publish
+              Edit Header
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => openCardEditor(current, 'subtext'));
+              }}
+              className={getActionButtonClass()}
+            >
+              Edit Subtext
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => openCardEditor(current, 'background'));
+              }}
+              className={getActionButtonClass()}
+            >
+              Change Background
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => openCardEditor(current, 'overlay'));
+              }}
+              className={getActionButtonClass()}
+            >
+              Adjust Overlay
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => handleEditActivity(current));
+              }}
+              className={getActionButtonClass()}
+            >
+              Change Template
             </button>
             <button
               type="button"
@@ -1670,9 +2245,20 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 const current = menuActivity;
                 closeMenuThen(() => openScheduleSheet(current));
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              className={getActionButtonClass()}
             >
-              Schedule
+              Edit Schedule
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
+                closeMenuThen(() => handleOpenPublish(current));
+              }}
+              className={getActionButtonClass()}
+            >
+              Publish Now
             </button>
             <button
               type="button"
@@ -1683,20 +2269,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                   void handleDownload(current);
                 });
               }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              className={getActionButtonClass()}
             >
               Download
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => openRenameSheet(current));
-              }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-center font-medium text-gray-900 transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
-            >
-              Rename
             </button>
           </div>
         </BottomSheetBody>
@@ -1709,6 +2284,316 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           >
             Cancel
           </Button>
+        </BottomSheetFooter>
+      </BottomSheet>
+
+      <BottomSheet open={Boolean(cardEditor)} onOpenChange={(open) => !open && closeCardEditor()}>
+        <BottomSheetHeader>
+          <BottomSheetTitle>
+            {cardEditor?.mode === 'caption'
+              ? 'Edit Caption'
+              : cardEditor?.mode === 'header'
+                ? 'Edit Header'
+                : cardEditor?.mode === 'subtext'
+                  ? 'Edit Subtext'
+                  : cardEditor?.mode === 'background'
+                    ? 'Change Background'
+                    : 'Adjust Overlay'}
+          </BottomSheetTitle>
+          <BottomSheetDescription>
+            {cardEditor?.mode === 'background'
+              ? 'Upload, drag, search, or pick a new visual. Saving queues a fresh render.'
+              : cardEditor?.mode === 'overlay'
+                ? 'Tune the overlay color, opacity, and direction for this render.'
+                : 'Update the text and queue a fresh render for this design.'}
+          </BottomSheetDescription>
+        </BottomSheetHeader>
+        <BottomSheetBody>
+          {(cardEditor?.mode === 'caption' || cardEditor?.mode === 'header' || cardEditor?.mode === 'subtext') ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <Label className="text-gray-900 dark:text-white">
+                    {cardEditor.mode === 'caption' ? 'Social Caption' : cardEditor.mode === 'header' ? 'Header Text' : 'Subtext'}
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptics.light();
+                      if (cardEditor.mode === 'caption') {
+                        void handleGenerateCardCaption();
+                      }
+                    }}
+                    disabled={cardEditor.mode !== 'caption' || isGeneratingCaption}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                    aria-label="Regenerate caption"
+                  >
+                    {isGeneratingCaption ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </button>
+                </div>
+                <textarea
+                  value={cardTextDraft}
+                  onChange={(event) => {
+                    haptics.light();
+                    setCardTextDraft(event.target.value);
+                  }}
+                  rows={cardEditor.mode === 'caption' ? 6 : 5}
+                  className="min-h-[150px] w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-900 outline-none transition-colors focus:border-[#ec1e24] dark:border-[#333333] dark:bg-black dark:text-white"
+                  placeholder={cardEditor.mode === 'caption' ? 'Write the platform caption...' : 'Write the design text...'}
+                />
+                <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-[#6B7280]">
+                  <span>{cardEditor.mode === 'caption' ? 'Use article title plus a short summary tone.' : 'This will re-render the image.'}</span>
+                  <span>{cardTextDraft.length} chars</span>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {cardEditor?.mode === 'background' ? (
+            <div className="space-y-4">
+              <input
+                ref={backgroundFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(event) => {
+                  void handleDesignBackgroundFile(event.target.files?.[0]);
+                  event.target.value = '';
+                }}
+              />
+              <div
+                className={`rounded-2xl border border-dashed p-5 text-center transition-colors ${
+                  isBackgroundDragging
+                    ? 'border-[#ec1e24] bg-[#ec1e24]/10'
+                    : 'border-gray-200 bg-white dark:border-[#333333] dark:bg-black'
+                }`}
+                onDragEnter={(event) => {
+                  event.preventDefault();
+                  setIsBackgroundDragging(true);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  setIsBackgroundDragging(true);
+                }}
+                onDragLeave={(event) => {
+                  event.preventDefault();
+                  setIsBackgroundDragging(false);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setIsBackgroundDragging(false);
+                  void handleDesignBackgroundFile(event.dataTransfer.files?.[0]);
+                }}
+              >
+                <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[#ec1e24]/10 text-[#ec1e24]">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Upload or drag an image here</p>
+                <p className="mt-1 text-xs text-gray-500 dark:text-[#9CA3AF]">Backdrops, posters, logos, and person images are supported.</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => backgroundFileInputRef.current?.click()}
+                  className="mt-4 rounded-full border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
+                >
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                  Upload Image
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <Label className="text-gray-900 dark:text-white">Search Movie, TV, Logo, or Person</Label>
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    value={tmdbSearchQuery}
+                    onChange={(event) => setTmdbSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        void handleSearchBackgroundImages();
+                      }
+                    }}
+                    placeholder="Search TMDb..."
+                    className="bg-white text-gray-900 dark:bg-black dark:text-white"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => void handleSearchBackgroundImages()}
+                    disabled={isSearchingTmdb}
+                    className="rounded-full bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+                  >
+                    {isSearchingTmdb ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  </Button>
+                </div>
+
+                {selectedTmdbResult ? (
+                  <div className="mt-4">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedTmdbResult.title}</p>
+                        <p className="text-xs uppercase tracking-[0.14em] text-gray-500 dark:text-[#9CA3AF]">{selectedTmdbResult.mediaType}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTmdbResult(null);
+                          setTmdbImageAssets([]);
+                        }}
+                        className="rounded-full px-3 py-1 text-xs text-[#ec1e24]"
+                      >
+                        Change
+                      </button>
+                    </div>
+                    {isLoadingTmdbImages ? (
+                      <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">Loading images...</p>
+                    ) : (
+                      <div className="grid max-h-72 grid-cols-2 gap-2 overflow-y-auto">
+                        {tmdbImageAssets.map((asset) => (
+                          <button
+                            key={`${asset.kind}-${asset.url}`}
+                            type="button"
+                            onClick={() => {
+                              haptics.light();
+                              setBackgroundDraftUrl(asset.url);
+                            }}
+                            className={`relative overflow-hidden rounded-xl border-2 transition-colors ${
+                              backgroundDraftUrl === asset.url ? 'border-[#ec1e24]' : 'border-transparent hover:border-[#ec1e24]/70'
+                            } ${asset.kind === 'backdrop' ? 'aspect-video' : 'aspect-[4/5]'}`}
+                          >
+                            <img src={asset.url} alt={`${selectedTmdbResult.title} ${asset.kind}`} className="h-full w-full object-cover" />
+                            <span className="absolute bottom-2 left-2 rounded-full bg-black/75 px-2 py-1 text-[10px] uppercase tracking-[0.12em] text-white">
+                              {asset.kind}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : tmdbSearchResults.length > 0 ? (
+                  <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+                    {tmdbSearchResults.map((result) => {
+                      const thumb = result.backdrop || result.poster || result.profile || '';
+                      return (
+                        <button
+                          key={`${result.mediaType}-${result.id}`}
+                          type="button"
+                          onClick={() => void handleSelectBackgroundSearchResult(result)}
+                          className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left transition-colors hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
+                        >
+                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-[#111111]">
+                            {thumb ? <img src={thumb} alt={result.title} className="h-full w-full object-cover" /> : null}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{result.title}</p>
+                            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-gray-500 dark:text-[#9CA3AF]">
+                              {result.mediaType}{result.releaseDate ? ` | ${result.releaseDate.slice(0, 4)}` : ''}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+
+              {backgroundDraftUrl ? (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-[#050505] dark:border-[#333333]">
+                  <img src={backgroundDraftUrl} alt="Selected background preview" className="h-48 w-full object-cover" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {cardEditor?.mode === 'overlay' ? (
+            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <Label className="text-gray-900 dark:text-white">Overlay Color</Label>
+                  <span className="text-xs uppercase text-gray-500 dark:text-[#9CA3AF]">{overlayDraft.color}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={overlayDraft.color}
+                    onChange={(event) => setOverlayDraft((current) => ({ ...current, color: event.target.value }))}
+                    className="h-12 w-12 cursor-pointer rounded-full border border-gray-200 bg-transparent p-1 dark:border-[#333333]"
+                    aria-label="Overlay color"
+                  />
+                  <Input
+                    value={overlayDraft.color}
+                    onChange={(event) => setOverlayDraft((current) => ({ ...current, color: event.target.value }))}
+                    className="bg-white text-gray-900 uppercase dark:bg-black dark:text-white"
+                    placeholder="#000000"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <Label className="text-gray-900 dark:text-white">Opacity</Label>
+                  <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{overlayDraft.opacity}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={overlayDraft.opacity}
+                  onChange={(event) => setOverlayDraft((current) => ({ ...current, opacity: Number(event.target.value) }))}
+                  className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#ec1e24] dark:bg-[#333333]"
+                />
+              </div>
+
+              <div>
+                <Label className="mb-2 block text-gray-900 dark:text-white">Position</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['top', 'bottom', 'left', 'right'] as const).map((direction) => (
+                    <button
+                      key={direction}
+                      type="button"
+                      onClick={() => setOverlayDraft((current) => ({ ...current, direction }))}
+                      className={`rounded-full border px-4 py-2 text-sm font-medium capitalize transition-colors ${
+                        overlayDraft.direction === direction
+                          ? 'border-[#ec1e24] bg-[#ec1e24] text-white'
+                          : 'border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white'
+                      }`}
+                    >
+                      {direction}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </BottomSheetBody>
+        <BottomSheetFooter>
+          <div className="flex w-full gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeCardEditor}
+              disabled={isSavingCardEdit}
+              className="flex-1 border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (cardEditor?.mode === 'background') {
+                  void handleSaveBackgroundEdit();
+                } else if (cardEditor?.mode === 'overlay') {
+                  void handleSaveOverlayEdit();
+                } else {
+                  void handleSaveCardTextEdit();
+                }
+              }}
+              disabled={isSavingCardEdit}
+              className="flex-1 bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+            >
+              {isSavingCardEdit ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Save
+            </Button>
+          </div>
         </BottomSheetFooter>
       </BottomSheet>
 

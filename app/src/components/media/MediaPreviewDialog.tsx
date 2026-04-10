@@ -86,6 +86,8 @@ export function MediaPreviewDialog({
   const pinchStartRef = useRef<{ distance: number; scale: number } | null>(null);
   const panStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const resolvedMediaItems = useMemo(
@@ -158,6 +160,8 @@ export function MediaPreviewDialog({
     pinchStartRef.current = null;
     panStartRef.current = null;
     swipeStartRef.current = null;
+    tapStartRef.current = null;
+    lastTapRef.current = null;
     scaleRef.current = MIN_SCALE;
     offsetRef.current = { x: 0, y: 0 };
     setScale(MIN_SCALE);
@@ -174,6 +178,15 @@ export function MediaPreviewDialog({
     setScale(safeScale);
     setOffset(safeOffset);
   }, [clampOffset]);
+
+  const toggleImageZoom = useCallback(() => {
+    if (scaleRef.current > MIN_SCALE) {
+      resetImageTransform();
+      return;
+    }
+
+    updateTransform(2, { x: 0, y: 0 });
+  }, [resetImageTransform, updateTransform]);
 
   const resetVideoPlayback = useCallback(() => {
     const video = videoRef.current;
@@ -287,30 +300,39 @@ export function MediaPreviewDialog({
         scale: scaleRef.current,
       };
       panStartRef.current = null;
+      tapStartRef.current = null;
       setIsInteracting(true);
       return;
     }
 
-    if (event.touches.length === 1 && scaleRef.current > MIN_SCALE) {
+    if (event.touches.length === 1) {
       const touch = event.touches[0];
-      panStartRef.current = {
-        x: touch.clientX,
-        y: touch.clientY,
-        offsetX: offsetRef.current.x,
-        offsetY: offsetRef.current.y,
-      };
-      setIsInteracting(true);
-      swipeStartRef.current = null;
-      return;
-    }
-
-    if (event.touches.length === 1 && scaleRef.current <= MIN_SCALE && resolvedGalleryItems.length > 1) {
-      const touch = event.touches[0];
-      swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+      tapStartRef.current = { x: touch.clientX, y: touch.clientY };
+      if (scaleRef.current > MIN_SCALE) {
+        panStartRef.current = {
+          x: touch.clientX,
+          y: touch.clientY,
+          offsetX: offsetRef.current.x,
+          offsetY: offsetRef.current.y,
+        };
+        setIsInteracting(true);
+        swipeStartRef.current = null;
+      } else if (resolvedGalleryItems.length > 1) {
+        swipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+      }
     }
   };
 
   const handleImageTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length === 1 && tapStartRef.current) {
+      const touch = event.touches[0];
+      const movedX = Math.abs(touch.clientX - tapStartRef.current.x);
+      const movedY = Math.abs(touch.clientY - tapStartRef.current.y);
+      if (movedX > 12 || movedY > 12) {
+        tapStartRef.current = null;
+      }
+    }
+
     if (event.touches.length === 2 && pinchStartRef.current) {
       event.preventDefault();
 
@@ -334,6 +356,7 @@ export function MediaPreviewDialog({
 
   const handleImageTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
     const swipeStart = swipeStartRef.current;
+    const tapStart = tapStartRef.current;
     let didNavigate = false;
 
     if (event.touches.length < 2) {
@@ -354,7 +377,31 @@ export function MediaPreviewDialog({
     panStartRef.current = null;
     setIsInteracting(false);
 
-    if (event.changedTouches.length === 1 && swipeStart && scaleRef.current <= MIN_SCALE && resolvedGalleryItems.length > 1) {
+    if (event.changedTouches.length === 1 && tapStart) {
+      const touch = event.changedTouches[0];
+      const now = Date.now();
+      const lastTap = lastTapRef.current;
+      const deltaX = Math.abs(touch.clientX - tapStart.x);
+      const deltaY = Math.abs(touch.clientY - tapStart.y);
+
+      if (deltaX <= 12 && deltaY <= 12) {
+        if (
+          lastTap &&
+          now - lastTap.time <= 320 &&
+          Math.abs(lastTap.x - touch.clientX) <= 28 &&
+          Math.abs(lastTap.y - touch.clientY) <= 28
+        ) {
+          haptics.light();
+          toggleImageZoom();
+          lastTapRef.current = null;
+          didNavigate = true;
+        } else {
+          lastTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+        }
+      }
+    }
+
+    if (!didNavigate && event.changedTouches.length === 1 && swipeStart && scaleRef.current <= MIN_SCALE && resolvedGalleryItems.length > 1) {
       const touch = event.changedTouches[0];
       const deltaX = touch.clientX - swipeStart.x;
       const deltaY = touch.clientY - swipeStart.y;
@@ -371,6 +418,7 @@ export function MediaPreviewDialog({
     }
 
     swipeStartRef.current = null;
+    tapStartRef.current = null;
   };
 
   const handleVideoTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -396,15 +444,6 @@ export function MediaPreviewDialog({
       haptics.light();
       goToImage(currentImageIndex + (deltaX < 0 ? 1 : -1));
     }
-  };
-
-  const handleImageDoubleClick = () => {
-    if (scaleRef.current > MIN_SCALE) {
-      resetImageTransform();
-      return;
-    }
-
-    updateTransform(2, { x: 0, y: 0 });
   };
 
   const toggleVideoPlayback = useCallback(async () => {
@@ -523,7 +562,7 @@ export function MediaPreviewDialog({
               ref={imageContainerRef}
               className="flex h-[90vh] w-full select-none items-center justify-center overflow-hidden bg-black"
               style={{ touchAction: 'none' }}
-              onDoubleClick={handleImageDoubleClick}
+              onDoubleClick={toggleImageZoom}
               onTouchStart={handleImageTouchStart}
               onTouchMove={handleImageTouchMove}
               onTouchEnd={handleImageTouchEnd}

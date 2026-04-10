@@ -109,51 +109,95 @@ function fitHeadline(text: string, layout: PreviewLayout, textBox: PreviewLayout
     return { lines: [], fontSize: 88, lineHeight: 82 };
   }
 
-  const maxFontSize = layout.alignment === 'center' ? 100 : 88;
-  const minFontSize = 56;
+  const maxFontSize = 96;
+  const minFontSize = 64;
   const maxLines = layout.alignment === 'center' ? 4 : 5;
 
-  for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
-    const lines: string[] = [];
-    let currentLine = '';
+  const lineWidth = (lineWords: string[], fontSize: number) =>
+    estimateWordWidth(lineWords.join(' '), fontSize);
 
-    for (const word of words) {
-      const next = currentLine ? `${currentLine} ${word}` : word;
-      if (estimateWordWidth(next, fontSize) <= textBox.width) {
-        currentLine = next;
-      } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
+  const buildBalancedLines = (fontSize: number) => {
+    const bestByEnd = new Map<string, { lines: string[][]; score: number }>();
+    bestByEnd.set('0:0', { lines: [], score: 0 });
+
+    for (let end = 1; end <= words.length; end += 1) {
+      for (let lineCount = 1; lineCount <= maxLines; lineCount += 1) {
+        let best: { lines: string[][]; score: number } | null = null;
+
+        for (let start = lineCount - 1; start < end; start += 1) {
+          const previous = bestByEnd.get(`${start}:${lineCount - 1}`);
+          if (!previous) continue;
+
+          const lineWords = words.slice(start, end);
+          const width = lineWidth(lineWords, fontSize);
+          if (width > textBox.width && lineWords.length > 1) continue;
+
+          const lineIndex = lineCount - 1;
+          const isLastLine = end === words.length;
+          const singletonPenalty = words.length > 2 && lineWords.length === 1
+            ? (lineIndex > 0 && !isLastLine ? 1_000_000 : 120_000)
+            : 0;
+          const unusedRatio = clamp((textBox.width - Math.min(width, textBox.width)) / textBox.width, 0, 1);
+          const wordTarget = words.length / Math.min(maxLines, Math.max(1, Math.ceil(words.length / 2)));
+          const score = previous.score
+            + singletonPenalty
+            + Math.abs(lineWords.length - wordTarget) * 18
+            + unusedRatio * unusedRatio * 100;
+          const candidate = { lines: [...previous.lines, lineWords], score };
+
+          if (!best || candidate.score < best.score) {
+            best = candidate;
+          }
+        }
+
+        if (best) bestByEnd.set(`${end}:${lineCount}`, best);
       }
     }
 
-    if (currentLine) lines.push(currentLine);
+    const candidates = Array.from({ length: maxLines }, (_, index) => index + 1)
+      .map((lineCount) => bestByEnd.get(`${words.length}:${lineCount}`))
+      .filter((candidate): candidate is { lines: string[][]; score: number } => Boolean(candidate))
+      .map((candidate) => {
+        const widths = candidate.lines.map((lineWords) => lineWidth(lineWords, fontSize));
+        const averageWidth = widths.reduce((sum, width) => sum + width, 0) / Math.max(1, widths.length);
+        const widthVariance = widths.reduce((sum, width) => sum + Math.abs(width - averageWidth), 0);
+        const middleSingletons = candidate.lines.filter((lineWords, index) =>
+          lineWords.length === 1 && index > 0 && index < candidate.lines.length - 1,
+        ).length;
+
+        return {
+          ...candidate,
+          score: candidate.score + widthVariance * 0.08 + middleSingletons * 2_000_000,
+        };
+      });
+
+    return candidates
+      .sort((left, right) => left.score - right.score)[0]
+      ?.lines.map((lineWords) => lineWords.join(' ')) || [];
+  };
+
+  const preferredMinFontSize = Math.max(minFontSize, Math.round(maxFontSize * 0.8));
+  for (let fontSize = maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
+    const lines = buildBalancedLines(fontSize);
 
     const lineHeight = fontSize * 0.93;
-    if (lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
+    if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
       return { lines, fontSize, lineHeight };
     }
   }
 
-  const fallbackFontSize = minFontSize;
-  const fallbackLineHeight = fallbackFontSize * 0.93;
-  const fallbackLines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const next = currentLine ? `${currentLine} ${word}` : word;
-    if (estimateWordWidth(next, fallbackFontSize) <= textBox.width) {
-      currentLine = next;
-    } else {
-      if (currentLine) fallbackLines.push(currentLine);
-      currentLine = word;
+  for (let fontSize = preferredMinFontSize - 2; fontSize >= minFontSize; fontSize -= 2) {
+    const lines = buildBalancedLines(fontSize);
+    const lineHeight = fontSize * 0.93;
+    if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
+      return { lines, fontSize, lineHeight };
     }
   }
 
-  if (currentLine) fallbackLines.push(currentLine);
-
+  const fallbackFontSize = preferredMinFontSize;
+  const fallbackLineHeight = fallbackFontSize * 0.93;
   return {
-    lines: fallbackLines.slice(0, maxLines),
+    lines: buildBalancedLines(fallbackFontSize).slice(0, maxLines),
     fontSize: fallbackFontSize,
     lineHeight: fallbackLineHeight,
   };

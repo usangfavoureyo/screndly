@@ -129,8 +129,11 @@ export interface DesignStudioAutoEditorialRecord {
   zoomLevel?: number;
   headerTextColor?: string;
   brandBlockMode?: DesignStudioBrandBlockMode;
+  overlayColor?: string;
   overlayDirection?: string;
   overlayStrength?: number;
+  fadeEnabled?: boolean;
+  fadeOpacity?: number;
   scheduleTime?: string | null;
   targetPlatforms: string[];
   status: DesignStudioAutoEditorialStatus;
