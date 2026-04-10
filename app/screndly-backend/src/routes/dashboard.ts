@@ -60,6 +60,27 @@ function parseSettingValue(value: unknown): Record<string, any> {
   return {};
 }
 
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveDesignStudioActivityTitle(details: unknown): string {
+  const metadata = asObject(details);
+
+  return (
+    asNonEmptyString(metadata.headerText)
+    || asNonEmptyString(metadata.sourceTitle)
+    || asNonEmptyString(metadata.title)
+    || asNonEmptyString(metadata.templateName)
+    || 'Untitled design'
+  );
+}
+
 router.get('/stats', authenticate, async (_req, res) => {
   try {
     const today = startOfToday();
@@ -377,10 +398,9 @@ router.get('/stats', authenticate, async (_req, res) => {
     const designGenerated = designStudioActivities.filter((item) => item.type === 'design_rendered').length;
     const designPublished = designStudioActivities.filter((item) => item.type === 'design_published').length;
     const designRecentActivity = designStudioActivities.slice(0, 3).map((item) => {
-      const details = asObject(item.details);
       return {
         id: item.id,
-        title: String(details.templateName || 'Untitled design'),
+        title: resolveDesignStudioActivityTitle(item.details),
         type: item.type,
         createdAt: item.createdAt.toISOString(),
         status: item.type === 'design_published' ? 'Published' : item.type === 'design_rendered' ? 'Rendered' : 'Updated',
