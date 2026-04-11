@@ -1,0 +1,416 @@
+[
+  {
+    "caseId": "74b270d025f00953",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/ed-edd-eddy-perfect-finale-movie/",
+      "articleTitle": "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+      "articleDescription": "Over 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy , and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.",
+      "articleBody": "\n                                                                                                                                    <p>Over 15 years ago, <strong>Cartoon Network</strong> aired an official movie finale to their hit series <a href=\"https://screenrant.com/db/tv-show/ed-edd-n-eddy/\" target=\"_blank\"><strong><em>Ed, Edd, n Eddy</em></strong></a>, and it's still perfect today. <em>Ed, Edd, n' Eddy</em> was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "normalizedTitle": "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+    "normalizedDescription": "Over 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy , and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.",
+    "entity": {
+      "canonicalEntity": "This Classic Cartoon Network",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "This Classic Cartoon Network",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Blank",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Blank",
+          "source": "tmdb",
+          "subject": "Blank",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "This Classic Cartoon Network",
+        "This Classic Cartoon Network other",
+        "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Blank",
+          "score": 665.3785,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'This Classic Cartoon Network Show's Movie' has a new update.\n\nOver 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy, and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered.",
+      "normalizedCaption": "'This Classic Cartoon Network Show's Movie' has a new update.\n\nOver 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy, and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Selected image context did not match the canonical article entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Require selected images to be grounded in canonical allowed entities."
+    ]
+  },
+  {
+    "caseId": "e97f5c15c4cbda8a",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/marvels-wolverine-update-state-of-play-april-16/",
+      "articleTitle": "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week",
+      "articleDescription": "Marvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.",
+      "articleBody": "\n                                                                                                                                    <p><a href=\"https://screenrant.com/tag/marvels-wolverine/\" target=\"_blank\"><em><strong>Marvel's Wolverine</strong></em></a> gameplay is coming soon. We just don't know the exact date yet. After revealing the <a href=\"https://screenrant.com/marvels-wolverine-release-date-reveal/\" target=\"_blank\">release date for <em>Marvel's Wolverine</em></a> in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.</p>                    ",
+      "publishedAt": "2026-04-10T13:54:45.000Z"
+    },
+    "normalizedTitle": "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week",
+    "normalizedDescription": "Marvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.",
+    "entity": {
+      "canonicalEntity": "Marvel's Wolverine Official Update",
+      "canonicalEntityType": "person",
+      "eventType": "release_date",
+      "confidence": 0.8,
+      "ambiguityFlags": []
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Marvel's Wolverine Official Update",
+      "secondarySubject": "Fuels Rumors Of PlayStation",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Blank",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Blank",
+          "source": "tmdb",
+          "subject": "Blank",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Marvel's Wolverine Official Update",
+        "Marvel's Wolverine Official Update release_date",
+        "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Blank",
+          "score": 665.3785,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s Wolverine gameplay is coming soon. We just don' has a new release date.\n\nMarvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the.",
+      "normalizedCaption": "'s Wolverine gameplay is coming soon. We just don' has a new release date.\n\nMarvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Selected image context did not match the canonical article entity.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Require selected images to be grounded in canonical allowed entities.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "8881508eebba1cb4",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/tv-shows/news/legendary-horror-series-confirms-streaming-debut-after-years-in-limbo/",
+      "articleTitle": "Legendary Horror Series Confirms Streaming Debut After Years in Limbo",
+      "articleDescription": "In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect. For years, Tales From The Crypt&#8217;s television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream Tales From The Crypt next month. Specifically, the first seas",
+      "articleBody": "<figcaption class=\"wp-caption-text\">Warner Bros</figcaption><figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Tales-from-the-Crypt.jpg?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"\" loading=\"lazy\" /></figure>\n\n\n<p>In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect.</p>\n\n\n\n<p>For years, <em><a href=\"https://comicbook.com/tag/tales-from-the-crypt/\">Tales From The Crypt&#8217;s</a></em> television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream <em>Tales From The Crypt</em> next month. Specifically, the first season will debut on the platform on May 1st on Shudder, with each additional season arriving every following Friday. This means that the entirety of the horror franchise will be available by June 12th, marking the first time that the Cryptkeeper will have a streaming service for all his campfire tales. You can check out the trailer announcement below, where the voice of the Cryptkeeper himself, John Kassir, makes his ghoulish return.</p>\n\n\n\n<figure class=\"wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio\"><div class=\"wp-block-embed__wrapper\">\n<iframe title=\"Tales from the Crypt | Coming soon to Shudder\" width=\"500\" height=\"281\" src=\"https://www.youtube.com/embed/3NkSaBv32JY?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>\n</div></figure>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-swing-open-the-crypt\">Swing Open The Crypt</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?w=1024\" alt=\"The Crypt Keeper in Tales from the Crypt\" class=\"wp-image-1515158\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=200,113 200w\" sizes=\"(max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of HBO</figcaption></figure>\n\n\n\n<p>To accompany the major Shudder announcement, Executive Vice President of Streaming at AMC Networks, Courtney Thomasma, was more than happy to lend some commentary. &#8220;<em>Tales from the Crypt</em> isn’t just a series — it’s a cornerstone of horror storytelling. Becoming its exclusive streaming home is both an honor and a thrill for us at Shudder. This is the kind of genre-defining, wonderfully  twisted entertainment our members crave, and we’re proud to give The Crypt Keeper a place to cackle once again.”</p>\n\n\n\n<p><a href=\"https://comicbook.com/tv-shows/list/7-underrated-episodes-of-tales-from-the-crypt/\">For those who have never had the chance to check out <em>Tales From The Crypt</em></a>, or want to know more about its backstory, the television series is based on the creepy comic from EC Comics. Arriving on HBO in 1989, the anthology series ran for seven seasons before ending in 1996. Throughout its 93 episodes, the franchise brought in some surprising talent among directors and actors alike. <a href=\"https://comicbook.com/movies/feature/30-years-ago-the-greatest-horror-cinematic-universe-failed-to-take-off/\"><em>Tales From The Crypt</em> also released several movies</a> that helped push its creepy universe to new heights.</p>\n\n\n\n<p>While there has not been a new <em>Tales From The Crypt</em> series since the show ended in 1996, there was almost a reboot from a surprising source. In 2016, director M. Night Shyamalan was planning to create a reboot of the series that would run for ten episodes to start. Unfortunately, the revamped anthology fell to the wayside thanks to the same reasoning behind why the original show didn&#8217;t stream, aka licensing issues. Maybe this new streaming win will mean that the franchise will manage to make a comeback.</p>\n\n\n\n<p>What do you think? Leave a comment below <strong>and join the conversation now in the </strong><a href=\"https://forum.comicbook.com/\"><strong>ComicBook Forum</strong></a><strong>!</strong></p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"TaDl0ZOYbR\"><a href=\"https://comicbook.com/tv-shows/list/3-tales-from-the-crypt-episodes-are-actually-still-scary-decades-on/\">3 Tales From The Crypt Episodes Are Actually Still Scary Decades On</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;3 Tales From The Crypt Episodes Are Actually Still Scary Decades On&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/tv-shows/list/3-tales-from-the-crypt-episodes-are-actually-still-scary-decades-on/embed/#?secret=8zPHNF1l0H#?secret=TaDl0ZOYbR\" data-secret=\"TaDl0ZOYbR\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-10T14:06:28.000Z"
+    },
+    "normalizedTitle": "Legendary Horror Series Confirms Streaming Debut After Years in Limbo",
+    "normalizedDescription": "In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect. For years, Tales From The Crypt&#8217;s television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream Tales From The Crypt next month. Specifically, the first seas",
+    "entity": {
+      "canonicalEntity": "Legendary Horror Series Confirms",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": []
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Legendary Horror Series Confirms",
+      "secondarySubject": "Streaming Debut After Years",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Lazy Lena",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Lazy Lena",
+          "source": "tmdb",
+          "subject": "Lazy Lena",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Legendary Horror Series Confirms",
+        "Legendary Horror Series Confirms casting",
+        "Legendary Horror Series Confirms Streaming Debut After Years in Limbo"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Lazy Lena",
+          "score": 725.2163,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Legendary Horror Series Confirms joins 'Legendary Horror Series Confirms Streaming Debut'.\n\nIn the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have.",
+      "normalizedCaption": "Legendary Horror Series Confirms joins 'Legendary Horror Series Confirms Streaming Debut'.\n\nIn the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Selected image context did not match the canonical article entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Require selected images to be grounded in canonical allowed entities."
+    ]
+  },
+  {
+    "caseId": "6b96608bc57feb69",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/gaming/news/nintendo-game-boy-new-release-2026/",
+      "articleTitle": "Nintendo Game Boy Game Officially Returns Next Week, 35 Years Later",
+      "articleDescription": "It&#8217;s been officially confirmed that a Nintendo Game Boy Game is set to return next week, 35 years after its original release in 1991, a year defined by releases from Capcom, Square, and Nintendo. The new release is going to specifically arrive on April 14 via the Nintendo Switch, PC, PS4, PS5, Xbox One, and Xbox Series X. In other words, every modern platform, minus the Nintendo Switch 2, though the game will be playable on the new Nintendo console via the power of backward compatibility. The game in question is Parasol Stars: The Story of Bubble Bobble III , a game that was also released, at different times, via TurboGrafx-16, Amiga, Atari ST, and the NES. In its launch year, it was only available via TurboGrafx-16 and Game Boy, and considering most didn&#8217;t have a TurboGrafx-16, it was basically a Game Boy exclusive for most. Now, if you have deja vu, it is because this game was already re-released on these platforms back in 2023, which is also why there is no Nintendo Swit",
+      "articleBody": "<figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/02/g-a-m-e-b-o-y.png?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"\" loading=\"lazy\" /></figure>\n\n\n<p>It&#8217;s been officially confirmed that a <a href=\"https://comicbook.com/tag/nintendo/\">Nintendo</a> Game Boy Game is set to return next week, 35 years after its original release in 1991, a year defined by releases from Capcom, Square, and Nintendo. The new release is going to specifically arrive on April 14 via the Nintendo Switch, PC, PS4, PS5, Xbox One, and Xbox Series X. In other words, every modern platform, minus the Nintendo Switch 2, though the game will be playable on the new Nintendo console via the power of backward compatibility. </p>\n\n\n\n<p>The game in question is <em>Parasol Stars: The Story of Bubble Bobble III</em>, a game that was also released, at different times, via TurboGrafx-16, Amiga, Atari ST, and the NES. In its launch year, it was only available via TurboGrafx-16 and Game Boy, and considering most didn&#8217;t have a TurboGrafx-16, it was basically a Game Boy exclusive for most. Now, if you have deja vu, it is because this game was already re-released on these platforms back in 2023, which is also why there is no Nintendo Switch 2 version, as this would require more work. That said, it is getting another release in 2026 because it is being bundled with a new game debuting in the west and on console on April 14, <em>Spica Adventure</em>, as a new release called <em>Parasol Superstars</em>.</p>\n\n\n\n<figure class=\"wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio\"><div class=\"wp-block-embed__wrapper\">\n<iframe loading=\"lazy\" title=\"Parasol Superstars - Physical Edition Pre-Order Trailer\" width=\"500\" height=\"281\" src=\"https://www.youtube.com/embed/PH0Pwj__b7U?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>\n</div></figure>\n\n\n\n<p><em>Parasol Superstars </em>bundles together the two 2D platformers and will charge $19.99 for the pair of games. However, at launch, for launch week, they will be 20 percent off, which means they will be available for $16. And this price is especially inviting because <em>Spica Adventure</em> will cost this &#8212; $20 &#8212; by itself as a standalone product. In other words, if you want <em>Spica Adventure</em>, you might as well buy this bundle and get a free extra game with your purchase. </p>\n\n\n<div class=\"wp-block-savage-platform-read-next\">\n\t<a href=\"https://comicbook.com/gaming/news/snes-games-nintendo-switch-ps5-collection/\">\n\t\t<div class=\"read-next__post\">\n\t\t\t<img loading=\"lazy\" decoding=\"async\" width=\"300\" height=\"169\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?w=300\" class=\"read-next__image wp-post-image\" alt=\"\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/s-n-e-s.png?resize=200,113 200w\" sizes=\"auto, (max-width: 300px) 100vw, 300px\" />\t\t\t<div class=\"read-next__content\">\n\t\t\t\t<div class=\"read-next__read-next\">\n\t\t\t\t\tRead Next\t\t\t\t</div>\n\t\t\t\t<div class=\"read-next__post-title\">\n\t\t\t\t\tNew Collection of SNES Games Announced for Switch and PS5\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\t</a>\n</div>\n\n\n\n<p>The new release is being handled by ININ Games, which was not involved with the original <em>Parasol Stars: The Story of Bubble Bobble III</em>; however, the original developer and publisher, Taito, is the developer of the re-release, as well as the upcoming <em>Spica Adventure</em>.</p>\n\n\n\n<hr class=\"wp-block-separator has-alpha-channel-opacity\" />\n\n\n\n<p>All of that said, and as always, feel free to leave a comment or two letting us know what you think, or join the gaming conversations happening over on the <a href=\"https://forum.comicbook.com/?forumId=21%2C24\">ComicBook Forum</a>.</p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"x2RIB3Nzb3\"><a href=\"https://comicbook.com/gaming/news/nintendo-switch-online-nes-arcade-namco-games/\">New Nintendo Switch Online NES Games Include One of the Best Games of All Time</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;New Nintendo Switch Online NES Games Include One of the Best Games of All Time&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/gaming/news/nintendo-switch-online-nes-arcade-namco-games/embed/#?secret=1Y7iR0HLaJ#?secret=x2RIB3Nzb3\" data-secret=\"x2RIB3Nzb3\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-10T11:15:00.000Z"
+    },
+    "normalizedTitle": "Nintendo Game Boy Game Officially Returns Next Week, 35 Years Later",
+    "normalizedDescription": "It&#8217;s been officially confirmed that a Nintendo Game Boy Game is set to return next week, 35 years after its original release in 1991, a year defined by releases from Capcom, Square, and Nintendo. The new release is going to specifically arrive on April 14 via the Nintendo Switch, PC, PS4, PS5, Xbox One, and Xbox Series X. In other words, every modern platform, minus the Nintendo Switch 2, though the game will be playable on the new Nintendo console via the power of backward compatibility. The game in question is Parasol Stars: The Story of Bubble Bobble III , a game that was also released, at different times, via TurboGrafx-16, Amiga, Atari ST, and the NES. In its launch year, it was only available via TurboGrafx-16 and Game Boy, and considering most didn&#8217;t have a TurboGrafx-16, it was basically a Game Boy exclusive for most. Now, if you have deja vu, it is because this game was already re-released on these platforms back in 2023, which is also why there is no Nintendo Swit",
+    "entity": {
+      "canonicalEntity": "Nintendo Game Boy Game",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": []
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Nintendo Game Boy Game",
+      "secondarySubject": "Officially Returns Next Week",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "LFA 169: Ward vs",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for LFA 169: Ward vs. Walker",
+          "source": "tmdb",
+          "subject": "LFA 169: Ward vs",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Nintendo Game Boy Game",
+        "Nintendo Game Boy Game casting",
+        "Nintendo Game Boy Game Officially Returns Next Week, 35 Years Later"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "LFA 169: Ward vs",
+          "score": 785.00715,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Nintendo Game Boy Game joins 'Nintendo Game Boy Game Officially Returns'.\n\nIt's been officially confirmed that a Nintendo Game Boy Game is set to return next week, 35 years after its original release in 1991, a year defined by releases from Capcom, Square, and Nintendo. The new.",
+      "normalizedCaption": "Nintendo Game Boy Game joins 'Nintendo Game Boy Game Officially Returns'.\n\nIt's been officially confirmed that a Nintendo Game Boy Game is set to return next week, 35 years after its original release in 1991, a year defined by releases from Capcom, Square, and Nintendo. The new.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Selected image context did not match the canonical article entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Require selected images to be grounded in canonical allowed entities."
+    ]
+  },
+  {
+    "caseId": "ad3c5952561f0130",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/tv-shows/news/first-look-at-the-harry-potter-reboots-most-important-missing-movie-character-revealed-it-changes-the-books-again/",
+      "articleTitle": "First Look at the Harry Potter Reboot’s Most Important Missing Movie Character Revealed (& It Changes The Books Again)",
+      "articleDescription": "HBO&#8217;s Harry Potter reboot has finally revealed a look at a Hogwarts character who was cut from the original movies, and confirmed yet another change from the books. So far, we&#8217;ve had confirmation of a number of changes , including characters like Lucius Malfoy turning up in The Philosopher&#8217;s Stone (a book early), and even more changes from Chris Columbus&#8217; 2001 adaptation. That much shouldn&#8217;t be particularly surprising since HBO has given JK Rowling&#8217;s first book 8 episodes to play out, rather than just two-and-a-half hours. That means fewer hard decisions have to be made in the name of economical storytelling. Arguably the biggest frustration from the first Harry Potter movie was the removal of Peeves the Poltergeist, who played a more significant role in the books than that decision would perhaps suggest. Thankfully, we already know Peeves is involved in HBO&#8217;s Harry Potter &amp; The Philosopher&#8217;s Stone , but Hogwarts&#8217; most mischievo",
+      "articleBody": "<figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Harry-potter-Logo.jpg?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"Harry potter Logo\" loading=\"lazy\" /></figure>\n\n\n<p>HBO&#8217;s <a href=\"https://comicbook.com/tag/harry-potter-tv/\"><em>Harry Potter</em> reboot</a> has finally revealed a look at a Hogwarts character who was cut from the original movies, and confirmed yet another change from the books. So far, we&#8217;ve had confirmation of <a href=\"https://comicbook.com/tv-shows/news/6-confirmed-changes-in-the-harry-potter-reboot-ranked-by-how-exciting-they-are/\">a number of changes</a>, including characters like Lucius Malfoy turning up in <em>The Philosopher&#8217;s Stone</em> (a book early), and even more changes from Chris Columbus&#8217; 2001 adaptation. That much shouldn&#8217;t be particularly surprising since HBO has given JK Rowling&#8217;s first book 8 episodes to play out, rather than just two-and-a-half hours. That means fewer hard decisions have to be made in the name of economical storytelling.</p>\n\n\n\n<p>Arguably the biggest frustration from <a href=\"https://comicbook.com/movies/news/4-things-dont-make-sense-harry-potter-and-the-sorcerers-stone/\">the first Harry Potter movie</a> was the removal of Peeves the Poltergeist, who played a more significant role in the books than that decision would perhaps suggest. Thankfully, we already know Peeves is involved in HBO&#8217;s <em>Harry Potter &amp; The Philosopher&#8217;s Stone</em>, but Hogwarts&#8217; most mischievous ghost was conspicuously absent from both the first-look trailer and the newly-revealed footage from the <a href=\"https://comicbook.com/tv-shows/list/5-biggest-things-we-learned-from-hbos-harry-potter-reboot-preview/\"><em>Finding Harry</em> HBO special</a>. Eagle-eyed fans suspected concept art was shown in the background of that special, but now that art has apparently appeared online (thanks to Instagram account <a href=\"https://www.instagram.com/p/DW4Y0sNEfkG/?img_index=3&amp;igsh=MTNubTJzc3F2am15NA==\">Magicallybrothers</a>) in high definition, revealing the first proper look at Peeves the Poltergeist. </p>\n\n\n\n<figure class=\"wp-block-embed is-type-rich is-provider-twitter wp-block-embed-twitter\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"twitter-tweet\" data-width=\"500\" data-dnt=\"true\"><p lang=\"pt\" dir=\"ltr\">Arte conceitual completa do Pirraça para a série Harry Potter. <a href=\"https://t.co/SMjFV4DLu9\">pic.twitter.com/SMjFV4DLu9</a></p>&mdash; Portal Harry Potter (@portalpotterbr) <a href=\"https://twitter.com/portalpotterbr/status/2042273935547343162?ref_src=twsrc%5Etfw\">April 9, 2026</a></blockquote><script async src=\"https://platform.twitter.com/widgets.js\" charset=\"utf-8\"></script>\n</div></figure>\n\n\n<div class=\"wp-block-savage-platform-read-next\">\n\t<a href=\"https://comicbook.com/tv-shows/list/casting-peeves-for-hbos-harry-potter-tv-remake-5-choices-whod-rival-the-movies-perfect-cut-actor/\">\n\t\t<div class=\"read-next__post\">\n\t\t\t<img loading=\"lazy\" decoding=\"async\" width=\"300\" height=\"169\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?w=300\" class=\"read-next__image wp-post-image\" alt=\"Peeves the Poltergeist in Hogwarts Legacy\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/11/Peeves-The-Poltergeist-Hogwarts-Legacy.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 300px) 100vw, 300px\" />\t\t\t<div class=\"read-next__content\">\n\t\t\t\t<div class=\"read-next__read-next\">\n\t\t\t\t\tRead Next\t\t\t\t</div>\n\t\t\t\t<div class=\"read-next__post-title\">\n\t\t\t\t\tCasting Peeves for HBO’s Harry Potter TV Remake: 5 Choices Who’d Rival the Movies’ Perfect Cut Actor\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\t</a>\n</div>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-peeves-return-fixes-chris-columbus-biggest-regret\">Peeves&#8217; Return Fixes Chris Columbus&#8217; Biggest Regret</h2>\n\n\n\n<p>Director Chris Columbus admitted that the decision to cut Peeves &#8211; who would have been played by legendary British comedian Rik Mayall &#8211; was his biggest regret from <em>The Philosopher&#8217;s Stone</em>. You can, however, understand the decision: Peeves wasn&#8217;t crucial enough to the plot to justify the complex logistics, and on paper, he probably looked like an easy runtime cut. HBO&#8217;s adaptation obviously doesn&#8217;t have that same issue.</p>\n\n\n\n<p>Interestingly, the concept art reveals a more colorful take on Peeves than the movies would have gone for. Years after the release, concept art was revealed that painted Mayall&#8217;s poltergeist more like an <em>Addams Family</em> character (below), than the colorful harlequin figure described in the books. HBO&#8217;s take &#8211; if this concept art ends up being final, of course &#8211; also ignores the book&#8217;s description. <em>The Goblet of Fire</em> reveals that Peeves is a small man who wears a bell-covered hat and sports an orange bow-tie. Both are conspicuously absent from the new concept art, confirming another deviation from the source material.</p>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" width=\"300\" height=\"400\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Peeves-movie-concept.jpg?w=300\" alt=\"Peeves movie concept\" class=\"wp-image-1639265\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Peeves-movie-concept.jpg 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Peeves-movie-concept.jpg?resize=225,300 225w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Peeves-movie-concept.jpg?resize=200,267 200w\" sizes=\"auto, (max-width: 300px) 100vw, 300px\" /></figure>\n\n\n\n<p>What do you think of this Peeves design? Leave a comment below <strong>and join the conversation now in the </strong><a href=\"https://forum.comicbook.com/\"><strong>ComicBook Forum</strong></a><strong>!</strong></p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"qbkYVzMeJ7\"><a href=\"https://comicbook.com/tv-shows/news/harry-potter-fans-spot-first-look-at-hogwarts-professor-it-undoes-a-movie-change-that-caused-a-plot-hole/\">HBO&#8217;s Harry Potter Remake Avoids a Movie Plot Hole With First Look at Major Season 1 Villain</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;HBO&#8217;s Harry Potter Remake Avoids a Movie Plot Hole With First Look at Major Season 1 Villain&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/tv-shows/news/harry-potter-fans-spot-first-look-at-hogwarts-professor-it-undoes-a-movie-change-that-caused-a-plot-hole/embed/#?secret=77OpbpuTTn#?secret=qbkYVzMeJ7\" data-secret=\"qbkYVzMeJ7\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-09T22:34:53.000Z"
+    },
+    "normalizedTitle": "First Look at the Harry Potter Reboot's Most Important Missing Movie Character Revealed (& It Changes The Books Again)",
+    "normalizedDescription": "HBO&#8217;s Harry Potter reboot has finally revealed a look at a Hogwarts character who was cut from the original movies, and confirmed yet another change from the books. So far, we&#8217;ve had confirmation of a number of changes , including characters like Lucius Malfoy turning up in The Philosopher&#8217;s Stone (a book early), and even more changes from Chris Columbus&#8217; 2001 adaptation. That much shouldn&#8217;t be particularly surprising since HBO has given JK Rowling&#8217;s first book 8 episodes to play out, rather than just two-and-a-half hours. That means fewer hard decisions have to be made in the name of economical storytelling. Arguably the biggest frustration from the first Harry Potter movie was the removal of Peeves the Poltergeist, who played a more significant role in the books than that decision would perhaps suggest. Thankfully, we already know Peeves is involved in HBO&#8217;s Harry Potter &amp; The Philosopher&#8217;s Stone , but Hogwarts&#8217; most mischievo",
+    "entity": {
+      "canonicalEntity": "First Look",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": []
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "First Look",
+      "secondarySubject": "Harry Potter Reboot's Most",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Joaquin Sabina - 19 Days and 500 Nights",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Joaquin Sabina - 19 Days and 500 Nights",
+          "source": "tmdb",
+          "subject": "Joaquin Sabina - 19 Days and 500 Nights",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "First Look",
+        "First Look casting",
+        "First Look at the Harry Potter Reboot’s Most Important Missing Movie Character Revealed (& It Changes The Books Again)"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Joaquin Sabina - 19 Days and 500 Nights",
+          "score": 785.0605499999999,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "First Look joins 'Most Important Missing Movie Character Revealed'.\n\nHBO's Harry Potter reboot has finally revealed a look at a Hogwarts character who was cut from the original movies, and confirmed yet another change from the books. So far, we've had confirmation of a number of.",
+      "normalizedCaption": "First Look joins 'Most Important Missing Movie Character Revealed'.\n\nHBO's Harry Potter reboot has finally revealed a look at a Hogwarts character who was cut from the original movies, and confirmed yet another change from the books. So far, we've had confirmation of a number of.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Selected image context did not match the canonical article entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Require selected images to be grounded in canonical allowed entities."
+    ]
+  }
+]

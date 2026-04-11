@@ -1,0 +1,731 @@
+[
+  {
+    "caseId": "d691301078e93f47",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/project-hail-mary-video-game-vr/",
+      "articleTitle": "A Video Game Of One Of 2026's Biggest Movies Is Officially On The Way",
+      "articleDescription": "While 2026 was already projected to have the decade's best Box Office yet , it already looks like the prediction wasn't too far off with the massively successful movies we've seen so far. From the Chinese Pegasus 3 dominating the global box office to even video game adaptations like The Super Mario Galaxy Movie taking off, the year is already off to an excellent start, but 2026 is only getting better thanks to one upcoming spin-off.",
+      "articleBody": "\n                                                                                                                                    <p>While 2026 was already projected to have the <a href=\"https://screenrant.com/2026-global-box-office-projections-record/\" target=\"_blank\">decade's best Box Office yet</a>, it already looks like the prediction wasn't too far off with the massively successful movies we've seen so far. From the Chinese <em>Pegasus 3</em> dominating the global box office to even <strong>video game adaptations</strong> like <a href=\"https://screenrant.com/db/movie/super-mario-world/\" target=\"_blank\"><em>The Super Mario Galaxy Movie</em></a> taking off, the year is already off to an excellent start, but 2026 is only getting better thanks to one upcoming spin-off.</p>                    ",
+      "publishedAt": "2026-04-10T14:02:16.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "A Video Game Of One Of 2026's Biggest Movies Is Officially On The Way",
+    "normalizedDescription": "While 2026 was already projected to have the decade's best Box Office yet , it already looks like the prediction wasn't too far off with the massively successful movies we've seen so far. From the Chinese Pegasus 3 dominating the global box office to even video game adaptations like The Super Mario Galaxy Movie taking off, the year is already off to an excellent start, but 2026 is only getting better thanks to one upcoming spin-off.",
+    "entity": {
+      "canonicalEntity": "Video Game Of One",
+      "canonicalEntityType": "person",
+      "eventType": "licensing",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_gaming_collab_or_licensing"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Video Game Of One",
+      "secondarySubject": "Biggest Movies Is Officially",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Video Game Of One",
+        "Video Game Of One licensing",
+        "A Video Game Of One Of 2026's Biggest Movies Is Officially On The Way"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s best Box Office yet, it already looks like the prediction wasn' has a new update.\n\nWhile 2026 was already projected to have the decade's best Box Office yet, it already looks like the prediction wasn't too far off with the massively successful movies we've seen so far. From.",
+      "normalizedCaption": "'s best Box Office yet, it already looks like the prediction wasn' has a new update.\n\nWhile 2026 was already projected to have the decade's best Box Office yet, it already looks like the prediction wasn't too far off with the massively successful movies we've seen so far. From.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "a77fcd569cba1041",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/zelda-ocarina-of-time-fan-remake-dead-hand/",
+      "articleTitle": "Zelda: Ocarina Of Time Remake's Dead Hand Is Already Terrifying Gamers",
+      "articleDescription": "There's a lot of attention on The Legend of Zelda right now, given that it's celebrating a pretty monumental 40th anniversary, and much of that focus has come around to what is, for many, the best game in series' history, Ocarina of Time .",
+      "articleBody": "\n                                                                                                                                    <p>There's a lot of attention on <a href=\"https://screenrant.com/tag/the-legend-of-zelda/\" target=\"_blank\"><em><strong>The Legend of Zelda</strong></em></a> right now, given that it's celebrating a pretty monumental 40th anniversary, and much of that focus has come around to what is, for many, the best game in series' history, <em>Ocarina of Time</em>.</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Zelda: Ocarina Of Time Remake's Dead Hand Is Already Terrifying Gamers",
+    "normalizedDescription": "There's a lot of attention on The Legend of Zelda right now, given that it's celebrating a pretty monumental 40th anniversary, and much of that focus has come around to what is, for many, the best game in series' history, Ocarina of Time .",
+    "entity": {
+      "canonicalEntity": "The Legend of Zelda",
+      "canonicalEntityType": "tv",
+      "eventType": "licensing",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "article_family_gaming_collab_or_licensing",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "The Legend of Zelda",
+      "secondarySubject": "Dead Hand Is Already",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "The Making of The Legend of Zelda: Breath of the Wild",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for The Making of The Legend of Zelda: Breath of the Wild",
+          "source": "tmdb",
+          "subject": "The Making of The Legend of Zelda: Breath of the Wild",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "The Legend of Zelda",
+        "The Legend of Zelda licensing",
+        "Zelda: Ocarina Of Time Remake's Dead Hand Is Already Terrifying Gamers"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "The Making of The Legend of Zelda: Breath of the Wild",
+          "mediaType": "tv",
+          "score": 745.1646499999999,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": []
+    },
+    "caption": {
+      "generatedCaption": "'s a lot of attention on The Legend of Zelda right now, given that it' has a new update.\n\nThere's a lot of attention on The Legend of Zelda right now, given that it's celebrating a pretty monumental 40th anniversary, and much of that focus has come around to what is, for many,.",
+      "normalizedCaption": "'s a lot of attention on The Legend of Zelda right now, given that it' has a new update.\n\nThere's a lot of attention on The Legend of Zelda right now, given that it's celebrating a pretty monumental 40th anniversary, and much of that focus has come around to what is, for many,.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": false,
+    "publishFailureCodes": [],
+    "diagnosis": [],
+    "recommendedFixes": []
+  },
+  {
+    "caseId": "96710c76923346f1",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/absolute-green-arrow-reboot-details-black-canary/",
+      "articleTitle": "Absolute Green Arrow Creators Reveal Details of \"Serial Killer\" Reboot",
+      "articleDescription": "The creators behind DC's Absolute Green Arrow reinvention have shared new details about the iconic hero's rebirth as a literal \"serial killer.\" In the darkest rebirth of the already gritty Absolute Universe , the righteous vigilante is being invented as something much, much deadlier.",
+      "articleBody": "\n                                                                                                                                    <p>The creators behind DC's <strong><a href=\"https://screenrant.com/tag/green-arrow/\" target=\"_blank\">Absolute Green Arrow</a></strong> reinvention have shared new details about the iconic hero's rebirth as a literal <em>\"serial killer.\" </em>In the darkest rebirth of <a href=\"https://screenrant.com/dc-absolute-universe-created-origin-darkseid-death/\" target=\"_blank\">the already gritty Absolute Universe</a>, the righteous vigilante is being invented as something much, much deadlier.</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Absolute Green Arrow Creators Reveal Details of \"Serial Killer\" Reboot",
+    "normalizedDescription": "The creators behind DC's Absolute Green Arrow reinvention have shared new details about the iconic hero's rebirth as a literal \"serial killer.\" In the darkest rebirth of the already gritty Absolute Universe , the righteous vigilante is being invented as something much, much deadlier.",
+    "entity": {
+      "canonicalEntity": "Absolute Green Arrow Creators",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Absolute Green Arrow Creators",
+      "secondarySubject": "Reveal Details",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Absolute Green Arrow Creators",
+        "Absolute Green Arrow Creators other",
+        "Absolute Green Arrow Creators Reveal Details of \"Serial Killer\" Reboot"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s Absolute Green Arrow reinvention have shared new details about the iconic hero' has a new update.\n\nThe creators behind DC's Absolute Green Arrow reinvention have shared new details about the iconic hero's rebirth as a literal \"serial killer.\" In the darkest rebirth of the.",
+      "normalizedCaption": "'s Absolute Green Arrow reinvention have shared new details about the iconic hero' has a new update.\n\nThe creators behind DC's Absolute Green Arrow reinvention have shared new details about the iconic hero's rebirth as a literal \"serial killer.\" In the darkest rebirth of the.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "528a4d7aff6b962f",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/spider-man-best-sinister-six-stories-all-time/",
+      "articleTitle": "Top 10 Greatest Spider-Man Stories Starring The Sinister Six",
+      "articleDescription": "After 64 years of rich comic book stories, Spider-Man ’s rogues’ gallery has ballooned immensely, with some villains being far more iconic or prolific than others. Green Goblin and Doctor Octopus are interchangeably the two best Spider-Man villains ever , but one of the more intriguing aspects of Doctor Octopus’ character is that he has played a much greater role in assembling other villains to defeat Spider-Man as an ensemble that is typically dubbed the “Sinister Six.”",
+      "articleBody": "\n                                                                                                                                    <p>After 64 years of rich comic book stories, <a href=\"https://screenrant.com/tag/spider-man/\" target=\"_blank\"><strong>Spider-Man</strong></a>’s rogues’ gallery has ballooned immensely, with some villains being far more iconic or prolific than others. Green Goblin and Doctor Octopus are interchangeably the two <a href=\"https://screenrant.com/15-most-likable-spider-man-villains-in-marvel-history-ranked/\" target=\"_blank\">best Spider-Man villains ever</a>, but one of the more intriguing aspects of Doctor Octopus’ character is that he has played a much greater role in assembling other villains to defeat Spider-Man as an ensemble that is typically dubbed the “Sinister Six.”</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Top 10 Greatest Spider-Man Stories Starring The Sinister Six",
+    "normalizedDescription": "After 64 years of rich comic book stories, Spider-Man ’s rogues’ gallery has ballooned immensely, with some villains being far more iconic or prolific than others. Green Goblin and Doctor Octopus are interchangeably the two best Spider-Man villains ever , but one of the more intriguing aspects of Doctor Octopus’ character is that he has played a much greater role in assembling other villains to defeat Spider-Man as an ensemble that is typically dubbed the “Sinister Six.”",
+    "entity": {
+      "canonicalEntity": "s rogues",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "s rogues",
+      "secondarySubject": "Greatest Spider-Man Stories Starring",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "s rogues",
+        "s rogues other",
+        "Top 10 Greatest Spider-Man Stories Starring The Sinister Six"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Top 10 Greatest Spider-Man Stories Starring' has a new update.\n\nAfter 64 years of rich comic book stories, Spider-Man 's rogues' gallery has ballooned immensely, with some villains being far more iconic or prolific than others. Green Goblin and Doctor Octopus are.",
+      "normalizedCaption": "'Top 10 Greatest Spider-Man Stories Starring' has a new update.\n\nAfter 64 years of rich comic book stories, Spider-Man 's rogues' gallery has ballooned immensely, with some villains being far more iconic or prolific than others. Green Goblin and Doctor Octopus are.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "848f48d0dc3fbee6",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/near-perfect-fantasys-shows-no-one-remembers/",
+      "articleTitle": "10 Forgotten Fantasy TV Shows That Deserve A Second Chance",
+      "articleDescription": "The fantasy genre on TV has some perfect shows that became classics, but there are other equally great ones that faded into obscurity. The list of the best TV shows of all time has various fantasy shows, some of which heavily influenced the genre. Shows like Buffy the Vampire Slayer and Xena: Warrior Princess shaped the genre, also becoming part of pop culture and thus being unforgettable.",
+      "articleBody": "\n                                                                                                                                    <p>The <strong>fantasy</strong> genre on TV has some perfect shows that became classics, but there are other equally great ones that faded into obscurity. The list of <a href=\"https://screenrant.com/best-tv-shows-of-all-time/\" target=\"_blank\">the best TV shows of all time</a> has various fantasy shows, some of which heavily influenced the genre. Shows like <em>Buffy the Vampire Slayer</em> and <em>Xena: Warrior Princess</em> shaped the genre, also becoming part of pop culture and thus being unforgettable.</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "10 Forgotten Fantasy TV Shows That Deserve A Second Chance",
+    "normalizedDescription": "The fantasy genre on TV has some perfect shows that became classics, but there are other equally great ones that faded into obscurity. The list of the best TV shows of all time has various fantasy shows, some of which heavily influenced the genre. Shows like Buffy the Vampire Slayer and Xena: Warrior Princess shaped the genre, also becoming part of pop culture and thus being unforgettable.",
+    "entity": {
+      "canonicalEntity": "Forgotten Fantasy TV Shows",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Forgotten Fantasy TV Shows",
+      "secondarySubject": "That Deserve",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Forgotten Fantasy TV Shows",
+        "Forgotten Fantasy TV Shows other",
+        "10 Forgotten Fantasy TV Shows That Deserve A Second Chance"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'10 Forgotten Fantasy TV Shows That' has a new update.\n\nThe fantasy genre on TV has some perfect shows that became classics, but there are other equally great ones that faded into obscurity.",
+      "normalizedCaption": "'10 Forgotten Fantasy TV Shows That' has a new update.\n\nThe fantasy genre on TV has some perfect shows that became classics, but there are other equally great ones that faded into obscurity.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "74b270d025f00953",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/ed-edd-eddy-perfect-finale-movie/",
+      "articleTitle": "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+      "articleDescription": "Over 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy , and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.",
+      "articleBody": "\n                                                                                                                                    <p>Over 15 years ago, <strong>Cartoon Network</strong> aired an official movie finale to their hit series <a href=\"https://screenrant.com/db/tv-show/ed-edd-n-eddy/\" target=\"_blank\"><strong><em>Ed, Edd, n Eddy</em></strong></a>, and it's still perfect today. <em>Ed, Edd, n' Eddy</em> was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.</p>                    ",
+      "publishedAt": "2026-04-10T14:01:19.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+    "normalizedDescription": "Over 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy , and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered. It gained five seasons over ten years of being on the air, and it still holds a place in the hearts of many fans.",
+    "entity": {
+      "canonicalEntity": "Cartoon Network",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Cartoon Network",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Cartoon Network Christmas: Yuletide Follies",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Cartoon Network Christmas: Yuletide Follies",
+          "source": "tmdb",
+          "subject": "Cartoon Network Christmas: Yuletide Follies",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Cartoon Network",
+        "Cartoon Network other",
+        "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Cartoon Network Christmas: Yuletide Follies",
+          "mediaType": "tv",
+          "score": 645.5596,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_MEDIA_TYPE_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'This Classic Cartoon Network Show's Movie' has a new update.\n\nOver 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy, and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered.",
+      "normalizedCaption": "'This Classic Cartoon Network Show's Movie' has a new update.\n\nOver 15 years ago, Cartoon Network aired an official movie finale to their hit series Ed, Edd, n Eddy, and it's still perfect today. Ed, Edd, n' Eddy was a series that delighted many 90s kids when it first premiered.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_MEDIA_TYPE_MISMATCH"
+    ],
+    "diagnosis": [],
+    "recommendedFixes": []
+  },
+  {
+    "caseId": "e97f5c15c4cbda8a",
+    "input": {
+      "sourceName": "ScreenRant",
+      "feedUrl": "https://screenrant.com/feed/",
+      "articleUrl": "https://screenrant.com/marvels-wolverine-update-state-of-play-april-16/",
+      "articleTitle": "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week",
+      "articleDescription": "Marvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.",
+      "articleBody": "\n                                                                                                                                    <p><a href=\"https://screenrant.com/tag/marvels-wolverine/\" target=\"_blank\"><em><strong>Marvel's Wolverine</strong></em></a> gameplay is coming soon. We just don't know the exact date yet. After revealing the <a href=\"https://screenrant.com/marvels-wolverine-release-date-reveal/\" target=\"_blank\">release date for <em>Marvel's Wolverine</em></a> in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.</p>                    ",
+      "publishedAt": "2026-04-10T13:54:45.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week",
+    "normalizedDescription": "Marvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the subject, promising more updates would be shared in the spring. Well, spring is here and we've finally been given an update.",
+    "entity": {
+      "canonicalEntity": "Marvel's Wolverine",
+      "canonicalEntityType": "movie",
+      "eventType": "licensing",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "article_family_gaming_collab_or_licensing",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Marvel's Wolverine",
+      "secondarySubject": "Fuels Rumors Of PlayStation",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Marvel's Wolverine",
+        "Marvel's Wolverine licensing",
+        "Marvel's Wolverine Official Update Fuels Rumors Of PlayStation State Of Play Next Week"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s Wolverine gameplay is coming soon. We just don' has a new release date.\n\nMarvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the.",
+      "normalizedCaption": "'s Wolverine gameplay is coming soon. We just don' has a new release date.\n\nMarvel's Wolverine gameplay is coming soon. We just don't know the exact date yet. After revealing the release date for Marvel's Wolverine in February, Insomniac Games has been fairly quiet on the.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "Selected image context did not match the canonical article entity.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Require selected images to be grounded in canonical allowed entities.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "8881508eebba1cb4",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/tv-shows/news/legendary-horror-series-confirms-streaming-debut-after-years-in-limbo/",
+      "articleTitle": "Legendary Horror Series Confirms Streaming Debut After Years in Limbo",
+      "articleDescription": "In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect. For years, Tales From The Crypt&#8217;s television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream Tales From The Crypt next month. Specifically, the first seas",
+      "articleBody": "<figcaption class=\"wp-caption-text\">Warner Bros</figcaption><figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Tales-from-the-Crypt.jpg?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"\" loading=\"lazy\" /></figure>\n\n\n<p>In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect.</p>\n\n\n\n<p>For years, <em><a href=\"https://comicbook.com/tag/tales-from-the-crypt/\">Tales From The Crypt&#8217;s</a></em> television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream <em>Tales From The Crypt</em> next month. Specifically, the first season will debut on the platform on May 1st on Shudder, with each additional season arriving every following Friday. This means that the entirety of the horror franchise will be available by June 12th, marking the first time that the Cryptkeeper will have a streaming service for all his campfire tales. You can check out the trailer announcement below, where the voice of the Cryptkeeper himself, John Kassir, makes his ghoulish return.</p>\n\n\n\n<figure class=\"wp-block-embed is-type-video is-provider-youtube wp-block-embed-youtube wp-embed-aspect-16-9 wp-has-aspect-ratio\"><div class=\"wp-block-embed__wrapper\">\n<iframe title=\"Tales from the Crypt | Coming soon to Shudder\" width=\"500\" height=\"281\" src=\"https://www.youtube.com/embed/3NkSaBv32JY?feature=oembed\" frameborder=\"0\" allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share\" referrerpolicy=\"strict-origin-when-cross-origin\" allowfullscreen></iframe>\n</div></figure>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-swing-open-the-crypt\">Swing Open The Crypt</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?w=1024\" alt=\"The Crypt Keeper in Tales from the Crypt\" class=\"wp-image-1515158\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/The-Crypt-Keeper-in-Tales-from-the-Crypt.jpg?resize=200,113 200w\" sizes=\"(max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of HBO</figcaption></figure>\n\n\n\n<p>To accompany the major Shudder announcement, Executive Vice President of Streaming at AMC Networks, Courtney Thomasma, was more than happy to lend some commentary. &#8220;<em>Tales from the Crypt</em> isn’t just a series — it’s a cornerstone of horror storytelling. Becoming its exclusive streaming home is both an honor and a thrill for us at Shudder. This is the kind of genre-defining, wonderfully  twisted entertainment our members crave, and we’re proud to give The Crypt Keeper a place to cackle once again.”</p>\n\n\n\n<p><a href=\"https://comicbook.com/tv-shows/list/7-underrated-episodes-of-tales-from-the-crypt/\">For those who have never had the chance to check out <em>Tales From The Crypt</em></a>, or want to know more about its backstory, the television series is based on the creepy comic from EC Comics. Arriving on HBO in 1989, the anthology series ran for seven seasons before ending in 1996. Throughout its 93 episodes, the franchise brought in some surprising talent among directors and actors alike. <a href=\"https://comicbook.com/movies/feature/30-years-ago-the-greatest-horror-cinematic-universe-failed-to-take-off/\"><em>Tales From The Crypt</em> also released several movies</a> that helped push its creepy universe to new heights.</p>\n\n\n\n<p>While there has not been a new <em>Tales From The Crypt</em> series since the show ended in 1996, there was almost a reboot from a surprising source. In 2016, director M. Night Shyamalan was planning to create a reboot of the series that would run for ten episodes to start. Unfortunately, the revamped anthology fell to the wayside thanks to the same reasoning behind why the original show didn&#8217;t stream, aka licensing issues. Maybe this new streaming win will mean that the franchise will manage to make a comeback.</p>\n\n\n\n<p>What do you think? Leave a comment below <strong>and join the conversation now in the </strong><a href=\"https://forum.comicbook.com/\"><strong>ComicBook Forum</strong></a><strong>!</strong></p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"TaDl0ZOYbR\"><a href=\"https://comicbook.com/tv-shows/list/3-tales-from-the-crypt-episodes-are-actually-still-scary-decades-on/\">3 Tales From The Crypt Episodes Are Actually Still Scary Decades On</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;3 Tales From The Crypt Episodes Are Actually Still Scary Decades On&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/tv-shows/list/3-tales-from-the-crypt-episodes-are-actually-still-scary-decades-on/embed/#?secret=8zPHNF1l0H#?secret=TaDl0ZOYbR\" data-secret=\"TaDl0ZOYbR\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-10T14:06:28.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Legendary Horror Series Confirms Streaming Debut After Years in Limbo",
+    "normalizedDescription": "In the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the jump from physical media to streaming services, though this doesn&#8217;t mean that absolutely everything has entered this new age. There are some shows and movies, for various reasons, that have remained on the sidelines, with a classic horror franchise being a prime example. Luckily, for the first time, a horror anthology series is arriving on the streaming world this year, and it&#8217;s dropping sooner than you might expect. For years, Tales From The Crypt&#8217;s television series has been absent from many of the streaming platforms of the day. While it did air originally on HBO, the Crypt Keeper-led show never found its way onto HBO Max. Luckily, Shudder, the horror-centric streaming service, has announced that it will stream Tales From The Crypt next month. Specifically, the first seas",
+    "entity": {
+      "canonicalEntity": "Tales From The Crypt",
+      "canonicalEntityType": "company",
+      "eventType": "business",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "article_family_business_or_platform",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Tales From The Crypt",
+      "secondarySubject": "Streaming Debut After Years",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Tales from the Crypt rendered as logo card",
+      "assetsFound": {
+        "logos": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "exact_title_logo_fallback",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb logo for Tales from the Crypt rendered as logo card",
+          "source": "tmdb",
+          "subject": "Tales from the Crypt rendered as logo card",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Tales From The Crypt",
+        "Tales From The Crypt business",
+        "Legendary Horror Series Confirms Streaming Debut After Years in Limbo"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Tales from the Crypt rendered as logo card",
+          "score": 688.3820499999999,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_HEADLINE_JUNK",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Legendary Horror Series Confirms Streaming Debut' has added a new cast member.\n\nIn the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the.",
+      "normalizedCaption": "'Legendary Horror Series Confirms Streaming Debut' has added a new cast member.\n\nIn the streaming world, it can almost seem impossible not to be able to find classic movies and television series. An unfathomable amount of projects, live-action and animated alike, have made the.",
+      "failureCodes": [
+        "CAPTION_PACKAGE_LABEL_LEAK",
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_HEADLINE_JUNK",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_PACKAGE_LABEL_LEAK",
+      "CAPTION_MALFORMED_HEADLINE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity.",
+      "Caption retained malformed headline/package wording."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities.",
+      "Strip outlet package labels before deterministic caption generation."
+    ]
+  },
+  {
+    "caseId": "cc0c11026c13e169",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/tv-shows/feature/lightsabers-have-never-looked-better-than-star-wars-new-tv-show/",
+      "articleTitle": "Lightsabers Have Never Looked Better Than Star Wars’ New TV Show",
+      "articleDescription": "Forget droids and even X-wings; the lightsaber is undoubtedly the greatest symbol of Star Wars . George Lucas originally called them &#8220;laser swords,&#8221; but he felt viewers wouldn&#8217;t appreciate the fact their blades only had a specific length. The &#8220;lightsaber&#8221; name was actually created by Alan Dean Foster, ghost-writer of the first Star Wars novelization and the 1978 tie-in Splinter of the Mind&#8217;s Eye . Star Wars was originally envisioned as an Arthurian epic, so it made sense for Lucas to riff on Excalibur &#8211; a sword that, in some legends, glowed with ethereal light whenever it was drawn from its scabbard. There are still hints of this in Star Wars lore, in the kyber crystals that focus a lightsaber&#8217;s blade and give each one their distinctive hue (kyber is derived from &#8220;Caiburr,&#8221; an alternative name for Excalibur). But now, 49 years after Star Wars began, lightsabers have never looked cooler.",
+      "articleBody": "<figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/11/anakin-vs-Luke-lightsabers.jpg?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"anakin vs Luke lightsabers\" loading=\"lazy\" /></figure>\n\n\n<p>Forget droids and even X-wings; the lightsaber is undoubtedly the greatest symbol of <a href=\"https://comicbook.com/tag/star-wars/\">Star Wars</a>. George Lucas originally called them &#8220;laser swords,&#8221; but he felt viewers wouldn&#8217;t appreciate the fact their blades only had a specific length. The &#8220;lightsaber&#8221; name was actually created by Alan Dean Foster, ghost-writer of the first <em>Star Wars</em> novelization and the 1978 tie-in <em>Splinter of the Mind&#8217;s Eye</em>.</p>\n\n\n\n<p>Star Wars was originally envisioned as an Arthurian epic, so it made sense for Lucas to riff on Excalibur &#8211; a sword that, in some legends, glowed with ethereal light whenever it was drawn from its scabbard. There are still hints of this in Star Wars lore, in the kyber crystals that focus a lightsaber&#8217;s blade and give each one their distinctive hue (kyber is derived from &#8220;Caiburr,&#8221; an alternative name for Excalibur). But now, 49 years after Star Wars began, lightsabers have never looked cooler.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-star-wars-keeps-working-on-the-lightsaber-effects\">Star Wars Keeps Working on the Lightsaber Effects</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?w=1024\" alt=\"Jedi with lightsabers in The Acolyte\" class=\"wp-image-1477552\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg 3840w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/09/Jedi-with-lightsabers-in-The-Acolyte.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /></figure>\n\n\n\n<p>Naturally, Lucasfilm has spent a great deal of time working on lightsabers. In recent years, ILM has revolutionized the lightsaber in live-action, pivoting to high-output LED blades. It&#8217;s a very different approach to Lucas&#8217;, because it means the glow effect is an automatic part of the scene rather than added in post. In theory, this results in a much more &#8220;natural&#8221; look, as though the lightsabers are real. There are two problems with the approach, though, the most visible being that blue light sometimes washes darker shots out. The <a href=\"https://comicbook.com/starwars/news/obi-wan-kenobi-finale-review-episode-6-spoilers-recap/\">end of <em>Obi-Wan Kenobi</em></a> suffered from this problem.</p>\n\n\n\n<p>The second issue, of course, is simply how to power it. <em>Ahsoka</em>&#8216;s battery packs were a little restrictive, but Lucasfilm has since learned to miniaturize them. It&#8217;s why <a href=\"https://comicbook.com/starwars/news/star-wars-the-acolyte-lightsaber-fights-dafne-keen-phantom-menace/\"><em>The Acolyte</em>&#8216;s lightsaber duels were easily the best since <em>The Phantom Menace</em></a>, allowing the actors incredible flexibility and mobility. The goal, quite clearly, is to ensure that each lightsaber duel looks better than the last one. Excitement is understandably building for <em>Ahsoka</em> Season 2, which will undoubtedly exploit some of <em>The Acolyte</em>&#8216;s technical innovations.</p>\n\n\n\n<p>But if you want to see lightsaber duels at their best, you really need to look beyond live-action. Instead, you&#8217;ve got to cast your eyes to <a href=\"https://comicbook.com/tv-shows/list/10-best-star-wars-animation-episodes-ranked/\">Star Wars animation</a>, which frequently features some of the best stories in canon. Some of these are a little controversial; <em>Star Wars Rebels</em>&#8216; lightsabers were unusually thin, a homage to original Ralph McQuarrie designs that was appreciated by some and disliked by others. But the latest Star Wars TV show, <em><a href=\"https://comicbook.com/tag/star-wars-maul-shadow-lord/\">Maul &#8211; Shadow Lord</a></em>, is the best yet.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-maul-shadow-lord-s-art-style-shows-lightsabers-at-their-best\">Maul &#8211; Shadow Lord&#8217;s Art Style Shows Lightsabers At Their Best</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?w=1024\" alt=\"Darth Maul in Star Wars: Maul - Shadow Lord, wielding his red lightsaber.\" class=\"wp-image-1637661\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/Darth-Maul-in-Maul-Shadow-Lord-1.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /></figure>\n\n\n\n<p><a href=\"https://comicbook.com/tv-shows/review/maul-shadow-lord-is-the-star-wars-tv-show-weve-always-wanted-to-see/\"><em>Maul &#8211; Shadow Lord</em> is one of the best Star Wars TV shows</a> so far. In our review, we called it the Star Wars story we&#8217;ve always wanted to see; that seems to be the common opinion, because it has a staggering 100% fresh critic score on Rotten Tomatoes (and a seriously impressive 95% audience score, too). The story is unlike anything we&#8217;ve seen in Star Wars before, a beautifully-designed dance between the dark side and the light with an emphasis on Darth Maul and a potential apprentice.</p>\n\n\n\n<p>And the art is absolutely glorious. Watercolor effects have been used to give this animated show a tone and style reminiscent of <em>Arcane</em>, probably the highest compliment that can possibly be paid to any series given that show&#8217;s beauty. The effect is particularly noticeable in lightsaber effects, and actual duels are stunning. Animation lends itself perfectly to lightsaber combat, because the animators can design every scene perfectly, controlling the play of light and shade. The watercolor effects give Maul&#8217;s double-bladed lightsaber a definite savagery.</p>\n\n\n\n<p><em>Shadow Lord</em>&#8216;s opening scenes demonstrate this so very well. Here, Maul makes his debut (to a riff of &#8220;Duel of the Fates&#8221; no less), and launches an attack on police officers on the crime-ridden world of Janix. Needless to say, they don&#8217;t exactly perform well in a fight against a Sith Apprentice, but the entire scene is absolutely resplendent. There are even moments where the colors are flipped, bathing the battle in blood-red and creating a phenomenal sense of danger.</p>\n\n\n\n<p>Star Wars animation is generally aimed at the hardcore fanbase. That makes sense of the deep cut here, because general viewers can be forgiven being confused over the fact Darth Maul is even still alive (notwithstanding the end of <em>Solo: A Star Wars Story</em>, which featured a blink-and-you&#8217;ll-forget-it live-action Maul cameo). But it&#8217;s also something of a shame, because Star Wars has never looked better than Darth Maul, and <em>Shadow Lord</em> explains everything pretty well meaning no prior knowledge is really required. Hopefully the show&#8217;s phenomenal reputation means general audiences will tune in.</p>\n\n\n\n<p><em>Maul &#8211; Shadow Lord</em> Season 1 is streaming now on Disney+.</p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"uVzAV8V0bP\"><a href=\"https://comicbook.com/tv-shows/feature/the-mandalorians-secret-darth-maul-connection-confirmed-ahead-of-star-wars-next-movie/\">The Mandalorian&#8217;s Secret Darth Maul Connection Confirmed Ahead of Star Wars&#8217; Next Movie</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;The Mandalorian&#8217;s Secret Darth Maul Connection Confirmed Ahead of Star Wars&#8217; Next Movie&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/tv-shows/feature/the-mandalorians-secret-darth-maul-connection-confirmed-ahead-of-star-wars-next-movie/embed/#?secret=RUTIyJTflt#?secret=uVzAV8V0bP\" data-secret=\"uVzAV8V0bP\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "Lightsabers Have Never Looked Better Than Star Wars' New TV Show",
+    "normalizedDescription": "Forget droids and even X-wings; the lightsaber is undoubtedly the greatest symbol of Star Wars . George Lucas originally called them &#8220;laser swords,&#8221; but he felt viewers wouldn&#8217;t appreciate the fact their blades only had a specific length. The &#8220;lightsaber&#8221; name was actually created by Alan Dean Foster, ghost-writer of the first Star Wars novelization and the 1978 tie-in Splinter of the Mind&#8217;s Eye . Star Wars was originally envisioned as an Arthurian epic, so it made sense for Lucas to riff on Excalibur &#8211; a sword that, in some legends, glowed with ethereal light whenever it was drawn from its scabbard. There are still hints of this in Star Wars lore, in the kyber crystals that focus a lightsaber&#8217;s blade and give each one their distinctive hue (kyber is derived from &#8220;Caiburr,&#8221; an alternative name for Excalibur). But now, 49 years after Star Wars began, lightsabers have never looked cooler.",
+    "entity": {
+      "canonicalEntity": "laser swords,",
+      "canonicalEntityType": "other",
+      "eventType": "shopping",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_shopping_or_product",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "laser swords,",
+      "secondarySubject": "Better Than Star Wars",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "laser swords,",
+        "Lightsabers Have Never Looked",
+        "laser swords, shopping",
+        "Lightsabers Have Never Looked Better Than Star Wars’ New TV Show"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Lightsabers Have Never Looked joins 'Lightsabers Have Never Looked Better Than'.\n\nForget droids and even X-wings; the lightsaber is undoubtedly the greatest symbol of Star Wars. George Lucas originally called them \"laser swords,\" but he felt viewers wouldn't appreciate the fact.",
+      "normalizedCaption": "Lightsabers Have Never Looked joins 'Lightsabers Have Never Looked Better Than'.\n\nForget droids and even X-wings; the lightsaber is undoubtedly the greatest symbol of Star Wars. George Lucas originally called them \"laser swords,\" but he felt viewers wouldn't appreciate the fact.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation."
+    ]
+  },
+  {
+    "caseId": "3d72153914e55278",
+    "input": {
+      "sourceName": "ComicBook",
+      "feedUrl": "https://comicbook.com/feed/",
+      "articleUrl": "https://comicbook.com/comics/list/7-dc-weapons-more-powerful-than-mjolnir-ranked/",
+      "articleTitle": "7 DC Weapons More Powerful Than Mjolnir, Ranked",
+      "articleDescription": "Mjolnir is one of the most powerful weapons in the Marvel Universe. Created by Odin in the distant past, it enhances the power of anyone who holds it, and was used as a repository for Thor&#8217;s God of Thunder powers, on top of being able to move through space and time, harness vast cosmic energies, and destroy planets. It&#8217;s an amazing divine creation, and has become one of the most iconic weapons in comics. However, if you cross the street to Marvel&#8217;s distinguished competition, you&#8217;ll find some tools of violence that make it look like a toy. DC Comics &#8216; characters and often have greater powerful levels, and this applies to their accountrements as well. DC Comics has some superlatively powerful weapons , and they dwarf even the mighty Mjolnir&#8217;s might. These weapons give their users amazing power, allowing them to stand shoulder to shoulder with the most powerful beings in the multiverse. Some of them have powers that Mjolnir can&#8217;t touch. These seve",
+      "articleBody": "<figcaption class=\"wp-caption-text\">Image Courtesy of DC Comics</figcaption><figure class=\"post-thumbnail\"><img width=\"1056\" height=\"594\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-43-PM-1485.jpg?w=1056\" class=\"attachment-1056x1056 size-1056x1056 wp-post-image\" alt=\"Maggedon attacking the Earth\" loading=\"lazy\" /></figure>\n\n\n<p><a href=\"https://comicbook.com/tag/mjolnir/\">Mjolnir</a> is one of the most powerful weapons in the Marvel Universe. Created by Odin in the distant past, it enhances the power of anyone who holds it, and was used as a repository for Thor&#8217;s God of Thunder powers, on top of being able to move through space and time, harness vast cosmic energies, and destroy planets. It&#8217;s an amazing divine creation, and has become one of the most iconic weapons in comics. However, if you cross the street to Marvel&#8217;s distinguished competition, you&#8217;ll find some tools of violence that make it look like a toy. <a href=\"https://comicbook.com/tag/dc-comics/\">DC Comics</a>&#8216; characters and often have greater powerful levels, and this applies to their accountrements as well. <a href=\"https://comicbook.com/comics/list/10-most-powerful-weapons-in-dc-comics-ranked/\">DC Comics has some superlatively powerful weapons</a>, and they dwarf even the mighty Mjolnir&#8217;s might.</p>\n\n\n\n<p>These weapons give their users amazing power, allowing them to stand shoulder to shoulder with the most powerful beings in the multiverse. Some of them have powers that Mjolnir can&#8217;t touch. These seven DC weapons are more powerful than Marvel&#8217;s mighty mallet Mjolnir, dwarfing its potency. </p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-7-the-starheart\">7) The Starheart</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?w=1024\" alt=\"\" class=\"wp-image-1472678\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/08/Alan-Scotts-Green-Lantern-in-DC-Comics.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p><a href=\"https://comicbook.com/comics/news/85-years-later-the-original-green-lantern-is-still-iconic/\">Alan Scott is a DC legend</a>, a powerhouse of the Justice Society of America. He found the Starheart back in the Golden Age in its form as a ring and lantern, and has used its power to defeat the most deadly villains ever since. The Starheart is a magical source of energy created by the Oans to create soldiers to enforce intergalactic peace, but they found it a bit finicky for their purposes. It allows its user to control magical green fire, shaping it into anything they can imagine, and Scott has absorbed its power completely. His body is made up of its energy, arresting the aging process and making him one of the DC&#8217;s greats.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-6-helmet-of-fate\">6) Helmet of Fate</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?w=1024\" alt=\"Doctor Fate wreathed by magical energy\" class=\"wp-image-1551308\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/12/MixCollage-08-Dec-2025-05-45-PM-2358.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p><a href=\"https://comicbook.com/comics/feature/move-over-zatanna-and-john-constantine-this-is-dcs-best-magical-hero/\">Doctor Fate is one of DC&#8217;s magical titans</a>, powered by the Helmet of Fate. The Helmet is possessed by the Lord of Order Nabu, giving its wearer all of the magical power of the ancient being. Fate has access to a variety of powers and can tap into the mystical energies of the universe. The way the Helmet works has changed a lot over the decades; sometimes, Nabu speaks to the wearer, telling them what magic to use, and can even take over the body of the wearer, other times it&#8217;s just an object of great might. It&#8217;s an extremely powerful weapon, and allowed Fate to fight against the most powerful magical enemies.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-5-power-rings\">5) Power Rings</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?w=1024\" alt=\"Courtesy of DC Comics\" class=\"wp-image-1615181\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/03/Green-Lantern-Corps-1.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p>After the Oans failed to create their universal police force using the Starheart and the robotic Manhunters, they tapped into the Emotional Electromagnetic Spectrum and created the first Green Lantern ring. These rings allowed their bearers to create anything they can imagine with their emotional energies, fly faster than the speed of light, and have a powerful onboard computer, and they were only the beginning of the power ring&#8217;s evolution. Sinestro created the yellow ring of fear on Qward, and that ring would open the floodgates for even more, with the energies of rage, avarice, love, hope, compassion, death, and life all getting their own (and then there&#8217;s the Ultraviolet rings, which allow the user to control the energies of sadness). While not all of them have the same powers, they are all amazing weapons. The most skilled Lanterns can smack around gods, showing off just how powerful they are.</p>\n\n\n<div class=\"wp-block-savage-platform-read-next\">\n\t<a href=\"https://comicbook.com/comics/list/7-darkest-futures-in-dc-comics/\">\n\t\t<div class=\"read-next__post\">\n\t\t\t<img loading=\"lazy\" decoding=\"async\" width=\"300\" height=\"169\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?w=300\" class=\"read-next__image wp-post-image\" alt=\"\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png 2700w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=2048,1151 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=2000,1124 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/01/Batman-Last-Knight-on-Earth-DC-Comics_da6a44.png?resize=200,112 200w\" sizes=\"auto, (max-width: 300px) 100vw, 300px\" />\t\t\t<div class=\"read-next__content\">\n\t\t\t\t<div class=\"read-next__read-next\">\n\t\t\t\t\tRead Next\t\t\t\t</div>\n\t\t\t\t<div class=\"read-next__post-title\">\n\t\t\t\t\t7 Darkest Futures in DC Comics\t\t\t\t</div>\n\t\t\t</div>\n\t\t</div>\n\t</a>\n</div>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-4-the-anti-monitor-s-anti-matter-cannon\">4) The Anti-Monitor&#8217;s Anti-Matter Cannon</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?w=1024\" alt=\"\" class=\"wp-image-1638886\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=1536,865 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=2048,1153 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=2000,1126 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-23-PM-8825.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p><a href=\"https://comicbook.com/comics/news/crisis-of-infinite-the-best-event-comic-marv-wolfman-george-perez-dc-comics/\"><em>Crisis on Infinite Earths</em> is a masterpiece</a>, introducing readers to the greatest evil in the multiverse (at the time, anyway): the Anti-Monitor. He destroyed entire universes using the energy of anti-matter, and had created a powerful anti-matter cannon to makes his attack on the positive matter universes of the multiverse. It was powered by the concentrated anti-matter of Qward, and was responsible for countless deaths before it was destroyed by Barry Allen&#8217;s sacrifice. Mjolnir can destroy planets, but it can&#8217;t destroy universes.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-3-the-miracle-machine\">3) The Miracle Machine</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?w=1024\" alt=\"\" class=\"wp-image-1638893\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=1536,865 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=2048,1153 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=2000,1126 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-27-PM-7387.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p>The Miracle Machine isn&#8217;t technically just a weapon, but it can be used as one. There have been three of them created over the decades, by Superman, Matter-Eater Lad (the Legion is awesome), and Brainiac 5. Powered by Element X, it takes the willpower-based technology of the Oans and took it to its ultimate extent. It can make the thoughts of its user into reality (Superman used it to help recreate the multiverse in <em>Final Crisis</em>), so if they want to use it as a weapon, it one of the deadliest tools ever created.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-2-the-world-forger-s-hammer\">2) The World-Forger&#8217;s Hammer</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?w=1024\" alt=\"\" class=\"wp-image-1512669\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png 2388w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=1536,864 1536w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=2048,1152 2048w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=2000,1125 2000w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2025/10/DC-World-Forger-Hammer-Batman-DC.png?resize=200,112 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p>The World-Forger is the son of Perpetua, sibling to the Monitor and Anti-Monitor. His job was to create universes, and his hammer was indispensable to that role. He was basically a blacksmith who could create multiverses, and without his hammer none of that was possible. It&#8217;s indestructible and fueled by the energies of creation, and can be used in battle to devastating effect. While we don&#8217;t know everything about it and what it can do besides create multiverses, what we know makes it one of the most powerful weapons in the history of comics.</p>\n\n\n\n<h2 class=\"wp-block-heading\" id=\"h-1-mageddon\">1) Mageddon</h2>\n\n\n\n<figure class=\"wp-block-image size-large\"><img loading=\"lazy\" decoding=\"async\" height=\"576\" width=\"1024\" src=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?w=1024\" alt=\"Mageddon approaching Earth\" class=\"wp-image-1638902\" srcset=\"https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg 2400w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=300,169 300w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=768,432 768w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=1024,576 1024w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=1536,865 1536w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=2048,1153 2048w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=2000,1126 2000w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=425,239 425w, https://comicbook.com/wp-content/uploads/sites/4/2026/04/MixCollage-09-Apr-2026-12-37-PM-4684.jpg?resize=200,113 200w\" sizes=\"auto, (max-width: 1024px) 100vw, 1024px\" /><figcaption class=\"wp-element-caption\">Image Courtesy of DC Comics</figcaption></figure>\n\n\n\n<p>Mageddon was created by the Old Gods, meant to be the ultimate weapon in their endless war. It succeeded perfectly, destroying the Third World of the Gods, and then went into the Underverse for countless millennia. It would return in the present day, making its way towards Earth because the planet was meant to be the Fifth World of the Gods. It&#8217;s a living weapon that can destroy universes, its destructive instincts broadcast out to the lesser beings around it, causing them to fight each other instead of trying to stop it. It took giving every human on the planet superpowers in order to defeat it, and it remains the most dangerous weapon in comics.</p>\n\n\n\n<p>What are your favorite DC weapons? Leave a comment in the comment section below and join the conversation on the <a href=\"https://forum.comicbook.com/\">ComicBook Forums</a>!</p>\n\n\n\n<figure class=\"wp-block-embed is-type-wp-embed is-provider-comicbook-com wp-block-embed-comicbook-com\"><div class=\"wp-block-embed__wrapper\">\n<blockquote class=\"wp-embedded-content\" data-secret=\"ArqvEuZ3PU\"><a href=\"https://comicbook.com/comics/list/10-longest-running-dc-comics-series/\">10 Longest Running DC Comics Series</a></blockquote><iframe loading=\"lazy\" class=\"wp-embedded-content\" sandbox=\"allow-scripts\" security=\"restricted\"  title=\"&#8220;10 Longest Running DC Comics Series&#8221; &#8212; ComicBook.com\" src=\"https://comicbook.com/comics/list/10-longest-running-dc-comics-series/embed/#?secret=xMNNd3pvXY#?secret=ArqvEuZ3PU\" data-secret=\"ArqvEuZ3PU\" width=\"500\" height=\"282\" frameborder=\"0\" marginwidth=\"0\" marginheight=\"0\" scrolling=\"no\"></iframe>\n</div></figure>\n",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "7 DC Weapons More Powerful Than Mjolnir, Ranked",
+    "normalizedDescription": "Mjolnir is one of the most powerful weapons in the Marvel Universe. Created by Odin in the distant past, it enhances the power of anyone who holds it, and was used as a repository for Thor&#8217;s God of Thunder powers, on top of being able to move through space and time, harness vast cosmic energies, and destroy planets. It&#8217;s an amazing divine creation, and has become one of the most iconic weapons in comics. However, if you cross the street to Marvel&#8217;s distinguished competition, you&#8217;ll find some tools of violence that make it look like a toy. DC Comics &#8216; characters and often have greater powerful levels, and this applies to their accountrements as well. DC Comics has some superlatively powerful weapons , and they dwarf even the mighty Mjolnir&#8217;s might. These weapons give their users amazing power, allowing them to stand shoulder to shoulder with the most powerful beings in the multiverse. Some of them have powers that Mjolnir can&#8217;t touch. These seve",
+    "entity": {
+      "canonicalEntity": "DC Weapons More Powerful",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "DC Weapons More Powerful",
+      "secondarySubject": "Than Mjolnir",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "DC Weapons More Powerful",
+        "DC Weapons More Powerful casting",
+        "7 DC Weapons More Powerful Than Mjolnir, Ranked"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "DC Weapons More Powerful joins '7 DC Weapons More Powerful Than'.\n\nMjolnir is one of the most powerful weapons in the Marvel Universe. Created by Odin in the distant past, it enhances the power of anyone who holds it, and was used as a repository for Thor's God of Thunder.",
+      "normalizedCaption": "DC Weapons More Powerful joins '7 DC Weapons More Powerful Than'.\n\nMjolnir is one of the most powerful weapons in the Marvel Universe. Created by Odin in the distant past, it enhances the power of anyone who holds it, and was used as a repository for Thor's God of Thunder.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  }
+]

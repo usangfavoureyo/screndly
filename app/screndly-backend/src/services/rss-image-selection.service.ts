@@ -3401,72 +3401,409 @@ function buildSingleSlotTitleFallbackAnalysis(
   );
 }
 
+function stripSeasonAndSubtitleVariant(value: string): string | null {
+  const cleaned = String(value || '')
+    .replace(/\bseason\s+\d+\b.*$/i, '')
+    .replace(/\bepisode\s+\d+\b.*$/i, '')
+    .replace(/\bpremiere\b.*$/i, '')
+    .replace(/\brelease\s+date\b.*$/i, '')
+    .replace(/\bseries\s+finale\b.*$/i, '')
+    .replace(/\bfinale\b.*$/i, '')
+    .replace(/\b(?:reboot|revival|adaptation|sequel|spinoff|spin-off)\b.*$/i, '')
+    .replace(/\s*[:\-]\s*(?:season|episode|finale|review|recap|explained|first look|trailer|teaser|release date|premiere).*/i, '')
+    .replace(/\s*[:\-]\s*(?:returns?|renewed|renewal|casting|joins?|set at|coming to|lands).*/i, '')
+    .trim();
+
+  return cleaned && normalizeText(cleaned) !== normalizeText(value) ? cleaned : null;
+}
+
+function getCanonicalProjectAnchor(base: RSSSubjectAnalysis): string | null {
+  const anchor = base.canonicalEntity?.mediaTitle || base.contextProject;
+  if (anchor) {
+    return anchor;
+  }
+
+  const primaryAnchor = isProjectAnchorType(base.primarySubject.type) ? base.primarySubject.name : null;
+  return primaryAnchor && !looksLikeNamedPerson(primaryAnchor) ? primaryAnchor : null;
+}
+
+function getTMDbTitleGroundingAnchor(base: RSSSubjectAnalysis): string | null {
+  const projectAnchor = getCanonicalProjectAnchor(base);
+  if (projectAnchor) {
+    return projectAnchor;
+  }
+
+  const canonicalPrimary = base.canonicalEntity?.primarySubject;
+  if (canonicalPrimary && base.canonicalEntity?.ambiguityFlags?.includes('unsafe_canonical_entity_removed')) {
+    return canonicalPrimary;
+  }
+
+  if (
+    canonicalPrimary &&
+    base.canonicalEntity?.entityType !== 'person' &&
+    base.canonicalEntity?.entityType !== 'company' &&
+    base.canonicalEntity?.entityType !== 'platform'
+  ) {
+    return canonicalPrimary;
+  }
+
+  return isProjectAnchorType(base.primarySubject.type) ? base.primarySubject.name : null;
+}
+
+function getProjectFallbackAnchors(article: RSSImageSelectionArticle, base: RSSSubjectAnalysis): string[] {
+  const articleText = buildArticleAnalysisText(article);
+  const quotedSubjects = uniqueStrings([
+    ...extractStrictTitleQuotedSubjects(article.title),
+    ...extractQuotedSubjects(articleText),
+  ]).filter((subject) => {
+    const normalizedSubject = normalizeText(subject);
+    return normalizedSubject &&
+      !looksLikeNamedPerson(subject) &&
+      !base.relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject);
+  });
+  const rawAnchors = uniqueStrings([
+    base.canonicalEntity?.mediaTitle,
+    base.canonicalEntity?.franchise,
+    base.contextProject,
+    ...quotedSubjects,
+    extractLeadProjectAnchor(article, base),
+    isProjectAnchorType(base.primarySubject.type) ? base.primarySubject.name : null,
+  ]);
+  const expanded = uniqueStrings([
+    ...rawAnchors,
+    ...rawAnchors.map(stripSeasonAndSubtitleVariant),
+  ]);
+
+  return expanded.filter((anchor) => {
+    if (!anchor || looksLikeNamedPerson(anchor)) {
+      return false;
+    }
+    const projectType = inferSlotType(anchor, articleText, 'franchise', base);
+    return isProjectAnchorType(projectType);
+  });
+}
+
+function isProjectLedStoryContext(base: RSSSubjectAnalysis, articleText: string): boolean {
+  if (base.imageIntent === 'person_portrait' || base.primarySubject.type === 'actor') {
+    return false;
+  }
+
+  return Boolean(
+    getCanonicalProjectAnchor(base) ||
+    /\b(casts?|casting|joins?|renewed|renewal|trailer|teaser|first look|premiere|release date|adaptation|reboot|revival|development|production|filming)\b/i.test(articleText)
+  );
+}
+
+function shouldTryEarlyPersonFallback(base: RSSSubjectAnalysis, articleText: string): boolean {
+  if (!isProjectLedStoryContext(base, articleText)) {
+    return false;
+  }
+
+  const flags = new Set(base.canonicalEntity?.ambiguityFlags || []);
+  if (
+    flags.has('quote_led_headline_junk') ||
+    flags.has('canonical_project_weak') ||
+    flags.has('canonical_person_weak')
+  ) {
+    return false;
+  }
+
+  const familyEligible = flags.has('article_family_person_interview_or_reaction') || base.contextType === 'casting' || base.contextType === 'interview';
+  const hasLeadPerson = (base.canonicalEntity?.namedPeople || []).length > 0 ||
+    base.secondarySubjects.some((subject) => looksLikeNamedPerson(subject)) ||
+    (base.contextType === 'casting' && looksLikeNamedPerson(base.visualSubject));
+  const hasStableAnchor = Boolean(base.contextProject || base.canonicalEntity?.mediaTitle || base.canonicalEntity?.primarySubject);
+  if (familyEligible && hasLeadPerson && hasStableAnchor) {
+    return true;
+  }
+
+  return false;
+}
+
+function markFallbackReason<T extends RSSResolvedImage & { role?: ImageRole }>(
+  images: T[],
+  label: string
+): T[] {
+  return images.map((image) => ({
+    ...image,
+    reason: `${image.reason} via ${label}`,
+  })) as T[];
+}
+
+function buildProjectFallbackAnalysisForAnchor(
+  article: RSSImageSelectionArticle,
+  base: RSSSubjectAnalysis,
+  projectAnchor: string,
+  imageIntent: ImageIntent
+): RSSSubjectAnalysis | null {
+  const articleText = buildArticleAnalysisText(article);
+  const projectType = inferSlotType(projectAnchor, articleText, 'franchise', base);
+  if (!isProjectAnchorType(projectType)) {
+    return null;
+  }
+
+  return buildAnalysisForSlot(
+    base,
+    buildImageSlotPlan(projectAnchor, projectType, imageIntent, base, imageIntent === 'logo' || imageIntent === 'brand_backdrop')
+  );
+}
+
+function isExactProjectAnchor(projectAnchor: string, base: RSSSubjectAnalysis): boolean {
+  const canonicalAnchor = getCanonicalProjectAnchor(base);
+  return !!canonicalAnchor && normalizeText(projectAnchor) === normalizeText(canonicalAnchor);
+}
+
+function getMeaningfulOverlapTokens(value: string): Set<string> {
+  const stop = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'this',
+    'that',
+    'new',
+    'official',
+    'update',
+    'series',
+    'movie',
+    'show',
+    'season',
+  ]);
+
+  return new Set(
+    normalizeText(value)
+      .split(/\s+/)
+      .map((token) => token.replace(/[^a-z0-9]/g, ''))
+      .filter((token) => token.length >= 3 && !stop.has(token))
+  );
+}
+
+function hasMeaningfulTitleTokenOverlap(left: string, right: string): boolean {
+  const leftTokens = getMeaningfulOverlapTokens(left);
+  const rightTokens = getMeaningfulOverlapTokens(right);
+  if (leftTokens.size === 0 || rightTokens.size === 0) {
+    return false;
+  }
+
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function inferTMDbTitleFromImageReason(reason?: string): string | null {
+  const match = String(reason || '').match(/\bTMDb\s+(?:backdrop|still|poster|logo|brand backdrop|profile)\s+for\s+(.+)$/i);
+  return match?.[1]?.trim() || null;
+}
+
+function filterTMDbImagesByAnchorOverlap<T extends RSSResolvedImage & { role?: ImageRole }>(
+  images: T[],
+  anchor: string
+): T[] {
+  return images.filter((image) => {
+    const title = inferTMDbTitleFromImageReason(image.reason);
+    return !title || hasMeaningfulTitleTokenOverlap(anchor, title);
+  });
+}
+
+function isSafeWeakTMDbProjectFallback(
+  image: RSSResolvedImage & { role?: ImageRole },
+  analysis: RSSSubjectAnalysis
+): boolean {
+  const anchor = getTMDbTitleGroundingAnchor(analysis);
+  if (!anchor || !isProjectAnchorType(analysis.primarySubject.type)) {
+    return false;
+  }
+
+  const normalizedReason = normalizeText(image.reason);
+  const tmdbTitle = inferTMDbTitleFromImageReason(image.reason);
+  if (tmdbTitle && !hasMeaningfulTitleTokenOverlap(anchor, tmdbTitle)) {
+    return false;
+  }
+  if (!tmdbTitle && !normalizedReason.includes(normalizeText(anchor))) {
+    return false;
+  }
+
+  const role = image.role || getImageRole(normalizedReason, analysis);
+  if (role === 'poster' || role === 'still') {
+    return true;
+  }
+
+  return (role === 'logo' || role === 'brand_backdrop') &&
+    normalizeText(analysis.primarySubject.name) === normalizeText(anchor);
+}
+
+function selectSafeWeakTMDbFallback(
+  images: Array<RSSResolvedImage & { role?: ImageRole }>,
+  analysis: RSSSubjectAnalysis
+): Array<RSSResolvedImage & { role?: ImageRole }> {
+  return images.filter((image) => isSafeWeakTMDbProjectFallback(image, analysis));
+}
+
+function getProjectStoryPersonFallbackSubject(
+  article: RSSImageSelectionArticle,
+  analysis: RSSSubjectAnalysis
+): string | null {
+  if (analysis.imageIntent === 'person_portrait' || !getCanonicalProjectAnchor(analysis)) {
+    return null;
+  }
+
+  const flags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
+  if (
+    flags.has('quote_led_headline_junk') ||
+    flags.has('canonical_project_weak') ||
+    flags.has('canonical_person_weak')
+  ) {
+    return null;
+  }
+
+  const articleText = buildArticleAnalysisText(article);
+  const headlineCastingPerson = extractHeadlineCastingPerson(article.title);
+  if (
+    analysis.contextType === 'casting' &&
+    headlineCastingPerson &&
+    looksLikeNamedPerson(headlineCastingPerson) &&
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(headlineCastingPerson))
+  ) {
+    return headlineCastingPerson;
+  }
+
+  const leadHeadlinePerson = extractLeadPersonSubject(article.title);
+  if (
+    flags.has('article_family_person_interview_or_reaction') &&
+    leadHeadlinePerson &&
+    looksLikeNamedPerson(leadHeadlinePerson) &&
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(leadHeadlinePerson))
+  ) {
+    return leadHeadlinePerson;
+  }
+
+  const canonicalPerson = uniqueStrings(analysis.canonicalEntity?.namedPeople || []).find((person) =>
+    looksLikeNamedPerson(person) &&
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(person))
+  );
+  if (canonicalPerson) {
+    return canonicalPerson;
+  }
+
+  const candidates = uniqueStrings([
+    analysis.canonicalEntity?.secondarySubject,
+    ...analysis.secondarySubjects,
+    headlineCastingPerson,
+    leadHeadlinePerson,
+    ...extractNamedPeople(articleText, analysis),
+  ]);
+
+  return candidates.find((candidate) =>
+    looksLikeNamedPerson(candidate) &&
+    (
+      (analysis.canonicalEntity?.namedPeople || []).some((person) => normalizeText(person) === normalizeText(candidate)) ||
+      normalizeText(articleText).includes(normalizeText(candidate)) ||
+      isLikelyPersonSubject(candidate, articleText, analysis)
+    ) &&
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(candidate))
+  ) || null;
+}
+
+function buildPersonPortraitFallbackAnalysis(
+  article: RSSImageSelectionArticle,
+  base: RSSSubjectAnalysis
+): RSSSubjectAnalysis | null {
+  const person = getProjectStoryPersonFallbackSubject(article, base);
+  if (!person) {
+    return null;
+  }
+
+  return buildAnalysisForSlot(
+    base,
+    buildImageSlotPlan(person, 'actor', 'person_portrait', base, false)
+  );
+}
+
 async function collectRawTitleTMDbFallbackImages(
   article: RSSImageSelectionArticle,
   base: RSSSubjectAnalysis,
   limit: number
 ): Promise<Array<RSSResolvedImage & { role: ImageRole }>> {
   const articleText = buildArticleAnalysisText(article);
-  const quotedSubjects = extractStrictTitleQuotedSubjects(article.title).filter((subject) => {
-    const normalizedSubject = normalizeText(subject);
-    return normalizedSubject &&
-      !looksLikeNamedPerson(subject) &&
-      !base.relevantStudios.some((studio) => normalizeText(studio) === normalizedSubject);
-  });
-  const projectAnchor =
-    quotedSubjects[0] ||
-    extractLeadProjectAnchor(article, base) ||
-    (isProjectAnchorType(base.primarySubject.type) ? base.primarySubject.name : null);
+  const anchors = getProjectFallbackAnchors(article, base);
+  const resolved: Array<RSSResolvedImage & { role: ImageRole }> = [];
 
-  if (!projectAnchor || looksLikeNamedPerson(projectAnchor)) {
-    return [];
-  }
+  for (const projectAnchor of anchors) {
+    const isFranchiseParentFallback = Boolean(
+      base.canonicalEntity?.franchise &&
+      normalizeText(base.canonicalEntity.franchise) === normalizeText(projectAnchor) &&
+      normalizeText(base.canonicalEntity.mediaTitle || base.contextProject || '') !== normalizeText(projectAnchor)
+    );
+    const projectType = inferSlotType(projectAnchor, articleText, 'franchise', base);
+    const strippedAnchor = stripSeasonAndSubtitleVariant(projectAnchor);
+    const canonicalMediaTitle = base.canonicalEntity?.mediaTitle;
+    const sharedInput = {
+      primarySubject: {
+        name: projectAnchor,
+        type: projectType,
+      },
+      canonicalEntity: {
+        ...base.canonicalEntity,
+        mediaTitle: projectAnchor,
+        primarySubject: projectAnchor,
+        entityType: projectType === 'tv_show' ? 'tv' as const : projectType === 'movie' ? 'movie' as const : base.canonicalEntity?.entityType,
+      },
+      visualSubject: projectAnchor,
+      targetFormat: resolveTargetFormat(articleText, projectType),
+      contextProject: projectAnchor,
+      requiredContextTerms: uniqueStrings([
+        projectAnchor,
+        canonicalMediaTitle,
+        ...base.relevantStudios,
+        ...extractYearTokens(articleText),
+      ]),
+      relevantStudios: base.relevantStudios,
+      queries: uniqueStrings([
+        projectAnchor,
+        strippedAnchor,
+        canonicalMediaTitle,
+        `${projectAnchor} official still`,
+        `${projectAnchor} poster`,
+        `${projectAnchor} series`,
+        `${projectAnchor} movie`,
+      ]),
+      limit,
+    } as const;
 
-  const projectType = inferSlotType(projectAnchor, articleText, 'franchise', base);
-  if (!isProjectAnchorType(projectType)) {
-    return [];
-  }
+    const stillFallback = buildResolvedImagesFromTMDb(await resolveStructuredTMDbImages({
+      ...sharedInput,
+      imageIntent: 'still',
+    }));
+    resolved.push(...markFallbackReason(
+      filterTMDbImagesByAnchorOverlap(stillFallback, projectAnchor),
+      isFranchiseParentFallback ? 'franchise fallback' : 'exact title fallback'
+    ));
 
-  const sharedInput = {
-    primarySubject: {
-      name: projectAnchor,
-      type: projectType,
-    },
-    visualSubject: projectAnchor,
-    targetFormat: resolveTargetFormat(articleText, projectType),
-    contextProject: projectAnchor,
-    requiredContextTerms: uniqueStrings([
-      projectAnchor,
-      ...base.relevantStudios,
-      ...extractYearTokens(articleText),
-    ]),
-    relevantStudios: base.relevantStudios,
-    queries: uniqueStrings([
-      projectAnchor,
-      `${projectAnchor} official still`,
-      `${projectAnchor} series`,
-      `${projectAnchor} movie`,
-    ]),
-    limit,
-  } as const;
+    if (resolved.length === 0) {
+      resolved.push(...markFallbackReason(filterTMDbImagesByAnchorOverlap(buildResolvedImagesFromTMDb(await resolveStructuredTMDbImages({
+        ...sharedInput,
+        imageIntent: 'poster',
+      })), projectAnchor), isFranchiseParentFallback ? 'franchise poster fallback' : 'poster fallback'));
+    }
 
-  const directFallback = await resolveStructuredTMDbImages({
-    ...sharedInput,
-    imageIntent: 'still',
-  });
-
-  const brandingFallback = directFallback.length === 0
-    ? await resolveStructuredTMDbImages({
+    if (resolved.length === 0 && isExactProjectAnchor(projectAnchor, base)) {
+      resolved.push(...markFallbackReason(filterTMDbImagesByAnchorOverlap(buildResolvedImagesFromTMDb(await resolveStructuredTMDbImages({
         ...sharedInput,
         imageIntent: 'brand_backdrop',
-      })
-    : [];
+      })), projectAnchor), 'exact title logo fallback'));
+    }
 
-  // This is an explicit title-derived fallback from the article itself, so accept
-  // a strongly anchored TMDb still first, then a TMDb logo/backdrop card if needed.
-  return buildResolvedImagesFromTMDb(
-    directFallback.length > 0 ? directFallback : brandingFallback
-  );
+    if (resolved.length > 0) {
+      break;
+    }
+  }
+
+  return mergeResolvedImages([], resolved, limit) as Array<RSSResolvedImage & { role: ImageRole }>;
 }
 
 function shouldFallbackToFeedImageForSecondary(slot: ImageSlotPlan | null): boolean {
@@ -3856,6 +4193,29 @@ async function collectStructuredTMDbImages(
   limit: number,
   excludeUrls: string[] = []
 ): Promise<Array<RSSResolvedImage & { role: ImageRole }>> {
+  const contextualTerms = uniqueStrings([
+    ...analysis.requiredContextTerms,
+    ...(analysis.canonicalEntity?.namedPeople || []),
+    ...(analysis.canonicalEntity?.namedCharacters || []),
+    analysis.canonicalEntity?.franchise,
+    ...analysis.relevantStudios,
+    ...extractYearTokens([
+      analysis.canonicalEntity?.mediaTitle,
+      analysis.canonicalEntity?.primarySubject,
+      analysis.contextProject,
+      ...analysis.queries,
+    ].filter(Boolean).join(' ')),
+  ]);
+  const contextualQueries = uniqueStrings([
+    ...analysis.queries,
+    analysis.contextProject,
+    analysis.canonicalEntity?.mediaTitle,
+    ...((analysis.canonicalEntity?.namedPeople || []).map((person) =>
+      analysis.contextProject || analysis.canonicalEntity?.mediaTitle
+        ? `${analysis.contextProject || analysis.canonicalEntity?.mediaTitle} ${person}`
+        : null
+    )),
+  ]);
   const tmdbSelections = await resolveStructuredTMDbImages({
     primarySubject: analysis.primarySubject,
     canonicalEntity: analysis.canonicalEntity,
@@ -3864,9 +4224,9 @@ async function collectStructuredTMDbImages(
     imageIntent: analysis.imageIntent,
     targetFormat: analysis.targetFormat,
     contextProject: analysis.contextProject,
-    requiredContextTerms: analysis.requiredContextTerms,
+    requiredContextTerms: contextualTerms,
     relevantStudios: analysis.relevantStudios,
-    queries: analysis.queries,
+    queries: contextualQueries,
     limit,
     excludeUrls,
   });
@@ -3883,6 +4243,7 @@ async function resolveSingleSlotImages(
   openaiWebSearchModel?: AIModel | string
 ): Promise<RSSResolvedImage[]> {
   let resolved: RSSResolvedImage[] = [];
+  const articleText = buildArticleAnalysisText(article);
 
   for (const source of sources) {
     if (resolved.length >= limit) {
@@ -3890,31 +4251,68 @@ async function resolveSingleSlotImages(
     }
 
     if (source === 'tmdb') {
-      const tmdbResolved = await collectStructuredTMDbImages(
+      const rawTMDbResolved = await collectStructuredTMDbImages(
         analysis,
         limit - resolved.length,
         resolved.map((image) => image.url)
       );
+      const canonicalAnchor = getTMDbTitleGroundingAnchor(analysis) || analysis.visualSubject || analysis.primarySubject.name;
+      const tmdbResolved = canonicalAnchor
+        ? filterTMDbImagesByAnchorOverlap(rawTMDbResolved, canonicalAnchor)
+        : rawTMDbResolved;
       const confidentTMDbResolved = hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)
         ? tmdbResolved
+        : [];
+      const safeWeakTMDbResolved = confidentTMDbResolved.length === 0
+        ? selectSafeWeakTMDbFallback(tmdbResolved, analysis)
         : [];
       const fallbackAnalysis = confidentTMDbResolved.length === 0
         ? buildSingleSlotProjectFallbackAnalysis(analysis, article)
         : null;
-      const projectFallbackResolved = fallbackAnalysis
+      const rawProjectFallbackResolved = fallbackAnalysis
         ? await collectStructuredTMDbImages(
             fallbackAnalysis,
             limit - resolved.length,
             resolved.map((image) => image.url)
           )
         : [];
+      const projectAnchor = fallbackAnalysis
+        ? (getTMDbTitleGroundingAnchor(fallbackAnalysis) || fallbackAnalysis.visualSubject || fallbackAnalysis.primarySubject.name)
+        : null;
+      const projectFallbackResolved = projectAnchor
+        ? filterTMDbImagesByAnchorOverlap(rawProjectFallbackResolved, projectAnchor)
+        : rawProjectFallbackResolved;
       const confidentProjectFallbackResolved = projectFallbackResolved.length > 0 &&
         hasConfidentResolvedPrimary(projectFallbackResolved, 'tmdb', fallbackImages.length > 0)
         ? projectFallbackResolved
         : [];
+      const safeWeakProjectFallbackResolved = confidentTMDbResolved.length === 0 &&
+        confidentProjectFallbackResolved.length === 0 &&
+        fallbackAnalysis
+        ? selectSafeWeakTMDbFallback(projectFallbackResolved, fallbackAnalysis)
+        : [];
+      const earlyPersonFallbackAnalysis = confidentTMDbResolved.length === 0 &&
+        confidentProjectFallbackResolved.length === 0 &&
+        safeWeakProjectFallbackResolved.length === 0 &&
+        safeWeakTMDbResolved.length === 0 &&
+        shouldTryEarlyPersonFallback(analysis, articleText)
+        ? buildPersonPortraitFallbackAnalysis(article, analysis)
+        : null;
+      const earlyPersonResolved = earlyPersonFallbackAnalysis
+        ? await collectStructuredTMDbImages(earlyPersonFallbackAnalysis, limit - resolved.length)
+        : [];
+      const confidentEarlyPersonResolved = earlyPersonResolved.filter((image) => image.role === 'person');
       resolved = mergeResolvedImages(
         resolved,
-        confidentTMDbResolved.length > 0 ? confidentTMDbResolved : confidentProjectFallbackResolved,
+        confidentTMDbResolved.length > 0
+          ? confidentTMDbResolved
+          : confidentProjectFallbackResolved.length > 0
+            ? confidentProjectFallbackResolved
+            : confidentEarlyPersonResolved.length > 0
+              ? confidentEarlyPersonResolved
+            : safeWeakProjectFallbackResolved.length > 0
+              ? safeWeakProjectFallbackResolved
+              : safeWeakTMDbResolved,
         limit
       );
       continue;
@@ -3940,9 +4338,14 @@ async function resolveSingleSlotImages(
       const titleFallbackAnalysis = buildSingleSlotTitleFallbackAnalysis(analysis, article);
       if (titleFallbackAnalysis) {
         const tmdbTitleFallbackResolved = await collectStructuredTMDbImages(titleFallbackAnalysis, limit);
+        const titleAnchor = getCanonicalProjectAnchor(titleFallbackAnalysis) || titleFallbackAnalysis.primarySubject.name;
         // This fallback is already anchored to an explicit project/title from the article,
         // so prefer returning the TMDb result over an empty card when the main path found nothing.
-        resolved = mergeResolvedImages(resolved, tmdbTitleFallbackResolved, limit);
+        resolved = mergeResolvedImages(
+          resolved,
+          filterTMDbImagesByAnchorOverlap(tmdbTitleFallbackResolved, titleAnchor),
+          limit
+        );
       }
 
       if (resolved.length === 0) {
@@ -3951,6 +4354,15 @@ async function resolveSingleSlotImages(
           await collectRawTitleTMDbFallbackImages(article, analysis, limit),
           limit
         );
+      }
+
+      if (resolved.length === 0) {
+        const personFallbackAnalysis = buildPersonPortraitFallbackAnalysis(article, analysis);
+        if (personFallbackAnalysis) {
+          const personResolved = await collectStructuredTMDbImages(personFallbackAnalysis, limit);
+          const confidentPersonResolved = personResolved.filter((image) => image.role === 'person');
+          resolved = mergeResolvedImages(resolved, confidentPersonResolved, limit);
+        }
       }
     }
 
@@ -4017,7 +4429,11 @@ async function resolveSmartPrimaryCandidate(
   for (const variant of buildAnalysisVariantsForSlot(analysis, slot)) {
     for (const source of sources) {
       if (source === 'tmdb') {
-        const tmdbResolved = await collectStructuredTMDbImages(variant, 1);
+        const rawTMDbResolved = await collectStructuredTMDbImages(variant, 1);
+        const canonicalAnchor = getTMDbTitleGroundingAnchor(variant) || variant.visualSubject || variant.primarySubject.name;
+        const tmdbResolved = canonicalAnchor
+          ? filterTMDbImagesByAnchorOverlap(rawTMDbResolved, canonicalAnchor)
+          : rawTMDbResolved;
         if (
           tmdbResolved[0] &&
           (variant.imageIntent !== 'person_portrait' || tmdbResolved[0].role === 'person') &&
@@ -5012,11 +5428,17 @@ export async function resolveRelevantRSSImages(
     smartCount?: boolean;
     model?: AIModel | string;
     openaiWebSearchModel?: AIModel | string;
+    skipAiSubjectAnalysis?: boolean;
   }
 ): Promise<RSSResolvedImage[]> {
   const limit = Math.max(options.limit, 1);
+  if (article.canonicalEntity?.ambiguityFlags?.includes('rss_family_no_tmdb_project')) {
+    return [];
+  }
   const sources = getEnabledImageSources(options);
-  const analysis = await extractSubjectAnalysis(article, options.model);
+  const analysis = options.skipAiSubjectAnalysis
+    ? guessPrimarySubject(article)
+    : await extractSubjectAnalysis(article, options.model);
   const rawProjectLinkedFeedFallback = shouldAllowRawProjectLinkedFeedFallback(article);
   const allowProjectLinkedFeedFallback =
     shouldAllowProjectLinkedFeedFallback(article, analysis) ||
@@ -5166,4 +5588,9 @@ export const __rssImageSelectionTestUtils = {
   determineSmartImagePlan,
   shouldUseFeedFallbackImages,
   isUnanchoredGeneralStory,
+  stripSeasonAndSubtitleVariant,
+  getProjectFallbackAnchors,
+  getProjectStoryPersonFallbackSubject,
+  isSafeWeakTMDbProjectFallback,
+  filterTMDbImagesByAnchorOverlap,
 };

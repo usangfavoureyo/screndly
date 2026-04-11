@@ -774,11 +774,14 @@ function isCorporateCompanyInput(input: StructuredRSSTMDbSelectionInput): boolea
     ...input.queries,
   ]).join(' ');
 
-  return (
+  const corporateTrigger = /\b(?:merger|acquisition|acquires?|acquired|sale|ownership|shareholder|proxy advisor|institutional shareholder services|board|ceo|chief executive|chief operating officer|coo|cfo|executive|promoted|elevated|named|hires?|layoffs?|restructuring|strategy|slate|earnings|financial|lawsuit|legal|settlement|bankruptcy|stock|subscription prices?|price hike|raises prices?)\b/i.test(combined);
+  const editorialStoryTrigger = /\b(?:cast|casting|joins?|boards?|renewed|renewal|trailer|teaser|first look|review|recap|ending explained|season \d+|episode|adaptation|in production|filming|release date|premiere|box office|streaming debut|free to stream|watch|returns?|reboot|revival)\b/i.test(combined);
+
+  return corporateTrigger && !editorialStoryTrigger && (
     input.primarySubject.type === 'studio' ||
     input.primarySubject.type === 'streaming_service' ||
-    /\b(?:merger|acquisition|shareholder|proxy advisor|institutional shareholder services|board|ceo|chief executive|executive pay|payout|earnings|financial|lawsuit)\b/i.test(combined)
-  ) && input.relevantStudios.length > 0;
+    input.relevantStudios.length > 0
+  );
 }
 
 function hasGenericShortProjectAnchor(anchor: string): boolean {
@@ -990,6 +993,13 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
     isGenericDemographicTerm(primaryName, combinedText)
     || primaryUsage === 'generic'
     || (candidates.length > 0 && candidates.every((candidate) => classifyContextSensitiveEntityUsage(candidate, combinedText) === 'generic'))
+    || (
+      (input.primarySubject.type === 'studio' ||
+        input.primarySubject.type === 'streaming_service' ||
+        input.canonicalEntity?.entityType === 'company' ||
+        input.canonicalEntity?.entityType === 'platform') &&
+      !isCorporateCompanyInput(input)
+    )
   ) {
     return {
       name: primaryName || 'general topic',
@@ -999,7 +1009,14 @@ function resolveCanonicalTMDbEntity(input: StructuredRSSTMDbSelectionInput): Can
       tmdbQuery: '',
       alternateQueries: [],
       confidence: 0.1,
-      ambiguityFlags: primaryUsage === 'generic' && !isGenericDemographicTerm(primaryName, combinedText)
+      ambiguityFlags: (
+        input.primarySubject.type === 'studio' ||
+        input.primarySubject.type === 'streaming_service' ||
+        input.canonicalEntity?.entityType === 'company' ||
+        input.canonicalEntity?.entityType === 'platform'
+      ) && !isCorporateCompanyInput(input)
+        ? ['company_or_platform_context_only']
+        : primaryUsage === 'generic' && !isGenericDemographicTerm(primaryName, combinedText)
         ? ['context_sensitive_term_not_a_tmdb_entity']
         : ['generic_demographic_not_a_tmdb_entity'],
     };
@@ -1128,9 +1145,64 @@ function buildTitleSupportingContextTerms(
   return uniqueStrings([
     input.contextProject || null,
     input.visualSubject,
+    input.canonicalEntity?.franchise,
+    ...(input.canonicalEntity?.namedPeople || []),
+    ...(input.canonicalEntity?.namedCharacters || []),
+    ...(input.secondarySubjects || []),
+    ...input.relevantStudios,
     ...input.requiredContextTerms,
     ...input.queries,
   ]).filter((term) => normalizeText(term) !== normalizedAnchor);
+}
+
+function isAmbiguousShortProjectTitle(value: string): boolean {
+  const tokens = getMeaningfulTitleTokens(value);
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  const genericTokens = new Set([
+    'hope',
+    'glory',
+    'home',
+    'life',
+    'after',
+    'presence',
+    'echo',
+    'echoes',
+    'foundation',
+    'you',
+    'her',
+    'them',
+    'ghosts',
+  ]);
+
+  return tokens.length <= 2 || tokens.every((token) => genericTokens.has(token));
+}
+
+function scoreSecondaryEntityEvidence(
+  input: StructuredRSSTMDbSelectionInput,
+  title: string,
+  overview: string,
+  castNames: string[],
+  crewNames: string[],
+  productionNames: string[]
+): number {
+  const evidenceTerms = uniqueStrings([
+    ...(input.canonicalEntity?.namedPeople || []),
+    ...(input.canonicalEntity?.namedCharacters || []),
+    ...(input.secondarySubjects || []),
+    ...input.relevantStudios,
+    ...input.requiredContextTerms,
+  ]);
+
+  const haystack = [title, overview, ...castNames, ...crewNames, ...productionNames];
+  let score = 0;
+  for (const term of evidenceTerms) {
+    score += scoreAliasMatch(term, haystack);
+  }
+
+  return score;
 }
 
 function titleMatchesProjectContext(
@@ -1175,6 +1247,33 @@ function getTitleTokenOverlapScore(left: string, right: string): number {
   return overlap / Math.max(leftTokens.size, rightTokens.size);
 }
 
+function isExactResolvedProjectTitle(
+  candidateTitle: string,
+  input: StructuredRSSTMDbSelectionInput
+): boolean {
+  const anchors = uniqueStrings([
+    input.canonicalEntity?.mediaTitle,
+    input.contextProject || null,
+    input.visualSubject,
+    input.primarySubject.type === 'movie' || input.primarySubject.type === 'tv_show' || input.primarySubject.type === 'franchise'
+      ? input.primarySubject.name
+      : null,
+  ]);
+
+  const normalizedCandidate = normalizeText(candidateTitle);
+  if (!normalizedCandidate) {
+    return false;
+  }
+
+  return anchors.some((anchor) => {
+    const normalizedAnchor = normalizeText(anchor);
+    return normalizedAnchor && (
+      normalizedAnchor === normalizedCandidate ||
+      getTitleTokenOverlapScore(anchor, candidateTitle) >= 0.95
+    );
+  });
+}
+
 function titleCandidateMatchesResolvedContext(
   candidateTitle: string,
   input: StructuredRSSTMDbSelectionInput
@@ -1187,11 +1286,22 @@ function titleCandidateMatchesResolvedContext(
   const projectAnchors = uniqueStrings([
     input.canonicalEntity?.mediaTitle,
     input.contextProject || null,
-    isPersonLedInput(input) ? null : input.visualSubject,
+    isPersonLedInput(input) ||
+      input.primarySubject.type === 'studio' ||
+      input.primarySubject.type === 'streaming_service' ||
+      input.primarySubject.type === 'general'
+      ? null
+      : input.visualSubject,
   ]).filter(Boolean);
 
   if (projectAnchors.length === 0) {
-    return true;
+    return !(
+      input.primarySubject.type === 'studio' ||
+      input.primarySubject.type === 'streaming_service' ||
+      input.primarySubject.type === 'general' ||
+      input.canonicalEntity?.entityType === 'company' ||
+      input.canonicalEntity?.entityType === 'platform'
+    );
   }
 
   const normalizedProjectAnchors = projectAnchors.map((anchor) => normalizeText(anchor));
@@ -1233,7 +1343,12 @@ function isRejectedBrandingTitleCandidate(
   const projectAnchors = uniqueStrings([
     input.canonicalEntity?.mediaTitle,
     input.contextProject || null,
-    isPersonLedInput(input) ? null : input.visualSubject,
+    isPersonLedInput(input) ||
+      input.primarySubject.type === 'studio' ||
+      input.primarySubject.type === 'streaming_service' ||
+      input.primarySubject.type === 'general'
+      ? null
+      : input.visualSubject,
   ]).map((anchor) => normalizeText(anchor));
 
   return !projectAnchors.some((anchor) => anchor && normalizedCandidate.includes(anchor));
@@ -1448,6 +1563,14 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
           []
         )
         + scoreAliasMatch(anchor, [title]);
+      const secondaryEvidenceScore = scoreSecondaryEntityEvidence(
+        input,
+        title,
+        overview,
+        castNames,
+        crewNames,
+        productionNames
+      );
 
       if (enrichedScore < MIN_TMDB_TITLE_SCORE) {
         continue;
@@ -1457,6 +1580,19 @@ async function resolveTitleCandidate(input: StructuredRSSTMDbSelectionInput): Pr
       const projectContextOnly = !matchesPersonContext && titleMatchesProjectContext(input, title, overview);
 
       if (!matchesPersonContext && !projectContextOnly) {
+        continue;
+      }
+
+      if (
+        isAmbiguousShortProjectTitle(anchor) &&
+        isAmbiguousShortProjectTitle(title) &&
+        secondaryEvidenceScore < 180 &&
+        scoreContextTerms(
+          [title, overview, ...castNames, ...crewNames, ...productionNames].join(' '),
+          supportingContextTerms,
+          yearTokens
+        ) < 80
+      ) {
         continue;
       }
 
@@ -1683,6 +1819,7 @@ export async function resolveStructuredTMDbImages(
   const stronglyPersonLed = isPersonLedInput(input);
   const corporateCompanyInput = isCorporateCompanyInput(input);
   const companyFallbackEligible = Boolean(
+    corporateCompanyInput &&
     input.contextProject &&
     input.relevantStudios.length > 0 &&
     input.imageIntent !== 'person_portrait'
@@ -1690,9 +1827,7 @@ export async function resolveStructuredTMDbImages(
   let deferredCompanyLogo: ResolvedStructuredTMDbImage | null = null;
 
   const companyFirst =
-    corporateCompanyInput ||
-    input.primarySubject.type === 'studio' ||
-    input.primarySubject.type === 'streaming_service';
+    corporateCompanyInput;
 
   if (companyFirst) {
     const companyLogo = await resolveCompanyLogo(input);
@@ -1743,7 +1878,9 @@ export async function resolveStructuredTMDbImages(
       ? titleCandidate.posterUrl
       : titleRole === 'logo' || titleRole === 'brand_backdrop'
         ? titleCandidate.logoUrl
-        : titleCandidate.backdropUrls[0] || titleCandidate.posterUrl;
+        : titleCandidate.backdropUrls[0]
+          || titleCandidate.posterUrl
+          || (isExactResolvedProjectTitle(titleCandidate.title, input) ? titleCandidate.logoUrl : undefined);
 
     const preferredRole = projectOnlyTitleFallback
       ? (titleCandidate.logoUrl ? 'logo' : 'poster')
@@ -1831,4 +1968,5 @@ export const __rssTmdbDisambiguationTestUtils = {
   resolveCanonicalTMDbEntity,
   titleMatchesProjectContext,
   titleCandidateMatchesResolvedContext,
+  isExactResolvedProjectTitle,
 };

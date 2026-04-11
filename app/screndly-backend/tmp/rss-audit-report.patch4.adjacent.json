@@ -1,0 +1,744 @@
+{
+  "generatedAt": "2026-04-10T19:32:58.765Z",
+  "totalArticles": 30,
+  "publishPasses": 1,
+  "publishBlocks": 29,
+  "topFailureCodes": [
+    {
+      "code": "IMAGE_NOT_FOUND",
+      "count": 25
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+      "count": 24
+    },
+    {
+      "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "count": 17
+    },
+    {
+      "code": "PERSON_FALLBACK_NOT_ALLOWED",
+      "count": 11
+    },
+    {
+      "code": "PROJECT_FALLBACK_EMPTY",
+      "count": 11
+    },
+    {
+      "code": "CAPTION_BROKEN_QUOTE",
+      "count": 5
+    },
+    {
+      "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+      "count": 4
+    },
+    {
+      "code": "CAPTION_HEADLINE_JUNK",
+      "count": 4
+    },
+    {
+      "code": "CAPTION_MALFORMED_HEADLINE",
+      "count": 4
+    },
+    {
+      "code": "CAPTION_PACKAGE_LABEL_LEAK",
+      "count": 4
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED",
+      "count": 3
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+      "count": 3
+    },
+    {
+      "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+      "count": 3
+    },
+    {
+      "code": "TMDB_TITLE_NOT_RESOLVED",
+      "count": 3
+    },
+    {
+      "code": "CAPTION_UNRESOLVED_TITLE",
+      "count": 1
+    },
+    {
+      "code": "IMAGE_COMPANY_LOGO_MISUSED",
+      "count": 1
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+      "count": 1
+    }
+  ],
+  "failureCodesBySource": {
+    "Variety": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "Deadline": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "ComicBook": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 4
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      }
+    ],
+    "TheWrap": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 4
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      }
+    ],
+    "THR": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      }
+    ],
+    "ScreenRant": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "Collider": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      }
+    ],
+    "IndieWire": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "SlashFilm": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_UNRESOLVED_TITLE",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ]
+  },
+  "failureCodesByEventType": {
+    "licensing": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 9
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 9
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 9
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "business": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 10
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 7
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ],
+    "event": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ],
+    "other": [
+      {
+        "code": "CAPTION_UNRESOLVED_TITLE",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ]
+  },
+  "scopeCounts": [
+    {
+      "scope": "entertainment_adjacent",
+      "count": 30
+    }
+  ],
+  "failureCodesByScope": {
+    "entertainment_adjacent": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 25
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 24
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 17
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 11
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 3
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_UNRESOLVED_TITLE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      }
+    ]
+  },
+  "repeatedBadTmdbMatches": [],
+  "duplicateGroups": [
+    {
+      "signature": "business|alex maccallum elevated|alex maccallum,alex maccallum elevated,cnn s chief operating officer",
+      "count": 3,
+      "sources": [
+        "Variety",
+        "Deadline",
+        "TheWrap"
+      ],
+      "articles": [
+        {
+          "caseId": "a02ac317b9490588",
+          "sourceName": "Variety",
+          "articleTitle": "Alex MacCallum Elevated to CNN’s Chief Operating Officer",
+          "articleUrl": "https://variety.com/2026/tv/news/alex-maccallum-cnn-chief-operating-officer-1236713191/",
+          "canonicalEntity": "Alex MacCallum Elevated",
+          "eventType": "business"
+        },
+        {
+          "caseId": "d5e16eac8e5c41e8",
+          "sourceName": "Deadline",
+          "articleTitle": "Alex MacCallum Promoted To Chief Operating Officer At CNN",
+          "articleUrl": "https://deadline.com/2026/04/alex-maccallum-cnn-chief-operating-officer-1236786388/",
+          "eventType": "business"
+        },
+        {
+          "caseId": "e6ebd7be0a0fc3a7",
+          "sourceName": "TheWrap",
+          "articleTitle": "CNN Promotes Alex MacCallum to Chief Operating Officer",
+          "articleUrl": "https://www.thewrap.com/media-platforms/journalism/cnn-promotes-alex-maccallum-chief-operating-officer/",
+          "canonicalEntity": "he further wrote.",
+          "eventType": "business"
+        }
+      ]
+    }
+  ],
+  "recommendedPatches": [
+    {
+      "recommendation": "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "count": 25,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "1da2cb9c4f8a6de3",
+        "232215d9d90ef12d",
+        "3199502759fb4871",
+        "2aaa3db33aa96c6b",
+        "a02ac317b9490588"
+      ]
+    },
+    {
+      "recommendation": "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "count": 24,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND_FALSE_BLOCK"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "1da2cb9c4f8a6de3",
+        "232215d9d90ef12d",
+        "3199502759fb4871",
+        "2aaa3db33aa96c6b",
+        "a02ac317b9490588"
+      ]
+    },
+    {
+      "recommendation": "Validate caption headline entity against canonical media title and allowed entities.",
+      "count": 17,
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "1da2cb9c4f8a6de3",
+        "3199502759fb4871",
+        "a02ac317b9490588",
+        "d5e16eac8e5c41e8",
+        "f694fd9784a2f57d"
+      ]
+    },
+    {
+      "recommendation": "Reject broken quote fragments before captions can pass final validation.",
+      "count": 5,
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "1da2cb9c4f8a6de3",
+        "232215d9d90ef12d",
+        "3199502759fb4871",
+        "f694fd9784a2f57d",
+        "e0431fd6b2644c12"
+      ]
+    },
+    {
+      "recommendation": "Strip outlet package labels before deterministic caption generation.",
+      "count": 4,
+      "failureCodes": [
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_PACKAGE_LABEL_LEAK"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "151ba0b178ecbef3",
+        "8881508eebba1cb4",
+        "f9b88c048ba6e395",
+        "c061ea44d6b360cc"
+      ]
+    },
+    {
+      "recommendation": "Require selected images to be grounded in canonical allowed entities.",
+      "count": 3,
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "e0431fd6b2644c12",
+        "47664366f9c557b8",
+        "e97f5c15c4cbda8a"
+      ]
+    },
+    {
+      "recommendation": "Tighten canonical entity extraction before image or caption generation.",
+      "count": 3,
+      "failureCodes": [
+        "ENTITY_NOT_RESOLVED"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "d5e16eac8e5c41e8",
+        "a4de743f022176be",
+        "93e7edf6ae2bfb38"
+      ]
+    },
+    {
+      "recommendation": "Block company logos as primary images when a project or person entity exists.",
+      "count": 1,
+      "failureCodes": [
+        "IMAGE_COMPANY_LOGO_MISUSED"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "151ba0b178ecbef3"
+      ]
+    }
+  ]
+}

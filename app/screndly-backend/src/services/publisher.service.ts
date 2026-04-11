@@ -65,6 +65,7 @@ interface StoryVideoSource {
 
 const execFileAsync = promisify(execFile);
 const STORY_VIDEO_SEGMENT_SECONDS = 60;
+const FACEBOOK_STORY_VIDEO_SEGMENT_SECONDS = 59;
 const STORY_MAX_ITEMS = 4;
 
 function normalizePlatformName(platform: string): string {
@@ -659,17 +660,17 @@ export class PublisherService {
         return duration;
     }
 
-    private buildStoryClipRanges(durationSeconds: number): Array<{ startSeconds: number; clipDurationSeconds: number }> {
+    private buildStoryClipRanges(durationSeconds: number, segmentSeconds = STORY_VIDEO_SEGMENT_SECONDS): Array<{ startSeconds: number; clipDurationSeconds: number }> {
         const ranges: Array<{ startSeconds: number; clipDurationSeconds: number }> = [];
         let startSeconds = 0;
 
         while (startSeconds < durationSeconds) {
-            const clipDurationSeconds = Math.min(STORY_VIDEO_SEGMENT_SECONDS, durationSeconds - startSeconds);
+            const clipDurationSeconds = Math.min(segmentSeconds, durationSeconds - startSeconds);
             ranges.push({
                 startSeconds,
                 clipDurationSeconds,
             });
-            startSeconds += STORY_VIDEO_SEGMENT_SECONDS;
+            startSeconds += segmentSeconds;
         }
 
         return ranges;
@@ -702,6 +703,7 @@ export class PublisherService {
 
     private async buildStoryVideoQueue(
         content: PublishContent,
+        platform: 'InstagramStories' | 'FacebookStories',
         mediaFilePath: string | null | undefined,
         cache: Map<string, string>
     ): Promise<StoryPublishQueueItem[]> {
@@ -733,7 +735,11 @@ export class PublisherService {
                         : await this.downloadRemoteVideoToTemp(source.source);
 
                 const durationSeconds = await this.probeVideoDurationSeconds(localSourcePath);
-                const clipRanges = this.buildStoryClipRanges(durationSeconds);
+                // Facebook can reject clips that land exactly on the public 60s story boundary after encoding.
+                const segmentSeconds = platform === 'FacebookStories'
+                    ? FACEBOOK_STORY_VIDEO_SEGMENT_SECONDS
+                    : STORY_VIDEO_SEGMENT_SECONDS;
+                const clipRanges = this.buildStoryClipRanges(durationSeconds, segmentSeconds);
                 const baseName = this.buildStoryClipBaseName(source.source);
 
                 if (clipRanges.length === 1) {
@@ -794,7 +800,7 @@ export class PublisherService {
 
     private async buildStoryPublishQueue(
         content: PublishContent,
-        platform: string,
+        platform: 'InstagramStories' | 'FacebookStories',
         mediaFilePath: string | null | undefined,
         hostedVideoUrlCache: Map<string, string>,
         hostedMetaImageUrlCache: Map<string, string>
@@ -808,7 +814,7 @@ export class PublisherService {
         }
 
         if (hasAnyVideo) {
-            const videoQueue = await this.buildStoryVideoQueue(content, mediaFilePath, hostedVideoUrlCache);
+            const videoQueue = await this.buildStoryVideoQueue(content, platform, mediaFilePath, hostedVideoUrlCache);
             if (videoQueue.length > STORY_MAX_ITEMS) {
                 throw new Error(`Stories support up to ${STORY_MAX_ITEMS} items after splitting videos longer than 60 seconds.`);
             }

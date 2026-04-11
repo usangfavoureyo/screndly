@@ -1,0 +1,1463 @@
+{
+  "generatedAt": "2026-04-11T11:42:34.714Z",
+  "totalArticles": 92,
+  "publishPasses": 24,
+  "publishBlocks": 68,
+  "topFailureCodes": [
+    {
+      "code": "IMAGE_NOT_FOUND",
+      "count": 50
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+      "count": 48
+    },
+    {
+      "code": "PERSON_FALLBACK_NOT_ALLOWED",
+      "count": 28
+    },
+    {
+      "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "count": 16
+    },
+    {
+      "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+      "count": 12
+    },
+    {
+      "code": "CAPTION_PACKAGE_LABEL_LEAK",
+      "count": 12
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED",
+      "count": 12
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+      "count": 12
+    },
+    {
+      "code": "CAPTION_HEADLINE_JUNK",
+      "count": 11
+    },
+    {
+      "code": "CAPTION_MALFORMED_HEADLINE",
+      "count": 11
+    },
+    {
+      "code": "TMDB_TITLE_NOT_RESOLVED",
+      "count": 10
+    },
+    {
+      "code": "PROJECT_FALLBACK_EMPTY",
+      "count": 9
+    },
+    {
+      "code": "CAPTION_BROKEN_QUOTE",
+      "count": 7
+    },
+    {
+      "code": "IMAGE_COMPANY_LOGO_MISUSED",
+      "count": 7
+    },
+    {
+      "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+      "count": 5
+    },
+    {
+      "code": "IMAGE_LOGO_OVERUSE",
+      "count": 4
+    },
+    {
+      "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+      "count": 2
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+      "count": 2
+    },
+    {
+      "code": "POSTER_FALLBACK_FAILED",
+      "count": 2
+    },
+    {
+      "code": "IMAGE_MEDIA_TYPE_MISMATCH",
+      "count": 1
+    },
+    {
+      "code": "LOGO_ONLY_REJECTED",
+      "count": 1
+    }
+  ],
+  "failureCodesBySource": {
+    "Variety": [
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "Deadline": [
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "THR": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "LOGO_ONLY_REJECTED",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "ComicBook": [
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 6
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "TVLine": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 14
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 13
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 8
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 4
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 1
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "TheWrap": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      }
+    ],
+    "SlashFilm": [
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 6
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      }
+    ],
+    "ScreenRant": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_MEDIA_TYPE_MISMATCH",
+        "count": 1
+      }
+    ],
+    "Collider": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 7
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 7
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "IndieWire": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ]
+  },
+  "failureCodesByEventType": {
+    "renewal": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ],
+    "release_date": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      }
+    ],
+    "other": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 27
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 25
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 12
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 11
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 9
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 9
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 8
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_MEDIA_TYPE_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "LOGO_ONLY_REJECTED",
+        "count": 1
+      }
+    ],
+    "casting": [
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 11
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 10
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 10
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 1
+      }
+    ],
+    "reveal": [
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "interview_quote": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      }
+    ],
+    "first_look": [],
+    "box_office": [],
+    "return": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 2
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ],
+    "cancellation": [],
+    "trailer": [
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 1
+      }
+    ]
+  },
+  "scopeCounts": [
+    {
+      "scope": "screenrender_core",
+      "count": 92
+    }
+  ],
+  "failureCodesByScope": {
+    "screenrender_core": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 50
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 48
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED",
+        "count": 28
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 16
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 12
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 12
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 12
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 12
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 11
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 10
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 7
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 7
+      },
+      {
+        "code": "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_MEDIA_TYPE_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "LOGO_ONLY_REJECTED",
+        "count": 1
+      }
+    ]
+  },
+  "repeatedBadTmdbMatches": [
+    {
+      "title": "Halle Berry cropped to 4:5 portrait",
+      "count": 1,
+      "sources": [
+        "TVLine"
+      ]
+    },
+    {
+      "title": "Jersey Shore: Family Vacation",
+      "count": 1,
+      "sources": [
+        "THR"
+      ]
+    },
+    {
+      "title": "Rob Mac cropped to 4:5 portrait",
+      "count": 1,
+      "sources": [
+        "THR"
+      ]
+    },
+    {
+      "title": "Sam Rockwell cropped to 4:5 portrait",
+      "count": 1,
+      "sources": [
+        "IndieWire"
+      ]
+    },
+    {
+      "title": "Stephen King's Kingdom Hospital",
+      "count": 1,
+      "sources": [
+        "SlashFilm"
+      ]
+    }
+  ],
+  "duplicateGroups": [
+    {
+      "signature": "other|",
+      "duplicateEventKey": "other|",
+      "count": 7,
+      "sources": [
+        "TVLine",
+        "SlashFilm",
+        "Collider"
+      ],
+      "winningSource": "TVLine",
+      "suppressedSources": [
+        "SlashFilm",
+        "Collider"
+      ],
+      "articles": [
+        {
+          "caseId": "96ff437aa5f6afa3",
+          "sourceName": "TVLine",
+          "articleTitle": "Why Star Trek: The Next Generation's Worst-Rated Episode On IMDb Is So Hated",
+          "articleUrl": "https://www.tvline.com/2142077/why-star-trek-the-next-generation-worst-rated-episode-imdb-so-hated/",
+          "eventType": "other"
+        },
+        {
+          "caseId": "08c1b1bc16fbdf0b",
+          "sourceName": "SlashFilm",
+          "articleTitle": "Stephen King Thinks This Sci-Fi Anthology Series Is Scarier Than The Twilight Zone",
+          "articleUrl": "https://www.slashfilm.com/2143915/stephen-king-sci-fi-anthology-the-outer-limits-scarier-the-twilight-zone/",
+          "eventType": "other"
+        },
+        {
+          "caseId": "f5b67e6c4cb5f0ab",
+          "sourceName": "Collider",
+          "articleTitle": "Netflix Is About to Lose the Greatest Spy Thriller Series of All Time",
+          "articleUrl": "https://collider.com/netflix-losing-james-bond-movies-april-007-streaming/",
+          "eventType": "other"
+        },
+        {
+          "caseId": "b131eaabb45cd39d",
+          "sourceName": "Collider",
+          "articleTitle": "10 Classic Movies That Are Still Masterpieces Today",
+          "articleUrl": "https://collider.com/classic-movies-still-masterpieces-today/",
+          "eventType": "other"
+        },
+        {
+          "caseId": "06cc4bce5dcf318c",
+          "sourceName": "SlashFilm",
+          "articleTitle": "Invincible Season 4 Features A Major Star Trek: The Next Generation Actor In An Unexpected Role",
+          "articleUrl": "https://www.slashfilm.com/2144352/invincible-season-4-star-trek-the-next-generation-actor-levar-burton/",
+          "canonicalEntity": "Invincible",
+          "eventType": "other"
+        },
+        {
+          "caseId": "7a26908845e039ef",
+          "sourceName": "SlashFilm",
+          "articleTitle": "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+          "articleUrl": "https://www.slashfilm.com/2144396/dan-levy-crime-comedy-series-big-mistakes-streaming-netflix/",
+          "eventType": "other"
+        },
+        {
+          "caseId": "df061172b646eca2",
+          "sourceName": "SlashFilm",
+          "articleTitle": "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+          "articleUrl": "https://www.slashfilm.com/2144111/ray-gunn-incredibles-director-brad-bird-netflix-sci-fi-movie-first-look/",
+          "eventType": "other"
+        }
+      ]
+    },
+    {
+      "signature": "casting|s probably a moment when you|",
+      "duplicateEventKey": "casting|s probably a moment when you|",
+      "count": 4,
+      "sources": [
+        "TheWrap",
+        "THR",
+        "IndieWire",
+        "SlashFilm"
+      ],
+      "winningSource": "THR",
+      "suppressedSources": [
+        "SlashFilm",
+        "IndieWire",
+        "TheWrap"
+      ],
+      "articles": [
+        {
+          "caseId": "98eb1683d969a101",
+          "sourceName": "TheWrap",
+          "articleTitle": "â€˜Thrashâ€™ Review: Not a Great Killer Shark Movie, but You Could Netflix and Gill",
+          "articleUrl": "https://www.thewrap.com/creative-content/movies/thrash-review-netflix-tommy-wirkola/",
+          "canonicalEntity": "s probably a moment when you",
+          "eventType": "casting"
+        },
+        {
+          "caseId": "0a08c08c9921d5e4",
+          "sourceName": "THR",
+          "articleTitle": "â€˜Thrashâ€™ Review:Â Phoebe Dynevor Gives Birth in Floodwaters Teeming With Sharks in Preposterous but Enjoyable Netflix Pulp",
+          "articleUrl": "https://www.hollywoodreporter.com/movies/movie-reviews/thrash-review-phoebe-dynevor-netflix-shark-thriller-1236556644/",
+          "canonicalEntity": "Phoebe Dynevor Gives Birth",
+          "eventType": "other"
+        },
+        {
+          "caseId": "b4db9501a438142e",
+          "sourceName": "IndieWire",
+          "articleTitle": "â€˜Thrashâ€™ Review: Netflixâ€™s Wild Shark Disaster Movie Is Dumb Fun Done Right",
+          "articleUrl": "https://www.indiewire.com/criticism/movies/thrash-review-netflix-shark-disaster-movie-1235188008/",
+          "canonicalEntity": "Wild Shark Disaster Movie",
+          "eventType": "other"
+        },
+        {
+          "caseId": "14219ecfe2171af2",
+          "sourceName": "SlashFilm",
+          "articleTitle": "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be",
+          "articleUrl": "https://www.slashfilm.com/2144278/thrash-2026-netflix-movie-review/",
+          "canonicalEntity": "Thrash",
+          "eventType": "other"
+        }
+      ]
+    },
+    {
+      "signature": "renewal|welcome to wrexham||season 5|renewal",
+      "duplicateEventKey": "renewal|welcome to wrexham||season 5|renewal",
+      "count": 4,
+      "sources": [
+        "Variety",
+        "Deadline",
+        "THR",
+        "ScreenRant"
+      ],
+      "winningSource": "Variety",
+      "suppressedSources": [
+        "Deadline",
+        "THR",
+        "ScreenRant"
+      ],
+      "articles": [
+        {
+          "caseId": "658664f85d5bb1f5",
+          "sourceName": "Variety",
+          "articleTitle": "â€˜Welcome to Wrexhamâ€™ Renewed for Three More Seasons at FX, Hulu",
+          "articleUrl": "https://variety.com/2026/tv/news/welcome-to-wrexham-renewed-three-seasons-fx-hulu-1236713205/",
+          "canonicalEntity": "Welcome to Wrexham",
+          "eventType": "renewal"
+        },
+        {
+          "caseId": "4bf56828034c43f2",
+          "sourceName": "Deadline",
+          "articleTitle": "Rob Mac & Ryan Reynoldsâ€™ â€˜Welcome To Wrexhamâ€™ Renewed For 3 More Seasons By FX",
+          "articleUrl": "https://deadline.com/2026/04/welcome-to-wrexham-renewed-3-seasons-fx-1236786277/",
+          "canonicalEntity": "Welcome To Wrexham",
+          "eventType": "renewal"
+        },
+        {
+          "caseId": "2133b28eb552548a",
+          "sourceName": "THR",
+          "articleTitle": "â€˜Welcome to Wrexhamâ€™ Lands Big Three-Season Renewal at FX",
+          "articleUrl": "https://www.hollywoodreporter.com/tv/tv-news/welcome-to-wrexham-renewed-through-season-8-fx-1236560957/",
+          "canonicalEntity": "Lands Big Three-Season Renewal",
+          "eventType": "other"
+        },
+        {
+          "caseId": "1f46500e880a83a1",
+          "sourceName": "ScreenRant",
+          "articleTitle": "Ryan Reynolds' Hit Hulu Series Officially Returning For 3 More Seasons",
+          "articleUrl": "https://screenrant.com/welcome-to-wrexham-three-season-renewal-hulu-fx/",
+          "canonicalEntity": "Welcome to Wrexham",
+          "eventType": "return"
+        }
+      ]
+    },
+    {
+      "signature": "other|the last thing he|the last thing he||season 2",
+      "duplicateEventKey": "other|the last thing he|the last thing he||season 2",
+      "count": 3,
+      "sources": [
+        "Deadline",
+        "ComicBook",
+        "TVLine"
+      ],
+      "winningSource": "Deadline",
+      "suppressedSources": [
+        "TVLine",
+        "ComicBook"
+      ],
+      "articles": [
+        {
+          "caseId": "617543f812f6f0ce",
+          "sourceName": "Deadline",
+          "articleTitle": "â€˜The Last Thing He Told Meâ€™ Star Judy Greer Breaks Down Season 2 Finale Twists & â€œRefreshingâ€ Role Of Quinn, Who â€œDoesnâ€™t Crumbleâ€",
+          "articleUrl": "https://deadline.com/2026/04/judy-greer-the-last-thing-he-told-me-season-2-end-interview-1236786239/",
+          "canonicalEntity": "The Last Thing He",
+          "eventType": "other"
+        },
+        {
+          "caseId": "47a494c30e688a8c",
+          "sourceName": "ComicBook",
+          "articleTitle": "Frieren: Beyond Journeyâ€™s End Gets a New Release After Season 2 Finale",
+          "articleUrl": "https://comicbook.com/anime/news/frieren-beyond-journeys-end-gets-a-new-release-after-season-2-finale/",
+          "canonicalEntity": "The Story of Us",
+          "eventType": "casting"
+        },
+        {
+          "caseId": "069283a8feb05d4b",
+          "sourceName": "TVLine",
+          "articleTitle": "The Pitt Boss Breaks Down Season 2, Episode 14: Robby's Reality Check, Langdon's Risky Save, And Al-Hashimi's Big Reveal",
+          "articleUrl": "https://www.tvline.com/2143912/the-pitt-season-2-episode-14-dr-baran-al-hashimi-seizures-medical-diagnosis-explained/",
+          "canonicalEntity": "The Pitt",
+          "eventType": "other"
+        }
+      ]
+    },
+    {
+      "signature": "other|cartoon network|",
+      "duplicateEventKey": "other|cartoon network|",
+      "count": 2,
+      "sources": [
+        "ScreenRant",
+        "Collider"
+      ],
+      "winningSource": "Collider",
+      "suppressedSources": [
+        "ScreenRant"
+      ],
+      "articles": [
+        {
+          "caseId": "74b270d025f00953",
+          "sourceName": "ScreenRant",
+          "articleTitle": "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+          "articleUrl": "https://screenrant.com/ed-edd-eddy-perfect-finale-movie/",
+          "canonicalEntity": "Cartoon Network",
+          "eventType": "other"
+        },
+        {
+          "caseId": "93a3696e2de791fd",
+          "sourceName": "Collider",
+          "articleTitle": "24 Years Later, the Best Sci-Fi Western of All Time Is Taking Over the World",
+          "articleUrl": "https://collider.com/firefly-greatest-sci-fi-western-streaming-success-itunes-april-2026/",
+          "canonicalEntity": "Peaky Blinders: The Immortal Man",
+          "eventType": "cancellation"
+        }
+      ]
+    },
+    {
+      "signature": "other|hacks||season 5",
+      "duplicateEventKey": "other|hacks||season 5",
+      "count": 2,
+      "sources": [
+        "IndieWire",
+        "TVLine"
+      ],
+      "winningSource": "TVLine",
+      "suppressedSources": [
+        "IndieWire"
+      ],
+      "articles": [
+        {
+          "caseId": "19ff348a55fed299",
+          "sourceName": "IndieWire",
+          "articleTitle": "The Final Season of â€˜Hacksâ€™ Goes Out on Its Own Terms in a Fantastically Funny Farewell",
+          "articleUrl": "https://www.indiewire.com/criticism/shows/hacks-season-5-review-final-season-hbo-max-1235187473/",
+          "canonicalEntity": "Hacks",
+          "eventType": "other"
+        },
+        {
+          "caseId": "5ff204e00eac9a8c",
+          "sourceName": "TVLine",
+          "articleTitle": "Hacks Season 5 Premiere: A Gutsy Ploy Sets The Stage For Deborah's Final Chapter (Grade It!)",
+          "articleUrl": "https://www.tvline.com/2144406/hacks-season-5-premiere-recap-deborah-egot-madison-square-garden/",
+          "canonicalEntity": "Hacks",
+          "eventType": "release_date"
+        }
+      ]
+    },
+    {
+      "signature": "other|harry potter|",
+      "duplicateEventKey": "other|harry potter|",
+      "count": 2,
+      "sources": [
+        "THR",
+        "TheWrap"
+      ],
+      "winningSource": "THR",
+      "suppressedSources": [
+        "TheWrap"
+      ],
+      "articles": [
+        {
+          "caseId": "dc3db056eb3693f6",
+          "sourceName": "THR",
+          "articleTitle": "Why Zendaya and Tom Holland Won This Week, But â€˜Harry Potterâ€™ and â€˜Duneâ€™ Lost",
+          "articleUrl": "https://www.hollywoodreporter.com/movies/movie-news/zendaya-tom-holland-harry-potter-dune-1236560114/",
+          "canonicalEntity": "Harry Potter",
+          "eventType": "other"
+        },
+        {
+          "caseId": "361583d89a86f35e",
+          "sourceName": "TheWrap",
+          "articleTitle": "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on â€˜Euphoriaâ€™ Knows Its Future: â€˜Tom Holland Canâ€™t Be Trustedâ€™ | Video",
+          "articleUrl": "https://www.thewrap.com/creative-content/tv-shows/jimmy-kimmel-zendaya-reason-no-one-knows-euphoria-future-tom-holland/",
+          "canonicalEntity": "Jimmy Kimmel Jokes Zendaya",
+          "eventType": "interview_quote"
+        }
+      ]
+    },
+    {
+      "signature": "other|malcolm in the middle life|",
+      "duplicateEventKey": "other|malcolm in the middle life|",
+      "count": 2,
+      "sources": [
+        "THR",
+        "IndieWire"
+      ],
+      "winningSource": "THR",
+      "suppressedSources": [
+        "IndieWire"
+      ],
+      "articles": [
+        {
+          "caseId": "2b34f30a70fed280",
+          "sourceName": "THR",
+          "articleTitle": "Where to Watch â€˜Malcolm in the Middle: Lifeâ€™s Still Unfair,â€™ Sequel to the 2000s Sitcom",
+          "articleUrl": "https://www.hollywoodreporter.com/tv/tv-news/watch-malcolm-in-the-middle-lifes-still-unfair-free-online-1236560825/",
+          "canonicalEntity": "Malcolm in the Middle: Life",
+          "eventType": "other"
+        },
+        {
+          "caseId": "d70f4c8eb8c73ade",
+          "sourceName": "IndieWire",
+          "articleTitle": "â€˜Malcolm in the Middle: Lifeâ€™s Still Unfairâ€™ Is the Rare Revival That Provides Something New",
+          "articleUrl": "https://www.indiewire.com/criticism/shows/malcolm-in-the-middle-reboot-review-lifes-still-unfair-1235188196/",
+          "canonicalEntity": "Malcolm in the Middle: Life",
+          "eventType": "other"
+        }
+      ]
+    },
+    {
+      "signature": "other|malcolm in the middle|",
+      "duplicateEventKey": "other|malcolm in the middle|",
+      "count": 2,
+      "sources": [
+        "Deadline",
+        "TVLine"
+      ],
+      "winningSource": "Deadline",
+      "suppressedSources": [
+        "TVLine"
+      ],
+      "articles": [
+        {
+          "caseId": "a5eca5c499a30120",
+          "sourceName": "Deadline",
+          "articleTitle": "â€˜Malcolm in the Middleâ€™s Bryan Cranston & Jane Kaczmarek On What Keeps Hal & Lois Together: â€œThey Have Good Sexâ€",
+          "articleUrl": "https://deadline.com/2026/04/malcolm-in-the-middle-bryan-cranston-jane-kaczmarek-good-sex-1236786200/",
+          "canonicalEntity": "Malcolm in the Middle",
+          "eventType": "other"
+        },
+        {
+          "caseId": "f0b437bb0a80a6c1",
+          "sourceName": "TVLine",
+          "articleTitle": "What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More",
+          "articleUrl": "https://www.tvline.com/2143541/what-to-watch-april-10-2026-tv-shows-movies/",
+          "eventType": "return"
+        }
+      ]
+    },
+    {
+      "signature": "reveal|malcolm in the middle||reboot",
+      "duplicateEventKey": "reveal|malcolm in the middle||reboot",
+      "count": 2,
+      "sources": [
+        "Deadline",
+        "ScreenRant"
+      ],
+      "winningSource": "Deadline",
+      "suppressedSources": [
+        "ScreenRant"
+      ],
+      "articles": [
+        {
+          "caseId": "82845cf911d4efbb",
+          "sourceName": "Deadline",
+          "articleTitle": "Finn Wolfhard Told â€˜Malcolm in the Middleâ€™ Creator â€œF*ck Yeahâ€ To Revival Cameo: â€œHeâ€™s Such A Big Fanâ€",
+          "articleUrl": "https://deadline.com/2026/04/finn-wolfhard-malcolm-in-the-middle-fck-yeah-revival-cameo-1236786293/",
+          "canonicalEntity": "Malcolm in the Middle",
+          "eventType": "reveal"
+        },
+        {
+          "caseId": "7a99aee7104512c9",
+          "sourceName": "ScreenRant",
+          "articleTitle": "Malcolm In The Middle: Lifeâ€™s Still Unfair Season 2 Return Potential Addressed By Creator",
+          "articleUrl": "https://screenrant.com/malcolm-in-the-middle-lifes-still-unfair-season-2-chances-linwood-boomer/",
+          "canonicalEntity": "Malcolm In The Middle",
+          "eventType": "return"
+        }
+      ]
+    }
+  ],
+  "recommendedPatches": [
+    {
+      "recommendation": "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "count": 50,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "dadb77e67d4f595b",
+        "99ba6a117cd2d904",
+        "17fa0ceb85a21294",
+        "dc3db056eb3693f6",
+        "87ce3b68de1959d6"
+      ]
+    },
+    {
+      "recommendation": "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "count": 48,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND_FALSE_BLOCK"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "dadb77e67d4f595b",
+        "99ba6a117cd2d904",
+        "17fa0ceb85a21294",
+        "dc3db056eb3693f6",
+        "87ce3b68de1959d6"
+      ]
+    },
+    {
+      "recommendation": "Validate caption headline entity against canonical media title and allowed entities.",
+      "count": 16,
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "3f6f2e0b00706d7c",
+        "f13b98910e5d0ad6",
+        "96ff437aa5f6afa3",
+        "92c9b1146a0a833b",
+        "361583d89a86f35e"
+      ]
+    },
+    {
+      "recommendation": "Strip outlet package labels before deterministic caption generation.",
+      "count": 12,
+      "failureCodes": [
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_PACKAGE_LABEL_LEAK"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "99ba6a117cd2d904",
+        "17fa0ceb85a21294",
+        "34aaf0c59333069b",
+        "82536696e518f6c0",
+        "47a494c30e688a8c"
+      ]
+    },
+    {
+      "recommendation": "Tighten canonical entity extraction before image or caption generation.",
+      "count": 12,
+      "failureCodes": [
+        "ENTITY_NOT_RESOLVED"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "f13b98910e5d0ad6",
+        "96ff437aa5f6afa3",
+        "08c1b1bc16fbdf0b",
+        "6d5ba2f54f6243bb",
+        "f5b67e6c4cb5f0ab"
+      ]
+    },
+    {
+      "recommendation": "Block company logos as primary images when a project or person entity exists.",
+      "count": 8,
+      "failureCodes": [
+        "IMAGE_COMPANY_LOGO_MISUSED",
+        "IMAGE_LOGO_OVERUSE"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "82845cf911d4efbb",
+        "47a494c30e688a8c",
+        "5c336935f2e08de0",
+        "0a08c08c9921d5e4",
+        "7a99aee7104512c9"
+      ]
+    },
+    {
+      "recommendation": "Reject broken quote fragments before captions can pass final validation.",
+      "count": 7,
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "dadb77e67d4f595b",
+        "dc3db056eb3693f6",
+        "361583d89a86f35e",
+        "dc98549644cd9929",
+        "96710c76923346f1"
+      ]
+    },
+    {
+      "recommendation": "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "count": 5,
+      "failureCodes": [
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "2133b28eb552548a",
+        "08c1b1bc16fbdf0b",
+        "5c336935f2e08de0",
+        "36abe0d1671929f0",
+        "ac869ce87a057ae9"
+      ]
+    },
+    {
+      "recommendation": "Require selected images to be grounded in canonical allowed entities.",
+      "count": 2,
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "99ba6a117cd2d904",
+        "0a08c08c9921d5e4"
+      ]
+    }
+  ]
+}

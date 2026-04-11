@@ -1,0 +1,1829 @@
+[
+  {
+    "caseId": "1da2cb9c4f8a6de3",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/gaming/news/gaming-news-roundup-april-6-1236709907/",
+      "articleTitle": "‘The Boys’ Sets ‘Call of Duty: Mobile’ In-Game Collab Ahead of Final Season (Gaming News Roundup)",
+      "articleDescription": "Ahead of the fifth and final season of “The Boys” premiering on Prime Video Wednesday, Sony Pictures Consumer Products has unveiled an expansive global licensing initiative tied to the satirical superhero television series, including an upcoming “Call of Duty: Mobile” collaboration. Launching in the summer, the in-game integration will feature three playable characters from “The Boys,” themed […]",
+      "articleBody": "Ahead of the fifth and final season of “The Boys” premiering on Prime Video Wednesday, Sony Pictures Consumer Products has unveiled an expansive global licensing initiative tied to the satirical superhero television series, including an upcoming &#8220;Call of Duty: Mobile&#8221; collaboration. Launching in the summer, the in-game integration will feature&#160;three playable characters from “The Boys,”&#160;themed [&#8230;]",
+      "publishedAt": "2026-04-10T14:05:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "'The Boys' Sets 'Call of Duty: Mobile' In-Game Collab Ahead of Final Season (Gaming News Roundup)",
+    "normalizedDescription": "Ahead of the fifth and final season of “The Boys” premiering on Prime Video Wednesday, Sony Pictures Consumer Products has unveiled an expansive global licensing initiative tied to the satirical superhero television series, including an upcoming “Call of Duty: Mobile” collaboration. Launching in the summer, the in-game integration will feature three playable characters from “The Boys,” themed […]",
+    "entity": {
+      "canonicalEntity": "The Boys' Sets",
+      "canonicalEntityType": "person",
+      "eventType": "licensing",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_gaming_collab_or_licensing"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Boys' Sets",
+      "secondarySubject": "Mobile' In-Game Collab Ahead",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Boys' Sets",
+        "The Boys' Sets licensing",
+        "‘The Boys’ Sets ‘Call of Duty: Mobile’ In-Game Collab Ahead of Final Season (Gaming News Roundup)"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Call of Duty: Mobile' has a new update.\n\nAhead of the fifth and final season of \"The Boys\" premiering on Prime Video Wednesday, Sony Pictures Consumer Products has unveiled an expansive global licensing initiative tied to the satirical superhero television series, including an.",
+      "normalizedCaption": "'Call of Duty: Mobile' has a new update.\n\nAhead of the fifth and final season of \"The Boys\" premiering on Prime Video Wednesday, Sony Pictures Consumer Products has unveiled an expansive global licensing initiative tied to the satirical superhero television series, including an.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "232215d9d90ef12d",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/tv/news/atx-tv-festival-warren-littlefield-bill-lawrence-awards-1236712895/",
+      "articleTitle": "ATX TV Festival to Present Inaugural Creative Impact Award to Warren Littlefield, Honor Bill Lawrence With Showrunner Award",
+      "articleDescription": "ATX TV Festival is shining a light on TV leaders at their 2026 fest, set for May 28-31 in Austin, Texas. Bill Lawrence will return with “Bill Lawrence and Friends,” a marquee conversation with the executive producer and collaborators from his past and current projects, from “Spin City,” “Scrubs,” and “Ted Lasso” to “Shrinking,” “Bad […]",
+      "articleBody": "ATX TV Festival is shining a light on TV leaders at their 2026 fest, set for May 28-31 in Austin, Texas. Bill Lawrence will return with “Bill Lawrence and Friends,&#8221; a marquee conversation with the executive producer and collaborators from his past and current projects, from &#8220;Spin City,&#8221; &#8220;Scrubs,&#8221; and &#8220;Ted Lasso&#8221; to &#8220;Shrinking,&#8221; &#8220;Bad [&#8230;]",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "ATX TV Festival to Present Inaugural Creative Impact Award to Warren Littlefield, Honor Bill Lawrence With Showrunner Award",
+    "normalizedDescription": "ATX TV Festival is shining a light on TV leaders at their 2026 fest, set for May 28-31 in Austin, Texas. Bill Lawrence will return with “Bill Lawrence and Friends,” a marquee conversation with the executive producer and collaborators from his past and current projects, from “Spin City,” “Scrubs,” and “Ted Lasso” to “Shrinking,” “Bad […]",
+    "entity": {
+      "canonicalEntity": "ATX TV Festival",
+      "canonicalEntityType": "person",
+      "eventType": "business",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_business_or_platform"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "ATX TV Festival",
+      "secondarySubject": "Present Inaugural Creative Impact",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "ATX TV Festival",
+        "ATX TV Festival business",
+        "ATX TV Festival to Present Inaugural Creative Impact Award to Warren Littlefield, Honor Bill Lawrence With Showrunner Award"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "ATX TV Festival is returning in 'Honor Bill Lawrence With Showrunner Award'.\n\nATX TV Festival is shining a light on TV leaders at their 2026 fest, set for May 28-31 in Austin, Texas. Bill Lawrence will return with \"Bill Lawrence and Friends,\" a marquee conversation with the.",
+      "normalizedCaption": "ATX TV Festival is returning in 'Honor Bill Lawrence With Showrunner Award'.\n\nATX TV Festival is shining a light on TV leaders at their 2026 fest, set for May 28-31 in Austin, Texas. Bill Lawrence will return with \"Bill Lawrence and Friends,\" a marquee conversation with the.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation."
+    ]
+  },
+  {
+    "caseId": "61a3bf6ebd02d2f3",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/tv/news/welcome-to-wrexham-renewed-three-seasons-fx-hulu-1236713205/",
+      "articleTitle": "‘Welcome to Wrexham’ Renewed for Three More Seasons at FX, Hulu",
+      "articleDescription": "FX has renewed the hit docuseries “Welcome to Wrexham” for an additional three seasons, Variety has learned. The news means the show will run through at least its eighth season. It also comes roughly one month ahead of the premiere of Season 5, which will debut on FXX and Hulu on May 14 with its […]",
+      "articleBody": "FX has renewed the hit docuseries &#8220;Welcome to Wrexham&#8221; for an additional three seasons, Variety has learned. The news means the show will run through at least its eighth season. It also comes roughly one month ahead of the premiere of Season 5, which will debut on FXX and Hulu on May 14 with its [&#8230;]",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Welcome to Wrexham' Renewed for Three More Seasons at FX, Hulu",
+    "normalizedDescription": "FX has renewed the hit docuseries “Welcome to Wrexham” for an additional three seasons, Variety has learned. The news means the show will run through at least its eighth season. It also comes roughly one month ahead of the premiere of Season 5, which will debut on FXX and Hulu on May 14 with its […]",
+    "entity": {
+      "canonicalEntity": "Welcome to Wrexham",
+      "canonicalEntityType": "tv",
+      "eventType": "renewal",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Welcome to Wrexham",
+      "secondarySubject": "Wrexham' Renewed",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Welcome to Wrexham",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Welcome to Wrexham",
+          "source": "tmdb",
+          "subject": "Welcome to Wrexham",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Welcome to Wrexham",
+        "Welcome to Wrexham renewal",
+        "‘Welcome to Wrexham’ Renewed for Three More Seasons at FX, Hulu"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Welcome to Wrexham",
+          "mediaType": "tv",
+          "score": 690.7655500000001,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": []
+    },
+    "caption": {
+      "generatedCaption": "'Welcome to Wrexham' has been renewed.\n\nThe news means the show will run through at least its eighth season.",
+      "normalizedCaption": "'Welcome to Wrexham' has been renewed.\n\nThe news means the show will run through at least its eighth season.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": false,
+    "publishFailureCodes": [],
+    "diagnosis": [],
+    "recommendedFixes": []
+  },
+  {
+    "caseId": "d22d2ae64a21a00c",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/film/news/natasha-lyonne-red-carpet-kicked-off-flight-euphoria-1236713253/",
+      "articleTitle": "Natasha Lyonne Walks Red Carpet Hours After She Called Out Report About Being Kicked Off a Flight",
+      "articleDescription": "Natasha Lyonne walked the red carpet at the April 9 premiere of Focus Features’ “Lorne” documentary in New York City, hours after calling out a Page Six report that claimed she was kicked off a flight from Los Angeles to New York before it took off. The Emmy nominee was traveling back to the east coast […]",
+      "articleBody": "Natasha Lyonne walked the red carpet at the April 9 premiere of Focus Features&#8217; &#8220;Lorne&#8221; documentary in New York City, hours after calling out a Page Six report that claimed she was kicked off a flight from Los Angeles to New York before it took off. The Emmy nominee was traveling back to the east coast [&#8230;]",
+      "publishedAt": "2026-04-10T13:51:34.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Natasha Lyonne Walks Red Carpet Hours After She Called Out Report About Being Kicked Off a Flight",
+    "normalizedDescription": "Natasha Lyonne walked the red carpet at the April 9 premiere of Focus Features’ “Lorne” documentary in New York City, hours after calling out a Page Six report that claimed she was kicked off a flight from Los Angeles to New York before it took off. The Emmy nominee was traveling back to the east coast […]",
+    "entity": {
+      "canonicalEntity": "Natasha Lyonne Walks Red",
+      "canonicalEntityType": "person",
+      "eventType": "release_date",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_person_interview_or_reaction"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Natasha Lyonne Walks Red",
+      "secondarySubject": "Carpet Hours After She",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Natasha Lyonne Walks Red",
+        "Natasha Lyonne Walks Red release_date",
+        "Natasha Lyonne Walks Red Carpet Hours After She Called Out Report About Being Kicked Off a Flight"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Natasha Lyonne Walks Red Carpet Hours' has a new release date.\n\nNatasha Lyonne walked the red carpet at the April 9 premiere of Focus Features' \"Lorne\" documentary in New York City, hours after calling out a Page Six report that claimed she was kicked off a flight from Los.",
+      "normalizedCaption": "'Natasha Lyonne Walks Red Carpet Hours' has a new release date.\n\nNatasha Lyonne walked the red carpet at the April 9 premiere of Focus Features' \"Lorne\" documentary in New York City, hours after calling out a Page Six report that claimed she was kicked off a flight from Los.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "Selected image context did not match the canonical article entity.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Require selected images to be grounded in canonical allowed entities.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "3199502759fb4871",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/digital/news/youtube-premium-pirce-increase-youtube-music-us-1236713223/",
+      "articleTitle": "YouTube Premium and YouTube Music Subscription Prices Are Going Up in the U.S.",
+      "articleDescription": "YouTube Premium subscribers are getting socked with “streamflation”: The Google-owned video giant is hiking prices in the U.S. for its YouTube Premium ad-free plans and YouTube Music — the latest streaming services to ratchet up fees in recent months. The YouTube Premium individual plan is increasing from $13.99 to $15.99/month, while the family plan (up […]",
+      "articleBody": "YouTube Premium subscribers are getting socked with &#8220;streamflation&#8221;: The Google-owned video giant is hiking prices in the U.S. for its YouTube Premium ad-free plans and YouTube Music &#8212; the latest streaming services to ratchet up fees in recent months. The YouTube Premium individual plan is increasing from $13.99 to $15.99/month, while the family plan (up [&#8230;]",
+      "publishedAt": "2026-04-10T13:18:54.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "YouTube Premium and YouTube Music Subscription Prices Are Going Up in the U.S.",
+    "normalizedDescription": "YouTube Premium subscribers are getting socked with “streamflation”: The Google-owned video giant is hiking prices in the U.S. for its YouTube Premium ad-free plans and YouTube Music — the latest streaming services to ratchet up fees in recent months. The YouTube Premium individual plan is increasing from $13.99 to $15.99/month, while the family plan (up […]",
+    "entity": {
+      "canonicalEntity": "YouTube Premium",
+      "canonicalEntityType": "person",
+      "eventType": "business",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_business_or_platform"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "YouTube Premium",
+      "secondarySubject": "YouTube Music Subscription Prices",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "YouTube Premium",
+        "YouTube Premium business",
+        "YouTube Premium and YouTube Music Subscription Prices Are Going Up in the U.S."
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'YouTube Music Subscription Prices Are Going' has a new update.\n\nYouTube Premium subscribers are getting socked with \"streamflation\": The Google-owned video giant is hiking prices in the U.S. for its YouTube Premium ad-free plans and YouTube Music — the latest streaming services.",
+      "normalizedCaption": "'YouTube Music Subscription Prices Are Going' has a new update.\n\nYouTube Premium subscribers are getting socked with \"streamflation\": The Google-owned video giant is hiking prices in the U.S. for its YouTube Premium ad-free plans and YouTube Music — the latest streaming services.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "67fe756b77514c1f",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/tv/news/jimmy-kimmel-melania-trump-jeffrey-epstein-photo-1236713229/",
+      "articleTitle": "Jimmy Kimmel Airs Photo of Melania Trump and Jeffrey Epstein After First Lady Makes Public Address Denying Epstein Ties",
+      "articleDescription": "Jimmy Kimmel is calling B.S. when it comes to Melania Trump denying ties to Jeffrey Epstein. The First Lady held a surprise public address at the White House on April 9, apparently blindsiding husband Donald and other White House officials, in order to declare she’s “never been friends with Epstein.” “I have never had any […]",
+      "articleBody": "Jimmy Kimmel is calling B.S. when it comes to Melania Trump denying ties to Jeffrey Epstein. The First Lady held a surprise public address at the White House on April 9, apparently blindsiding husband Donald and other White House officials, in order to declare she&#8217;s &#8220;never been friends with Epstein.&#8221; “I have never had any [&#8230;]",
+      "publishedAt": "2026-04-10T13:16:39.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "Jimmy Kimmel Airs Photo of Melania Trump and Jeffrey Epstein After First Lady Makes Public Address Denying Epstein Ties",
+    "normalizedDescription": "Jimmy Kimmel is calling B.S. when it comes to Melania Trump denying ties to Jeffrey Epstein. The First Lady held a surprise public address at the White House on April 9, apparently blindsiding husband Donald and other White House officials, in order to declare she’s “never been friends with Epstein.” “I have never had any […]",
+    "entity": {
+      "canonicalEntity": "never been friends with Epstein.",
+      "canonicalEntityType": "other",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_political_or_non_entertainment",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "never been friends with Epstein.",
+      "secondarySubject": "Jimmy Kimmel Airs Photo",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "never been friends with Epstein.",
+        "never been friends with Epstein. other",
+        "Jimmy Kimmel Airs Photo of Melania Trump and Jeffrey Epstein After First Lady Makes Public Address Denying Epstein Ties"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Jeffrey Epstein After First Lady Makes' has a new update.\n\nJimmy Kimmel is calling B.S. when it comes to Melania Trump denying ties to Jeffrey Epstein. The First Lady held a surprise public address at the White House on April 9, apparently blindsiding husband Donald and other.",
+      "normalizedCaption": "'Jeffrey Epstein After First Lady Makes' has a new update.\n\nJimmy Kimmel is calling B.S. when it comes to Melania Trump denying ties to Jeffrey Epstein. The First Lady held a surprise public address at the White House on April 9, apparently blindsiding husband Donald and other.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "ce1094037cff99a8",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/film/global/doc-murdered-italian-student-egypt-political-storm-1236713121/",
+      "articleTitle": "‘All the Evil in the World’ Doc, About Murder of Leftist Italian Student in Egypt, Sparks Political Storm After Being Denied Government Funding",
+      "articleDescription": "An investigative documentary titled “All the Evil in the World” — about the murder of leftist Italian graduate student Giulio Regeni, who in 2016 was tortured to death in Cairo, allegedly by Egypt’s secret police — is sparking outrage in Italy over the fact that it has been denied government funding by a commission appointed […]",
+      "articleBody": "An investigative documentary titled “All the Evil in the World&#8221; — about the murder of leftist Italian graduate student Giulio Regeni, who in 2016 was tortured to death in Cairo, allegedly by Egypt’s secret police — is sparking outrage in Italy over the fact that it has been denied government funding by a commission appointed [&#8230;]",
+      "publishedAt": "2026-04-10T12:15:45.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'All the Evil in the World' Doc, About Murder of Leftist Italian Student in Egypt, Sparks Political Storm After Being Denied Government Funding",
+    "normalizedDescription": "An investigative documentary titled “All the Evil in the World” — about the murder of leftist Italian graduate student Giulio Regeni, who in 2016 was tortured to death in Cairo, allegedly by Egypt’s secret police — is sparking outrage in Italy over the fact that it has been denied government funding by a commission appointed […]",
+    "entity": {
+      "canonicalEntity": "All the Evil in the World",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "All the Evil in the World",
+      "secondarySubject": "World' Doc",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "All the Evil in the World",
+        "All the Evil in the World other",
+        "‘All the Evil in the World’ Doc, About Murder of Leftist Italian Student in Egypt, Sparks Political Storm After Being Denied Government Funding"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Sparks Political Storm After Being Denied' has a new update.\n\nAn investigative documentary titled \"All the Evil in the World\" — about the murder of leftist Italian graduate student Giulio Regeni, who in 2016 was tortured to death in Cairo, allegedly by Egypt's secret police —.",
+      "normalizedCaption": "'Sparks Political Storm After Being Denied' has a new update.\n\nAn investigative documentary titled \"All the Evil in the World\" — about the murder of leftist Italian graduate student Giulio Regeni, who in 2016 was tortured to death in Cairo, allegedly by Egypt's secret police —.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "2aaa3db33aa96c6b",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/film/global/ai-assisted-captain-james-hook-feature-moonmax-1236713197/",
+      "articleTitle": "AI-Assisted Captain James Hook Feature in Works at Moonmax (EXCLUSIVE)",
+      "articleDescription": "AI studio Moonmax has unveiled a slate of features signifying a push into more mainstream film production, including a project based on J. M. Barrie’s famed pirate antagonist, Captain James Hook. The company, known for its AI courses and delivering talks and workshops at places such as Oxford University and the Miami Film Festival, has […]",
+      "articleBody": "AI studio Moonmax has unveiled a slate of features signifying a push into more mainstream film production, including a project based on J. M. Barrie&#8217;s famed pirate antagonist, Captain James Hook. The company, known for its AI courses and delivering talks and workshops at places such as Oxford University and the Miami Film Festival, has [&#8230;]",
+      "publishedAt": "2026-04-10T11:43:04.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "AI-Assisted Captain James Hook Feature in Works at Moonmax (EXCLUSIVE)",
+    "normalizedDescription": "AI studio Moonmax has unveiled a slate of features signifying a push into more mainstream film production, including a project based on J. M. Barrie’s famed pirate antagonist, Captain James Hook. The company, known for its AI courses and delivering talks and workshops at places such as Oxford University and the Miami Film Festival, has […]",
+    "entity": {
+      "canonicalEntity": "AI-Assisted Captain James Hook",
+      "canonicalEntityType": "other",
+      "eventType": "event",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_event_or_festival",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "AI-Assisted Captain James Hook",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "AI-Assisted Captain James Hook",
+        "AI-Assisted Captain James Hook event",
+        "AI-Assisted Captain James Hook Feature in Works at Moonmax (EXCLUSIVE)"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'AI-Assisted Captain James Hook Feature' has a new update.\n\nAI studio Moonmax has unveiled a slate of features signifying a push into more mainstream film production, including a project based on J. M. Barrie's famed pirate antagonist, Captain James Hook. The company, known for.",
+      "normalizedCaption": "'AI-Assisted Captain James Hook Feature' has a new update.\n\nAI studio Moonmax has unveiled a slate of features signifying a push into more mainstream film production, including a project based on J. M. Barrie's famed pirate antagonist, Captain James Hook. The company, known for.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "e182e1868a119c38",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/shopping/news/nike-ja-3-jurassic-park-raptor-sneakers-buy-online-1236710482/",
+      "articleTitle": "Nike Ja 3 ‘Jurassic Park’ Sneakers: Here’s Where to Score the Signature Shoes Online",
+      "articleDescription": "With the 2025-26 NBA regular season coming to a close, a number of players are making decisions about next season. One of those players is Ja Morant of the Memphis Grizzlies. Although he’s the team’s star player, his future is undecided — despite having one of the most popular signature sneakers in basketball. In fact, […]",
+      "articleBody": "With the 2025-26 NBA regular season coming to a close, a number of players are making decisions about next season. One of those players is Ja Morant of the Memphis Grizzlies. Although he&#8217;s the team&#8217;s star player, his future is undecided &#8212; despite having one of the most popular signature sneakers in basketball. In fact, [&#8230;]",
+      "publishedAt": "2026-04-10T11:00:00.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "Nike Ja 3 'Jurassic Park' Sneakers: Here's Where to Score the Signature Shoes Online",
+    "normalizedDescription": "With the 2025-26 NBA regular season coming to a close, a number of players are making decisions about next season. One of those players is Ja Morant of the Memphis Grizzlies. Although he’s the team’s star player, his future is undecided — despite having one of the most popular signature sneakers in basketball. In fact, […]",
+    "entity": {
+      "canonicalEntity": "Jurassic Park",
+      "canonicalEntityType": "other",
+      "eventType": "shopping",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_shopping_or_product",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Jurassic Park",
+      "secondarySubject": "Nike Ja",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Jurassic Park",
+        "Jurassic Park shopping",
+        "Nike Ja 3 ‘Jurassic Park’ Sneakers: Here’s Where to Score the Signature Shoes Online"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Sneakers: Here' has a new update.\n\nWith the 2025-26 NBA regular season coming to a close, a number of players are making decisions about next season. One of those players is Ja Morant of the Memphis Grizzlies. Although he's the team's star player, his future is undecided —.",
+      "normalizedCaption": "'Sneakers: Here' has a new update.\n\nWith the 2025-26 NBA regular season coming to a close, a number of players are making decisions about next season. One of those players is Ja Morant of the Memphis Grizzlies. Although he's the team's star player, his future is undecided —.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "a02ac317b9490588",
+    "input": {
+      "sourceName": "Variety",
+      "feedUrl": "https://variety.com/feed/",
+      "articleUrl": "https://variety.com/2026/tv/news/alex-maccallum-cnn-chief-operating-officer-1236713191/",
+      "articleTitle": "Alex MacCallum Elevated to CNN’s Chief Operating Officer",
+      "articleDescription": "Alex MacCallum returned to CNN to oversee an effort to make the storied news outlet more relevant to digital audiences. Now she may be poised to do a lot more. MacCallum, a media-industry veteran who has helped The Washington Post and The New York Times manage their own digital transitions, was named chief operating officer […]",
+      "articleBody": "Alex MacCallum returned to CNN to oversee an effort to make the storied news outlet more relevant to digital audiences. Now she may be poised to do a lot more. MacCallum, a media-industry veteran who has helped The Washington Post and The New York Times manage their own digital transitions, was named chief operating officer [&#8230;]",
+      "publishedAt": "2026-04-10T10:58:56.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Alex MacCallum Elevated to CNN's Chief Operating Officer",
+    "normalizedDescription": "Alex MacCallum returned to CNN to oversee an effort to make the storied news outlet more relevant to digital audiences. Now she may be poised to do a lot more. MacCallum, a media-industry veteran who has helped The Washington Post and The New York Times manage their own digital transitions, was named chief operating officer […]",
+    "entity": {
+      "canonicalEntity": "Alex MacCallum Elevated",
+      "canonicalEntityType": "person",
+      "eventType": "business",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_business_or_platform"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Alex MacCallum Elevated",
+      "secondarySubject": "CNN's Chief Operating Officer",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Alex MacCallum Elevated",
+        "Alex MacCallum Elevated business",
+        "Alex MacCallum Elevated to CNN’s Chief Operating Officer"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'CNN' has a new update.\n\nAlex MacCallum returned to CNN to oversee an effort to make the storied news outlet more relevant to digital audiences. Now she may be poised to do a lot more. MacCallum, a media-industry veteran who has helped The Washington Post and The New York Times.",
+      "normalizedCaption": "'CNN' has a new update.\n\nAlex MacCallum returned to CNN to oversee an effort to make the storied news outlet more relevant to digital audiences. Now she may be poised to do a lot more. MacCallum, a media-industry veteran who has helped The Washington Post and The New York Times.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "9905d2c40d85b258",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/welcome-to-wrexham-renewed-3-seasons-fx-1236786277/",
+      "articleTitle": "Rob Mac & Ryan Reynolds’ ‘Welcome To Wrexham’ Renewed For 3 More Seasons By FX",
+      "articleDescription": "Fans of FX’s Welcome to Wrexham have a slew of new episodes yet to come as the network has renewed the hit docuseries for three more seasons. The series from Rob Mac and Ryan Reynolds is coming up on its fifth season, with the renewal taking the show through an eighth season into 2029. Season […]",
+      "articleBody": "Fans of FX&#8217;s Welcome to Wrexham have a slew of new episodes yet to come as the network has renewed the hit docuseries for three more seasons. The series from Rob Mac and Ryan Reynolds is coming up on its fifth season, with the renewal taking the show through an eighth season into 2029. Season [&#8230;]",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Rob Mac & Ryan Reynolds' 'Welcome To Wrexham' Renewed For 3 More Seasons By FX",
+    "normalizedDescription": "Fans of FX’s Welcome to Wrexham have a slew of new episodes yet to come as the network has renewed the hit docuseries for three more seasons. The series from Rob Mac and Ryan Reynolds is coming up on its fifth season, with the renewal taking the show through an eighth season into 2029. Season […]",
+    "entity": {
+      "canonicalEntity": "Welcome To Wrexham",
+      "canonicalEntityType": "tv",
+      "eventType": "renewal",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Welcome To Wrexham",
+      "secondarySubject": "Rob Mac",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Welcome to Wrexham",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Welcome to Wrexham",
+          "source": "tmdb",
+          "subject": "Welcome to Wrexham",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Welcome To Wrexham",
+        "Welcome To Wrexham renewal",
+        "Rob Mac & Ryan Reynolds’ ‘Welcome To Wrexham’ Renewed For 3 More Seasons By FX"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Welcome to Wrexham",
+          "mediaType": "tv",
+          "score": 880.7655500000001,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Renewed For 3 More Seasons By' has been renewed.\n\nFans of FX's Welcome to Wrexham have a slew of new episodes yet to come as the network has renewed the hit docuseries for three more seasons. The series from Rob Mac and Ryan Reynolds is coming up on its fifth season, with the.",
+      "normalizedCaption": "'Renewed For 3 More Seasons By' has been renewed.\n\nFans of FX's Welcome to Wrexham have a slew of new episodes yet to come as the network has renewed the hit docuseries for three more seasons. The series from Rob Mac and Ryan Reynolds is coming up on its fifth season, with the.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "ce054b8d6f428ff6",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/tyler-perry-joe-turners-come-and-gone-broadway-1236785887/",
+      "articleTitle": "Tyler Perry Joins ‘Joe Turner’s Come And Gone’ Broadway Producing Team",
+      "articleDescription": "EXCLUSIVE: Tyler Perry has joined the Broadway producing team of August Wilson’s Joe Turner’s Come and Gone starring Taraji P. Henson and Cedric The Entertainer ahead of the revival’s April 25 opening night. While many such announcements are little more than celebrity name-lendings for publicity purposes, Perry is expected to serve the traditional functions of […]",
+      "articleBody": "EXCLUSIVE: Tyler Perry has joined the Broadway producing team of August Wilson&#8217;s Joe Turner&#8217;s Come and Gone starring Taraji P. Henson and Cedric The Entertainer ahead of the revival&#8217;s April 25 opening night. While many such announcements are little more than celebrity name-lendings for publicity purposes, Perry is expected to serve the traditional functions of [&#8230;]",
+      "publishedAt": "2026-04-10T13:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Tyler Perry Joins 'Joe Turner's Come And Gone' Broadway Producing Team",
+    "normalizedDescription": "EXCLUSIVE: Tyler Perry has joined the Broadway producing team of August Wilson’s Joe Turner’s Come and Gone starring Taraji P. Henson and Cedric The Entertainer ahead of the revival’s April 25 opening night. While many such announcements are little more than celebrity name-lendings for publicity purposes, Perry is expected to serve the traditional functions of […]",
+    "entity": {
+      "canonicalEntity": "Joe Turner",
+      "canonicalEntityType": "movie",
+      "eventType": "casting",
+      "confidence": 0.9,
+      "ambiguityFlags": [
+        "casting_project_anchor_override",
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Joe Turner",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Joe Turner",
+        "Joe Turner casting",
+        "Tyler Perry Joins ‘Joe Turner’s Come And Gone’ Broadway Producing Team"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_HEADLINE_JUNK",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'EXCLUSIVE: Tyler Perry' has added a new cast member.\n\nTyler Perry has joined the Broadway producing team of August Wilson's Joe Turner's Come and Gone starring Taraji P. Henson and Cedric The Entertainer ahead of the revival's April 25 opening night. While many such.",
+      "normalizedCaption": "'EXCLUSIVE: Tyler Perry' has added a new cast member.\n\nTyler Perry has joined the Broadway producing team of August Wilson's Joe Turner's Come and Gone starring Taraji P. Henson and Cedric The Entertainer ahead of the revival's April 25 opening night. While many such.",
+      "failureCodes": [
+        "CAPTION_PACKAGE_LABEL_LEAK",
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_HEADLINE_JUNK",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_PACKAGE_LABEL_LEAK",
+      "CAPTION_MALFORMED_HEADLINE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity.",
+      "Caption retained malformed headline/package wording."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities.",
+      "Strip outlet package labels before deterministic caption generation."
+    ]
+  },
+  {
+    "caseId": "d5e16eac8e5c41e8",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/alex-maccallum-cnn-chief-operating-officer-1236786388/",
+      "articleTitle": "Alex MacCallum Promoted To Chief Operating Officer At CNN",
+      "articleDescription": "Alex MacCallum has been promoted to chief operating officer at CNN, a further indication of the importance that CEO Mark Thompson has placed on digital and streaming. MacCallum has served as executive vice president of digital products and services for the past two years. In a memo to employees on Thursday, Thompson wrote that MacCallum […]",
+      "articleBody": "Alex MacCallum has been promoted to chief operating officer at CNN, a further indication of the importance that CEO Mark Thompson has placed on digital and streaming. MacCallum has served as executive vice president of digital products and services for the past two years. In a memo to employees on Thursday, Thompson wrote that MacCallum [&#8230;]",
+      "publishedAt": "2026-04-10T12:54:19.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Alex MacCallum Promoted To Chief Operating Officer At CNN",
+    "normalizedDescription": "Alex MacCallum has been promoted to chief operating officer at CNN, a further indication of the importance that CEO Mark Thompson has placed on digital and streaming. MacCallum has served as executive vice president of digital products and services for the past two years. In a memo to employees on Thursday, Thompson wrote that MacCallum […]",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "business",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_business_or_platform",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Alex MacCallum Promoted To Chief Operating Officer At CNN business",
+        "Alex MacCallum Promoted To Chief Operating Officer At CNN"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Alex MacCallum Promoted To Chief Operating' has a new update.\n\nAlex MacCallum has been promoted to chief operating officer at CNN, a further indication of the importance that CEO Mark Thompson has placed on digital and streaming. MacCallum has served as executive vice president.",
+      "normalizedCaption": "'Alex MacCallum Promoted To Chief Operating' has a new update.\n\nAlex MacCallum has been promoted to chief operating officer at CNN, a further indication of the importance that CEO Mark Thompson has placed on digital and streaming. MacCallum has served as executive vice president.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "a4de743f022176be",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/cannes-film-festival-the-testaments-international-insider-1236785655/",
+      "articleTitle": "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; ‘The Testaments’",
+      "articleDescription": "Good afternoon Insiders, Max Goldbart here bringing you the latest from Cannes lineup week plus plenty more. Read on. And sign up here. Cannes Unveils 2026 Selection But Keeps Biz Guessing Mystery Missing Competition Film: In one of the most important days of the year for the international film biz, the Cannes Film Festival unveiled […]",
+      "articleBody": "Good afternoon Insiders, Max Goldbart here bringing you the latest from Cannes lineup week plus plenty more. Read on. And sign up here. Cannes Unveils 2026 Selection But Keeps Biz Guessing Mystery Missing Competition Film: In one of the most important days of the year for the international film biz, the Cannes Film Festival unveiled [&#8230;]",
+      "publishedAt": "2026-04-10T12:00:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; 'The Testaments'",
+    "normalizedDescription": "Good afternoon Insiders, Max Goldbart here bringing you the latest from Cannes lineup week plus plenty more. Read on. And sign up here. Cannes Unveils 2026 Selection But Keeps Biz Guessing Mystery Missing Competition Film: In one of the most important days of the year for the international film biz, the Cannes Film Festival unveiled […]",
+    "entity": {
+      "canonicalEntityType": "other",
+      "eventType": "event",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_event_or_festival",
+        "rss_family_no_tmdb_project",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Cannes Keeps Biz Guessing",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; ‘The Testaments’ event",
+        "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; ‘The Testaments’"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'International Insider: Cannes Keeps Biz Guessing' has a new update.\n\nGood afternoon Insiders, Max Goldbart here bringing you the latest from Cannes lineup week plus plenty more. Read on. And sign up here. Cannes Unveils 2026 Selection But Keeps Biz Guessing Mystery Missing.",
+      "normalizedCaption": "'International Insider: Cannes Keeps Biz Guessing' has a new update.\n\nGood afternoon Insiders, Max Goldbart here bringing you the latest from Cannes lineup week plus plenty more. Read on. And sign up here. Cannes Unveils 2026 Selection But Keeps Biz Guessing Mystery Missing.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "18229abda01dc3fb",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/mk2-cannes-rwanda-benimana-1236786375/",
+      "articleTitle": "MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film ‘Ben’Imana’",
+      "articleDescription": "EXCLUSIVE: Mk2 Films has boarded sales on Rwandan filmmaker Marie-Clémentine Dusabejambo’s post-genocide drama Ben’Imana ahead of its world premiere in Cannes Un Certain Regard in May. The film makes history as the first feature by a Rwandan director to be selected for Cannes Official Selection. Set in Rwanda in 2012, Ben’Imana follows Vénéranda, a survivor […]",
+      "articleBody": "EXCLUSIVE: Mk2 Films has boarded sales on Rwandan filmmaker Marie-Clémentine Dusabejambo’s post-genocide drama Ben’Imana ahead of its world premiere in Cannes Un Certain Regard in May. The film makes history as the first feature by a Rwandan director to be selected for Cannes Official Selection. Set in Rwanda in 2012, Ben’Imana follows Vénéranda, a survivor [&#8230;]",
+      "publishedAt": "2026-04-10T12:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film 'Ben'Imana'",
+    "normalizedDescription": "EXCLUSIVE: Mk2 Films has boarded sales on Rwandan filmmaker Marie-Clémentine Dusabejambo’s post-genocide drama Ben’Imana ahead of its world premiere in Cannes Un Certain Regard in May. The film makes history as the first feature by a Rwandan director to be selected for Cannes Official Selection. Set in Rwanda in 2012, Ben’Imana follows Vénéranda, a survivor […]",
+    "entity": {
+      "canonicalEntity": "Boards Ground-Breaking Rwandan Cannes-Selected",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Boards Ground-Breaking Rwandan Cannes-Selected",
+      "secondarySubject": "Cannes Un Certain Regard",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Boards Ground-Breaking Rwandan Cannes-Selected",
+        "Boards Ground-Breaking Rwandan Cannes-Selected casting",
+        "MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film ‘Ben’Imana’"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Boards Ground-Breaking Rwandan Cannes-Selected joins 'MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film'.\n\nMk2 Films has boarded sales on Rwandan filmmaker Marie-Clémentine Dusabejambo's post-genocide drama Ben'Imana ahead of its world premiere in Cannes Un Certain Regard.",
+      "normalizedCaption": "Boards Ground-Breaking Rwandan Cannes-Selected joins 'MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film'.\n\nMk2 Films has boarded sales on Rwandan filmmaker Marie-Clémentine Dusabejambo's post-genocide drama Ben'Imana ahead of its world premiere in Cannes Un Certain Regard.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "aca6997e073b5662",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/the-match-factory-valeska-grisebach-the-dreamed-adventure-1236786379/",
+      "articleTitle": "The Match Factory Boards Valeska Grisebach’s Cannes Title ‘The Dreamed Adventure’ — First Look",
+      "articleDescription": "The Match Factory has acquired international sales rights to Valeska Grisebach’s Cannes competition title The Dreamed Adventure. Check out the first image from the film above. The official logline reads: “In a border town in southeastern Bulgaria, a woman becomes involved in an illegal trade to help out a man with whom she shares a […]",
+      "articleBody": "The Match Factory has acquired international sales rights to Valeska Grisebach’s Cannes competition title The Dreamed Adventure. Check out the first image from the film above. The official logline reads: “In a border town in southeastern Bulgaria, a woman becomes involved in an illegal trade to help out a man with whom she shares a [&#8230;]",
+      "publishedAt": "2026-04-10T11:29:37.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "The Match Factory Boards Valeska Grisebach's Cannes Title 'The Dreamed Adventure' — First Look",
+    "normalizedDescription": "The Match Factory has acquired international sales rights to Valeska Grisebach’s Cannes competition title The Dreamed Adventure. Check out the first image from the film above. The official logline reads: “In a border town in southeastern Bulgaria, a woman becomes involved in an illegal trade to help out a man with whom she shares a […]",
+    "entity": {
+      "canonicalEntity": "The Dreamed Adventure",
+      "canonicalEntityType": "other",
+      "eventType": "event",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_event_or_festival",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Dreamed Adventure",
+      "secondarySubject": "Valeska Grisebach's Cannes Title",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Dreamed Adventure",
+        "The Match Factory Boards",
+        "The Dreamed Adventure event",
+        "The Match Factory Boards Valeska Grisebach’s Cannes Title ‘The Dreamed Adventure’ — First Look"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "The Match Factory Boards joins 'The Match Factory Boards Valeska Grisebach'.\n\nThe Match Factory has acquired international sales rights to Valeska Grisebach's Cannes competition title The Dreamed Adventure. Check out the first image from the film above. The official logline.",
+      "normalizedCaption": "The Match Factory Boards joins 'The Match Factory Boards Valeska Grisebach'.\n\nThe Match Factory has acquired international sales rights to Valeska Grisebach's Cannes competition title The Dreamed Adventure. Check out the first image from the film above. The official logline.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "9cd7b3886248876f",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/bafta-apologizes-n-word-debacle-publishes-review-1236786350/",
+      "articleTitle": "BAFTA Apologizes “Unreservedly” To Black & Disabled Communities For Racial Slur Debacle After Review Finds “Number Of Structural Weaknesses” In Its Awards Planning",
+      "articleDescription": "BAFTA has apologized “unreservedly” to the Black and disabled communities over the N-word debacle, having identified “a number of structural weaknesses” in its “planning, escalation procedures and crisis coordination arrangements” before this year’s awards. At last month’s BAFTA Film Awards, the N-word was yelled unintentionally by Tourette’s campaigner John Davidson at Sinners stars Delroy Lindo and Michael B. […]",
+      "articleBody": "BAFTA has apologized &#8220;unreservedly&#8221; to the Black and disabled communities over the N-word debacle, having identified &#8220;a number of structural weaknesses&#8221; in its &#8220;planning, escalation procedures and crisis coordination arrangements&#8221; before this year&#8217;s awards. At last month’s BAFTA Film Awards, the N-word was yelled unintentionally by Tourette’s campaigner John Davidson at Sinners stars Delroy Lindo and Michael B. [&#8230;]",
+      "publishedAt": "2026-04-10T10:06:48.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "BAFTA Apologizes \"Unreservedly\" To Black & Disabled Communities For Racial Slur Debacle After Review Finds \"Number Of Structural Weaknesses\" In Its Awards Planning",
+    "normalizedDescription": "BAFTA has apologized “unreservedly” to the Black and disabled communities over the N-word debacle, having identified “a number of structural weaknesses” in its “planning, escalation procedures and crisis coordination arrangements” before this year’s awards. At last month’s BAFTA Film Awards, the N-word was yelled unintentionally by Tourette’s campaigner John Davidson at Sinners stars Delroy Lindo and Michael B. […]",
+    "entity": {
+      "canonicalEntity": "Unreservedly",
+      "canonicalEntityType": "other",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_political_or_non_entertainment",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Unreservedly",
+      "secondarySubject": "BAFTA Apologizes",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Unreservedly",
+        "Unreservedly other",
+        "BAFTA Apologizes “Unreservedly” To Black & Disabled Communities For Racial Slur Debacle After Review Finds “Number Of Structural Weaknesses” In Its Awards Planning"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'planning, escalation procedures and crisis coordination arrangements' has a new update.\n\nBAFTA has apologized \"unreservedly\" to the Black and disabled communities over the N-word debacle, having identified \"a number of structural weaknesses\" in its \"planning, escalation.",
+      "normalizedCaption": "'planning, escalation procedures and crisis coordination arrangements' has a new update.\n\nBAFTA has apologized \"unreservedly\" to the Black and disabled communities over the N-word debacle, having identified \"a number of structural weaknesses\" in its \"planning, escalation.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "53249f0f66ff5099",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/judy-greer-the-last-thing-he-told-me-season-2-end-interview-1236786239/",
+      "articleTitle": "‘The Last Thing He Told Me’ Star Judy Greer Breaks Down Season 2 Finale Twists & “Refreshing” Role Of Quinn, Who “Doesn’t Crumble”",
+      "articleDescription": "SPOILER ALERT: This post spoils the finale episode of The Last Thing He Told Me Season 2. Turns out Judy Greer’s Quinn Favreau, née Campano, wasn’t as hands off in her family’s operations as she first led Hannah (Jennifer Garner), Bailey (Angourie Rice), Owen (Nikolaj Coster-Walau) and viewers of The Last Thing He Told Me […]",
+      "articleBody": "SPOILER ALERT: This post spoils the finale episode of The Last Thing He Told Me Season 2. Turns out Judy Greer’s Quinn Favreau, née Campano, wasn’t as hands off in her family’s operations as she first led Hannah (Jennifer Garner), Bailey (Angourie Rice), Owen (Nikolaj Coster-Walau) and viewers of The Last Thing He Told Me [&#8230;]",
+      "publishedAt": "2026-04-10T07:01:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'The Last Thing He Told Me' Star Judy Greer Breaks Down Season 2 Finale Twists & \"Refreshing\" Role Of Quinn, Who \"Doesn't Crumble\"",
+    "normalizedDescription": "SPOILER ALERT: This post spoils the finale episode of The Last Thing He Told Me Season 2. Turns out Judy Greer’s Quinn Favreau, née Campano, wasn’t as hands off in her family’s operations as she first led Hannah (Jennifer Garner), Bailey (Angourie Rice), Owen (Nikolaj Coster-Walau) and viewers of The Last Thing He Told Me […]",
+    "entity": {
+      "canonicalEntity": "The Last Thing He Told Me",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "dual",
+      "primarySubject": "The Last Thing He Told Me",
+      "secondarySubject": "The Last Thing He",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "The Last Thing He Told Me",
+      "assetsFound": {
+        "posters": 1,
+        "logos": 1
+      },
+      "assetsAccepted": 2,
+      "fallbackStageReached": "poster_fallback",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb poster for The Last Thing He Told Me",
+          "source": "tmdb",
+          "subject": "The Last Thing He Told Me",
+          "accepted": true,
+          "rejectionReasons": []
+        },
+        {
+          "role": "secondary",
+          "label": "TMDb logo for The Last Thing He Told Me",
+          "source": "tmdb",
+          "subject": "The Last Thing He Told Me",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "The Last Thing He Told Me",
+        "The Last Thing He Told Me other",
+        "‘The Last Thing He Told Me’ Star Judy Greer Breaks Down Season 2 Finale Twists & “Refreshing” Role Of Quinn, Who “Doesn’t Crumble”"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "The Last Thing He Told Me",
+          "mediaType": "tv",
+          "score": 831.42115,
+          "accepted": true,
+          "rejectionReasons": []
+        },
+        {
+          "title": "The Last Thing He Told Me",
+          "mediaType": "tv",
+          "score": 881.42115,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_COMPANY_LOGO_MISUSED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Star Judy Greer Breaks Down Season' has a new update.\n\nThis post spoils the finale episode of The Last Thing He Told Me Season 2. Turns out Judy Greer's Quinn Favreau, née Campano, wasn't as hands off in her family's operations as she first led Hannah (Jennifer Garner), Bailey.",
+      "normalizedCaption": "'Star Judy Greer Breaks Down Season' has a new update.\n\nThis post spoils the finale episode of The Last Thing He Told Me Season 2. Turns out Judy Greer's Quinn Favreau, née Campano, wasn't as hands off in her family's operations as she first led Hannah (Jennifer Garner), Bailey.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "A logo-like asset was selected for a story that should prefer a project or person image.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Block company logos as primary images when a project or person entity exists.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "cff3fa2d15e278c2",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/finn-wolfhard-malcolm-in-the-middle-fck-yeah-revival-cameo-1236786293/",
+      "articleTitle": "Finn Wolfhard Told ‘Malcolm in the Middle’ Creator “F*ck Yeah” To Revival Cameo: “He’s Such A Big Fan”",
+      "articleDescription": "Fans of Malcolm in the Middle might have to do a double take at a major cameo in the finale of the show’s four-part revival. While discussing Malcolm in the Middle: Life’s Still Unfair, all episodes of which are now available to stream on Hulu, creator Linwood Boomer revealed how “big fan” Finn Wolfhard’s cameo […]",
+      "articleBody": "Fans of Malcolm in the Middle might have to do a double take at a major cameo in the finale of the show&#8217;s four-part revival. While discussing Malcolm in the Middle: Life&#8217;s Still Unfair, all episodes of which are now available to stream on Hulu, creator Linwood Boomer revealed how &#8220;big fan&#8221; Finn Wolfhard&#8217;s cameo [&#8230;]",
+      "publishedAt": "2026-04-10T05:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Finn Wolfhard Told 'Malcolm in the Middle' Creator \"F*ck Yeah\" To Revival Cameo: \"He's Such A Big Fan\"",
+    "normalizedDescription": "Fans of Malcolm in the Middle might have to do a double take at a major cameo in the finale of the show’s four-part revival. While discussing Malcolm in the Middle: Life’s Still Unfair, all episodes of which are now available to stream on Hulu, creator Linwood Boomer revealed how “big fan” Finn Wolfhard’s cameo […]",
+    "entity": {
+      "canonicalEntity": "Finn Wolfhard Told",
+      "canonicalEntityType": "person",
+      "eventType": "reveal",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Finn Wolfhard Told",
+      "secondarySubject": "Middle' Creator",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Finn Wolfhard Told",
+        "Finn Wolfhard Told reveal",
+        "Finn Wolfhard Told ‘Malcolm in the Middle’ Creator “F*ck Yeah” To Revival Cameo: “He’s Such A Big Fan”"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'He’s Such A Big Fan' has revealed a new story update.\n\nFans of Malcolm in the Middle might have to do a double take at a major cameo in the finale of the show's four-part revival. While discussing Malcolm in the Middle: Life's Still Unfair, all episodes of which are now.",
+      "normalizedCaption": "'He’s Such A Big Fan' has revealed a new story update.\n\nFans of Malcolm in the Middle might have to do a double take at a major cameo in the finale of the show's four-part revival. While discussing Malcolm in the Middle: Life's Still Unfair, all episodes of which are now.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "7bfdba3a831afdca",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/malcolm-in-the-middle-creator-ep-wife-lgbtq-kids-1236786214/",
+      "articleTitle": "‘Malcolm in the Middle: Life’s Still Unfair’ Creator & EP Wife On Bryan Cranston’s “Constant Nudity,” Channeling “Parental Pressure” & Representing Their LGBTQ Kids: “Really Important To Us”",
+      "articleDescription": "As Malcolm in the Middle returns after 20 years, creator Linwood Boomer and his wife/executive producer Tracy Katsky had plenty of family moments to look back on for inspiration. While discussing the revival Malcolm in the Middle: Life’s Still Unfair, all four episodes now available to stream on Hulu, the couple told Deadline how they […]",
+      "articleBody": "As Malcolm in the Middle returns after 20 years, creator Linwood Boomer and his wife/executive producer Tracy Katsky had plenty of family moments to look back on for inspiration. While discussing the revival Malcolm in the Middle: Life&#8217;s Still Unfair, all four episodes now available to stream on Hulu, the couple told Deadline how they [&#8230;]",
+      "publishedAt": "2026-04-10T04:30:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "'Malcolm in the Middle: Life's Still Unfair' Creator & EP Wife On Bryan Cranston's \"Constant Nudity,\" Channeling \"Parental Pressure\" & Representing Their LGBTQ Kids: \"Really Important To Us\"",
+    "normalizedDescription": "As Malcolm in the Middle returns after 20 years, creator Linwood Boomer and his wife/executive producer Tracy Katsky had plenty of family moments to look back on for inspiration. While discussing the revival Malcolm in the Middle: Life’s Still Unfair, all four episodes now available to stream on Hulu, the couple told Deadline how they […]",
+    "entity": {
+      "canonicalEntity": "Life's Still Unfair' Creator",
+      "canonicalEntityType": "person",
+      "eventType": "business",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_business_or_platform"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Life's Still Unfair' Creator",
+      "secondarySubject": "EP Wife On Bryan",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Life's Still Unfair' Creator",
+        "Life's Still Unfair' Creator business",
+        "‘Malcolm in the Middle: Life’s Still Unfair’ Creator & EP Wife On Bryan Cranston’s “Constant Nudity,” Channeling “Parental Pressure” & Representing Their LGBTQ Kids: “Really Important To Us”"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Life's Still Unfair' Creator is returning in 'EP Wife On Bryan Cranston'.\n\nAs Malcolm in the Middle returns after 20 years, creator Linwood Boomer and his wife/executive producer Tracy Katsky had plenty of family moments to look back on for inspiration.",
+      "normalizedCaption": "Life's Still Unfair' Creator is returning in 'EP Wife On Bryan Cranston'.\n\nAs Malcolm in the Middle returns after 20 years, creator Linwood Boomer and his wife/executive producer Tracy Katsky had plenty of family moments to look back on for inspiration.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "8a97c16bbc9cc4a5",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/death-of-a-salesman-broadway-review-nathan-lane-1236784788/",
+      "articleTitle": "‘Death Of A Salesman’ Broadway Review: Nathan Lane And Laurie Metcalf Shine In Director Joe Mantello’s Stark, Blistering Revival",
+      "articleDescription": "Don’t waste time asking whether we really need another Death of a Salesman, and certainly don’t even begin to question whether Nathan Lane has the dramatic chops to tackle one of American theater’s great tragedies. Yes we do and of course he does. Director Joe Mantello shines a new light on – or, more accurately, […]",
+      "articleBody": "Don&#8217;t waste time asking whether we really need another Death of a Salesman, and certainly don&#8217;t even begin to question whether Nathan Lane has the dramatic chops to tackle one of American theater&#8217;s great tragedies. Yes we do and of course he does. Director Joe Mantello shines a new light on &#8211; or, more accurately, [&#8230;]",
+      "publishedAt": "2026-04-10T02:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Death Of A Salesman' Broadway Review: Nathan Lane And Laurie Metcalf Shine In Director Joe Mantello's Stark, Blistering Revival",
+    "normalizedDescription": "Don’t waste time asking whether we really need another Death of a Salesman, and certainly don’t even begin to question whether Nathan Lane has the dramatic chops to tackle one of American theater’s great tragedies. Yes we do and of course he does. Director Joe Mantello shines a new light on – or, more accurately, […]",
+    "entity": {
+      "canonicalEntity": "Death Of A Salesman",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Death Of A Salesman",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Death of a Salesman",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Death of a Salesman",
+          "source": "tmdb",
+          "subject": "Death of a Salesman",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Death Of A Salesman",
+        "Death Of A Salesman other",
+        "‘Death Of A Salesman’ Broadway Review: Nathan Lane And Laurie Metcalf Shine In Director Joe Mantello’s Stark, Blistering Revival"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Death of a Salesman",
+          "mediaType": "movie",
+          "score": 685.8618,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Broadway Review: Nathan Lane And Laurie' has a new update.\n\nDon't waste time asking whether we really need another Death of a Salesman, and certainly don't even begin to question whether Nathan Lane has the dramatic chops to tackle one of American theater's great tragedies. Yes.",
+      "normalizedCaption": "'Broadway Review: Nathan Lane And Laurie' has a new update.\n\nDon't waste time asking whether we really need another Death of a Salesman, and certainly don't even begin to question whether Nathan Lane has the dramatic chops to tackle one of American theater's great tragedies. Yes.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "31190c5fd08d4d63",
+    "input": {
+      "sourceName": "Deadline",
+      "feedUrl": "https://deadline.com/feed/",
+      "articleUrl": "https://deadline.com/2026/04/malcolm-in-the-middle-bryan-cranston-jane-kaczmarek-good-sex-1236786200/",
+      "articleTitle": "‘Malcolm in the Middle’s Bryan Cranston & Jane Kaczmarek On What Keeps Hal & Lois Together: “They Have Good Sex”",
+      "articleDescription": "Despite five unruly boys (and counting) making their lives hell in Malcolm in the Middle, Hal and Lois are still together 20 years after the show’s finale. While discussing the revival Malcolm in the Middle: Life’s Still Unfair, all four episodes of which are available to stream Friday on Hulu, Bryan Cranston and Jane Kaczmarek […]",
+      "articleBody": "Despite five unruly boys (and counting) making their lives hell in Malcolm in the Middle, Hal and Lois are still together 20 years after the show&#8217;s finale. While discussing the revival Malcolm in the Middle: Life&#8217;s Still Unfair, all four episodes of which are available to stream Friday on Hulu, Bryan Cranston and Jane Kaczmarek [&#8230;]",
+      "publishedAt": "2026-04-10T01:45:09.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Malcolm in the Middle's Bryan Cranston & Jane Kaczmarek On What Keeps Hal & Lois Together: \"They Have Good Sex\"",
+    "normalizedDescription": "Despite five unruly boys (and counting) making their lives hell in Malcolm in the Middle, Hal and Lois are still together 20 years after the show’s finale. While discussing the revival Malcolm in the Middle: Life’s Still Unfair, all four episodes of which are available to stream Friday on Hulu, Bryan Cranston and Jane Kaczmarek […]",
+    "entity": {
+      "canonicalEntity": "They Have Good Sex",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "They Have Good Sex",
+      "secondarySubject": "Middle's Bryan Cranston",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "They Have Good Sex",
+        "They Have Good Sex other",
+        "‘Malcolm in the Middle’s Bryan Cranston & Jane Kaczmarek On What Keeps Hal & Lois Together: “They Have Good Sex”"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Jane Kaczmarek On What Keeps Hal' has a new update.\n\nDespite five unruly boys (and counting) making their lives hell in Malcolm in the Middle, Hal and Lois are still together 20 years after the show's finale. While discussing the revival Malcolm in the Middle: Life's Still.",
+      "normalizedCaption": "'Jane Kaczmarek On What Keeps Hal' has a new update.\n\nDespite five unruly boys (and counting) making their lives hell in Malcolm in the Middle, Hal and Lois are still together 20 years after the show's finale. While discussing the revival Malcolm in the Middle: Life's Still.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "9f06698041983821",
+    "input": {
+      "sourceName": "THR",
+      "feedUrl": "https://www.hollywoodreporter.com/feed/",
+      "articleUrl": "https://www.hollywoodreporter.com/movies/movie-news/nyu-film-school-runway-ai-tools-spike-lee-1236560902/",
+      "articleTitle": "Some NYU Film Students Will Now Be Given Tools to Make Movies With AI (Exclusive)",
+      "articleDescription": "Several Tisch programs, including the Hypercinema Lab, have made a deal with Runway AI.",
+      "articleBody": "Several Tisch programs, including the Hypercinema Lab, have made a deal with Runway AI.",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "Some NYU Film Students Will Now Be Given Tools to Make Movies With AI (Exclusive)",
+    "normalizedDescription": "Several Tisch programs, including the Hypercinema Lab, have made a deal with Runway AI.",
+    "entity": {
+      "canonicalEntity": "Some NYU Film Students",
+      "canonicalEntityType": "other",
+      "eventType": "shopping",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_shopping_or_product",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Some NYU Film Students",
+      "secondarySubject": "Will Now Be Given",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Some NYU Film Students",
+        "Some NYU Film Students shopping",
+        "Some NYU Film Students Will Now Be Given Tools to Make Movies With AI (Exclusive)"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Some NYU Film Students Will Now' has a new update.\n\nSeveral Tisch programs, including the Hypercinema Lab, have made a deal with Runway AI.",
+      "normalizedCaption": "'Some NYU Film Students Will Now' has a new update.\n\nSeveral Tisch programs, including the Hypercinema Lab, have made a deal with Runway AI.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "23083a8fa7347767",
+    "input": {
+      "sourceName": "THR",
+      "feedUrl": "https://www.hollywoodreporter.com/feed/",
+      "articleUrl": "https://www.hollywoodreporter.com/tv/tv-news/welcome-to-wrexham-renewed-through-season-8-fx-1236560957/",
+      "articleTitle": "‘Welcome to Wrexham’ Lands Big Three-Season Renewal at FX",
+      "articleDescription": "The pickup will take the soccer docuseries from Rob Mac and Ryan Reynolds through its eighth season.",
+      "articleBody": "The pickup will take the soccer docuseries from Rob Mac and Ryan Reynolds through its eighth season.",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Welcome to Wrexham' Lands Big Three-Season Renewal at FX",
+    "normalizedDescription": "The pickup will take the soccer docuseries from Rob Mac and Ryan Reynolds through its eighth season.",
+    "entity": {
+      "canonicalEntity": "Wrexham' Lands Big Three-Season",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Wrexham' Lands Big Three-Season",
+      "secondarySubject": "Rob Mac",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Rob Mac cropped to 4:5 portrait",
+      "assetsFound": {
+        "profiles": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb person profile for Rob Mac cropped to 4:5 portrait",
+          "source": "tmdb",
+          "subject": "Rob Mac cropped to 4:5 portrait",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Wrexham' Lands Big Three-Season",
+        "Wrexham' Lands Big Three-Season other",
+        "‘Welcome to Wrexham’ Lands Big Three-Season Renewal at FX"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Rob Mac cropped to 4:5 portrait",
+          "score": 343.8029,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Welcome' has a new update.\n\nThe pickup will take the soccer docuseries from Rob Mac and Ryan Reynolds through its eighth season.",
+      "normalizedCaption": "'Welcome' has a new update.\n\nThe pickup will take the soccer docuseries from Rob Mac and Ryan Reynolds through its eighth season.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "956d9e285eff1816",
+    "input": {
+      "sourceName": "THR",
+      "feedUrl": "https://www.hollywoodreporter.com/feed/",
+      "articleUrl": "https://www.hollywoodreporter.com/movies/movie-news/zendaya-tom-holland-harry-potter-dune-1236560114/",
+      "articleTitle": "Why Zendaya and Tom Holland Won This Week, But ‘Harry Potter’ and ‘Dune’ Lost",
+      "articleDescription": "This week's rundown of Hollywood's biggest winners and losers, from a beloved power couple to the \"Black Snape\" uproar to Warner. Bros' fan-frustrating flex.",
+      "articleBody": "This week's rundown of Hollywood's biggest winners and losers, from a beloved power couple to the \"Black Snape\" uproar to Warner. Bros' fan-frustrating flex. ",
+      "publishedAt": "2026-04-10T13:54:41.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Why Zendaya and Tom Holland Won This Week, But 'Harry Potter' and 'Dune' Lost",
+    "normalizedDescription": "This week's rundown of Hollywood's biggest winners and losers, from a beloved power couple to the \"Black Snape\" uproar to Warner. Bros' fan-frustrating flex.",
+    "entity": {
+      "canonicalEntity": "Black Snape",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Black Snape",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Black Snape",
+        "Black Snape other",
+        "Why Zendaya and Tom Holland Won This Week, But ‘Harry Potter’ and ‘Dune’ Lost"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Tom Holland Won This Week' has a new update.\n\nThis week's rundown of Hollywood's biggest winners and losers, from a beloved power couple to the \"Black Snape\" uproar to Warner. Bros' fan-frustrating flex.",
+      "normalizedCaption": "'Tom Holland Won This Week' has a new update.\n\nThis week's rundown of Hollywood's biggest winners and losers, from a beloved power couple to the \"Black Snape\" uproar to Warner. Bros' fan-frustrating flex.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  }
+]

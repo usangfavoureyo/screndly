@@ -1764,9 +1764,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           setSelectedEditorial(editorial);
                           setIsEditorialActionsOpen(true);
                         }}
-                        className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white p-0 text-gray-900 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/70 p-0 text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition-colors hover:bg-black/85"
                       >
-                        <MoreVertical className="h-4 w-4" />
+                        <MoreVertical className="h-3.5 w-3.5" />
                       </button>
                     </div>
 

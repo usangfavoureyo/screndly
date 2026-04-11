@@ -1,0 +1,442 @@
+{
+  "generatedAt": "2026-04-10T19:32:58.683Z",
+  "totalArticles": 17,
+  "publishPasses": 0,
+  "publishBlocks": 17,
+  "topFailureCodes": [
+    {
+      "code": "IMAGE_NOT_FOUND",
+      "count": 17
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+      "count": 17
+    },
+    {
+      "code": "PROJECT_FALLBACK_EMPTY",
+      "count": 17
+    },
+    {
+      "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "count": 7
+    },
+    {
+      "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+      "count": 2
+    },
+    {
+      "code": "CAPTION_BROKEN_QUOTE",
+      "count": 2
+    },
+    {
+      "code": "CAPTION_HEADLINE_JUNK",
+      "count": 2
+    },
+    {
+      "code": "CAPTION_MALFORMED_HEADLINE",
+      "count": 2
+    },
+    {
+      "code": "CAPTION_PACKAGE_LABEL_LEAK",
+      "count": 2
+    },
+    {
+      "code": "CAPTION_CONTAINS_HTML_ENTITY",
+      "count": 1
+    },
+    {
+      "code": "CAPTION_HTML_ENTITY_LEAK",
+      "count": 1
+    }
+  ],
+  "failureCodesBySource": {
+    "Variety": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      }
+    ],
+    "Deadline": [
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "THR": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "ComicBook": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 8
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 8
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 8
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      }
+    ],
+    "TheWrap": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_CONTAINS_HTML_ENTITY",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HTML_ENTITY_LEAK",
+        "count": 1
+      }
+    ],
+    "IndieWire": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "SlashFilm": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ]
+  },
+  "failureCodesByEventType": {
+    "other": [
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      }
+    ],
+    "shopping": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 14
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 14
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 14
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_CONTAINS_HTML_ENTITY",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HTML_ENTITY_LEAK",
+        "count": 1
+      }
+    ],
+    "casting": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ]
+  },
+  "scopeCounts": [
+    {
+      "scope": "not_screenrender_core",
+      "count": 17
+    }
+  ],
+  "failureCodesByScope": {
+    "not_screenrender_core": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 17
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 17
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 17
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_BROKEN_QUOTE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_CONTAINS_HTML_ENTITY",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HTML_ENTITY_LEAK",
+        "count": 1
+      }
+    ]
+  },
+  "repeatedBadTmdbMatches": [],
+  "duplicateGroups": [],
+  "recommendedPatches": [
+    {
+      "recommendation": "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "count": 17,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND_FALSE_BLOCK"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "67fe756b77514c1f",
+        "e182e1868a119c38",
+        "9cd7b3886248876f",
+        "9f06698041983821",
+        "17c4019e1a6d5dbf"
+      ]
+    },
+    {
+      "recommendation": "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "count": 17,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "67fe756b77514c1f",
+        "e182e1868a119c38",
+        "9cd7b3886248876f",
+        "9f06698041983821",
+        "17c4019e1a6d5dbf"
+      ]
+    },
+    {
+      "recommendation": "Validate caption headline entity against canonical media title and allowed entities.",
+      "count": 7,
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "67fe756b77514c1f",
+        "e182e1868a119c38",
+        "9cd7b3886248876f",
+        "926d7a91f5e65d23",
+        "53f7ee3996a6358e"
+      ]
+    },
+    {
+      "recommendation": "Reject broken quote fragments before captions can pass final validation.",
+      "count": 2,
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "9cd7b3886248876f",
+        "cc0c11026c13e169"
+      ]
+    },
+    {
+      "recommendation": "Strip outlet package labels before deterministic caption generation.",
+      "count": 2,
+      "failureCodes": [
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_PACKAGE_LABEL_LEAK"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "9e3250ede6969d2e",
+        "5d5323a9bcb7dec4"
+      ]
+    },
+    {
+      "recommendation": "Normalize HTML entities before quote validation and final caption validation.",
+      "count": 1,
+      "failureCodes": [
+        "CAPTION_HTML_ENTITY_LEAK"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "53f7ee3996a6358e"
+      ]
+    }
+  ]
+}

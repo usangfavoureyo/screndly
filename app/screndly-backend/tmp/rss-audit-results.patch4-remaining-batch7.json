@@ -1,0 +1,666 @@
+[
+  {
+    "caseId": "5ff204e00eac9a8c",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2144406/hacks-season-5-premiere-recap-deborah-egot-madison-square-garden/",
+      "articleTitle": "Hacks Season 5 Premiere: A Gutsy Ploy Sets The Stage For Deborah's Final Chapter (Grade It!)",
+      "articleDescription": "Hacks' Deborah Vance is reaching for the stars - so what wild idea is the comedian pursuing next? Read our Season 5 premiere recap for details.",
+      "articleBody": "Hacks&#39; Deborah Vance is reaching for the stars - so what wild idea is the comedian pursuing next? Read our Season 5 premiere recap for details. <p><img src=\"https://www.tvline.com/img/gallery/hacks-season-5-premiere-pollcap/intro-1775757970.jpg\" /></p>",
+      "publishedAt": "2026-04-10T01:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Hacks Season 5 Premiere: A Gutsy Ploy Sets The Stage For Deborah's Final Chapter (Grade It!)",
+    "normalizedDescription": "Hacks' Deborah Vance is reaching for the stars - so what wild idea is the comedian pursuing next? Read our Season 5 premiere recap for details.",
+    "entity": {
+      "canonicalEntity": "Hacks Season",
+      "canonicalEntityType": "person",
+      "eventType": "release_date",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Hacks Season",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Hacks Season",
+        "Hacks Season release_date",
+        "Hacks Season 5 Premiere: A Gutsy Ploy Sets The Stage For Deborah's Final Chapter (Grade It!)"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Ploy Sets The Stage For Deborah's' has a new release date.\n\nHacks' Deborah Vance is reaching for the stars - so what wild idea is the comedian pursuing next? Read our Season 5 premiere recap for details.",
+      "normalizedCaption": "'Ploy Sets The Stage For Deborah's' has a new release date.\n\nHacks' Deborah Vance is reaching for the stars - so what wild idea is the comedian pursuing next? Read our Season 5 premiere recap for details.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "fcacd670bb3808c4",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2138497/georgie-and-mandys-first-marriage-season-2-episode-15-recap-meemaw-returns/",
+      "articleTitle": "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She's Not The Only Young Sheldon Vet Back",
+      "articleDescription": "Annie Potts made her long-awaited return to Georgie & Mandy, marking her first appearance in nearly a year due to her commitment to Fox's Best Medicine.",
+      "articleBody": "Annie Potts made her long-awaited return to Georgie & Mandy, marking her first appearance in nearly a year due to her commitment to Fox&#39;s Best Medicine.<p><img src=\"https://www.tvline.com/img/gallery/annie-potts-meemaw-is-scheming-again-upon-her-return-to-georgie-mandy-and-shes-not-the-only-young-sheldon-vet-back/intro-1775085221.jpg\" /></p>",
+      "publishedAt": "2026-04-10T00:31:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She's Not The Only Young Sheldon Vet Back",
+    "normalizedDescription": "Annie Potts made her long-awaited return to Georgie & Mandy, marking her first appearance in nearly a year due to her commitment to Fox's Best Medicine.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "return",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Scheming Again Upon Her",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She's Not The Only Young Sheldon Vet Back return",
+        "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She's Not The Only Young Sheldon Vet Back"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Scheming Again Upon Her is returning in 'Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She'.\n\nAnnie Potts made her long-awaited return to Georgie & Mandy, marking her first appearance in nearly a year due to her commitment to Fox's Best Medicine.",
+      "normalizedCaption": "Scheming Again Upon Her is returning in 'Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy — And She'.\n\nAnnie Potts made her long-awaited return to Georgie & Mandy, marking her first appearance in nearly a year due to her commitment to Fox's Best Medicine.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "53158c6e7c9a1060",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2144471/eternally-yours-cbs-series-order-vampire-comedy/",
+      "articleTitle": "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
+      "articleDescription": "CBS has cemented its primetime lineup for next season, handing a series order to the vampire comedy Eternally Yours - get the details.",
+      "articleBody": "CBS has cemented its primetime lineup for next season, handing a series order to the vampire comedy Eternally Yours - get the details.<p><img src=\"https://www.tvline.com/img/gallery/cbs-orders-vampire-comedy-eternally-yours-to-series-scraps-kate-walshs-the-tillbrooks/intro-1775776791.jpg\" /></p>",
+      "publishedAt": "2026-04-09T23:34:04.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
+    "normalizedDescription": "CBS has cemented its primetime lineup for next season, handing a series order to the vampire comedy Eternally Yours - get the details.",
+    "entity": {
+      "canonicalEntity": "Eternally Yours To Series",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Eternally Yours To Series",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Eternally Yours To Series",
+        "Eternally Yours To Series other",
+        "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Scraps Kate Walsh's The Tillbrooks' has a new update.\n\nCBS has cemented its primetime lineup for next season, handing a series order to the vampire comedy Eternally Yours - get the details.",
+      "normalizedCaption": "'Scraps Kate Walsh's The Tillbrooks' has a new update.\n\nCBS has cemented its primetime lineup for next season, handing a series order to the vampire comedy Eternally Yours - get the details.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "9af0d43e357a958c",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2144451/streaming-tv-ratings-one-piece-netflix-season-2-virgin-river/",
+      "articleTitle": "Ratings: One Piece Hits New High In Season 2, Virgin River Returns Strong",
+      "articleDescription": "Netflix's One Piece is setting sail for the top of the streaming ratings - see what else made the charts for the week of March 9-15.",
+      "articleBody": "Netflix&#39;s One Piece is setting sail for the top of the streaming ratings - see what else made the charts for the week of March 9-15.<p><img src=\"https://www.tvline.com/img/gallery/ratings-one-piece-hits-new-high-in-season-2-virgin-river-returns-strong/intro-1775774453.jpg\" /></p>",
+      "publishedAt": "2026-04-09T22:56:42.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Ratings: One Piece Hits New High In Season 2, Virgin River Returns Strong",
+    "normalizedDescription": "Netflix's One Piece is setting sail for the top of the streaming ratings - see what else made the charts for the week of March 9-15.",
+    "entity": {
+      "canonicalEntity": "One Piece Hits N",
+      "canonicalEntityType": "person",
+      "eventType": "return",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "One Piece Hits N",
+      "secondarySubject": "High In Season",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "One Piece Hits N",
+        "One Piece Hits N return",
+        "Ratings: One Piece Hits New High In Season 2, Virgin River Returns Strong"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "One Piece Hits N is returning in 'Ratings: One Piece Hits New High'.\n\nNetflix's One Piece is setting sail for the top of the streaming ratings - see what else made the charts for the week of March 9-15.",
+      "normalizedCaption": "One Piece Hits N is returning in 'Ratings: One Piece Hits New High'.\n\nNetflix's One Piece is setting sail for the top of the streaming ratings - see what else made the charts for the week of March 9-15.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "Selected image context did not match the canonical article entity.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Require selected images to be grounded in canonical allowed entities.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "ac869ce87a057ae9",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2142186/halle-berry-star-forgotten-whos-the-boss-spinoff-living-dolls/",
+      "articleTitle": "Halle Berry Starred In A Forgotten Who's The Boss? Spin-Off For ABC",
+      "articleDescription": "Several years before she became a movie star, Halle Berry was a supporting cast member in an ill-fated Leah Remini vehicle about teenage models.",
+      "articleBody": "Several years before she became a movie star, Halle Berry was a supporting cast member in an ill-fated Leah Remini vehicle about teenage models.<p><img src=\"https://www.tvline.com/img/gallery/halle-berry-star-forgotten-whos-the-boss-spinoff-living-dolls/intro-1775754178.jpg\" /></p>",
+      "publishedAt": "2026-04-09T21:12:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Halle Berry Starred In A Forgotten Who's The Boss? Spin-Off For ABC",
+    "normalizedDescription": "Several years before she became a movie star, Halle Berry was a supporting cast member in an ill-fated Leah Remini vehicle about teenage models.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Forgotten Who's The Boss",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Halle Berry Starred In A Forgotten Who's The Boss? Spin-Off For ABC casting",
+        "Halle Berry Starred In A Forgotten Who's The Boss? Spin-Off For ABC"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Forgotten Who's The Boss joins 'Halle Berry Starred In A Forgotten'.\n\nSeveral years before she became a movie star, Halle Berry was a supporting cast member in an ill-fated Leah Remini vehicle about teenage models.",
+      "normalizedCaption": "Forgotten Who's The Boss joins 'Halle Berry Starred In A Forgotten'.\n\nSeveral years before she became a movie star, Halle Berry was a supporting cast member in an ill-fated Leah Remini vehicle about teenage models.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "f37f76d5ccd7ba9c",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2144299/cbs-2026-season-finale-release-dates-spoilers/",
+      "articleTitle": "CBS Reveals Finale Spoilers For 19 Shows — Plus, Jensen Ackles' Tracker Return Confirmed",
+      "articleDescription": "The end of CBS' 2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles' return to Tracker - get scoop on 19 finales.",
+      "articleBody": "The end of CBS&#39; 2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles&#39; return to Tracker - get scoop on 19 finales.<p><img src=\"https://www.tvline.com/img/gallery/cbs-reveals-finale-spoilers-for-19-shows-plus-jensen-ackles-tracker-return-confirmed/intro-1775761646.jpg\" /></p>",
+      "publishedAt": "2026-04-09T19:16:04.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "CBS Reveals Finale Spoilers For 19 Shows — Plus, Jensen Ackles' Tracker Return Confirmed",
+    "normalizedDescription": "The end of CBS' 2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles' return to Tracker - get scoop on 19 finales.",
+    "entity": {
+      "canonicalEntity": "Jensen Ackles' Tracker Return",
+      "canonicalEntityType": "person",
+      "eventType": "return",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Jensen Ackles' Tracker Return",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Jensen Ackles' Tracker Return",
+        "Jensen Ackles' Tracker Return return",
+        "CBS Reveals Finale Spoilers For 19 Shows — Plus, Jensen Ackles' Tracker Return Confirmed"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Jensen Ackles' Tracker Return is returning in '2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles'.\n\nThe end of CBS' 2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles' return to.",
+      "normalizedCaption": "Jensen Ackles' Tracker Return is returning in '2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles'.\n\nThe end of CBS' 2025-26 TV season will begin on Thursday, April 23 and wrap on Sunday, May 24, with Jensen Ackles' return to.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "acedcc0b0384cf74",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2143272/sitcoms-without-bad-season/",
+      "articleTitle": "10 Sitcoms Without A Single Bad Season",
+      "articleDescription": "A select group of sitcoms has avoided the usual drop-off in quality, earning lasting praise for staying sharp, consistent, and memorable from beginning to end.",
+      "articleBody": "A select group of sitcoms has avoided the usual drop-off in quality, earning lasting praise for staying sharp, consistent, and memorable from beginning to end.<p><img src=\"https://www.tvline.com/img/gallery/10-sitcoms-without-a-single-bad-season/intro-1775586927.jpg\" /></p>",
+      "publishedAt": "2026-04-09T19:02:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "10 Sitcoms Without A Single Bad Season",
+    "normalizedDescription": "A select group of sitcoms has avoided the usual drop-off in quality, earning lasting praise for staying sharp, consistent, and memorable from beginning to end.",
+    "entity": {
+      "canonicalEntity": "Sitcoms Without",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Sitcoms Without",
+      "secondarySubject": "Single Bad Season",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Sitcoms Without",
+        "Sitcoms Without other",
+        "10 Sitcoms Without A Single Bad Season"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'10 Sitcoms Without A Single Bad' has a new update.\n\nA select group of sitcoms has avoided the usual drop-off in quality, earning lasting praise for staying sharp, consistent, and memorable from beginning to end.",
+      "normalizedCaption": "'10 Sitcoms Without A Single Bad' has a new update.\n\nA select group of sitcoms has avoided the usual drop-off in quality, earning lasting praise for staying sharp, consistent, and memorable from beginning to end.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "fb6aec026117e166",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144349/the-boys-cast-creators-homelander-memes-response/",
+      "articleTitle": "Yes, The Boys Cast And Creators Know All About Your Homelander Memes",
+      "articleDescription": "The Boys' Antony Starr and Eric Kripke are very aware of the Homelander memes you've been making, and tell us that attention is a 'wonderful thing.'",
+      "articleBody": "The Boys&#39; Antony Starr and Eric Kripke are very aware of the Homelander memes you&#39;ve been making, and tell us that attention is a &#39;wonderful thing.&#39;<p><img src=\"https://www.slashfilm.com/img/gallery/yes-the-boys-cast-and-creators-know-all-about-your-homelander-memes/intro-1775765371.jpg\" /></p>",
+      "publishedAt": "2026-04-10T10:45:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Yes, The Boys Cast And Creators Know All About Your Homelander Memes",
+    "normalizedDescription": "The Boys' Antony Starr and Eric Kripke are very aware of the Homelander memes you've been making, and tell us that attention is a 'wonderful thing.'",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Creators Know All About",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Yes, The Boys Cast And Creators Know All About Your Homelander Memes casting",
+        "Yes, The Boys Cast And Creators Know All About Your Homelander Memes"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Creators Know All About joins 'Antony Starr and Eric Kripke are very aware of the Homelander memes you'.\n\nThe Boys' Antony Starr and Eric Kripke are very aware of the Homelander memes you've been making, and tell us that attention is a 'wonderful thing.'",
+      "normalizedCaption": "Creators Know All About joins 'Antony Starr and Eric Kripke are very aware of the Homelander memes you'.\n\nThe Boys' Antony Starr and Eric Kripke are very aware of the Homelander memes you've been making, and tell us that attention is a 'wonderful thing.'",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "14219ecfe2171af2",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144278/thrash-2026-netflix-movie-review/",
+      "articleTitle": "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be",
+      "articleDescription": "Thrash is a movie where sharks swim through flooded houses and streets biting people's heads off, and that's really all we needed. Here's our review.",
+      "articleBody": "Thrash is a movie where sharks swim through flooded houses and streets biting people&#39;s heads off, and that&#39;s really all we needed. Here&#39;s our review. <p><img src=\"https://www.slashfilm.com/img/gallery/thrash-review-netflixs-new-shark-disaster-flick-is-exactly-what-you-want-it-to-be/intro-1775759989.jpg\" /></p>",
+      "publishedAt": "2026-04-10T07:01:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be",
+    "normalizedDescription": "Thrash is a movie where sharks swim through flooded houses and streets biting people's heads off, and that's really all we needed. Here's our review.",
+    "entity": {
+      "canonicalEntity": "Thrash Revi",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Thrash Revi",
+      "secondarySubject": "Flick Is Exactly What",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Thrash Revi",
+        "Thrash Revi other",
+        "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Flick Is Exactly What You Want' has a new update.\n\nThrash is a movie where sharks swim through flooded houses and streets biting people's heads off, and that's really all we needed. Here's our review.",
+      "normalizedCaption": "'Flick Is Exactly What You Want' has a new update.\n\nThrash is a movie where sharks swim through flooded houses and streets biting people's heads off, and that's really all we needed. Here's our review.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "ebcf54edcface499",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144418/stormtroopers-disney-store-star-wars-day-2026-merchandise/",
+      "articleTitle": "Stormtroopers Take The Spotlight In Disney Store's New Star Wars Day 2026 Merchandise [Exclusive]",
+      "articleDescription": "Disney Store has another wave of Star Wars Day 2026 merchandise, this time focusing on the various stormtroopers from across the franchise's canon.",
+      "articleBody": "Disney Store has another wave of Star Wars Day 2026 merchandise, this time focusing on the various stormtroopers from across the franchise&#39;s canon.<p><img src=\"https://www.slashfilm.com/img/gallery/stormtroopers-disney-store-star-wars-day-2026-merchandise/intro-1775771650.jpg\" /></p>",
+      "publishedAt": "2026-04-10T07:00:00.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "Stormtroopers Take The Spotlight In Disney Store's New Star Wars Day 2026 Merchandise [Exclusive]",
+    "normalizedDescription": "Disney Store has another wave of Star Wars Day 2026 merchandise, this time focusing on the various stormtroopers from across the franchise's canon.",
+    "entity": {
+      "canonicalEntity": "Stormtroopers Take The Spotlight",
+      "canonicalEntityType": "other",
+      "eventType": "shopping",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_shopping_or_product",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Stormtroopers Take The Spotlight",
+      "secondarySubject": "Star Wars Day",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Stormtroopers Take The Spotlight",
+        "Stormtroopers Take The Spotlight shopping",
+        "Stormtroopers Take The Spotlight In Disney Store's New Star Wars Day 2026 Merchandise [Exclusive]"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Store's New Star Wars Day 2026' has a new update.\n\nDisney Store has another wave of Star Wars Day 2026 merchandise, this time focusing on the various stormtroopers from across the franchise's canon.",
+      "normalizedCaption": "'Store's New Star Wars Day 2026' has a new update.\n\nDisney Store has another wave of Star Wars Day 2026 merchandise, this time focusing on the various stormtroopers from across the franchise's canon.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  }
+]

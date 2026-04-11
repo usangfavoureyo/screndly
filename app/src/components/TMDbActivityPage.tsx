@@ -37,6 +37,7 @@ import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useTMDbAutoSync } from '../hooks/useTMDbAutoSync';
 import { useTMDbModalStore } from '../stores/tmdbModalStore';
 import { BackIconButton } from './BackIconButton';
+import { TMDbLogoSurface } from './tmdb/TMDbLogoSurface';
 import {
   getTMDbImageBadgeLabel,
   resolveTMDbPreviewAsset,
@@ -804,13 +805,12 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                       aria-label={`Expand ${getTMDbImageBadgeLabel(item.imageType, item.imageTypes)} for ${item.title}`}
                     >
                       {useSquareLogoThumbnail ? (
-                        <div className="flex h-full w-full items-center justify-center bg-[#050505] p-2">
-                          <img
-                            src={cardPreviewImageUrl}
-                            alt={`${item.title} logo`}
-                            className="h-full w-full object-contain"
-                          />
-                        </div>
+                        <TMDbLogoSurface
+                          src={cardPreviewImageUrl}
+                          alt={`${item.title} logo`}
+                          className="border-0"
+                          paddingClassName="p-2"
+                        />
                       ) : (
                         <img
                           src={cardPreviewImageUrl}
@@ -926,28 +926,30 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
 
                 {/* Scheduled Date & Actions - Full Width Bar */}
                 {item.status === 'scheduled' && item.scheduledTime && (
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-[#333333] flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-600 dark:text-[#9CA3AF]">
-                        Scheduled: <span className="text-gray-900 dark:text-white">
-                          {new Date(item.scheduledTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                          {' at '}
-                          {new Date(item.scheduledTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  <div className="mt-4 border-t border-gray-200 pt-4 dark:border-[#333333]">
+                    <div className="flex items-end justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm text-gray-500 dark:text-[#8A8F98]">
+                          Scheduled:{' '}
+                          <span className="text-gray-900 dark:text-white">
+                            {new Date(item.scheduledTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            {' at '}
+                            {new Date(item.scheduledTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
                         </span>
-                      </span>
-                    </div>
+                      </div>
                     {!selection.selectionMode && (
                       <>
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 w-8 p-0 border-gray-200 dark:border-[#333333] hover:bg-gray-50 dark:bg-[#000000] dark:hover:bg-[#111111]"
+                          className="h-11 w-11 rounded-full border border-gray-200 bg-white p-0 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:hover:bg-[#111111]"
                           onClick={() => {
                             haptics.light();
                             setOpenMenuItemId((current) => (current === item.id ? null : item.id));
                           }}
                         >
-                          <MoreVertical className="w-4 h-4 text-gray-600 dark:text-[#9CA3AF]" />
+                          <MoreVertical className="h-[18px] w-[18px] text-gray-600 dark:text-[#9CA3AF]" />
                         </Button>
 
                         {/* Options BottomSheet */}
@@ -1038,6 +1040,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                         </BottomSheet>
                       </>
                     )}
+                    </div>
                   </div>
                 )}
                 </SwipeableActivityCard>

@@ -147,6 +147,9 @@ export interface RSSActivityItem {
   platforms: string[];
   platformPostIds?: Record<string, string>;
   platformResults?: PublishResult[];
+  duplicateEventKey?: string;
+  winningSource?: string;
+  suppressedSources?: string[];
   error?: string;
 }
 
@@ -191,6 +194,9 @@ interface RSSActivityMetadata {
   platforms: string[];
   platformPostIds?: Record<string, string>;
   platformResults?: PublishResult[];
+  duplicateEventKey?: string;
+  winningSource?: string;
+  suppressedSources?: string[];
   errorMessage?: string;
 }
 
@@ -240,6 +246,15 @@ const RSS_TOPIC_DEDUPE_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_SUBJECT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const QUIET_HOURS_BLOCK_REASON = 'Publishing is paused by quiet hours.';
 const RSS_FILTER_IMAGE_SOURCE_SETTINGS_KEY = '__imageSourceSettings';
+const RSS_DUPLICATE_SOURCE_PRIORITY = [
+  'variety',
+  'deadline',
+  'hollywood reporter',
+  'thr',
+  'tvline',
+  'slashfilm',
+  'comicbook',
+] as const;
 const RSS_SPECULATION_HEADLINE_PATTERNS: Array<{ pattern: RegExp; phrase: string; score: number; reasonCode: string }> = [
   { pattern: /\bsounds?\s+more\s+likely\b/i, phrase: 'sounds more likely', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
   { pattern: /\bmay\s+(?:return|appear|feature|happen|land|join)\b/i, phrase: 'may return', score: 2, reasonCode: 'ARTICLE_SPECULATION_HIGH' },
@@ -671,14 +686,44 @@ function stripDanglingLinkArtifacts(value?: string): string {
     .replace(/\[\s*[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:\/[^\s\]]*)?\s*\]/g, ' ');
 }
 
+function repairRSSMojibake(value?: string): string {
+  let repaired = String(value || '');
+  if (!repaired) {
+    return repaired;
+  }
+
+  const replacements: Array<[RegExp, string]> = [
+    [/â€˜|â€›|â€²/g, "'"],
+    [/â€™|â€²|â€´/g, "'"],
+    [/â€œ|â€/g, '"'],
+    [/â€/g, '"'],
+    [/â€“/g, '-'],
+    [/â€”/g, '-'],
+    [/â€¦/g, '...'],
+    [/Â /g, ' '],
+    [/Â/g, ''],
+    [/Ã©/g, 'e'],
+    [/Ã¨/g, 'e'],
+    [/Ã¡/g, 'a'],
+    [/Ã³/g, 'o'],
+    [/Ã±/g, 'n'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    repaired = repaired.replace(pattern, replacement);
+  }
+
+  return repaired;
+}
+
 function sanitizeRSSPlainText(value?: string): string {
-  return stripDanglingLinkArtifacts(
+  return repairRSSMojibake(stripDanglingLinkArtifacts(
     stripBareUrls(
       stripMarkdownLinks(
         stripHtml(value || '')
       )
     )
-  )
+  ))
     .replace(/[([]\s*([A-Za-z0-9.-]+\.[A-Za-z]{2,})\s*[)\]]/g, '$1')
     .replace(/\butm_[a-z_]+=[^\s&]+/gi, ' ')
     .replace(/\s+/g, ' ')
@@ -897,6 +942,255 @@ function extractStoredImageSourceSettings(
   return resolved;
 }
 
+type RSSArticleFamily =
+  | 'project_news'
+  | 'person_interview_or_reaction'
+  | 'event_or_festival'
+  | 'business_or_platform'
+  | 'shopping_or_product'
+  | 'political_or_non_entertainment'
+  | 'gaming_collab_or_licensing'
+  | 'unknown';
+
+function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSArticleFamily {
+  const title = sanitizeRSSPlainText(item.title || '');
+  const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
+
+  if (/\b(where to (?:buy|score|shop|get)|sneakers?|merch(?:andise)?|deals?|sale|discount|online|price|gift guide|affiliate)\b/i.test(text)) {
+    return 'shopping_or_product';
+  }
+
+  if (/\b(epstein|trump|melania|white house|congress|senate|government funding|political storm|election|lawsuit|racial slur|n-word incident)\b/i.test(text) &&
+      !/\b(movie|film|series|show|trailer|renewed|casting|cannes|festival|documentary|doc)\b/i.test(title)) {
+    return 'political_or_non_entertainment';
+  }
+
+  if (/\b(subscription prices?|price increase|raises prices?|earnings|chief operating officer|ceo|coo|cfo|promoted|elevated|executive|acquisition|merger|layoffs?|restructuring|strategy)\b/i.test(text)) {
+    return 'business_or_platform';
+  }
+
+  if (/\b(?:festival|conference|convention|awards?|honou?r|showrunner award|creative impact award|board apologizes|bafta|cannes|atx tv festival)\b/i.test(text) &&
+      !/\b(?:review|trailer|renewed|season|episode|premiere|series|film|movie|documentary|doc)\b/i.test(title)) {
+    return 'event_or_festival';
+  }
+
+  if (/\b(call of duty|mobile|playstation|nintendo|game boy|steam|xbox|in-game|collab|collaboration|licensing|video game|game)\b/i.test(text)) {
+    return 'gaming_collab_or_licensing';
+  }
+
+  if (
+    /^(?:did|does|do|why|how|what|when)\b.+\?/i.test(title) &&
+    /\b(?:series|show|movie|film|tv|episode|season|finale|premiere|creator|star|cast|fight|fallout|renewal|revival|returns?)\b/i.test(text)
+  ) {
+    return 'person_interview_or_reaction';
+  }
+
+  if (/^[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){1,3}\s+(?:says|said|jokes|walks|airs|called|reacts|addresses|discusses|teases|reveals|slams|breaks down)\b/i.test(title)) {
+    return 'person_interview_or_reaction';
+  }
+
+  if (/\b(?:renewed|canceled|cancelled|trailer|teaser|first look|review|recap|season|episode|finale|premiere|casting|joins|adaptation|reboot|revival|spinoff|spin-off|sets|in works|in development)\b/i.test(text)) {
+    return 'project_news';
+  }
+
+  return 'unknown';
+}
+
+function isRSSNonProjectArticleFamily(family: RSSArticleFamily): boolean {
+  return family === 'shopping_or_product' ||
+    family === 'political_or_non_entertainment' ||
+    family === 'event_or_festival';
+}
+
+function hasRSSQuoteLedHeadlineJunk(value?: string | null): boolean {
+  const title = sanitizeRSSPlainText(value || '').replace(/\s+/g, ' ').trim();
+  if (!title) {
+    return false;
+  }
+
+  return /^(?:did|does|do|why|how|what|when)\b.+\?/i.test(title)
+    || /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,3}\s+(?:jokes|reacts|reacted|teases|details|breaks down|reveals|addresses|calls out|slams|opens up|discusses|talks about)\b/i.test(title)
+    || /\b(?:latest boot reveals what|dragon slayer declares|plenty of drama|walks red carpet hours after)\b/i.test(title);
+}
+
+function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
+  const candidate = String(value || '').trim();
+  if (!candidate) {
+    return true;
+  }
+
+  const normalized = normalizeRSSDedupeValue(candidate);
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (tokens.length === 0) {
+    return true;
+  }
+
+  return /[.!?]$/.test(candidate) ||
+    hasRSSQuoteLedHeadlineJunk(candidate) ||
+    /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,2}['’]s\s+(?:new|hit|latest|upcoming)\b/i.test(candidate) ||
+    /(?:^|[\s:,'’])(?:revi|review|season|premiere|finale|creator|boss|breaks|told|gets|lands|confirms|production team)$/i.test(candidate) ||
+    /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya)\b/i.test(candidate) ||
+    /^(?:s\s+come\s+and\s+gone|did\s+\w+|boards?\s+ground|jimmy kimmel jokes|latest boot reveals)\b/i.test(normalized) ||
+    (tokens.length > 6 && !/^(?:the|a|an)\s+[A-Z]/.test(candidate)) ||
+    tokens.every((token) => RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token)) ||
+    (tokens.length <= 2 && tokens.some((token) => RSS_SUBJECT_SINGLE_TOKEN_BLOCKLIST.has(token)));
+}
+
+const RSS_TITLE_CONNECTOR_PATTERN = '(?:[A-Z0-9][A-Za-z0-9\'’:&,.-]*|in|of|the|to|and|for|on|at|a|an|vs)';
+
+function cleanRecoveredRSSProjectTitleCandidate(value?: string | null): string | undefined {
+  let cleaned = sanitizeRSSPlainText(value || '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const quoted = extractStrictRSSQuotedSubjects(cleaned).find((candidate) => !isWeakRSSCanonicalCandidate(candidate));
+  if (quoted) {
+    return sanitizeRSSCanonicalEntityValue(quoted);
+  }
+
+  cleaned = cleaned
+    .replace(/^(?:the\s+final\s+season\s+of|final\s+season\s+of|where\s+to\s+watch|what\s+to\s+watch(?:\s+\w+)?\s*:|no\s+superheroes\s+needed:\s*)/i, '')
+    .replace(/\btrailer\b\s*:?.*$/i, '')
+    .replace(/\b(?:review|revi)\s*:\s*.*$/i, '')
+    .replace(/\bseason\s+\d+\b(?:\s+(?:premiere|finale|return|returns?|recap|review|explained))?.*$/i, '')
+    .replace(/\b(?:premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|is\b|has\b)\s+.*$/i, '')
+    .replace(/[,:;.\-–—\s]+$/g, '')
+    .trim();
+
+  return sanitizeRSSCanonicalEntityValue(cleaned);
+}
+
+function scoreRecoveredRSSProjectCandidate(candidate: string): number {
+  const normalized = normalizeRSSDedupeValue(candidate);
+  const tokens = normalized.split(' ').filter(Boolean);
+  return tokens.length * 10 + (/\b(?:in|of|the|to|and)\b/i.test(candidate) ? 3 : 0) + (/[:'-]/.test(candidate) ? 2 : 0);
+}
+
+function shouldPreferRecoveredRSSCandidate(
+  candidate: string,
+  currentPrimary?: string,
+  currentMediaTitle?: string
+): boolean {
+  const current = String(currentMediaTitle || currentPrimary || '').trim();
+  if (!current || isWeakRSSCanonicalCandidate(current)) {
+    return true;
+  }
+
+  const normalizedCurrent = normalizeRSSDedupeValue(current);
+  const normalizedCandidate = normalizeRSSDedupeValue(candidate);
+  if (!normalizedCurrent || !normalizedCandidate || normalizedCurrent === normalizedCandidate) {
+    return false;
+  }
+
+  const currentTokens = normalizedCurrent.split(' ').filter(Boolean);
+  const candidateTokens = normalizedCandidate.split(' ').filter(Boolean);
+
+  return currentTokens.length <= 1 && candidateTokens.length >= 2
+    || normalizedCandidate.startsWith(`${normalizedCurrent} `)
+    || (scoreRecoveredRSSProjectCandidate(candidate) - scoreRecoveredRSSProjectCandidate(current) >= 8);
+}
+
+function extractRSSHeadlineTitleRecoveryCandidates(title: string): string[] {
+  const normalizedTitle = sanitizeRSSPlainText(title || '').replace(/\s+/g, ' ').trim();
+  if (!normalizedTitle) {
+    return [];
+  }
+
+  const candidates: string[] = [];
+  const push = (value?: string | null): void => {
+    const cleaned = cleanRecoveredRSSProjectTitleCandidate(value);
+    if (!cleaned || isWeakRSSCanonicalCandidate(cleaned)) {
+      return;
+    }
+    if (!candidates.some((entry) => normalizeRSSDedupeValue(entry) === normalizeRSSDedupeValue(cleaned))) {
+      candidates.push(cleaned);
+    }
+  };
+
+  extractStrictRSSQuotedSubjects(normalizedTitle).forEach(push);
+
+  const quotedContextMatch = normalizedTitle.match(/\b(?:told|tells?|said|says|asked)\s+["'“”‘’]([^"'“”‘’]{2,120})["'“”‘’]\s+(?:creator|showrunner|director|star|boss)\b/i);
+  if (quotedContextMatch?.[1]) {
+    push(quotedContextMatch[1]);
+  }
+
+  const leadingPatterns = [
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:review|revi)\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+trailer\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+season\\s+\\d+\\b`, 'i'),
+    new RegExp(`^(?:why\\s+)?(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:season\\s+\\d+|is\\s+so\\s+different|worst-rated\\s+episode|may\\s+be\\s+the\\s+most\\s+complex)\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\s+${RSS_TITLE_CONNECTOR_PATTERN}){2,8}?)['???]s\s+(?:[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){0,3}|season\s+\d+|worst-rated\s+episode|future|creator|boss|end\s+begins)\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:gets|lands|confirms?|returns?|premiere|finale|creator|boss|production\\s+team|breaks?|told|is|has)\\b`, 'i'),
+  ];
+
+  for (const pattern of leadingPatterns) {
+    const match = normalizedTitle.match(pattern);
+    if (match?.[1]) {
+      push(match[1]);
+    }
+  }
+
+  return candidates;
+}
+
+function extractRSSBodyTitleRecoveryCandidates(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): string[] {
+  const title = sanitizeRSSPlainText(item.title || '');
+  const description = sanitizeRSSPlainText(item.description || '');
+  const body = sanitizeRSSPlainText(item.contentHtml || '');
+  const combined = `${title} ${description} ${body}`;
+  const candidates: string[] = [];
+  const push = (value?: string | null): void => {
+    const sanitized = cleanRecoveredRSSProjectTitleCandidate(value);
+    if (!sanitized || isWeakRSSCanonicalCandidate(sanitized)) {
+      return;
+    }
+    if (!candidates.some((entry) => normalizeRSSDedupeValue(entry) === normalizeRSSDedupeValue(sanitized))) {
+      candidates.push(sanitized);
+    }
+  };
+
+  const htmlTitleMatches = Array.from(String(item.contentHtml || '').matchAll(/<(?:em|i|strong|b)[^>]*>([^<]{2,120})<\/(?:em|i|strong|b)>/gi))
+    .map((match) => sanitizeRSSPlainText(match[1] || ''));
+  htmlTitleMatches.forEach(push);
+
+  extractStrictRSSQuotedSubjects(combined).forEach(push);
+
+  const patterns = [
+    new RegExp(`\\bhit\\s+series\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)(?=\\s*,?\\s+(?:and|was|is|will|has|premiered|aired|from|about)\\b)`, 'g'),
+    new RegExp(`\\b(?:series|show|film|movie|documentary|doc|adaptation|title|project)\\s+(?:called|titled|named)?\\s*["'“”‘’]?(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8})`, 'g'),
+    new RegExp(`\\b(?:series|show|film|movie|documentary|doc)\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8})(?=\\s+(?:was|is|will|has|premiered|aired|from|about|and|,|\\.))`, 'g'),
+    new RegExp(`\\bseason\\s+\\d+\\s+of\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8})`, 'g'),
+    new RegExp(`\\bcollaboration\\s+with\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8})`, 'g'),
+    /\bhit\s+series\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Za-z0-9'’:&,.-]+){0,8}?)(?=\s*,?\s+(?:and|was|is|will|has|premiered|aired|from|about)\b)/g,
+    /\b(?:series|show|film|movie|documentary|doc|adaptation|title|project)\s+(?:called|titled|named)?\s*["'“”‘’]?([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})/g,
+    /\b(?:series|show|film|movie|documentary|doc)\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})(?=\s+(?:was|is|will|has|premiered|aired|from|about|and|,|\.))/g,
+    /\bseason\s+\d+\s+of\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})/g,
+    /\bcollaboration\s+with\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})/g,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of combined.matchAll(pattern)) {
+      push(match[1]?.replace(/\s+(?:and|was|is|will|has|from|about)$/i, '').trim());
+    }
+  }
+
+  return candidates;
+}
+
+function chooseRSSBodyRecoveredTitle(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  currentPrimary?: string,
+  currentMediaTitle?: string
+): string | null {
+  const candidates = [
+    ...extractRSSHeadlineTitleRecoveryCandidates(item.title || ''),
+    ...extractRSSBodyTitleRecoveryCandidates(item),
+  ];
+
+  return candidates.find((candidate) => shouldPreferRecoveredRSSCandidate(candidate, currentPrimary, currentMediaTitle)) || null;
+}
+
 function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSCanonicalEntity {
   const extraction = buildHeuristicRssCaptionExtraction({
     articleTitle: item.title,
@@ -912,36 +1206,99 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     sanitizeRSSPlainText(item.description || ''),
     sanitizeRSSPlainText(item.contentHtml || ''),
   ].filter(Boolean).join(' ');
+  const articleFamily = classifyRSSArticleFamily(item);
   const projectAnchorOverride =
     extractRSSCastingTitleProjectAnchor(item.title, articleText)
     || extractCastingProjectAnchorOverride(item.title, articleText);
 
-  const namedPeople = (extraction.named_people || []).filter(Boolean);
-  const namedCharacters = (extraction.named_characters || []).filter(Boolean);
-  const primarySubject = projectAnchorOverride || extraction.primary_subject;
-  const mediaTitle = projectAnchorOverride || extraction.media_title;
-  const eventType = projectAnchorOverride ? 'casting' : extraction.event_type;
+  const namedPeople = (extraction.named_people || [])
+    .map((entry) => sanitizeRSSCanonicalEntityValue(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  const namedCharacters = (extraction.named_characters || [])
+    .map((entry) => sanitizeRSSCanonicalEntityValue(entry))
+    .filter((entry): entry is string => Boolean(entry));
+  const initialPrimarySubject = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.primary_subject);
+  const initialMediaTitle = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.media_title);
+  const bodyRecoveredTitle = isRSSNonProjectArticleFamily(articleFamily)
+    ? null
+    : chooseRSSBodyRecoveredTitle(item, initialPrimarySubject, initialMediaTitle);
+  const primarySubject = sanitizeRSSCanonicalEntityValue(bodyRecoveredTitle || projectAnchorOverride || extraction.primary_subject);
+  const mediaTitle = sanitizeRSSCanonicalEntityValue(bodyRecoveredTitle || projectAnchorOverride || extraction.media_title);
+  const secondarySubject = sanitizeRSSCanonicalEntityValue(extraction.secondary_subject);
+  const franchise = sanitizeRSSCanonicalEntityValue(extraction.franchise_or_universe);
+  const eventType = articleFamily === 'business_or_platform'
+    ? 'business'
+    : articleFamily === 'event_or_festival'
+      ? 'event'
+      : articleFamily === 'shopping_or_product'
+        ? 'shopping'
+        : articleFamily === 'gaming_collab_or_licensing'
+          ? 'licensing'
+          : projectAnchorOverride
+            ? 'casting'
+            : extraction.event_type;
   const confidence = projectAnchorOverride
     ? Math.max(extraction.extraction_confidence || 0, 0.9)
-    : extraction.extraction_confidence;
+    : bodyRecoveredTitle
+      ? Math.max(extraction.extraction_confidence || 0, 0.88)
+      : extraction.extraction_confidence;
+  const removedUnsafeCanonical = Boolean(
+    (extraction.primary_subject && !primarySubject) ||
+    (extraction.media_title && !mediaTitle) ||
+    (extraction.secondary_subject && !secondarySubject) ||
+    (extraction.franchise_or_universe && !franchise)
+  );
   const ambiguityFlags = projectAnchorOverride
     ? Array.from(new Set([...(extraction.ambiguity_flags || []), 'casting_project_anchor_override']))
-    : extraction.ambiguity_flags;
+    : [...(extraction.ambiguity_flags || [])];
+  if (removedUnsafeCanonical) {
+    ambiguityFlags.push('unsafe_canonical_entity_removed');
+  }
+  if (hasRSSQuoteLedHeadlineJunk(item.title)) {
+    ambiguityFlags.push('quote_led_headline_junk');
+  }
+  if (
+    !isRSSNonProjectArticleFamily(articleFamily) &&
+    !mediaTitle &&
+    !franchise &&
+    (Boolean(initialMediaTitle) || Boolean(initialPrimarySubject) || hasRSSQuoteLedHeadlineJunk(item.title))
+  ) {
+    ambiguityFlags.push('canonical_project_weak');
+  }
+  if (
+    (articleFamily === 'person_interview_or_reaction' || eventType === 'casting') &&
+    namedPeople.length === 0
+  ) {
+    ambiguityFlags.push('canonical_person_weak');
+  }
+  ambiguityFlags.push(`article_family_${articleFamily}`);
+  if (bodyRecoveredTitle) {
+    ambiguityFlags.push('body_title_recovered');
+  }
+  if (isRSSNonProjectArticleFamily(articleFamily)) {
+    ambiguityFlags.push('rss_family_no_tmdb_project');
+  }
   const allowedEntities = Array.from(new Set([
     primarySubject,
-    extraction.secondary_subject,
+    secondarySubject,
     mediaTitle,
-    extraction.franchise_or_universe,
+    franchise,
     ...namedPeople,
     ...namedCharacters,
   ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)));
 
   let entityType: RSSCanonicalEntity['entityType'] = 'unknown';
-  if (mediaTitle) {
+  if (articleFamily === 'business_or_platform' && extraction.studio_or_platform) {
+    entityType = /\b(netflix|max|prime|apple tv|disney\+|hulu|peacock|paramount\+|youtube)\b/i.test(extraction.studio_or_platform)
+      ? 'platform'
+      : 'company';
+  } else if (isRSSNonProjectArticleFamily(articleFamily) && !bodyRecoveredTitle) {
+    entityType = 'unknown';
+  } else if (mediaTitle) {
     entityType = /\bseason|episode|series|show\b/i.test(`${item.title} ${item.description || ''} ${item.contentHtml || ''}`) ? 'tv' : 'movie';
   } else if (namedPeople.length > 0) {
     entityType = 'person';
-  } else if (extraction.franchise_or_universe) {
+  } else if (franchise) {
     entityType = 'franchise';
   } else if (extraction.studio_or_platform) {
     entityType = /\b(netflix|max|prime|apple tv|disney\+|hulu|peacock|paramount\+)\b/i.test(extraction.studio_or_platform)
@@ -951,9 +1308,9 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
 
   return {
     primarySubject,
-    secondarySubject: extraction.secondary_subject,
+    secondarySubject,
     mediaTitle,
-    franchise: extraction.franchise_or_universe,
+    franchise,
     entityType,
     eventType,
     spoilerLevel: extraction.spoiler_level,
@@ -967,26 +1324,49 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
 
 function isProjectAnchoredCastingPattern(text: string): boolean {
   return /\b(join|joins|joined|joining)\b/i.test(text)
-    && /\b(cast|voice cast|voice ensemble|starring|voice role)\b/i.test(text);
+    && /\b(cast|voice cast|voice ensemble|starring|voice role|producing team|production team|broadway producing team|broadway production)\b/i.test(text);
 }
 
 function extractStrictRSSQuotedSubjects(value: string): string[] {
-  return Array.from(
-    value.matchAll(/(?:["â€œâ€]|(?<![A-Za-z0-9])['â€˜â€™])([^"'â€œâ€â€˜â€™]{2,120}?)(?:["â€œâ€]|['â€˜â€™](?![A-Za-z0-9]))/g)
-  )
-    .map((match) => match[1]?.trim() || '')
-    .filter((candidate, index, entries) => {
-      const normalized = normalizeRSSDedupeValue(candidate);
-      return normalized.length >= 2
-        && !/^(?:s|t|re|ve|ll|d|m)$/.test(normalized)
-        && /[a-z]/i.test(candidate)
-        && entries.findIndex((entry) => normalizeRSSDedupeValue(entry) === normalized) === index;
-    });
+  const candidates: string[] = [];
+  const push = (candidate?: string | null): void => {
+    const cleaned = String(candidate || '').trim();
+    const normalized = normalizeRSSDedupeValue(cleaned);
+    if (
+      normalized.length < 2 ||
+      /^(?:s|t|re|ve|ll|d|m)$/.test(normalized) ||
+      !/[a-z]/i.test(cleaned) ||
+      candidates.some((entry) => normalizeRSSDedupeValue(entry) === normalized)
+    ) {
+      return;
+    }
+
+    candidates.push(cleaned);
+  };
+
+  for (const match of value.matchAll(/(?<![A-Za-z0-9])'((?:[^']|'(?=[A-Za-z])){2,120})'(?![A-Za-z0-9])/g)) {
+    push(match[1]);
+  }
+
+  for (const match of value.matchAll(/"([^"\r\n]{2,120})"/g)) {
+    push(match[1]);
+  }
+
+  for (const match of value.matchAll(/[“‘]([^”’]{2,120})[”’]/g)) {
+    push(match[1]);
+  }
+
+  return candidates;
 }
 
 function extractRSSCastingTitleProjectAnchor(title: string, articleText: string): string | null {
   if (!isProjectAnchoredCastingPattern(`${title} ${articleText}`)) {
     return null;
+  }
+
+  const possessiveQuoted = title.match(/(?<![A-Za-z0-9])'((?:[^']|'(?=[A-Za-z])){2,120})'(?![A-Za-z0-9])/);
+  if (possessiveQuoted?.[1] && !/\b(?:exclusive|listen|watch|report|scoop|breaking|first look|spoiler alert|voice cast|cast|starring)\b/i.test(possessiveQuoted[1])) {
+    return possessiveQuoted[1].trim();
   }
 
   const quoted = extractStrictRSSQuotedSubjects(title).find((candidate) =>
@@ -1066,6 +1446,76 @@ function extractCastingProjectAnchorOverride(title: string, articleText: string)
   }
 
   return null;
+}
+
+function sanitizeRSSCanonicalEntityValue(value?: string | null): string | undefined {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const quoted = extractStrictRSSQuotedSubjects(trimmed).find((candidate) => !isWeakRSSCanonicalCandidate(candidate));
+  if (quoted) {
+    return sanitizeRSSCanonicalEntityValue(quoted);
+  }
+
+  const cleaned = trimmed
+    .replace(/^(?:did|does|do|why|how|what|when)\s+/i, '')
+    .replace(/[,:;.\-–—\s]+$/g, '')
+    .replace(/^(?:the\s+final\s+season\s+of|final\s+season\s+of)\s+/i, '')
+    .trim();
+
+  if (
+    /^(?:why|how|where|what|when|international insider)\b/i.test(cleaned) ||
+    /(?:['â€™]s|s['â€™])$/i.test(cleaned)
+  ) {
+    return undefined;
+  }
+
+  if (
+    /\b(?:exclusive|review|revi|recap|explained|ranked|what to watch|where to watch|quiz|officially returning|confirms streaming|greatest .* series|hit hulu series|new crime|boss breaks|production team|must-watch)\b/i.test(cleaned) &&
+    !/["'â€˜â€™â€œâ€]/.test(cleaned)
+  ) {
+    return undefined;
+  }
+
+  if (/^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,2}['’]s\s+(?:new|hit|latest|upcoming)\b/i.test(cleaned)) {
+    return undefined;
+  }
+
+  const normalized = normalizeRSSDedupeValue(cleaned);
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (
+    tokens.length === 0 ||
+    tokens.every((token) => RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token)) ||
+    RSS_TOPIC_SIGNATURE_STOP_WORDS.has(tokens[tokens.length - 1]) ||
+    (tokens.length === 1 && (
+      RSS_TOPIC_ENTITY_STOP_WORDS.has(tokens[0]) ||
+      RSS_SUBJECT_SINGLE_TOKEN_BLOCKLIST.has(tokens[0])
+    ))
+  ) {
+    return undefined;
+  }
+
+  if (
+    /^(?:why|how|where|what|when|international insider)\b/i.test(trimmed) ||
+    /(?:['’]s|s['’])$/i.test(trimmed)
+  ) {
+    return undefined;
+  }
+
+  if (
+    /\b(?:exclusive|review|recap|explained|ranked|what to watch|where to watch|quiz|officially returning|confirms streaming|greatest .* series|hit hulu series|new crime)\b/i.test(trimmed) &&
+    !/["'‘’“”]/.test(trimmed)
+  ) {
+    return undefined;
+  }
+
+  if (isWeakRSSCanonicalCandidate(cleaned)) {
+    return undefined;
+  }
+
+  return cleaned;
 }
 
 function ensureRSSCanonicalEntity(item: RSSItem): RSSCanonicalEntity {
@@ -1150,8 +1600,16 @@ function validateRSSFinalPublishState(
     resolvedImages = resolvedImages.slice(0, 1);
   }
 
-  for (const code of getRSSImageReasonCodes(resolvedImages, canonicalEntity)) {
+  const imageReasonCodes = getRSSImageReasonCodes(resolvedImages, canonicalEntity);
+  for (const code of imageReasonCodes) {
     reasonCodes.add(code);
+  }
+  if (imageReasonCodes.some((code) =>
+    code === 'IMAGE_CANONICAL_ENTITY_MISMATCH' ||
+    code === 'IMAGE_WRONG_PRIMARY_SUBJECT' ||
+    code === 'IMAGE_PERSON_PRIORITY_FAIL'
+  )) {
+    resolvedImages = [];
   }
 
   return {
@@ -2285,6 +2743,150 @@ type RSSNewsEventFingerprint = {
   topicFingerprint: ReturnType<typeof buildRSSTopicFingerprint>;
 };
 
+type RSSDuplicateCandidateStatus = 'current' | 'pending' | 'published';
+
+type RSSDuplicateEventCandidate = {
+  feedName: string;
+  title: string;
+  link?: string;
+  timestamp: number;
+  status: RSSDuplicateCandidateStatus;
+  fingerprint: RSSNewsEventFingerprint;
+};
+
+type RSSDuplicateEventDecision = {
+  duplicateEventKey: string;
+  winningSource: string;
+  suppressedSources: string[];
+  matchedSources: string[];
+  reason: string;
+};
+
+function normalizeRSSSourceName(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getRSSSourcePriority(feedName?: string | null): number {
+  const normalized = normalizeRSSSourceName(feedName);
+  if (!normalized) {
+    return RSS_DUPLICATE_SOURCE_PRIORITY.length + 10;
+  }
+
+  const index = RSS_DUPLICATE_SOURCE_PRIORITY.findIndex((entry) =>
+    normalized === entry || normalized.includes(entry)
+  );
+
+  return index >= 0 ? index : RSS_DUPLICATE_SOURCE_PRIORITY.length + 10;
+}
+
+function getRSSDuplicateStatusPriority(status: RSSDuplicateCandidateStatus): number {
+  if (status === 'published') {
+    return 0;
+  }
+  if (status === 'pending') {
+    return 1;
+  }
+  return 2;
+}
+
+function compareRSSDuplicateCandidates(left: RSSDuplicateEventCandidate, right: RSSDuplicateEventCandidate): number {
+  const statusDelta = getRSSDuplicateStatusPriority(left.status) - getRSSDuplicateStatusPriority(right.status);
+  if (statusDelta !== 0) {
+    return statusDelta;
+  }
+
+  const sourceDelta = getRSSSourcePriority(left.feedName) - getRSSSourcePriority(right.feedName);
+  if (sourceDelta !== 0) {
+    return sourceDelta;
+  }
+
+  const timeDelta = left.timestamp - right.timestamp;
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+
+  return left.title.localeCompare(right.title);
+}
+
+function buildRSSDuplicateCandidate(
+  feedName: string,
+  item: RSSItem,
+  status: RSSDuplicateCandidateStatus,
+  timestamp: Date | number
+): RSSDuplicateEventCandidate | null {
+  const fingerprint = buildRSSNewsEventFingerprint(item);
+  if (!fingerprint.signature) {
+    return null;
+  }
+
+  const resolvedTimestamp = timestamp instanceof Date ? timestamp.getTime() : timestamp;
+  return {
+    feedName,
+    title: item.title,
+    link: item.link,
+    timestamp: Number.isFinite(resolvedTimestamp) ? resolvedTimestamp : Date.now(),
+    status,
+    fingerprint,
+  };
+}
+
+function buildRSSDuplicateEventReason(decision: RSSDuplicateEventDecision): string {
+  const suppressed = decision.suppressedSources.length > 0
+    ? ` Suppressed sources: ${decision.suppressedSources.join(', ')}.`
+    : '';
+  return `Filtered as the same news event that was already queued or published recently from another source. Winner: ${decision.winningSource}. Event key: ${decision.duplicateEventKey}.${suppressed}`;
+}
+
+function resolveRSSDuplicateEventDecision(
+  currentFeedName: string,
+  item: RSSItem,
+  recentCandidates: RSSDuplicateEventCandidate[]
+): RSSDuplicateEventDecision | null {
+  const currentCandidate = buildRSSDuplicateCandidate(currentFeedName, item, 'current', item.pubDate || Date.now());
+  if (!currentCandidate) {
+    return null;
+  }
+
+  const matches = recentCandidates.filter((candidate) =>
+    areRSSNewsEventsSimilar(currentCandidate.fingerprint, candidate.fingerprint)
+  );
+  if (matches.length === 0) {
+    return null;
+  }
+
+  const ranked = [...matches, currentCandidate].sort(compareRSSDuplicateCandidates);
+  const winner = ranked[0];
+  if (winner === currentCandidate) {
+    return null;
+  }
+
+  const duplicateEventKey = currentCandidate.fingerprint.signature || winner.fingerprint.signature;
+  const suppressedSources = Array.from(new Set(
+    ranked
+      .filter((candidate) => candidate !== winner)
+      .map((candidate) => candidate.feedName)
+      .filter(Boolean)
+  ));
+
+  return {
+    duplicateEventKey,
+    winningSource: winner.feedName,
+    suppressedSources,
+    matchedSources: Array.from(new Set(matches.map((candidate) => candidate.feedName))).sort(),
+    reason: buildRSSDuplicateEventReason({
+      duplicateEventKey,
+      winningSource: winner.feedName,
+      suppressedSources,
+      matchedSources: Array.from(new Set(matches.map((candidate) => candidate.feedName))).sort(),
+      reason: '',
+    }),
+  };
+}
+
 function extractRSSTemporalCue(text?: string | null): string {
   const value = String(text || '');
   if (!value.trim()) {
@@ -2978,6 +3580,9 @@ function buildActivityMessage(metadata: RSSActivityMetadata): string {
   if (metadata.status === 'failed') {
     return `${metadata.feedName}: failed ${metadata.itemTitle}`;
   }
+  if (metadata.status === 'filtered') {
+    return `${metadata.feedName}: filtered ${metadata.itemTitle}`;
+  }
   return `${metadata.feedName}: pending ${metadata.itemTitle}`;
 }
 
@@ -3126,6 +3731,13 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
     platforms,
     platformPostIds: parseRSSActivityPlatformPostIds(metadata.platformPostIds),
     platformResults: parseRSSActivityPlatformResults(metadata.platformResults),
+    duplicateEventKey: typeof metadata.duplicateEventKey === 'string' ? metadata.duplicateEventKey : undefined,
+    winningSource: typeof metadata.winningSource === 'string' ? metadata.winningSource : undefined,
+    suppressedSources: Array.isArray(metadata.suppressedSources)
+      ? metadata.suppressedSources
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim())
+      : undefined,
     error: typeof metadata.errorMessage === 'string' ? metadata.errorMessage : undefined,
   };
 }
@@ -3184,6 +3796,9 @@ function buildRSSActivityItemFromFeedRecord(record: {
     platforms,
     platformPostIds: item?.platformPostIds,
     platformResults: item?.platformResults,
+    duplicateEventKey: undefined,
+    winningSource: undefined,
+    suppressedSources: undefined,
     error: record.errorMessage || undefined,
   };
 }
@@ -3340,6 +3955,9 @@ function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMeta
     platforms: metadata.platforms,
     platformPostIds: metadata.platformPostIds,
     platformResults: metadata.platformResults,
+    duplicateEventKey: metadata.duplicateEventKey,
+    winningSource: metadata.winningSource,
+    suppressedSources: metadata.suppressedSources,
     error: metadata.errorMessage,
   });
 }
@@ -4276,6 +4894,12 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           select: {
             itemData: true,
             firstSeenAt: true,
+            status: true,
+            feed: {
+              select: {
+                name: true,
+              },
+            },
           },
         })
       : [];
@@ -4301,22 +4925,42 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         recentCrossFeedTitles.map((title) => buildRSSTopicFingerprint(title))
       )
       .filter((fingerprint) => fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0);
-    const recentEventFingerprints = recentActivities
+    const recentEventCandidates = recentActivities
       .filter((activity) => activity.status === 'pending' || activity.status === 'published')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
-      .map((activity) => buildRSSNewsEventFingerprint({
-        title: activity.title,
-        link: activity.link || '',
-        description: activity.description || '',
-        contentHtml: activity.contentHtml || '',
-        imageUrls: [],
-        pubDate: new Date(activity.publishedAt || activity.timestamp),
-        canonicalEntity: undefined,
-      }))
+      .map((activity) => buildRSSDuplicateCandidate(
+        activity.feedName,
+        {
+          title: activity.title,
+          link: activity.link || '',
+          description: activity.description || '',
+          contentHtml: activity.contentHtml || '',
+          imageUrls: [],
+          pubDate: new Date(activity.publishedAt || activity.timestamp),
+          canonicalEntity: undefined,
+        },
+        activity.status === 'published' ? 'published' : 'pending',
+        new Date(activity.publishedAt || activity.timestamp)
+      ))
       .concat(
-        recentCrossFeedItems.map((item) => buildRSSNewsEventFingerprint(item))
+        recentCrossFeedQueueItems.map((record) =>
+          buildRSSDuplicateCandidate(
+            record.feed.name,
+            deserializeRSSItem(record.itemData) || {
+              title: '',
+              link: '',
+              description: '',
+              contentHtml: '',
+              imageUrls: [],
+              pubDate: record.firstSeenAt,
+              canonicalEntity: undefined,
+            },
+            record.status === 'published' ? 'published' : 'pending',
+            record.firstSeenAt
+          )
+        )
       )
-      .filter((fingerprint) => fingerprint.signature);
+      .filter((candidate): candidate is RSSDuplicateEventCandidate => Boolean(candidate));
     const getCrossSourceTopicDuplicateReason = (item: RSSItem): string | null => {
       const itemFingerprint = buildRSSTopicFingerprint(item.title);
       if (!itemFingerprint.signature) {
@@ -4330,20 +4974,8 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
       return 'Filtered as a duplicate topic that was already queued or published recently from another source.';
     };
-    const getCrossSourceEventDuplicateReason = (item: RSSItem): string | null => {
-      const itemFingerprint = buildRSSNewsEventFingerprint(item);
-      if (!itemFingerprint.signature) {
-        return null;
-      }
-
-      const matchesRecentEvent = recentEventFingerprints.some((fingerprint) =>
-        areRSSNewsEventsSimilar(itemFingerprint, fingerprint)
-      );
-      if (!matchesRecentEvent) {
-        return null;
-      }
-
-      return 'Filtered as the same news event that was already queued or published recently from another source.';
+    const getCrossSourceEventDuplicateDecision = (item: RSSItem): RSSDuplicateEventDecision | null => {
+      return resolveRSSDuplicateEventDecision(feed.name, item, recentEventCandidates);
     };
     const getRecentSubjectCooldownReason = (item: RSSItem): string | null => {
       const itemFingerprint = buildRSSTopicFingerprint(item.title);
@@ -4368,9 +5000,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       if (fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0) {
         recentSubjectCooldownFingerprints.push(fingerprint);
       }
-      const eventFingerprint = buildRSSNewsEventFingerprint(item);
-      if (eventFingerprint.signature) {
-        recentEventFingerprints.push(eventFingerprint);
+      const eventCandidate = buildRSSDuplicateCandidate(feed.name, item, 'pending', item.pubDate || Date.now());
+      if (eventCandidate) {
+        recentEventCandidates.push(eventCandidate);
       }
     };
     const selectionMode = manualLatestSelection ? 'latest_item' : 'backlog';
@@ -4479,7 +5111,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
             const speculationAssessment = assessRSSArticleSpeculation(item);
             return !hasRSSItemLocalSeenKeys(manualRunBlockedKeys, item)
               && !getRecentSubjectCooldownReason(item)
-              && !getCrossSourceEventDuplicateReason(item)
+              && !getCrossSourceEventDuplicateDecision(item)
               && !getCrossSourceTopicDuplicateReason(item)
               && !speculationAssessment.shouldSkipPublish
               && evaluateFeedRules(item, feedFilters).allowed;
@@ -4535,7 +5167,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       const pendingTopicDuplicateReason = getCrossSourceTopicDuplicateReason(item);
-      const pendingEventDuplicateReason = getCrossSourceEventDuplicateReason(item);
+      const pendingEventDuplicateDecision = getCrossSourceEventDuplicateDecision(item);
       if (pendingTopicDuplicateReason) {
         if (support.feedItemsTable) {
           await prisma.rSSFeedItem.update({
@@ -4551,18 +5183,38 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
-      if (pendingEventDuplicateReason) {
+      if (pendingEventDuplicateDecision) {
         if (support.feedItemsTable) {
           await prisma.rSSFeedItem.update({
             where: { id: pendingEntry.record.id },
             data: {
               status: 'filtered',
               lastAttemptedAt: new Date(),
-              errorMessage: pendingEventDuplicateReason,
+              errorMessage: pendingEventDuplicateDecision.reason,
               itemData: serializeRSSItem(item),
             },
           });
         }
+        const filteredMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          contentHtml: item.contentHtml,
+          imageUrl: item.imageUrl,
+          imageUrls: item.imageUrls,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'filtered',
+          platforms,
+          duplicateEventKey: pendingEventDuplicateDecision.duplicateEventKey,
+          winningSource: pendingEventDuplicateDecision.winningSource,
+          suppressedSources: pendingEventDuplicateDecision.suppressedSources,
+          errorMessage: pendingEventDuplicateDecision.reason,
+        };
+        await logRSSActivity(filteredMetadata);
+        rememberRSSActivity(recentActivities, filteredMetadata);
         continue;
       }
 
@@ -4772,7 +5424,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       }
 
       const topicDuplicateReason = getCrossSourceTopicDuplicateReason(item);
-      const eventDuplicateReason = getCrossSourceEventDuplicateReason(item);
+      const eventDuplicateDecision = getCrossSourceEventDuplicateDecision(item);
       const subjectCooldownReason = getRecentSubjectCooldownReason(item);
       if (subjectCooldownReason) {
         await upsertRSSFeedItem(feed.id, item, 'filtered', {
@@ -4783,11 +5435,31 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         continue;
       }
 
-      if (eventDuplicateReason) {
+      if (eventDuplicateDecision) {
         await upsertRSSFeedItem(feed.id, item, 'filtered', {
-          errorMessage: eventDuplicateReason,
+          errorMessage: eventDuplicateDecision.reason,
           firstSeenAt: item.pubDate,
         });
+        const filteredMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          contentHtml: item.contentHtml,
+          imageUrl: item.imageUrl,
+          imageUrls: item.imageUrls,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'filtered',
+          platforms,
+          duplicateEventKey: eventDuplicateDecision.duplicateEventKey,
+          winningSource: eventDuplicateDecision.winningSource,
+          suppressedSources: eventDuplicateDecision.suppressedSources,
+          errorMessage: eventDuplicateDecision.reason,
+        };
+        await logRSSActivity(filteredMetadata);
+        rememberRSSActivity(recentActivities, filteredMetadata);
         addRSSItemLocalSeenKeys(seenKeys, item);
         continue;
       }
@@ -5669,6 +6341,8 @@ export const __rssDedupeTestUtils = {
   areRSSNewsEventsSimilar,
   areRSSSubjectsInCooldown,
   getRSSItemLocalSeenKeys,
+  getRSSSourcePriority,
+  resolveRSSDuplicateEventDecision,
   buildRSSCaptionAllowedEntities,
   buildRSSCaptionVisualContext,
   assessRSSArticleSpeculation,
@@ -5678,6 +6352,8 @@ export const __rssDedupeTestUtils = {
 export const __rssAuditTestUtils = {
   sanitizeRSSPlainText,
   sanitizeRSSCaptionText,
+  classifyRSSArticleFamily,
+  extractRSSBodyTitleRecoveryCandidates,
   buildRSSCanonicalEntity,
   ensureRSSCanonicalEntity,
   getRSSImageReasonCodes,
@@ -5686,4 +6362,7 @@ export const __rssAuditTestUtils = {
   buildRSSCaptionVisualContext,
   buildRSSNewsEventFingerprint,
   areRSSNewsEventsSimilar,
+  getRSSSourcePriority,
+  resolveRSSDuplicateEventDecision,
 };
+

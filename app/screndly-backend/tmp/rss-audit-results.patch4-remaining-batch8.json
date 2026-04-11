@@ -1,0 +1,705 @@
+[
+  {
+    "caseId": "e5b3887a2c5015fa",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144395/the-pitt-season-2-episode-14-dr-al-hashimi-secret-explained/",
+      "articleTitle": "The Pitt Season 2 Confirms What's Really Going On With Dr. Al-Hashimi",
+      "articleDescription": "In The Pitt season 2, we've seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season's penultimate episode, we finally learn the truth.",
+      "articleBody": "In The Pitt season 2, we&#39;ve seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season&#39;s penultimate episode, we finally learn the truth.<p><img src=\"https://www.slashfilm.com/img/gallery/the-pitt-season-2-confirms-whats-really-going-on-with-dr-al-hashimi/intro-1775768379.jpg\" /></p>",
+      "publishedAt": "2026-04-10T02:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Pitt Season 2 Confirms What's Really Going On With Dr. Al-Hashimi",
+    "normalizedDescription": "In The Pitt season 2, we've seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season's penultimate episode, we finally learn the truth.",
+    "entity": {
+      "canonicalEntity": "The Pitt Season",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Pitt Season",
+      "secondarySubject": "Confirms What's Really Going",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Pitt Season",
+        "The Pitt Season other",
+        "The Pitt Season 2 Confirms What's Really Going On With Dr. Al-Hashimi"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'ve seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season' has a new update.\n\nIn The Pitt season 2, we've seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season's penultimate episode, we finally learn the truth.",
+      "normalizedCaption": "'ve seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season' has a new update.\n\nIn The Pitt season 2, we've seen Dr. Al-Hashimi experience moments that seem atypical for her. In the season's penultimate episode, we finally learn the truth.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "06cc4bce5dcf318c",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144352/invincible-season-4-star-trek-the-next-generation-actor-levar-burton/",
+      "articleTitle": "Invincible Season 4 Features A Major Star Trek: The Next Generation Actor In An Unexpected Role",
+      "articleDescription": "Invincible season 4 features multiple nods to Star Trek: The Next Generation, with its fifth episode even casting another Next Generation veteran.",
+      "articleBody": "Invincible season 4 features multiple nods to Star Trek: The Next Generation, with its fifth episode even casting another Next Generation veteran.<p><img src=\"https://www.slashfilm.com/img/gallery/invincible-season-4-star-trek-the-next-generation-actor-levar-burton/intro-1775782984.jpg\" /></p>",
+      "publishedAt": "2026-04-10T00:45:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Invincible Season 4 Features A Major Star Trek: The Next Generation Actor In An Unexpected Role",
+    "normalizedDescription": "Invincible season 4 features multiple nods to Star Trek: The Next Generation, with its fifth episode even casting another Next Generation veteran.",
+    "entity": {
+      "canonicalEntity": "Invincible Season",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Invincible Season",
+      "secondarySubject": "Major Star Trek",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Star Trek: The Next Generation",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Star Trek: The Next Generation",
+          "source": "tmdb",
+          "subject": "Star Trek: The Next Generation",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Invincible Season",
+        "Invincible Season other",
+        "Invincible Season 4 Features A Major Star Trek: The Next Generation Actor In An Unexpected Role"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Star Trek: The Next Generation",
+          "score": 751.59195,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Invincible Season 4 Features A Major' has a new update.\n\nInvincible season 4 features multiple nods to Star Trek: The Next Generation, with its fifth episode even casting another Next Generation veteran.",
+      "normalizedCaption": "'Invincible Season 4 Features A Major' has a new update.\n\nInvincible season 4 features multiple nods to Star Trek: The Next Generation, with its fifth episode even casting another Next Generation veteran.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates."
+    ]
+  },
+  {
+    "caseId": "7a26908845e039ef",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144396/dan-levy-crime-comedy-series-big-mistakes-streaming-netflix/",
+      "articleTitle": "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+      "articleDescription": "Schitt's Creek creator/star Dan Levy has a new crime comedy series out on Netflix, and the early buzz suggests it's absolutely worth a look.",
+      "articleBody": "Schitt&#39;s Creek creator/star Dan Levy has a new crime comedy series out on Netflix, and the early buzz suggests it&#39;s absolutely worth a look.<p><img src=\"https://www.slashfilm.com/img/gallery/dan-levys-new-crime-comedy-series-is-a-must-watch-on-netflix/intro-1775768600.jpg\" /></p>",
+      "publishedAt": "2026-04-09T23:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+    "normalizedDescription": "Schitt's Creek creator/star Dan Levy has a new crime comedy series out on Netflix, and the early buzz suggests it's absolutely worth a look.",
+    "entity": {
+      "canonicalEntity": "Dan Levy's New Crime",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Dan Levy's New Crime",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Dan Levy cropped to 4:5 portrait",
+      "assetsFound": {
+        "profiles": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb person profile for Dan Levy cropped to 4:5 portrait",
+          "source": "tmdb",
+          "subject": "Dan Levy cropped to 4:5 portrait",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Dan Levy's New Crime",
+        "Dan Levy's New Crime other",
+        "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Dan Levy cropped to 4:5 portrait",
+          "score": 343.8444,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": []
+    },
+    "caption": {
+      "generatedCaption": "'Dan Levy's New Crime Comedy Series' has a new update.\n\nSchitt's Creek creator/star Dan Levy has a new crime comedy series out on Netflix, and the early buzz suggests it's absolutely worth a look.",
+      "normalizedCaption": "'Dan Levy's New Crime Comedy Series' has a new update.\n\nSchitt's Creek creator/star Dan Levy has a new crime comedy series out on Netflix, and the early buzz suggests it's absolutely worth a look.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": false,
+    "publishFailureCodes": [],
+    "diagnosis": [],
+    "recommendedFixes": []
+  },
+  {
+    "caseId": "fc03c6b7287c0915",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2142207/the-boys-season-5-ashley-powers-explained/",
+      "articleTitle": "The Boys Season 5, Episode 2 Reveals What Ashley's Powers Are",
+      "articleDescription": "The Boys fans have been speculating about what Ashley's powers might be ever since she took that V in season 4. In season 5, we learn what she can do.",
+      "articleBody": "The Boys fans have been speculating about what Ashley&#39;s powers might be ever since she took that V in season 4. In season 5, we learn what she can do.<p><img src=\"https://www.slashfilm.com/img/gallery/the-boys-season-5-episode-2-reveals-what-ashleys-powers-are/intro-1775574796.jpg\" /></p>",
+      "publishedAt": "2026-04-09T22:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Boys Season 5, Episode 2 Reveals What Ashley's Powers Are",
+    "normalizedDescription": "The Boys fans have been speculating about what Ashley's powers might be ever since she took that V in season 4. In season 5, we learn what she can do.",
+    "entity": {
+      "canonicalEntity": "The Boys Season",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Boys Season",
+      "secondarySubject": "Reveals What Ashley's Powers",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Boys Season",
+        "The Boys Season other",
+        "The Boys Season 5, Episode 2 Reveals What Ashley's Powers Are"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Episode 2 Reveals What Ashley's Powers' has a new update.\n\nThe Boys fans have been speculating about what Ashley's powers might be ever since she took that V in season 4. In season 5, we learn what she can do.",
+      "normalizedCaption": "'Episode 2 Reveals What Ashley's Powers' has a new update.\n\nThe Boys fans have been speculating about what Ashley's powers might be ever since she took that V in season 4. In season 5, we learn what she can do.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "735af430ffc08167",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2143505/why-the-boys-season-5-different-sister-sage/",
+      "articleTitle": "Why The Boys Season 5 Is So Different For Sister Sage [Exclusive]",
+      "articleDescription": "Susan Heyward, who plays Sister Sage on The Boys, tells us the stakes are higher than ever and shares what makes season 5 different for her character.",
+      "articleBody": "Susan Heyward, who plays Sister Sage on The Boys, tells us the stakes are higher than ever and shares what makes season 5 different for her character.<p><img src=\"https://www.slashfilm.com/img/gallery/why-the-boys-season-5-is-so-different-for-sister-sage-exclusive/intro-1775676859.jpg\" /></p>",
+      "publishedAt": "2026-04-09T20:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Why The Boys Season 5 Is So Different For Sister Sage [Exclusive]",
+    "normalizedDescription": "Susan Heyward, who plays Sister Sage on The Boys, tells us the stakes are higher than ever and shares what makes season 5 different for her character.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Why The Boys Season 5 Is So Different For Sister Sage [Exclusive] other",
+        "Why The Boys Season 5 Is So Different For Sister Sage [Exclusive]"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'So Different For Sister Sage' has a new update.\n\nSusan Heyward, who plays Sister Sage on The Boys, tells us the stakes are higher than ever and shares what makes season 5 different for her character.",
+      "normalizedCaption": "'So Different For Sister Sage' has a new update.\n\nSusan Heyward, who plays Sister Sage on The Boys, tells us the stakes are higher than ever and shares what makes season 5 different for her character.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "cb6c7c8d52b4b567",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2143495/elisabeth-moss-cameo-the-testaments-explained/",
+      "articleTitle": "Elisabeth Moss' Game-Changing Cameos In The Testaments, Explained",
+      "articleDescription": "The Handmaid's Tale star Elisabeth Moss has returned for the show's sequel series, The Testaments, and for valid reason.",
+      "articleBody": "The Handmaid&#39;s Tale star Elisabeth Moss has returned for the show&#39;s sequel series, The Testaments, and for valid reason.<p><img src=\"https://www.slashfilm.com/img/gallery/elisabeth-moss-game-changing-cameos-in-the-testaments-explained/intro-1775676810.jpg\" /></p>",
+      "publishedAt": "2026-04-09T19:00:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Elisabeth Moss' Game-Changing Cameos In The Testaments, Explained",
+    "normalizedDescription": "The Handmaid's Tale star Elisabeth Moss has returned for the show's sequel series, The Testaments, and for valid reason.",
+    "entity": {
+      "canonicalEntity": "Elisabeth Moss' Game-Changing Cameos",
+      "canonicalEntityType": "person",
+      "eventType": "licensing",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_gaming_collab_or_licensing"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Elisabeth Moss' Game-Changing Cameos",
+      "secondarySubject": "In The Testaments",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Elisabeth Moss' Game-Changing Cameos",
+        "Elisabeth Moss' Game-Changing Cameos licensing",
+        "Elisabeth Moss' Game-Changing Cameos In The Testaments, Explained"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s Tale star Elisabeth Moss has returned for the show' has revealed a new story update.\n\nThe Handmaid's Tale star Elisabeth Moss has returned for the show's sequel series, The Testaments, and for valid reason.",
+      "normalizedCaption": "'s Tale star Elisabeth Moss has returned for the show' has revealed a new story update.\n\nThe Handmaid's Tale star Elisabeth Moss has returned for the show's sequel series, The Testaments, and for valid reason.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "49ce162a4529550f",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2142145/the-boys-season-5-dc-teen-titans-parody-influencer-culture/",
+      "articleTitle": "The Boys Season 5 Parodies DC's Teen Titans With A Takedown Of Influencer Culture",
+      "articleDescription": "In The Boys season 5, the show takes aim at influencer culture through its parody of a young DC superhero group, the Teen Titans.",
+      "articleBody": "In The Boys season 5, the show takes aim at influencer culture through its parody of a young DC superhero group, the Teen Titans.<p><img src=\"https://www.slashfilm.com/img/gallery/the-boys-season-5-parodies-dcs-teen-titans-with-a-takedown-of-influencer-culture/intro-1775572081.jpg\" /></p>",
+      "publishedAt": "2026-04-09T17:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Boys Season 5 Parodies DC's Teen Titans With A Takedown Of Influencer Culture",
+    "normalizedDescription": "In The Boys season 5, the show takes aim at influencer culture through its parody of a young DC superhero group, the Teen Titans.",
+    "entity": {
+      "canonicalEntity": "The Boys Season",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Boys Season",
+      "secondarySubject": "Parodies DC's Teen Titans",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Boys Season",
+        "The Boys Season other",
+        "The Boys Season 5 Parodies DC's Teen Titans With A Takedown Of Influencer Culture"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'The Boys Season 5 Parodies DC's' has a new update.\n\nIn The Boys season 5, the show takes aim at influencer culture through its parody of a young DC superhero group, the Teen Titans.",
+      "normalizedCaption": "'The Boys Season 5 Parodies DC's' has a new update.\n\nIn The Boys season 5, the show takes aim at influencer culture through its parody of a young DC superhero group, the Teen Titans.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "df061172b646eca2",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144111/ray-gunn-incredibles-director-brad-bird-netflix-sci-fi-movie-first-look/",
+      "articleTitle": "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+      "articleDescription": "Netflix has offered a sneak peek at Ray Gunn, the exciting new sci-fi animated movie from Incredibles and Iron Giant director Brad Bird.",
+      "articleBody": "Netflix has offered a sneak peek at Ray Gunn, the exciting new sci-fi animated movie from Incredibles and Iron Giant director Brad Bird.<p><img src=\"https://www.slashfilm.com/img/gallery/incredibles-director-brad-birds-netflix-sci-fi-movie-looks-like-everything-weve-always-wanted/intro-1775751031.jpg\" /></p>",
+      "publishedAt": "2026-04-09T16:18:14.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+    "normalizedDescription": "Netflix has offered a sneak peek at Ray Gunn, the exciting new sci-fi animated movie from Incredibles and Iron Giant director Brad Bird.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Like Everything We've Always",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted other",
+        "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Movie Looks Like Everything We've Always' has a new update.\n\nNetflix has offered a sneak peek at Ray Gunn, the exciting new sci-fi animated movie from Incredibles and Iron Giant director Brad Bird.",
+      "normalizedCaption": "'Movie Looks Like Everything We've Always' has a new update.\n\nNetflix has offered a sneak peek at Ray Gunn, the exciting new sci-fi animated movie from Incredibles and Iron Giant director Brad Bird.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "e8633310f2f6d8ad",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144106/punisher-one-last-kill-trailer/",
+      "articleTitle": "The Punisher: One Last Kill Trailer Brings Frank Castle Out Of Hiding To Shoot Everyone",
+      "articleDescription": "Jon Bernthal returns as Frank Castle in the trailer for The Punisher: One Last Kill, a Marvel Cinematic Universe special centered on the character.",
+      "articleBody": "Jon Bernthal returns as Frank Castle in the trailer for The Punisher: One Last Kill, a Marvel Cinematic Universe special centered on the character.<p><img src=\"https://www.slashfilm.com/img/gallery/punisher-one-last-kill-trailer/intro-1775753056.jpg\" /></p>",
+      "publishedAt": "2026-04-09T16:16:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Punisher: One Last Kill Trailer Brings Frank Castle Out Of Hiding To Shoot Everyone",
+    "normalizedDescription": "Jon Bernthal returns as Frank Castle in the trailer for The Punisher: One Last Kill, a Marvel Cinematic Universe special centered on the character.",
+    "entity": {
+      "canonicalEntity": "The Punisher",
+      "canonicalEntityType": "person",
+      "eventType": "trailer",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "The Punisher",
+      "secondarySubject": "One Last Kill Trailer",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "The Punisher: One Last Kill",
+      "assetsFound": {
+        "logos": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "exact_title_logo_fallback",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb logo for The Punisher: One Last Kill",
+          "source": "tmdb",
+          "subject": "The Punisher: One Last Kill",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "The Punisher",
+        "The Punisher trailer",
+        "The Punisher: One Last Kill Trailer Brings Frank Castle Out Of Hiding To Shoot Everyone"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "The Punisher: One Last Kill",
+          "score": 694.6364,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "IMAGE_LOGO_OVERUSE",
+        "IMAGE_COMPANY_LOGO_MISUSED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "A new trailer for 'The Punisher: One Last Kill Trailer' has been released.\n\nJon Bernthal returns as Frank Castle in the trailer for The Punisher: One Last Kill, a Marvel Cinematic Universe special centered on the character.",
+      "normalizedCaption": "A new trailer for 'The Punisher: One Last Kill Trailer' has been released.\n\nJon Bernthal returns as Frank Castle in the trailer for The Punisher: One Last Kill, a Marvel Cinematic Universe special centered on the character.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "IMAGE_LOGO_OVERUSE"
+    ],
+    "diagnosis": [
+      "A logo-like asset was selected for a story that should prefer a project or person image."
+    ],
+    "recommendedFixes": [
+      "Block company logos as primary images when a project or person entity exists."
+    ]
+  },
+  {
+    "caseId": "486caf1794517f08",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2143960/how-the-boys-season-5-love-sausage-fight-scene-filmed/",
+      "articleTitle": "How The Boys Season 5's Grotesque Love Sausage Fight Scene Was Filmed [Exclusive]",
+      "articleDescription": "According to The Boys' Laz Alonso, season 5's grotesque Love Sausage fight scene was just as bizarre to film as you would imagine.",
+      "articleBody": "According to The Boys&#39; Laz Alonso, season 5&#39;s grotesque Love Sausage fight scene was just as bizarre to film as you would imagine.<p><img src=\"https://www.slashfilm.com/img/gallery/how-the-boys-season-5s-grotesque-love-sausage-fight-scene-was-filmed-exclusive/intro-1775741888.jpg\" /></p>",
+      "publishedAt": "2026-04-09T16:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "How The Boys Season 5's Grotesque Love Sausage Fight Scene Was Filmed [Exclusive]",
+    "normalizedDescription": "According to The Boys' Laz Alonso, season 5's grotesque Love Sausage fight scene was just as bizarre to film as you would imagine.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Grotesque Love Sausage Fight",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "How The Boys Season 5's Grotesque Love Sausage Fight Scene Was Filmed [Exclusive] other",
+        "How The Boys Season 5's Grotesque Love Sausage Fight Scene Was Filmed [Exclusive]"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Love Sausage Fight Scene Was Filmed' has a new update.\n\nAccording to The Boys' Laz Alonso, season 5's grotesque Love Sausage fight scene was just as bizarre to film as you would imagine.",
+      "normalizedCaption": "'Love Sausage Fight Scene Was Filmed' has a new update.\n\nAccording to The Boys' Laz Alonso, season 5's grotesque Love Sausage fight scene was just as bizarre to film as you would imagine.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  }
+]

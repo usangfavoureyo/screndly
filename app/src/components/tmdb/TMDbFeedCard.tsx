@@ -5,6 +5,7 @@ import { haptics } from '../../utils/haptics';
 import { useTMDbModalStore, TMDbFeed } from '../../stores/tmdbModalStore';
 import { formatCalendarDate, formatDateTime } from '../../utils/calendarDate';
 import { resolveTMDbPreviewAsset } from '../../lib/tmdb/feedImageSelection';
+import { TMDbLogoSurface } from './TMDbLogoSurface';
 import {
   BottomSheet,
   BottomSheetHeader,
@@ -447,13 +448,12 @@ function TMDbFeedCardComponent({
           >
             {cardPreviewImageUrl ? (
               useSquareLogoThumbnail ? (
-                <div className="flex h-full w-full items-center justify-center bg-[#050505] p-4">
-                  <img
-                    src={cardPreviewImageUrl}
-                    alt={`${feed.title} logo`}
-                    className="h-full w-full object-contain"
-                  />
-                </div>
+                <TMDbLogoSurface
+                  src={cardPreviewImageUrl}
+                  alt={`${feed.title} logo`}
+                  className="border-0"
+                  paddingClassName="p-4"
+                />
               ) : (
                 <img
                   src={cardPreviewImageUrl}

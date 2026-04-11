@@ -233,8 +233,11 @@ export interface DesignStudioAutoEditorialRecord {
   zoomLevel?: number;
   headerTextColor?: string;
   brandBlockMode?: 'auto' | 'black' | 'white';
+  overlayColor?: string;
   overlayDirection?: string;
   overlayStrength?: number;
+  fadeEnabled?: boolean;
+  fadeOpacity?: number;
   scheduleTime?: string | null;
   targetPlatforms: string[];
   status: DesignStudioAutoEditorialStatus;
@@ -332,8 +335,26 @@ interface MeasuredRegionStats {
 interface DesignStudioAutoRenderPlan {
   variant: DesignStudioLayoutVariant;
   overlayDirection: DesignStudioVariantRecord['overlayDirection'];
+  overlayColor: string;
+  overlayOpacity: number;
+  fadeEnabled: boolean;
   headerTextColor: string;
   brandBlockMode: 'black' | 'white';
+  score: number;
+}
+
+interface DesignStudioAutoBackgroundCandidate {
+  url: string;
+  reason?: string;
+  source?: RSSActivityItem['imageSource'];
+  score?: number;
+}
+
+interface DesignStudioAutoBackgroundSelection {
+  url: string;
+  reason: string;
+  source?: RSSActivityItem['imageSource'];
+  role: 'clean_art' | 'logo_card';
   score: number;
 }
 
@@ -1632,38 +1653,93 @@ function fitTextBlock(input: {
   const normalized = input.text.replace(/\s+/g, ' ').trim();
   const words = normalized.split(' ').filter(Boolean);
 
-  const buildLines = (fontSize: number): string[] => {
-    const lines: string[] = [];
-    let current = '';
+  const lineWidth = (lineWords: string[], fontSize: number): number =>
+    estimateWordWidth(lineWords.join(' '), fontSize, input.tracking);
 
-    for (const word of words) {
-      const trial = current ? `${current} ${word}` : word;
-      const trialWidth = estimateWordWidth(trial, fontSize, input.tracking);
-      if (trialWidth <= input.boxWidth || !current) {
-        current = trial;
-      } else {
-        lines.push(current);
-        current = word;
+  const buildBalancedLines = (fontSize: number): string[] => {
+    const bestByEnd = new Map<string, { lines: string[][]; score: number }>();
+    bestByEnd.set('0:0', { lines: [], score: 0 });
+
+    for (let end = 1; end <= words.length; end += 1) {
+      for (let lineCount = 1; lineCount <= input.maxLines; lineCount += 1) {
+        let best: { lines: string[][]; score: number } | null = null;
+
+        for (let start = lineCount - 1; start < end; start += 1) {
+          const previous = bestByEnd.get(`${start}:${lineCount - 1}`);
+          if (!previous) {
+            continue;
+          }
+
+          const lineWords = words.slice(start, end);
+          const width = lineWidth(lineWords, fontSize);
+          if (width > input.boxWidth && lineWords.length > 1) {
+            continue;
+          }
+
+          const lineIndex = lineCount - 1;
+          const isLastLine = end === words.length;
+          const singletonPenalty = words.length > 2 && lineWords.length === 1
+            ? (lineIndex > 0 && !isLastLine ? 1_000_000 : 120_000)
+            : 0;
+          const unusedRatio = clamp((input.boxWidth - Math.min(width, input.boxWidth)) / input.boxWidth, 0, 1);
+          const wordTarget = words.length / Math.min(input.maxLines, Math.max(1, Math.ceil(words.length / 2)));
+          const wordBalancePenalty = Math.abs(lineWords.length - wordTarget) * 18;
+          const underfilledPenalty = unusedRatio * unusedRatio * 100;
+          const score = previous.score + singletonPenalty + wordBalancePenalty + underfilledPenalty;
+          const candidate = { lines: [...previous.lines, lineWords], score };
+
+          if (!best || candidate.score < best.score) {
+            best = candidate;
+          }
+        }
+
+        if (best) {
+          bestByEnd.set(`${end}:${lineCount}`, best);
+        }
       }
     }
 
-    if (current) {
-      lines.push(current);
-    }
-    return lines;
+    const candidates = Array.from({ length: input.maxLines }, (_, index) => index + 1)
+      .map((lineCount) => bestByEnd.get(`${words.length}:${lineCount}`))
+      .filter((candidate): candidate is { lines: string[][]; score: number } => Boolean(candidate))
+      .map((candidate) => {
+        const widths = candidate.lines.map((lineWords) => lineWidth(lineWords, fontSize));
+        const averageWidth = widths.reduce((sum, width) => sum + width, 0) / Math.max(1, widths.length);
+        const widthVariance = widths.reduce((sum, width) => sum + Math.abs(width - averageWidth), 0);
+        const middleSingletons = candidate.lines.filter((lineWords, index) =>
+          lineWords.length === 1 && index > 0 && index < candidate.lines.length - 1,
+        ).length;
+        return {
+          ...candidate,
+          score: candidate.score + widthVariance * 0.08 + middleSingletons * 2_000_000,
+        };
+      });
+
+    return candidates
+      .sort((left, right) => left.score - right.score)[0]
+      ?.lines.map((lineWords) => lineWords.join(' ')) || [];
   };
 
-  for (let fontSize = input.maxFontSize; fontSize >= input.minFontSize; fontSize -= 2) {
-    const lines = buildLines(fontSize);
+  const preferredMinFontSize = Math.max(input.minFontSize, Math.round(input.maxFontSize * 0.8));
+  for (let fontSize = input.maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
+    const lines = buildBalancedLines(fontSize);
     const lineHeight = fontSize * input.lineHeightMultiplier;
-    if (lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
+    if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
       return { fontSize, lines, lineHeight };
     }
   }
 
-  const fontSize = input.minFontSize;
+  for (let fontSize = preferredMinFontSize - 2; fontSize >= input.minFontSize; fontSize -= 2) {
+    const lines = buildBalancedLines(fontSize);
+    const lineHeight = fontSize * input.lineHeightMultiplier;
+    if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
+      return { fontSize, lines, lineHeight };
+    }
+  }
+
+  const fontSize = Math.max(input.minFontSize, preferredMinFontSize);
   const lineHeight = fontSize * input.lineHeightMultiplier;
-  const lines = buildLines(fontSize).slice(0, input.maxLines);
+  const lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
   if (lines.length > 0) {
     const lastLine = lines[lines.length - 1];
     lines[lines.length - 1] = lastLine.length > 3 ? `${lastLine.slice(0, Math.max(0, lastLine.length - 3)).trim()}...` : lastLine;
@@ -1871,9 +1947,15 @@ function scoreAutoVariantCandidate(input: {
   textStats: MeasuredRegionStats;
   brandStats: MeasuredRegionStats;
   baseVariant: DesignStudioLayoutVariant;
+  backgroundProfile?: 'photo' | 'logo_card';
 }): DesignStudioAutoRenderPlan {
   const headerTextColor = chooseHeaderTextColor(input.textStats.luminance);
   const brandBlockMode = input.brandStats.luminance >= 0.58 ? 'black' : 'white';
+  const overlayColor = headerTextColor === '#000000' ? '#FFFFFF' : '#000000';
+  const overlayOpacity = input.backgroundProfile === 'logo_card'
+    ? clamp(Math.round((input.textStats.detail + input.brandStats.detail) * 100), 0, 18)
+    : 72;
+  const fadeEnabled = input.backgroundProfile !== 'logo_card';
   const textContrast = headerTextColor === '#000000'
     ? input.textStats.luminance
     : (1 - input.textStats.luminance);
@@ -1890,6 +1972,9 @@ function scoreAutoVariantCandidate(input: {
   return {
     variant: input.variant.variant,
     overlayDirection: input.variant.overlayDirection,
+    overlayColor,
+    overlayOpacity,
+    fadeEnabled,
     headerTextColor,
     brandBlockMode,
     score,
@@ -1902,8 +1987,9 @@ async function resolveAutoEditorialRenderPlan(input: {
   cropMode?: DesignStudioRenderPayload['cropMode'];
   imageFocalPoint?: { x: number; y: number };
   imageZoom?: number;
+  backgroundProfile?: 'photo' | 'logo_card';
 }): Promise<DesignStudioAutoRenderPlan> {
-  const { template, backgroundImage, cropMode, imageFocalPoint, imageZoom } = input;
+  const { template, backgroundImage, cropMode, imageFocalPoint, imageZoom, backgroundProfile = 'photo' } = input;
   const { baseVariant, variants } = getTemplateVariantMetadata(template);
   const previewVariant = findVariant(template, baseVariant || template.layoutVariant);
   const background = await buildBackgroundLayer({
@@ -1923,6 +2009,7 @@ async function resolveAutoEditorialRenderPlan(input: {
         textStats: await measureRegionStats(background, variant.textBox),
         brandStats: await measureRegionStats(background, variant.brandBox),
         baseVariant,
+        backgroundProfile,
       }),
     ),
   );
@@ -1931,6 +2018,9 @@ async function resolveAutoEditorialRenderPlan(input: {
     || {
       variant: baseVariant,
       overlayDirection: previewVariant.overlayDirection,
+      overlayColor: '#000000',
+      overlayOpacity: backgroundProfile === 'logo_card' ? 0 : 72,
+      fadeEnabled: backgroundProfile !== 'logo_card',
       headerTextColor: '#FFFFFF',
       brandBlockMode: 'white',
       score: 0,
@@ -1987,6 +2077,94 @@ async function buildFadeLayer(width: number, height: number, opacity: number): P
     .joinChannel(alphaChannel)
     .png()
     .toBuffer();
+}
+
+async function measureVisibleLogoLuminance(logoBuffer: Buffer): Promise<number> {
+  const { data, info } = await sharp(logoBuffer)
+    .ensureAlpha()
+    .resize(96, 96, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  let weightedLuminance = 0;
+  let alphaTotal = 0;
+  for (let index = 0; index < data.length; index += info.channels) {
+    const alpha = (data[index + 3] ?? 0) / 255;
+    if (alpha < 0.08) {
+      continue;
+    }
+
+    const red = data[index] ?? 0;
+    const green = data[index + 1] ?? 0;
+    const blue = data[index + 2] ?? 0;
+    weightedLuminance += (((0.2126 * red) + (0.7152 * green) + (0.0722 * blue)) / 255) * alpha;
+    alphaTotal += alpha;
+  }
+
+  return alphaTotal > 0 ? weightedLuminance / alphaTotal : 1;
+}
+
+async function buildDesignStudioLogoCardBackground(input: {
+  source: string;
+  width: number;
+  height: number;
+}): Promise<{ buffer: Buffer; logoMode: 'light_on_dark' | 'dark_on_light' }> {
+  const source = await fetchSourceBuffer(input.source);
+  if (!source) {
+    throw new Error('Logo card render failed: missing logo source');
+  }
+
+  const logoLuminance = await measureVisibleLogoLuminance(source);
+  const logoMode = logoLuminance >= 0.58 ? 'light_on_dark' : 'dark_on_light';
+  const darkBackground = { r: 8, g: 10, b: 14 };
+  const lightBackground = { r: 244, g: 246, b: 248 };
+  const background = logoMode === 'light_on_dark' ? darkBackground : lightBackground;
+  const accent = logoMode === 'light_on_dark'
+    ? { r: 28, g: 34, b: 48, alpha: 0.52 }
+    : { r: 220, g: 224, b: 232, alpha: 0.66 };
+  const logo = await sharp(source)
+    .ensureAlpha()
+    .resize({
+      width: Math.round(input.width * 0.52),
+      height: Math.round(input.height * 0.16),
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .flatten({ background })
+    .png()
+    .toBuffer();
+  const logoMeta = await sharp(logo).metadata();
+  const logoLeft = Math.round((input.width - (logoMeta.width || 1)) / 2);
+  const logoTop = Math.round((input.height - (logoMeta.height || 1)) / 2);
+  const glowSize = Math.round(Math.min(input.width, input.height) * 0.72);
+  const glow = Buffer.from(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="${input.width}" height="${input.height}" viewBox="0 0 ${input.width} ${input.height}">
+      <radialGradient id="glow" cx="50%" cy="42%" r="50%">
+        <stop offset="0%" stop-color="rgba(${accent.r},${accent.g},${accent.b},${accent.alpha})" />
+        <stop offset="100%" stop-color="rgba(${accent.r},${accent.g},${accent.b},0)" />
+      </radialGradient>
+      <rect width="${input.width}" height="${input.height}" fill="url(#glow)" />
+      <circle cx="${Math.round(input.width * 0.84)}" cy="${Math.round(input.height * 0.12)}" r="${Math.round(glowSize * 0.18)}" fill="rgba(${accent.r},${accent.g},${accent.b},0.18)" />
+      <circle cx="${Math.round(input.width * 0.16)}" cy="${Math.round(input.height * 0.86)}" r="${Math.round(glowSize * 0.14)}" fill="rgba(${accent.r},${accent.g},${accent.b},0.14)" />
+    </svg>
+  `.trim());
+
+  const buffer = await sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 3,
+      background,
+    },
+  })
+    .composite([
+      { input: await sharp(glow).png().toBuffer(), left: 0, top: 0 },
+      { input: logo, left: logoLeft, top: logoTop },
+    ])
+    .jpeg({ quality: 94, mozjpeg: true })
+    .toBuffer();
+
+  return { buffer, logoMode };
 }
 
 function buildOverlaySvg(input: {
@@ -2273,6 +2451,156 @@ function deriveEditorialScore(title: string, matchedKeyword: string, hasImage: b
   return Math.min(100, score);
 }
 
+function isPosterDrivenDesignStudioStory(item: RSSActivityItem, matchedKeyword?: string): boolean {
+  const haystack = [
+    item.title,
+    item.description || '',
+    stripHtml(item.contentHtml || ''),
+    matchedKeyword || '',
+  ].join(' ');
+
+  return /\b(?:poster|key art|one[-\s]?sheet|character poster|teaser poster|first look poster)\b/i.test(haystack);
+}
+
+function scoreDesignStudioCleanArtCandidate(input: {
+  item: RSSActivityItem;
+  candidate: DesignStudioAutoBackgroundCandidate;
+  matchedKeyword?: string;
+}): DesignStudioAutoBackgroundSelection | null {
+  const url = input.candidate.url.trim();
+  if (!url) {
+    return null;
+  }
+
+  const descriptor = [
+    input.candidate.reason || '',
+    input.item.imageReason || '',
+    url,
+  ].join(' ');
+  const posterDrivenStory = isPosterDrivenDesignStudioStory(input.item, input.matchedKeyword);
+  const textlessPosterSignal = /\b(?:textless|no text|without text|clean poster|clean key art|art only|art-only)\b/i.test(descriptor);
+  const posterSignal = /\b(?:poster|key art|one[-\s]?sheet|cover art|dvd cover|blu ray cover)\b/i.test(descriptor);
+  const cleanBackdropSignal = /\b(?:backdrop|still|production still|character still|official image|official photo|tmdb backdrop|tmdb still)\b/i.test(descriptor);
+  const logoSignal = /\b(?:company logo|network logo|studio logo|streaming service logo|platform logo|distributor logo)\b/i.test(descriptor);
+  const textHeavySignal = /\b(?:logo card|rendered as logo card|watermark|lower third|headline|caption|subtitle|thumbnail|outlet thumbnail|publisher bug|network bug|exclusive banner|article card|social card|screengrab|screenshot)\b/i.test(descriptor);
+
+  if (logoSignal) {
+    const isTmdbLogo = input.candidate.source === 'tmdb' || /image\.tmdb\.org/i.test(url);
+    if (!isTmdbLogo) {
+      return null;
+    }
+
+    return {
+      url,
+      reason: input.candidate.reason || 'Design Studio logo-card candidate',
+      source: input.candidate.source,
+      role: 'logo_card',
+      score: 82 + (typeof input.candidate.score === 'number' ? clamp(input.candidate.score / 10, 0, 10) : 0),
+    };
+  }
+
+  if (textHeavySignal && !textlessPosterSignal) {
+    return null;
+  }
+
+  if (posterSignal && !textlessPosterSignal) {
+    return null;
+  }
+
+  const isTmdb = input.candidate.source === 'tmdb' || /image\.tmdb\.org/i.test(url);
+  const isVerifiedCleanArt = cleanBackdropSignal || textlessPosterSignal || (isTmdb && !posterSignal);
+  if (!isVerifiedCleanArt) {
+    return null;
+  }
+
+  let score = 40;
+  if (isTmdb) score += 22;
+  if (cleanBackdropSignal) score += 28;
+  if (textlessPosterSignal) score += posterDrivenStory ? 20 : 8;
+  if (input.candidate.source === 'feed') score -= 18;
+  if (typeof input.candidate.score === 'number') score += clamp(input.candidate.score / 8, 0, 12);
+
+  return {
+    url,
+    reason: input.candidate.reason || 'Design Studio clean visual candidate',
+    source: input.candidate.source,
+    role: 'clean_art',
+    score,
+  };
+}
+
+function selectDesignStudioAutoBackgroundSource(
+  item: RSSActivityItem,
+  matchedKeyword?: string,
+): DesignStudioAutoBackgroundSelection | null {
+  const candidates: DesignStudioAutoBackgroundCandidate[] = [];
+  const seen = new Set<string>();
+  const addCandidate = (candidate: DesignStudioAutoBackgroundCandidate | null | undefined) => {
+    const url = candidate?.url?.trim();
+    if (!url || seen.has(url)) {
+      return;
+    }
+    seen.add(url);
+    candidates.push({ ...candidate, url });
+  };
+
+  for (const image of item.selectedImages || []) {
+    addCandidate({
+      url: image.url,
+      reason: image.reason,
+      source: image.source,
+      score: image.score,
+    });
+  }
+
+  addCandidate({
+    url: item.imageUrl || '',
+    reason: item.imageReason,
+    source: item.imageSource,
+    score: item.imageScore,
+  });
+
+  for (const url of item.imageUrls || []) {
+    addCandidate({
+      url,
+      reason: 'Feed fallback image',
+      source: 'feed',
+    });
+  }
+
+  return candidates
+    .map((candidate) => scoreDesignStudioCleanArtCandidate({ item, candidate, matchedKeyword }))
+    .filter((candidate): candidate is DesignStudioAutoBackgroundSelection => Boolean(candidate))
+    .sort((left, right) => right.score - left.score)[0] || null;
+}
+
+async function resolveDesignStudioAutoRenderBackground(input: {
+  selection: DesignStudioAutoBackgroundSelection;
+  template: DesignStudioTemplateRecord;
+  index: number;
+}): Promise<{ source: string; profile: 'photo' | 'logo_card' }> {
+  if (input.selection.role !== 'logo_card') {
+    return { source: input.selection.url, profile: 'photo' };
+  }
+
+  const logoCard = await buildDesignStudioLogoCardBackground({
+    source: input.selection.url,
+    width: input.template.width,
+    height: input.template.height,
+  });
+  const uploaded = await uploadBufferToBackblaze(
+    logoCard.buffer,
+    `${input.template.name.replace(/[^a-z0-9-]+/gi, '-')}-auto-logo-card-${Date.now()}-${input.index}.jpg`,
+    {
+      bucketTypes: ['design', 'general'],
+      prefix: 'design-studio/backgrounds',
+      contentType: 'image/jpeg',
+    },
+  );
+
+  return { source: uploaded.url, profile: 'logo_card' };
+}
+
 function stripHtml(value: string): string {
   return value.replace(/<[^>]+>/g, ' ');
 }
@@ -2315,10 +2643,13 @@ function evaluateAutoEditorialNarrativeEligibility(
 export const __designStudioAutoTestUtils = {
   evaluateAutoEditorialNarrativeEligibility,
   resolveAutoEditorialRenderPlan,
+  selectDesignStudioAutoBackgroundSource,
+  buildDesignStudioLogoCardBackground,
 };
 
 export const __designStudioRenderTestUtils = {
   buildBackgroundLayer,
+  fitTextBlock,
 };
 
 function deriveHeaderText(title: string): string {
@@ -2670,12 +3001,16 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
       if (!eligibility.eligible) {
         return null;
       }
-      const backgroundSource = item.imageUrl || item.imageUrls?.[0];
+      const backgroundSelection = selectDesignStudioAutoBackgroundSource(item, matchedKeyword);
+      if (!backgroundSelection) {
+        return null;
+      }
+      const backgroundSource = backgroundSelection.url;
       const score = deriveEditorialScore(item.title, matchedKeyword, Boolean(backgroundSource));
       if (score < settings.minimumScoreThreshold) {
         return null;
       }
-      return { item, matchedKeyword, backgroundSource, score };
+      return { item, matchedKeyword, backgroundSource, backgroundSelection, score };
     })
     .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
     .sort((left, right) => right.score - left.score)
@@ -2698,22 +3033,30 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
     const captions = await buildCaptionPayload(headerText, subtext, contentType, settings);
 
     try {
+      const renderBackground = await resolveDesignStudioAutoRenderBackground({
+        selection: candidate.backgroundSelection,
+        template,
+        index,
+      });
       const autoPlan = await resolveAutoEditorialRenderPlan({
         template,
-        backgroundImage: candidate.backgroundSource,
+        backgroundImage: renderBackground.source,
         cropMode: 'cover',
+        backgroundProfile: renderBackground.profile,
       });
 
       const rendered = await renderDesignStudioImage(template, {
         template_variant: autoPlan.variant,
         headerText,
         subtext,
-        backgroundImage: candidate.backgroundSource,
+        backgroundImage: renderBackground.source,
         headerTextColor: autoPlan.headerTextColor,
-        overlayColor: '#000000',
-        overlayOpacity: 72,
+        overlayColor: autoPlan.overlayColor,
+        overlayOpacity: autoPlan.overlayOpacity,
         gradientPosition: autoPlan.overlayDirection,
         cropMode: 'cover',
+        fadeEnabled: autoPlan.fadeEnabled,
+        fadeOpacity: autoPlan.fadeEnabled ? 90 : 0,
         brandBlockMode: autoPlan.brandBlockMode,
         sharedCaption: captions.shared_caption,
         pinterestTitle: captions.pinterest_title,
@@ -2748,14 +3091,17 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
         contentType,
         caption: captions.shared_caption,
         captions,
-        backgroundSource: candidate.backgroundSource,
+        backgroundSource: renderBackground.source,
         backgroundOffsetX: 50,
         backgroundOffsetY: 50,
         zoomLevel: 1,
         headerTextColor: autoPlan.headerTextColor,
         brandBlockMode: autoPlan.brandBlockMode,
+        overlayColor: autoPlan.overlayColor,
         overlayDirection: autoPlan.overlayDirection,
-        overlayStrength: 72,
+        overlayStrength: autoPlan.overlayOpacity,
+        fadeEnabled: autoPlan.fadeEnabled,
+        fadeOpacity: autoPlan.fadeEnabled ? 90 : 0,
         scheduleTime: settings.autoPost ? buildScheduledTime(index, settings.postingInterval, existingEditorials) : null,
         targetPlatforms: settings.targetPlatforms,
         status: settings.autoPost ? 'queued' : 'detected',

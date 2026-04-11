@@ -108,6 +108,18 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
 
   const handleCardActionPointerDown = (
     event: React.PointerEvent<HTMLElement>,
+    _action: () => void,
+  ) => {
+    event.stopPropagation();
+    if (event.pointerType === 'mouse' || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  const handleCardActionPointerUp = (
+    event: React.PointerEvent<HTMLElement>,
     action: () => void,
   ) => {
     event.stopPropagation();
@@ -435,6 +447,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => handlePublish(item.id))}
                               onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
@@ -454,6 +467,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
                               })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
                               onClick={(event) => handleCardActionClick(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
@@ -468,6 +485,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
                               })}
@@ -490,6 +511,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => handlePublish(item.id))}
                               onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
@@ -506,6 +528,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
                               })}
@@ -528,6 +554,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 w-full px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                setActiveItemId(item.id);
+                                onNavigate('compose-editor', 'create');
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 setActiveItemId(item.id);
                                 onNavigate('compose-editor', 'create');
                               })}

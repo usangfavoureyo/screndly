@@ -1,0 +1,203 @@
+[
+  {
+    "caseId": "93e7edf6ae2bfb38",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2138772/best-fourth-movies-franchise-ranked/",
+      "articleTitle": "10 Best Fourth Movies In A Franchise, Ranked",
+      "articleDescription": "Sometimes, the fourth movie in a franchise can rejuvenate or reinvigorate the property at large. Here's our ranking of the best ones.",
+      "articleBody": "Sometimes, the fourth movie in a franchise can rejuvenate or reinvigorate the property at large. Here&#39;s our ranking of the best ones.<p><img src=\"https://www.slashfilm.com/img/gallery/best-fourth-movies-franchise-ranked/intro-1775748033.jpg\" /></p>",
+      "publishedAt": "2026-04-09T15:10:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "10 Best Fourth Movies In A Franchise, Ranked",
+    "normalizedDescription": "Sometimes, the fourth movie in a franchise can rejuvenate or reinvigorate the property at large. Here's our ranking of the best ones.",
+    "entity": {
+      "canonicalEntityType": "other",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "10 Best Fourth Movies In A Franchise, Ranked other",
+        "10 Best Fourth Movies In A Franchise, Ranked"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_UNRESOLVED_TITLE",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "",
+      "normalizedCaption": "",
+      "failureCodes": [
+        "CAPTION_UNRESOLVED_TITLE"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_UNRESOLVED_TITLE"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_UNRESOLVED_TITLE",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "adb7e1d28592443f",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2144036/mutiny-jason-statham-action-thriller-trailer/",
+      "articleTitle": "Mutiny Trailer: Jason Statham Isn't Taking Any Ship From These Dudes",
+      "articleDescription": "Jason Statham wrecks dudes on the high seas in the trailer for Mutiny, which looks like it could be a revamped version of Ship, the abandoned sequel to Plane.",
+      "articleBody": "Jason Statham wrecks dudes on the high seas in the trailer for Mutiny, which looks like it could be a revamped version of Ship, the abandoned sequel to Plane.<p><img src=\"https://www.slashfilm.com/img/gallery/mutiny-jason-statham-action-thriller-trailer/intro-1775748434.jpg\" /></p>",
+      "publishedAt": "2026-04-09T15:08:58.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Mutiny Trailer: Jason Statham Isn't Taking Any Ship From These Dudes",
+    "normalizedDescription": "Jason Statham wrecks dudes on the high seas in the trailer for Mutiny, which looks like it could be a revamped version of Ship, the abandoned sequel to Plane.",
+    "entity": {
+      "canonicalEntity": "Mutiny Trailer",
+      "canonicalEntityType": "person",
+      "eventType": "trailer",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Mutiny Trailer",
+      "secondarySubject": "Jason Statham Isn't Taking",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Mutiny Trailer",
+        "Mutiny Trailer trailer",
+        "Mutiny Trailer: Jason Statham Isn't Taking Any Ship From These Dudes"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "A new trailer for 'Mutiny Trailer: Jason Statham Isn't Taking' has been released.\n\nJason Statham wrecks dudes on the high seas in the trailer for Mutiny, which looks like it could be a revamped version of Ship, the abandoned sequel to Plane.",
+      "normalizedCaption": "A new trailer for 'Mutiny Trailer: Jason Statham Isn't Taking' has been released.\n\nJason Statham wrecks dudes on the high seas in the trailer for Mutiny, which looks like it could be a revamped version of Ship, the abandoned sequel to Plane.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "101ad529cacc5245",
+    "input": {
+      "sourceName": "SlashFilm",
+      "feedUrl": "https://www.slashfilm.com/feed/",
+      "articleUrl": "https://www.slashfilm.com/2143418/exit-8-horror-movie-review/",
+      "articleTitle": "Exit 8 Review: This Creepy Liminal Horror Movie Keeps Going In Circles",
+      "articleDescription": "A subway corridor becomes an endless nightmare loop in Exit 8, a somewhat successful liminal space horror video game adaptation. Here's our review.",
+      "articleBody": "A subway corridor becomes an endless nightmare loop in Exit 8, a somewhat successful liminal space horror video game adaptation. Here&#39;s our review.<p><img src=\"https://www.slashfilm.com/img/gallery/exit-8-review-this-creepy-liminal-horror-movie-keeps-going-in-circles/intro-1775672636.jpg\" /></p>",
+      "publishedAt": "2026-04-09T14:00:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Exit 8 Review: This Creepy Liminal Horror Movie Keeps Going In Circles",
+    "normalizedDescription": "A subway corridor becomes an endless nightmare loop in Exit 8, a somewhat successful liminal space horror video game adaptation. Here's our review.",
+    "entity": {
+      "canonicalEntity": "This Creepy Liminal Horror",
+      "canonicalEntityType": "person",
+      "eventType": "licensing",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_gaming_collab_or_licensing"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "This Creepy Liminal Horror",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "This Creepy Liminal Horror",
+        "This Creepy Liminal Horror licensing",
+        "Exit 8 Review: This Creepy Liminal Horror Movie Keeps Going In Circles"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Horror Movie Keeps Going In Circles' has a new update.\n\nA subway corridor becomes an endless nightmare loop in Exit 8, a somewhat successful liminal space horror video game adaptation. Here's our review.",
+      "normalizedCaption": "'Horror Movie Keeps Going In Circles' has a new update.\n\nA subway corridor becomes an endless nightmare loop in Exit 8, a somewhat successful liminal space horror video game adaptation. Here's our review.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  }
+]

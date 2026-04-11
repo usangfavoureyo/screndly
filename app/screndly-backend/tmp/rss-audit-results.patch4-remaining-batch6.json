@@ -1,0 +1,743 @@
+[
+  {
+    "caseId": "d4c0c90b60f36b4a",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/news/festivals/sundance-film-festival-cdmx-2026-lineup-1235188101/",
+      "articleTitle": "Sundance Heads South: Festival Announces Lineup for Third CDMX Edition in Mexico",
+      "articleDescription": "The Sundance spin-off returns at the end of the month, and is bringing some hits from its January edition with it.",
+      "articleBody": "The Sundance spin-off returns at the end of the month, and is bringing some hits from its January edition with it.",
+      "publishedAt": "2026-04-09T18:00:00.000Z"
+    },
+    "scope": "entertainment_adjacent",
+    "normalizedTitle": "Sundance Heads South: Festival Announces Lineup for Third CDMX Edition in Mexico",
+    "normalizedDescription": "The Sundance spin-off returns at the end of the month, and is bringing some hits from its January edition with it.",
+    "entity": {
+      "canonicalEntity": "Sundance Heads South",
+      "canonicalEntityType": "other",
+      "eventType": "event",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_event_or_festival",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Sundance Heads South",
+      "secondarySubject": "Festival Announces Lineup",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Sundance Heads South",
+        "Sundance Heads South event",
+        "Sundance Heads South: Festival Announces Lineup for Third CDMX Edition in Mexico"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Sundance Heads South is returning in 'Sundance Heads South: Festival Announces Lineup'.\n\nThe Sundance spin-off returns at the end of the month, and is bringing some hits from its January edition with it.",
+      "normalizedCaption": "Sundance Heads South is returning in 'Sundance Heads South: Festival Announces Lineup'.\n\nThe Sundance spin-off returns at the end of the month, and is bringing some hits from its January edition with it.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "0a9b71d298d1b870",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/criticism/shows/hacks-season-5-review-final-season-hbo-max-1235187473/",
+      "articleTitle": "The Final Season of ‘Hacks’ Goes Out on Its Own Terms in a Fantastically Funny Farewell",
+      "articleDescription": "Deborah Vance (Smart) and Ava Daniels (Hannah Einbinder) get the last laugh in a hilarious Season 5 that prioritizes a good joke above all else.",
+      "articleBody": "Deborah Vance (Smart) and Ava Daniels (Hannah Einbinder) get the last laugh in a hilarious Season 5 that prioritizes a good joke above all else.",
+      "publishedAt": "2026-04-09T17:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Final Season of 'Hacks' Goes Out on Its Own Terms in a Fantastically Funny Farewell",
+    "normalizedDescription": "Deborah Vance (Smart) and Ava Daniels (Hannah Einbinder) get the last laugh in a hilarious Season 5 that prioritizes a good joke above all else.",
+    "entity": {
+      "canonicalEntity": "Hacks",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Hacks",
+      "secondarySubject": "The Final Season",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Hacks",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Hacks",
+          "source": "tmdb",
+          "subject": "Hacks",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Hacks",
+        "Hacks other",
+        "The Final Season of ‘Hacks’ Goes Out on Its Own Terms in a Fantastically Funny Farewell"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Hacks",
+          "mediaType": "tv",
+          "score": 756.088,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Season 5' has a new update.\n\nDeborah Vance (Smart) and Ava Daniels (Hannah Einbinder) get the last laugh in a hilarious Season 5 that prioritizes a good joke above all else.",
+      "normalizedCaption": "'Season 5' has a new update.\n\nDeborah Vance (Smart) and Ava Daniels (Hannah Einbinder) get the last laugh in a hilarious Season 5 that prioritizes a good joke above all else.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "5fedda60eb16f9ca",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/features/interviews/christopher-abbott-interview-death-of-a-salesman-1235188226/",
+      "articleTitle": "Christopher Abbott Has Been Hollywood’s Best-Kept Secret for Over a Decade",
+      "articleDescription": "Abbott, one of the best actors of his generation, sits down with IndieWire to talk his ongoing role onstage in Broadway's \"Death of a Salesman\" and one upcoming on Netflix's \"East of Eden.\"",
+      "articleBody": "Abbott, one of the best actors of his generation, sits down with IndieWire to talk his ongoing role onstage in Broadway's \"Death of a Salesman\" and one upcoming on Netflix's \"East of Eden.\"",
+      "publishedAt": "2026-04-09T16:36:05.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Christopher Abbott Has Been Hollywood's Best-Kept Secret for Over a Decade",
+    "normalizedDescription": "Abbott, one of the best actors of his generation, sits down with IndieWire to talk his ongoing role onstage in Broadway's \"Death of a Salesman\" and one upcoming on Netflix's \"East of Eden.\"",
+    "entity": {
+      "canonicalEntity": "Death of a Salesman",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Death of a Salesman",
+      "secondarySubject": "Christopher Abbott Has Been",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Death of a Salesman",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Death of a Salesman",
+          "source": "tmdb",
+          "subject": "Death of a Salesman",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Death of a Salesman",
+        "Death of a Salesman other",
+        "Christopher Abbott Has Been Hollywood’s Best-Kept Secret for Over a Decade"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Death of a Salesman",
+          "mediaType": "movie",
+          "score": 685.8618,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Christopher Abbott Has Been Hollywood' has a new update.\n\nAbbott, one of the best actors of his generation, sits down with IndieWire to talk his ongoing role onstage in Broadway's \"Death of a Salesman\" and one upcoming on Netflix's \"East of Eden.\"",
+      "normalizedCaption": "'Christopher Abbott Has Been Hollywood' has a new update.\n\nAbbott, one of the best actors of his generation, sits down with IndieWire to talk his ongoing role onstage in Broadway's \"Death of a Salesman\" and one upcoming on Netflix's \"East of Eden.\"",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "99605e39bf5f2abd",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/criticism/movies/outcome-movie-review-keanu-reeves-jonah-hill-apple-tv-1235188183/",
+      "articleTitle": "‘Outcome’ Review: Keanu Reeves Is a Troubled Movie Star in Jonah Hill’s Desperate and Unfunny Comedy About the Pain of Public Opinion",
+      "articleDescription": "Hill's Apple TV feature is only redeemed by a surprisingly heartfelt cameo from Martin Scorsese.",
+      "articleBody": "Hill's Apple TV feature is only redeemed by a surprisingly heartfelt cameo from Martin Scorsese.",
+      "publishedAt": "2026-04-09T16:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Outcome' Review: Keanu Reeves Is a Troubled Movie Star in Jonah Hill's Desperate and Unfunny Comedy About the Pain of Public Opinion",
+    "normalizedDescription": "Hill's Apple TV feature is only redeemed by a surprisingly heartfelt cameo from Martin Scorsese.",
+    "entity": {
+      "canonicalEntity": "Outcome' Revi",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Outcome' Revi",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Outcome' Revi",
+        "Outcome' Revi other",
+        "‘Outcome’ Review: Keanu Reeves Is a Troubled Movie Star in Jonah Hill’s Desperate and Unfunny Comedy About the Pain of Public Opinion"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Review: Keanu Reeves Is' has a new update.\n\nHill's Apple TV feature is only redeemed by a surprisingly heartfelt cameo from Martin Scorsese.",
+      "normalizedCaption": "'Review: Keanu Reeves Is' has a new update.\n\nHill's Apple TV feature is only redeemed by a surprisingly heartfelt cameo from Martin Scorsese.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "2837dfd6a1d71070",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/news/festivals/lower-east-side-film-festival-2026-lineup-1235188162/",
+      "articleTitle": "Lower East Side Film Festival Will Celebrate 25 Years of ‘Ghost World,’ and Much More",
+      "articleDescription": "The Lower East Side Film Festival returns to New York April 30-May 4 at the Village East Cinema to champion independent movies in Manhattan. See the lineup and jury here.",
+      "articleBody": "The Lower East Side Film Festival returns to New York April 30-May 4 at the Village East Cinema to champion independent movies in Manhattan. See the lineup and jury here.",
+      "publishedAt": "2026-04-09T15:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Lower East Side Film Festival Will Celebrate 25 Years of 'Ghost World,' and Much More",
+    "normalizedDescription": "The Lower East Side Film Festival returns to New York April 30-May 4 at the Village East Cinema to champion independent movies in Manhattan. See the lineup and jury here.",
+    "entity": {
+      "canonicalEntity": "Ghost World,",
+      "canonicalEntityType": "movie",
+      "eventType": "return",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Ghost World,",
+      "secondarySubject": "Lower East Side Film",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Ghost World",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Ghost World",
+          "source": "tmdb",
+          "subject": "Ghost World",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Ghost World,",
+        "Ghost World, return",
+        "Lower East Side Film Festival Will Celebrate 25 Years of ‘Ghost World,’ and Much More"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Ghost World",
+          "mediaType": "movie",
+          "score": 666.41695,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": []
+    },
+    "caption": {
+      "generatedCaption": "Ghost World, is returning.\n\nThe Lower East Side Film Festival returns to New York April 30-May 4 at the Village East Cinema to champion independent movies in Manhattan. See the lineup and jury here.",
+      "normalizedCaption": "Ghost World, is returning.\n\nThe Lower East Side Film Festival returns to New York April 30-May 4 at the Village East Cinema to champion independent movies in Manhattan. See the lineup and jury here.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": false,
+    "publishFailureCodes": [],
+    "diagnosis": [],
+    "recommendedFixes": []
+  },
+  {
+    "caseId": "8530942704f75bb5",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/news/breaking-news/ray-gunn-first-look-brad-bird-1235188090/",
+      "articleTitle": "‘Ray Gunn’ First Look: Sam Rockwell and Scarlett Johannson Star in Brad Bird’s Long-Awaited Sci-Fi Noir",
+      "articleDescription": "Skydance Animation produces the film, which will premiere on Netflix this year.",
+      "articleBody": "Skydance Animation produces the film, which will premiere on Netflix this year. ",
+      "publishedAt": "2026-04-09T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Ray Gunn' First Look: Sam Rockwell and Scarlett Johannson Star in Brad Bird's Long-Awaited Sci-Fi Noir",
+    "normalizedDescription": "Skydance Animation produces the film, which will premiere on Netflix this year.",
+    "entity": {
+      "canonicalEntity": "Ray Gunn' First Look",
+      "canonicalEntityType": "person",
+      "eventType": "release_date",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Ray Gunn' First Look",
+      "secondarySubject": "Sam Rockwell",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Sam Rockwell cropped to 4:5 portrait",
+      "assetsFound": {
+        "profiles": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb person profile for Sam Rockwell cropped to 4:5 portrait",
+          "source": "tmdb",
+          "subject": "Sam Rockwell cropped to 4:5 portrait",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Ray Gunn' First Look",
+        "Ray Gunn' First Look release_date",
+        "‘Ray Gunn’ First Look: Sam Rockwell and Scarlett Johannson Star in Brad Bird’s Long-Awaited Sci-Fi Noir"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Sam Rockwell cropped to 4:5 portrait",
+          "score": 344.8646,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'First Look: Sam Rockwell' has a new release date.\n\nSkydance Animation produces the film, which will premiere on Netflix this year.",
+      "normalizedCaption": "'First Look: Sam Rockwell' has a new release date.\n\nSkydance Animation produces the film, which will premiere on Netflix this year.",
+      "failureCodes": [
+        "CAPTION_PACKAGE_LABEL_LEAK",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_PACKAGE_LABEL_LEAK",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Caption headline did not stay anchored to the resolved canonical entity.",
+      "Caption retained malformed headline/package wording."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Validate caption headline entity against canonical media title and allowed entities.",
+      "Strip outlet package labels before deterministic caption generation."
+    ]
+  },
+  {
+    "caseId": "e7285ac0ee0affc1",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2142565/the-orville-characters-played-by-seth-mcfarlane-ted-cast/",
+      "articleTitle": "Every Orville Character Played By The Cast Of Seth McFarlane's Ted",
+      "articleDescription": "Several Ted stars also appeared on The Orville - but some are easier to spot than others.",
+      "articleBody": "Several Ted stars also appeared on The Orville - but some are easier to spot than others.<p><img src=\"https://www.tvline.com/img/gallery/every-orville-character-played-by-the-cast-of-seth-mcfarlanes-ted/intro-1775591076.jpg\" /></p>",
+      "publishedAt": "2026-04-10T13:12:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Every Orville Character Played By The Cast Of Seth McFarlane's Ted",
+    "normalizedDescription": "Several Ted stars also appeared on The Orville - but some are easier to spot than others.",
+    "entity": {
+      "canonicalEntity": "Every Orville Character Played",
+      "canonicalEntityType": "person",
+      "eventType": "casting",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Every Orville Character Played",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Every Orville Character Played",
+        "Every Orville Character Played casting",
+        "Every Orville Character Played By The Cast Of Seth McFarlane's Ted"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Every Orville Character Played joins 'Every Orville Character Played By The'.\n\nSeveral Ted stars also appeared on The Orville - but some are easier to spot than others.",
+      "normalizedCaption": "Every Orville Character Played joins 'Every Orville Character Played By The'.\n\nSeveral Ted stars also appeared on The Orville - but some are easier to spot than others.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "9b99aa56c4325569",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2144615/outlander-season-8-episode-6-recap-blessed-are-the-merciful/",
+      "articleTitle": "Outlander Confirms That [Spoiler] Survived Against All Odds — Read Episode 6 Recap",
+      "articleDescription": "This week's Outlander gives us important intel on a character we haven't seen in a while. Check out our recap!",
+      "articleBody": "This week&#39;s Outlander gives us important intel on a character we haven&#39;t seen in a while. Check out our recap!<p><img src=\"https://www.tvline.com/img/gallery/outlander-confirms-that-spoiler-survived-against-all-odds-read-episode-6-recap/intro-1775821485.jpg\" /></p>",
+      "publishedAt": "2026-04-10T13:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Outlander Confirms That [Spoiler] Survived Against All Odds — Read Episode 6 Recap",
+    "normalizedDescription": "This week's Outlander gives us important intel on a character we haven't seen in a while. Check out our recap!",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Survived Against All Odds",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Outlander Confirms That [Spoiler] Survived Against All Odds — Read Episode 6 Recap other",
+        "Outlander Confirms That [Spoiler] Survived Against All Odds — Read Episode 6 Recap"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s Outlander gives us important intel on a character we haven' has a new update.\n\nThis week's Outlander gives us important intel on a character we haven't seen in a while. Check out our recap!",
+      "normalizedCaption": "'s Outlander gives us important intel on a character we haven' has a new update.\n\nThis week's Outlander gives us important intel on a character we haven't seen in a while. Check out our recap!",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "f0b437bb0a80a6c1",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2143541/what-to-watch-april-10-2026-tv-shows-movies/",
+      "articleTitle": "What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More",
+      "articleDescription": "On TV this Friday: Malcolm In the Middle returns for a limited run, Laguna Beach and Jury Duty casts reunite, and Temptation Island Season 2 hits Netflix.",
+      "articleBody": "On TV this Friday: Malcolm In the Middle returns for a limited run, Laguna Beach ﻿and Jury Duty casts reunite, and Temptation Island Season 2 hits Netflix.<p><img src=\"https://www.tvline.com/img/gallery/what-to-watch-april-10-2026-tv-shows-movies/intro-1775768195.jpg\" /></p>",
+      "publishedAt": "2026-04-10T11:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More",
+    "normalizedDescription": "On TV this Friday: Malcolm In the Middle returns for a limited run, Laguna Beach and Jury Duty casts reunite, and Temptation Island Season 2 hits Netflix.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "return",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Malcolm In The Middle",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More return",
+        "What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "Malcolm In The Middle is returning in 'Laguna Beach And Jury Duty Reunions'.\n\nOn TV this Friday: Malcolm In the Middle returns for a limited run, Laguna Beach and Jury Duty casts reunite, and Temptation Island Season 2 hits Netflix.",
+      "normalizedCaption": "Malcolm In The Middle is returning in 'Laguna Beach And Jury Duty Reunions'.\n\nOn TV this Friday: Malcolm In the Middle returns for a limited run, Laguna Beach and Jury Duty casts reunite, and Temptation Island Season 2 hits Netflix.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "069283a8feb05d4b",
+    "input": {
+      "sourceName": "TVLine",
+      "feedUrl": "https://tvline.com/feed/",
+      "articleUrl": "https://www.tvline.com/2143912/the-pitt-season-2-episode-14-dr-baran-al-hashimi-seizures-medical-diagnosis-explained/",
+      "articleTitle": "The Pitt Boss Breaks Down Season 2, Episode 14: Robby's Reality Check, Langdon's Risky Save, And Al-Hashimi's Big Reveal",
+      "articleDescription": "The Pitt creator R. Scott Gemmill unpacks Season 2, Episode 14, including Robby's conversation with Duke, Langdon's risky save, and the big Al-Hashimi reveal.",
+      "articleBody": "The Pitt creator R. Scott Gemmill unpacks Season 2, Episode 14, including Robby&#39;s conversation with Duke, Langdon&#39;s risky save, and the big Al-Hashimi reveal.<p><img src=\"https://www.tvline.com/img/gallery/the-pitt-boss-breaks-down-season-2-episode-14-robbys-reality-check-langdons-risky-save-and-al-hashimis-big-reveal/intro-1775738445.jpg\" /></p>",
+      "publishedAt": "2026-04-10T02:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "The Pitt Boss Breaks Down Season 2, Episode 14: Robby's Reality Check, Langdon's Risky Save, And Al-Hashimi's Big Reveal",
+    "normalizedDescription": "The Pitt creator R. Scott Gemmill unpacks Season 2, Episode 14, including Robby's conversation with Duke, Langdon's risky save, and the big Al-Hashimi reveal.",
+    "entity": {
+      "canonicalEntity": "The Pitt Boss Breaks",
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_person_interview_or_reaction"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The Pitt Boss Breaks",
+      "secondarySubject": "Down Season",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PERSON_FALLBACK_NOT_ALLOWED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The Pitt Boss Breaks",
+        "The Pitt Boss Breaks other",
+        "The Pitt Boss Breaks Down Season 2, Episode 14: Robby's Reality Check, Langdon's Risky Save, And Al-Hashimi's Big Reveal"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PERSON_FALLBACK_NOT_ALLOWED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'s conversation with Duke, Langdon' has a new update.\n\nThe Pitt creator R. Scott Gemmill unpacks Season 2, Episode 14, including Robby's conversation with Duke, Langdon's risky save, and the big Al-Hashimi reveal.",
+      "normalizedCaption": "'s conversation with Duke, Langdon' has a new update.\n\nThe Pitt creator R. Scott Gemmill unpacks Season 2, Episode 14, including Robby's conversation with Duke, Langdon's risky save, and the big Al-Hashimi reveal.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  }
+]

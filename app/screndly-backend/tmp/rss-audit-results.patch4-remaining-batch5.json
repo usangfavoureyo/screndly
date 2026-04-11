@@ -1,0 +1,774 @@
+[
+  {
+    "caseId": "7f574878e0288aa1",
+    "input": {
+      "sourceName": "Collider",
+      "feedUrl": "https://collider.com/feed/",
+      "articleUrl": "https://collider.com/crime-movies-perfectly-written/",
+      "articleTitle": "10 Crime Movies That Are Perfectly Written",
+      "articleDescription": "It takes some skill to write any good crime movie. It’s a sentiment you can probably agree with if you’ve seen one of the worst crime movies of all time , like Gotti (2018), Gigli (2003), or The Snowman (2017). Those films show there are so many ways a screenplay for a crime movie can go wrong, and though those films have flaws beyond the writing, they were all pretty much doomed from the start, owing to the… you know… writing.",
+      "articleBody": "\n                                                                                                                                    <p>It takes some skill to write any good crime movie. It’s a sentiment you can probably agree with if you’ve seen one of the <a href=\"https://collider.com/crime-movies-worst-ranked/\" target=\"_blank\">worst crime movies of all time</a>, like <a href=\"https://collider.com/tag/gotti/\" target=\"_blank\"><em><strong>Gotti</strong></em></a> (2018), <em><strong>Gigli</strong></em> (2003), or <a href=\"https://collider.com/tag/the-snowman/\" target=\"_blank\"><em><strong>The Snowman</strong></em></a> (2017). Those films show there are so many ways a screenplay for a crime movie can go wrong, and though those films have flaws beyond the writing, they were all pretty much doomed from the start, owing to the… you know… writing.</p>                    ",
+      "publishedAt": "2026-04-10T12:23:13.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "10 Crime Movies That Are Perfectly Written",
+    "normalizedDescription": "It takes some skill to write any good crime movie. It’s a sentiment you can probably agree with if you’ve seen one of the worst crime movies of all time , like Gotti (2018), Gigli (2003), or The Snowman (2017). Those films show there are so many ways a screenplay for a crime movie can go wrong, and though those films have flaws beyond the writing, they were all pretty much doomed from the start, owing to the… you know… writing.",
+    "entity": {
+      "canonicalEntity": "Gotti",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.88,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "body_title_recovered"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "Gotti",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Gotti",
+        "Gotti other",
+        "10 Crime Movies That Are Perfectly Written"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'10 Crime Movies That Are Perfectly' has a new update.\n\nIt takes some skill to write any good crime movie. It's a sentiment you can probably agree with if you've seen one of the worst crime movies of all time, like Gotti (2018), Gigli (2003), or The Snowman (2017). Those films.",
+      "normalizedCaption": "'10 Crime Movies That Are Perfectly' has a new update.\n\nIt takes some skill to write any good crime movie. It's a sentiment you can probably agree with if you've seen one of the worst crime movies of all time, like Gotti (2018), Gigli (2003), or The Snowman (2017). Those films.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "93a3696e2de791fd",
+    "input": {
+      "sourceName": "Collider",
+      "feedUrl": "https://collider.com/feed/",
+      "articleUrl": "https://collider.com/firefly-greatest-sci-fi-western-streaming-success-itunes-april-2026/",
+      "articleTitle": "24 Years Later, the Best Sci-Fi Western of All Time Is Taking Over the World",
+      "articleDescription": "It isn't uncommon for popular television shows to inspire follow-up feature films, as was recently seen with Peaky Blinders: The Immortal Man . Every generation has a favorite series that received a theatrical sequel; both Sex and the City and Entourage were revived on the big screen. However, around two decades ago, 20th Century Studios made the decision to produce a theatrical feature film follow-up to a show that barely survived its first season. Far from finding the same success as Peaky Blinders , the show was unceremoniously cancelled after a 14-episode first season . Shortly after its initial run, the show in question became a word-of-mouth hit on home video. Reruns proved that it had struck a chord with its target audience, and a decision was made to give them what they wanted.",
+      "articleBody": "\n                                                                                                                                    <p>It isn't uncommon for popular television shows to inspire follow-up feature films, as was recently seen with <a href=\"https://collider.com/tag/movie/the-immortal-man-a-peaky-blinders-film/\" target=\"_blank\"><em><strong>Peaky Blinders: The Immortal Man</strong></em></a>. Every generation has a favorite series that received a theatrical sequel; both <em><strong><a href=\"https://collider.com/tag/sex-and-the-city/\" target=\"_blank\">Sex and the City</a></strong></em> and <em><strong><a href=\"https://collider.com/tag/entourage/\" target=\"_blank\">Entourage</a></strong></em> were revived on the big screen. However, around two decades ago, 20th Century Studios made the decision to produce a theatrical feature film follow-up to a show that barely survived its first season. Far from finding the same success as <strong><em><a href=\"https://collider.com/tag/peaky-blinders/\" target=\"_blank\">Peaky Blinders</a></em></strong>, the <strong>show was unceremoniously cancelled after a 14-episode first season</strong>. Shortly after its initial run, the show in question became a word-of-mouth hit on home video. Reruns proved that it had struck a chord with its target audience, and a decision was made to give them what they wanted.</p>                    ",
+      "publishedAt": "2026-04-10T12:00:12.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "24 Years Later, the Best Sci-Fi Western of All Time Is Taking Over the World",
+    "normalizedDescription": "It isn't uncommon for popular television shows to inspire follow-up feature films, as was recently seen with Peaky Blinders: The Immortal Man . Every generation has a favorite series that received a theatrical sequel; both Sex and the City and Entourage were revived on the big screen. However, around two decades ago, 20th Century Studios made the decision to produce a theatrical feature film follow-up to a show that barely survived its first season. Far from finding the same success as Peaky Blinders , the show was unceremoniously cancelled after a 14-episode first season . Shortly after its initial run, the show in question became a word-of-mouth hit on home video. Reruns proved that it had struck a chord with its target audience, and a decision was made to give them what they wanted.",
+    "entity": {
+      "canonicalEntity": "Years Later",
+      "canonicalEntityType": "person",
+      "eventType": "cancellation",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Years Later",
+      "secondarySubject": "Best Sci-Fi Western",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Peaky Blinders: The Immortal Man Podcast",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Peaky Blinders: The Immortal Man Podcast",
+          "source": "tmdb",
+          "subject": "Peaky Blinders: The Immortal Man Podcast",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Years Later",
+        "Years Later cancellation",
+        "24 Years Later, the Best Sci-Fi Western of All Time Is Taking Over the World"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Peaky Blinders: The Immortal Man Podcast",
+          "score": 710.6053999999999,
+          "accepted": false,
+          "rejectionReasons": [
+            "zero canonical token overlap"
+          ]
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Peaky Blinders: The Immortal Man' has been canceled.\n\nIt isn't uncommon for popular television shows to inspire follow-up feature films, as was recently seen with Peaky Blinders: The Immortal Man. Every generation has a favorite series that received a theatrical sequel; both.",
+      "normalizedCaption": "'Peaky Blinders: The Immortal Man' has been canceled.\n\nIt isn't uncommon for popular television shows to inspire follow-up feature films, as was recently seen with Peaky Blinders: The Immortal Man. Every generation has a favorite series that received a theatrical sequel; both.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "TMDb selected title had zero canonical token overlap with the article entity.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add canonical token overlap gating before accepting TMDb title candidates.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "f5b67e6c4cb5f0ab",
+    "input": {
+      "sourceName": "Collider",
+      "feedUrl": "https://collider.com/feed/",
+      "articleUrl": "https://collider.com/netflix-losing-james-bond-movies-april-007-streaming/",
+      "articleTitle": "Netflix Is About to Lose the Greatest Spy Thriller Series of All Time",
+      "articleDescription": "April is going to be a frustrating month for action movie fans with a Netflix subscription. The streaming giant has a plethora of great action flicks currently available on its roster in the United States, but this month is going to see an enormous exodus from the lineup, thanks to the removal of one of the genre's most iconic franchises . In one fell swoop, just a few days from now, Netflix is losing an entire 26-entry film series , leaving the streamer without fiction's most iconic spy.",
+      "articleBody": "\n                                                                                                                                    <p>April is going to be a frustrating month for action movie fans with a <strong><a href=\"https://collider.com/tag/netflix/\" target=\"_blank\">Netflix</a></strong> subscription. The streaming giant has <strong>a plethora of great action flicks currently available</strong> on its roster in the United States, but this month is going to see an enormous exodus from the lineup, thanks to the removal of <strong><a href=\"https://collider.com/most-iconic-movie-franchises-ranked/\" target=\"_blank\">one of the genre's most iconic franchises</a></strong>. In one fell swoop, just a few days from now, <strong>Netflix is losing an entire 26-entry film series</strong>, leaving the streamer without fiction's most iconic spy.</p>                    ",
+      "publishedAt": "2026-04-10T11:57:12.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Netflix Is About to Lose the Greatest Spy Thriller Series of All Time",
+    "normalizedDescription": "April is going to be a frustrating month for action movie fans with a Netflix subscription. The streaming giant has a plethora of great action flicks currently available on its roster in the United States, but this month is going to see an enormous exodus from the lineup, thanks to the removal of one of the genre's most iconic franchises . In one fell swoop, just a few days from now, Netflix is losing an entire 26-entry film series , leaving the streamer without fiction's most iconic spy.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "All Time April",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "Netflix Is About to Lose the Greatest Spy Thriller Series of All Time other",
+        "Netflix Is About to Lose the Greatest Spy Thriller Series of All Time"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'26-entry' has a new update.\n\nApril is going to be a frustrating month for action movie fans with a Netflix subscription. The streaming giant has a plethora of great action flicks currently available on its roster in the United States, but this month is going to see an enormous.",
+      "normalizedCaption": "'26-entry' has a new update.\n\nApril is going to be a frustrating month for action movie fans with a Netflix subscription. The streaming giant has a plethora of great action flicks currently available on its roster in the United States, but this month is going to see an enormous.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "b131eaabb45cd39d",
+    "input": {
+      "sourceName": "Collider",
+      "feedUrl": "https://collider.com/feed/",
+      "articleUrl": "https://collider.com/classic-movies-still-masterpieces-today/",
+      "articleTitle": "10 Classic Movies That Are Still Masterpieces Today",
+      "articleDescription": "Time is the ultimate critic. Trends fade, techniques age, and entire genres fall out of favor, yet some films endure, not just as relics, but as living works of art . These are the movies that still feel urgent and alive many decades after release. Whether through innovation, emotional depth, or sheer storytelling precision, they continue to resonate across generations.",
+      "articleBody": "\n                                                                                                                                    <p>Time is the ultimate critic. Trends fade, techniques age, and entire genres fall out of favor, yet some films endure, not just as relics, but as <a href=\"https://collider.com/best-movies-of-all-time/\" target=\"_blank\">living works of art</a>. These are the movies that still feel urgent and alive many decades after release. Whether through innovation, emotional depth, or sheer storytelling precision, they continue to resonate across generations.</p>                    ",
+      "publishedAt": "2026-04-10T11:45:12.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "10 Classic Movies That Are Still Masterpieces Today",
+    "normalizedDescription": "Time is the ultimate critic. Trends fade, techniques age, and entire genres fall out of favor, yet some films endure, not just as relics, but as living works of art . These are the movies that still feel urgent and alive many decades after release. Whether through innovation, emotional depth, or sheer storytelling precision, they continue to resonate across generations.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_unknown",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Still Masterpieces Today Time",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "10 Classic Movies That Are Still Masterpieces Today other",
+        "10 Classic Movies That Are Still Masterpieces Today"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'10 Classic Movies That Are Still' has a new update.\n\nTime is the ultimate critic. Trends fade, techniques age, and entire genres fall out of favor, yet some films endure, not just as relics, but as living works of art. These are the movies that still feel urgent and alive many.",
+      "normalizedCaption": "'10 Classic Movies That Are Still' has a new update.\n\nTime is the ultimate critic. Trends fade, techniques age, and entire genres fall out of favor, yet some films endure, not just as relics, but as living works of art. These are the movies that still feel urgent and alive many.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": false
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "15e06d17984d591b",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/criticism/shows/malcolm-in-the-middle-reboot-review-lifes-still-unfair-1235188196/",
+      "articleTitle": "‘Malcolm in the Middle: Life’s Still Unfair’ Is the Rare Revival That Provides Something New",
+      "articleDescription": "Returning creator Linwood Boomer does more than make a sweet epilogue to his original series; he reminds audiences of the kind of shows that used to thrive on TV, and now can't be found.",
+      "articleBody": "Returning creator Linwood Boomer does more than make a sweet epilogue to his original series; he reminds audiences of the kind of shows that used to thrive on TV, and now can't be found.",
+      "publishedAt": "2026-04-10T14:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Malcolm in the Middle: Life's Still Unfair' Is the Rare Revival That Provides Something New",
+    "normalizedDescription": "Returning creator Linwood Boomer does more than make a sweet epilogue to his original series; he reminds audiences of the kind of shows that used to thrive on TV, and now can't be found.",
+    "entity": {
+      "canonicalEntityType": "person",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "unsafe_canonical_entity_removed",
+        "article_family_project_news",
+        "audit_entity_empty"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "secondarySubject": "Rare Revival That Provides",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "TMDB_TITLE_NOT_RESOLVED",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "‘Malcolm in the Middle: Life’s Still Unfair’ Is the Rare Revival That Provides Something New other",
+        "‘Malcolm in the Middle: Life’s Still Unfair’ Is the Rare Revival That Provides Something New"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "TMDB_TITLE_NOT_RESOLVED"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Rare Revival That Provides Something N' has a new update.\n\nReturning creator Linwood Boomer does more than make a sweet epilogue to his original series; he reminds audiences of the kind of shows that used to thrive on TV, and now can't be found.",
+      "normalizedCaption": "'Rare Revival That Provides Something N' has a new update.\n\nReturning creator Linwood Boomer does more than make a sweet epilogue to his original series; he reminds audiences of the kind of shows that used to thrive on TV, and now can't be found.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "ENTITY_NOT_RESOLVED",
+      "ENTITY_NOT_RESOLVED_SAFE_BLOCK"
+    ],
+    "diagnosis": [
+      "No reliable canonical entity was resolved from the article.",
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver."
+    ],
+    "recommendedFixes": [
+      "Tighten canonical entity extraction before image or caption generation.",
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable."
+    ]
+  },
+  {
+    "caseId": "d10be6989602d529",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/news/analysis/wga-tentative-deal-means-writers-other-guilds-analysis-1235188279/",
+      "articleTitle": "The WGA’s Tentative Deal Gets Writers a Big Boost with Healthcare — and Sets the Tone for the Other Guilds",
+      "articleDescription": "Now working under a four-year deal rather than three, the writers got some much-needed healthcare relief, along with added residuals and protections.",
+      "articleBody": "Now working under a four-year deal rather than three, the writers got some much-needed healthcare relief, along with added residuals and protections. ",
+      "publishedAt": "2026-04-10T13:00:00.000Z"
+    },
+    "scope": "not_screenrender_core",
+    "normalizedTitle": "The WGA's Tentative Deal Gets Writers a Big Boost with Healthcare — and Sets the Tone for the Other Guilds",
+    "normalizedDescription": "Now working under a four-year deal rather than three, the writers got some much-needed healthcare relief, along with added residuals and protections.",
+    "entity": {
+      "canonicalEntity": "The WGA's Tentative Deal",
+      "canonicalEntityType": "other",
+      "eventType": "shopping",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_shopping_or_product",
+        "rss_family_no_tmdb_project"
+      ]
+    },
+    "image": {
+      "mode": "none",
+      "primarySubject": "The WGA's Tentative Deal",
+      "secondarySubject": "Gets Writers",
+      "assetsAccepted": 0,
+      "fallbackStageReached": "none",
+      "finalFailureStage": "PROJECT_FALLBACK_EMPTY",
+      "selectedImages": [],
+      "tmdbQueries": [
+        "The WGA's Tentative Deal",
+        "The WGA's Tentative Deal shopping",
+        "The WGA’s Tentative Deal Gets Writers a Big Boost with Healthcare — and Sets the Tone for the Other Guilds"
+      ],
+      "tmdbCandidates": [],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "IMAGE_NOT_FOUND",
+        "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "PROJECT_FALLBACK_EMPTY"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Healthcare' has a new update.\n\nNow working under a four-year deal rather than three, the writers got some much-needed healthcare relief, along with added residuals and protections.",
+      "normalizedCaption": "'Healthcare' has a new update.\n\nNow working under a four-year deal rather than three, the writers got some much-needed healthcare relief, along with added residuals and protections.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "The article had a likely project/person signal but no image was resolved.",
+      "No publishable image was found by the offline image resolver.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "297f1c2cee35f3b5",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/criticism/movies/thrash-review-netflix-shark-disaster-movie-1235188008/",
+      "articleTitle": "‘Thrash’ Review: Netflix’s Wild Shark Disaster Movie Is Dumb Fun Done Right",
+      "articleDescription": "Hurricanes + sharks + Tommy Wirkola = a surprisingly fun disaster movie, with real bite and actual scares.",
+      "articleBody": "Hurricanes + sharks + Tommy Wirkola = a surprisingly fun disaster movie, with real bite and actual scares.",
+      "publishedAt": "2026-04-10T07:01:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Thrash' Review: Netflix's Wild Shark Disaster Movie Is Dumb Fun Done Right",
+    "normalizedDescription": "Hurricanes + sharks + Tommy Wirkola = a surprisingly fun disaster movie, with real bite and actual scares.",
+    "entity": {
+      "canonicalEntity": "Thrash",
+      "canonicalEntityType": "movie",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Thrash",
+      "secondarySubject": "Thrash' Revi",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Thrash",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Thrash",
+          "source": "tmdb",
+          "subject": "Thrash",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Thrash",
+        "Thrash other",
+        "‘Thrash’ Review: Netflix’s Wild Shark Disaster Movie Is Dumb Fun Done Right"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Thrash",
+          "mediaType": "movie",
+          "score": 738.68515,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Wild Shark Disaster Movie Is Dumb' has a new update.\n\nHurricanes + sharks + Tommy Wirkola = a surprisingly fun disaster movie, with real bite and actual scares.",
+      "normalizedCaption": "'Wild Shark Disaster Movie Is Dumb' has a new update.\n\nHurricanes + sharks + Tommy Wirkola = a surprisingly fun disaster movie, with real bite and actual scares.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "2b0494836b3b959f",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/features/craft/the-pitt-season-2-production-design-interview-1235187974/",
+      "articleTitle": "‘The Pitt’ Production Team Tracks Every Sock, Every Empty Drawer, and It’s Why the Show Feels So Real",
+      "articleDescription": "Production designer Nina Ruscio and costume designer Lyn Paolo tell IndieWire about how deep \"The Pitt\" goes to avoid a break in continuity.",
+      "articleBody": "Production designer Nina Ruscio and costume designer Lyn Paolo tell IndieWire about how deep \"The Pitt\" goes to avoid a break in continuity.",
+      "publishedAt": "2026-04-09T22:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'The Pitt' Production Team Tracks Every Sock, Every Empty Drawer, and It's Why the Show Feels So Real",
+    "normalizedDescription": "Production designer Nina Ruscio and costume designer Lyn Paolo tell IndieWire about how deep \"The Pitt\" goes to avoid a break in continuity.",
+    "entity": {
+      "canonicalEntity": "The Pitt",
+      "canonicalEntityType": "tv",
+      "eventType": "other",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "The Pitt",
+      "secondarySubject": "The Pitt' Production Team",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "The Pitt",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for The Pitt",
+          "source": "tmdb",
+          "subject": "The Pitt",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "The Pitt",
+        "The Pitt other",
+        "‘The Pitt’ Production Team Tracks Every Sock, Every Empty Drawer, and It’s Why the Show Feels So Real"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "The Pitt",
+          "mediaType": "tv",
+          "score": 705,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Production Team Tracks Every Sock' has a new update.\n\nProduction designer Nina Ruscio and costume designer Lyn Paolo tell IndieWire about how deep \"The Pitt\" goes to avoid a break in continuity.",
+      "normalizedCaption": "'Production Team Tracks Every Sock' has a new update.\n\nProduction designer Nina Ruscio and costume designer Lyn Paolo tell IndieWire about how deep \"The Pitt\" goes to avoid a break in continuity.",
+      "failureCodes": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_BROKEN_QUOTE",
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_BROKEN_QUOTE",
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption contained an incomplete or malformed quote fragment.",
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Reject broken quote fragments before captions can pass final validation.",
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "9f26af62de1c3444",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/criticism/movies/bunnylovr-review-katarina-zhu-1235088356/",
+      "articleTitle": "‘Bunnylovr’ Review: It’s Hard Out Here for an Alienated Camgirl",
+      "articleDescription": "Writer/director Katarina Zhu also stars in her feature debut as young woman facing a somewhat unique quarter-life crisis.",
+      "articleBody": "Writer/director Katarina Zhu also stars in her feature debut as young woman facing a somewhat unique quarter-life crisis.",
+      "publishedAt": "2026-04-09T21:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "'Bunnylovr' Review: It's Hard Out Here for an Alienated Camgirl",
+    "normalizedDescription": "Writer/director Katarina Zhu also stars in her feature debut as young woman facing a somewhat unique quarter-life crisis.",
+    "entity": {
+      "canonicalEntity": "Bunnylovr",
+      "canonicalEntityType": "movie",
+      "eventType": "release_date",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_project_news"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "Bunnylovr",
+      "secondarySubject": "Bunnylovr' Revi",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "Bunnylovr",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for Bunnylovr",
+          "source": "tmdb",
+          "subject": "Bunnylovr",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "Bunnylovr",
+        "Bunnylovr release_date",
+        "‘Bunnylovr’ Review: It’s Hard Out Here for an Alienated Camgirl"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "Bunnylovr",
+          "mediaType": "movie",
+          "score": 715.5908999999999,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ]
+    },
+    "caption": {
+      "generatedCaption": "'Review: It' has a new release date.\n\nWriter/director Katarina Zhu also stars in her feature debut as young woman facing a somewhat unique quarter-life crisis.",
+      "normalizedCaption": "'Review: It' has a new release date.\n\nWriter/director Katarina Zhu also stars in her feature debut as young woman facing a somewhat unique quarter-life crisis.",
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "hardInvalidReasons": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "rebuildUsed": true
+    },
+    "publishBlocked": true,
+    "publishFailureCodes": [
+      "CAPTION_CANONICAL_ENTITY_MISMATCH"
+    ],
+    "diagnosis": [
+      "Caption headline did not stay anchored to the resolved canonical entity."
+    ],
+    "recommendedFixes": [
+      "Validate caption headline entity against canonical media title and allowed entities."
+    ]
+  },
+  {
+    "caseId": "e10a13b8fba25f06",
+    "input": {
+      "sourceName": "IndieWire",
+      "feedUrl": "https://www.indiewire.com/feed/",
+      "articleUrl": "https://www.indiewire.com/features/interviews/the-christophers-movie-screenwriter-interview-1235187637/",
+      "articleTitle": "Veteran Screenwriter Ed Solomon Relearned All the Rules for Steven Soderbergh’s Two-Hander ‘The Christophers’",
+      "articleDescription": "The screenwriter talks about reuniting with director Steven Soderbergh for an entertaining two-hander written specifically for Ian McKellen and Michaela Coel — even though Solomon and Soderbergh had no idea if the actors would be available or willing.",
+      "articleBody": "The screenwriter talks about reuniting with director Steven Soderbergh for an entertaining two-hander written specifically for Ian McKellen and Michaela Coel — even though Solomon and Soderbergh had no idea if the actors would be available or willing.",
+      "publishedAt": "2026-04-09T19:00:00.000Z"
+    },
+    "scope": "screenrender_core",
+    "normalizedTitle": "Veteran Screenwriter Ed Solomon Relearned All the Rules for Steven Soderbergh's Two-Hander 'The Christophers'",
+    "normalizedDescription": "The screenwriter talks about reuniting with director Steven Soderbergh for an entertaining two-hander written specifically for Ian McKellen and Michaela Coel — even though Solomon and Soderbergh had no idea if the actors would be available or willing.",
+    "entity": {
+      "canonicalEntity": "The Christophers",
+      "canonicalEntityType": "movie",
+      "eventType": "interview_quote",
+      "confidence": 0.8,
+      "ambiguityFlags": [
+        "article_family_unknown"
+      ]
+    },
+    "image": {
+      "mode": "single",
+      "primarySubject": "The Christophers",
+      "secondarySubject": "Relearned All",
+      "selectedSource": "tmdb",
+      "tmdbTitleResolved": "The Christophers",
+      "assetsFound": {
+        "backdrops": 1
+      },
+      "assetsAccepted": 1,
+      "fallbackStageReached": "project_still_or_backdrop",
+      "selectedImages": [
+        {
+          "role": "primary",
+          "label": "TMDb backdrop for The Christophers",
+          "source": "tmdb",
+          "subject": "The Christophers",
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "tmdbQueries": [
+        "The Christophers",
+        "Veteran Screenwriter Ed Solomon",
+        "The Christophers interview_quote",
+        "Veteran Screenwriter Ed Solomon Relearned All the Rules for Steven Soderbergh’s Two-Hander ‘The Christophers’"
+      ],
+      "tmdbCandidates": [
+        {
+          "title": "The Christophers",
+          "mediaType": "movie",
+          "score": 806.1675,
+          "accepted": true,
+          "rejectionReasons": []
+        }
+      ],
+      "failureCodes": []
+    },
+    "caption": {
+      "generatedCaption": "Relearned All has spoken about 'Veteran Screenwriter Ed Solomon Relearned All'.\n\nThe screenwriter talks about reuniting with director Steven Soderbergh for an entertaining two-hander written specifically for Ian McKellen and Michaela Coel — even though Solomon and Soderbergh had.",
+      "normalizedCaption": "Relearned All has spoken about 'Veteran Screenwriter Ed Solomon Relearned All'.\n\nThe screenwriter talks about reuniting with director Steven Soderbergh for an entertaining two-hander written specifically for Ian McKellen and Michaela Coel — even though Solomon and Soderbergh had.",
+      "failureCodes": [],
+      "hardInvalidReasons": [],
+      "rebuildUsed": false
+    },
+    "publishBlocked": false,
+    "publishFailureCodes": [],
+    "diagnosis": [],
+    "recommendedFixes": []
+  }
+]

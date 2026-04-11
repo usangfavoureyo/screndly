@@ -163,6 +163,18 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
 
   const handleCardActionPointerDown = (
     event: React.PointerEvent<HTMLElement>,
+    _action: () => void,
+  ) => {
+    event.stopPropagation();
+    if (event.pointerType === 'mouse' || event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+  };
+
+  const handleCardActionPointerUp = (
+    event: React.PointerEvent<HTMLElement>,
     action: () => void,
   ) => {
     event.stopPropagation();
@@ -578,6 +590,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => handlePublish(item.id))}
                               onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
@@ -594,6 +607,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => handleOpenSchedule(item))}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => handleOpenSchedule(item))}
                               onClick={(event) => handleCardActionClick(event, () => handleOpenSchedule(item))}
                             >
                               Schedule
@@ -605,6 +619,10 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
                               })}
@@ -627,6 +645,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               disabled={publishingIds.includes(item.id)}
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => handlePublish(item.id))}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => handlePublish(item.id))}
                               onClick={(event) => handleCardActionClick(event, () => handlePublish(item.id))}
                             >
                               {publishingIds.includes(item.id) ? (
@@ -643,6 +662,10 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
                               })}
@@ -665,6 +688,10 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
                               size="sm"
                               className="h-10 w-full px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
+                                haptics.light();
+                                handleEdit(item.id);
+                              })}
+                              onPointerUp={(event) => handleCardActionPointerUp(event, () => {
                                 haptics.light();
                                 handleEdit(item.id);
                               })}

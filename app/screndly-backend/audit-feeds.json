@@ -1,0 +1,51 @@
+[
+  {
+    "_note": "Example audit feed config. Replace or verify these entries with the 12 real production RSS sources before a full audit run.",
+    "name": "Variety",
+    "url": "https://variety.com/feed/"
+  },
+  {
+    "name": "Deadline",
+    "url": "https://deadline.com/feed/"
+  },
+  {
+    "name": "THR",
+    "url": "https://www.hollywoodreporter.com/feed/"
+  },
+  {
+    "name": "ScreenRant",
+    "url": "https://screenrant.com/feed/"
+  },
+  {
+    "name": "ComicBook",
+    "url": "https://comicbook.com/feed/"
+  },
+  {
+    "name": "Collider",
+    "url": "https://collider.com/feed/"
+  },
+  {
+    "name": "IndieWire",
+    "url": "https://www.indiewire.com/feed/"
+  },
+  {
+    "name": "TVLine",
+    "url": "https://tvline.com/feed/"
+  },
+  {
+    "name": "Entertainment Weekly",
+    "url": "https://ew.com/feed/"
+  },
+  {
+    "name": "TheWrap",
+    "url": "https://www.thewrap.com/feed/"
+  },
+  {
+    "name": "IGN",
+    "url": "https://www.ign.com/rss"
+  },
+  {
+    "name": "SlashFilm",
+    "url": "https://www.slashfilm.com/feed/"
+  }
+]
