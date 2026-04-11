@@ -607,6 +607,133 @@ test('core captions must anchor the headline to the canonical project title', ()
   assert.equal(failsRSSCaptionFormatting("'Flick Is Exactly What You Want' has a new update.\n\nThe review is in.", context), true);
 });
 
+test('deterministic RSS captions use review-aware templates for recovered project titles', () => {
+  const caption = __rssCaptionTestUtils.buildDeterministicRssCaption({
+    article_title: "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be",
+    event_type: 'casting',
+    primary_subject: 'bye-bye',
+    media_title: 'Thrash',
+    supporting_facts: [],
+  } as any, {
+    articleTitle: "Thrash Review: Netflix's New Shark Disaster Flick Is Exactly What You Want It To Be",
+    feedName: 'SlashFilm',
+    summary: "Thrash is the subject of a new review.",
+    articleBody: '',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: 'Thrash',
+      mediaTitle: 'Thrash',
+      entityType: 'movie',
+      confidence: 0.9,
+      allowedEntities: ['Thrash'],
+    },
+  });
+
+  assert.match(caption, /^'Thrash' is the subject of a new review\./);
+  assert.doesNotMatch(caption, /added a new cast member/i);
+});
+
+test('deterministic RSS captions use roundup-aware templates for recovered package stories', () => {
+  const caption = __rssCaptionTestUtils.buildDeterministicRssCaption({
+    article_title: '7 Anime With The Biggest Plot Twists',
+    event_type: 'casting',
+    primary_subject: 'Magi: The Labyrinth of Magic',
+    media_title: 'Magi: The Labyrinth of Magic',
+    supporting_facts: [],
+  } as any, {
+    articleTitle: '7 Anime With The Biggest Plot Twists',
+    feedName: 'ComicBook',
+    summary: 'Magi: The Labyrinth of Magic appears in the roundup.',
+    articleBody: '',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: 'Magi: The Labyrinth of Magic',
+      mediaTitle: 'Magi: The Labyrinth of Magic',
+      entityType: 'tv',
+      confidence: 0.9,
+      allowedEntities: ['Magi: The Labyrinth of Magic'],
+    },
+  });
+
+  assert.match(caption, /^'Magi: The Labyrinth of Magic' is featured in a new roundup\./);
+  assert.doesNotMatch(caption, /added a new cast member/i);
+});
+
+test('teaser headlines prefer recovered body project titles over weak headline fragments', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Did Abbott Elementary Just Break Up Janine And Gregory? Quinta Brunson Details The Fallout From That Big Fight',
+    description: 'Quinta Brunson discusses the fallout on Abbott Elementary after that fight.',
+    contentHtml: '<p>Quinta Brunson discusses the fallout on Abbott Elementary after that fight.</p>',
+  });
+
+  assert.equal(canonical.primarySubject, 'Abbott Elementary');
+  assert.equal(__rssAuditTestUtils.classifyRSSHeadlineStyle('Did Abbott Elementary Just Break Up Janine And Gregory?'), 'teaser');
+});
+
+test('trailer and how-style headlines recover clean project titles for canonical extraction', () => {
+  const mutiny = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Mutiny Trailer: Jason Statham Isn't Taking Any Ship From These Dudes",
+    description: 'Jason Statham wrecks dudes on the high seas in the trailer for Mutiny.',
+    contentHtml: '<p>Jason Statham wrecks dudes on the high seas in the trailer for Mutiny.</p>',
+  });
+  assert.equal(mutiny.primarySubject, 'Mutiny');
+
+  const boys = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "How The Boys Season 5's Grotesque Love Sausage Fight Scene Was Filmed [Exclusive]",
+    description: "According to The Boys' Laz Alonso, season 5's grotesque fight scene was bizarre to film.",
+    contentHtml: "<p>According to The Boys' Laz Alonso, season 5's grotesque fight scene was bizarre to film.</p>",
+  });
+  assert.equal(boys.primarySubject, 'The Boys');
+});
+
+test('listicle and quiz headlines route to editorial listicle family', () => {
+  const quiz = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Test Your Knowledge With the Collider TV Quiz - April 10, 2026',
+    description: 'Take the TV quiz.',
+    contentHtml: '<p>Take the TV quiz.</p>',
+  });
+  assert.ok((quiz.ambiguityFlags || []).includes('article_family_editorial_listicle'));
+
+  const watch = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More',
+    description: 'Here is what to watch this weekend.',
+    contentHtml: '<p>Here is what to watch this weekend.</p>',
+  });
+  assert.ok((watch.ambiguityFlags || []).includes('article_family_editorial_listicle'));
+});
+
+test('orders-to-series headlines recover the project title', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
+    description: 'CBS orders the vampire comedy to series.',
+    contentHtml: '<p>CBS orders the vampire comedy to series.</p>',
+  });
+  assert.equal(canonical.primarySubject, 'Eternally Yours');
+});
+
+test('secondary logo assets do not invalidate a matching primary project image', () => {
+  const codes = __rssAuditTestUtils.getRSSImageReasonCodes([
+    {
+      url: 'https://image.tmdb.org/backdrop.jpg',
+      source: 'tmdb',
+      reason: 'TMDb backdrop for Malcolm in the Middle',
+    },
+    {
+      url: 'https://image.tmdb.org/logo.jpg',
+      source: 'tmdb',
+      reason: 'TMDb logo for Malcolm in the Middle',
+    },
+  ], {
+    primarySubject: 'Malcolm in the Middle',
+    mediaTitle: 'Malcolm in the Middle',
+    entityType: 'tv',
+    allowedEntities: ['Malcolm in the Middle'],
+  } as any);
+
+  assert.equal(codes.includes('IMAGE_CANONICAL_ENTITY_MISMATCH'), false);
+  assert.equal(codes.includes('IMAGE_LOGO_OVERUSE'), false);
+});
+
 test('company logo misuse produces a targeted fix suggestion', () => {
   const result = auditResult({
     image: {

@@ -181,7 +181,8 @@ function classifyAuditScope(canonical: RSSCanonicalEntity): RssAuditScope {
   if (
     flags.includes('article_family_event_or_festival') ||
     flags.includes('article_family_business_or_platform') ||
-    flags.includes('article_family_gaming_collab_or_licensing')
+    flags.includes('article_family_gaming_collab_or_licensing') ||
+    flags.includes('article_family_editorial_listicle')
   ) {
     return 'entertainment_adjacent';
   }
@@ -351,7 +352,7 @@ function buildImageDecision(
     failureCodes.add('IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP');
   }
   if (
-    images.some((image) => /\blogo\b/i.test(image.reason || '')) &&
+    /\blogo\b/i.test(images[0]?.reason || '') &&
     canonical.entityType !== 'company' &&
     canonical.entityType !== 'platform' &&
     canonical.entityType !== 'unknown'

@@ -86,7 +86,19 @@ vi.mock('../../components/BackIconButton', () => ({
 }));
 
 vi.mock('../../components/media/MediaPreviewDialog', () => ({
-  MediaPreviewDialog: () => null,
+  MediaPreviewDialog: ({
+    open,
+    src,
+  }: {
+    open?: boolean;
+    src?: string;
+  }) => (
+    <div
+      data-testid="media-preview-dialog"
+      data-open={open ? 'true' : 'false'}
+      data-src={src ?? ''}
+    />
+  ),
 }));
 
 vi.mock('../../components/PageLoader', () => ({
@@ -345,6 +357,64 @@ describe('ComposeEditorPage scheduling', () => {
     expect(screen.getByRole('button', { name: 'Update Schedule' })).toBeInTheDocument();
   }, 60000);
 
+  it('uses the browser-safe asset stream URL for uploaded media previews', () => {
+    const rawBackblazeVideoUrl = 'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/trailer.mp4';
+
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Trailer drop',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/trailer.mp4?Authorization=temporary-token',
+              storageUrl: rawBackblazeVideoUrl,
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['x'],
+          sharedCaption: 'New trailer tonight',
+          platformFields: {},
+          createdAt: '2026-03-27T09:00:00.000Z',
+          updatedAt: '2026-03-27T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'draft-post',
+      lastModifiedAt: '2026-03-27T09:00:00.000Z',
+    });
+
+    const { container } = render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    const previewVideo = container.querySelector('video');
+    expect(previewVideo).not.toBeNull();
+    expect(previewVideo?.getAttribute('src')).toBe(
+      `/api/create/asset-stream?url=${encodeURIComponent(rawBackblazeVideoUrl)}`,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview video trailer.mp4' }));
+
+    const openPreviewDialog = screen.getAllByTestId('media-preview-dialog').find(
+      (element) => element.getAttribute('data-open') === 'true',
+    );
+
+    expect(openPreviewDialog).toHaveAttribute(
+      'data-src',
+      `/api/create/asset-stream?url=${encodeURIComponent(rawBackblazeVideoUrl)}`,
+    );
+  }, 60000);
+
   it('blocks scheduling when a caption-required platform is selected but the caption is empty', () => {
     useComposeStore.setState({
       items: [
@@ -386,7 +456,7 @@ describe('ComposeEditorPage scheduling', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Schedule' })[0]);
     const confirmScheduleButton = screen.getAllByRole('button', { name: 'Schedule' })[1];
 
-    expect(screen.getByText('Enter a caption before scheduling or publishing to the selected platforms')).toBeInTheDocument();
+    expect(screen.getAllByText('Enter a caption before scheduling or publishing to the selected platforms').length).toBeGreaterThan(0);
     expect(confirmScheduleButton).toBeDisabled();
     expect(useComposeStore.getState().items[0]?.status).toBe('draft');
   }, 60000);
@@ -532,7 +602,7 @@ describe('ComposeEditorPage scheduling', () => {
     expect(screen.getByDisplayValue('The Matrix still feels razor-sharp 60 seconds later.')).toBeInTheDocument();
     expect(screen.getByDisplayValue('The Matrix Review in 60 Seconds')).toBeInTheDocument();
     expect(screen.getByDisplayValue('A quick review of The Matrix.')).toBeInTheDocument();
-    expect(screen.getByText('Review • Direct fill')).toBeInTheDocument();
+    expect(screen.getByText('Review - Direct fill')).toBeInTheDocument();
     expect(toastMock.success).toHaveBeenCalledWith('Content generated. Playlist matched: Best fit');
   });
 

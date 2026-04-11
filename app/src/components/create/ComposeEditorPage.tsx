@@ -401,13 +401,25 @@ export function ComposeEditorPage({
     () => JSON.stringify(formState) !== initialFormSnapshot,
     [formState, initialFormSnapshot],
   );
+  const getAssetDisplayUrl = useCallback((asset?: ComposeMediaAsset | null) => {
+    const previewUrl = getComposeAssetPreviewUrl(asset ?? undefined);
+    return buildComposeAssetStreamUrl(previewUrl) || previewUrl;
+  }, []);
+  const getThumbnailDisplayUrl = useCallback((thumbnail?: ComposeThumbnailAsset | null) => {
+    if (!thumbnail) {
+      return undefined;
+    }
+
+    const previewUrl = thumbnail.previewUrl || thumbnail.storageUrl;
+    return buildComposeAssetStreamUrl(previewUrl) || previewUrl;
+  }, []);
   const activePreviewAssetUrl = useMemo(() => {
     if (!previewAsset) {
       return undefined;
     }
 
-    return getComposeAssetPreviewUrl(previewAsset);
-  }, [previewAsset]);
+    return getAssetDisplayUrl(previewAsset);
+  }, [getAssetDisplayUrl, previewAsset]);
   const isMediaPreviewOpen = Boolean(activePreviewAssetUrl || previewThumbnail);
   const isScheduleInteractionActive =
     isScheduleOpen
@@ -1173,7 +1185,7 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewAsset = (asset: ComposeMediaAsset) => {
-    const previewUrl = getComposeAssetPreviewUrl(asset);
+    const previewUrl = getAssetDisplayUrl(asset);
     if (!previewUrl) {
       return;
     }
@@ -1218,7 +1230,7 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewThumbnail = (thumbnail: ComposeThumbnailAsset) => {
-    const previewUrl = thumbnail.previewUrl || thumbnail.storageUrl;
+    const previewUrl = getThumbnailDisplayUrl(thumbnail);
     if (!previewUrl) {
       return;
     }
@@ -2056,7 +2068,7 @@ export function ComposeEditorPage({
                           </button>
                         </div>
                       </div>
-                      {getComposeAssetPreviewUrl(asset) ? (
+                      {getAssetDisplayUrl(asset) ? (
                         <button
                           type="button"
                           onClick={() => handlePreviewAsset(asset)}
@@ -2066,7 +2078,7 @@ export function ComposeEditorPage({
                           {asset.kind === 'video' ? (
                             <>
                               <video
-                                src={getComposeAssetPreviewUrl(asset)}
+                                src={getAssetDisplayUrl(asset)}
                                 className="pointer-events-none h-48 w-full object-contain"
                                 muted
                                 playsInline
@@ -2080,7 +2092,7 @@ export function ComposeEditorPage({
                             </>
                           ) : (
                             <img
-                              src={getComposeAssetPreviewUrl(asset)}
+                              src={getAssetDisplayUrl(asset)}
                               alt={asset.fileName}
                               className="pointer-events-none h-48 w-full object-cover"
                             />
@@ -2647,7 +2659,7 @@ export function ComposeEditorPage({
                     : null,
                 ].filter(Boolean).map(({ key, label, description, supportsGeneration }) => {
                   const thumbnail = formState[key];
-                  const previewUrl = thumbnail?.previewUrl || thumbnail?.storageUrl;
+                  const previewUrl = getThumbnailDisplayUrl(thumbnail);
                   const isGeneratingThisThumbnail = Boolean(thumbnailGenerationState[key]);
                   const thumbnailDrop = key === 'sharedThumbnail'
                     ? sharedThumbnailDrop
@@ -3066,7 +3078,7 @@ export function ComposeEditorPage({
       />
       <MediaPreviewDialog
         open={Boolean(previewThumbnail)}
-        src={previewThumbnail?.previewUrl || previewThumbnail?.storageUrl}
+        src={getThumbnailDisplayUrl(previewThumbnail)}
         mediaType="image"
         title={previewThumbnail?.fileName}
         badgeLabel="Thumbnail"

@@ -2097,12 +2097,75 @@ function pickRSSSupportingLine(extraction: RssCaptionExtraction, context: RSSCon
     return undefined;
 }
 
+type RSSDeterministicPackageMode =
+    | 'review'
+    | 'roundup'
+    | 'streaming_guide'
+    | 'reaction'
+    | 'none';
+
+function getRSSDeterministicPackageMode(context: RSSContext, extraction: RssCaptionExtraction): RSSDeterministicPackageMode {
+    const title = normalizeRSSHeadlineInput(context.articleTitle);
+    const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+    const text = `${title} ${body}`;
+
+    if (/\b(review|revi)\b/i.test(title)) {
+        return 'review';
+    }
+
+    if (/\b(where to watch|free to stream|now on prime video|now streaming|stream this month|lose .* to stream|what to watch)\b/i.test(title)) {
+        return 'streaming_guide';
+    }
+
+    if (/\b(rank(?:ed|ing)?|greatest|best|top\s+\d+|plot twists|looks in|movies that are|shows that are|quiz)\b/i.test(title)) {
+        return 'roundup';
+    }
+
+    if (/\b(jokes|reacts|reacted|teases|details|breaks down|addresses|opens up|talks about|told)\b/i.test(title) || extraction.event_type === 'interview_quote') {
+        return 'reaction';
+    }
+
+    if (/\b(roundup|guide|spotlight|featured in)\b/i.test(text)) {
+        return 'roundup';
+    }
+
+    return 'none';
+}
+
+function buildPackageAwareRSSSupportingLine(
+    mode: RSSDeterministicPackageMode,
+    formattedMediaTitle: string | undefined,
+    primarySubject: string | undefined,
+    secondarySubject: string | undefined
+): string | undefined {
+    const anchor = formattedMediaTitle || primarySubject;
+    if (!anchor) {
+        return undefined;
+    }
+
+    switch (mode) {
+        case 'review':
+            return `${anchor} is the subject of a new review.`;
+        case 'roundup':
+            return `${anchor} is featured in a new roundup.`;
+        case 'streaming_guide':
+            return `${anchor} is highlighted in a new streaming guide.`;
+        case 'reaction':
+            return formattedMediaTitle && secondarySubject
+                ? `${secondarySubject} is discussing ${formattedMediaTitle}.`
+                : `${anchor} is part of a new interview or reaction piece.`;
+        default:
+            return undefined;
+    }
+}
+
 function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context: RSSContext): string {
     const preferredTitle = getPreferredRssTitleEntity(context, extraction);
     const formattedMediaTitle = formatRssMediaTitle(preferredTitle || extraction.media_title);
     const primarySubject = getSafeRSSResolvedSubject(context, extraction);
     const secondarySubject = getSafeRSSSecondarySubject(context, extraction, primarySubject);
     const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+    const packageMode = getRSSDeterministicPackageMode(context, extraction);
 
     if (!primarySubject && !formattedMediaTitle) {
         return '';
@@ -2121,13 +2184,41 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
 
     if (formattedMediaTitle && /\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
         headline = `Reshoots for ${formattedMediaTitle} have been confirmed.`;
+    } else if (packageMode === 'review') {
+        headline = formattedMediaTitle
+            ? `${formattedMediaTitle} is the subject of a new review.`
+            : primarySubject
+                ? `${primarySubject} is the subject of a new review.`
+                : '';
+    } else if (packageMode === 'roundup') {
+        headline = formattedMediaTitle
+            ? `${formattedMediaTitle} is featured in a new roundup.`
+            : primarySubject
+                ? `${primarySubject} is featured in a new roundup.`
+                : '';
+    } else if (packageMode === 'streaming_guide') {
+        headline = formattedMediaTitle
+            ? `${formattedMediaTitle} is highlighted in a new streaming guide.`
+            : primarySubject
+                ? `${primarySubject} is highlighted in a new streaming guide.`
+                : '';
+    } else if (packageMode === 'reaction') {
+        headline = formattedMediaTitle && secondarySubject
+            ? `${secondarySubject} has spoken about ${formattedMediaTitle}.`
+            : formattedMediaTitle
+                ? `${formattedMediaTitle} is part of a new interview update.`
+                : primarySubject
+                    ? `${primarySubject} has addressed the latest update.`
+                    : '';
     } else {
         switch (extraction.event_type) {
             case 'casting':
                 headline = formattedMediaTitle && primarySubject && primarySubject !== extraction.media_title && looksLikeRSSPersonName(primarySubject)
                     ? `${primarySubject} joins ${formattedMediaTitle}.`
-                    : formattedMediaTitle
+                    : formattedMediaTitle && (secondarySubject || extraction.named_people?.length)
                         ? `${formattedMediaTitle} has added a new cast member.`
+                        : formattedMediaTitle
+                            ? `${formattedMediaTitle} has a new update.`
                         : primarySubject
                             ? `${primarySubject} has joined a new project.`
                             : '';
@@ -2224,7 +2315,8 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
     const quote = extraction.direct_quote && extraction.quote_speaker && !isIncompleteRSSQuote(extraction.direct_quote)
         ? ensureRSSSentenceTerminal(`"${extraction.direct_quote}"`)
         : undefined;
-    const supportingLine = pickRSSSupportingLine(extraction, context);
+    const supportingLine = buildPackageAwareRSSSupportingLine(packageMode, formattedMediaTitle, primarySubject, secondarySubject)
+        || pickRSSSupportingLine(extraction, context);
     const lines = [ensureRSSSentenceTerminal(headline)].filter(Boolean);
     if (lines.length === 0) {
         return '';

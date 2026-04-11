@@ -950,6 +950,14 @@ type RSSArticleFamily =
   | 'shopping_or_product'
   | 'political_or_non_entertainment'
   | 'gaming_collab_or_licensing'
+  | 'editorial_listicle'
+  | 'unknown';
+
+type RSSHeadlineStyle =
+  | 'direct_project'
+  | 'person_first'
+  | 'teaser'
+  | 'quote_led'
   | 'unknown';
 
 function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSArticleFamily {
@@ -979,6 +987,13 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
   }
 
   if (
+    /\b(quiz|what to watch|top\s+\d+|best\s+\d+|greatest\s+\d+|worst\s+\d+|ranked|countdown|plot twists|looks in|masterpieces|list of|most universally loved|free to stream|now on|now streaming)\b/i.test(text) ||
+    /^ratings\b/i.test(title)
+  ) {
+    return 'editorial_listicle';
+  }
+
+  if (
     /^(?:did|does|do|why|how|what|when)\b.+\?/i.test(title) &&
     /\b(?:series|show|movie|film|tv|episode|season|finale|premiere|creator|star|cast|fight|fallout|renewal|revival|returns?)\b/i.test(text)
   ) {
@@ -996,10 +1011,41 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
   return 'unknown';
 }
 
+function classifyRSSHeadlineStyle(title?: string | null): RSSHeadlineStyle {
+  const normalizedTitle = sanitizeRSSPlainText(title || '').replace(/\s+/g, ' ').trim();
+  if (!normalizedTitle) {
+    return 'unknown';
+  }
+
+  if (/^(?:["'“”‘’]|â€œ|â€˜)/.test(normalizedTitle)) {
+    return 'quote_led';
+  }
+
+  if (
+    /^(?:did|does|do|why|how|what|when|which|who|this|that|these|those)\b/i.test(normalizedTitle) ||
+    /\?$/.test(normalizedTitle)
+  ) {
+    return 'teaser';
+  }
+
+  if (/^[A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){1,3}\s+(?:says|said|jokes|walks|called|reacts|addresses|discusses|teases|reveals|slams|breaks down|opens up|details|told)\b/i.test(normalizedTitle)) {
+    return 'person_first';
+  }
+
+  if (
+    /^(?:["'“”‘’][^"'“”‘’]{2,120}["'“”‘’]|[A-Z][A-Za-z0-9'â€™:&-]+(?:\s+[A-Z][A-Za-z0-9'â€™:&-]+){0,6})\s+(?:renewed|returns?|lands|sets|gets|trailer|teaser|season\s+\d+|premiere|finale|review|revi|adaptation|first look|release date|ordered|confirmed)\b/i.test(normalizedTitle)
+  ) {
+    return 'direct_project';
+  }
+
+  return 'unknown';
+}
+
 function isRSSNonProjectArticleFamily(family: RSSArticleFamily): boolean {
   return family === 'shopping_or_product' ||
     family === 'political_or_non_entertainment' ||
-    family === 'event_or_festival';
+    family === 'event_or_festival' ||
+    family === 'editorial_listicle';
 }
 
 function hasRSSQuoteLedHeadlineJunk(value?: string | null): boolean {
@@ -1028,8 +1074,8 @@ function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
   return /[.!?]$/.test(candidate) ||
     hasRSSQuoteLedHeadlineJunk(candidate) ||
     /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,2}['’]s\s+(?:new|hit|latest|upcoming)\b/i.test(candidate) ||
-    /(?:^|[\s:,'’])(?:revi|review|season|premiere|finale|creator|boss|breaks|told|gets|lands|confirms|production team)$/i.test(candidate) ||
-    /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya)\b/i.test(candidate) ||
+    /(?:^|[\s:,'’])(?:revi|review|trailer|season|premiere|finale|creator|boss|breaks|told|gets|lands|confirms|production team|to series)$/i.test(candidate) ||
+    /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya|free to stream|what to watch|movie quiz|tv quiz|ranked)\b/i.test(candidate) ||
     /^(?:s\s+come\s+and\s+gone|did\s+\w+|boards?\s+ground|jimmy kimmel jokes|latest boot reveals)\b/i.test(normalized) ||
     (tokens.length > 6 && !/^(?:the|a|an)\s+[A-Z]/.test(candidate)) ||
     tokens.every((token) => RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token)) ||
@@ -1051,10 +1097,16 @@ function cleanRecoveredRSSProjectTitleCandidate(value?: string | null): string |
 
   cleaned = cleaned
     .replace(/^(?:the\s+final\s+season\s+of|final\s+season\s+of|where\s+to\s+watch|what\s+to\s+watch(?:\s+\w+)?\s*:|no\s+superheroes\s+needed:\s*)/i, '')
+    .replace(/^(?:did|does|do|why|how|what|when)\s+/i, '')
+    .replace(/^(?:(?:vampire|romantic|crime|sci[- ]?fi|science fiction|action|horror|thriller|comedy|drama|rom[- ]?com|mystery|superhero|fantasy|animated|animation|family|kids|teen|adult|period|historical)\s+)+/i, '')
     .replace(/\btrailer\b\s*:?.*$/i, '')
     .replace(/\b(?:review|revi)\s*:\s*.*$/i, '')
+    .replace(/\brecap\b\s*:?.*$/i, '')
+    .replace(/\b(?:is|are)\s+(?:free to stream|now on|now streaming|coming to|leaving)\b.*$/i, '')
     .replace(/\bseason\s+\d+\b(?:\s+(?:premiere|finale|return|returns?|recap|review|explained))?.*$/i, '')
-    .replace(/\b(?:premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|is\b|has\b)\s+.*$/i, '')
+    .replace(/\b(?:premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|broadway\s+producing\s+team|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|to\s+series\b|is\b|has\b)\s+.*$/i, '')
+    .replace(/\bjust$/i, '')
+    .replace(/\btrailer$/i, '')
     .replace(/[,:;.\-–—\s]+$/g, '')
     .trim();
 
@@ -1119,8 +1171,13 @@ function extractRSSHeadlineTitleRecoveryCandidates(title: string): string[] {
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:review|revi)\\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+trailer\\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+season\\s+\\d+\\b`, 'i'),
-    new RegExp(`^(?:why\\s+)?(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:season\\s+\\d+|is\\s+so\\s+different|worst-rated\\s+episode|may\\s+be\\s+the\\s+most\\s+complex)\\b`, 'i'),
+    new RegExp(`^(?:(?:why|how|what)\\s+)?(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:season\\s+\\d+|is\\s+so\\s+different|worst-rated\\s+episode|may\\s+be\\s+the\\s+most\\s+complex)\\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\s+${RSS_TITLE_CONNECTOR_PATTERN}){2,8}?)['???]s\s+(?:[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){0,3}|season\s+\d+|worst-rated\s+episode|future|creator|boss|end\s+begins)\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:is|are)\\s+(?:free\\s+to\\s+stream|now\\s+on|now\\s+streaming)\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:recap)\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+renewed\\b`, 'i'),
+    new RegExp(`^\\w+\\s+orders\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+to\\s+series\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s*:\\s+`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:gets|lands|confirms?|returns?|premiere|finale|creator|boss|production\\s+team|breaks?|told|is|has)\\b`, 'i'),
   ];
 
@@ -1181,12 +1238,19 @@ function extractRSSBodyTitleRecoveryCandidates(item: Pick<RSSItem, 'title' | 'de
 function chooseRSSBodyRecoveredTitle(
   item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
   currentPrimary?: string,
-  currentMediaTitle?: string
+  currentMediaTitle?: string,
+  headlineStyle: RSSHeadlineStyle = 'unknown'
 ): string | null {
+  const headlineCandidates = extractRSSHeadlineTitleRecoveryCandidates(item.title || '');
+  const bodyCandidates = extractRSSBodyTitleRecoveryCandidates(item);
   const candidates = [
-    ...extractRSSHeadlineTitleRecoveryCandidates(item.title || ''),
-    ...extractRSSBodyTitleRecoveryCandidates(item),
+    ...headlineCandidates,
+    ...bodyCandidates,
   ];
+
+  if ((headlineStyle === 'teaser' || headlineStyle === 'person_first' || headlineStyle === 'quote_led') && candidates.length > 0) {
+    return bodyCandidates[0] || headlineCandidates[0] || null;
+  }
 
   return candidates.find((candidate) => shouldPreferRecoveredRSSCandidate(candidate, currentPrimary, currentMediaTitle)) || null;
 }
@@ -1207,6 +1271,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     sanitizeRSSPlainText(item.contentHtml || ''),
   ].filter(Boolean).join(' ');
   const articleFamily = classifyRSSArticleFamily(item);
+  const headlineStyle = classifyRSSHeadlineStyle(item.title);
   const projectAnchorOverride =
     extractRSSCastingTitleProjectAnchor(item.title, articleText)
     || extractCastingProjectAnchorOverride(item.title, articleText);
@@ -1221,7 +1286,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   const initialMediaTitle = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.media_title);
   const bodyRecoveredTitle = isRSSNonProjectArticleFamily(articleFamily)
     ? null
-    : chooseRSSBodyRecoveredTitle(item, initialPrimarySubject, initialMediaTitle);
+    : chooseRSSBodyRecoveredTitle(item, initialPrimarySubject, initialMediaTitle, headlineStyle);
   const primarySubject = sanitizeRSSCanonicalEntityValue(bodyRecoveredTitle || projectAnchorOverride || extraction.primary_subject);
   const mediaTitle = sanitizeRSSCanonicalEntityValue(bodyRecoveredTitle || projectAnchorOverride || extraction.media_title);
   const secondarySubject = sanitizeRSSCanonicalEntityValue(extraction.secondary_subject);
@@ -1234,6 +1299,8 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
         ? 'shopping'
         : articleFamily === 'gaming_collab_or_licensing'
           ? 'licensing'
+          : articleFamily === 'editorial_listicle'
+            ? 'listicle'
           : projectAnchorOverride
             ? 'casting'
             : extraction.event_type;
@@ -1254,6 +1321,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   if (removedUnsafeCanonical) {
     ambiguityFlags.push('unsafe_canonical_entity_removed');
   }
+  ambiguityFlags.push(`headline_style_${headlineStyle}`);
   if (hasRSSQuoteLedHeadlineJunk(item.title)) {
     ambiguityFlags.push('quote_led_headline_junk');
   }
@@ -1537,15 +1605,16 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
     reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
   }
 
-  for (const image of images) {
+  for (const [index, image] of images.entries()) {
     const normalizedReason = `${image.reason || ''}`.toLowerCase();
     if (/\banime\b|\billustration\b|\bcartoon\b/.test(normalizedReason) && canonicalEntity.entityType !== 'character') {
       reasonCodes.add('IMAGE_MEDIA_TYPE_MISMATCH');
     }
-    if ((/logo/.test(normalizedReason) || /brand backdrop/.test(normalizedReason)) && canonicalEntity.entityType === 'person') {
+    if (index === 0 && (/logo/.test(normalizedReason) || /brand backdrop/.test(normalizedReason)) && canonicalEntity.entityType === 'person') {
       reasonCodes.add('IMAGE_LOGO_OVERUSE');
     }
     if (
+      index === 0 &&
       expectedPrimary &&
       image.source !== 'feed' &&
       allowed.length > 0 &&
@@ -6353,6 +6422,7 @@ export const __rssAuditTestUtils = {
   sanitizeRSSPlainText,
   sanitizeRSSCaptionText,
   classifyRSSArticleFamily,
+  classifyRSSHeadlineStyle,
   extractRSSBodyTitleRecoveryCandidates,
   buildRSSCanonicalEntity,
   ensureRSSCanonicalEntity,
@@ -6365,4 +6435,3 @@ export const __rssAuditTestUtils = {
   getRSSSourcePriority,
   resolveRSSDuplicateEventDecision,
 };
-
