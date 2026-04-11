@@ -1737,7 +1737,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     void handleDeleteEditorial(editorial);
                   }}
                   className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
-                  deleteLabel="Delete auto editorial"
+                  deleteLabel="Delete"
                 >
                   <button
                     type="button"
@@ -1764,7 +1764,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           setSelectedEditorial(editorial);
                           setIsEditorialActionsOpen(true);
                         }}
-                        className="h-11 w-11 rounded-full border border-gray-200 bg-white text-gray-900 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                        className="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white p-0 text-gray-900 shadow-sm transition-colors hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
                       >
                         <MoreVertical className="h-4 w-4" />
                       </button>
