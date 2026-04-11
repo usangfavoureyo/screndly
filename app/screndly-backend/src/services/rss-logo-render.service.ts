@@ -13,9 +13,36 @@ type LogoRenderPolicyInput = {
 
 type RGB = { r: number; g: number; b: number };
 type LogoBounds = { left: number; top: number; width: number; height: number };
+export type TMDbLogoCardDiagnostics = {
+  accent: RGB;
+  accentHex: string;
+  logoAspectRatio: number;
+  contrastRatio: number;
+  chosenCanvas: '1:1' | '16:9';
+  dimensions: {
+    width: number;
+    height: number;
+    maxWidth: number;
+    maxHeight: number;
+  };
+  background: {
+    start: RGB;
+    end: RGB;
+    startHex: string;
+    endHex: string;
+  };
+};
 
-const DARK_DEFAULT: RGB = { r: 14, g: 14, b: 16 };
 const LIGHT_DEFAULT: RGB = { r: 245, g: 245, b: 242 };
+const BACKGROUND_CANDIDATES: RGB[] = [
+  { r: 8, g: 8, b: 10 },     // black
+  { r: 14, g: 14, b: 16 },   // off-black
+  { r: 34, g: 34, b: 38 },   // dark gray
+  { r: 56, g: 56, b: 60 },   // gray
+  { r: 228, g: 228, b: 224 }, // off-white
+  { r: 245, g: 245, b: 242 }, // light
+  { r: 255, g: 255, b: 255 }, // white
+];
 const TRANSPARENT_BACKGROUND = { r: 0, g: 0, b: 0, alpha: 0 };
 const LOGO_ALPHA_BORDER_THRESHOLD = 14;
 const LOGO_NEAR_WHITE_THRESHOLD = 242;
@@ -23,6 +50,11 @@ const LOGO_COLOR_VARIANCE_THRESHOLD = 20;
 const LOGO_BORDER_ROW_RATIO = 0.985;
 const LOGO_BORDER_COLUMN_RATIO = 0.985;
 const LOGO_MAX_TRIM_RATIO = 0.35;
+const LOGO_LOW_CONTRAST_RATIO = 4.0;
+const LOGO_WIDE_RATIO = 1.9;
+const DARK_SURFACE_CANDIDATES: RGB[] = BACKGROUND_CANDIDATES.slice(0, 4);
+const LIGHT_SURFACE_CANDIDATES: RGB[] = BACKGROUND_CANDIDATES.slice(4);
+const LOGO_DARK_BIAS_CONTRAST_TOLERANCE = 1.25;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -42,8 +74,226 @@ function rgbToHex(color: RGB): string {
     .join('')}`;
 }
 
+function srgbToLinear(channel: number): number {
+  const normalized = clamp(channel, 0, 255) / 255;
+  return normalized <= 0.03928
+    ? normalized / 12.92
+    : Math.pow((normalized + 0.055) / 1.055, 2.4);
+}
+
+function getRelativeLuminance(color: RGB): number {
+  const r = srgbToLinear(color.r);
+  const g = srgbToLinear(color.g);
+  const b = srgbToLinear(color.b);
+  return (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+}
+
+function getContrastRatio(colorA: RGB, colorB: RGB): number {
+  const lumA = getRelativeLuminance(colorA);
+  const lumB = getRelativeLuminance(colorB);
+  const lighter = Math.max(lumA, lumB);
+  const darker = Math.min(lumA, lumB);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 function getLuminance(color: RGB): number {
   return (0.2126 * color.r) + (0.7152 * color.g) + (0.0722 * color.b);
+}
+
+function rgbToHsl(color: RGB): { h: number; s: number; l: number } {
+  const red = clamp(color.r, 0, 255) / 255;
+  const green = clamp(color.g, 0, 255) / 255;
+  const blue = clamp(color.b, 0, 255) / 255;
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+
+  if (max === min) {
+    return { h: 0, s: 0, l: lightness };
+  }
+
+  const delta = max - min;
+  const saturation = lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+
+  let hue = 0;
+  switch (max) {
+    case red:
+      hue = ((green - blue) / delta) + (green < blue ? 6 : 0);
+      break;
+    case green:
+      hue = ((blue - red) / delta) + 2;
+      break;
+    default:
+      hue = ((red - green) / delta) + 4;
+      break;
+  }
+
+  return { h: hue * 60, s: saturation, l: lightness };
+}
+
+function isDarkSurface(color: RGB): boolean {
+  return getRelativeLuminance(color) < 0.22;
+}
+
+function detectLogoColorFamily(accent: RGB): 'red' | 'yellow' | 'gray' | 'light' | 'dark' | 'other' {
+  const { h, s, l } = rgbToHsl(accent);
+
+  if (s < 0.14) {
+    if (l >= 0.72) return 'light';
+    if (l <= 0.24) return 'dark';
+    return 'gray';
+  }
+
+  if (h <= 24 || h >= 336) {
+    return 'red';
+  }
+
+  if (h >= 42 && h <= 72) {
+    return 'yellow';
+  }
+
+  if (h >= 190 && h <= 245 && s <= 0.24) {
+    return 'gray';
+  }
+
+  if (l >= 0.76) {
+    return 'light';
+  }
+
+  if (l <= 0.22) {
+    return 'dark';
+  }
+
+  return 'other';
+}
+
+function pickHighestContrastCandidate(accent: RGB, candidates: RGB[]): { color: RGB; contrast: number } {
+  let best = candidates[0];
+  let bestContrast = 0;
+
+  for (const candidate of candidates) {
+    const contrast = getContrastRatio(accent, candidate);
+    if (contrast > bestContrast) {
+      best = candidate;
+      bestContrast = contrast;
+    }
+  }
+
+  return { color: best, contrast: bestContrast };
+}
+
+function pickBestBackgroundColor(accent: RGB): { color: RGB; contrast: number } {
+  const colorFamily = detectLogoColorFamily(accent);
+  const bestDark = pickHighestContrastCandidate(accent, DARK_SURFACE_CANDIDATES);
+  const bestLight = pickHighestContrastCandidate(accent, LIGHT_SURFACE_CANDIDATES);
+
+  if (colorFamily === 'red' || colorFamily === 'yellow' || colorFamily === 'gray') {
+    if ((bestLight.contrast - bestDark.contrast) <= LOGO_DARK_BIAS_CONTRAST_TOLERANCE) {
+      return bestDark;
+    }
+    return bestLight;
+  }
+
+  if (colorFamily === 'light') {
+    return bestDark;
+  }
+
+  if (colorFamily === 'dark') {
+    return bestLight;
+  }
+
+  return bestLight.contrast > bestDark.contrast ? bestLight : bestDark;
+}
+
+function buildLogoBackground(
+  accent: RGB,
+  intent: LogoCardIntent,
+): { start: RGB; end: RGB; contrast: number; base: RGB } {
+  const pick = pickBestBackgroundColor(accent);
+  const base = pick.color;
+  const prefersDark = isDarkSurface(base);
+  const accentMix = prefersDark
+    ? (intent === 'brand_backdrop' ? 0.18 : 0.12)
+    : (intent === 'brand_backdrop' ? 0.14 : 0.08);
+
+  return {
+    start: mixColor(base, accent, accentMix),
+    end: prefersDark
+      ? mixColor(base, LIGHT_DEFAULT, intent === 'brand_backdrop' ? 0.08 : 0.05)
+      : mixColor(base, { r: 215, g: 215, b: 210 }, intent === 'brand_backdrop' ? 0.12 : 0.08),
+    contrast: pick.contrast,
+    base,
+  };
+}
+
+function chooseLogoCardDimensions(
+  intent: LogoCardIntent,
+  logoAspectRatio: number,
+  contrastRatio: number,
+): { width: number; height: number; maxWidth: number; maxHeight: number } {
+  if (intent === 'brand_backdrop' || logoAspectRatio >= LOGO_WIDE_RATIO || contrastRatio < LOGO_LOW_CONTRAST_RATIO) {
+    if (logoAspectRatio >= 3.4) {
+      return { width: 1600, height: 900, maxWidth: 1240, maxHeight: 300 };
+    }
+
+    if (logoAspectRatio >= 2.2) {
+      return { width: 1600, height: 900, maxWidth: 1120, maxHeight: 340 };
+    }
+
+    return { width: 1600, height: 900, maxWidth: 900, maxHeight: 380 };
+  }
+
+  if (logoAspectRatio >= 1.35) {
+    return { width: 1200, height: 1200, maxWidth: 820, maxHeight: 420 };
+  }
+
+  return { width: 1200, height: 1200, maxWidth: 660, maxHeight: 520 };
+}
+
+function buildBackdropLogoSurface(accent: RGB): { fill: RGB; edge: RGB; border: RGB } {
+  const pick = pickBestBackgroundColor(accent);
+  const darkSurface = isDarkSurface(pick.color);
+  const fill = mixColor(pick.color, accent, darkSurface ? 0.12 : 0.08);
+  const edge = darkSurface
+    ? mixColor(pick.color, LIGHT_DEFAULT, 0.1)
+    : mixColor(pick.color, { r: 220, g: 220, b: 214 }, 0.14);
+  const border = darkSurface
+    ? mixColor(fill, LIGHT_DEFAULT, 0.16)
+    : mixColor(fill, { r: 186, g: 186, b: 180 }, 0.24);
+
+  return { fill, edge, border };
+}
+
+async function buildTMDbLogoCardDiagnostics(
+  originalBuffer: Buffer,
+  intent: LogoCardIntent,
+): Promise<{ trimmedBuffer: Buffer; diagnostics: TMDbLogoCardDiagnostics }> {
+  const trimmedBuffer = await trimTMDbLogoOuterBorderBuffer(originalBuffer);
+  const accent = await analyzeVisibleColor(trimmedBuffer);
+  const logoMetadata = await sharp(trimmedBuffer, { animated: false }).metadata();
+  const logoWidth = Math.max(1, logoMetadata.width ?? 1);
+  const logoHeight = Math.max(1, logoMetadata.height ?? 1);
+  const logoAspectRatio = logoWidth / logoHeight;
+  const background = buildLogoBackground(accent, intent);
+  const dimensions = chooseLogoCardDimensions(intent, logoAspectRatio, background.contrast);
+
+  return {
+    trimmedBuffer,
+    diagnostics: {
+      accent,
+      accentHex: rgbToHex(accent),
+      logoAspectRatio,
+      contrastRatio: background.contrast,
+      chosenCanvas: dimensions.width > dimensions.height ? '16:9' : '1:1',
+      dimensions,
+      background: {
+        start: background.start,
+        end: background.end,
+        startHex: rgbToHex(background.start),
+        endHex: rgbToHex(background.end),
+      },
+    },
+  };
 }
 
 async function fetchBuffer(sourceUrl: string): Promise<Buffer> {
@@ -351,34 +601,13 @@ function buildGradientSvg(width: number, height: number, start: RGB, end: RGB): 
   return Buffer.from(svg);
 }
 
-function chooseBackgroundColors(accent: RGB, intent: LogoCardIntent): { start: RGB; end: RGB } {
-  const luminance = getLuminance(accent);
-  const prefersDark = luminance >= 132;
-
-  if (prefersDark) {
-    return {
-      start: mixColor(DARK_DEFAULT, accent, intent === 'brand_backdrop' ? 0.2 : 0.12),
-      end: mixColor(DARK_DEFAULT, accent, intent === 'brand_backdrop' ? 0.1 : 0.05),
-    };
-  }
-
-  return {
-    start: mixColor(LIGHT_DEFAULT, accent, intent === 'brand_backdrop' ? 0.15 : 0.08),
-    end: mixColor(LIGHT_DEFAULT, accent, intent === 'brand_backdrop' ? 0.06 : 0.03),
-  };
-}
-
 export async function renderTMDbLogoCard(
   sourceUrl: string,
   intent: LogoCardIntent
 ): Promise<string> {
   const originalBuffer = await fetchBuffer(sourceUrl);
-  const trimmedBuffer = await trimTMDbLogoOuterBorderBuffer(originalBuffer);
-  const accent = await analyzeVisibleColor(trimmedBuffer);
-  const dimensions = intent === 'brand_backdrop'
-    ? { width: 1600, height: 900, maxWidth: 1120, maxHeight: 360 }
-    : { width: 1200, height: 1200, maxWidth: 760, maxHeight: 520 };
-  const background = chooseBackgroundColors(accent, intent);
+  const { trimmedBuffer, diagnostics } = await buildTMDbLogoCardDiagnostics(originalBuffer, intent);
+  const { background, dimensions } = diagnostics;
 
   const logoBuffer = await sharp(trimmedBuffer, { animated: false })
     .resize({
@@ -390,16 +619,16 @@ export async function renderTMDbLogoCard(
     })
     .png()
     .toBuffer();
-  const logoMetadata = await sharp(logoBuffer).metadata();
-  const logoWidth = logoMetadata.width ?? dimensions.maxWidth;
-  const logoHeight = logoMetadata.height ?? dimensions.maxHeight;
+  const resizedLogoMetadata = await sharp(logoBuffer).metadata();
+  const resizedLogoWidth = resizedLogoMetadata.width ?? dimensions.maxWidth;
+  const resizedLogoHeight = resizedLogoMetadata.height ?? dimensions.maxHeight;
 
   const composed = await sharp(buildGradientSvg(dimensions.width, dimensions.height, background.start, background.end))
     .composite([
       {
         input: logoBuffer,
-        left: Math.max(0, Math.round((dimensions.width - logoWidth) / 2)),
-        top: Math.max(0, Math.round((dimensions.height - logoHeight) / 2)),
+        left: Math.max(0, Math.round((dimensions.width - resizedLogoWidth) / 2)),
+        top: Math.max(0, Math.round((dimensions.height - resizedLogoHeight) / 2)),
       },
     ])
     .png()
@@ -421,6 +650,23 @@ export async function renderTMDbLogoCard(
   );
 
   return uploaded.url;
+}
+
+export async function getTMDbLogoCardDiagnosticsFromBuffer(
+  buffer: Buffer,
+  intent: LogoCardIntent,
+): Promise<TMDbLogoCardDiagnostics> {
+  const { diagnostics } = await buildTMDbLogoCardDiagnostics(buffer, intent);
+  return diagnostics;
+}
+
+export async function getTMDbLogoCardDiagnosticsFromSource(
+  sourceUrl: string,
+  intent: LogoCardIntent,
+): Promise<TMDbLogoCardDiagnostics> {
+  const originalBuffer = await fetchBuffer(sourceUrl);
+  const { diagnostics } = await buildTMDbLogoCardDiagnostics(originalBuffer, intent);
+  return diagnostics;
 }
 
 export function shouldRenderTMDbLogoCard(options: LogoRenderPolicyInput): boolean {
@@ -470,6 +716,8 @@ export async function renderTMDbBackdropLogoComposite(
   ]);
 
   const trimmedLogoBuffer = await trimTMDbLogoOuterBorderBuffer(logoBuffer);
+  const accent = await analyzeVisibleColor(trimmedLogoBuffer);
+  const surface = buildBackdropLogoSurface(accent);
   const backdropImage = sharp(backdropBuffer, { animated: false }).rotate();
   const backdropMetadata = await backdropImage.metadata();
   const canvasWidth = Math.max(1200, backdropMetadata.width ?? 1600);
@@ -484,8 +732,16 @@ export async function renderTMDbBackdropLogoComposite(
     .jpeg({ quality: 92, mozjpeg: true })
     .toBuffer();
 
-  const maxLogoWidth = Math.round(canvasWidth * 0.52);
-  const maxLogoHeight = Math.round(canvasHeight * 0.24);
+  const sourceLogoMetadata = await sharp(trimmedLogoBuffer, { animated: false }).metadata();
+  const sourceAspectRatio = Math.max(1, sourceLogoMetadata.width ?? 1) / Math.max(1, sourceLogoMetadata.height ?? 1);
+  const maxLogoWidth = sourceAspectRatio >= 3.2
+    ? Math.round(canvasWidth * 0.64)
+    : sourceAspectRatio >= 2.2
+      ? Math.round(canvasWidth * 0.56)
+      : Math.round(canvasWidth * 0.46);
+  const maxLogoHeight = sourceAspectRatio >= 3.2
+    ? Math.round(canvasHeight * 0.2)
+    : Math.round(canvasHeight * 0.26);
   const resizedLogo = await sharp(trimmedLogoBuffer, { animated: false })
     .resize({
       width: maxLogoWidth,
@@ -510,13 +766,26 @@ export async function renderTMDbBackdropLogoComposite(
 
   const overlaySvg = Buffer.from(`
     <svg xmlns="http://www.w3.org/2000/svg" width="${overlayWidth}" height="${overlayHeight}" viewBox="0 0 ${overlayWidth} ${overlayHeight}">
+      <defs>
+        <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="${rgbToHex(surface.fill)}" stop-opacity="0.96" />
+          <stop offset="100%" stop-color="${rgbToHex(surface.edge)}" stop-opacity="0.92" />
+        </linearGradient>
+        <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0" dy="${Math.max(10, Math.round(overlayHeight * 0.04))}" stdDeviation="${Math.max(12, Math.round(overlayHeight * 0.05))}" flood-color="rgba(0,0,0,0.35)" />
+        </filter>
+      </defs>
       <rect
         x="0"
         y="0"
         width="${overlayWidth}"
         height="${overlayHeight}"
         rx="${Math.round(Math.min(overlayWidth, overlayHeight) * 0.18)}"
-        fill="rgba(0,0,0,0.38)"
+        fill="url(#surface)"
+        stroke="${rgbToHex(surface.border)}"
+        stroke-opacity="0.78"
+        stroke-width="${Math.max(2, Math.round(Math.min(overlayWidth, overlayHeight) * 0.012))}"
+        filter="url(#shadow)"
       />
     </svg>
   `);
