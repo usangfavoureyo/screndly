@@ -113,21 +113,49 @@ const PLATFORM_CAPABILITIES: Record<ComposePlatformKey, PlatformCapability> = {
   },
 };
 
+function canonicalizeComposeRemoteStorageUrl(url?: string) {
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const isBackblazeFile = /backblazeb2\.com$/i.test(parsed.hostname) && parsed.pathname.includes('/file/');
+    if (!isBackblazeFile) {
+      return url;
+    }
+
+    if (parsed.searchParams.has('Authorization')) {
+      parsed.searchParams.delete('Authorization');
+      return parsed.toString();
+    }
+  } catch {
+    return url;
+  }
+
+  return url;
+}
+
+function resolveComposeStorageUrl(previewUrl?: string, storageUrl?: string) {
+  return canonicalizeComposeRemoteStorageUrl(storageUrl || previewUrl);
+}
+
 function legacyMediaToAsset(media: ComposeMedia): ComposeMediaAsset {
   const previewUrl = media.previewUrl || media.storageUrl;
+  const storageUrl = resolveComposeStorageUrl(previewUrl, media.storageUrl);
   const normalizedStatus =
     media.uploadStatus === 'uploading'
-      ? media.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+      ? storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
         ? 'uploaded'
         : 'idle'
-      : media.uploadStatus ?? (media.storageUrl || previewUrl ? 'uploaded' : 'idle');
+      : media.uploadStatus ?? (storageUrl || previewUrl ? 'uploaded' : 'idle');
 
   return {
     ...media,
     id: `legacy-${media.fileName}-${media.size}`,
     order: 0,
     previewUrl,
-    storageUrl: media.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    storageUrl,
     uploadStatus: normalizedStatus,
   };
 }
@@ -137,20 +165,21 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
     item.mediaAssets && item.mediaAssets.length > 0
       ? item.mediaAssets.map((asset, index) => {
           const previewUrl = asset.previewUrl || asset.storageUrl;
+          const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
           const normalizedStatus =
             asset.uploadStatus === 'uploading'
-              ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+              ? storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
                 ? 'uploaded'
                 : 'idle'
               : asset.uploadStatus ??
-                (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+                (storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
 
           return {
             ...asset,
             id: asset.id || `asset-${index}-${asset.fileName}`,
             order: typeof asset.order === 'number' ? asset.order : index,
             previewUrl,
-            storageUrl: asset.storageUrl || (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+            storageUrl,
             uploadStatus: normalizedStatus,
           };
         })
@@ -184,7 +213,7 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
     ...normalized,
     mediaAssets: normalized.mediaAssets.map((asset) => {
       const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
-      const storageUrl = asset.storageUrl ?? previewUrl;
+      const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
 
       return {
         ...asset,
@@ -212,17 +241,18 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
 function normalizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
   if (!asset) return undefined;
   const previewUrl = asset.previewUrl || asset.storageUrl;
+  const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
   const normalizedStatus =
     asset.uploadStatus === 'uploading'
-      ? asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
+      ? storageUrl || (previewUrl && !previewUrl.startsWith('blob:'))
         ? 'uploaded'
         : 'idle'
-      : asset.uploadStatus ?? (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+      : asset.uploadStatus ?? (storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
 
   return {
     ...asset,
     previewUrl,
-    storageUrl: asset.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    storageUrl,
     uploadStatus: normalizedStatus,
   };
 }
@@ -243,14 +273,15 @@ function normalizeThumbnails(thumbnails?: {
 function normalizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): ComposeProcessedVideoAsset | undefined {
   if (!asset) return undefined;
   const previewUrl = asset.previewUrl || asset.storageUrl;
+  const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
   const normalizedStatus =
     asset.uploadStatus ??
-    (asset.storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
+    (storageUrl || (previewUrl && !previewUrl.startsWith('blob:')) ? 'uploaded' : 'idle');
 
   return {
     ...asset,
     previewUrl,
-    storageUrl: asset.storageUrl ?? (previewUrl?.startsWith('blob:') ? undefined : previewUrl),
+    storageUrl,
     uploadStatus: normalizedStatus,
   };
 }
@@ -258,7 +289,7 @@ function normalizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): Compo
 function sanitizeThumbnailAsset(asset?: ComposeThumbnailAsset): ComposeThumbnailAsset | undefined {
   if (!asset) return undefined;
   const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
-  const storageUrl = asset.storageUrl ?? previewUrl;
+  const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
 
   return {
     ...asset,
@@ -286,7 +317,7 @@ function sanitizeThumbnails(thumbnails?: {
 function sanitizeProcessedVideoAsset(asset?: ComposeProcessedVideoAsset): ComposeProcessedVideoAsset | undefined {
   if (!asset) return undefined;
   const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
-  const storageUrl = asset.storageUrl ?? previewUrl;
+  const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
 
   return {
     ...asset,

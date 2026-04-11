@@ -702,6 +702,32 @@ test('listicle and quiz headlines route to editorial listicle family', () => {
   assert.ok((watch.ambiguityFlags || []).includes('article_family_editorial_listicle'));
 });
 
+test('editorial watch guides and ratings reports are blocked at RSS intake', () => {
+  const watchGuideReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: 'What To Watch Friday: Malcolm In The Middle Revival, Laguna Beach And Jury Duty Reunions, And More',
+    description: 'Here is what to watch this weekend.',
+    contentHtml: '<p>Here is what to watch this weekend.</p>',
+  });
+  const ratingsReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: 'Ratings: One Piece Hits New High In Season 2, Virgin River Returns Strong',
+    description: 'A weekly viewership report.',
+    contentHtml: '<p>Weekly TV ratings roundup.</p>',
+  });
+
+  assert.match(String(watchGuideReason), /watch guide/i);
+  assert.match(String(ratingsReason), /ratings report/i);
+});
+
+test('editorial recap headlines are blocked at RSS intake', () => {
+  const recapReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: 'The Last of Us Season 2 Episode 4 Recap: The Cost of Survival',
+    description: 'Episode recap and ending explained.',
+    contentHtml: '<p>Episode recap and ending explained.</p>',
+  });
+
+  assert.match(String(recapReason), /recap\/explainer/i);
+});
+
 test('orders-to-series headlines recover the project title', () => {
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
     title: "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",

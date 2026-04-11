@@ -5,6 +5,7 @@ import {
   getComposePlatformCompatibility,
   getComposeCompatibilityMap,
   getComposeAssetPreviewUrl,
+  normalizeComposeItem,
   sanitizeComposeItem,
 } from '../../lib/create/composeMedia';
 import { compactComposeItemsForPersistence } from '../../store/useComposeStore';
@@ -181,5 +182,34 @@ describe('composeMedia story compatibility', () => {
     };
 
     expect(getComposeAssetPreviewUrl(asset)).toBe('https://cdn.example.com/video-rendered.mp4');
+  });
+
+  it('rehydrates legacy Backblaze preview-only assets with a stable raw storage URL', () => {
+    const authorizedBackblazeUrl = 'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/video-old.mp4?Authorization=expired-token';
+
+    const normalized = normalizeComposeItem({
+      id: 'legacy-video',
+      title: 'Legacy video',
+      status: 'failed',
+      mediaAssets: [
+        {
+          ...buildVideoAsset('video-old', 90),
+          previewUrl: authorizedBackblazeUrl,
+          storageUrl: authorizedBackblazeUrl,
+        },
+      ],
+      platforms: ['facebook_feed'],
+      sharedCaption: 'Caption',
+      platformFields: {},
+      createdAt: '2026-04-09T10:00:00.000Z',
+      updatedAt: '2026-04-09T10:00:00.000Z',
+    });
+
+    expect(normalized.mediaAssets[0]?.storageUrl).toBe(
+      'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/video-old.mp4',
+    );
+    expect(getComposeAssetPreviewUrl(normalized.mediaAssets[0])).toBe(
+      'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/video-old.mp4',
+    );
   });
 });

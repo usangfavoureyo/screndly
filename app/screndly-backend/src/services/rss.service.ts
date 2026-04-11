@@ -960,6 +960,84 @@ type RSSHeadlineStyle =
   | 'quote_led'
   | 'unknown';
 
+type RSSEditorialBlockType =
+  | 'quiz'
+  | 'ranking'
+  | 'listicle'
+  | 'watch_guide'
+  | 'recap'
+  | 'ratings';
+
+function classifyRSSEditorialBlockType(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>
+): RSSEditorialBlockType | null {
+  const title = sanitizeRSSPlainText(item.title || '').replace(/\s+/g, ' ').trim();
+  const description = sanitizeRSSPlainText(item.description || '').replace(/\s+/g, ' ').trim();
+  const body = sanitizeRSSPlainText(item.contentHtml || '').replace(/\s+/g, ' ').trim();
+  const text = `${title} ${description} ${body}`.trim();
+
+  if (
+    /\b(?:quiz|test your knowledge|trivia|guess the character|challenge)\b/i.test(text)
+  ) {
+    return 'quiz';
+  }
+
+  if (
+    /\b(?:what to watch|what to stream|what's streaming|watch this weekend|watch this week)\b/i.test(text)
+  ) {
+    return 'watch_guide';
+  }
+
+  if (
+    /\b(?:episode recap|recap|ending explained|breakdown|explained|analysis)\b/i.test(title) &&
+    !/\b(?:star|actor|actress|creator|showrunner|director|writer|producer)\b.+\b(?:breaks down|discusses|reacts|explains|talks about)\b/i.test(title)
+  ) {
+    return 'recap';
+  }
+
+  if (
+    /^(?:ratings)\b/i.test(title) ||
+    /\b(?:tv ratings|overnight ratings|viewership|demo numbers)\b/i.test(text)
+  ) {
+    return 'ratings';
+  }
+
+  if (
+    /\b(?:top\s+\d+|best\s+\d+|greatest\s+\d+|worst\s+\d+|ranked|ranking|countdown)\b/i.test(text)
+  ) {
+    return 'ranking';
+  }
+
+  if (
+    /^(?:\d+)\b/i.test(title) ||
+    /\b(?:plot twists|masterpieces|forgotten fantasy|looks in|most universally loved|free to stream|now streaming|now on)\b/i.test(text)
+  ) {
+    return 'listicle';
+  }
+
+  return null;
+}
+
+function getRSSEditorialIngestionBlockReason(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>
+): string | null {
+  const editorialType = classifyRSSEditorialBlockType(item);
+  if (!editorialType) {
+    return null;
+  }
+
+  const labelByType: Record<RSSEditorialBlockType, string> = {
+    quiz: 'quiz/trivia',
+    ranking: 'ranking/listicle',
+    listicle: 'editorial listicle',
+    watch_guide: 'watch guide',
+    recap: 'recap/explainer',
+    ratings: 'ratings report',
+  };
+
+  return `Filtered at RSS intake because this article is editorial/meta content (${labelByType[editorialType]}), not a publishable project-news item.`;
+}
+
 function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSArticleFamily {
   const title = sanitizeRSSPlainText(item.title || '');
   const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
@@ -986,10 +1064,7 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
     return 'gaming_collab_or_licensing';
   }
 
-  if (
-    /\b(quiz|what to watch|top\s+\d+|best\s+\d+|greatest\s+\d+|worst\s+\d+|ranked|countdown|plot twists|looks in|masterpieces|list of|most universally loved|free to stream|now on|now streaming)\b/i.test(text) ||
-    /^ratings\b/i.test(title)
-  ) {
+  if (classifyRSSEditorialBlockType(item)) {
     return 'editorial_listicle';
   }
 
@@ -5178,7 +5253,9 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       ? manualSelectionCandidates
           .find((item) => {
             const speculationAssessment = assessRSSArticleSpeculation(item);
+            const editorialIngestionBlockReason = getRSSEditorialIngestionBlockReason(item);
             return !hasRSSItemLocalSeenKeys(manualRunBlockedKeys, item)
+              && !editorialIngestionBlockReason
               && !getRecentSubjectCooldownReason(item)
               && !getCrossSourceEventDuplicateDecision(item)
               && !getCrossSourceTopicDuplicateReason(item)
@@ -5202,6 +5279,40 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       const item = pendingEntry.item;
       latestHandledItem = item;
       const dedupeKey = getRSSItemDedupeKey(item);
+
+      const editorialIngestionBlockReason = getRSSEditorialIngestionBlockReason(item);
+      if (editorialIngestionBlockReason) {
+        if (support.feedItemsTable) {
+          await prisma.rSSFeedItem.update({
+            where: { id: pendingEntry.record.id },
+            data: {
+              status: 'filtered',
+              lastAttemptedAt: new Date(),
+              errorMessage: editorialIngestionBlockReason,
+              itemData: serializeRSSItem(item),
+            },
+          });
+        }
+        const filteredMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          contentHtml: item.contentHtml,
+          imageUrl: item.imageUrl,
+          imageUrls: item.imageUrls,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'filtered',
+          platforms,
+          errorMessage: editorialIngestionBlockReason,
+        };
+        await logRSSActivity(filteredMetadata);
+        rememberRSSActivity(recentActivities, filteredMetadata);
+        addRSSItemLocalSeenKeys(seenKeys, item);
+        continue;
+      }
 
       const pendingRuleEvaluation = evaluateFeedRules(item, feedFilters);
       if (!pendingRuleEvaluation.allowed) {
@@ -5479,6 +5590,35 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       const dedupeKey = getRSSItemDedupeKey(item);
 
       if (hasRSSItemLocalSeenKeys(seenKeys, item)) {
+        continue;
+      }
+
+      const editorialIngestionBlockReason = getRSSEditorialIngestionBlockReason(item);
+      if (editorialIngestionBlockReason) {
+        const filteredMetadata: RSSActivityMetadata = {
+          category: RSS_ACTIVITY_CATEGORY,
+          feedId: feed.id,
+          feedName: feed.name,
+          itemTitle: item.title,
+          itemLink: item.link,
+          description: item.description,
+          contentHtml: item.contentHtml,
+          imageUrl: item.imageUrl,
+          imageUrls: item.imageUrls,
+          publishedAt: item.pubDate.toISOString(),
+          status: 'filtered',
+          platforms,
+          errorMessage: editorialIngestionBlockReason,
+        };
+        await upsertRSSFeedItem(feed.id, item, 'filtered', {
+          errorMessage: editorialIngestionBlockReason,
+          firstSeenAt: item.pubDate,
+        });
+        addRSSItemLocalSeenKeys(seenKeys, item);
+        if (!hasRecentRSSActivity(recentActivities, feed.id, item, ['filtered'])) {
+          await logRSSActivity(filteredMetadata);
+          rememberRSSActivity(recentActivities, filteredMetadata);
+        }
         continue;
       }
 
@@ -6422,6 +6562,8 @@ export const __rssAuditTestUtils = {
   sanitizeRSSPlainText,
   sanitizeRSSCaptionText,
   classifyRSSArticleFamily,
+  classifyRSSEditorialBlockType,
+  getRSSEditorialIngestionBlockReason,
   classifyRSSHeadlineStyle,
   extractRSSBodyTitleRecoveryCandidates,
   buildRSSCanonicalEntity,
