@@ -8,7 +8,8 @@ import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-re
 import { buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
-const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting } = __rssCaptionTestUtils;
+const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject } = __rssCaptionTestUtils;
+const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
@@ -165,7 +166,8 @@ test('canonical extraction recovers documentary title from descriptive body', ()
   });
 
   assert.equal(canonical.mediaTitle, 'All the Evil in the World');
-  assert.equal(canonical.entityType, 'movie');
+  assert.equal(canonical.entityType, 'unknown');
+  assert.ok(canonical.ambiguityFlags?.includes('rss_family_no_tmdb_project'));
 });
 
 test('headline title recovery strips renewal packaging from quoted project titles', () => {
@@ -728,6 +730,58 @@ test('editorial recap headlines are blocked at RSS intake', () => {
   assert.match(String(recapReason), /recap\/explainer/i);
 });
 
+test('editorial roundup and evergreen headlines are blocked at RSS intake', () => {
+  const roundupReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: "CBS Reveals Finale Spoilers For 19 Shows - Plus, Jensen Ackles' Tracker Return Confirmed",
+    description: 'A finale roundup across multiple CBS shows.',
+    contentHtml: '<p>A finale roundup across multiple CBS shows.</p>',
+  });
+  const evergreenReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: 'Netflix Is About to Lose the Greatest Spy Thriller Series of All Time',
+    description: 'A streaming library recommendation article.',
+    contentHtml: '<p>A streaming library recommendation article.</p>',
+  });
+
+  assert.match(String(roundupReason), /editorial listicle/i);
+  assert.match(String(evergreenReason), /editorial listicle/i);
+});
+
+test('reality elimination recap headlines are blocked at RSS intake', () => {
+  const recapReason = __rssAuditTestUtils.getRSSEditorialIngestionBlockReason({
+    title: "Survivor 50's Latest Boot Reveals What We Didn't See During That Spicy Camp Fight",
+    description: 'Spoilers ahead for Episode 7 of Survivor 50.',
+    contentHtml: '<p>All the former winners left the building after tribal council.</p>',
+  });
+
+  assert.match(String(recapReason), /recap\/explainer/i);
+});
+
+test('business and stage-industry headlines route away from core project extraction', () => {
+  const agencyFamily = __rssAuditTestUtils.classifyRSSArticleFamily({
+    title: 'Inside the Global Agency That Turns Stylists Into Stars',
+    description: 'A profile of the agency business.',
+    contentHtml: '<p>A profile of the agency business.</p>',
+  });
+  const broadwayFamily = __rssAuditTestUtils.classifyRSSArticleFamily({
+    title: "Tyler Perry Joins 'Joe Turner's Come And Gone' Broadway Producing Team",
+    description: 'Broadway producers expand the team.',
+    contentHtml: '<p>Broadway producers expand the team.</p>',
+  });
+
+  assert.equal(agencyFamily, 'business_or_platform');
+  assert.equal(broadwayFamily, 'event_or_festival');
+});
+
+test('political documentary subject stories route away from core project extraction', () => {
+  const family = __rssAuditTestUtils.classifyRSSArticleFamily({
+    title: "'All the Evil in the World' Doc About Murder of Leftist Italian Student in Egypt Sparks Political Storm",
+    description: 'A documentary about the murder of an Italian student in Egypt and the political fallout.',
+    contentHtml: '<p>The documentary explores the murder case, activism and diplomatic tensions.</p>',
+  });
+
+  assert.equal(family, 'political_or_non_entertainment');
+});
+
 test('orders-to-series headlines recover the project title', () => {
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
     title: "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
@@ -735,6 +789,68 @@ test('orders-to-series headlines recover the project title', () => {
     contentHtml: '<p>CBS orders the vampire comedy to series.</p>',
   });
   assert.equal(canonical.primarySubject, 'Eternally Yours');
+});
+
+test('quoted possessive headlines recover the project title instead of trailing quote residue', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "'Malcolm in the Middle's Bryan Cranston & Jane Kaczmarek On What Keeps Hal & Lois Together: \"They Have Good Sex\"",
+    description: 'Bryan Cranston and Jane Kaczmarek discuss Malcolm in the Middle.',
+    contentHtml: '<p>Bryan Cranston and Jane Kaczmarek discuss Malcolm in the Middle.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Malcolm in the Middle');
+});
+
+test('headline recovery strips generic new and movie wrappers from core project titles', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Why The New Faces Of Death Movie May Be The Most Complex Horror Movie Of 2026',
+    description: 'Faces of Death returns in a new horror remake.',
+    contentHtml: '<p>Faces of Death returns in a new horror remake.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Faces Of Death');
+});
+
+test('return-to headlines recover the supporting project title for person-led stories', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy - And She's Not The Only Young Sheldon Vet Back",
+    description: "Annie Potts returns to Georgie & Mandy's First Marriage.",
+    contentHtml: "<p>Annie Potts returns to the Young Sheldon spinoff <em>Georgie & Mandy's First Marriage</em>.</p>",
+  });
+
+  assert.equal(canonical.mediaTitle, "Georgie & Mandy's First Marriage");
+});
+
+test('wrapper headlines recover body-first title for Dan Levy project stories', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Dan Levy's new crime comedy series is a must-watch on Netflix",
+    description: 'Netflix has begun rolling out Big Mistakes.',
+    contentHtml: '<p>Dan Levy created the crime comedy series titled "Big Mistakes" for Netflix.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Big Mistakes');
+});
+
+test('wrapper headlines recover body-first title for director-led movie stories', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Brad Bird's Netflix sci-fi movie is finally moving forward",
+    description: 'Ray Gunn is set up at Netflix.',
+    contentHtml: '<p>Brad Bird will direct the sci-fi film called "Ray Gunn" for Netflix.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Ray Gunn');
+});
+
+test('obituary stories stay person-led even when project references appear in the headline', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "John Nolan Dies: 'Dark Knight Rises' & 'Person of Interest' Actor Was 87",
+    description: 'John Nolan has died at 87 after a long acting career.',
+    contentHtml: '<p>John Nolan, the actor known for The Dark Knight Rises and Person of Interest, has died at 87.</p>',
+  });
+
+  assert.equal(canonical.entityType, 'person');
+  assert.equal(canonical.primarySubject, 'John Nolan');
+  assert.equal(canonical.eventType, 'obituary');
 });
 
 test('secondary logo assets do not invalidate a matching primary project image', () => {
@@ -809,6 +925,90 @@ test('caption broken quote detection remains available to the audit layer', () =
   });
 
   assert.ok(codes.includes('CAPTION_BROKEN_QUOTE'));
+});
+
+test('person-led captions reject dangling quote fragments and missing lead subject', () => {
+  const caption = `'Hated' Eric Dane has spoken about 'Fist Fight'.\n\n"the late Eric Dane when they first met and said they almost had a"`;
+  const context = {
+    articleTitle: "Dax Shepard 'Hated' Eric Dane at First, Says They Almost Had a 'Fist Fight' Outside an AA Meeting",
+    feedName: 'Variety',
+    summary: 'Dax Shepard says he and Eric Dane nearly got into a fist fight when they first met.',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: 'Dax Shepard',
+      secondarySubject: 'Eric Dane',
+      entityType: 'person',
+      confidence: 0.92,
+      namedPeople: ['Dax Shepard', 'Eric Dane'],
+      allowedEntities: ['Dax Shepard', 'Eric Dane'],
+    },
+  } as any;
+
+  assert.equal(hasDanglingRSSQuoteLine(caption), true);
+  assert.equal(hasMissingRSSPersonLeadSubject(caption, context), true);
+  assert.equal(failsRSSCaptionFormatting(caption, context), true);
+});
+
+test('person-led secondary images prefer supporting people over unrelated concept stills', () => {
+  const analysis = projectAnalysis({
+    editorialPrimary: 'Dax Shepard',
+    primarySubject: { name: 'Dax Shepard', type: 'actor' },
+    canonicalEntity: {
+      primarySubject: 'Dax Shepard',
+      secondarySubject: 'Eric Dane',
+      entityType: 'person',
+      namedPeople: ['Dax Shepard', 'Eric Dane'],
+      confidence: 0.92,
+      ambiguityFlags: ['article_family_person_interview_or_reaction'],
+    },
+    visualSubject: 'Dax Shepard',
+    imageIntent: 'person_portrait',
+    secondarySubjects: ['Eric Dane'],
+    contextType: 'interview',
+    contextProject: null,
+  });
+
+  assert.equal(getPersonLedSupportingSecondarySubject(analysis), 'Eric Dane');
+  assert.equal(shouldRestrictPersonLedSecondaryToPeople(analysis, 'person'), true);
+  assert.equal(
+    shouldKeepSecondaryCarouselImage(
+      { url: 'https://image.test/dax.jpg', reason: 'TMDb person profile for Dax Shepard', score: 340 },
+      { url: 'https://image.test/fight.jpg', reason: 'boxing fighter in ring', score: 336 },
+      { analysis, primaryRole: 'person', secondaryRole: 'still' },
+    ),
+    false,
+  );
+});
+
+test('caption punctuation rewrite removes publisher wrapper spoiler phrasing and balances quotes', () => {
+  const caption = __rssCaptionTestUtils.enforceRSSCaptionPunctuation('SPOILER ALERT: This article contains spoilers for "Malcolm in the Middle: Life\'s Still Unfair "');
+
+  assert.equal(caption, 'Spoilers ahead for "Malcolm in the Middle: Life\'s Still Unfair."');
+});
+
+test('obituary deterministic captions lead with the person rather than a referenced project', () => {
+  const context = {
+    articleTitle: "John Nolan Dies: 'Dark Knight Rises' & 'Person of Interest' Actor Was 87",
+    summary: 'John Nolan, the actor who starred in The Dark Knight Rises and Person of Interest, has died. He was 87.',
+    articleBody: 'John Nolan has died at 87. He appeared in The Dark Knight Rises and Person of Interest.',
+    feedName: 'Deadline',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: 'John Nolan',
+      secondarySubject: 'The Dark Knight Rises',
+      mediaTitle: 'The Dark Knight Rises',
+      entityType: 'person',
+      eventType: 'obituary',
+      namedPeople: ['John Nolan'],
+      allowedEntities: ['John Nolan', 'The Dark Knight Rises', 'Person of Interest'],
+      confidence: 0.95,
+    },
+  } as any;
+  const extraction = __rssCaptionTestUtils.buildHeuristicRssCaptionExtraction(context);
+  const caption = __rssCaptionTestUtils.buildDeterministicRssCaption(extraction, context);
+
+  assert.match(caption, /^John Nolan has died at 87\./);
+  assert.doesNotMatch(caption, /^'Dark Knight Rises' has a new update\./);
 });
 
 test('duplicate-event grouping clusters same story across sources', () => {
@@ -886,6 +1086,51 @@ test('duplicate-event decision suppresses lower-priority matching source and kee
   assert.equal(decision?.winningSource, 'Variety');
   assert.deepEqual(decision?.suppressedSources, ['ComicBook']);
   assert.match(decision?.duplicateEventKey || '', /development\|extraction 3/i);
+});
+
+test('obituary duplicate-event decision ignores movie vs tv project tagging when the person and death event match', () => {
+  const decision = __rssAuditTestUtils.resolveRSSDuplicateEventDecision('Deadline', {
+    title: "John Nolan Dies: 'Dark Knight Rises' & 'Person of Interest' Actor Was 87",
+    link: 'https://deadline.com/john-nolan-tv',
+    description: 'John Nolan has died at 87.',
+    contentHtml: '<p>John Nolan, known for Person of Interest, has died at 87.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-12T08:00:00.000Z'),
+    canonicalEntity: {
+      primarySubject: 'John Nolan',
+      mediaTitle: 'Person of Interest',
+      entityType: 'tv',
+      eventType: 'obituary',
+      namedPeople: ['John Nolan'],
+    } as any,
+  } as any, [
+    {
+      feedName: 'Deadline',
+      title: "John Nolan Dies: 'Dark Knight Rises' Actor Was 87",
+      link: 'https://deadline.com/john-nolan-movie',
+      timestamp: new Date('2026-04-12T07:55:00.000Z').getTime(),
+      status: 'published',
+      fingerprint: __rssAuditTestUtils.buildRSSNewsEventFingerprint({
+        title: "John Nolan Dies: 'Dark Knight Rises' Actor Was 87",
+        link: 'https://deadline.com/john-nolan-movie',
+        description: 'John Nolan has died at 87.',
+        contentHtml: '<p>John Nolan, known for The Dark Knight Rises, has died at 87.</p>',
+        imageUrls: [],
+        pubDate: new Date('2026-04-12T07:55:00.000Z'),
+        canonicalEntity: {
+          primarySubject: 'John Nolan',
+          mediaTitle: 'The Dark Knight Rises',
+          entityType: 'movie',
+          eventType: 'obituary',
+          namedPeople: ['John Nolan'],
+        } as any,
+      } as any),
+    },
+  ]);
+
+  assert.ok(decision);
+  assert.match(decision?.duplicateEventKey || '', /obituary\|john nolan\|87/i);
+  assert.deepEqual(decision?.suppressedSources, ['Deadline']);
 });
 
 test('report aggregation ranks failure codes and patch recommendations', () => {
