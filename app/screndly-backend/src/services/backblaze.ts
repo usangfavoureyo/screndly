@@ -571,5 +571,5 @@ export async function getBackblazeAuthorizedDownloadUrl(
     throw new Error('Backblaze download authorization token was not returned');
   }
 
-  return buildAuthorizedUrl(runtime.downloadUrl, runtime.bucketName, parsed.fileName, downloadAuth.authorizationToken);
+  return buildAuthorizedUrl(runtime.downloadUrl, parsed.bucketName, parsed.fileName, downloadAuth.authorizationToken);
 }
