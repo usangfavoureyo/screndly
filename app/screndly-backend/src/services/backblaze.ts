@@ -377,10 +377,11 @@ async function resolveBucketRuntime(bucketType: BackblazeBucketType): Promise<Ba
 
 async function resolveBucketRuntimeByBucketName(bucketName: string): Promise<BackblazeBucketRuntime | null> {
   const bucketTypes: BackblazeBucketType[] = ['general', 'videos', 'design'];
+  const normalizedBucketName = bucketName.trim().toLowerCase();
 
   for (const bucketType of bucketTypes) {
     const config = await getBucketConfig(bucketType);
-    if (!config || config.bucketName !== bucketName) {
+    if (!config || config.bucketName.trim().toLowerCase() !== normalizedBucketName) {
       continue;
     }
 
