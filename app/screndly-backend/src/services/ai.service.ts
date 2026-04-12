@@ -1422,6 +1422,7 @@ interface RssCaptionExtraction {
         | 'casting'
         | 'renewal'
         | 'cancellation'
+        | 'obituary'
         | 'development'
         | 'in_production'
         | 'trailer'
@@ -1463,6 +1464,7 @@ const RSS_HEADLINE_PREFIX_TOKENS = [
 ];
 
 const RSS_EVENT_PATTERNS: Array<{ type: RssCaptionExtraction['event_type']; patterns: RegExp[] }> = [
+    { type: 'obituary', patterns: [/\b(?:dies?|dead|has died|passed away|passes away)\b/i, /\b(?:actor|actress|filmmaker|director|producer).{0,40}\b(?:was|aged?)\s+\d{2,3}\b/i] },
     { type: 'casting', patterns: [/\bcast\b/i, /\bjoins?\b/i, /\bset to star\b/i, /\badded to\b/i, /\bboards?\b/i] },
     { type: 'renewal', patterns: [/\brenewed\b/i, /\breturns? for season\b/i, /\bpicked up for\b/i] },
     { type: 'cancellation', patterns: [/\bcancel(?:ed|led)\b/i, /\bnot returning\b/i, /\baxed\b/i] },
@@ -1531,6 +1533,11 @@ const RSS_ARTICLE_PACKAGE_LABEL_PATTERNS = [
     /\bfocus of the latest update\b/i,
     /\bis the focus of the latest update\b/i,
     /\bhas added a new cast member\b/i,
+    /\bthis article\b/i,
+    /\bthis review\b/i,
+    /\bthis recap\b/i,
+    /\bthis interview\b/i,
+    /\bin this exclusive clip\b/i,
 ];
 
 const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }> = [
@@ -1789,6 +1796,11 @@ function extractNamedPeopleFromText(value: string): string[] {
     return Array.from(new Set(matches));
 }
 
+function extractRSSObituaryLeadPerson(title: string): string | undefined {
+    const match = normalizeRSSHeadlineInput(title).match(/^([A-Z][A-Za-z'&.-]+(?:\s+[A-Z][A-Za-z'&.-]+){0,2})\s+(?:dies?|dead|has died|passed away|passes away)\b/i);
+    return match?.[1] ? sanitizeRSSNamedEntityCandidate(match[1]) : undefined;
+}
+
 function classifyRSSEventType(text: string): RssCaptionExtraction['event_type'] {
     for (const entry of RSS_EVENT_PATTERNS) {
         if (entry.patterns.some((pattern) => pattern.test(text))) {
@@ -1806,6 +1818,11 @@ function detectRSSSpoilerLevel(text: string): RssCaptionExtraction['spoiler_leve
         return 'medium';
     }
     return 'low';
+}
+
+function extractRSSAge(text: string): string | undefined {
+    const match = String(text || '').match(/\b(?:at|aged?|was)\s+(\d{2,3})\b/i);
+    return match?.[1];
 }
 
 function extractDirectQuote(text: string): { quote?: string; speaker?: string } {
@@ -1832,6 +1849,7 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
         .filter((entry) => !isMalformedRSSEntityJunk(entry))
         .filter((entry) => !isReferenceOnlyRSSTitle(entry, combined));
     const namedPeople = uniqueStrings([
+        extractRSSObituaryLeadPerson(normalizedTitle),
         ...(context.canonicalEntity?.namedPeople || []),
         ...extractNamedPeopleFromText(`${normalizedTitle} ${summary} ${body}`),
     ]).filter((entry) => !isMalformedRSSEntityJunk(entry));
@@ -1852,6 +1870,9 @@ function buildHeuristicRssCaptionExtraction(context: RSSContext): RssCaptionExtr
     const primarySubject = projectLedCastingStory
         ? mediaTitle || preferredCanonicalPrimary || leadPerson || normalizedTitle
         : (
+            eventType === 'obituary'
+                ? leadPerson || preferredCanonicalPrimary || mediaTitle || normalizedTitle
+                :
             eventType === 'casting' || eventType === 'interview_quote' || eventType === 'reflection'
                 ? preferredCanonicalPrimary || leadPerson || mediaTitle || normalizedTitle
                 : preferredCanonicalPrimary || mediaTitle || leadPerson || normalizedTitle
@@ -1891,7 +1912,52 @@ function ensureRSSSentenceTerminal(value: string): string {
     if (!trimmed) {
         return trimmed;
     }
+    if (/["']$/.test(trimmed) && !/[.!?]["']$/.test(trimmed)) {
+        return `${trimmed.slice(0, -1).trim()}.${trimmed.slice(-1)}`;
+    }
     return /[.!?…"”'"]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+function balanceRSSStraightQuotes(value: string): string {
+    let balanced = String(value || '');
+    const quoteCount = (balanced.match(/"/g) || []).length;
+    if (quoteCount % 2 === 0) {
+        return balanced;
+    }
+
+    const lastQuoteIndex = balanced.lastIndexOf('"');
+    if (lastQuoteIndex >= 0) {
+        balanced = `${balanced.slice(0, lastQuoteIndex)}${balanced.slice(lastQuoteIndex + 1)}`;
+    }
+
+    return balanced;
+}
+
+function rewriteRSSPublisherWrapperPhrases(value: string): string {
+    let rewritten = decodeRSSHtmlEntities(String(value || ''));
+
+    rewritten = rewritten
+        .replace(/\bSPOILER ALERT:\s*this article contains spoilers for\b/gi, 'Spoilers ahead for')
+        .replace(/\bSPOILER ALERT:\s*this review contains spoilers for\b/gi, 'Spoilers ahead for')
+        .replace(/\bthis article contains spoilers for\b/gi, 'Spoilers ahead for')
+        .replace(/\bthis review contains spoilers for\b/gi, 'Spoilers ahead for')
+        .replace(/\bthis recap contains spoilers for\b/gi, 'Spoilers ahead for')
+        .replace(/\bin this exclusive clip\b/gi, 'New clip from')
+        .replace(/\bthis article discusses\b/gi, 'Discussion of')
+        .replace(/\bthis review discusses\b/gi, 'Discussion of')
+        .replace(/\bthis recap discusses\b/gi, 'Discussion of')
+        .replace(/\bthis interview discusses\b/gi, 'Discussion of');
+
+    return rewritten.replace(/\s+/g, ' ').trim();
+}
+
+function sanitizeRSSCaptionSurfaceText(caption: string): string {
+    const normalized = balanceRSSStraightQuotes(rewriteRSSPublisherWrapperPhrases(caption));
+    return normalized
+        .replace(/\r\n?/g, '\n')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function looksLikeRSSPersonName(value: string): boolean {
@@ -1987,6 +2053,10 @@ function isIncompleteRSSQuote(value: string): boolean {
     }
 
     if (/[,;:]$/.test(normalized)) {
+        return true;
+    }
+
+    if (/\b(?:a|an|the|and|or|but|to|of|for|with|at|in|on|about|into|from|had|has|have)\s*["'”]?$/i.test(normalized)) {
         return true;
     }
 
@@ -2165,6 +2235,7 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
     const primarySubject = getSafeRSSResolvedSubject(context, extraction);
     const secondarySubject = getSafeRSSSecondarySubject(context, extraction, primarySubject);
     const body = stripHtmlTags(context.articleBody || context.articleContentHtml || '');
+    const age = extractRSSAge(`${context.articleTitle} ${context.summary || ''} ${body}`);
     const packageMode = getRSSDeterministicPackageMode(context, extraction);
 
     if (!primarySubject && !formattedMediaTitle) {
@@ -2182,7 +2253,11 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
 
     let headline: string;
 
-    if (formattedMediaTitle && /\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
+    if (extraction.event_type === 'obituary' && primarySubject) {
+        headline = age
+            ? `${primarySubject} has died at ${age}.`
+            : `${primarySubject} has died.`;
+    } else if (formattedMediaTitle && /\b(reshoot|reshoots|additional photography)\b/i.test(body)) {
         headline = `Reshoots for ${formattedMediaTitle} have been confirmed.`;
     } else if (packageMode === 'review') {
         headline = formattedMediaTitle
@@ -2236,6 +2311,13 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
                     : primarySubject
                         ? `${primarySubject} has been canceled.`
                         : '';
+                break;
+            case 'obituary':
+                headline = primarySubject
+                    ? age
+                        ? `${primarySubject} has died at ${age}.`
+                        : `${primarySubject} has died.`
+                    : '';
                 break;
             case 'development':
                 headline = formattedMediaTitle
@@ -2336,7 +2418,7 @@ function buildDeterministicRssCaption(extraction: RssCaptionExtraction, context:
 }
 
 function enforceRSSCaptionPunctuation(caption: string): string {
-    return caption
+    return sanitizeRSSCaptionSurfaceText(caption)
         .replace(/\r\n?/g, '\n')
         .trim()
         .split(/\n\s*\n/)
@@ -2558,6 +2640,42 @@ function hasUnsupportedRSSVagueSubject(caption: string, context: RSSContext): bo
     return hasGroundedRSSNamedEntities(context) && isVagueRSSCaption(caption);
 }
 
+function headlineMentionsRSSSubject(headline: string, subject: string | undefined): boolean {
+    if (!headline || !subject) {
+        return false;
+    }
+
+    return entityMatches(normalizeRSSHeadlineInput(headline), subject);
+}
+
+function hasDanglingRSSQuoteLine(caption: string): boolean {
+    return getRSSCaptionLines(caption).some((line) => {
+        const trimmed = decodeRSSHtmlEntities(String(line || '').trim());
+        if (!trimmed || !/^["'â€œ]/.test(trimmed)) {
+            return false;
+        }
+
+        const body = trimmed
+            .replace(/^["'â€œ]+/, '')
+            .replace(/["'â€]+$/, '')
+            .trim();
+
+        if (!body) {
+            return true;
+        }
+
+        if (/^[a-z]/.test(body)) {
+            return true;
+        }
+
+        if (!/[.!?]["'â€]?$/.test(trimmed)) {
+            return true;
+        }
+
+        return /\b(?:a|an|the|and|or|but|to|of|for|with|at|in|on|about|into|from|had|has|have)\s*$/i.test(body);
+    });
+}
+
 function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContext): string[] {
     const reasonCodes = new Set<string>();
     const normalized = decodeRSSHtmlEntities(String(caption || '').trim());
@@ -2610,6 +2728,18 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
         if (fallbackEntity && !entityMatches(normalizeRSSHeadlineInput(headline), fallbackEntity)) {
             reasonCodes.add('CAPTION_CANONICAL_ENTITY_MISMATCH');
         }
+    }
+
+    if (
+        safePrimary &&
+        context.canonicalEntity?.entityType === 'person' &&
+        context.canonicalEntity?.confidence &&
+        context.canonicalEntity.confidence >= 0.7 &&
+        headline &&
+        !headlineMentionsRSSSubject(headline, safePrimary)
+    ) {
+        reasonCodes.add('CAPTION_CANONICAL_ENTITY_MISMATCH');
+        reasonCodes.add('CAPTION_HEADLINE_JUNK');
     }
 
     if (hasUnsupportedRSSVagueSubject(normalized, context)) {
@@ -2682,6 +2812,24 @@ function headlineAnchorsToCoreProject(caption: string, context: RSSContext, extr
     return entityMatches(headline, anchor);
 }
 
+function hasMissingRSSPersonLeadSubject(caption: string, context: RSSContext): boolean {
+    const extraction = buildHeuristicRssCaptionExtraction(context);
+    const safePrimary = getSafeRSSResolvedSubject(context, extraction);
+    const headline = getRSSHeadlineLine(caption);
+
+    if (
+        !safePrimary ||
+        context.canonicalEntity?.entityType !== 'person' ||
+        !context.canonicalEntity?.confidence ||
+        context.canonicalEntity.confidence < 0.7 ||
+        !headline
+    ) {
+        return false;
+    }
+
+    return !headlineMentionsRSSSubject(headline, safePrimary);
+}
+
 function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolean {
     return getRSSCaptionHardInvalidReasonCodes(caption, context).length > 0
         || !headlineAnchorsToCoreProject(caption, context)
@@ -2694,7 +2842,9 @@ function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolea
         || hasUnsupportedRSSStructure(caption)
         || lacksSingleQuotedDetectedRSSTitles(caption, context)
         || hasInlineRSSQuote(caption)
+        || hasDanglingRSSQuoteLine(caption)
         || hasOverloadedRSSHeadline(caption)
+        || hasMissingRSSPersonLeadSubject(caption, context)
         || mirrorsRSSHeadlineTooClosely(caption, context)
         || lacksRSSLineTerminalPunctuation(caption);
 }
@@ -2909,6 +3059,8 @@ export const __rssCaptionTestUtils = {
     lacksSingleQuotedDetectedRSSTitles,
     hasUnsupportedRSSDemographicMutation,
     hasInvalidRSSJoinLead,
+    hasDanglingRSSQuoteLine,
+    hasMissingRSSPersonLeadSubject,
     mirrorsRSSHeadlineTooClosely,
     normalizeRSSHeadlineInput,
 };

@@ -3520,6 +3520,60 @@ function shouldTryEarlyPersonFallback(base: RSSSubjectAnalysis, articleText: str
   return false;
 }
 
+function getPersonLedSupportingSecondarySubject(base: RSSSubjectAnalysis): string | null {
+  const primaryName = normalizeText(base.primarySubject.name);
+  const candidates = uniqueStrings([
+    base.canonicalEntity?.secondarySubject,
+    ...(base.canonicalEntity?.namedPeople || []),
+    ...base.secondarySubjects,
+  ]);
+
+  return candidates.find((candidate) =>
+    looksLikeNamedPerson(candidate) &&
+    normalizeText(candidate) !== primaryName &&
+    !base.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(candidate))
+  ) || null;
+}
+
+function hasStablePersonStoryProjectSupport(base: RSSSubjectAnalysis): boolean {
+  const flags = new Set(base.canonicalEntity?.ambiguityFlags || []);
+  if (
+    flags.has('quote_led_headline_junk') ||
+    flags.has('canonical_project_weak') ||
+    flags.has('canonical_person_weak')
+  ) {
+    return false;
+  }
+
+  const anchor = getCanonicalProjectAnchor(base) || base.contextProject;
+  return Boolean(anchor && normalizeText(anchor) !== normalizeText(base.primarySubject.name));
+}
+
+function shouldRestrictPersonLedSecondaryToPeople(
+  base: RSSSubjectAnalysis,
+  primaryRole: ImageRole
+): boolean {
+  if (primaryRole !== 'person') {
+    return false;
+  }
+
+  const flags = new Set(base.canonicalEntity?.ambiguityFlags || []);
+  const personLedFamily = flags.has('article_family_person_interview_or_reaction') || base.contextType === 'interview';
+  return personLedFamily && !hasStablePersonStoryProjectSupport(base);
+}
+
+function buildSupportingPersonSecondaryAnalysis(base: RSSSubjectAnalysis): RSSSubjectAnalysis | null {
+  const person = getPersonLedSupportingSecondarySubject(base);
+  if (!person) {
+    return null;
+  }
+
+  return buildAnalysisForSlot(
+    base,
+    buildImageSlotPlan(person, 'actor', 'person_portrait', base, false)
+  );
+}
+
 function markFallbackReason<T extends RSSResolvedImage & { role?: ImageRole }>(
   images: T[],
   label: string
@@ -3910,7 +3964,12 @@ function isBrandedEditorialFrame(image: Pick<RSSResolvedImage, 'url' | 'reason' 
 
 function shouldKeepSecondaryCarouselImage(
   primaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>,
-  secondaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>
+  secondaryImage: Pick<RSSResolvedImage, 'url' | 'reason' | 'score'>,
+  options?: {
+    analysis?: RSSSubjectAnalysis;
+    primaryRole?: ImageRole;
+    secondaryRole?: ImageRole;
+  }
 ): boolean {
   if (getImageIdentity(primaryImage.url) === getImageIdentity(secondaryImage.url)) {
     return false;
@@ -3926,6 +3985,24 @@ function shouldKeepSecondaryCarouselImage(
 
   if (typeof primaryImage.score === 'number' && typeof secondaryImage.score === 'number') {
     if (primaryImage.score - secondaryImage.score > MAX_SECONDARY_SCORE_GAP) {
+      return false;
+    }
+  }
+
+  if (options?.analysis && options.primaryRole && options.secondaryRole) {
+    const secondaryText = normalizeText(`${secondaryImage.reason || ''} ${secondaryImage.url || ''}`);
+    if (
+      shouldRestrictPersonLedSecondaryToPeople(options.analysis, options.primaryRole) &&
+      options.secondaryRole !== 'person'
+    ) {
+      return false;
+    }
+
+    if (
+      options.primaryRole === 'person' &&
+      options.secondaryRole !== 'person' &&
+      containsKeyword(secondaryText, ['boxing', 'boxer', 'ring', 'mma', 'ufc', 'kickbox', 'kickboxing', 'wrestling', 'sparring'])
+    ) {
       return false;
     }
   }
@@ -4541,7 +4618,11 @@ async function resolveSmartSecondaryCandidate(
         const tmdbResolved = await collectStructuredTMDbImages(variant, 4, [primaryImage.url]);
         const candidate = tmdbResolved.find((item) =>
           getImageIdentity(item.url) !== primaryIdentity &&
-          areImageRolesComplementary(primaryRole, item.role)
+          areImageRolesComplementary(primaryRole, item.role) &&
+          !(
+            shouldRestrictPersonLedSecondaryToPeople(analysis, primaryRole) &&
+            item.role !== 'person'
+          )
         );
         if (candidate) {
           return {
@@ -4565,6 +4646,9 @@ async function resolveSmartSecondaryCandidate(
           item.image,
           item.score,
           variant.imageIntent
+        ) && !(
+          shouldRestrictPersonLedSecondaryToPeople(analysis, primaryRole) &&
+          secondaryRole !== 'person'
         );
       });
 
@@ -5527,14 +5611,37 @@ export async function resolveRelevantRSSImages(
       return [primaryResolved.image];
     }
 
-    const secondaryResolved = await resolveSmartSecondaryCandidate(
-      analysis,
-      plan.secondary,
-      primaryResolved.image,
-      primaryResolved.role,
-      sources,
-      options.openaiWebSearchModel
-    );
+    let secondaryResolved: { image: RSSResolvedImage; role: ImageRole } | null = null;
+    const supportingPersonSecondaryAnalysis = buildSupportingPersonSecondaryAnalysis(analysis);
+
+    if (primaryResolved.role === 'person' && supportingPersonSecondaryAnalysis) {
+      const supportingPersonResolved = await resolveSingleSlotImages(
+        article,
+        supportingPersonSecondaryAnalysis,
+        [],
+        sources,
+        1,
+        options.openaiWebSearchModel
+      );
+
+      if (supportingPersonResolved[0] && getImageIdentity(supportingPersonResolved[0].url) !== getImageIdentity(primaryResolved.image.url)) {
+        secondaryResolved = {
+          image: supportingPersonResolved[0],
+          role: 'person',
+        };
+      }
+    }
+
+    if (!secondaryResolved) {
+      secondaryResolved = await resolveSmartSecondaryCandidate(
+        analysis,
+        plan.secondary,
+        primaryResolved.image,
+        primaryResolved.role,
+        sources,
+        options.openaiWebSearchModel
+      );
+    }
 
     if (!secondaryResolved) {
       if (!shouldFallbackToFeedImageForSecondary(plan.secondary)) {
@@ -5555,7 +5662,11 @@ export async function resolveRelevantRSSImages(
       return [primaryResolved.image];
     }
 
-    return shouldKeepSecondaryCarouselImage(primaryResolved.image, secondaryResolved.image)
+    return shouldKeepSecondaryCarouselImage(primaryResolved.image, secondaryResolved.image, {
+      analysis,
+      primaryRole: primaryResolved.role,
+      secondaryRole: secondaryResolved.role,
+    })
       ? [
           primaryResolved.image,
           secondaryResolved.image,
@@ -5591,6 +5702,9 @@ export const __rssImageSelectionTestUtils = {
   stripSeasonAndSubtitleVariant,
   getProjectFallbackAnchors,
   getProjectStoryPersonFallbackSubject,
+  getPersonLedSupportingSecondarySubject,
+  shouldRestrictPersonLedSecondaryToPeople,
+  shouldKeepSecondaryCarouselImage,
   isSafeWeakTMDbProjectFallback,
   filterTMDbImagesByAnchorOverlap,
 };
