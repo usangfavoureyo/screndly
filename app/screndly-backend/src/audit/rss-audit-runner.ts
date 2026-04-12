@@ -68,6 +68,18 @@ function unique(values: Array<string | undefined | null>): string[] {
   return Array.from(new Set(values.map((value) => value?.trim()).filter((value): value is string => Boolean(value))));
 }
 
+function extractAuditFallbackImages(articleBody?: string): string[] {
+  if (!articleBody || !/<img[\s>]/i.test(articleBody)) {
+    return [];
+  }
+
+  return unique(
+    Array.from(String(articleBody).matchAll(/<img[^>]*src=["']([^"']+)["']/gi))
+      .map((match) => match[1])
+      .filter((url): url is string => /^https?:\/\//i.test(String(url || '').trim()))
+  );
+}
+
 export function canonicalTokens(value?: string): string[] {
   return unique(
     String(value || '')
@@ -434,13 +446,14 @@ export async function analyzeRssAuditCase(
 ): Promise<RssAuditResult> {
   const normalizedTitle = normalizeRSSHeadlineInput(input.articleTitle);
   const normalizedDescription = __rssAuditTestUtils.sanitizeRSSPlainText(input.articleDescription || '');
+  const fallbackImages = extractAuditFallbackImages(input.articleBody);
   const item = {
     title: input.articleTitle,
     link: input.articleUrl,
     description: input.articleDescription || '',
     contentHtml: input.articleBody || '',
     pubDate: input.publishedAt ? new Date(input.publishedAt) : new Date(),
-    imageUrls: [],
+    imageUrls: fallbackImages,
   };
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
   const entity = buildEntityDecision(canonical);
@@ -451,6 +464,7 @@ export async function analyzeRssAuditCase(
       description: input.articleDescription,
       contentHtml: input.articleBody,
       canonicalEntity: canonical,
+      fallbackImages,
     },
     getRssAuditImageResolverOptions(options.imageLimit || 2)
   );
