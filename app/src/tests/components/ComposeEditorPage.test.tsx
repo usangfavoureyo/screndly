@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ComposeEditorPage } from '../../components/create/ComposeEditorPage';
+import { buildComposeAssetStreamUrl } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 
 const toastMock = vi.hoisted(() => ({
@@ -399,9 +400,8 @@ describe('ComposeEditorPage scheduling', () => {
 
     const previewVideo = container.querySelector('video');
     expect(previewVideo).not.toBeNull();
-    expect(previewVideo?.getAttribute('src')).toBe(
-      `/api/create/asset-stream?url=${encodeURIComponent(rawBackblazeVideoUrl)}`,
-    );
+    const expectedStreamUrl = buildComposeAssetStreamUrl(rawBackblazeVideoUrl);
+    expect(previewVideo?.getAttribute('src')).toBe(expectedStreamUrl);
 
     fireEvent.click(screen.getByRole('button', { name: 'Preview video trailer.mp4' }));
 
@@ -411,7 +411,7 @@ describe('ComposeEditorPage scheduling', () => {
 
     expect(openPreviewDialog).toHaveAttribute(
       'data-src',
-      `/api/create/asset-stream?url=${encodeURIComponent(rawBackblazeVideoUrl)}`,
+      expectedStreamUrl,
     );
   }, 60000);
 

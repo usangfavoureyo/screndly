@@ -2250,7 +2250,7 @@ export function ComposeEditorPage({
                       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-black dark:border-[#333333]">
                         <div className="relative aspect-[3/4] w-full overflow-hidden">
                           <video
-                            src={activeThreadsXCropPreviewUrl || getComposeAssetPreviewUrl(primaryVideoAsset)}
+                            src={activeThreadsXCropPreviewUrl || getAssetDisplayUrl(primaryVideoAsset)}
                             className="absolute inset-0 h-full w-full object-cover"
                             style={activeThreadsXCropPreviewUrl ? undefined : { objectPosition: `50% ${formState.videoCropFocusYPercent}%` }}
                             muted

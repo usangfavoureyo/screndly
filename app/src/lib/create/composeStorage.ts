@@ -1,4 +1,5 @@
 import { apiClient } from '../api/client';
+import { getApiUrl } from '../api/config';
 
 interface UploadComposeAssetResponse {
   url: string;
@@ -41,7 +42,9 @@ export function buildComposeAssetStreamUrl(url?: string): string | undefined {
     return url;
   }
 
-  return `/api/create/asset-stream?url=${encodeURIComponent(url)}`;
+  const apiBaseUrl = getApiUrl();
+  const normalizedBaseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
+  return `${normalizedBaseUrl}/api/create/asset-stream?url=${encodeURIComponent(url)}`;
 }
 
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {
