@@ -72,6 +72,11 @@ interface GetDownloadAuthorizationResponse {
   authorizationToken: string;
 }
 
+interface BackblazeAuthorizedDownloadRequest {
+  url: string;
+  headers?: Record<string, string>;
+}
+
 interface ListFileNamesResponse {
   files: Array<{
     action?: string;
@@ -542,14 +547,29 @@ export async function getBackblazeAuthorizedDownloadUrl(
   fileUrl: string,
   validDurationInSeconds = 3600
 ): Promise<string> {
+  const request = await getBackblazeAuthorizedDownloadRequest(fileUrl, validDurationInSeconds);
+  return request.headers?.Authorization
+    ? buildAuthorizedUrl(
+        new URL(request.url).origin,
+        parseBackblazeFileUrl(fileUrl)?.bucketName || '',
+        parseBackblazeFileUrl(fileUrl)?.fileName || '',
+        request.headers.Authorization,
+      )
+    : request.url;
+}
+
+export async function getBackblazeAuthorizedDownloadRequest(
+  fileUrl: string,
+  validDurationInSeconds = 3600
+): Promise<BackblazeAuthorizedDownloadRequest> {
   const parsed = parseBackblazeFileUrl(fileUrl);
   if (!parsed) {
-    return fileUrl;
+    return { url: fileUrl };
   }
 
   const runtime = await resolveBucketRuntimeByBucketName(parsed.bucketName);
   if (!runtime) {
-    return fileUrl;
+    return { url: fileUrl };
   }
 
   const ttl = Math.max(1, Math.min(validDurationInSeconds, 7 * 24 * 60 * 60));
@@ -571,5 +591,10 @@ export async function getBackblazeAuthorizedDownloadUrl(
     throw new Error('Backblaze download authorization token was not returned');
   }
 
-  return buildAuthorizedUrl(runtime.downloadUrl, parsed.bucketName, parsed.fileName, downloadAuth.authorizationToken);
+  return {
+    url: buildPublicUrl(runtime.downloadUrl, parsed.bucketName, parsed.fileName),
+    headers: {
+      Authorization: downloadAuth.authorizationToken,
+    },
+  };
 }

@@ -8,7 +8,7 @@ import { promisify } from 'util';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 import { authenticate } from '../middleware/auth';
-import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
+import { getBackblazeAuthorizedDownloadRequest, getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
 import { getComposeState, mergeComposeState, publishComposeItemInput } from '../services/compose.service';
 import { trimTMDbLogoOuterBorderBuffer } from '../services/rss-logo-render.service';
 
@@ -395,8 +395,10 @@ router.post('/asset-preview', authenticate, async (req, res) => {
       });
     }
 
-    const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 7 * 24 * 60 * 60);
-    const previewResponse = await fetch(authorizedUrl);
+    const authorizedRequest = await getBackblazeAuthorizedDownloadRequest(rawUrl, 7 * 24 * 60 * 60);
+    const previewResponse = await fetch(authorizedRequest.url, {
+      headers: authorizedRequest.headers,
+    });
 
     if (!previewResponse.ok) {
       return res.status(502).json({
@@ -436,9 +438,12 @@ router.get('/asset-stream', async (req, res) => {
       });
     }
 
-    const authorizedUrl = await getBackblazeAuthorizedDownloadUrl(rawUrl, 7 * 24 * 60 * 60);
-    const upstreamResponse = await fetch(authorizedUrl, {
-      headers: req.headers.range ? { Range: req.headers.range } : undefined,
+    const authorizedRequest = await getBackblazeAuthorizedDownloadRequest(rawUrl, 7 * 24 * 60 * 60);
+    const upstreamResponse = await fetch(authorizedRequest.url, {
+      headers: {
+        ...(authorizedRequest.headers || {}),
+        ...(req.headers.range ? { Range: req.headers.range } : {}),
+      },
     });
 
     if (!upstreamResponse.ok) {
