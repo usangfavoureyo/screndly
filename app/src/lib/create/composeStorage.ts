@@ -20,6 +20,11 @@ interface ImportComposeRemoteImageResponse {
   size: number;
 }
 
+interface ResolveComposeAssetAccessResponse {
+  url: string;
+  previewUrl?: string;
+}
+
 const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPOSE_CROP_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -45,6 +50,40 @@ export function buildComposeAssetStreamUrl(url?: string): string | undefined {
   const apiBaseUrl = getApiUrl();
   const normalizedBaseUrl = apiBaseUrl.endsWith('/') ? apiBaseUrl.slice(0, -1) : apiBaseUrl;
   return `${normalizedBaseUrl}/api/create/asset-stream?url=${encodeURIComponent(url)}`;
+}
+
+function dedupeUrls(urls: Array<string | undefined | null>) {
+  const seen = new Set<string>();
+  return urls.filter((value): value is string => {
+    if (typeof value !== 'string') {
+      return false;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      return false;
+    }
+
+    seen.add(trimmed);
+    return true;
+  });
+}
+
+export function buildComposeRenderableUrls(input: { previewUrl?: string; storageUrl?: string }): string[] {
+  const { previewUrl, storageUrl } = input;
+
+  if (previewUrl?.startsWith('blob:')) {
+    return [previewUrl];
+  }
+
+  const candidates = dedupeUrls([
+    previewUrl,
+    buildComposeAssetStreamUrl(storageUrl),
+    storageUrl,
+    previewUrl && previewUrl !== storageUrl ? buildComposeAssetStreamUrl(previewUrl) : undefined,
+  ]);
+
+  return candidates;
 }
 
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {
@@ -136,4 +175,19 @@ export async function resolveComposeAssetPreview(url: string): Promise<string> {
   }
 
   return response.data.previewUrl;
+}
+
+export async function resolveComposeAssetAccess(
+  url: string,
+): Promise<{ url: string; previewUrl?: string }> {
+  const response = await apiClient.post<ResolveComposeAssetAccessResponse>('/api/create/asset-access', { url });
+
+  if (!response.success || !response.data?.url) {
+    throw new Error(response.error?.message || 'Failed to refresh asset access.');
+  }
+
+  return {
+    url: response.data.url,
+    previewUrl: response.data.previewUrl,
+  };
 }

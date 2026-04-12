@@ -9,6 +9,7 @@ type MediaPreviewKind = 'image' | 'video';
 
 export interface MediaPreviewItem {
   src: string;
+  fallbackSources?: string[];
   mediaType: MediaPreviewKind;
   title?: string;
   badgeLabel?: string;
@@ -17,6 +18,7 @@ export interface MediaPreviewItem {
 interface MediaPreviewDialogProps {
   open: boolean;
   src?: string | null;
+  fallbackSources?: string[];
   imageSources?: string[];
   badgeLabels?: string[];
   mediaItems?: MediaPreviewItem[];
@@ -62,6 +64,7 @@ function formatPlaybackTime(value: number) {
 export function MediaPreviewDialog({
   open,
   src,
+  fallbackSources,
   imageSources,
   badgeLabels,
   mediaItems,
@@ -120,8 +123,27 @@ export function MediaPreviewDialog({
   const activeGalleryItem = resolvedGalleryItems[currentImageIndex] ?? resolvedGalleryItems[0] ?? null;
   const activeMediaType = activeGalleryItem?.mediaType ?? mediaType;
   const activeSource = activeGalleryItem?.src ?? src ?? null;
+  const activeFallbackSources = activeGalleryItem?.fallbackSources ?? fallbackSources ?? [];
   const activeBadgeLabel = activeGalleryItem?.badgeLabel ?? badgeLabel;
   const activeTitle = activeGalleryItem?.title ?? title;
+
+  const handleMediaSourceError = useCallback((
+    event: React.SyntheticEvent<HTMLImageElement | HTMLVideoElement>,
+    sources: string[],
+  ) => {
+    const element = event.currentTarget;
+    const currentIndex = Number(element.dataset.fallbackIndex || '0');
+    const nextSource = sources[currentIndex + 1];
+    if (!nextSource) {
+      return;
+    }
+
+    element.dataset.fallbackIndex = String(currentIndex + 1);
+    element.setAttribute('src', nextSource);
+    if ('load' in element && typeof element.load === 'function') {
+      element.load();
+    }
+  }, []);
 
   useEffect(() => {
     scaleRef.current = scale;
@@ -571,8 +593,10 @@ export function MediaPreviewDialog({
               {activeSource ? (
                 <img
                   src={activeSource}
+                  data-fallback-index="0"
                   alt={previewTitle}
                   draggable={false}
+                  onError={(event) => handleMediaSourceError(event, [activeSource, ...activeFallbackSources])}
                   className="max-h-full max-w-full object-contain"
                   style={{
                     transform: `translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})`,
@@ -596,9 +620,11 @@ export function MediaPreviewDialog({
                   <video
                     ref={videoRef}
                     src={activeSource}
+                    data-fallback-index="0"
                     className="h-full w-full object-contain"
                     playsInline
                     preload="metadata"
+                    onError={(event) => handleMediaSourceError(event, [activeSource, ...activeFallbackSources])}
                     onClick={() => {
                       void toggleVideoPlayback();
                     }}

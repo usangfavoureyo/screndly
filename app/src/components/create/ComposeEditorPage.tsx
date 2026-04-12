@@ -51,7 +51,9 @@ import {
 } from '../../lib/create/composeNotifications';
 import {
   buildComposeAssetStreamUrl,
+  buildComposeRenderableUrls,
   importComposeRemoteImage,
+  resolveComposeAssetAccess,
   resolveComposeAssetPreview,
   uploadComposeAsset,
 } from '../../lib/create/composeStorage';
@@ -336,6 +338,7 @@ export function ComposeEditorPage({
   const scheduleReopenLockUntilRef = useRef(0);
   const threadsXAutoGenerateTimeoutRef = useRef<number | null>(null);
   const lastThreadsXAutoGenerateKeyRef = useRef<string>('');
+  const recoveringAssetIdsRef = useRef(new Set<string>());
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
   );
@@ -403,15 +406,33 @@ export function ComposeEditorPage({
   );
   const getAssetDisplayUrl = useCallback((asset?: ComposeMediaAsset | null) => {
     const previewUrl = getComposeAssetPreviewUrl(asset ?? undefined);
-    return buildComposeAssetStreamUrl(previewUrl) || previewUrl;
+    return buildComposeRenderableUrls({
+      previewUrl,
+      storageUrl: asset?.storageUrl,
+    })[0];
   }, []);
   const getThumbnailDisplayUrl = useCallback((thumbnail?: ComposeThumbnailAsset | null) => {
-    if (!thumbnail) {
-      return undefined;
+    return buildComposeRenderableUrls({
+      previewUrl: thumbnail?.previewUrl,
+      storageUrl: thumbnail?.storageUrl,
+    })[0];
+  }, []);
+  const handleRenderableMediaError = useCallback((
+    event: React.SyntheticEvent<HTMLImageElement | HTMLVideoElement>,
+    sources: string[],
+  ) => {
+    const element = event.currentTarget;
+    const currentIndex = Number(element.dataset.fallbackIndex || '0');
+    const nextSource = sources[currentIndex + 1];
+    if (!nextSource) {
+      return;
     }
 
-    const previewUrl = thumbnail.previewUrl || thumbnail.storageUrl;
-    return buildComposeAssetStreamUrl(previewUrl) || previewUrl;
+    element.dataset.fallbackIndex = String(currentIndex + 1);
+    element.setAttribute('src', nextSource);
+    if ('load' in element && typeof element.load === 'function') {
+      element.load();
+    }
   }, []);
   const activePreviewAssetUrl = useMemo(() => {
     if (!previewAsset) {
@@ -505,6 +526,34 @@ export function ComposeEditorPage({
   }, [
     handleEditorCloseRequest,
     registerCloseRequestHandler,
+  ]);
+
+  useEffect(() => {
+    if (previewAsset) {
+      const latestAsset = formState.mediaAssets.find((asset) => asset.id === previewAsset.id);
+      if (latestAsset && latestAsset !== previewAsset) {
+        setPreviewAsset(latestAsset);
+      }
+    }
+
+    if (previewThumbnail) {
+      const latestThumbnail = [
+        formState.sharedThumbnail,
+        formState.youtubeThumbnail,
+        formState.xThumbnail,
+      ].find((thumbnail) => thumbnail?.storageUrl === previewThumbnail.storageUrl || thumbnail?.fileName === previewThumbnail.fileName);
+
+      if (latestThumbnail && latestThumbnail !== previewThumbnail) {
+        setPreviewThumbnail(latestThumbnail);
+      }
+    }
+  }, [
+    formState.mediaAssets,
+    formState.sharedThumbnail,
+    formState.xThumbnail,
+    formState.youtubeThumbnail,
+    previewAsset,
+    previewThumbnail,
   ]);
 
   useEffect(() => {
@@ -1560,6 +1609,39 @@ export function ComposeEditorPage({
     }
   }, [formState, updateThumbnail]);
 
+  const recoverAssetPreview = useCallback(async (assetId: string) => {
+    if (recoveringAssetIdsRef.current.has(assetId)) {
+      return;
+    }
+
+    const currentAsset = formState.mediaAssets.find((asset) => asset.id === assetId);
+    if (!currentAsset?.storageUrl || currentAsset.previewUrl?.startsWith('blob:') || currentAsset.previewUrl?.startsWith('data:')) {
+      return;
+    }
+
+    recoveringAssetIdsRef.current.add(assetId);
+
+    try {
+      const refreshedAccess = await resolveComposeAssetAccess(currentAsset.storageUrl);
+      setFormState((current) => ({
+        ...current,
+        mediaAssets: current.mediaAssets.map((asset) => (
+          asset.id === assetId && asset.storageUrl === currentAsset.storageUrl
+            ? {
+                ...asset,
+                previewUrl: refreshedAccess.previewUrl || asset.previewUrl,
+              }
+            : asset
+        )),
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to refresh asset preview.';
+      console.warn(`[ComposeEditorPage] ${message}`);
+    } finally {
+      recoveringAssetIdsRef.current.delete(assetId);
+    }
+  }, [formState.mediaAssets]);
+
   const buildItem = (status: ComposeItem['status'], scheduledAt?: string, error?: string): ComposeItem => {
     const now = new Date().toISOString();
     return {
@@ -2077,13 +2159,26 @@ export function ComposeEditorPage({
                         >
                           {asset.kind === 'video' ? (
                             <>
+                              {(() => {
+                                const renderUrls = buildComposeRenderableUrls({
+                                  previewUrl: asset.previewUrl,
+                                  storageUrl: asset.storageUrl,
+                                });
+                                return (
                               <video
-                                src={getAssetDisplayUrl(asset)}
+                                src={renderUrls[0]}
+                                data-fallback-index="0"
+                                onError={(event) => {
+                                  handleRenderableMediaError(event, renderUrls);
+                                  void recoverAssetPreview(asset.id);
+                                }}
                                 className="pointer-events-none h-48 w-full object-contain"
                                 muted
                                 playsInline
                                 preload="metadata"
                               />
+                                );
+                              })()}
                               <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 transition-colors group-hover:bg-black/30">
                                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur-sm">
                                   <Film className="h-5 w-5" />
@@ -2091,11 +2186,24 @@ export function ComposeEditorPage({
                               </div>
                             </>
                           ) : (
+                            (() => {
+                              const renderUrls = buildComposeRenderableUrls({
+                                previewUrl: asset.previewUrl,
+                                storageUrl: asset.storageUrl,
+                              });
+                              return (
                             <img
-                              src={getAssetDisplayUrl(asset)}
+                              src={renderUrls[0]}
+                              data-fallback-index="0"
+                              onError={(event) => {
+                                handleRenderableMediaError(event, renderUrls);
+                                void recoverAssetPreview(asset.id);
+                              }}
                               alt={asset.fileName}
                               className="pointer-events-none h-48 w-full object-cover"
                             />
+                              );
+                            })()
                           )}
                           <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent px-4 py-3">
                             <p className="text-xs font-medium text-white">
@@ -3067,6 +3175,12 @@ export function ComposeEditorPage({
       <MediaPreviewDialog
         open={Boolean(previewAsset && activePreviewAssetUrl)}
         src={activePreviewAssetUrl}
+        fallbackSources={previewAsset
+          ? buildComposeRenderableUrls({
+            previewUrl: previewAsset.previewUrl,
+            storageUrl: previewAsset.storageUrl,
+          }).slice(1)
+          : []}
         mediaType={previewAsset?.kind ?? 'image'}
         title={previewAsset?.fileName}
         badgeLabel={previewAsset?.kind}
@@ -3079,6 +3193,12 @@ export function ComposeEditorPage({
       <MediaPreviewDialog
         open={Boolean(previewThumbnail)}
         src={getThumbnailDisplayUrl(previewThumbnail)}
+        fallbackSources={previewThumbnail
+          ? buildComposeRenderableUrls({
+            previewUrl: previewThumbnail.previewUrl,
+            storageUrl: previewThumbnail.storageUrl,
+          }).slice(1)
+          : []}
         mediaType="image"
         title={previewThumbnail?.fileName}
         badgeLabel="Thumbnail"
