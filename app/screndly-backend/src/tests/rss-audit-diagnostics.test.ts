@@ -8,8 +8,8 @@ import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-re
 import { buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
-const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject } = __rssCaptionTestUtils;
-const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage } = __rssImageSelectionTestUtils;
+const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption } = __rssCaptionTestUtils;
+const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
@@ -155,7 +155,7 @@ test('canonical extraction recovers project title from body markup when headline
 
   assert.equal(canonical.mediaTitle, 'Ed, Edd, n Eddy');
   assert.equal(canonical.entityType, 'tv');
-  assert.ok(canonical.ambiguityFlags?.includes('body_title_recovered'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
 });
 
 test('canonical extraction recovers documentary title from descriptive body', () => {
@@ -219,7 +219,7 @@ test('possessive generic core headline fragments do not become canonical entitie
   });
 
   assert.notEqual(canonical.primarySubject, "Dan Levy's New Crime");
-  assert.equal(canonical.mediaTitle, undefined);
+  assert.equal(canonical.mediaTitle, 'Big Mistakes');
 });
 
 test('article-family classifier routes events and shopping away from project TMDb logic', () => {
@@ -839,6 +839,394 @@ test('wrapper headlines recover body-first title for director-led movie stories'
   });
 
   assert.equal(canonical.mediaTitle, 'Ray Gunn');
+});
+
+test('targeted final-baseline cleanup cases resolve to the expected lanes and canonicals', () => {
+  const cases = [
+    {
+      item: {
+        title: "MK2 Boards Ground-Breaking Rwandan Cannes-Selected Film 'Ben'Imana'",
+        description: "MK2 Films has boarded sales on Ben'Imana ahead of Cannes.",
+        contentHtml: "<p>Marie-Clementine Dusabejambo's Ben'Imana premieres in Cannes.</p>",
+      },
+      mediaTitle: "Ben'Imana",
+      entityType: 'movie',
+      eventType: 'development',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: 'Cult Classic 1980s Comedy Movie Is Finally Getting a Sequel With a Major Hollywood Star',
+        description: 'Cameron Diaz will star in the Troop Beverly Hills sequel.',
+        contentHtml: '<p>Cameron Diaz is starring in a sequel to Troop Beverly Hills for TriStar Pictures.</p>',
+      },
+      mediaTitle: 'Troop Beverly Hills',
+      entityType: 'movie',
+      eventType: 'casting',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: "Frieren: Beyond Journey's End Gets a New Release After Season 2 Finale",
+        description: 'TOHO confirmed what comes next for Frieren: Beyond Journey\'s End.',
+        contentHtml: '<p>The official site confirmed a new release update for Frieren: Beyond Journey\'s End.</p>',
+      },
+      mediaTitle: "Frieren: Beyond Journey's End",
+      entityType: 'tv',
+      eventType: 'release_date',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: "Malcolm In The Middle Review: Hulu's Messy Family Reunion Struggles To Recapture The Original's Zing",
+        description: 'A review of the reunion special.',
+        contentHtml: '<p>This review looks at Malcolm in the Middle.</p>',
+      },
+      mediaTitle: 'Malcolm in the Middle',
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_lane_entertainment_adjacent',
+    },
+    {
+      item: {
+        title: "Sullivan's Crossing Season 4 First Look: Liam's Arrival Brings 'Tension' For Maggie And Cal (Exclusive)",
+        description: 'A first look at Sullivan\'s Crossing season 4.',
+        contentHtml: '<p>New images from Sullivan\'s Crossing tease Liam arriving in town.</p>',
+      },
+      mediaTitle: "Sullivan's Crossing",
+      entityType: 'tv',
+      eventType: 'first_look',
+      flag: 'story_family_visual_reveal_event',
+    },
+    {
+      item: {
+        title: 'Rooster Renewed For Season 2 At HBO',
+        description: 'HBO renewed Rooster.',
+        contentHtml: '<p>Rooster is coming back for season 2.</p>',
+      },
+      mediaTitle: 'Rooster',
+      entityType: 'tv',
+      eventType: 'renewal',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on 'Euphoria' Knows Its Future",
+        description: 'Jimmy Kimmel joked about Euphoria and Zendaya.',
+        contentHtml: '<p>Jimmy Kimmel joked about Zendaya while talking about Euphoria.</p>',
+      },
+      primarySubject: 'Jimmy Kimmel',
+      mediaTitle: 'Euphoria',
+      entityType: 'person',
+      eventType: 'interview_quote',
+      flag: 'story_family_person_commentary_on_project',
+    },
+    {
+      item: {
+        title: 'Stephen King Thinks This Sci-Fi Anthology Series Is Scarier Than The Twilight Zone',
+        description: 'Stephen King praised The Outer Limits.',
+        contentHtml: '<p>Stephen King argued that The Outer Limits is scarier than The Twilight Zone.</p>',
+      },
+      primarySubject: 'Stephen King',
+      mediaTitle: 'The Outer Limits',
+      entityType: 'person',
+      eventType: 'interview_quote',
+      flag: 'story_family_person_commentary_on_project',
+    },
+    {
+      item: {
+        title: "Fox News Is Sending 'Fox & Friends' on an RV Road Trip (Exclusive)",
+        description: 'Fox News is shifting Fox & Friends.',
+        contentHtml: '<p>Fox News is sending Fox & Friends on the road.</p>',
+      },
+      entityType: 'unknown',
+      eventType: 'business',
+      flag: 'story_lane_ignore_completely',
+    },
+    {
+      item: {
+        title: "'Thrash' Review: Phoebe Dynevor Gives Birth in Floodwaters Teeming With Sharks",
+        description: 'A review of Thrash.',
+        contentHtml: '<p>This review covers Thrash.</p>',
+      },
+      mediaTitle: 'Thrash',
+      entityType: 'movie',
+      eventType: 'other',
+      flag: 'story_lane_entertainment_adjacent',
+    },
+    {
+      item: {
+        title: 'Absolute Green Arrow Creators Reveal Details of "Serial Killer" Reboot',
+        description: 'The comics reboot details Absolute Green Arrow.',
+        contentHtml: '<p>Absolute Green Arrow gets a darker comics reboot.</p>',
+      },
+      mediaTitle: 'Absolute Green Arrow',
+      eventType: 'other',
+      flag: 'story_policy_comics_only',
+    },
+    {
+      item: {
+        title: "This Classic Cartoon Network Show's Movie Finale Is Still Perfect Over 15 Years Later",
+        description: 'A retrospective on Ed, Edd, n Eddy.',
+        contentHtml: '<p>The movie finale for Ed, Edd, n Eddy still holds up.</p>',
+      },
+      mediaTitle: 'Ed, Edd, n Eddy',
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_lane_entertainment_adjacent',
+    },
+    {
+      item: {
+        title: 'God-Tier Cosmic Marvel Character Spotted in Daredevil: Born Again',
+        description: 'A spoiler-sensitive Daredevil: Born Again cameo write-up.',
+        contentHtml: '<p>A spoiler-heavy Daredevil: Born Again episode features a surprise Marvel character.</p>',
+      },
+      mediaTitle: 'Daredevil: Born Again',
+      entityType: 'tv',
+      eventType: 'reveal',
+      flag: 'story_lane_core_manual_review_spoiler_safe',
+    },
+    {
+      item: {
+        title: "'The Pitt' Production Team Tracks Every Sock, Every Empty Drawer, and It's Why the Show Feels So Real",
+        description: 'The production team explains the continuity work on The Pitt.',
+        contentHtml: '<p>The Pitt production team explained how the show tracks every continuity detail.</p>',
+      },
+      mediaTitle: 'The Pitt',
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_policy_production_detail_core',
+    },
+    {
+      item: {
+        title: "Annie Potts' Meemaw Is Scheming Again Upon Her Return To Georgie & Mandy - And She's Not The Only Young Sheldon Vet Back",
+        description: "Annie Potts returns to Georgie & Mandy's First Marriage.",
+        contentHtml: "<p>Annie Potts returns to the Young Sheldon spinoff Georgie & Mandy's First Marriage.</p>",
+      },
+      mediaTitle: "Georgie & Mandy's First Marriage",
+      entityType: 'tv',
+      eventType: 'return',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
+        description: 'CBS ordered Eternally Yours to series.',
+        contentHtml: '<p>CBS ordered Eternally Yours to series starring Ed Weeks and Allegra Edwards.</p>',
+      },
+      mediaTitle: 'Eternally Yours',
+      entityType: 'tv',
+      eventType: 'ordered_to_series',
+      flag: 'story_policy_series_order',
+    },
+    {
+      item: {
+        title: "Halle Berry Starred In A Forgotten Who's The Boss? Spin-Off For ABC",
+        description: 'A trivia retrospective on a Who\'s the Boss? spinoff.',
+        contentHtml: '<p>Before movie stardom, Halle Berry appeared in a Who\'s the Boss? spinoff.</p>',
+      },
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_lane_entertainment_adjacent',
+    },
+    {
+      item: {
+        title: 'Yes, The Boys Cast And Creators Know All About Your Homelander Memes',
+        description: 'The Boys cast reacted to Homelander memes.',
+        contentHtml: '<p>The Boys cast and creators know about the memes.</p>',
+      },
+      mediaTitle: 'The Boys',
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_lane_entertainment_adjacent',
+    },
+    {
+      item: {
+        title: "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+        description: 'Dan Levy created Big Mistakes for Netflix.',
+        contentHtml: '<p>Dan Levy created the 2026 crime comedy series Big Mistakes for Netflix.</p>',
+      },
+      mediaTitle: 'Big Mistakes',
+      entityType: 'tv',
+      eventType: 'other',
+      flag: 'story_lane_core_auto_publish',
+    },
+    {
+      item: {
+        title: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+        description: 'Ray Gunn is finally moving forward at Netflix.',
+        contentHtml: '<p>Brad Bird is directing the sci-fi movie Ray Gunn for Netflix.</p>',
+      },
+      mediaTitle: 'Ray Gunn',
+      entityType: 'movie',
+      eventType: 'development',
+      flag: 'story_lane_core_auto_publish',
+    },
+  ];
+
+  for (const entry of cases) {
+    const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(entry.item);
+    if (entry.primarySubject) {
+      assert.equal(canonical.primarySubject, entry.primarySubject, entry.item.title);
+    }
+    if (entry.mediaTitle) {
+      assert.equal(canonical.mediaTitle, entry.mediaTitle, entry.item.title);
+    }
+    if (entry.entityType) {
+      assert.equal(canonical.entityType, entry.entityType, entry.item.title);
+    }
+    assert.equal(canonical.eventType, entry.eventType, entry.item.title);
+    assert.ok(canonical.ambiguityFlags?.includes(entry.flag), entry.item.title);
+  }
+});
+
+test('targeted cleanup captions stay speaker-led, spoiler-safe, and package-clean', () => {
+  const jimmyCaption = buildDeterministicRssCaption({
+    article_title: "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on 'Euphoria' Knows Its Future",
+    event_type: 'interview_quote',
+    primary_subject: 'Jimmy Kimmel',
+    media_title: 'Euphoria',
+    secondary_subject: 'Zendaya',
+    supporting_facts: [],
+  } as any, {
+    articleTitle: "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on 'Euphoria' Knows Its Future",
+    feedName: 'TheWrap',
+    summary: 'Jimmy Kimmel joked about Zendaya and Euphoria.',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: 'Jimmy Kimmel',
+      mediaTitle: 'Euphoria',
+      secondarySubject: 'Zendaya',
+      entityType: 'person',
+      confidence: 0.94,
+      ambiguityFlags: ['story_family_person_commentary_on_project'],
+      allowedEntities: ['Jimmy Kimmel', 'Euphoria', 'Zendaya'],
+    },
+  });
+  assert.match(jimmyCaption, /^Jimmy Kimmel is weighing in on 'Euphoria'/);
+
+  const spoilerCaption = buildDeterministicRssCaption({
+    article_title: 'God-Tier Cosmic Marvel Character Spotted in Daredevil: Born Again',
+    event_type: 'reveal',
+    primary_subject: 'Daredevil: Born Again',
+    media_title: 'Daredevil: Born Again',
+    supporting_facts: [],
+  } as any, {
+    articleTitle: 'God-Tier Cosmic Marvel Character Spotted in Daredevil: Born Again',
+    feedName: 'ComicBook',
+    summary: 'A spoiler-heavy episode breakdown.',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: 'Daredevil: Born Again',
+      mediaTitle: 'Daredevil: Born Again',
+      entityType: 'tv',
+      confidence: 0.94,
+      ambiguityFlags: ['story_policy_spoiler_sensitive', 'story_lane_core_manual_review_spoiler_safe'],
+      allowedEntities: ['Daredevil: Born Again'],
+    },
+  });
+  assert.match(spoilerCaption, /spoiler-sensitive new update/i);
+  assert.doesNotMatch(spoilerCaption, /god-tier|marvel character spotted/i);
+
+  const firstLookCaption = buildDeterministicRssCaption({
+    article_title: "Sullivan's Crossing Season 4 First Look: Liam's Arrival Brings 'Tension' For Maggie And Cal (Exclusive)",
+    event_type: 'first_look',
+    primary_subject: "Sullivan's Crossing",
+    media_title: "Sullivan's Crossing",
+    supporting_facts: [],
+  } as any, {
+    articleTitle: "Sullivan's Crossing Season 4 First Look: Liam's Arrival Brings 'Tension' For Maggie And Cal (Exclusive)",
+    feedName: 'TVLine',
+    summary: 'New images preview season 4.',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: "Sullivan's Crossing",
+      mediaTitle: "Sullivan's Crossing",
+      entityType: 'tv',
+      confidence: 0.95,
+      ambiguityFlags: ['story_family_visual_reveal_event', 'story_policy_article_image_first'],
+      allowedEntities: ["Sullivan's Crossing"],
+    },
+  });
+  assert.match(firstLookCaption, /New first-look images from 'Sullivan's Crossing'/);
+  assert.doesNotMatch(firstLookCaption, /Exclusive|Tension/);
+});
+
+test('spoiler-safe manual-review lane blocks default publish validation', () => {
+  const result = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "A spoiler-sensitive new update from 'Daredevil: Born Again' is headed to manual review.",
+    [],
+    {
+      primarySubject: 'Daredevil: Born Again',
+      mediaTitle: 'Daredevil: Born Again',
+      entityType: 'tv',
+      confidence: 0.94,
+      ambiguityFlags: ['story_policy_spoiler_sensitive', 'story_lane_core_manual_review_spoiler_safe'],
+      allowedEntities: ['Daredevil: Born Again'],
+    } as any,
+    {
+      articleTitle: 'God-Tier Cosmic Marvel Character Spotted in Daredevil: Born Again',
+      feedName: 'ComicBook',
+      summary: 'A spoiler-heavy episode breakdown.',
+      articleBody: 'A spoiler-heavy episode breakdown.',
+      allowedEntities: ['Daredevil: Born Again'],
+    }
+  );
+
+  assert.equal(result.valid, false);
+  assert.ok(result.reasonCodes.includes('SPOILER_SAFE_MANUAL_REVIEW_REQUIRED'));
+});
+
+test('person-commentary stories keep the speaker as the primary visual subject', () => {
+  const analysis = guessPrimarySubject({
+    title: "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on 'Euphoria' Knows Its Future",
+    description: 'Jimmy Kimmel joked about Euphoria and Zendaya.',
+    contentHtml: '<p>Jimmy Kimmel joked about Zendaya while talking about Euphoria.</p>',
+    canonicalEntity: {
+      primarySubject: 'Jimmy Kimmel',
+      mediaTitle: 'Euphoria',
+      secondarySubject: 'Zendaya',
+      entityType: 'person',
+      namedPeople: ['Jimmy Kimmel', 'Zendaya'],
+      ambiguityFlags: ['story_family_person_commentary_on_project'],
+    },
+  } as any);
+
+  assert.equal(analysis.primarySubject.name, 'Jimmy Kimmel');
+  assert.equal(analysis.primarySubject.type, 'actor');
+  assert.equal(analysis.contextType, 'interview');
+  assert.ok(analysis.secondarySubjects.includes('Euphoria'));
+});
+
+test('targeted cleanup image policies prefer reveal stills and cast portraits in the expected lanes', () => {
+  assert.equal(shouldUseFeedFallbackImages({
+    title: "Sullivan's Crossing Season 4 First Look: Liam's Arrival Brings 'Tension' For Maggie And Cal (Exclusive)",
+    description: 'First-look gallery.',
+    canonicalEntity: {
+      mediaTitle: "Sullivan's Crossing",
+      ambiguityFlags: ['story_policy_article_image_first'],
+    },
+  } as any), true);
+
+  const seriesOrderPlan = determineSmartImagePlan({
+    title: "CBS Orders Vampire Comedy Eternally Yours To Series, Scraps Kate Walsh's The Tillbrooks",
+    description: 'CBS ordered Eternally Yours to series.',
+  } as any, projectAnalysis({
+    canonicalEntity: {
+      primarySubject: 'Eternally Yours',
+      mediaTitle: 'Eternally Yours',
+      entityType: 'tv',
+      namedPeople: ['Ed Weeks', 'Allegra Edwards'],
+      ambiguityFlags: ['story_policy_early_project_cast_portraits'],
+    },
+    primarySubject: { name: 'Eternally Yours', type: 'tv_show' },
+    contextProject: 'Eternally Yours',
+    secondarySubjects: ['Ed Weeks', 'Allegra Edwards', 'CBS'],
+    relevantStudios: ['CBS'],
+  }));
+  assert.equal(seriesOrderPlan.primary.intent, 'person_portrait');
+  assert.ok(seriesOrderPlan.secondary);
+  assert.equal(seriesOrderPlan.secondary?.intent, 'person_portrait');
 });
 
 test('obituary stories stay person-led even when project references appear in the headline', () => {

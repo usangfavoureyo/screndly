@@ -184,6 +184,15 @@ function buildEntityDecision(canonical: RSSCanonicalEntity): RssAuditEntityDecis
 
 function classifyAuditScope(canonical: RSSCanonicalEntity): RssAuditScope {
   const flags = canonical.ambiguityFlags || [];
+  if (flags.includes('story_lane_ignore_completely')) {
+    return 'not_screenrender_core';
+  }
+  if (flags.includes('story_lane_entertainment_adjacent') || flags.includes('story_lane_blocked_non_core')) {
+    return 'entertainment_adjacent';
+  }
+  if (flags.includes('story_lane_core_auto_publish') || flags.includes('story_lane_core_manual_review_spoiler_safe')) {
+    return 'screenrender_core';
+  }
   if (
     flags.includes('article_family_shopping_or_product') ||
     flags.includes('article_family_political_or_non_entertainment')

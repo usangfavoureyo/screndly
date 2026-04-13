@@ -1328,14 +1328,16 @@ async function extractImageFromSourcePage(sourcePage: string): Promise<string | 
   return pending;
 }
 
-function shouldUseFeedFallbackImages(_article: RSSImageSelectionArticle): boolean {
-  return false;
+function shouldUseFeedFallbackImages(article: RSSImageSelectionArticle): boolean {
+  return isRevealDrivenArticle(article) ||
+    Boolean(article.canonicalEntity?.ambiguityFlags?.includes('story_policy_article_image_first'));
 }
 
 function shouldAllowProjectLinkedFeedFallback(
   article: RSSImageSelectionArticle,
   analysis: RSSSubjectAnalysis
 ): boolean {
+  const canonicalFlags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
   if (isRevealDrivenArticle(article) || isMemorialStory(article)) {
     return false;
   }
@@ -1352,6 +1354,10 @@ function shouldAllowProjectLinkedFeedFallback(
   const inferredType = inferSlotType(projectAnchor, articleText, 'franchise', analysis);
   if (!isProjectAnchorType(inferredType)) {
     return false;
+  }
+
+  if (canonicalFlags.has('story_policy_force_project_first_image')) {
+    return true;
   }
 
   return /\b(casts?|joins?|signed?|set\b|series|season|production|drama|comedy|film|movie|show|return|renewed|begins)\b/i
@@ -2189,6 +2195,7 @@ function resolveImageIntent(
 function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnalysis {
   const articleText = buildArticleAnalysisText(article);
   const canonical = article.canonicalEntity;
+  const canonicalFlags = new Set(canonical?.ambiguityFlags || []);
   const studios = extractRelevantStudios(articleText);
   const referenceOnlySubjects = extractReferenceOnlySubjects(articleText);
   const normalizedTitle = article.title.trim();
@@ -2247,6 +2254,11 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   const corporateIndustryStory = isCorporateIndustryStory(normalizedTitle, articleText);
   const primaryCorporateStudio = studios[0] || null;
   const canonicalMediaTitle = canonical?.mediaTitle || null;
+  const personCommentaryProjectSubject = canonical?.mediaTitle && !looksLikeNamedPerson(canonical.mediaTitle)
+    ? canonical.mediaTitle
+    : canonical?.secondarySubject && !looksLikeNamedPerson(canonical.secondarySubject)
+      ? canonical.secondarySubject
+      : null;
   const shouldOverrideCanonicalForCorporateStory = Boolean(
     corporateIndustryStory &&
     primaryCorporateStudio &&
@@ -2257,7 +2269,14 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
       (canonicalMediaTitle && !studios.some((studio) => normalizeText(studio) === normalizeText(canonicalMediaTitle))))
   );
 
-  if (leadIndustryPersonCandidate && safeQuotedMatches.length === 0 && executiveIndustryStory && !/\b(?:merger|acquisition|shareholder|proxy advisor)\b/i.test(articleText)) {
+  if (
+    canonicalFlags.has('story_family_person_commentary_on_project') &&
+    canonical?.primarySubject &&
+    looksLikeNamedPerson(canonical.primarySubject)
+  ) {
+    primaryName = canonical.primarySubject;
+    primaryType = 'actor';
+  } else if (leadIndustryPersonCandidate && safeQuotedMatches.length === 0 && executiveIndustryStory && !/\b(?:merger|acquisition|shareholder|proxy advisor)\b/i.test(articleText)) {
     primaryName = leadIndustryPersonCandidate;
     primaryType = 'actor';
   } else if (shouldOverrideCanonicalForCorporateStory) {
@@ -2305,6 +2324,9 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   }
 
   const secondarySubjects = uniqueStrings([
+    personCommentaryProjectSubject && normalizeText(personCommentaryProjectSubject) !== normalizeText(primaryName)
+      ? personCommentaryProjectSubject
+      : null,
     canonical?.secondarySubject,
     ...(canonical?.namedPeople || []).filter((person) => normalizeText(person) !== normalizeText(primaryName)),
     ...(canonical?.namedCharacters || []).filter((character) => normalizeText(character) !== normalizeText(primaryName)),
@@ -2317,7 +2339,9 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   ]);
 
   const contextType = classifyContextType(articleText);
-  const finalContextType = explicitPersonQuoteStory ? 'interview' : contextType;
+  const finalContextType = (explicitPersonQuoteStory || canonicalFlags.has('story_family_person_commentary_on_project'))
+    ? 'interview'
+    : contextType;
   const targetFormat = resolveTargetFormat(articleText, primaryType);
   const animatedSubject = detectAnimatedSubject(articleText, primaryName, secondarySubjects);
   const visual = resolveImageIntent(primaryType, finalContextType, primaryName, secondarySubjects, studios);
@@ -2329,13 +2353,18 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     referenceOnlySubjects,
     studios
   );
+  const resolvedContextProject = canonicalFlags.has('story_family_person_commentary_on_project') &&
+      personCommentaryProjectSubject &&
+      !looksLikeNamedPerson(personCommentaryProjectSubject)
+    ? personCommentaryProjectSubject
+    : contextProject;
   const requiredContextTerms = buildRequiredContextTerms(
     article.title,
     articleText,
     primaryName,
     primaryType,
     visual.visualSubject,
-    contextProject,
+    resolvedContextProject,
     secondarySubjects,
     referenceOnlySubjects,
     studios
@@ -2352,7 +2381,7 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     secondarySubjects,
     finalContextType,
     visual.imageIntent,
-    contextProject,
+    resolvedContextProject,
     [...requiredContextTerms, ...canonicalRequiredContextTerms]
   );
 
@@ -2370,7 +2399,7 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     contextType: finalContextType,
     targetFormat,
     animatedSubject,
-    contextProject,
+    contextProject: resolvedContextProject,
     requiredContextTerms: uniqueStrings([...requiredContextTerms, ...canonicalRequiredContextTerms]),
     referenceOnlySubjects,
     allowLogoOnly: visual.allowLogoOnly,
@@ -3044,6 +3073,15 @@ function determineSmartImagePlan(
     ...heuristicPeople,
     ...nonStudioSecondarySubjects.filter((subject) => looksLikeNamedPerson(subject)),
   ]).filter((subject) => isLikelyPersonSubject(subject, articleText, analysis));
+  const canonicalPortraitPeople = uniqueStrings([
+    ...(analysis.canonicalEntity?.namedPeople || []),
+    ...analysis.secondarySubjects.filter((subject) => looksLikeNamedPerson(subject)),
+    ...ensemblePeople,
+  ]).filter((subject) =>
+    looksLikeNamedPerson(subject) &&
+    !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))
+  );
+  const canonicalFlags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
 
   let primary = buildImageSlotPlan(
     analysis.visualSubject,
@@ -3056,6 +3094,54 @@ function determineSmartImagePlan(
   let useTwoImages = false;
   const primaryStreamingPlatform = getPrimaryStreamingPlatform(articleText);
   const projectLedCastingStory = isProjectLedCastingStory(article.title, articleText);
+
+  if (canonicalFlags.has('story_family_person_commentary_on_project')) {
+    const speakerSubject =
+      (analysis.canonicalEntity?.primarySubject && looksLikeNamedPerson(analysis.canonicalEntity.primarySubject))
+        ? analysis.canonicalEntity.primarySubject
+        : canonicalPortraitPeople[0] || leadPerson || analysis.primarySubject.name;
+    const projectSubject =
+      (analysis.canonicalEntity?.mediaTitle && !looksLikeNamedPerson(analysis.canonicalEntity.mediaTitle))
+        ? analysis.canonicalEntity.mediaTitle
+        : titleAnchor;
+    const speakerType: SubjectType = looksLikeNamedPerson(speakerSubject) ? 'actor' : analysis.primarySubject.type;
+
+    return buildVisualPlan(
+      projectSubject && normalizeText(projectSubject) !== normalizeText(speakerSubject) ? 'dual' : 'single',
+      analysis,
+      buildImageSlotPlan(speakerSubject, speakerType, 'person_portrait', analysis, false),
+      projectSubject && normalizeText(projectSubject) !== normalizeText(speakerSubject)
+        ? buildImageSlotPlan(
+            projectSubject,
+            inferSlotType(projectSubject, articleText, 'franchise', analysis),
+            'still',
+            analysis,
+            false
+          )
+        : null,
+      'person-commentary stories lead with the speaker and keep the project as supporting context'
+    );
+  }
+
+  if (
+    canonicalFlags.has('story_policy_early_project_cast_portraits') &&
+    canonicalPortraitPeople.length > 0
+  ) {
+    primary = buildImageSlotPlan(canonicalPortraitPeople[0], 'actor', 'person_portrait', analysis, false);
+    const secondPerson = canonicalPortraitPeople.find((person) => normalizeText(person) !== normalizeText(canonicalPortraitPeople[0]));
+    secondary = secondPerson
+      ? buildImageSlotPlan(secondPerson, 'actor', 'person_portrait', analysis, false)
+      : titleAnchor
+        ? buildImageSlotPlan(
+            titleAnchor,
+            inferSlotType(titleAnchor, articleText, analysis.primarySubject.type, analysis),
+            'logo',
+            analysis,
+            true
+          )
+        : null;
+    return buildVisualPlan(secondary ? 'dual' : 'single', analysis, primary, secondary, 'early project story prefers lead cast portraits before network branding');
+  }
 
   if (
     primaryStreamingPlatform &&
@@ -3495,11 +3581,18 @@ function isProjectLedStoryContext(base: RSSSubjectAnalysis, articleText: string)
 }
 
 function shouldTryEarlyPersonFallback(base: RSSSubjectAnalysis, articleText: string): boolean {
+  const flags = new Set(base.canonicalEntity?.ambiguityFlags || []);
+  if (
+    flags.has('story_policy_force_project_first_image') ||
+    flags.has('story_policy_early_project_cast_portraits')
+  ) {
+    return true;
+  }
+
   if (!isProjectLedStoryContext(base, articleText)) {
     return false;
   }
 
-  const flags = new Set(base.canonicalEntity?.ambiguityFlags || []);
   if (
     flags.has('quote_led_headline_junk') ||
     flags.has('canonical_project_weak') ||
@@ -5528,31 +5621,60 @@ export async function resolveRelevantRSSImages(
     shouldAllowProjectLinkedFeedFallback(article, analysis) ||
     rawProjectLinkedFeedFallback;
   const revealDrivenFeedFallback = shouldUseFeedFallbackImages(article);
-  const fallbackImages = (revealDrivenFeedFallback || allowProjectLinkedFeedFallback)
-    ? await filterRenderableFeedFallbackUrls(
-      (revealDrivenFeedFallback
-        ? filterAllowedFeedFallbackUrls(
-            dedupeUrls(article.fallbackImages || []),
-            analysis,
-            article
-          )
-        : filterProjectLinkedFeedFallbackUrls(
-            filterAllowedFeedFallbackUrls(
+  const canonicalFlags = new Set(article.canonicalEntity?.ambiguityFlags || []);
+  const trustedInlineFallbackOverride =
+    (
+      canonicalFlags.has('story_policy_force_project_first_image') ||
+      canonicalFlags.has('story_policy_early_project_cast_portraits')
+    ) &&
+    Array.isArray(article.fallbackImages) &&
+    article.fallbackImages.length > 0
+      ? dedupeUrls(article.fallbackImages).filter((url) => !isBlockedFeedFallbackUrl(url))
+      : null;
+  const rawAllowedFallbackImages = trustedInlineFallbackOverride
+    || ((revealDrivenFeedFallback || allowProjectLinkedFeedFallback)
+    ? (
+        revealDrivenFeedFallback
+          ? filterAllowedFeedFallbackUrls(
               dedupeUrls(article.fallbackImages || []),
               analysis,
               article
             )
-          ))
-    )
+          : filterProjectLinkedFeedFallbackUrls(
+              filterAllowedFeedFallbackUrls(
+                dedupeUrls(article.fallbackImages || []),
+                analysis,
+                article
+              )
+            )
+      )
+    : []);
+  const renderableFallbackImages = rawAllowedFallbackImages.length > 0
+    ? await filterRenderableFeedFallbackUrls(rawAllowedFallbackImages)
     : [];
-  if (sources.length === 0) {
-    return canUseExplicitFeedFallback(analysis)
-      ? buildFeedFallbackImages(fallbackImages, limit)
-      : [];
-  }
+  const fallbackImages = renderableFallbackImages.length > 0
+    ? renderableFallbackImages
+    : (
+        canonicalFlags.has('story_policy_force_project_first_image') &&
+        rawAllowedFallbackImages.length > 0
+      )
+        ? rawAllowedFallbackImages
+        : [];
+    if (sources.length === 0) {
+      return canUseExplicitFeedFallback(analysis)
+        ? buildFeedFallbackImages(fallbackImages, limit)
+        : [];
+    }
 
-  const shouldUseStructuredPairing = limit >= 2 &&
-    (options.smartCount || isStreamingAvailabilityStory(article, analysis) || isMemorialStory(article));
+    const shouldUseStructuredPairing = limit >= 2 &&
+      (
+        options.smartCount ||
+        isStreamingAvailabilityStory(article, analysis) ||
+        isMemorialStory(article) ||
+        canonicalFlags.has('story_family_person_commentary_on_project') ||
+        canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+        canonicalFlags.has('story_policy_force_project_first_image')
+      );
 
   if (shouldUseStructuredPairing) {
     const plan = determineSmartImagePlan(article, analysis);
