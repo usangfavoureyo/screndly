@@ -77,6 +77,8 @@ interface BackblazeAuthorizedDownloadRequest {
   headers?: Record<string, string>;
 }
 
+export interface BackblazeDownloadRequest extends BackblazeAuthorizedDownloadRequest {}
+
 interface ListFileNamesResponse {
   files: Array<{
     action?: string;
@@ -597,4 +599,47 @@ export async function getBackblazeAuthorizedDownloadRequest(
       Authorization: downloadAuth.authorizationToken,
     },
   };
+}
+
+export async function getBackblazeDownloadRequests(
+  fileUrl: string,
+  validDurationInSeconds = 3600,
+): Promise<BackblazeDownloadRequest[]> {
+  const primaryRequest = await getBackblazeAuthorizedDownloadRequest(fileUrl, validDurationInSeconds);
+  const requests: BackblazeDownloadRequest[] = [primaryRequest];
+  const parsed = parseBackblazeFileUrl(fileUrl);
+
+  if (!parsed) {
+    return requests;
+  }
+
+  const runtime = await resolveBucketRuntimeByBucketName(parsed.bucketName);
+  if (!runtime) {
+    return requests;
+  }
+
+  const downloadAuthHeader = primaryRequest.headers?.Authorization;
+  const authorizedUrl = downloadAuthHeader
+    ? buildAuthorizedUrl(runtime.downloadUrl, parsed.bucketName, parsed.fileName, downloadAuthHeader)
+    : undefined;
+
+  if (authorizedUrl && authorizedUrl !== primaryRequest.url) {
+    requests.push({ url: authorizedUrl });
+  }
+
+  if (runtime.authorizationToken && runtime.authorizationToken !== downloadAuthHeader) {
+    requests.push({
+      url: buildPublicUrl(runtime.downloadUrl, parsed.bucketName, parsed.fileName),
+      headers: {
+        Authorization: runtime.authorizationToken,
+      },
+    });
+  }
+
+  return requests.filter((request, index, allRequests) => (
+    allRequests.findIndex((entry) => (
+      entry.url === request.url
+      && JSON.stringify(entry.headers || {}) === JSON.stringify(request.headers || {})
+    )) === index
+  ));
 }

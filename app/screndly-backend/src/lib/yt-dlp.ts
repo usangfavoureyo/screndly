@@ -16,6 +16,15 @@ type YtDlpArrayValue = Array<string | number>;
 export type YtDlpOptionValue = string | number | boolean | YtDlpArrayValue | undefined | null;
 export type YtDlpOptions = Record<string, YtDlpOptionValue>;
 
+export interface YouTubeDownloaderPacingConfig {
+    enabled: boolean;
+    sleepRequestsSeconds: number;
+    minSleepBeforeDownloadSeconds: number;
+    maxSleepBeforeDownloadSeconds: number;
+    minGapBetweenJobsSeconds: number;
+    maxConcurrentJobsPerIdentity: number;
+}
+
 export interface YouTubeNetworkContext {
     proxyUrl?: string | null;
     userAgent: string;
@@ -26,6 +35,35 @@ export interface YouTubeNetworkContext {
 }
 
 let ytDlpReadyPromise: Promise<void> | null = null;
+let ytDlpPacingLogged = false;
+let ytDlpModeLogged = false;
+
+function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
+    if (!value || value.trim().length === 0) {
+        return fallback;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+        return true;
+    }
+
+    if (['0', 'false', 'no', 'off'].includes(normalized)) {
+        return false;
+    }
+
+    return fallback;
+}
+
+function parsePositiveNumberEnv(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseFloat(String(value || '').trim());
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parsePositiveIntegerEnv(value: string | undefined, fallback: number): number {
+    const parsed = Number.parseInt(String(value || '').trim(), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 function ensureLocalCookieFile(contents: string): string {
     fs.mkdirSync(path.dirname(LOCAL_COOKIE_FILE_PATH), { recursive: true });
@@ -111,6 +149,101 @@ export function getYtDlpNetworkContext(): YouTubeNetworkContext {
         cookiesEnabled: Boolean(cookieFilePath || cookiesFromBrowser),
         cacheKey: `${proxyUrl || 'direct'}|${userAgent}`,
     };
+}
+
+export function getYouTubeDownloaderPacingConfig(): YouTubeDownloaderPacingConfig {
+    return {
+        enabled: parseBooleanEnv(process.env.YT_DLP_PACING_ENABLED, true),
+        sleepRequestsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_REQUESTS_SECONDS, 1.5),
+        minSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_INTERVAL_SECONDS, 8),
+        maxSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MAX_SLEEP_INTERVAL_SECONDS, 15),
+        minGapBetweenJobsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS, 30),
+        maxConcurrentJobsPerIdentity: parsePositiveIntegerEnv(process.env.YT_DLP_MAX_CONCURRENT_JOBS_PER_IDENTITY, 1),
+    };
+}
+
+export function getYtDlpImpersonationTarget(): string | null {
+    const target = process.env.YT_DLP_IMPERSONATE_TARGET?.trim();
+    return target ? target : null;
+}
+
+export function getYouTubeDownloaderModeSummary(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): {
+    mode: 'stable_authenticated_session' | 'stable_identity';
+    proxyEnabled: boolean;
+    cookiesEnabled: boolean;
+    poTokenEnabled: boolean;
+    pacingEnabled: boolean;
+    maxConcurrentJobsPerIdentity: number;
+    minGapBetweenJobsSeconds: number;
+    userAgent: string;
+    impersonationTarget: string | null;
+} {
+    const pacing = getYouTubeDownloaderPacingConfig();
+    const impersonationTarget = getYtDlpImpersonationTarget();
+
+    return {
+        mode: networkContext.cookiesEnabled ? 'stable_authenticated_session' : 'stable_identity',
+        proxyEnabled: Boolean(networkContext.proxyUrl),
+        cookiesEnabled: networkContext.cookiesEnabled,
+        poTokenEnabled: true,
+        pacingEnabled: pacing.enabled,
+        maxConcurrentJobsPerIdentity: pacing.maxConcurrentJobsPerIdentity,
+        minGapBetweenJobsSeconds: pacing.minGapBetweenJobsSeconds,
+        userAgent: networkContext.userAgent,
+        impersonationTarget,
+    };
+}
+
+export function applyYouTubeDownloaderOptions(baseOptions: YtDlpOptions = {}): YtDlpOptions {
+    const pacing = getYouTubeDownloaderPacingConfig();
+    const impersonationTarget = getYtDlpImpersonationTarget();
+
+    const nextOptions: YtDlpOptions = {
+        ...baseOptions,
+    };
+
+    if (pacing.enabled) {
+        nextOptions.sleepRequests = pacing.sleepRequestsSeconds;
+        nextOptions.sleepInterval = pacing.minSleepBeforeDownloadSeconds;
+        nextOptions.maxSleepInterval = pacing.maxSleepBeforeDownloadSeconds;
+    }
+
+    if (impersonationTarget) {
+        nextOptions.impersonate = impersonationTarget;
+    }
+
+    return nextOptions;
+}
+
+function logYouTubeDownloaderConfigOnce(): void {
+    const pacing = getYouTubeDownloaderPacingConfig();
+    const networkContext = getYtDlpNetworkContext();
+    const modeSummary = getYouTubeDownloaderModeSummary(networkContext);
+
+    if (!ytDlpPacingLogged) {
+        ytDlpPacingLogged = true;
+        console.log('[yt-dlp] YouTube pacing config', JSON.stringify({
+            enabled: pacing.enabled,
+            sleepRequestsSeconds: pacing.sleepRequestsSeconds,
+            minSleepBeforeDownloadSeconds: pacing.minSleepBeforeDownloadSeconds,
+            maxSleepBeforeDownloadSeconds: pacing.maxSleepBeforeDownloadSeconds,
+        }));
+    }
+
+    if (!ytDlpModeLogged) {
+        ytDlpModeLogged = true;
+        console.log('[yt-dlp] YouTube downloader mode', JSON.stringify({
+            mode: modeSummary.mode,
+            proxyEnabled: modeSummary.proxyEnabled,
+            cookiesEnabled: modeSummary.cookiesEnabled,
+            poTokenEnabled: modeSummary.poTokenEnabled,
+            pacingEnabled: modeSummary.pacingEnabled,
+            maxConcurrentJobsPerIdentity: modeSummary.maxConcurrentJobsPerIdentity,
+            minGapBetweenJobsSeconds: modeSummary.minGapBetweenJobsSeconds,
+            userAgent: modeSummary.userAgent,
+            impersonationTarget: modeSummary.impersonationTarget,
+        }));
+    }
 }
 
 export function hasYtDlpAuthConfiguration(): boolean {
@@ -201,6 +334,8 @@ async function ensureYtDlpReady(): Promise<void> {
     }
 
     ytDlpReadyPromise = (async () => {
+        logYouTubeDownloaderConfigOnce();
+
         if (process.env.YT_DLP_SKIP_AUTO_UPDATE === '1') {
             return;
         }

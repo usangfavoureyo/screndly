@@ -8,7 +8,12 @@ import { promisify } from 'util';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 import { authenticate } from '../middleware/auth';
-import { getBackblazeAuthorizedDownloadRequest, getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from '../services/backblaze';
+import {
+  getBackblazeAuthorizedDownloadRequest,
+  getBackblazeAuthorizedDownloadUrl,
+  getBackblazeDownloadRequests,
+  uploadBufferToBackblaze,
+} from '../services/backblaze';
 import { getComposeState, mergeComposeState, publishComposeItemInput } from '../services/compose.service';
 import { trimTMDbLogoOuterBorderBuffer } from '../services/rss-logo-render.service';
 
@@ -146,6 +151,34 @@ async function normalizeImportedTmdbImage(
     contentType,
     extension: inferExtensionFromContentType(contentType),
   };
+}
+
+async function fetchComposeAssetWithFallback(
+  rawUrl: string,
+  options?: { range?: string },
+): Promise<Response | null> {
+  const requests = await getBackblazeDownloadRequests(rawUrl, 7 * 24 * 60 * 60);
+  let lastResponse: Response | null = null;
+
+  for (const request of requests) {
+    const response = await fetch(request.url, {
+      headers: {
+        ...(request.headers || {}),
+        ...(options?.range ? { Range: options.range } : {}),
+      },
+    });
+
+    if (response.ok) {
+      return response;
+    }
+
+    lastResponse = response;
+    if (response.status !== 401 && response.status !== 403) {
+      return response;
+    }
+  }
+
+  return lastResponse;
 }
 
 function even(value: number) {
@@ -395,15 +428,12 @@ router.post('/asset-preview', authenticate, async (req, res) => {
       });
     }
 
-    const authorizedRequest = await getBackblazeAuthorizedDownloadRequest(rawUrl, 7 * 24 * 60 * 60);
-    const previewResponse = await fetch(authorizedRequest.url, {
-      headers: authorizedRequest.headers,
-    });
+    const previewResponse = await fetchComposeAssetWithFallback(rawUrl);
 
-    if (!previewResponse.ok) {
+    if (!previewResponse?.ok) {
       return res.status(502).json({
         success: false,
-        error: { message: `Failed to fetch asset preview (${previewResponse.status})` },
+        error: { message: `Failed to fetch asset preview (${previewResponse?.status || 'no-response'})` },
       });
     }
 
@@ -465,13 +495,16 @@ router.get('/asset-stream', async (req, res) => {
       });
     }
 
-    const authorizedRequest = await getBackblazeAuthorizedDownloadRequest(rawUrl, 7 * 24 * 60 * 60);
-    const upstreamResponse = await fetch(authorizedRequest.url, {
-      headers: {
-        ...(authorizedRequest.headers || {}),
-        ...(req.headers.range ? { Range: req.headers.range } : {}),
-      },
+    const upstreamResponse = await fetchComposeAssetWithFallback(rawUrl, {
+      range: typeof req.headers.range === 'string' ? req.headers.range : undefined,
     });
+
+    if (!upstreamResponse) {
+      return res.status(502).json({
+        success: false,
+        error: { message: 'Failed to stream asset (no upstream response)' },
+      });
+    }
 
     if (!upstreamResponse.ok) {
       return res.status(upstreamResponse.status).json({

@@ -2,6 +2,40 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { YouTubePollerService } from '../services/youtube-poller.service';
 
+function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => Promise<T> | T): Promise<T> | T {
+    const previous = new Map<string, string | undefined>();
+    for (const [key, value] of Object.entries(overrides)) {
+        previous.set(key, process.env[key]);
+        if (value === undefined) {
+            delete process.env[key];
+        } else {
+            process.env[key] = value;
+        }
+    }
+
+    const restore = () => {
+        for (const [key, value] of previous.entries()) {
+            if (value === undefined) {
+                delete process.env[key];
+            } else {
+                process.env[key] = value;
+            }
+        }
+    };
+
+    try {
+        const result = fn();
+        if (result && typeof (result as Promise<T>).then === 'function') {
+            return (result as Promise<T>).finally(restore);
+        }
+        restore();
+        return result;
+    } catch (error) {
+        restore();
+        throw error;
+    }
+}
+
 test('reports stale poll state when an active channel worker exceeds the stale threshold', () => {
     const service = new YouTubePollerService() as any;
     const startedAt = new Date(Date.now() - (31 * 60 * 1000));
@@ -85,6 +119,68 @@ test('reads queued download retry state from an existing failed feed item', () =
 
     assert.equal(state?.attemptCount, 3);
     assert.equal(state?.nextRetryAt?.toISOString(), nextRetryAt);
+});
+
+test('queue-level cooldown delays immediate back-to-back downloads on the same identity', async () => {
+    await withEnv({
+        YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS: '0.05',
+        YT_DLP_MAX_CONCURRENT_JOBS_PER_IDENTITY: '1',
+    }, async () => {
+        const service = new YouTubePollerService() as any;
+        const identityKey = 'direct|stable-ua|cookies:on|impersonate:none';
+        const pacing = service.getDownloaderPacingConfig();
+
+        await service.withDownloaderIdentityGate(identityKey, pacing, async () => undefined);
+
+        const startedAt = Date.now();
+        const gate = await service.acquireDownloaderIdentitySlot(identityKey, pacing);
+        service.releaseDownloaderIdentitySlot(identityKey);
+
+        assert.ok(Date.now() - startedAt >= 40);
+        assert.ok(gate.cooldownDelayMs >= 40);
+    });
+});
+
+test('identity concurrency limit serializes same-identity downloads', async () => {
+    await withEnv({
+        YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS: '0.001',
+        YT_DLP_MAX_CONCURRENT_JOBS_PER_IDENTITY: '1',
+    }, async () => {
+        const service = new YouTubePollerService() as any;
+        const identityKey = 'direct|stable-ua|cookies:on|impersonate:none';
+        const pacing = service.getDownloaderPacingConfig();
+        const executionOrder: string[] = [];
+        const releaseHolder: { release?: () => void } = {};
+
+        const first = service.withDownloaderIdentityGate(identityKey, pacing, async () => {
+            executionOrder.push('first-start');
+            await new Promise<void>((resolve) => {
+                releaseHolder.release = () => {
+                    executionOrder.push('first-end');
+                    resolve();
+                };
+            });
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        const gateHolder: { gate?: { cooldownDelayMs: number; concurrencyDelayMs: number } } = {};
+        const second = service.withDownloaderIdentityGate(identityKey, pacing, async (gate: any) => {
+            gateHolder.gate = gate;
+            executionOrder.push('second-start');
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.deepEqual(executionOrder, ['first-start']);
+
+        if (releaseHolder.release) {
+            releaseHolder.release();
+        }
+        await Promise.all([first, second]);
+
+        assert.deepEqual(executionOrder, ['first-start', 'first-end', 'second-start']);
+        assert.ok((gateHolder.gate?.concurrencyDelayMs ?? 0) >= 15);
+    });
 });
 
 test('respects the configured polling schedule window', () => {

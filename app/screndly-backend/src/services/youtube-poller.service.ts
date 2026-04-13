@@ -6,11 +6,16 @@ import fs from 'fs';
 import path from 'path';
 import { promisify } from 'util';
 import {
+    applyYouTubeDownloaderOptions,
     describeYtDlpAuthConfiguration,
     getYtDlpAuthOptions,
+    getYtDlpImpersonationTarget,
     getYtDlpNetworkContext,
+    getYouTubeDownloaderModeSummary,
+    getYouTubeDownloaderPacingConfig,
     hasYtDlpAuthConfiguration,
     type YouTubeNetworkContext,
+    type YouTubeDownloaderPacingConfig,
     type YtDlpOptions,
 } from '../lib/yt-dlp';
 import ytDlp from '../lib/yt-dlp';
@@ -75,11 +80,23 @@ export interface PollSummary {
 
 interface YtDlpAttemptSummary {
     mode: string;
+    identityKey: string;
     proxyEnabled: boolean;
     cookiesEnabled: boolean;
     poTokenEnabled: boolean;
     userAgent: string;
+    downloaderMode: 'stable_authenticated_session' | 'stable_identity';
+    impersonationTarget: string | null;
+    pacing: {
+        enabled: boolean;
+        sleepRequestsSeconds: number;
+        minSleepBeforeDownloadSeconds: number;
+        maxSleepBeforeDownloadSeconds: number;
+        minGapBetweenJobsSeconds: number;
+    };
     success: boolean;
+    cooldownDelayMs?: number;
+    concurrencyDelayMs?: number;
     errorSummary?: string;
 }
 
@@ -88,6 +105,12 @@ interface DownloadResult {
     attempts: YtDlpAttemptSummary[];
     issueKind?: YouTubeAccessIssueKind;
     issueMessage?: string;
+}
+
+interface DownloaderIdentityState {
+    activeJobs: number;
+    lastCompletedAtMs: number | null;
+    waiters: Array<() => void>;
 }
 
 export interface PollStatus {
@@ -386,6 +409,7 @@ export class YouTubePollerService {
     private lastPollStartedAt: Date | null = null;
     private lastPollFinishedAt: Date | null = null;
     private collaborativeDiscoveryCooldownUntilByChannel = new Map<string, number>();
+    private downloaderIdentityState = new Map<string, DownloaderIdentityState>();
 
     getPollStatus(): PollStatus {
         const now = Date.now();
@@ -3396,28 +3420,34 @@ Respond ONLY as strict JSON:
             ...options
         } = getYtDlpAuthOptions();
 
-        return {
+        return applyYouTubeDownloaderOptions({
             ...options,
             userAgent: networkContext.userAgent,
-        };
+        });
     }
 
     private getYtDlpAuthenticatedOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): YtDlpOptions {
-        return {
+        return applyYouTubeDownloaderOptions({
             ...getYtDlpAuthOptions(),
             userAgent: networkContext.userAgent,
-        };
+        });
     }
 
     private logYtDlpAttempt(videoId: string | undefined, attempt: YtDlpAttemptSummary) {
         console.log('[YouTubePoller] yt-dlp attempt', JSON.stringify({
             videoId,
             mode: attempt.mode,
+            identityKey: this.getSafeDownloaderIdentitySummary(attempt.identityKey),
             proxyEnabled: attempt.proxyEnabled,
             cookiesEnabled: attempt.cookiesEnabled,
             poTokenEnabled: attempt.poTokenEnabled,
             userAgent: attempt.userAgent,
+            downloaderMode: attempt.downloaderMode,
+            impersonationTarget: attempt.impersonationTarget,
+            pacing: attempt.pacing,
             success: attempt.success,
+            ...(typeof attempt.cooldownDelayMs === 'number' ? { cooldownDelayMs: attempt.cooldownDelayMs } : {}),
+            ...(typeof attempt.concurrencyDelayMs === 'number' ? { concurrencyDelayMs: attempt.concurrencyDelayMs } : {}),
             ...(attempt.errorSummary ? { errorSummary: attempt.errorSummary } : {}),
         }));
     }
@@ -3425,15 +3455,37 @@ Respond ONLY as strict JSON:
     private buildYtDlpAttemptSummary(
         mode: string,
         networkContext: YouTubeNetworkContext,
-        options: { cookiesEnabled: boolean; poTokenEnabled: boolean; success: boolean; error?: unknown }
+        options: {
+            cookiesEnabled: boolean;
+            poTokenEnabled: boolean;
+            success: boolean;
+            error?: unknown;
+            cooldownDelayMs?: number;
+            concurrencyDelayMs?: number;
+        }
     ): YtDlpAttemptSummary {
+        const pacing = this.getDownloaderPacingConfig();
+        const downloaderModeSummary = getYouTubeDownloaderModeSummary(networkContext);
+        const identityKey = this.getDownloaderIdentityKey(networkContext);
         return {
             mode,
+            identityKey,
             proxyEnabled: Boolean(networkContext.proxyUrl),
             cookiesEnabled: options.cookiesEnabled,
             poTokenEnabled: options.poTokenEnabled,
             userAgent: networkContext.userAgent,
+            downloaderMode: downloaderModeSummary.mode,
+            impersonationTarget: getYtDlpImpersonationTarget(),
+            pacing: {
+                enabled: pacing.enabled,
+                sleepRequestsSeconds: pacing.sleepRequestsSeconds,
+                minSleepBeforeDownloadSeconds: pacing.minSleepBeforeDownloadSeconds,
+                maxSleepBeforeDownloadSeconds: pacing.maxSleepBeforeDownloadSeconds,
+                minGapBetweenJobsSeconds: pacing.minGapBetweenJobsSeconds,
+            },
             success: options.success,
+            ...(typeof options.cooldownDelayMs === 'number' ? { cooldownDelayMs: options.cooldownDelayMs } : {}),
+            ...(typeof options.concurrencyDelayMs === 'number' ? { concurrencyDelayMs: options.concurrencyDelayMs } : {}),
             ...(options.error ? { errorSummary: this.summarizeYtDlpError(options.error) } : {}),
         };
     }
@@ -3476,6 +3528,128 @@ Respond ONLY as strict JSON:
             attemptCount: Number.isFinite(attemptCount) ? attemptCount : 0,
             nextRetryAt: nextRetryAt && Number.isFinite(nextRetryAt.getTime()) ? nextRetryAt : null,
         };
+    }
+
+    private delay(ms: number): Promise<void> {
+        if (!Number.isFinite(ms) || ms <= 0) {
+            return Promise.resolve();
+        }
+
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private getDownloaderPacingConfig(): YouTubeDownloaderPacingConfig {
+        return getYouTubeDownloaderPacingConfig();
+    }
+
+    private getDownloaderIdentityKey(networkContext: YouTubeNetworkContext): string {
+        const impersonationTarget = getYtDlpImpersonationTarget() || 'none';
+        // Stable identity is intentional. Do not randomize user-agent or proxy per request for YouTube downloads.
+        return [
+            networkContext.proxyUrl || 'direct',
+            networkContext.userAgent,
+            networkContext.cookiesEnabled ? 'cookies:on' : 'cookies:off',
+            `impersonate:${impersonationTarget}`,
+        ].join('|');
+    }
+
+    private getSafeDownloaderIdentitySummary(identityKey: string): string {
+        return identityKey
+            .replace(/:\/\/[^:@|]+:[^@|]+@/g, '://***:***@')
+            .replace(/:\/\/([^:/|]+)(:\d+)?/g, '://$1$2');
+    }
+
+    private getDownloaderIdentityState(identityKey: string): DownloaderIdentityState {
+        const existing = this.downloaderIdentityState.get(identityKey);
+        if (existing) {
+            return existing;
+        }
+
+        const created: DownloaderIdentityState = {
+            activeJobs: 0,
+            lastCompletedAtMs: null,
+            waiters: [],
+        };
+        this.downloaderIdentityState.set(identityKey, created);
+        return created;
+    }
+
+    private waitForDownloaderIdentityAvailability(identityKey: string): Promise<void> {
+        return new Promise((resolve) => {
+            const state = this.getDownloaderIdentityState(identityKey);
+            state.waiters.push(resolve);
+        });
+    }
+
+    private releaseDownloaderIdentityWaiter(identityKey: string): void {
+        const state = this.downloaderIdentityState.get(identityKey);
+        const next = state?.waiters.shift();
+        if (next) {
+            next();
+        }
+    }
+
+    private async acquireDownloaderIdentitySlot(
+        identityKey: string,
+        pacing: YouTubeDownloaderPacingConfig
+    ): Promise<{ cooldownDelayMs: number; concurrencyDelayMs: number }> {
+        const startedWaitingAtMs = Date.now();
+        let concurrencyDelayMs = 0;
+        let cooldownDelayMs = 0;
+
+        while (true) {
+            const state = this.getDownloaderIdentityState(identityKey);
+            if (state.activeJobs < pacing.maxConcurrentJobsPerIdentity) {
+                const nowMs = Date.now();
+                const remainingGapMs = state.lastCompletedAtMs === null
+                    ? 0
+                    : Math.max(0, (pacing.minGapBetweenJobsSeconds * 1000) - (nowMs - state.lastCompletedAtMs));
+
+                if (remainingGapMs > 0) {
+                    cooldownDelayMs += remainingGapMs;
+                    console.log(`[YouTubePoller] delaying download start for ${Math.ceil(remainingGapMs / 1000)}s due to downloader cooldown for identity ${this.getSafeDownloaderIdentitySummary(identityKey)}`);
+                    await this.delay(remainingGapMs);
+                    continue;
+                }
+
+                state.activeJobs += 1;
+                concurrencyDelayMs = Date.now() - startedWaitingAtMs - cooldownDelayMs;
+                return { cooldownDelayMs, concurrencyDelayMs: Math.max(0, concurrencyDelayMs) };
+            }
+
+            const blockedAtMs = Date.now();
+            console.log(`[YouTubePoller] waiting for downloader identity concurrency slot for ${this.getSafeDownloaderIdentitySummary(identityKey)}`);
+            await this.waitForDownloaderIdentityAvailability(identityKey);
+            concurrencyDelayMs += Date.now() - blockedAtMs;
+        }
+    }
+
+    private releaseDownloaderIdentitySlot(identityKey: string): void {
+        const state = this.downloaderIdentityState.get(identityKey);
+        if (!state) {
+            return;
+        }
+
+        state.activeJobs = Math.max(0, state.activeJobs - 1);
+        state.lastCompletedAtMs = Date.now();
+        this.releaseDownloaderIdentityWaiter(identityKey);
+
+        if (state.activeJobs === 0 && state.waiters.length === 0 && state.lastCompletedAtMs === null) {
+            this.downloaderIdentityState.delete(identityKey);
+        }
+    }
+
+    private async withDownloaderIdentityGate<T>(
+        identityKey: string,
+        pacing: YouTubeDownloaderPacingConfig,
+        fn: (gate: { cooldownDelayMs: number; concurrencyDelayMs: number }) => Promise<T>
+    ): Promise<T> {
+        const gate = await this.acquireDownloaderIdentitySlot(identityKey, pacing);
+        try {
+            return await fn(gate);
+        } finally {
+            this.releaseDownloaderIdentitySlot(identityKey);
+        }
     }
 
     private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[], baseOptions: YtDlpOptions = getYtDlpAuthOptions()): Promise<any> {
@@ -3732,111 +3906,119 @@ Respond ONLY as strict JSON:
         const networkContext = getYtDlpNetworkContext();
         const authOptions = this.getYtDlpAuthenticatedOptions(networkContext);
         const publicOptions = this.getYtDlpPublicOptions(networkContext);
+        const pacing = this.getDownloaderPacingConfig();
+        const identityKey = this.getDownloaderIdentityKey(networkContext);
         const attempts: YtDlpAttemptSummary[] = [];
         const formatSelector = 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]';
         let lastIssueKind: YouTubeAccessIssueKind | undefined;
         let lastIssueMessage: string | undefined;
 
-        const runAttempt = async (
-            mode: string,
-            options: YtDlpOptions,
-            flags: { cookiesEnabled: boolean; poTokenEnabled: boolean }
-        ): Promise<boolean> => {
-            try {
-                this.removeYtDlpArtifacts(filePath);
+        return this.withDownloaderIdentityGate(identityKey, pacing, async (gate) => {
+            const runAttempt = async (
+                mode: string,
+                options: YtDlpOptions,
+                flags: { cookiesEnabled: boolean; poTokenEnabled: boolean }
+            ): Promise<boolean> => {
+                try {
+                    this.removeYtDlpArtifacts(filePath);
 
-                await ytDlp(videoUrl, {
-                    ...options,
-                    output: filePath,
-                    format: formatSelector,
-                    mergeOutputFormat: 'mp4',
-                    noProgress: true,
-                    noWarnings: true,
-                    quiet: true,
-                } as any);
+                    await ytDlp(videoUrl, {
+                        ...options,
+                        output: filePath,
+                        format: formatSelector,
+                        mergeOutputFormat: 'mp4',
+                        noProgress: true,
+                        noWarnings: true,
+                        quiet: true,
+                    } as any);
 
-                const success = await this.meetsDownloadedResolutionFloor(filePath);
-                const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
-                    ...flags,
-                    success,
-                });
-                attempts.push(attempt);
-                this.logYtDlpAttempt(videoId, attempt);
+                    const success = await this.meetsDownloadedResolutionFloor(filePath);
+                    const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
+                        ...flags,
+                        success,
+                        cooldownDelayMs: gate.cooldownDelayMs,
+                        concurrencyDelayMs: gate.concurrencyDelayMs,
+                    });
+                    attempts.push(attempt);
+                    this.logYtDlpAttempt(videoId, attempt);
 
-                return success;
-            } catch (error) {
-                const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
-                    ...flags,
-                    success: false,
-                    error,
-                });
-                attempts.push(attempt);
-                this.logYtDlpAttempt(videoId, attempt);
-                lastIssueKind = this.getYouTubeAccessIssueKind(error);
-                lastIssueMessage = error instanceof Error ? error.message : String(error);
-                return false;
+                    return success;
+                } catch (error) {
+                    const attempt = this.buildYtDlpAttemptSummary(mode, networkContext, {
+                        ...flags,
+                        success: false,
+                        error,
+                        cooldownDelayMs: gate.cooldownDelayMs,
+                        concurrencyDelayMs: gate.concurrencyDelayMs,
+                    });
+                    attempts.push(attempt);
+                    this.logYtDlpAttempt(videoId, attempt);
+                    lastIssueKind = this.getYouTubeAccessIssueKind(error);
+                    lastIssueMessage = error instanceof Error ? error.message : String(error);
+                    return false;
+                }
+            };
+
+            if (await runAttempt('stable_authenticated_session', authOptions, {
+                cookiesEnabled: networkContext.cookiesEnabled,
+                poTokenEnabled: false,
+            })) {
+                return { path: filePath, attempts };
             }
-        };
 
-        if (await runAttempt('auth', authOptions, {
-            cookiesEnabled: networkContext.cookiesEnabled,
-            poTokenEnabled: false,
-        })) {
-            return { path: filePath, attempts };
-        }
+            if (await runAttempt('stable_authenticated_session_po_token', {
+                ...authOptions,
+                extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, networkContext),
+            }, {
+                cookiesEnabled: networkContext.cookiesEnabled,
+                poTokenEnabled: true,
+            })) {
+                return { path: filePath, attempts };
+            }
 
-        if (await runAttempt('auth_po_token', {
-            ...authOptions,
-            extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, networkContext),
-        }, {
-            cookiesEnabled: networkContext.cookiesEnabled,
-            poTokenEnabled: true,
-        })) {
-            return { path: filePath, attempts };
-        }
-
-        if (await runAttempt('proxy_po_token', {
-            ...publicOptions,
-            extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, {
-                ...networkContext,
-                cookieFilePath: null,
-                cookiesFromBrowser: null,
+            if (await runAttempt('stable_identity_proxy_po_token', {
+                ...publicOptions,
+                extractorArgs: await youtubePoTokenService.getExtractorArgs(videoId, {
+                    ...networkContext,
+                    cookieFilePath: null,
+                    cookiesFromBrowser: null,
+                    cookiesEnabled: false,
+                    cacheKey: `${networkContext.proxyUrl || 'direct'}|${networkContext.userAgent}|nocookies`,
+                }),
+            }, {
                 cookiesEnabled: false,
-                cacheKey: `${networkContext.proxyUrl || 'direct'}|${networkContext.userAgent}|nocookies`,
-            }),
-        }, {
-            cookiesEnabled: false,
-            poTokenEnabled: true,
-        })) {
-            return { path: filePath, attempts };
-        }
+                poTokenEnabled: true,
+            })) {
+                return { path: filePath, attempts };
+            }
 
-        if (await runAttempt('android_sdkless', {
-            ...publicOptions,
-            extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
-        }, {
-            cookiesEnabled: false,
-            poTokenEnabled: false,
-        })) {
-            return { path: filePath, attempts };
-        }
+            if (await runAttempt('android_sdkless_last_resort', {
+                ...publicOptions,
+                extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+            }, {
+                cookiesEnabled: false,
+                poTokenEnabled: false,
+            })) {
+                return { path: filePath, attempts };
+            }
 
-        if (lastIssueKind === 'bot_challenge') {
+            if (lastIssueKind === 'bot_challenge') {
+                return {
+                    path: null,
+                    attempts,
+                    issueKind: lastIssueKind,
+                    issueMessage: lastIssueMessage
+                        || `YouTube is rejecting automated downloads for ${videoId || videoUrl}. Configure YT_DLP_PROXY_URL and optionally YT_DLP_COOKIE_FILE_BASE64 or YT_DLP_COOKIE_FILE_PATH.`,
+                };
+            }
+
             return {
                 path: null,
                 attempts,
-                issueKind: lastIssueKind,
-                issueMessage: lastIssueMessage
-                    || `YouTube is rejecting automated downloads for ${videoId || videoUrl}. Configure YT_DLP_PROXY_URL and optionally YT_DLP_COOKIE_FILE_BASE64 or YT_DLP_COOKIE_FILE_PATH.`,
+                ...(lastIssueKind ? { issueKind: lastIssueKind } : {}),
+                ...(lastIssueMessage ? { issueMessage: lastIssueMessage } : {}),
             };
-        }
-
-        return {
-            path: null,
-            attempts,
-            ...(lastIssueKind ? { issueKind: lastIssueKind } : {}),
-            ...(lastIssueMessage ? { issueMessage: lastIssueMessage } : {}),
-        };
+        });
     }
 
     private async downloadVideoWithInfo(info: NormalizedVideoInfo): Promise<DownloadResult> {
@@ -3850,8 +4032,12 @@ Respond ONLY as strict JSON:
         const tempDir = this.ensureTempDir();
         const filePath = path.join(tempDir, `${videoId}.mp4`);
         this.removeFileIfExists(filePath);
+        const downloaderModeSummary = getYouTubeDownloaderModeSummary();
+        const shouldPreferStableSessionDownload = downloaderModeSummary.mode === 'stable_authenticated_session'
+            || downloaderModeSummary.proxyEnabled
+            || Boolean(downloaderModeSummary.impersonationTarget);
 
-        if (info.source === 'ytdl' && info.raw && await this.downloadWithYtdl(info.raw, filePath)) {
+        if (!shouldPreferStableSessionDownload && info.source === 'ytdl' && info.raw && await this.downloadWithYtdl(info.raw, filePath)) {
             return { path: filePath, attempts: [] };
         }
 
