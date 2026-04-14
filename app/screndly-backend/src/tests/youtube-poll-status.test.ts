@@ -87,6 +87,109 @@ test('classifies YouTube access issues by retryability', () => {
     );
 });
 
+test('classifies bot challenge download failures into a probable cause for notifications', () => {
+    const service = new YouTubePollerService() as any;
+
+    const classification = service.classifyYouTubeDownloadFailure({
+        issueKind: 'bot_challenge',
+        issueMessage: 'Please sign in to continue',
+        attempts: [{
+            mode: 'stable_authenticated_session',
+            identityKey: 'direct|stable-ua|cookies:on|impersonate:none',
+            proxyEnabled: false,
+            cookiesEnabled: true,
+            poTokenEnabled: false,
+            userAgent: 'stable-ua',
+            downloaderMode: 'stable_authenticated_session',
+            impersonationTarget: null,
+            pacing: {
+                enabled: true,
+                sleepRequestsSeconds: 1.5,
+                minSleepBeforeDownloadSeconds: 8,
+                maxSleepBeforeDownloadSeconds: 15,
+                minGapBetweenJobsSeconds: 30,
+            },
+            success: false,
+            errorSummary: 'Please sign in to continue',
+        }],
+        authConfigured: true,
+        nextRetryDelayMinutes: 10,
+        nextRetryAt: '2026-04-13T10:10:00.000Z',
+    });
+
+    assert.equal(classification.category, 'bot_challenge');
+    assert.match(classification.probableCause, /bot challenge/i);
+    assert.match(classification.retrySummary, /10m/i);
+});
+
+test('classifies cookie-auth failures separately from generic blocked downloads', () => {
+    const service = new YouTubePollerService() as any;
+
+    const classification = service.classifyYouTubeDownloadFailure({
+        issueKind: 'other',
+        issueMessage: 'Use --cookies-from-browser or --cookies for the authentication required by this video',
+        attempts: [{
+            mode: 'stable_identity_proxy_po_token',
+            identityKey: 'proxy|stable-ua|cookies:off|impersonate:none',
+            proxyEnabled: true,
+            cookiesEnabled: false,
+            poTokenEnabled: true,
+            userAgent: 'stable-ua',
+            downloaderMode: 'stable_identity',
+            impersonationTarget: null,
+            pacing: {
+                enabled: true,
+                sleepRequestsSeconds: 1.5,
+                minSleepBeforeDownloadSeconds: 8,
+                maxSleepBeforeDownloadSeconds: 15,
+                minGapBetweenJobsSeconds: 30,
+            },
+            success: false,
+            errorSummary: 'Use --cookies-from-browser or --cookies for the authentication required by this video',
+        }],
+        authConfigured: false,
+        nextRetryDelayMinutes: 2,
+        nextRetryAt: '2026-04-13T10:02:00.000Z',
+    });
+
+    assert.equal(classification.category, 'cookies_missing');
+    assert.match(classification.detail, /authenticated youtube session/i);
+});
+
+test('classifies rate-limited failures from HTTP 429 responses', () => {
+    const service = new YouTubePollerService() as any;
+
+    const classification = service.classifyYouTubeDownloadFailure({
+        issueKind: 'other',
+        issueMessage: 'HTTP Error 429: Too Many Requests',
+        attempts: [{
+            mode: 'stable_authenticated_session',
+            identityKey: 'proxy|stable-ua|cookies:on|impersonate:none',
+            proxyEnabled: true,
+            cookiesEnabled: true,
+            poTokenEnabled: false,
+            userAgent: 'stable-ua',
+            downloaderMode: 'stable_authenticated_session',
+            impersonationTarget: null,
+            pacing: {
+                enabled: true,
+                sleepRequestsSeconds: 1.5,
+                minSleepBeforeDownloadSeconds: 8,
+                maxSleepBeforeDownloadSeconds: 15,
+                minGapBetweenJobsSeconds: 30,
+            },
+            success: false,
+            errorSummary: 'HTTP Error 429: Too Many Requests',
+        }],
+        authConfigured: true,
+        nextRetryDelayMinutes: 30,
+        nextRetryAt: '2026-04-13T10:30:00.000Z',
+    });
+
+    assert.equal(classification.category, 'http_429_rate_limited');
+    assert.equal(classification.httpStatus, 429);
+});
+
 test('keeps bot-challenge download failures retryable even without auth configuration', () => {
     const service = new YouTubePollerService() as any;
 

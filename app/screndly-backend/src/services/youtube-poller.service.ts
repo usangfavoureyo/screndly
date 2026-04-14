@@ -245,6 +245,35 @@ interface ChannelVideoSourceResult {
 
 type YouTubeAccessIssueKind = 'bot_challenge' | 'unavailable' | 'restricted' | 'other';
 
+type YouTubeDownloadFailureCategory =
+    | 'bot_challenge'
+    | 'http_403_forbidden'
+    | 'http_429_rate_limited'
+    | 'cookies_missing'
+    | 'cookies_expired_or_invalid'
+    | 'po_token_missing'
+    | 'po_token_generation_failed'
+    | 'proxy_connection_failed'
+    | 'proxy_rejected'
+    | 'identity_mismatch'
+    | 'video_unavailable'
+    | 'age_restricted_auth_required'
+    | 'geo_restricted'
+    | 'extractor_outdated_or_client_breakage'
+    | 'cooldown_delayed'
+    | 'identity_concurrency_wait'
+    | 'unknown_download_failure';
+
+interface YouTubeDownloadFailureClassification {
+    category: YouTubeDownloadFailureCategory;
+    confidence: 'low' | 'medium' | 'high';
+    title: string;
+    probableCause: string;
+    detail: string;
+    retrySummary: string;
+    httpStatus?: number;
+}
+
 interface ActiveChannelPollState {
     channelDbId: string;
     channelId: string;
@@ -1939,6 +1968,258 @@ export class YouTubePollerService {
         return 'other';
     }
 
+    private getDownloadAttemptErrorText(attempts: YtDlpAttemptSummary[]): string {
+        return attempts
+            .map((attempt) => attempt.errorSummary || '')
+            .filter((value) => value.length > 0)
+            .join('\n')
+            .toLowerCase();
+    }
+
+    private extractHttpStatusFromText(errorText: string): number | undefined {
+        const match = errorText.match(/\b(?:http(?: error)?|status)\s*(\d{3})\b/i);
+        if (!match) {
+            return undefined;
+        }
+
+        const status = Number(match[1]);
+        return Number.isFinite(status) ? status : undefined;
+    }
+
+    private classifyYouTubeDownloadFailure(params: {
+        issueKind: YouTubeAccessIssueKind | null;
+        issueMessage: string | null;
+        attempts: YtDlpAttemptSummary[];
+        authConfigured: boolean;
+        nextRetryDelayMinutes: number;
+        nextRetryAt: string;
+    }): YouTubeDownloadFailureClassification {
+        const combinedText = [
+            params.issueMessage || '',
+            this.getDownloadAttemptErrorText(params.attempts),
+        ]
+            .filter((value) => value.length > 0)
+            .join('\n')
+            .toLowerCase();
+        const lastAttempt = params.attempts[params.attempts.length - 1];
+        const cookiesEnabled = params.attempts.some((attempt) => attempt.cookiesEnabled);
+        const poTokenEnabled = params.attempts.some((attempt) => attempt.poTokenEnabled);
+        const proxyEnabled = params.attempts.some((attempt) => attempt.proxyEnabled);
+        const retrySummary = `Screndly will retry automatically in ${params.nextRetryDelayMinutes}m (next attempt: ${params.nextRetryAt}).`;
+        const httpStatus = this.extractHttpStatusFromText(combinedText);
+
+        if (combinedText.includes('too many requests') || httpStatus === 429) {
+            return {
+                category: 'http_429_rate_limited',
+                confidence: 'high',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: YouTube rate-limited this downloader identity.',
+                detail: 'The media request hit YouTube rate limiting for the current session identity.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (params.issueKind === 'bot_challenge') {
+            return {
+                category: 'bot_challenge',
+                confidence: 'high',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: YouTube bot challenge.',
+                detail: 'YouTube likely flagged this downloader session as automated traffic.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            combinedText.includes('proxy') && (
+                combinedText.includes('connection refused')
+                || combinedText.includes('timed out')
+                || combinedText.includes('timeout')
+                || combinedText.includes('tunnel')
+                || combinedText.includes('407')
+            )
+        ) {
+            return {
+                category: 'proxy_connection_failed',
+                confidence: 'high',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: proxy connection failure.',
+                detail: 'The configured proxy failed or could not complete the download request.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            combinedText.includes('use --cookies')
+            || combinedText.includes('cookies are no longer valid')
+            || combinedText.includes('cookie')
+            || combinedText.includes('sign in to confirm your age')
+        ) {
+            const category = cookiesEnabled || params.authConfigured
+                ? 'cookies_expired_or_invalid'
+                : 'cookies_missing';
+            return {
+                category,
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: category === 'cookies_missing'
+                    ? 'Probable cause: cookies are missing for this YouTube session.'
+                    : 'Probable cause: configured cookies were rejected or expired.',
+                detail: category === 'cookies_missing'
+                    ? 'This video likely needs an authenticated YouTube session to download.'
+                    : 'The configured YouTube session cookies were not accepted by YouTube.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            combinedText.includes('po token')
+            || combinedText.includes('po_token')
+            || combinedText.includes('visitor_data')
+        ) {
+            const category = combinedText.includes('missing')
+                ? 'po_token_missing'
+                : 'po_token_generation_failed';
+            return {
+                category,
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: category === 'po_token_missing'
+                    ? 'Probable cause: PO-token was missing for the media request.'
+                    : 'Probable cause: PO-token generation failed.',
+                detail: poTokenEnabled
+                    ? 'The PO-token downloader path did not complete successfully for this trailer.'
+                    : 'The downloader could not build a valid PO-token path for this trailer.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            params.issueKind === 'unavailable'
+            || combinedText.includes('video is not available')
+            || combinedText.includes('this video is unavailable')
+            || combinedText.includes('premieres in')
+            || combinedText.includes('private video')
+            || combinedText.includes('members-only')
+        ) {
+            return {
+                category: 'video_unavailable',
+                confidence: 'high',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: the video is unavailable or restricted to this session.',
+                detail: 'The video appears unavailable, private, members-only, or not yet downloadable for this downloader session.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            combinedText.includes('playback on other websites has been disabled')
+            || params.issueKind === 'restricted'
+        ) {
+            return {
+                category: 'http_403_forbidden',
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: YouTube rejected the media request for this session identity.',
+                detail: 'The downloader reached the video, but YouTube refused the actual media request.',
+                retrySummary,
+                httpStatus: httpStatus || 403,
+            };
+        }
+
+        if (
+            combinedText.includes('geo')
+            || combinedText.includes('not available in your country')
+            || combinedText.includes('country')
+        ) {
+            return {
+                category: 'geo_restricted',
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: the video is geo-restricted for this session.',
+                detail: 'The video appears restricted by region for the downloader identity in use.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (
+            combinedText.includes('requested format is not available')
+            || combinedText.includes('signature extraction failed')
+            || combinedText.includes('nsig')
+            || combinedText.includes('n challenge')
+            || combinedText.includes('extractor')
+        ) {
+            return {
+                category: 'extractor_outdated_or_client_breakage',
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: yt-dlp extractor/client mismatch.',
+                detail: 'The downloader client path likely broke for this video and may need a different client path or yt-dlp update.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        if (httpStatus === 403) {
+            return {
+                category: proxyEnabled ? 'proxy_rejected' : 'http_403_forbidden',
+                confidence: 'medium',
+                title: 'Trailer Download Failed',
+                probableCause: proxyEnabled
+                    ? 'Probable cause: the proxy/session identity was rejected.'
+                    : 'Probable cause: YouTube returned HTTP 403 for the media request.',
+                detail: proxyEnabled
+                    ? 'The configured proxy identity was not accepted for this download attempt.'
+                    : 'The media request was forbidden for the current downloader session.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        const concurrencyDelayed = params.attempts.some((attempt) => (attempt.concurrencyDelayMs || 0) > 0);
+        if (concurrencyDelayed) {
+            return {
+                category: 'identity_concurrency_wait',
+                confidence: 'low',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: the trailer was delayed behind an active downloader session.',
+                detail: 'Screndly had to wait for the same downloader identity to become free before retrying.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        const cooldownDelayed = params.attempts.some((attempt) => (attempt.cooldownDelayMs || 0) > 0);
+        if (cooldownDelayed) {
+            return {
+                category: 'cooldown_delayed',
+                confidence: 'low',
+                title: 'Trailer Download Failed',
+                probableCause: 'Probable cause: downloader cooldown delayed the attempt.',
+                detail: 'Screndly intentionally paced this identity before retrying the download.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
+        return {
+            category: 'unknown_download_failure',
+            confidence: 'low',
+            title: 'Trailer Download Failed',
+            probableCause: 'Probable cause: unknown downloader failure.',
+            detail: 'The downloader failed, but the current evidence does not clearly identify whether auth, proxy, token, or extractor behavior was the main cause.',
+            retrySummary,
+            httpStatus,
+        };
+    }
+
     private shouldPauseDownloadRetries(issueKind: YouTubeAccessIssueKind | null, authConfigured: boolean): boolean {
         if (issueKind === 'bot_challenge' && !authConfigured) {
             return false;
@@ -2374,6 +2655,14 @@ export class YouTubePollerService {
                 const downloadAttemptCount = previousDownloadAttemptCount + 1;
                 const nextRetryDelayMinutes = this.getDownloadRetryDelayMinutes(downloadAttemptCount);
                 const nextRetryAt = new Date(Date.now() + nextRetryDelayMinutes * 60 * 1000).toISOString();
+                const failureClassification = this.classifyYouTubeDownloadFailure({
+                    issueKind: youtubeAccessIssueKind,
+                    issueMessage: youtubeAccessIssueMessage,
+                    attempts: downloadAttempts,
+                    authConfigured,
+                    nextRetryDelayMinutes,
+                    nextRetryAt,
+                });
                 await this.recordFeedItem(
                     videoId,
                     activeChannel.channelId,
@@ -2390,6 +2679,11 @@ export class YouTubePollerService {
                             downloadFailure: {
                                 kind: youtubeAccessIssueKind || 'other',
                                 message: youtubeAccessIssueMessage,
+                                rawErrorSummary: youtubeAccessIssueMessage,
+                                normalizedFailureCategory: failureClassification.category,
+                                normalizedFailureDisplay: `${failureClassification.probableCause} ${failureClassification.detail}`.trim(),
+                                classificationConfidence: failureClassification.confidence,
+                                httpStatus: failureClassification.httpStatus,
                                 shouldPauseRetries,
                                 authConfigured,
                                 attemptCount: downloadAttemptCount,
@@ -2402,20 +2696,18 @@ export class YouTubePollerService {
                     }
                 );
                 await notificationService.notifyUserOnceWithinWindow({
-                    title: youtubeAccessIssueKind === 'bot_challenge'
-                        ? 'YouTube Download Blocked'
-                        : youtubeAccessIssueKind === 'unavailable'
-                            ? 'YouTube Video Unavailable'
-                            : youtubeAccessIssueKind === 'restricted'
-                                ? 'YouTube Download Restricted'
-                                : 'Trailer Download Failed',
-                    message: youtubeAccessIssueKind === 'bot_challenge'
-                        ? `${videoTitle} matched detection rules but YouTube blocked the production downloader. Screndly will keep retrying automatically, and you can also force a reprocess after updating yt-dlp access if needed.`
-                        : youtubeAccessIssueKind === 'unavailable'
-                            ? `${videoTitle} matched detection rules but YouTube reported the video as unavailable to the production downloader. The item will stay retryable for future polls or a forced reprocess.`
-                            : youtubeAccessIssueKind === 'restricted'
-                                ? `${videoTitle} matched detection rules but YouTube restricted direct downloader access to the video. The item will remain retryable.`
-                                : `${videoTitle} matched detection rules but could not be downloaded from YouTube.`,
+                    title: failureClassification.title,
+                    message: [
+                        `${videoTitle} matched detection rules but the YouTube media download failed.`,
+                        failureClassification.probableCause,
+                        failureClassification.detail,
+                        `Mode: ${downloadAttempts[downloadAttempts.length - 1]?.mode || 'unknown'}.`,
+                        `Proxy: ${downloadAttempts.some((attempt) => attempt.proxyEnabled) ? 'enabled' : 'disabled'}.`,
+                        `Cookies: ${downloadAttempts.some((attempt) => attempt.cookiesEnabled) ? 'enabled' : 'disabled'}.`,
+                        `PO-token: ${downloadAttempts.some((attempt) => attempt.poTokenEnabled) ? 'enabled' : 'disabled'}.`,
+                        failureClassification.httpStatus ? `HTTP: ${failureClassification.httpStatus}.` : null,
+                        failureClassification.retrySummary,
+                    ].filter((value): value is string => Boolean(value)).join(' '),
                     type: 'error',
                     source: 'youtube',
                     actionPage: '/channels'
@@ -2431,13 +2723,7 @@ export class YouTubePollerService {
                         newVideoDetected: true,
                         published: false,
                         failed: true,
-                        message: youtubeAccessIssueKind === 'bot_challenge'
-                            ? `YouTube blocked automated download for ${videoTitle}; it will stay retryable for the next polling cycle and manual reprocesses`
-                            : youtubeAccessIssueKind === 'unavailable'
-                                ? `YouTube reported ${videoTitle} as unavailable to the downloader; it will retry on the next polling cycle`
-                                : youtubeAccessIssueKind === 'restricted'
-                                    ? `YouTube restricted downloader access for ${videoTitle}; it will retry on the next polling cycle`
-                            : `Failed to download ${videoTitle} for publishing; it will retry on the next polling cycle`
+                        message: `${failureClassification.probableCause} ${failureClassification.retrySummary}`
                     }
                 };
             }
