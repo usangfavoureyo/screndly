@@ -71,10 +71,10 @@ export function Navigation({
     <>
       <div className={cn(
         'border-b border-gray-200 dark:border-[#333333]',
-        isCollapsed && isDesktop ? 'px-3 py-5' : 'p-6',
+        isCollapsed && isDesktop ? 'px-3 py-4' : 'px-4 py-4',
       )}>
-        <div className={cn('relative z-10 flex items-center', isCollapsed && isDesktop ? 'justify-center' : 'justify-between gap-3')}>
-          <div className={cn(isCollapsed && isDesktop ? 'relative h-10 w-10' : 'flex items-center gap-3')}>
+        <div className="relative z-10 h-10">
+          <div className="relative h-10">
             <button
               type="button"
               onClick={() => {
@@ -86,10 +86,10 @@ export function Navigation({
               }}
               onPointerUp={!isCollapsed || !isDesktop ? armPointerActivation('brand-dashboard', navigateToLandingPage) : undefined}
               className={cn(
-                'relative z-10 flex cursor-pointer items-center touch-manipulation transition-transform duration-300 hover:scale-105 active:scale-95 focus-visible:outline-none',
+                'absolute top-0 z-10 flex h-10 w-10 cursor-pointer items-center justify-center touch-manipulation transition-[left,transform,opacity] duration-200 hover:scale-105 active:scale-95 focus-visible:outline-none',
                 isCollapsed && isDesktop
-                  ? 'h-10 w-10 justify-center opacity-100 pointer-events-none group-hover/sidebar:opacity-0'
-                  : 'gap-3',
+                  ? 'left-1/2 -translate-x-1/2 opacity-100 pointer-events-none group-hover/sidebar:opacity-0'
+                  : 'left-0 translate-x-0 opacity-100',
               )}
               aria-label="Go to landing page"
             >
@@ -127,7 +127,7 @@ export function Navigation({
                 onToggleDesktopSidebar();
               }}
               onPointerUp={armPointerActivation('toggle-sidebar-expanded', onToggleDesktopSidebar)}
-              className="hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 opacity-0 transition-[color,opacity] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
+              className="absolute right-0 top-0 hidden h-10 w-10 shrink-0 items-center justify-center p-0 text-gray-600 opacity-0 transition-[color,opacity] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex"
               aria-label="Collapse sidebar"
               aria-pressed={false}
             >
@@ -137,7 +137,7 @@ export function Navigation({
         </div>
       </div>
 
-      <nav className={cn('relative z-10 flex-1 space-y-1', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')} aria-label="Primary navigation">
+      <nav className={cn('relative z-10 flex-1 space-y-1 px-3 py-4', !isCollapsed || !isDesktop ? 'sm:px-4' : '')} aria-label="Primary navigation">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
@@ -154,8 +154,7 @@ export function Navigation({
               }}
               onPointerUp={armPointerActivation(`nav-${item.id}`, () => handleNavClick(item.id))}
               className={cn(
-                'group relative z-10 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-[background-color,color,box-shadow] duration-150 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
-                isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex h-12 items-center justify-start px-3 py-0 text-left',
+                'group relative z-10 h-12 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-[background-color,color,box-shadow] duration-150 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
                 isActive
                   ? 'bg-[#ec1e24] text-white shadow-[0_10px_24px_rgba(236,30,36,0.22)]'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A] dark:hover:text-white',
@@ -163,7 +162,12 @@ export function Navigation({
               aria-current={isActive ? 'page' : undefined}
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
-              <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+              <span
+                className={cn(
+                  'absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center transition-[left,transform] duration-200',
+                  isCollapsed && isDesktop ? 'left-1/2 -translate-x-1/2' : 'left-3 translate-x-0',
+                )}
+              >
                 <Icon
                   size={22}
                   className={cn(
@@ -175,10 +179,10 @@ export function Navigation({
               <span
                 aria-hidden={isCollapsed && isDesktop}
                 className={cn(
-                  'min-w-0 truncate text-left transition-[max-width,opacity,margin] duration-200',
+                  'absolute right-3 top-1/2 min-w-0 -translate-y-1/2 truncate text-left transition-[left,opacity,transform] duration-200',
                   isCollapsed && isDesktop
-                    ? 'pointer-events-none ml-0 max-w-0 opacity-0'
-                    : 'ml-2 max-w-[11rem] opacity-100',
+                    ? 'pointer-events-none left-[calc(50%+0.75rem)] translate-x-2 opacity-0'
+                    : 'left-11 translate-x-0 opacity-100',
                 )}
               >
                 {item.label}
@@ -190,27 +194,31 @@ export function Navigation({
         })}
       </nav>
 
-      <div className={cn('relative z-10 border-t border-gray-200 dark:border-[#333333]', isCollapsed && isDesktop ? 'px-3 py-4' : 'p-4')}>
+      <div className={cn('relative z-10 border-t border-gray-200 px-3 py-4 dark:border-[#333333]', !isCollapsed || !isDesktop ? 'sm:px-4' : '')}>
         <Button
           type="button"
           onClick={onLogout}
           variant="ghost"
           className={cn(
-            'cursor-pointer rounded-xl text-gray-600 transition-[background-color,color,box-shadow] duration-150 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
-            isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'h-12 w-full justify-start px-3 py-0',
+            'relative h-12 w-full cursor-pointer overflow-hidden rounded-xl text-gray-600 transition-[background-color,color,box-shadow] duration-150 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
           )}
           aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
         >
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+          <span
+            className={cn(
+              'absolute top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center transition-[left,transform] duration-200',
+              isCollapsed && isDesktop ? 'left-1/2 -translate-x-1/2' : 'left-3 translate-x-0',
+            )}
+          >
             <LogOut className="h-[22px] w-[22px] shrink-0 transition-transform duration-200" />
           </span>
           <span
             aria-hidden={isCollapsed && isDesktop}
             className={cn(
-              'min-w-0 truncate text-left transition-[max-width,opacity,margin] duration-200',
+              'absolute right-3 top-1/2 min-w-0 -translate-y-1/2 truncate text-left transition-[left,opacity,transform] duration-200',
               isCollapsed && isDesktop
-                ? 'pointer-events-none ml-0 max-w-0 opacity-0'
-                : 'ml-2 max-w-[11rem] opacity-100',
+                ? 'pointer-events-none left-[calc(50%+0.75rem)] translate-x-2 opacity-0'
+                : 'left-11 translate-x-0 opacity-100',
             )}
           >
             Logout

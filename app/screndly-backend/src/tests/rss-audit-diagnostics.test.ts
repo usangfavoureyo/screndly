@@ -8,7 +8,7 @@ import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-re
 import { buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
-const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption } = __rssCaptionTestUtils;
+const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, classifyRSSFallbackPath } = __rssCaptionTestUtils;
 const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 
@@ -1201,6 +1201,7 @@ test('spoiler-safe manual-review lane blocks default publish validation', () => 
       ambiguityFlags: ['story_policy_spoiler_sensitive', 'story_lane_core_manual_review_spoiler_safe'],
       allowedEntities: ['Daredevil: Born Again'],
     } as any,
+    undefined,
     {
       articleTitle: 'God-Tier Cosmic Marvel Character Spotted in Daredevil: Born Again',
       feedName: 'ComicBook',
@@ -1212,6 +1213,69 @@ test('spoiler-safe manual-review lane blocks default publish validation', () => 
 
   assert.equal(result.valid, false);
   assert.ok(result.reasonCodes.includes('SPOILER_SAFE_MANUAL_REVIEW_REQUIRED'));
+});
+
+test('final RSS caption sanitizer removes excerpt markers and clips at sentence boundaries', () => {
+  const sanitized = __rssAuditTestUtils.sanitizeRSSCaptionText(
+    "Spoilers ahead for 'Rooster' Episode 6 as Greg Russo's story takes a complicated turn, while Steve Carell's Greg Russo connects the dots of who her son is, Danielle Deadwyler's [...]",
+    170
+  );
+
+  assert.doesNotMatch(sanitized, /\[\.\.\.\]|…|\.\.\./);
+  assert.match(sanitized, /[.!?]$/);
+  assert.ok(sanitized.length <= 170);
+});
+
+test('publish validation blocks non-publisher fallback captions', () => {
+  const result = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "'Euphoria' has a new release date. The Season 3 premiere of the show had tribute screen reads [...]",
+    [],
+    {
+      primarySubject: 'Euphoria',
+      mediaTitle: 'Euphoria',
+      entityType: 'tv',
+      confidence: 0.95,
+      ambiguityFlags: [],
+      allowedEntities: ['Euphoria', 'Angus Cloud', 'Eric Dane', 'Kevin Turen'],
+    } as any,
+    'excerpt_fallback',
+    {
+      articleTitle: "'Euphoria' Season 3 Paid Tribute to Angus Cloud, Eric Dane and Kevin Turen",
+      feedName: 'The Wrap',
+      summary: "The premiere includes tribute cards for Angus Cloud, Eric Dane, and Kevin Turen.",
+      articleBody: "The premiere includes tribute cards for Angus Cloud, Eric Dane, and Kevin Turen.",
+      allowedEntities: ['Euphoria', 'Angus Cloud', 'Eric Dane', 'Kevin Turen'],
+    }
+  );
+
+  assert.equal(result.valid, false);
+  assert.ok(result.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'));
+});
+
+test('RSS fallback path classifier detects excerpt-style leakage', () => {
+  assert.equal(
+    classifyRSSFallbackPath("This piece contains spoilers for 'Rooster' Episode 6. [...]"),
+    'excerpt_fallback'
+  );
+  assert.equal(
+    classifyRSSFallbackPath("'Rooster' returns for Season 2 at HBO."),
+    'deterministic_template'
+  );
+});
+
+test('RSS caption system prompt preserves saved settings prompt as the authoritative instruction block', () => {
+  const systemPrompt = __rssAuditTestUtils.buildRSSCaptionSystemPrompt(
+    'CUSTOM CULTURE CRAVE PROMPT',
+    {
+      tone: 'Engaging',
+      maxLength: 800,
+      speculationAssessment: null,
+    }
+  );
+
+  assert.match(systemPrompt || '', /CUSTOM CULTURE CRAVE PROMPT/);
+  assert.match(systemPrompt || '', /saved RSS caption prompt above is authoritative/i);
+  assert.match(systemPrompt || '', /Keep the final caption under 800 characters/i);
 });
 
 test('person-commentary stories keep the speaker as the primary visual subject', () => {

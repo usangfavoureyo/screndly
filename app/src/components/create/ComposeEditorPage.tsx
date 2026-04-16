@@ -206,6 +206,20 @@ function formatBytes(size: number) {
   return `${(size / 1024 / 1024).toFixed(2)} MB`;
 }
 
+function getTmdbResultMetaLabel(result: DesignStudioTMDbSearchResult) {
+  const mediaLabel = result.mediaType.toUpperCase();
+  if (!result.releaseDate) {
+    return mediaLabel;
+  }
+
+  const parsedDate = new Date(result.releaseDate);
+  const year = Number.isNaN(parsedDate.getTime())
+    ? result.releaseDate.slice(0, 4)
+    : String(parsedDate.getFullYear());
+
+  return year ? `${mediaLabel} • ${year}` : mediaLabel;
+}
+
 function normalizeMetadataInput(value: string) {
   return value.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
@@ -1979,7 +1993,7 @@ export function ComposeEditorPage({
                         Back
                       </button>
                       <span className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
-                        {selectedTmdbResult.mediaType}
+                        {getTmdbResultMetaLabel(selectedTmdbResult)}
                       </span>
                     </div>
                     <p className="text-sm text-gray-900 dark:text-white">{selectedTmdbResult.title}</p>
@@ -2071,7 +2085,7 @@ export function ComposeEditorPage({
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
                             <p className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
-                              {result.mediaType}
+                              {getTmdbResultMetaLabel(result)}
                             </p>
                           </div>
                         </button>

@@ -131,6 +131,20 @@ export function PostFlowSheet({
     return true;
   }, [stack.length]);
 
+  const handleSheetOpenChange = useCallback((nextOpen: boolean) => {
+    if (nextOpen) {
+      onOpenChange(true);
+      return;
+    }
+
+    const handledBackNavigation = handleSheetBackRequest();
+    if (handledBackNavigation) {
+      return;
+    }
+
+    onOpenChange(false);
+  }, [handleSheetBackRequest, onOpenChange]);
+
   const flowContent = currentView === 'activity' ? (
     <ComposeActivityPage
       isCompactLayout={isDesktopViewport}
@@ -158,6 +172,11 @@ export function PostFlowSheet({
             return;
           }
 
+          const handledBackNavigation = handleSheetBackRequest();
+          if (handledBackNavigation) {
+            return;
+          }
+
           requestClose();
         }}
       >
@@ -179,15 +198,7 @@ export function PostFlowSheet({
   return (
     <BottomSheet
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          onOpenChange(true);
-          return;
-        }
-
-        // Swipe-dismiss always fully closes the sheet
-        onOpenChange(false);
-      }}
+      onOpenChange={handleSheetOpenChange}
       onBackRequest={handleSheetBackRequest}
       heightMode="full"
       sheetId="post-flow-sheet"

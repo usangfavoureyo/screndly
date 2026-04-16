@@ -38,6 +38,12 @@ export type LegacyOpenAIModel = typeof LEGACY_OPENAI_MODELS[number];
 export type AIModel = SupportedOpenAIModel | LegacyOpenAIModel | 'flash-3';
 export type AIReasoningEffort = 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
 export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
+export type RSSCaptionGenerationPath = 'ai_prompted' | 'repaired_caption' | 'deterministic_template' | 'excerpt_fallback';
+
+export interface RSSCaptionGenerationResult {
+    caption: string;
+    path: RSSCaptionGenerationPath;
+}
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
     switch (value) {
@@ -2991,21 +2997,36 @@ function failsRSSCaptionFormatting(caption: string, context: RSSContext): boolea
         || lacksRSSLineTerminalPunctuation(caption);
 }
 
-export async function generateRSSCaption(
+function classifyRSSFallbackPath(caption: string): RSSCaptionGenerationPath {
+    const normalized = sanitizeRSSCaptionSurfaceText(caption);
+    if (
+        /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])|…/.test(normalized)
+        || /\bthis (?:article|piece|review|recap)\b/i.test(normalized)
+    ) {
+        return 'excerpt_fallback';
+    }
+
+    return 'deterministic_template';
+}
+
+function buildRSSFallbackResult(caption: string): RSSCaptionGenerationResult {
+    return {
+        caption,
+        path: classifyRSSFallbackPath(caption),
+    };
+}
+
+export async function generateRSSCaptionResult(
     context: RSSContext,
     model: AIModel = DEFAULT_OPENAI_MODEL,
     customSystemPrompt?: string,
     customTemperature?: number
-): Promise<string> {
+): Promise<RSSCaptionGenerationResult> {
     const extraction = buildHeuristicRssCaptionExtraction(context);
     const bodyExcerpt = (extraction.article_body_clean || '').slice(0, 1400);
     const normalizedPromptTitle = extraction.article_title || normalizeRSSHeadlineInput(context.articleTitle);
     const normalizedPromptSummary = stripHtmlTags(context.summary || '').slice(0, 500);
     const deterministicFallback = buildDeterministicRssCaption(extraction, context);
-    const coreProjectAnchor = getCoreProjectRSSAnchor(context, extraction);
-    if (coreProjectAnchor && deterministicFallback && headlineAnchorsToCoreProject(deterministicFallback, context, extraction)) {
-        return deterministicFallback;
-    }
     const defaultSystemPrompt = `You are a social media curator sharing news/articles.
 Goal: Summarize the value prop and encourage a click (without saying "click here").
 - Use 1 relevant emoji.
@@ -3085,13 +3106,16 @@ Write ONLY the caption.`;
     });
 
     if (!response.success) {
-        return deterministicFallback;
+        return buildRSSFallbackResult(deterministicFallback);
     }
     const normalizedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
     );
     if (!failsRSSCaptionFormatting(normalizedCaption, context)) {
-        return normalizedCaption;
+        return {
+            caption: normalizedCaption,
+            path: 'ai_prompted',
+        };
     }
 
     const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
@@ -3132,14 +3156,17 @@ Write ONLY the corrected caption.`;
     });
 
     if (!retryResponse.success) {
-        return deterministicFallback;
+        return buildRSSFallbackResult(deterministicFallback);
     }
 
     const correctedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content'])
     );
     if (!failsRSSCaptionFormatting(correctedCaption, context)) {
-        return correctedCaption;
+        return {
+            caption: correctedCaption,
+            path: 'repaired_caption',
+        };
     }
 
     const hardRebuildPrompt = `Rebuild this caption from structured facts only.
@@ -3175,7 +3202,7 @@ Write ONLY the final caption.`;
     });
 
     if (!hardRebuildResponse.success) {
-        return deterministicFallback;
+        return buildRSSFallbackResult(deterministicFallback);
     }
 
     const rebuiltCaption = enforceRSSCaptionPunctuation(
@@ -3183,19 +3210,34 @@ Write ONLY the final caption.`;
     );
 
     if (failsRSSCaptionFormatting(rebuiltCaption, context)) {
-        return deterministicFallback;
+        return buildRSSFallbackResult(deterministicFallback);
     }
 
-    return rebuiltCaption;
+    return {
+        caption: rebuiltCaption,
+        path: 'repaired_caption',
+    };
+}
+
+export async function generateRSSCaption(
+    context: RSSContext,
+    model: AIModel = DEFAULT_OPENAI_MODEL,
+    customSystemPrompt?: string,
+    customTemperature?: number
+): Promise<string> {
+    const result = await generateRSSCaptionResult(context, model, customSystemPrompt, customTemperature);
+    return result.caption;
 }
 
 export const __rssCaptionTestUtils = {
     buildHeuristicRssCaptionExtraction,
     buildDeterministicRssCaption,
     enforceRSSCaptionPunctuation,
+    sanitizeRSSCaptionSurfaceText,
     failsRSSCaptionFormatting,
     headlineAnchorsToCoreProject,
     getRSSCaptionHardInvalidReasonCodes,
+    classifyRSSFallbackPath,
     hasMissingRSSBlankLineSeparation,
     hasUnsupportedRSSStructure,
     lacksSingleQuotedDetectedRSSTitles,
@@ -4528,6 +4570,7 @@ export default {
     validateTMDbContent,
     validateYouTubeTrailer,
     generateTMDbCaption,
+    generateRSSCaptionResult,
     generateRSSCaption,
     generateYouTubeCaption,
     generateCommentReply,

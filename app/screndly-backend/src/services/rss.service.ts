@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { JSDOM } from 'jsdom';
 import Parser from 'rss-parser';
-import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, __rssCaptionTestUtils } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, type RSSCaptionGenerationPath, __rssCaptionTestUtils } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
@@ -732,6 +732,59 @@ function sanitizeRSSPlainText(value?: string): string {
 }
 
 function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
+  const stripExcerptMarkers = (input: string): string => input
+    .replace(/\s*(?:\[\.\.\.\]|…|\.\.\.)\s*$/gm, '')
+    .trim();
+
+  const repairWrapperLead = (input: string): string => input
+    .replace(/\bthis (?:article|piece|review|recap) contains spoilers for\b/gi, 'Spoilers ahead for')
+    .replace(/\bthis (?:article|piece|review|recap) discusses\b/gi, 'Discussion of')
+    .replace(/\bthis (?:article|piece|review|recap)\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  const normalizeCaptionEnding = (input: string): string => {
+    const trimmed = input.trim().replace(/[,:;]\s*$/g, '').trim();
+    if (!trimmed) {
+      return '';
+    }
+
+    if (/[.!?]["')\]]?$/.test(trimmed)) {
+      return trimmed;
+    }
+
+    return `${trimmed.replace(/["')\]]+$/g, '').trim()}.`;
+  };
+
+  const clipToSentenceBoundary = (input: string, limit: number): string => {
+    if (!limit || input.length <= limit) {
+      return input;
+    }
+
+    const sliced = input.slice(0, limit).trim();
+    const sentenceMatches = [...sliced.matchAll(/[.!?]["')\]]?(?=\s|$)/g)];
+    if (sentenceMatches.length > 0) {
+      const lastSentence = sentenceMatches[sentenceMatches.length - 1];
+      const boundary = (lastSentence.index ?? 0) + lastSentence[0].length;
+      const clipped = sliced.slice(0, boundary).trim();
+      if (clipped) {
+        return clipped;
+      }
+    }
+
+    const fallbackBreak = Math.max(
+      sliced.lastIndexOf('\n\n'),
+      sliced.lastIndexOf('. '),
+      sliced.lastIndexOf('! '),
+      sliced.lastIndexOf('? '),
+    );
+    if (fallbackBreak > 0) {
+      return sliced.slice(0, fallbackBreak + 1).trim();
+    }
+
+    return sliced.replace(/\s+\S*$/, '').replace(/[,:;('"\s-]+$/g, '').trim();
+  };
+
   const normalized = String(value || '')
     .replace(/\r\n?/g, '\n')
     .replace(/\n{3,}/g, '\n\n');
@@ -749,9 +802,14 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
         return '';
       }
 
-      return /^[\u2022*-]\s*/.test(trimmedLine)
-        ? trimmedLine.replace(/^[*-]\s*/, '\u2022 ')
-        : trimmedLine;
+      const repairedLine = repairWrapperLead(stripExcerptMarkers(trimmedLine));
+      if (!repairedLine) {
+        return '';
+      }
+
+      return /^[\u2022*-]\s*/.test(repairedLine)
+        ? repairedLine.replace(/^[*-]\s*/, '\u2022 ')
+        : repairedLine;
     })
     .join('\n')
     .replace(/[ \t]+\n/g, '\n')
@@ -759,7 +817,7 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
     .trim();
 
   if (maxLength && sanitized.length > maxLength) {
-    sanitized = sanitized.slice(0, maxLength).replace(/\s+\S*$/, '').trim();
+    sanitized = clipToSentenceBoundary(sanitized, maxLength);
   }
 
   sanitized = sanitized
@@ -777,6 +835,28 @@ function sanitizeRSSCaptionText(value: string, maxLength?: number): string {
     .join('\n');
 
   sanitized = sanitized
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  sanitized = sanitized
+    .split('\n')
+    .map((line) => {
+      const trimmed = stripExcerptMarkers(line.trim());
+      if (!trimmed) {
+        return '';
+      }
+
+      if (/^[\u2022]\s*/.test(trimmed)) {
+        return trimmed.replace(/^(\u2022\s*)(.*)$/u, (_m, bullet, text) => {
+          const normalizedBullet = normalizeCaptionEnding(stripExcerptMarkers(String(text).trim()));
+          return normalizedBullet ? `${bullet}${normalizedBullet}` : '';
+        });
+      }
+
+      return normalizeCaptionEnding(trimmed);
+    })
+    .filter(Boolean)
+    .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
@@ -2223,6 +2303,7 @@ function validateRSSFinalPublishState(
   caption: string,
   images: RSSResolvedImage[],
   canonicalEntity: RSSCanonicalEntity,
+  captionPath?: RSSCaptionGenerationPath,
   contextOverride?: {
     articleTitle?: string;
     feedName?: string;
@@ -2247,6 +2328,10 @@ function validateRSSFinalPublishState(
 
   if (canonicalFlags.has('story_lane_core_manual_review_spoiler_safe')) {
     reasonCodes.add('SPOILER_SAFE_MANUAL_REVIEW_REQUIRED');
+  }
+
+  if (captionPath === 'deterministic_template' || captionPath === 'excerpt_fallback') {
+    reasonCodes.add('CAPTION_NON_PUBLISHER_FALLBACK');
   }
 
   if (resolvedImages.length > 1 && resolvedImages.slice(1).some((image) => !image.url || !image.url.trim())) {
@@ -4900,24 +4985,33 @@ async function attemptRSSPublish(
         allowedEntities: canonicalEntity.allowedEntities,
         canonicalEntity,
       }).length === 0;
-    const captionSource = shouldReuseStoredCaption ? item.generatedCaption! : await aiService.generateRSSCaption(
-      {
-        articleTitle: item.title,
-        feedName: feed.name,
-        summary: sanitizeRSSPlainText(item.description),
-        articleBody: sanitizeRSSPlainText(item.contentHtml),
-        articleContentHtml: item.contentHtml,
-        platform: 'X',
-        selectedVisuals: buildRSSCaptionVisualContext(item, publishImages),
-        allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
-        canonicalEntity,
-      },
-      normalizeAIModel(runtimeSettings.rssCaptionModel),
-      systemPrompt,
-      runtimeSettings.rssCaptionTemperature
-    );
-    const caption = sanitizeRSSCaptionText(captionSource, runtimeSettings.rssCaptionMaxLength);
-    const publishValidation = validateRSSFinalPublishState(caption, publishImages, canonicalEntity, {
+    const captionResult = shouldReuseStoredCaption
+      ? { caption: item.generatedCaption!, path: 'ai_prompted' as const }
+      : await aiService.generateRSSCaptionResult(
+          {
+            articleTitle: item.title,
+            feedName: feed.name,
+            summary: sanitizeRSSPlainText(item.description),
+            articleBody: sanitizeRSSPlainText(item.contentHtml),
+            articleContentHtml: item.contentHtml,
+            platform: 'X',
+            selectedVisuals: buildRSSCaptionVisualContext(item, publishImages),
+            allowedEntities: buildRSSCaptionAllowedEntities(item, publishImages),
+            canonicalEntity,
+          },
+          normalizeAIModel(runtimeSettings.rssCaptionModel),
+          systemPrompt,
+          runtimeSettings.rssCaptionTemperature
+        );
+    const caption = sanitizeRSSCaptionText(captionResult.caption, runtimeSettings.rssCaptionMaxLength);
+    console.log('[RSS][CaptionPath]', {
+      feedId: feed.id,
+      title: item.title,
+      path: captionResult.path,
+      reusedStoredCaption: shouldReuseStoredCaption,
+      model: normalizeAIModel(runtimeSettings.rssCaptionModel),
+    });
+    const publishValidation = validateRSSFinalPublishState(caption, publishImages, canonicalEntity, captionResult.path, {
       articleTitle: item.title,
       feedName: feed.name,
       summary: sanitizeRSSPlainText(item.description),
@@ -6617,7 +6711,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
     maxLength: runtimeSettings.rssCaptionMaxLength,
     speculationAssessment,
   });
-  const caption = await aiService.generateRSSCaption(
+  const captionResult = await aiService.generateRSSCaptionResult(
     {
       articleTitle: previewItem.title,
       feedName: feed.name,
@@ -6633,11 +6727,18 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
     systemPrompt,
     runtimeSettings.rssCaptionTemperature
   );
-  const sanitizedCaption = sanitizeRSSCaptionText(caption, runtimeSettings.rssCaptionMaxLength);
+  const sanitizedCaption = sanitizeRSSCaptionText(captionResult.caption, runtimeSettings.rssCaptionMaxLength);
+  console.log('[RSS][CaptionPath][Preview]', {
+    feedId: feed.id,
+    title: previewItem.title,
+    path: captionResult.path,
+    model: normalizeAIModel(runtimeSettings.rssCaptionModel),
+  });
   const previewValidation = validateRSSFinalPublishState(
     sanitizedCaption,
     resolvedImages,
     previewItem.canonicalEntity,
+    captionResult.path,
     {
       articleTitle: previewItem.title,
       feedName: feed.name,
@@ -7105,6 +7206,7 @@ export const __rssDedupeTestUtils = {
 export const __rssAuditTestUtils = {
   sanitizeRSSPlainText,
   sanitizeRSSCaptionText,
+  buildRSSCaptionSystemPrompt,
   classifyRSSArticleFamily,
   classifyRSSEditorialBlockType,
   getRSSEditorialIngestionBlockReason,

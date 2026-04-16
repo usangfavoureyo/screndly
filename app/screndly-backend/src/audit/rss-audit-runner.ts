@@ -522,7 +522,7 @@ export async function analyzeRssAuditCase(
     ? buildDeterministicRssCaption(buildHeuristicRssCaptionExtraction(captionContext), captionContext)
     : await aiService.generateRSSCaption(captionContext);
   const normalizedCaption = __rssAuditTestUtils.sanitizeRSSCaptionText(generatedCaption, 280);
-  const publishValidation = __rssAuditTestUtils.validateRSSFinalPublishState(normalizedCaption, images, canonical, {
+  const publishValidation = __rssAuditTestUtils.validateRSSFinalPublishState(normalizedCaption, images, canonical, undefined, {
     articleTitle: input.articleTitle,
     feedName: input.sourceName,
     summary: normalizedDescription,
