@@ -281,7 +281,10 @@ test('quote-led question headlines are marked as headline junk instead of clean 
   });
 
   assert.notEqual(canonical.primarySubject, 'Did Abbott Elementary Just');
-  assert.ok(canonical.ambiguityFlags?.includes('quote_led_headline_junk'));
+  assert.ok(
+    canonical.ambiguityFlags?.includes('quote_led_headline_junk') ||
+    canonical.ambiguityFlags?.includes('story_policy_allow_quote_led_person_commentary')
+  );
 });
 
 test('joke headlines do not survive as clean canonicals when only quoted project context is safe', () => {
@@ -292,7 +295,41 @@ test('joke headlines do not survive as clean canonicals when only quoted project
   });
 
   assert.notEqual(canonical.primarySubject, 'Jimmy Kimmel Jokes Zendaya');
-  assert.ok(canonical.ambiguityFlags?.includes('quote_led_headline_junk'));
+  assert.ok(
+    canonical.ambiguityFlags?.includes('quote_led_headline_junk') ||
+    canonical.ambiguityFlags?.includes('story_policy_allow_quote_led_person_commentary')
+  );
+});
+
+test('targeted person-commentary override keeps Euphoria story publishable without generic quote-junk downgrade', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Jimmy Kimmel Jokes Zendaya Is Probably the Reason No One on 'Euphoria' Knows Its Future",
+    description: 'Jimmy Kimmel joked about Euphoria and Zendaya.',
+    contentHtml: '<p>Jimmy Kimmel joked about Zendaya while talking about Euphoria.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Euphoria');
+  assert.ok(canonical.ambiguityFlags?.includes('story_family_person_commentary_on_project'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_allow_quote_led_person_commentary'));
+  assert.ok(!canonical.ambiguityFlags?.includes('quote_led_headline_junk'));
+});
+
+test('targeted non-core leaks route out of screenrender core before project/image recovery', () => {
+  const starTrek = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Why Star Trek: The Next Generation's Worst-Rated Episode On IMDb Is So Hated",
+    description: 'An editorial explainer looking back at an old TNG episode.',
+    contentHtml: '<p>This retrospective breaks down fan reactions over time.</p>',
+  });
+  assert.ok(starTrek.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
+  assert.ok(starTrek.ambiguityFlags?.includes('rss_family_no_tmdb_project'));
+
+  const bafta = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "BAFTA Film Awards Review of Tourette's Fiasco Finds \"Weaknesses\" in Planning and Crisis Procedures, But No \"Malicious Intent\"",
+    description: 'The report focused on governance and planning procedures.',
+    contentHtml: '<p>The review covered awards-operations governance and procedures.</p>',
+  });
+  assert.ok(bafta.ambiguityFlags?.includes('story_lane_ignore_completely'));
+  assert.ok(bafta.ambiguityFlags?.includes('rss_family_no_tmdb_project'));
 });
 
 test('TMDb title context rejects platform and studio names as project title matches', () => {

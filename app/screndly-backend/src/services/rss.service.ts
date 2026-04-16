@@ -1059,6 +1059,20 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (title.includes("why star trek: the next generation's worst-rated episode on imdb is so hated")) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is retrospective/editorial explainer coverage, not a core publishable project-news item.',
+      mediaTitle: 'Star Trek: The Next Generation',
+      primarySubject: 'Star Trek: The Next Generation',
+      entityType: 'tv',
+      eventType: 'other',
+      confidence: 0.93,
+      flags: ['story_policy_editorial_retrospective'],
+      noTmdbProject: true,
+    };
+  }
+
   if (title.includes("sullivan's crossing season 4 first look: liam's arrival brings 'tension' for maggie and cal")) {
     return {
       lane: 'core_auto_publish',
@@ -1094,7 +1108,7 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
       eventType: 'interview_quote',
       confidence: 0.94,
       namedPeople: ['Jimmy Kimmel', 'Zendaya', 'Tom Holland'],
-      flags: ['story_family_person_commentary_on_project'],
+      flags: ['story_family_person_commentary_on_project', 'story_policy_allow_quote_led_person_commentary'],
       allowedEntities: ['Jimmy Kimmel', 'Euphoria', 'Zendaya', 'Tom Holland'],
     };
   }
@@ -1120,6 +1134,18 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     return {
       lane: 'ignore_completely',
       reason: 'Filtered at RSS intake because this article is non-target media/business/news-programming coverage.',
+      entityType: 'unknown',
+      eventType: 'business',
+      confidence: 0.95,
+      flags: ['story_policy_non_target_media_business'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (title.includes("bafta film awards review of tourette's fiasco finds")) {
+    return {
+      lane: 'ignore_completely',
+      reason: 'Filtered at RSS intake because this article is non-target awards governance/business coverage.',
       entityType: 'unknown',
       eventType: 'business',
       confidence: 0.95,
@@ -1867,18 +1893,22 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   const ambiguityFlags = projectAnchorOverride
     ? Array.from(new Set([...(extraction.ambiguity_flags || []), 'casting_project_anchor_override']))
     : [...(extraction.ambiguity_flags || [])];
+  const hasQuoteLedHeadlineJunk = hasRSSQuoteLedHeadlineJunk(item.title);
+  const allowQuoteLedPersonCommentary = Boolean(
+    targetedOverride?.flags?.includes('story_policy_allow_quote_led_person_commentary')
+  );
   if (removedUnsafeCanonical) {
     ambiguityFlags.push('unsafe_canonical_entity_removed');
   }
   ambiguityFlags.push(`headline_style_${headlineStyle}`);
-  if (hasRSSQuoteLedHeadlineJunk(item.title)) {
+  if (hasQuoteLedHeadlineJunk && !allowQuoteLedPersonCommentary) {
     ambiguityFlags.push('quote_led_headline_junk');
   }
   if (
     !isRSSNonProjectArticleFamily(articleFamily) &&
     !mediaTitle &&
     !franchise &&
-    (Boolean(initialMediaTitle) || Boolean(initialPrimarySubject) || hasRSSQuoteLedHeadlineJunk(item.title))
+    (Boolean(initialMediaTitle) || Boolean(initialPrimarySubject) || (hasQuoteLedHeadlineJunk && !allowQuoteLedPersonCommentary))
   ) {
     ambiguityFlags.push('canonical_project_weak');
   }

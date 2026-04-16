@@ -3536,6 +3536,19 @@ function getTMDbTitleGroundingAnchor(base: RSSSubjectAnalysis): string | null {
   return isProjectAnchorType(base.primarySubject.type) ? base.primarySubject.name : null;
 }
 
+function getTMDbSelectionAnchor(base: RSSSubjectAnalysis): string | null {
+  const personLedSlot = base.imageIntent === 'person_portrait' ||
+    base.primarySubject.type === 'actor' ||
+    base.primarySubject.type === 'director' ||
+    base.primarySubject.type === 'producer';
+
+  if (personLedSlot) {
+    return base.visualSubject || base.primarySubject.name || getTMDbTitleGroundingAnchor(base);
+  }
+
+  return getTMDbTitleGroundingAnchor(base) || base.visualSubject || base.primarySubject.name;
+}
+
 function getProjectFallbackAnchors(article: RSSImageSelectionArticle, base: RSSSubjectAnalysis): string[] {
   const articleText = buildArticleAnalysisText(article);
   const quotedSubjects = uniqueStrings([
@@ -4426,12 +4439,23 @@ async function resolveSingleSlotImages(
         limit - resolved.length,
         resolved.map((image) => image.url)
       );
-      const canonicalAnchor = getTMDbTitleGroundingAnchor(analysis) || analysis.visualSubject || analysis.primarySubject.name;
+      const canonicalAnchor = getTMDbSelectionAnchor(analysis);
       const tmdbResolved = canonicalAnchor
         ? filterTMDbImagesByAnchorOverlap(rawTMDbResolved, canonicalAnchor)
         : rawTMDbResolved;
+      const canonicalFlags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
       const confidentTMDbResolved = hasConfidentResolvedPrimary(tmdbResolved, 'tmdb', fallbackImages.length > 0)
         ? tmdbResolved
+        : [];
+      const allowWeakPersonPortraitFallback = analysis.imageIntent === 'person_portrait' &&
+        (
+          canonicalFlags.has('story_family_person_commentary_on_project') ||
+          canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+          canonicalFlags.has('story_policy_force_project_first_image')
+        );
+      const weakPersonTMDbResolved = confidentTMDbResolved.length === 0 &&
+        allowWeakPersonPortraitFallback
+        ? tmdbResolved.filter((image) => image.role === 'person').slice(0, 1)
         : [];
       const safeWeakTMDbResolved = confidentTMDbResolved.length === 0
         ? selectSafeWeakTMDbFallback(tmdbResolved, analysis)
@@ -4462,6 +4486,7 @@ async function resolveSingleSlotImages(
         ? selectSafeWeakTMDbFallback(projectFallbackResolved, fallbackAnalysis)
         : [];
       const earlyPersonFallbackAnalysis = confidentTMDbResolved.length === 0 &&
+        weakPersonTMDbResolved.length === 0 &&
         confidentProjectFallbackResolved.length === 0 &&
         safeWeakProjectFallbackResolved.length === 0 &&
         safeWeakTMDbResolved.length === 0 &&
@@ -4478,6 +4503,8 @@ async function resolveSingleSlotImages(
           ? confidentTMDbResolved
           : confidentProjectFallbackResolved.length > 0
             ? confidentProjectFallbackResolved
+            : weakPersonTMDbResolved.length > 0
+              ? weakPersonTMDbResolved
             : confidentEarlyPersonResolved.length > 0
               ? confidentEarlyPersonResolved
             : safeWeakProjectFallbackResolved.length > 0
@@ -4600,7 +4627,7 @@ async function resolveSmartPrimaryCandidate(
     for (const source of sources) {
       if (source === 'tmdb') {
         const rawTMDbResolved = await collectStructuredTMDbImages(variant, 1);
-        const canonicalAnchor = getTMDbTitleGroundingAnchor(variant) || variant.visualSubject || variant.primarySubject.name;
+        const canonicalAnchor = getTMDbSelectionAnchor(variant);
         const tmdbResolved = canonicalAnchor
           ? filterTMDbImagesByAnchorOverlap(rawTMDbResolved, canonicalAnchor)
           : rawTMDbResolved;
@@ -5687,8 +5714,26 @@ export async function resolveRelevantRSSImages(
       options.openaiWebSearchModel
     );
     const memorialStory = isMemorialStory(article);
+    const allowTargetedPrimaryRecovery =
+      canonicalFlags.has('story_family_person_commentary_on_project') ||
+      canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+      canonicalFlags.has('story_policy_force_project_first_image');
 
     if (!primaryResolved) {
+      if (allowTargetedPrimaryRecovery && plan.secondary) {
+        const secondaryAsPrimary = await resolveSingleSlotImages(
+          article,
+          buildAnalysisForSlot(analysis, plan.secondary),
+          fallbackImages,
+          sources,
+          1,
+          options.openaiWebSearchModel
+        );
+        if (secondaryAsPrimary[0]) {
+          return [secondaryAsPrimary[0]];
+        }
+      }
+
       const projectPrimaryFallbackAnalysis = buildSingleSlotProjectFallbackAnalysis(
         buildAnalysisForSlot(analysis, plan.primary),
         article
@@ -5704,6 +5749,23 @@ export async function resolveRelevantRSSImages(
         );
         if (projectFallbackResolved[0]) {
           return [projectFallbackResolved[0]];
+        }
+      }
+
+      if (allowTargetedPrimaryRecovery) {
+        const projectStoryPersonFallbackAnalysis = buildPersonPortraitFallbackAnalysis(article, analysis);
+        if (projectStoryPersonFallbackAnalysis) {
+          const projectStoryPersonFallbackResolved = await resolveSingleSlotImages(
+            article,
+            projectStoryPersonFallbackAnalysis,
+            fallbackImages,
+            sources,
+            1,
+            options.openaiWebSearchModel
+          );
+          if (projectStoryPersonFallbackResolved[0]) {
+            return [projectStoryPersonFallbackResolved[0]];
+          }
         }
       }
 

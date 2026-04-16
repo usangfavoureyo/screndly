@@ -139,8 +139,28 @@ function classifyImageNotFound(input: RssAuditCase, canonical: RSSCanonicalEntit
 }
 
 function inferTmdbTitleFromReason(reason?: string): string | undefined {
-  return reason?.match(/\bTMDb\s+(?:backdrop|poster|logo|profile|still|image)\s+for\s+(.+?)(?:\.|$)/i)?.[1]?.trim()
+  const raw = reason?.match(/\bTMDb\s+(?:backdrop|poster|logo|profile|still|image)\s+for\s+(.+?)(?:\.|$)/i)?.[1]?.trim()
     || reason?.match(/\bTMDb\s+(.+?)\s+for\s+(.+?)(?:\.|$)/i)?.[2]?.trim();
+  if (!raw) {
+    return undefined;
+  }
+
+  return raw
+    .replace(/\bcropped to \d+:\d+ portrait\b/i, '')
+    .replace(/\bportrait\b$/i, '')
+    .replace(/\bprofile\b$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hasSupportingEntityOverlap(canonical: RSSCanonicalEntity, candidateTitle: string): boolean {
+  const candidates = unique([
+    canonical.secondarySubject,
+    ...(canonical.allowedEntities || []),
+    ...(canonical.namedPeople || []),
+    ...(canonical.namedCharacters || []),
+  ]);
+  return candidates.some((entity) => hasCanonicalTokenOverlap(entity, candidateTitle));
 }
 
 function mapProductionCaptionCode(code: string): RssAuditFailureCode {
@@ -340,6 +360,11 @@ function buildImageDecision(
   publishImageCodes: string[]
 ): RssAuditImageDecision {
   const canonicalEntity = canonical.mediaTitle || canonical.primarySubject || canonical.franchise;
+  const canonicalFlags = new Set(canonical.ambiguityFlags || []);
+  const allowSupportingTokenOverlap =
+    canonicalFlags.has('story_family_person_commentary_on_project') ||
+    canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+    canonicalFlags.has('story_policy_force_project_first_image');
   const selectedImages = images.map((image, index) => ({
     role: index === 0 ? 'primary' as const : 'secondary' as const,
     label: image.reason,
@@ -352,7 +377,9 @@ function buildImageDecision(
     .filter((image) => image.source === 'tmdb')
     .map((image) => {
       const title = inferTmdbTitleFromReason(image.reason) || canonicalEntity || image.reason || 'Unknown TMDb candidate';
-      const rejectionReasons = hasCanonicalTokenOverlap(canonicalEntity, title)
+      const hasCanonicalOverlap = hasCanonicalTokenOverlap(canonicalEntity, title);
+      const hasSupportingOverlap = allowSupportingTokenOverlap && hasSupportingEntityOverlap(canonical, title);
+      const rejectionReasons = hasCanonicalOverlap || hasSupportingOverlap
         ? []
         : ['zero canonical token overlap'];
       return {
