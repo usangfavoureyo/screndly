@@ -102,7 +102,7 @@ export function Navigation({
                 onClick={onToggleDesktopSidebar}
                 onPointerUp={armPointerActivation('toggle-sidebar-collapsed', onToggleDesktopSidebar)}
                 className={cn(
-                  'absolute inset-0 z-20 hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md p-0 text-gray-600 opacity-0 transition-all duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
+                  'absolute inset-0 z-20 hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md p-0 text-gray-600 opacity-0 transition-[opacity,color,transform] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
                 )}
                 size="icon"
                 variant="ghost"
@@ -155,7 +155,7 @@ export function Navigation({
               onPointerUp={armPointerActivation(`nav-${item.id}`, () => handleNavClick(item.id))}
               className={cn(
                 'group relative z-10 w-full cursor-pointer overflow-hidden rounded-xl text-sm font-medium touch-manipulation transition-[background-color,color,box-shadow] duration-150 pointer-events-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ec1e24]/40',
-                isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex items-center gap-3 px-4 py-3 text-left',
+                isCollapsed && isDesktop ? 'flex h-12 items-center justify-center px-0 py-0' : 'flex h-12 items-center justify-start px-3 py-0 text-left',
                 isActive
                   ? 'bg-[#ec1e24] text-white shadow-[0_10px_24px_rgba(236,30,36,0.22)]'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A] dark:hover:text-white',
@@ -163,16 +163,26 @@ export function Navigation({
               aria-current={isActive ? 'page' : undefined}
               aria-label={isCollapsed && isDesktop ? item.label : undefined}
             >
-              <Icon
-                size={22}
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <Icon
+                  size={22}
+                  className={cn(
+                    'shrink-0 transition-transform duration-200',
+                    !isActive && 'group-hover:scale-110',
+                  )}
+                />
+              </span>
+              <span
+                aria-hidden={isCollapsed && isDesktop}
                 className={cn(
-                  'shrink-0 transition-transform duration-200',
-                  !isActive && 'group-hover:scale-110',
+                  'min-w-0 truncate text-left transition-[max-width,opacity,margin] duration-200',
+                  isCollapsed && isDesktop
+                    ? 'pointer-events-none ml-0 max-w-0 opacity-0'
+                    : 'ml-2 max-w-[11rem] opacity-100',
                 )}
-              />
-              {(!isCollapsed || !isDesktop) && (
-                <span className="min-w-0 truncate whitespace-nowrap">{item.label}</span>
-              )}
+              >
+                {item.label}
+              </span>
             </button>
           );
 
@@ -187,12 +197,24 @@ export function Navigation({
           variant="ghost"
           className={cn(
             'cursor-pointer rounded-xl text-gray-600 transition-[background-color,color,box-shadow] duration-150 hover:bg-gray-100 hover:text-[#ec1e24] dark:text-[#9CA3AF] dark:hover:bg-[#1A1A1A]',
-            isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'w-full justify-start gap-3 px-4 py-3',
+            isCollapsed && isDesktop ? 'h-12 w-full justify-center px-0' : 'h-12 w-full justify-start px-3 py-0',
           )}
           aria-label={isCollapsed && isDesktop ? 'Logout' : undefined}
         >
-          <LogOut className="h-[22px] w-[22px] shrink-0 transition-transform duration-200" />
-          {(!isCollapsed || !isDesktop) && <span className="truncate">Logout</span>}
+          <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+            <LogOut className="h-[22px] w-[22px] shrink-0 transition-transform duration-200" />
+          </span>
+          <span
+            aria-hidden={isCollapsed && isDesktop}
+            className={cn(
+              'min-w-0 truncate text-left transition-[max-width,opacity,margin] duration-200',
+              isCollapsed && isDesktop
+                ? 'pointer-events-none ml-0 max-w-0 opacity-0'
+                : 'ml-2 max-w-[11rem] opacity-100',
+            )}
+          >
+            Logout
+          </span>
         </Button>
       </div>
     </>
@@ -262,7 +284,7 @@ export function Navigation({
 
       {/* Sidebar - Desktop Only (lg and above) */}
       <aside
-        className="group/sidebar pointer-events-auto fixed top-0 left-0 z-[60] hidden h-full isolate flex-col border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
+        className="group/sidebar pointer-events-auto fixed top-0 left-0 z-[60] hidden h-full isolate flex-col overflow-hidden border-r border-gray-200 bg-white transition-[width] duration-200 ease-in-out dark:border-[#333333] dark:bg-[#000000] lg:flex"
         style={{ width: desktopSidebarWidth }}
       >
         <NavContent isCollapsed={isDesktopSidebarCollapsed} isDesktop />

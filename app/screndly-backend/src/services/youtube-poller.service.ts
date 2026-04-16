@@ -11,6 +11,7 @@ import {
     getYtDlpAuthOptions,
     getYtDlpImpersonationTarget,
     getYtDlpNetworkContext,
+    shouldAllowAndroidSdklessMediaFallback,
     getYouTubeDownloaderModeSummary,
     getYouTubeDownloaderPacingConfig,
     hasYtDlpAuthConfiguration,
@@ -361,7 +362,9 @@ const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 8;
 const MAX_COLLAB_KEYWORD_QUERIES = 2;
 const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 1;
 const MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL = 20 * 1000;
+const COLLAB_DISCOVERY_MIN_INTERVAL_MS = 10 * 60 * 1000;
 const COLLAB_DISCOVERY_403_COOLDOWN_MS = 15 * 60 * 1000;
+const MAX_CONCURRENT_COLLAB_DISCOVERY = 2;
 const FEED_FRESHNESS_HOURS = 24;
 const AGE_GATE_OVERDUE_BUFFER_HOURS = 0.25;
 const MAX_EFFECTIVE_AGE_GATE_HOURS = 24;
@@ -373,7 +376,7 @@ const POLL_STALE_AFTER_MS = 30 * 60 * 1000;
 const SCHEDULER_STALE_AFTER_MS = 2 * 60 * 1000;
 const CHANNEL_POLL_LOCK_MS = 10 * 60 * 1000;
 const POLL_CLAIM_BATCH_SIZE = 15;
-const MAX_CONCURRENT_CHANNEL_POLLS = 5;
+const MAX_CONCURRENT_CHANNEL_POLLS = 8;
 const POLLING_JITTER_MAX_MS = 10 * 1000;
 const BACKOFF_CAP_MINUTES = 15;
 const SLOW_STAGE_WARN_MS = 15 * 1000;
@@ -438,6 +441,18 @@ export class YouTubePollerService {
     private lastPollStartedAt: Date | null = null;
     private lastPollFinishedAt: Date | null = null;
     private collaborativeDiscoveryCooldownUntilByChannel = new Map<string, number>();
+    private collaborativeDiscoveryLastRunAtByChannel = new Map<string, number>();
+    private collaborativeDiscoveryQueue: Array<{
+        channel: any;
+        settings: LoadedVideoSettings;
+        options: PollOptions;
+        supportsFeedItemStatus: boolean;
+        trailerKeywords: string[];
+        autoPostPlatforms: PlatformRoutingTarget[];
+        effectiveAgeGateHours: number | null;
+    }> = [];
+    private collaborativeDiscoveryQueuedKeys = new Set<string>();
+    private activeCollaborativeDiscoveryJobs = new Set<string>();
     private downloaderIdentityState = new Map<string, DownloaderIdentityState>();
 
     getPollStatus(): PollStatus {
@@ -716,6 +731,21 @@ export class YouTubePollerService {
                 nextPollAt: options.force ? channel.nextPollAt ?? this.computeNextPollAt(baseIntervalMinutes, channel.failureCount ?? 0) : channel.nextPollAt,
             },
         });
+
+        if (claimed.count > 0) {
+            const dueReference = channel?.nextPollAt ? new Date(channel.nextPollAt) : null;
+            const claimLagMs = dueReference && Number.isFinite(dueReference.getTime())
+                ? Math.max(0, now.getTime() - dueReference.getTime())
+                : 0;
+            console.log('[YouTubePoller] Channel claimed', {
+                channelId: channel.channelId,
+                channelName: channel.name,
+                dueAt: dueReference?.toISOString(),
+                claimedAt: now.toISOString(),
+                claimLagMs,
+                force: options.force === true,
+            });
+        }
 
         return claimed.count > 0;
     }
@@ -1031,11 +1061,12 @@ export class YouTubePollerService {
             const supportsFeedItemStatus = await this.timeStage(activeChannel.name, 'check_feed_item_status', stageDurations, () => hasFeedItemStatusColumn());
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
             const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel));
-            const collaborativeVideos = await this.timeStage(activeChannel.name, 'discover_collab_uploads', stageDurations, () => this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords));
-            const latestVideos = await this.timeStage(activeChannel.name, 'merge_candidates', stageDurations, async () => {
-                const mergedCandidates = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]);
-                return this.prioritizeQueuedCandidates(mergedCandidates, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL);
-            });
+            const latestVideos = await this.timeStage(
+                activeChannel.name,
+                'prioritize_owned_candidates',
+                stageDurations,
+                () => this.prioritizeQueuedCandidates(ownedVideos, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL)
+            );
             if (source === 'yt-dlp') {
                 console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
             }
@@ -1057,7 +1088,7 @@ export class YouTubePollerService {
                     ? `[YouTubePoller] ${activeChannel.name}: using default trailer filters (${trailerKeywords.join(', ')}) because advancedFilters is blank`
                     : `[YouTubePoller] ${activeChannel.name}: using trailer filters (${trailerKeywords.join(', ')})`
             );
-            console.log(`[YouTubePoller] ${activeChannel.name}: discovered ${ownedVideos.length} owned uploads and ${collaborativeVideos.length} collaborative candidates`);
+            console.log(`[YouTubePoller] ${activeChannel.name}: discovered ${ownedVideos.length} owned uploads in the fast path`);
             const futureOnlySince = this.getFutureOnlySince(settings);
             const effectiveAgeGateHours = Number.isFinite(options.ageGateOverrideHours as number) && (options.ageGateOverrideHours as number) > 0
                 ? Number(options.ageGateOverrideHours)
@@ -1068,6 +1099,19 @@ export class YouTubePollerService {
                     : `[YouTubePoller] ${activeChannel.name}: age gate ${this.describeVideoAgeGate(settings)}${effectiveAgeGateHours !== null ? ` (effective ${effectiveAgeGateHours.toFixed(2)} hours)` : ''}; backlog mode ${settings.videoBacklogMode}`
             );
             const autoPostPlatforms = this.getAutoPostPlatforms(settings);
+            if (this.shouldRunCollaborativeDiscovery(activeChannel, options)) {
+                this.enqueueCollaborativeDiscovery({
+                    channel: activeChannel,
+                    settings,
+                    options,
+                    supportsFeedItemStatus,
+                    trailerKeywords,
+                    autoPostPlatforms,
+                    effectiveAgeGateHours,
+                });
+            } else {
+                console.log(`[YouTubePoller] ${activeChannel.name}: collaborative discovery deferred to the slower background cadence`);
+            }
             const skippedReasons: string[] = [];
             let sawFreshUnprocessedVideo = false;
             const seenVideoIdsThisPoll = new Set<string>();
@@ -1535,6 +1579,148 @@ export class YouTubePollerService {
     private isCollaborativeDiscovery403Error(error: unknown): boolean {
         const message = this.summarizeYtDlpError(error).toLowerCase();
         return message.includes('http error 403') || message.includes('forbidden');
+    }
+
+    private shouldRunCollaborativeDiscovery(channel: any, options: PollOptions = {}): boolean {
+        if (options.force) {
+            return true;
+        }
+
+        const channelKey = this.getCollaborativeDiscoveryCooldownKey(channel);
+        const lastRunAtMs = this.collaborativeDiscoveryLastRunAtByChannel.get(channelKey);
+        if (typeof lastRunAtMs !== 'number') {
+            return true;
+        }
+
+        return (Date.now() - lastRunAtMs) >= COLLAB_DISCOVERY_MIN_INTERVAL_MS;
+    }
+
+    private enqueueCollaborativeDiscovery(job: {
+        channel: any;
+        settings: LoadedVideoSettings;
+        options: PollOptions;
+        supportsFeedItemStatus: boolean;
+        trailerKeywords: string[];
+        autoPostPlatforms: PlatformRoutingTarget[];
+        effectiveAgeGateHours: number | null;
+    }): void {
+        const queueKey = this.getCollaborativeDiscoveryCooldownKey(job.channel);
+        if (this.activeCollaborativeDiscoveryJobs.has(queueKey) || this.collaborativeDiscoveryQueuedKeys.has(queueKey)) {
+            console.log(`[YouTubePoller] ${job.channel.name}: collaborative discovery already queued or running`);
+            return;
+        }
+
+        this.collaborativeDiscoveryQueue.push(job);
+        this.collaborativeDiscoveryQueuedKeys.add(queueKey);
+        console.log(`[YouTubePoller] ${job.channel.name}: queued collaborative discovery background pass`);
+        this.pumpCollaborativeDiscoveryQueue();
+    }
+
+    private pumpCollaborativeDiscoveryQueue(): void {
+        while (
+            this.activeCollaborativeDiscoveryJobs.size < MAX_CONCURRENT_COLLAB_DISCOVERY
+            && this.collaborativeDiscoveryQueue.length > 0
+        ) {
+            const nextJob = this.collaborativeDiscoveryQueue.shift();
+            if (!nextJob) {
+                return;
+            }
+
+            const queueKey = this.getCollaborativeDiscoveryCooldownKey(nextJob.channel);
+            this.collaborativeDiscoveryQueuedKeys.delete(queueKey);
+            this.activeCollaborativeDiscoveryJobs.add(queueKey);
+
+            void this.runCollaborativeDiscoveryJob(nextJob)
+                .catch((error) => {
+                    console.error(`[YouTubePoller] ${nextJob.channel.name}: collaborative discovery background pass failed`, error);
+                })
+                .finally(() => {
+                    this.collaborativeDiscoveryLastRunAtByChannel.set(queueKey, Date.now());
+                    this.activeCollaborativeDiscoveryJobs.delete(queueKey);
+                    this.pumpCollaborativeDiscoveryQueue();
+                });
+        }
+    }
+
+    private async runCollaborativeDiscoveryJob(job: {
+        channel: any;
+        settings: LoadedVideoSettings;
+        options: PollOptions;
+        supportsFeedItemStatus: boolean;
+        trailerKeywords: string[];
+        autoPostPlatforms: PlatformRoutingTarget[];
+        effectiveAgeGateHours: number | null;
+    }): Promise<void> {
+        const contextLabel = `${job.channel.name} [collab]`;
+        const stageDurations: Record<string, number> = {};
+        const startedAtMs = Date.now();
+        let processedVideos = 0;
+        let latestOutcome = 'no collaborative candidates';
+
+        try {
+            const collaborativeVideos = await this.timeStage(
+                contextLabel,
+                'discover_collab_uploads_background',
+                stageDurations,
+                () => this.fetchCollaborativeVideosForChannel(job.channel, job.trailerKeywords)
+            );
+
+            if (collaborativeVideos.length === 0) {
+                console.log(`[YouTubePoller] ${job.channel.name}: no collaborative candidates found in background pass`);
+                return;
+            }
+
+            const latestVideos = await this.timeStage(
+                contextLabel,
+                'prioritize_collab_candidates',
+                stageDurations,
+                () => this.prioritizeQueuedCandidates(collaborativeVideos, MAX_COLLAB_CANDIDATES)
+            );
+
+            const seenVideoIdsThisPass = new Set<string>();
+
+            for (const video of latestVideos) {
+                const currentVideoId = this.extractVideoId(video.link || '', video.id || '');
+                if (currentVideoId) {
+                    if (seenVideoIdsThisPass.has(currentVideoId)) {
+                        continue;
+                    }
+                    seenVideoIdsThisPass.add(currentVideoId);
+                }
+
+                const processed = await this.processFeedVideo(
+                    video,
+                    job.channel,
+                    job.settings,
+                    job.options,
+                    job.supportsFeedItemStatus,
+                    job.trailerKeywords,
+                    job.autoPostPlatforms,
+                    job.effectiveAgeGateHours
+                );
+                processedVideos += 1;
+                if (processed.reason) {
+                    latestOutcome = processed.reason;
+                }
+
+                if (processed.kind === 'return' && processed.result) {
+                    latestOutcome = processed.result.message;
+                    if (processed.result.published || processed.stopScanning) {
+                        break;
+                    }
+                }
+
+                if (processed.stopScanning) {
+                    break;
+                }
+            }
+        } finally {
+            this.logStageDuration(contextLabel, 'collab_background_total', startedAtMs, {
+                processedVideos,
+                latestOutcome,
+                stageDurations,
+            });
+        }
     }
 
     private summarizeYtDlpError(error: unknown): string {
@@ -3699,12 +3885,12 @@ Respond ONLY as strict JSON:
         };
     }
 
-    private getYtDlpPublicOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): YtDlpOptions {
+    private getYtDlpPublicOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext('download')): YtDlpOptions {
         const {
             cookies: _cookies,
             cookiesFromBrowser: _cookiesFromBrowser,
             ...options
-        } = getYtDlpAuthOptions();
+        } = getYtDlpAuthOptions(networkContext.cacheKey.startsWith('metadata|') ? 'metadata' : 'download');
 
         return applyYouTubeDownloaderOptions({
             ...options,
@@ -3712,9 +3898,9 @@ Respond ONLY as strict JSON:
         });
     }
 
-    private getYtDlpAuthenticatedOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): YtDlpOptions {
+    private getYtDlpAuthenticatedOptions(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext('download')): YtDlpOptions {
         return applyYouTubeDownloaderOptions({
-            ...getYtDlpAuthOptions(),
+            ...getYtDlpAuthOptions(networkContext.cacheKey.startsWith('metadata|') ? 'metadata' : 'download'),
             userAgent: networkContext.userAgent,
         });
     }
@@ -3938,7 +4124,7 @@ Respond ONLY as strict JSON:
         }
     }
 
-    private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[], baseOptions: YtDlpOptions = getYtDlpAuthOptions()): Promise<any> {
+    private async fetchYtDlpInfo(videoUrl: string, extractorArgs?: string[], baseOptions: YtDlpOptions = getYtDlpAuthOptions('metadata')): Promise<any> {
         return ytDlp(videoUrl, {
             ...baseOptions,
             dumpSingleJson: true,
@@ -3950,7 +4136,7 @@ Respond ONLY as strict JSON:
     }
 
     private async fetchYtDlpVideoInfo(videoUrl: string, videoId?: string): Promise<any> {
-        const networkContext = getYtDlpNetworkContext();
+        const networkContext = getYtDlpNetworkContext('metadata');
 
         try {
             return await this.fetchYtDlpInfo(videoUrl, YT_DLP_ANDROID_SDKLESS_ARGS, this.getYtDlpPublicOptions(networkContext));
@@ -4198,6 +4384,9 @@ Respond ONLY as strict JSON:
         const formatSelector = 'bv*[vcodec^=avc1][height>=1080][ext=mp4]+ba[acodec^=mp4a]/bv*[vcodec^=avc1][height>=1080]+ba[acodec^=mp4a]/bv*[height>=1080][ext=mp4]+ba[ext=m4a]/bv*[height>=1080]+ba/b[height>=1080]';
         let lastIssueKind: YouTubeAccessIssueKind | undefined;
         let lastIssueMessage: string | undefined;
+        const androidSdklessMediaFallbackEnabled = shouldAllowAndroidSdklessMediaFallback(networkContext);
+        let firstStrongModeAttempted: string | undefined;
+        let lastStrongModeAttempted: string | undefined;
 
         return this.withDownloaderIdentityGate(identityKey, pacing, async (gate) => {
             const runAttempt = async (
@@ -4205,6 +4394,10 @@ Respond ONLY as strict JSON:
                 options: YtDlpOptions,
                 flags: { cookiesEnabled: boolean; poTokenEnabled: boolean }
             ): Promise<boolean> => {
+                if (!firstStrongModeAttempted) {
+                    firstStrongModeAttempted = mode;
+                }
+                lastStrongModeAttempted = mode;
                 try {
                     this.removeYtDlpArtifacts(filePath);
 
@@ -4278,14 +4471,25 @@ Respond ONLY as strict JSON:
                 return { path: filePath, attempts };
             }
 
-            if (await runAttempt('android_sdkless_last_resort', {
-                ...publicOptions,
-                extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
-            }, {
-                cookiesEnabled: false,
-                poTokenEnabled: false,
-            })) {
-                return { path: filePath, attempts };
+            if (androidSdklessMediaFallbackEnabled) {
+                if (await runAttempt('android_sdkless_last_resort', {
+                    ...publicOptions,
+                    extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+                }, {
+                    cookiesEnabled: false,
+                    poTokenEnabled: false,
+                })) {
+                    return { path: filePath, attempts };
+                }
+            } else {
+                console.warn('[YouTubePoller] android_sdkless_last_resort skipped for media download by policy', {
+                    videoId: videoId || videoUrl,
+                    firstStrongModeAttempted,
+                    lastStrongModeAttempted,
+                    cookiesEnabled: networkContext.cookiesEnabled,
+                    proxyEnabled: Boolean(networkContext.proxyUrl),
+                    poTokenAttempted: attempts.some((attempt) => attempt.poTokenEnabled),
+                });
             }
 
             if (lastIssueKind === 'bot_challenge') {

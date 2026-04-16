@@ -7,6 +7,8 @@ import {
     getYouTubeDownloaderModeSummary,
     getYouTubeDownloaderPacingConfig,
     getYtDlpImpersonationTarget,
+    getYtDlpAuthOptions,
+    shouldAllowAndroidSdklessMediaFallback,
 } from '../lib/yt-dlp';
 
 function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => T): T {
@@ -92,6 +94,7 @@ test('stable authenticated session mode prefers cookies and stable identity with
     assert.equal(summary.cookiesEnabled, true);
     assert.equal(summary.userAgent, DEFAULT_YT_DLP_USER_AGENT);
     assert.equal(summary.impersonationTarget, null);
+    assert.equal(summary.androidSdklessMediaFallbackEnabled, false);
 });
 
 test('impersonation target stays optional', () => {
@@ -100,4 +103,53 @@ test('impersonation target stays optional', () => {
     }, () => getYtDlpImpersonationTarget());
 
     assert.equal(impersonationTarget, null);
+});
+
+test('android sdkless media fallback is disabled by default when cookies are enabled', () => {
+    const enabled = withEnv({
+        YT_DLP_COOKIE_FILE_PATH: 'C:\\cookies.txt',
+        YT_DLP_ALLOW_ANDROID_SDKLESS_MEDIA_FALLBACK: undefined,
+    }, () => shouldAllowAndroidSdklessMediaFallback(getYtDlpNetworkContext()));
+
+    assert.equal(enabled, false);
+});
+
+test('android sdkless media fallback can be explicitly re-enabled for debug scenarios', () => {
+    const enabled = withEnv({
+        YT_DLP_COOKIE_FILE_PATH: 'C:\\cookies.txt',
+        YT_DLP_ALLOW_ANDROID_SDKLESS_MEDIA_FALLBACK: 'true',
+    }, () => shouldAllowAndroidSdklessMediaFallback(getYtDlpNetworkContext()));
+
+    assert.equal(enabled, true);
+});
+
+test('metadata network context stays off the download proxy and cookies by default', () => {
+    const contexts = withEnv({
+        YT_DLP_PROXY_URL: 'http://download-proxy.example:8080',
+        YT_DLP_COOKIE_FILE_PATH: 'C:\\cookies.txt',
+        YT_DLP_USE_PROXY_FOR_METADATA: undefined,
+        YT_DLP_USE_COOKIES_FOR_METADATA: undefined,
+    }, () => ({
+        download: getYtDlpNetworkContext('download'),
+        metadata: getYtDlpNetworkContext('metadata'),
+        metadataOptions: getYtDlpAuthOptions('metadata'),
+    }));
+
+    assert.equal(contexts.download.proxyUrl, 'http://download-proxy.example:8080');
+    assert.equal(contexts.download.cookiesEnabled, true);
+    assert.equal(contexts.metadata.proxyUrl, null);
+    assert.equal(contexts.metadata.cookiesEnabled, false);
+    assert.equal(contexts.metadataOptions.proxy, undefined);
+    assert.equal(contexts.metadataOptions.cookies, undefined);
+});
+
+test('metadata path can opt into its own proxy without reusing the download identity', () => {
+    const metadata = withEnv({
+        YT_DLP_PROXY_URL: 'http://download-proxy.example:8080',
+        YT_DLP_METADATA_PROXY_URL: 'http://metadata-proxy.example:8080',
+        YT_DLP_USE_COOKIES_FOR_METADATA: 'false',
+    }, () => getYtDlpNetworkContext('metadata'));
+
+    assert.equal(metadata.proxyUrl, 'http://metadata-proxy.example:8080');
+    assert.equal(metadata.cookiesEnabled, false);
 });

@@ -409,3 +409,19 @@ test('falls back from old flat platform routing into all supported destinations'
         ['YouTubeLongform', 'YouTubeShorts'].sort()
     );
 });
+
+test('collaborative discovery is throttled onto a slower background cadence', () => {
+    const service = new YouTubePollerService() as any;
+    const channel = {
+        channelId: 'UC_COLLAB',
+        name: 'Collab Channel',
+    };
+
+    assert.equal(service.shouldRunCollaborativeDiscovery(channel, {}), true);
+
+    const cooldownKey = service.getCollaborativeDiscoveryCooldownKey(channel);
+    service.collaborativeDiscoveryLastRunAtByChannel.set(cooldownKey, Date.now());
+
+    assert.equal(service.shouldRunCollaborativeDiscovery(channel, {}), false);
+    assert.equal(service.shouldRunCollaborativeDiscovery(channel, { force: true }), true);
+});

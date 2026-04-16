@@ -459,31 +459,40 @@ async function publishComposeItemInternal(item: ComposeStateItem): Promise<Compo
 
   const results: PublishResult[] = [];
   for (const platform of platforms) {
-    const publishContent = buildPublishContent(item, platform, primaryAsset);
-    const platformResults = await publisherService.publish(
-      [COMPOSE_PLATFORM_TO_BACKEND[platform]],
-      publishContent,
-      undefined,
-      {
-        youtubePlaylistIds: getYouTubePlaylistIds(item),
-        pinterestBoardId: getPinterestBoardId(item),
-      },
-    );
+    try {
+      const publishContent = buildPublishContent(item, platform, primaryAsset);
+      const platformResults = await publisherService.publish(
+        [COMPOSE_PLATFORM_TO_BACKEND[platform]],
+        publishContent,
+        undefined,
+        {
+          youtubePlaylistIds: getYouTubePlaylistIds(item),
+          pinterestBoardId: getPinterestBoardId(item),
+        },
+      );
 
-    if (platformResults.length === 0) {
+      if (platformResults.length === 0) {
+        results.push({
+          platform: COMPOSE_PLATFORM_LABELS[platform] || platform,
+          status: 'failed',
+          error: 'No publish result returned',
+          postedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      for (const result of platformResults) {
+        results.push({
+          ...result,
+          platform: result.platform || COMPOSE_PLATFORM_LABELS[platform] || platform,
+        });
+      }
+    } catch (error) {
       results.push({
         platform: COMPOSE_PLATFORM_LABELS[platform] || platform,
         status: 'failed',
-        error: 'No publish result returned',
+        error: error instanceof Error ? error.message : 'Publish failed',
         postedAt: new Date().toISOString(),
-      });
-      continue;
-    }
-
-    for (const result of platformResults) {
-      results.push({
-        ...result,
-        platform: result.platform || COMPOSE_PLATFORM_LABELS[platform] || platform,
       });
     }
   }

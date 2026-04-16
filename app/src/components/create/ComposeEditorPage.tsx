@@ -1774,7 +1774,11 @@ export function ComposeEditorPage({
       const result = await publishComposeItem(draftItem);
       const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
       const nextError =
-        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+        nextStatus === 'published'
+          ? undefined
+          : result.failedResults.length > 0
+            ? result.errorMessage || 'Some platforms failed to publish.'
+            : undefined;
 
       const nextItem = buildItem(nextStatus, undefined, nextError);
       saveItem(nextItem);

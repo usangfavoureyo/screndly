@@ -34,6 +34,8 @@ export interface YouTubeNetworkContext {
     cacheKey: string;
 }
 
+type YtDlpNetworkTarget = 'download' | 'metadata';
+
 let ytDlpReadyPromise: Promise<void> | null = null;
 let ytDlpPacingLogged = false;
 let ytDlpModeLogged = false;
@@ -107,24 +109,50 @@ function resolveBinaryPath(): string {
     return DEFAULT_BINARY_NAME;
 }
 
-export function getYtDlpAuthOptions(): YtDlpOptions {
+function getBaseUserAgent(): string | null {
+    const userAgent = process.env.YT_DLP_USER_AGENT?.trim();
+    return userAgent && userAgent.length > 0 ? userAgent : null;
+}
+
+function resolveMetadataProxyUrl(): string | null {
+    const explicitMetadataProxy = process.env.YT_DLP_METADATA_PROXY_URL?.trim();
+    if (explicitMetadataProxy) {
+        return explicitMetadataProxy;
+    }
+
+    const allowDownloadProxyForMetadata = parseBooleanEnv(process.env.YT_DLP_USE_PROXY_FOR_METADATA, false);
+    if (allowDownloadProxyForMetadata) {
+        return process.env.YT_DLP_PROXY_URL?.trim() || null;
+    }
+
+    return null;
+}
+
+export function getYtDlpAuthOptions(target: YtDlpNetworkTarget = 'download'): YtDlpOptions {
     const options: YtDlpOptions = {};
-    const cookieFilePath = resolveCookieFilePath();
-    if (cookieFilePath) {
-        options.cookies = cookieFilePath;
+
+    const metadataCookiesEnabled = parseBooleanEnv(process.env.YT_DLP_USE_COOKIES_FOR_METADATA, false);
+    const shouldUseCookies = target === 'download' || metadataCookiesEnabled;
+    if (shouldUseCookies) {
+        const cookieFilePath = resolveCookieFilePath();
+        if (cookieFilePath) {
+            options.cookies = cookieFilePath;
+        }
+
+        const cookiesFromBrowser = process.env.YT_DLP_COOKIES_FROM_BROWSER?.trim();
+        if (cookiesFromBrowser) {
+            options.cookiesFromBrowser = cookiesFromBrowser;
+        }
     }
 
-    const cookiesFromBrowser = process.env.YT_DLP_COOKIES_FROM_BROWSER?.trim();
-    if (cookiesFromBrowser) {
-        options.cookiesFromBrowser = cookiesFromBrowser;
-    }
-
-    const proxy = process.env.YT_DLP_PROXY_URL?.trim();
+    const proxy = target === 'download'
+        ? process.env.YT_DLP_PROXY_URL?.trim()
+        : resolveMetadataProxyUrl();
     if (proxy) {
         options.proxy = proxy;
     }
 
-    const userAgent = process.env.YT_DLP_USER_AGENT?.trim();
+    const userAgent = getBaseUserAgent();
     if (userAgent) {
         options.userAgent = userAgent;
     }
@@ -132,8 +160,8 @@ export function getYtDlpAuthOptions(): YtDlpOptions {
     return options;
 }
 
-export function getYtDlpNetworkContext(): YouTubeNetworkContext {
-    const options = getYtDlpAuthOptions();
+export function getYtDlpNetworkContext(target: YtDlpNetworkTarget = 'download'): YouTubeNetworkContext {
+    const options = getYtDlpAuthOptions(target);
     const proxyUrl = typeof options.proxy === 'string' ? options.proxy : null;
     const userAgent = typeof options.userAgent === 'string' && options.userAgent.trim().length > 0
         ? options.userAgent
@@ -147,7 +175,7 @@ export function getYtDlpNetworkContext(): YouTubeNetworkContext {
         cookieFilePath,
         cookiesFromBrowser,
         cookiesEnabled: Boolean(cookieFilePath || cookiesFromBrowser),
-        cacheKey: `${proxyUrl || 'direct'}|${userAgent}`,
+        cacheKey: `${target}|${proxyUrl || 'direct'}|${userAgent}`,
     };
 }
 
@@ -167,6 +195,15 @@ export function getYtDlpImpersonationTarget(): string | null {
     return target ? target : null;
 }
 
+export function shouldAllowAndroidSdklessMediaFallback(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): boolean {
+    const explicitOverride = process.env.YT_DLP_ALLOW_ANDROID_SDKLESS_MEDIA_FALLBACK?.trim();
+    if (explicitOverride) {
+        return parseBooleanEnv(explicitOverride, false);
+    }
+
+    return !networkContext.cookiesEnabled;
+}
+
 export function getYouTubeDownloaderModeSummary(networkContext: YouTubeNetworkContext = getYtDlpNetworkContext()): {
     mode: 'stable_authenticated_session' | 'stable_identity';
     proxyEnabled: boolean;
@@ -177,6 +214,7 @@ export function getYouTubeDownloaderModeSummary(networkContext: YouTubeNetworkCo
     minGapBetweenJobsSeconds: number;
     userAgent: string;
     impersonationTarget: string | null;
+    androidSdklessMediaFallbackEnabled: boolean;
 } {
     const pacing = getYouTubeDownloaderPacingConfig();
     const impersonationTarget = getYtDlpImpersonationTarget();
@@ -191,6 +229,7 @@ export function getYouTubeDownloaderModeSummary(networkContext: YouTubeNetworkCo
         minGapBetweenJobsSeconds: pacing.minGapBetweenJobsSeconds,
         userAgent: networkContext.userAgent,
         impersonationTarget,
+        androidSdklessMediaFallbackEnabled: shouldAllowAndroidSdklessMediaFallback(networkContext),
     };
 }
 
@@ -242,17 +281,18 @@ function logYouTubeDownloaderConfigOnce(): void {
             minGapBetweenJobsSeconds: modeSummary.minGapBetweenJobsSeconds,
             userAgent: modeSummary.userAgent,
             impersonationTarget: modeSummary.impersonationTarget,
+            androidSdklessMediaFallbackEnabled: modeSummary.androidSdklessMediaFallbackEnabled,
         }));
     }
 }
 
 export function hasYtDlpAuthConfiguration(): boolean {
-    const options = getYtDlpAuthOptions();
+    const options = getYtDlpAuthOptions('download');
     return Boolean(options.cookies || options.cookiesFromBrowser || options.proxy);
 }
 
 export function describeYtDlpAuthConfiguration(): string {
-    const options = getYtDlpAuthOptions();
+    const options = getYtDlpAuthOptions('download');
     const enabledModes: string[] = [];
 
     if (options.cookies) {

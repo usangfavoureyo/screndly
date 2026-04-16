@@ -210,7 +210,11 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
       const result = await publishComposeItem(item);
       const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
       const nextError =
-        result.failedResults.length > 0 ? result.errorMessage || 'Some platforms failed to publish.' : undefined;
+        nextStatus === 'published'
+          ? undefined
+          : result.failedResults.length > 0
+            ? result.errorMessage || 'Some platforms failed to publish.'
+            : undefined;
 
       saveItem({
         ...item,
