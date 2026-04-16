@@ -317,6 +317,14 @@ export function ComposeEditorPage({
   const [tmdbImageCategory, setTmdbImageCategory] = useState<TmdbImageCategory>('backdrops');
   const [isSearchingTmdb, setIsSearchingTmdb] = useState(false);
   const [isLoadingTmdbImages, setIsLoadingTmdbImages] = useState(false);
+  const [thumbnailTmdbSearchQuery, setThumbnailTmdbSearchQuery] = useState('');
+  const [thumbnailTmdbResults, setThumbnailTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
+  const [selectedThumbnailTmdbResult, setSelectedThumbnailTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [thumbnailTmdbImagePool, setThumbnailTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
+  const thumbnailTmdbSearchRequestRef = useRef(0);
+  const [thumbnailTmdbImageCategory, setThumbnailTmdbImageCategory] = useState<TmdbImageCategory>('backdrops');
+  const [isSearchingThumbnailTmdb, setIsSearchingThumbnailTmdb] = useState(false);
+  const [isLoadingThumbnailTmdbImages, setIsLoadingThumbnailTmdbImages] = useState(false);
   const [isGeneratingThreadsXCrop, setIsGeneratingThreadsXCrop] = useState(false);
   const [isUploadingThreadsXCrop, setIsUploadingThreadsXCrop] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -353,6 +361,7 @@ export function ComposeEditorPage({
   const threadsXAutoGenerateTimeoutRef = useRef<number | null>(null);
   const lastThreadsXAutoGenerateKeyRef = useRef<string>('');
   const recoveringAssetIdsRef = useRef(new Set<string>());
+  const previewOpenLockUntilRef = useRef(0);
   const [scheduleDate, setScheduleDate] = useState<Date | undefined>(
     existingItem?.scheduledAt ? new Date(existingItem.scheduledAt) : undefined,
   );
@@ -467,6 +476,19 @@ export function ComposeEditorPage({
     title: 'Discard post changes?',
     description: 'You have unsaved changes in this post editor. Leaving now will lose them.',
   });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const rawGuardUntil = window.sessionStorage.getItem('screndly_compose_editor_preview_guard_until');
+    const guardUntil = Number(rawGuardUntil || '0');
+    if (Number.isFinite(guardUntil) && guardUntil > Date.now()) {
+      previewOpenLockUntilRef.current = guardUntil;
+    }
+    window.sessionStorage.removeItem('screndly_compose_editor_preview_guard_until');
+  }, []);
 
   const handleEditorCloseRequest = useCallback(() => {
     if (previewAsset) {
@@ -906,6 +928,14 @@ export function ComposeEditorPage({
     return tmdbImagePool.backdrops || [];
   }, [tmdbImageCategory, tmdbImagePool]);
 
+  const activeThumbnailTmdbImages = useMemo(() => {
+    if (!thumbnailTmdbImagePool) return [];
+    if (thumbnailTmdbImageCategory === 'profiles') return thumbnailTmdbImagePool.profiles || [];
+    if (thumbnailTmdbImageCategory === 'posters') return thumbnailTmdbImagePool.posters || [];
+    if (thumbnailTmdbImageCategory === 'logos') return thumbnailTmdbImagePool.logos || [];
+    return thumbnailTmdbImagePool.backdrops || [];
+  }, [thumbnailTmdbImageCategory, thumbnailTmdbImagePool]);
+
   const handleTmdbSearch = async () => {
     if (!tmdbSearchQuery.trim()) return;
 
@@ -1030,6 +1060,142 @@ export function ComposeEditorPage({
       toast.error(error instanceof Error ? error.message : 'Failed to add TMDb image');
     } finally {
       setIsUploadingMedia(false);
+    }
+  };
+
+  const handleThumbnailTmdbSearch = async () => {
+    if (!thumbnailTmdbSearchQuery.trim()) return;
+
+    const requestId = ++thumbnailTmdbSearchRequestRef.current;
+    haptics.medium();
+    setIsSearchingThumbnailTmdb(true);
+    setSelectedThumbnailTmdbResult(null);
+    setThumbnailTmdbImagePool(null);
+
+    try {
+      const results = await searchDesignStudioTMDb(thumbnailTmdbSearchQuery);
+      if (requestId !== thumbnailTmdbSearchRequestRef.current) {
+        return;
+      }
+
+      setThumbnailTmdbResults(results);
+      if (!results.length) {
+        toast('No TMDb matches found', {
+          description: 'Try a more exact movie, TV show, or person name.',
+        });
+      }
+    } catch (error) {
+      if (requestId !== thumbnailTmdbSearchRequestRef.current) {
+        return;
+      }
+
+      console.error('Thumbnail TMDb search failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search TMDb');
+      setThumbnailTmdbResults([]);
+    } finally {
+      if (requestId === thumbnailTmdbSearchRequestRef.current) {
+        setIsSearchingThumbnailTmdb(false);
+      }
+    }
+  };
+
+  const handleSelectThumbnailTmdbResult = async (result: DesignStudioTMDbSearchResult) => {
+    const requestId = ++thumbnailTmdbSearchRequestRef.current;
+    haptics.light();
+    setSelectedThumbnailTmdbResult(result);
+    setIsLoadingThumbnailTmdbImages(true);
+
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      if (requestId !== thumbnailTmdbSearchRequestRef.current) {
+        return;
+      }
+
+      setThumbnailTmdbImagePool(pool);
+      const nextCategory = result.mediaType === 'person'
+        ? 'profiles'
+        : pool.backdrops?.length
+          ? 'backdrops'
+          : pool.posters?.length
+            ? 'posters'
+            : 'logos';
+      setThumbnailTmdbImageCategory(nextCategory);
+    } catch (error) {
+      if (requestId !== thumbnailTmdbSearchRequestRef.current) {
+        return;
+      }
+
+      console.error('Failed to load thumbnail TMDb image pool:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load TMDb images');
+      setSelectedThumbnailTmdbResult(null);
+      setThumbnailTmdbImagePool(null);
+    } finally {
+      if (requestId === thumbnailTmdbSearchRequestRef.current) {
+        setIsLoadingThumbnailTmdbImages(false);
+      }
+    }
+  };
+
+  const handleBackToThumbnailTmdbResults = () => {
+    thumbnailTmdbSearchRequestRef.current += 1;
+    haptics.light();
+    setSelectedThumbnailTmdbResult(null);
+    setThumbnailTmdbImagePool(null);
+    setIsLoadingThumbnailTmdbImages(false);
+  };
+
+  const handleClearThumbnailTmdbSearch = () => {
+    thumbnailTmdbSearchRequestRef.current += 1;
+    haptics.light();
+    setThumbnailTmdbSearchQuery('');
+    setThumbnailTmdbResults([]);
+    setSelectedThumbnailTmdbResult(null);
+    setThumbnailTmdbImagePool(null);
+    setIsSearchingThumbnailTmdb(false);
+    setIsLoadingThumbnailTmdbImages(false);
+  };
+
+  const handleSelectThumbnailTmdbImage = async (imageUrl: string) => {
+    updateThumbnail('sharedThumbnail', (current) => ({
+      fileName: current?.fileName || 'tmdb-thumbnail',
+      mimeType: current?.mimeType || 'image/jpeg',
+      size: current?.size || 0,
+      previewUrl: current?.previewUrl,
+      storageUrl: current?.storageUrl,
+      storageFileId: current?.storageFileId,
+      uploadStatus: 'uploading',
+      uploadError: undefined,
+    }));
+
+    try {
+      const resultTitle = selectedThumbnailTmdbResult?.title || 'tmdb-thumbnail';
+      const imported = await importComposeRemoteImage({
+        imageUrl,
+        category: thumbnailTmdbImageCategory === 'logos' ? 'logos' : 'posters',
+        resultTitle,
+      });
+
+      updateThumbnail('sharedThumbnail', () => ({
+        fileName: imported.fileName,
+        mimeType: imported.contentType,
+        size: imported.size,
+        previewUrl: imported.previewUrl || imported.url,
+        storageUrl: imported.url,
+        storageFileId: imported.fileId,
+        uploadStatus: 'uploaded',
+        uploadError: undefined,
+      }));
+
+      toast.success('TMDb image added to shared thumbnail');
+    } catch (error) {
+      console.error('Failed to add TMDb image to shared thumbnail:', error);
+      const message = error instanceof Error ? error.message : 'Failed to add TMDb image';
+      updateThumbnail('sharedThumbnail', (current) => current ? {
+        ...current,
+        uploadStatus: 'failed',
+        uploadError: message,
+      } : current);
+      toast.error(message);
     }
   };
 
@@ -1248,6 +1414,9 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewAsset = (asset: ComposeMediaAsset) => {
+    if (Date.now() < previewOpenLockUntilRef.current) {
+      return;
+    }
     const previewUrl = getAssetDisplayUrl(asset);
     if (!previewUrl) {
       return;
@@ -1259,6 +1428,9 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewThreadsXCrop = () => {
+    if (Date.now() < previewOpenLockUntilRef.current) {
+      return;
+    }
     if (!formState.threadsXCropVideo || !primaryVideoAsset) {
       return;
     }
@@ -1293,6 +1465,9 @@ export function ComposeEditorPage({
   };
 
   const handlePreviewThumbnail = (thumbnail: ComposeThumbnailAsset) => {
+    if (Date.now() < previewOpenLockUntilRef.current) {
+      return;
+    }
     const previewUrl = getThumbnailDisplayUrl(thumbnail);
     if (!previewUrl) {
       return;
@@ -1987,10 +2162,10 @@ export function ComposeEditorPage({
                       <button
                         type="button"
                         onClick={handleBackToTmdbResults}
-                        className="inline-flex items-center gap-2 text-xs text-[#6B7280] transition-colors hover:text-[#ec1e24] dark:text-[#9CA3AF]"
+                        className="inline-flex items-center text-xs text-[#6B7280] transition-colors hover:text-[#ec1e24] dark:text-[#9CA3AF]"
+                        aria-label="Back to TMDb results"
                       >
                         <ArrowLeft className="h-3.5 w-3.5" />
-                        Back
                       </button>
                       <span className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
                         {getTmdbResultMetaLabel(selectedTmdbResult)}
@@ -2875,6 +3050,163 @@ export function ComposeEditorPage({
                           </p>
                         )}
                       </div>
+
+                      {key === 'sharedThumbnail' ? (
+                        <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
+                              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                Search TMDb and add a result directly to the shared thumbnail.
+                              </p>
+                            </div>
+                            {(thumbnailTmdbSearchQuery.trim() || thumbnailTmdbResults.length || selectedThumbnailTmdbResult) ? (
+                              <button
+                                type="button"
+                                onClick={handleClearThumbnailTmdbSearch}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-[#6B7280] transition-colors hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:text-[#9CA3AF]"
+                                aria-label="Clear TMDb thumbnail search"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            ) : null}
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={thumbnailTmdbSearchQuery}
+                              onChange={(event) => setThumbnailTmdbSearchQuery(event.target.value)}
+                              placeholder="Search TMDb for movie, TV, person, or company..."
+                              className="border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  void handleThumbnailTmdbSearch();
+                                }
+                              }}
+                            />
+                            <Button
+                              type="button"
+                              onClick={() => void handleThumbnailTmdbSearch()}
+                              disabled={!thumbnailTmdbSearchQuery.trim() || isSearchingThumbnailTmdb}
+                            >
+                              {isSearchingThumbnailTmdb ? 'Searching...' : 'Search'}
+                            </Button>
+                          </div>
+
+                          {selectedThumbnailTmdbResult ? (
+                            <div className="mt-3 space-y-3 rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                              <div className="flex items-center justify-between gap-3">
+                                <button
+                                  type="button"
+                                  onClick={handleBackToThumbnailTmdbResults}
+                                  className="inline-flex items-center text-xs text-[#6B7280] transition-colors hover:text-[#ec1e24] dark:text-[#9CA3AF]"
+                                  aria-label="Back to TMDb thumbnail results"
+                                >
+                                  <ArrowLeft className="h-3.5 w-3.5" />
+                                </button>
+                                <span className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
+                                  {getTmdbResultMetaLabel(selectedThumbnailTmdbResult)}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-900 dark:text-white">{selectedThumbnailTmdbResult.title}</p>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedThumbnailTmdbResult.mediaType !== 'person' ? (
+                                  <>
+                                    {thumbnailTmdbImagePool?.backdrops?.length ? (
+                                      <Button
+                                        type="button"
+                                        variant={thumbnailTmdbImageCategory === 'backdrops' ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setThumbnailTmdbImageCategory('backdrops')}
+                                      >
+                                        Backdrops
+                                      </Button>
+                                    ) : null}
+                                    {thumbnailTmdbImagePool?.posters?.length ? (
+                                      <Button
+                                        type="button"
+                                        variant={thumbnailTmdbImageCategory === 'posters' ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setThumbnailTmdbImageCategory('posters')}
+                                      >
+                                        Posters
+                                      </Button>
+                                    ) : null}
+                                    {thumbnailTmdbImagePool?.logos?.length ? (
+                                      <Button
+                                        type="button"
+                                        variant={thumbnailTmdbImageCategory === 'logos' ? 'default' : 'outline'}
+                                        size="sm"
+                                        onClick={() => setThumbnailTmdbImageCategory('logos')}
+                                      >
+                                        Logos
+                                      </Button>
+                                    ) : null}
+                                  </>
+                                ) : null}
+                                {selectedThumbnailTmdbResult.mediaType === 'person' ? (
+                                  <Button type="button" variant="default" size="sm">
+                                    Profiles
+                                  </Button>
+                                ) : null}
+                              </div>
+                              {isLoadingThumbnailTmdbImages ? (
+                                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading images...</p>
+                              ) : activeThumbnailTmdbImages.length ? (
+                                <div className="grid grid-cols-2 gap-3">
+                                  {activeThumbnailTmdbImages.map((asset, index) => (
+                                    <button
+                                      key={`${asset.url}-${index}`}
+                                      type="button"
+                                      onClick={() => void handleSelectThumbnailTmdbImage(asset.url)}
+                                      className="overflow-hidden rounded-2xl border border-gray-200 bg-white transition hover:border-[#ec1e24] dark:border-[#333333] dark:bg-[#050505]"
+                                    >
+                                      <img
+                                        src={asset.url}
+                                        alt={`${selectedThumbnailTmdbResult.title} ${thumbnailTmdbImageCategory}`}
+                                        className={`w-full ${
+                                          thumbnailTmdbImageCategory === 'backdrops'
+                                            ? 'aspect-video object-cover'
+                                            : thumbnailTmdbImageCategory === 'logos'
+                                              ? 'aspect-square object-contain bg-[#111111] p-4'
+                                              : 'aspect-[2/3] object-cover'
+                                        }`}
+                                      />
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No images available for this category.</p>
+                              )}
+                            </div>
+                          ) : thumbnailTmdbResults.length ? (
+                            <div className="mt-3 space-y-2">
+                              {thumbnailTmdbResults.map((result) => {
+                                const thumb = result.backdrop || result.poster || result.profile || '';
+                                return (
+                                  <button
+                                    key={`${result.mediaType}-${result.id}`}
+                                    type="button"
+                                    onClick={() => void handleSelectThumbnailTmdbResult(result)}
+                                    className="flex w-full items-center gap-3 rounded-2xl border border-gray-200 bg-white p-3 text-left transition hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
+                                  >
+                                    <div className="h-14 w-14 overflow-hidden rounded-xl bg-[#111111]">
+                                      {thumb ? <img src={thumb} alt={result.title} className="h-full w-full object-cover" /> : null}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                                      <p className="text-xs uppercase tracking-[0.24em] text-[#6B7280] dark:text-[#9CA3AF]">
+                                        {getTmdbResultMetaLabel(result)}
+                                      </p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
 
                       <div className="mt-3 overflow-hidden rounded-xl border border-gray-200 bg-black/90 dark:border-[#333333]">
                         {previewUrl ? (

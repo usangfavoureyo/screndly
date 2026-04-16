@@ -45,6 +45,9 @@ import { VisuallyHidden } from './ui/visually-hidden';
 import { Input } from './ui/input';
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 
+const PREVIEW_TAP_MOVE_TOLERANCE = 24;
+const PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
+
 interface DesignStudioActivityRecord {
   id: string;
   type: string;
@@ -1642,7 +1645,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       const touch = event.touches[0];
       const movedX = Math.abs(touch.clientX - previewTapStartRef.current.x);
       const movedY = Math.abs(touch.clientY - previewTapStartRef.current.y);
-      if (movedX > 12 || movedY > 12) {
+      if (movedX > PREVIEW_TAP_MOVE_TOLERANCE || movedY > PREVIEW_TAP_MOVE_TOLERANCE) {
         previewTapStartRef.current = null;
       }
     }
@@ -1691,8 +1694,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       if (
         lastTap &&
         now - lastTap.time <= 300 &&
-        Math.abs(lastTap.x - tapX) <= 24 &&
-        Math.abs(lastTap.y - tapY) <= 24
+        Math.abs(lastTap.x - tapX) <= PREVIEW_DOUBLE_TAP_PROXIMITY &&
+        Math.abs(lastTap.y - tapY) <= PREVIEW_DOUBLE_TAP_PROXIMITY
       ) {
         togglePreviewZoom();
         previewLastTapRef.current = null;

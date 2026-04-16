@@ -46,6 +46,8 @@ interface DesignStudioPageProps {
   previousPage?: string | null;
 }
 
+const TEMPLATE_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
+
 const PSD_FILE_ACCEPT =
   '.psd,application/vnd.adobe.photoshop,application/photoshop,application/x-photoshop,application/psd,application/octet-stream';
 
@@ -1000,8 +1002,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     if (
       lastTap &&
       now - lastTap.time <= 300 &&
-      Math.abs(lastTap.x - touch.clientX) <= 24 &&
-      Math.abs(lastTap.y - touch.clientY) <= 24
+      Math.abs(lastTap.x - touch.clientX) <= TEMPLATE_PREVIEW_DOUBLE_TAP_PROXIMITY &&
+      Math.abs(lastTap.y - touch.clientY) <= TEMPLATE_PREVIEW_DOUBLE_TAP_PROXIMITY
     ) {
       setExpandedTemplateZoom((value) => (value > 1 ? 1 : 2));
       ref.current = null;

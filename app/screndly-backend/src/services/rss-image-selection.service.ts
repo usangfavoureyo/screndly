@@ -1675,6 +1675,15 @@ function extractLeadPersonSubject(title: string): string | null {
   return candidate && looksLikeNamedPerson(candidate) ? candidate : null;
 }
 
+function extractLeadingEnsemblePeople(title: string): string[] {
+  const match = title.match(
+    /^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})\s*(?:&|and)\s*([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3}?)(?=\s+(?:starring|star(?:ring)?|joins?|boards?|in)\b|$)/
+  );
+
+  return [match?.[1]?.trim(), match?.[2]?.trim()]
+    .filter((candidate): candidate is string => Boolean(candidate && looksLikeNamedPerson(candidate)));
+}
+
 function extractLeadIndustryPersonSubject(title: string): string | null {
   const match = title.match(
     /^([A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){1,3})\s+(?:(?:officially|reportedly|quietly)\s+)?(?:out|out\s+as|steps?\s+down|stepping\s+down|exits?|departs?|leaves?|left|ousted|fired|hired|named|appointed|promoted)\b/i
@@ -3009,6 +3018,7 @@ function determineSmartImagePlan(
     !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))
   );
   const leadPerson = extractLeadPersonSubject(article.title);
+  const leadingEnsemblePeople = extractLeadingEnsemblePeople(article.title);
   const headlineCastingPerson = extractHeadlineCastingPerson(article.title);
   const heuristicPeople = extractNamedPeople(articleText, analysis);
   const quotedSubjects = uniqueStrings([
@@ -3067,6 +3077,7 @@ function determineSmartImagePlan(
   const personLedResponseStory = isPersonLedReportResponseStory(article.title, articleText);
   const sequelOrCastingProjectStory = /\b(sequel|prequel|spin-?off|casting|left to cast|in development|entered production|production|filming)\b/i.test(articleText);
   const ensemblePeople = uniqueStrings([
+    ...leadingEnsemblePeople,
     headlineCastingPerson,
     leadPerson,
     preferredPersonSubject,
@@ -3074,6 +3085,7 @@ function determineSmartImagePlan(
     ...nonStudioSecondarySubjects.filter((subject) => looksLikeNamedPerson(subject)),
   ]).filter((subject) => isLikelyPersonSubject(subject, articleText, analysis));
   const canonicalPortraitPeople = uniqueStrings([
+    ...leadingEnsemblePeople,
     ...(analysis.canonicalEntity?.namedPeople || []),
     ...analysis.secondarySubjects.filter((subject) => looksLikeNamedPerson(subject)),
     ...ensemblePeople,
@@ -3127,8 +3139,16 @@ function determineSmartImagePlan(
     canonicalFlags.has('story_policy_early_project_cast_portraits') &&
     canonicalPortraitPeople.length > 0
   ) {
-    primary = buildImageSlotPlan(canonicalPortraitPeople[0], 'actor', 'person_portrait', analysis, false);
-    const secondPerson = canonicalPortraitPeople.find((person) => normalizeText(person) !== normalizeText(canonicalPortraitPeople[0]));
+    const portraitCandidates = uniqueStrings([
+      ...(analysis.canonicalEntity?.namedPeople || []),
+      ...leadingEnsemblePeople,
+      ...canonicalPortraitPeople,
+    ]).filter((subject) =>
+      looksLikeNamedPerson(subject) &&
+      !analysis.relevantStudios.some((studio) => normalizeText(studio) === normalizeText(subject))
+    );
+    primary = buildImageSlotPlan(portraitCandidates[0], 'actor', 'person_portrait', analysis, false);
+    const secondPerson = portraitCandidates.find((person) => normalizeText(person) !== normalizeText(portraitCandidates[0]));
     secondary = secondPerson
       ? buildImageSlotPlan(secondPerson, 'actor', 'person_portrait', analysis, false)
       : titleAnchor
@@ -5601,6 +5621,11 @@ function canUseExplicitFeedFallback(
   analysis: RSSSubjectAnalysis,
   slot?: ImageSlotPlan | null
 ): boolean {
+  const flags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
+  if (flags.has('story_policy_early_project_cast_portraits')) {
+    return true;
+  }
+
   if (
     analysis.imageIntent === 'person_portrait' ||
     analysis.contextType === 'interview' ||
@@ -5882,6 +5907,7 @@ export const __rssImageSelectionTestUtils = {
   getRevealDrivenArticleMode,
   determineSmartImagePlan,
   shouldUseFeedFallbackImages,
+  canUseExplicitFeedFallback,
   isUnanchoredGeneralStory,
   stripSeasonAndSubtitleVariant,
   getProjectFallbackAnchors,

@@ -30,6 +30,9 @@ import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
 import undoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
 import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
+const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
+const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
+
 interface EditDesignBottomSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -733,7 +736,7 @@ export function EditDesignBottomSheet({
       const touch = event.touches[0];
       const movedX = Math.abs(touch.clientX - expandedPreviewTapStartRef.current.x);
       const movedY = Math.abs(touch.clientY - expandedPreviewTapStartRef.current.y);
-      if (movedX > 12 || movedY > 12) {
+      if (movedX > EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE || movedY > EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE) {
         expandedPreviewTapStartRef.current = null;
       }
     }
@@ -779,8 +782,8 @@ export function EditDesignBottomSheet({
       if (
         lastTap &&
         now - lastTap.time <= 300 &&
-        Math.abs(lastTap.x - tapX) <= 24 &&
-        Math.abs(lastTap.y - tapY) <= 24
+        Math.abs(lastTap.x - tapX) <= EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY &&
+        Math.abs(lastTap.y - tapY) <= EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY
       ) {
         toggleExpandedPreviewZoom();
         expandedPreviewLastTapRef.current = null;

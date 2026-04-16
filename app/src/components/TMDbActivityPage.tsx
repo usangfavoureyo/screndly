@@ -287,7 +287,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
       cast: post.cast || [],
       year: post.year,
       platforms: post.platforms,
-    }, getFeedTypeFromSource(post.source));
+    }, getFeedTypeFromSource(post.source), { forceFresh: true });
 
     return result.caption;
   };

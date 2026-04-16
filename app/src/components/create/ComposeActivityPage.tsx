@@ -31,6 +31,8 @@ type CardInteractionEvent = {
   stopPropagation: () => void;
 };
 
+const COMPOSE_EDITOR_PREVIEW_GUARD_KEY = 'screndly_compose_editor_preview_guard_until';
+
 const FILTERS: Array<{ id: 'all' | ComposeStatus; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'draft', label: 'Drafts' },
@@ -156,6 +158,14 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         },
       },
     });
+  };
+
+  const openComposeEditor = (itemId: string) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(COMPOSE_EDITOR_PREVIEW_GUARD_KEY, String(Date.now() + 700));
+    }
+    setActiveItemId(itemId);
+    onNavigate('compose-editor', 'create');
   };
 
   const handlePublish = async (itemId: string) => {
@@ -464,16 +474,13 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onPointerUp={(event) => handleCardActionPointerUp(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onClick={(event) => handleCardActionClick(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                             >
                               Schedule
@@ -485,16 +492,13 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onPointerUp={(event) => handleCardActionPointerUp(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onClick={(event) => handleCardActionClick(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                             >
                               Edit
@@ -528,16 +532,13 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 whitespace-nowrap px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onPointerUp={(event) => handleCardActionPointerUp(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onClick={(event) => handleCardActionClick(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                             >
                               Edit
@@ -554,16 +555,13 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               size="sm"
                               className="h-10 w-full px-3 text-sm"
                               onPointerDown={(event) => handleCardActionPointerDown(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onPointerUp={(event) => handleCardActionPointerUp(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                               onClick={(event) => handleCardActionClick(event, () => {
-                                setActiveItemId(item.id);
-                                onNavigate('compose-editor', 'create');
+                                openComposeEditor(item.id);
                               })}
                             >
                               Edit

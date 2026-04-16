@@ -1400,6 +1400,23 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (
+    title.includes('jonathan pryce & penelope wilton starring in itv drama about mavis eccleston') &&
+    hasAll('mavis eccleston', 'jonathan pryce', 'penelope wilton')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Mavis Eccleston',
+      primarySubject: 'Mavis Eccleston',
+      entityType: 'tv',
+      eventType: 'casting',
+      confidence: 0.95,
+      namedPeople: ['Jonathan Pryce', 'Penelope Wilton'],
+      flags: ['body_title_recovery_required', 'story_policy_early_project_cast_portraits'],
+      allowedEntities: ['Mavis Eccleston', 'Goodnight Darling', 'Jonathan Pryce', 'Penelope Wilton', 'ITV'],
+    };
+  }
+
   return null;
 }
 
@@ -1860,6 +1877,8 @@ function extractRSSBodyTitleRecoveryCandidates(item: Pick<RSSItem, 'title' | 'de
     /\b(?:series|show|film|movie|documentary|doc)\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})(?=\s+(?:was|is|will|has|premiered|aired|from|about|and|,|\.))/g,
     /\bseason\s+\d+\s+of\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})/g,
     /\bcollaboration\s+with\s+([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})/g,
+    /\b([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})\s+is\s+based\s+on\s+(?:the\s+)?real-life\s+story\b/g,
+    /\b([A-Z][A-Za-z0-9'’:&,.-]+(?:\s+[A-Z][A-Za-z0-9'’:&,.-]+){0,7})\s+is\s+based\s+on\b/g,
   ];
 
   for (const pattern of patterns) {
@@ -1900,6 +1919,36 @@ function chooseRSSBodyRecoveredTitle(
   return preferredBodyCandidate
     || candidates.find((candidate) => shouldPreferRecoveredRSSCandidate(candidate, currentPrimary, currentMediaTitle))
     || null;
+}
+
+function shouldApplyEarlyProjectCastPortraitPolicy(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  articleFamily: RSSArticleFamily,
+  eventType: string | undefined,
+  mediaTitle: string | undefined,
+  namedPeople: string[],
+  targetedOverride?: RSSTargetedStoryOverride | null
+): boolean {
+  if (targetedOverride?.flags?.includes('story_policy_early_project_cast_portraits')) {
+    return true;
+  }
+
+  if (!mediaTitle || namedPeople.length < 2 || isRSSNonProjectArticleFamily(articleFamily)) {
+    return false;
+  }
+
+  const text = [
+    sanitizeRSSPlainText(item.title || ''),
+    sanitizeRSSPlainText(item.description || ''),
+    sanitizeRSSPlainText(item.contentHtml || ''),
+  ].join(' ');
+
+  const hasEarlyProjectSignals = /\b(initially titl(?:ed|ing)|in development|new (?:series|show|film|movie|drama)|drama about|series order|ordered to series|project announcement)\b/i.test(text);
+  const hasCastAnnouncementSignals = /\b(will star|set to star|starring in|star(?:ring)?|teaming up|joins?|boards?)\b/i.test(text);
+  const hasProjectFormatSignals = /\b(tv|series|show|drama|film|movie)\b/i.test(text);
+  const isEligibleEvent = eventType === 'casting' || eventType === 'development' || eventType === 'ordered_to_series' || eventType === 'other';
+
+  return isEligibleEvent && hasProjectFormatSignals && (hasEarlyProjectSignals || hasCastAnnouncementSignals);
 }
 
 function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): RSSCanonicalEntity {
@@ -2012,6 +2061,9 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
       ambiguityFlags.push('rss_family_no_tmdb_project');
     }
   }
+  if (shouldApplyEarlyProjectCastPortraitPolicy(item, articleFamily, eventType, mediaTitle, namedPeople, targetedOverride)) {
+    ambiguityFlags.push('story_policy_early_project_cast_portraits');
+  }
   const allowedEntities = Array.from(new Set([
     primarySubject,
     secondarySubject,
@@ -2034,7 +2086,10 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   } else if (isRSSNonProjectArticleFamily(articleFamily) && !bodyRecoveredTitle) {
     entityType = 'unknown';
   } else if (mediaTitle) {
-    entityType = /\bseason|episode|series|show\b/i.test(`${item.title} ${item.description || ''} ${item.contentHtml || ''}`) ? 'tv' : 'movie';
+    const mediaContextText = `${item.title} ${item.description || ''} ${item.contentHtml || ''}`;
+    entityType = /\bseason|episode|series|show|miniseries|limited\s+series|sitcom|pilot|tv\s+drama|itv\s+drama\b/i.test(mediaContextText)
+      ? 'tv'
+      : 'movie';
   } else if (namedPeople.length > 0) {
     entityType = 'person';
   } else if (franchise) {

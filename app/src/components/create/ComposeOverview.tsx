@@ -43,6 +43,8 @@ type CardInteractionEvent = {
   stopPropagation: () => void;
 };
 
+const COMPOSE_EDITOR_PREVIEW_GUARD_KEY = 'screndly_compose_editor_preview_guard_until';
+
 function formatItemMeta(item: ComposeItem): string {
   if (item.scheduledAt) {
     return `Scheduled ${new Date(item.scheduledAt).toLocaleString()}`;
@@ -143,6 +145,9 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
   };
 
   const handleEdit = (itemId: string) => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(COMPOSE_EDITOR_PREVIEW_GUARD_KEY, String(Date.now() + 700));
+    }
     setActiveItemId(itemId);
     onNavigate('compose-editor', 'create');
   };

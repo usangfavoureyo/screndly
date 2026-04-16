@@ -1,4 +1,5 @@
-import { apiClient } from '../api/client';
+import { ApiClient } from '../api/client';
+import { getDirectApiUrl } from '../api/config';
 import {
   getComposeCompatibilityMap,
 } from './composeMedia';
@@ -31,6 +32,8 @@ const PLATFORM_NAME_BY_KEY: Record<ComposePlatformKey, string> = {
   pinterest: 'Pinterest',
 };
 
+const composePublishApiClient = new ApiClient(getDirectApiUrl());
+
 export async function publishComposeItem(item: ComposeItem, options?: ComposePublishOptions): Promise<ComposePublishOutcome> {
   const platformKeys = Array.from(new Set(item.platforms));
   if (platformKeys.length === 0) {
@@ -49,7 +52,7 @@ export async function publishComposeItem(item: ComposeItem, options?: ComposePub
     throw new Error(selectedPlatformIssues[0]?.reason || 'One or more selected platforms do not support this media set.');
   }
 
-  const response = await apiClient.post<{
+  const response = await composePublishApiClient.post<{
     postedPlatforms: string[];
     failedResults: Array<{ platform: string; error: string }>;
     errorMessage?: string;

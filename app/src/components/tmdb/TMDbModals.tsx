@@ -226,7 +226,8 @@ export function TMDbModals() {
                     year: editCaptionModal.feed.year,
                     platforms: editCaptionModal.feed.platforms,
                 },
-                feedType
+                feedType,
+                { forceFresh: true }
             );
             setEditedCaption(result.caption);
             toast.success('Caption regenerated');

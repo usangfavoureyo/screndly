@@ -30,6 +30,10 @@ interface CaptionGenerationOptions {
   feedType: FeedType;
 }
 
+interface TMDbCaptionRequestOptions {
+  forceFresh?: boolean;
+}
+
 const DEFAULT_PROMPTS: Record<FeedType, string> = {
   today: tmdbPromptDefaults.todayPrompt,
   weekly: tmdbPromptDefaults.weeklyPrompt,
@@ -424,7 +428,8 @@ export function getTMDbCaptionSettings(feedType: FeedType): CaptionGenerationOpt
 
 export async function generateTMDbCaption(
   item: TMDbItem,
-  feedType: FeedType
+  feedType: FeedType,
+  requestOptions: TMDbCaptionRequestOptions = {},
 ): Promise<{ caption: string; charCount: number; settings: CaptionGenerationOptions }> {
   const options = getTMDbCaptionSettings(feedType);
 
@@ -451,6 +456,7 @@ export async function generateTMDbCaption(
       () => apiClient.post<{ content: string }>('/api/ai/generate/tmdb-caption', requestPayload),
       {
         ttlMs: getTMDbCaptionCacheTtlMs(),
+        forceFresh: requestOptions.forceFresh,
       },
     );
 

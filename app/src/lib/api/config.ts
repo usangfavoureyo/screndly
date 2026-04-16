@@ -26,3 +26,19 @@ export function getApiUrl(): string {
     // Non-browser production fallback
     return 'https://screndly-production.up.railway.app';
 }
+
+/**
+ * Get the direct backend URL, bypassing same-origin rewrites.
+ * Use this for long-running requests where the Vercel proxy can terminate early.
+ */
+export function getDirectApiUrl(): string {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+        if (import.meta.env.DEV) return 'http://localhost:3000';
+    }
+
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL;
+    }
+
+    return 'https://screndly-production.up.railway.app';
+}

@@ -1573,6 +1573,9 @@ const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
     /\btvline has learned\b/i,
     /\bget the details\b/i,
     /\bexclusive first look\b/i,
+    /\binitially\s+titled\b/i,
+    /\binitially\s+developed\s+as\b/i,
+    /\bformerly\s+titled\b/i,
     /\[\.\.\.\]/,
     /\(\.\.\.\)/,
 ];

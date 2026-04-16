@@ -9,7 +9,7 @@ import { buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTo
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
 const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, classifyRSSFallbackPath } = __rssCaptionTestUtils;
-const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject } = __rssImageSelectionTestUtils;
+const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
@@ -1276,6 +1276,78 @@ test('RSS caption system prompt preserves saved settings prompt as the authorita
   assert.match(systemPrompt || '', /CUSTOM CULTURE CRAVE PROMPT/);
   assert.match(systemPrompt || '', /saved RSS caption prompt above is authoritative/i);
   assert.match(systemPrompt || '', /Keep the final caption under 800 characters/i);
+});
+
+test('newly announced renamed TV projects recover current canonical title and allow cast-led image fallback', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Jonathan Pryce & Penelope Wilton Starring In ITV Drama About Mavis Eccleston, Who Survived A Joint Suicide Pact With Her Husband & Was Accused Of His Murder',
+    description: 'EXCLUSIVE: Oscar-nominee Jonathan Pryce and Penelope Wilton are teaming on an ITV drama.',
+    contentHtml: `
+      <p><strong>Mavis Eccleston</strong> is based on the real-life story of the titular character, who will be played by Wilton.</p>
+      <p>Jonathan Pryce also stars in the ITV drama.</p>
+      <p>Britney first met Eccleston and bought the story rights after the project was initially titled <em>Goodnight Darling</em>.</p>
+    `,
+  });
+
+  assert.equal(canonical.mediaTitle, 'Mavis Eccleston');
+  assert.equal(canonical.primarySubject, 'Mavis Eccleston');
+  assert.equal(canonical.entityType, 'tv');
+  assert.equal(canonical.eventType, 'casting');
+  assert.ok(canonical.namedPeople?.includes('Jonathan Pryce'));
+  assert.ok(canonical.namedPeople?.includes('Penelope Wilton'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_early_project_cast_portraits'));
+
+  const article = {
+    title: 'Jonathan Pryce & Penelope Wilton Starring In ITV Drama About Mavis Eccleston, Who Survived A Joint Suicide Pact With Her Husband & Was Accused Of His Murder',
+    description: 'EXCLUSIVE: Oscar-nominee Jonathan Pryce and Penelope Wilton are teaming on an ITV drama.',
+    contentHtml: `
+      <p><strong>Mavis Eccleston</strong> is based on the real-life story of the titular character, who will be played by Wilton.</p>
+      <p>Jonathan Pryce also stars in the ITV drama.</p>
+      <p>The project was initially titled <em>Goodnight Darling</em>.</p>
+    `,
+    canonicalEntity: canonical,
+    fallbackImages: [
+      'https://example.com/jonathan-penelope-deadline.jpg',
+    ],
+  } as any;
+
+  const analysis = guessPrimarySubject(article);
+  const plan = determineSmartImagePlan(article, analysis);
+
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.ok(plan.secondary);
+  assert.equal(plan.primary.subject, 'Jonathan Pryce');
+  assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
+test('casting caption templates stay project-led and do not leak the development alias', () => {
+  const caption = buildDeterministicRssCaption({
+    article_title: 'Jonathan Pryce & Penelope Wilton Starring In ITV Drama About Mavis Eccleston',
+    event_type: 'casting',
+    primary_subject: 'Mavis Eccleston',
+    media_title: 'Mavis Eccleston',
+    named_people: ['Jonathan Pryce', 'Penelope Wilton'],
+    studio_or_platform: 'ITV',
+    supporting_facts: ['Initially developed as Goodnight Darling'],
+  } as any, {
+    articleTitle: 'Jonathan Pryce & Penelope Wilton Starring In ITV Drama About Mavis Eccleston',
+    feedName: 'Deadline',
+    summary: 'Jonathan Pryce and Penelope Wilton will star in ITV drama Mavis Eccleston.',
+    platform: 'X',
+    canonicalEntity: {
+      primarySubject: 'Mavis Eccleston',
+      mediaTitle: 'Mavis Eccleston',
+      entityType: 'tv',
+      confidence: 0.94,
+      namedPeople: ['Jonathan Pryce', 'Penelope Wilton'],
+      allowedEntities: ['Mavis Eccleston', 'Jonathan Pryce', 'Penelope Wilton', 'ITV'],
+      ambiguityFlags: ['story_policy_early_project_cast_portraits'],
+    },
+  } as any);
+
+  assert.match(caption, /'Mavis Eccleston'/);
+  assert.doesNotMatch(caption, /Goodnight Darling/);
+  assert.doesNotMatch(caption, /EXCLUSIVE/i);
 });
 
 test('person-commentary stories keep the speaker as the primary visual subject', () => {

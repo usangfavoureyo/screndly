@@ -32,6 +32,8 @@ interface MediaPreviewDialogProps {
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
+const TAP_MOVE_TOLERANCE = 24;
+const DOUBLE_TAP_PROXIMITY = 32;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -350,7 +352,7 @@ export function MediaPreviewDialog({
       const touch = event.touches[0];
       const movedX = Math.abs(touch.clientX - tapStartRef.current.x);
       const movedY = Math.abs(touch.clientY - tapStartRef.current.y);
-      if (movedX > 12 || movedY > 12) {
+      if (movedX > TAP_MOVE_TOLERANCE || movedY > TAP_MOVE_TOLERANCE) {
         tapStartRef.current = null;
       }
     }
@@ -406,12 +408,12 @@ export function MediaPreviewDialog({
       const deltaX = Math.abs(touch.clientX - tapStart.x);
       const deltaY = Math.abs(touch.clientY - tapStart.y);
 
-      if (deltaX <= 12 && deltaY <= 12) {
+      if (deltaX <= TAP_MOVE_TOLERANCE && deltaY <= TAP_MOVE_TOLERANCE) {
         if (
           lastTap &&
           now - lastTap.time <= 320 &&
-          Math.abs(lastTap.x - touch.clientX) <= 28 &&
-          Math.abs(lastTap.y - touch.clientY) <= 28
+          Math.abs(lastTap.x - touch.clientX) <= DOUBLE_TAP_PROXIMITY &&
+          Math.abs(lastTap.y - touch.clientY) <= DOUBLE_TAP_PROXIMITY
         ) {
           haptics.light();
           toggleImageZoom();
