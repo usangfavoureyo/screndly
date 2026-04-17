@@ -14,6 +14,7 @@ import {
   getBackblazeDownloadRequests,
   uploadBufferToBackblaze,
 } from '../services/backblaze';
+import { importComposeMediaFromUrl } from '../services/compose-media-url-import.service';
 import { getComposeState, mergeComposeState, publishComposeItemInput } from '../services/compose.service';
 import { trimTMDbLogoOuterBorderBuffer } from '../services/rss-logo-render.service';
 
@@ -454,6 +455,75 @@ router.post('/asset-preview', authenticate, async (req, res) => {
     return res.status(500).json({
       success: false,
       error: { message: error instanceof Error ? error.message : 'Failed to resolve asset preview URL' },
+    });
+  }
+});
+
+router.post('/import-media-url', authenticate, async (req, res) => {
+  try {
+    const mediaUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
+
+    if (!mediaUrl) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'A YouTube or Instagram URL is required.' },
+      });
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(mediaUrl);
+    } catch {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'The media URL is invalid.' },
+      });
+    }
+
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return res.status(400).json({
+        success: false,
+        error: { message: 'The media URL must use http or https.' },
+      });
+    }
+
+    const importedItems = await importComposeMediaFromUrl(mediaUrl);
+    const uploadedItems = await Promise.all(importedItems.map(async (item) => {
+      const isVideo = item.kind === 'video';
+      const uploadResult = await uploadBufferToBackblaze(item.buffer, item.fileName, {
+        bucketTypes: isVideo ? ['videos', 'general'] : ['general', 'videos'],
+        prefix: isVideo ? 'compose/videos' : 'compose/images',
+        contentType: item.contentType,
+      });
+      const previewUrl = await getBackblazeAuthorizedDownloadUrl(uploadResult.url, 7 * 24 * 60 * 60);
+
+      return {
+        kind: item.kind,
+        url: uploadResult.url,
+        previewUrl,
+        fileName: uploadResult.fileName,
+        fileId: uploadResult.fileName,
+        contentType: item.contentType,
+        size: item.size,
+        durationSeconds: item.durationSeconds,
+        width: item.width,
+        height: item.height,
+        aspectRatioValue: item.aspectRatioValue,
+        aspectRatioLabel: item.aspectRatioLabel,
+      };
+    }));
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        assets: uploadedItems,
+      },
+    });
+  } catch (error) {
+    console.error('Error importing compose media URL:', error);
+    return res.status(500).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to import media URL' },
     });
   }
 });

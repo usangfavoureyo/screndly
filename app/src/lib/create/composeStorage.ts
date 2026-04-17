@@ -1,5 +1,5 @@
-import { apiClient } from '../api/client';
-import { getApiUrl } from '../api/config';
+import { ApiClient, apiClient } from '../api/client';
+import { getApiUrl, getDirectApiUrl } from '../api/config';
 
 interface UploadComposeAssetResponse {
   url: string;
@@ -25,8 +25,29 @@ interface ResolveComposeAssetAccessResponse {
   previewUrl?: string;
 }
 
+interface ImportComposeMediaUrlAssetResponse {
+  kind: 'image' | 'video';
+  url: string;
+  previewUrl?: string;
+  fileName: string;
+  fileId?: string;
+  contentType: string;
+  size: number;
+  durationSeconds?: number;
+  width?: number;
+  height?: number;
+  aspectRatioValue?: number;
+  aspectRatioLabel?: string;
+}
+
+interface ImportComposeMediaUrlResponse {
+  assets: ImportComposeMediaUrlAssetResponse[];
+}
+
 const COMPOSE_UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 const COMPOSE_CROP_TIMEOUT_MS = 10 * 60 * 1000;
+const COMPOSE_MEDIA_URL_IMPORT_TIMEOUT_MS = 20 * 60 * 1000;
+const composeDirectApiClient = new ApiClient(getDirectApiUrl(), COMPOSE_MEDIA_URL_IMPORT_TIMEOUT_MS, 1);
 
 export function buildComposeAssetStreamUrl(url?: string): string | undefined {
   if (!url) return undefined;
@@ -136,6 +157,52 @@ export async function importComposeRemoteImage(payload: {
     contentType: response.data.contentType,
     size: response.data.size,
   };
+}
+
+export async function importComposeMediaUrl(payload: {
+  url: string;
+}): Promise<Array<{
+  kind: 'image' | 'video';
+  url: string;
+  previewUrl?: string;
+  fileId: string;
+  fileName: string;
+  contentType: string;
+  size: number;
+  durationSeconds?: number;
+  width?: number;
+  height?: number;
+  aspectRatioValue?: number;
+  aspectRatioLabel?: string;
+}>> {
+  if (!composeDirectApiClient.isBackendAvailable()) {
+    throw new Error('Backend is not available for media URL imports.');
+  }
+
+  const response = await composeDirectApiClient.post<ImportComposeMediaUrlResponse>(
+    '/api/create/import-media-url',
+    payload,
+    { timeout: COMPOSE_MEDIA_URL_IMPORT_TIMEOUT_MS },
+  );
+
+  if (!response.success || !Array.isArray(response.data?.assets) || !response.data.assets.length) {
+    throw new Error(response.error?.message || 'Failed to import media from the provided URL.');
+  }
+
+  return response.data.assets.map((asset) => ({
+    kind: asset.kind,
+    url: asset.url,
+    previewUrl: asset.previewUrl,
+    fileId: asset.fileId || asset.fileName,
+    fileName: asset.fileName,
+    contentType: asset.contentType,
+    size: asset.size,
+    durationSeconds: asset.durationSeconds,
+    width: asset.width,
+    height: asset.height,
+    aspectRatioValue: asset.aspectRatioValue,
+    aspectRatioLabel: asset.aspectRatioLabel,
+  }));
 }
 
 export async function generateThreadsXCropAsset(

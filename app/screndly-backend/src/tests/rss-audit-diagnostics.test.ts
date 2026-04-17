@@ -1371,6 +1371,68 @@ test('person-commentary stories keep the speaker as the primary visual subject',
   assert.ok(analysis.secondarySubjects.includes('Euphoria'));
 });
 
+test('person-commentary image validation does not block speaker-led two-image commentary stories', () => {
+  const codes = __rssAuditTestUtils.getRSSImageReasonCodes([
+    {
+      url: 'https://example.com/luca.jpg',
+      reason: 'Primary speaker portrait for Luca Guadagnino',
+      source: 'tmdb',
+    },
+    {
+      url: 'https://example.com/timothee.jpg',
+      reason: 'Supporting referenced person portrait for Timothee Chalamet',
+      source: 'tmdb',
+    },
+  ] as any, {
+    primarySubject: 'Luca Guadagnino',
+    mediaTitle: 'Call Me by Your Name',
+    secondarySubject: 'Timothee Chalamet',
+    entityType: 'person',
+    confidence: 0.95,
+    ambiguityFlags: ['story_family_person_commentary_on_project'],
+    allowedEntities: ['Luca Guadagnino', 'Timothee Chalamet', 'Call Me by Your Name'],
+  } as any);
+
+  assert.doesNotMatch(codes.join(','), /IMAGE_CANONICAL_ENTITY_MISMATCH/);
+});
+
+test('first-look reveal stories stay article-image-first even when project art is missing', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Jordan Firstman's Buzzy Cannes Debut 'Club Kid' Boarded By UTA Independent Film Group And Charades, Unveils First Look (EXCLUSIVE)",
+    description: "Jordan Firstman's directorial debut starring a Cannes ensemble reveals its first look.",
+    contentHtml: '<p>Variety unveils the first-look image for <em>Club Kid</em>.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'Club Kid');
+  assert.equal(canonical.eventType, 'first_look');
+  assert.ok(canonical.ambiguityFlags?.includes('story_family_visual_reveal_event'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_article_image_first'));
+});
+
+test('clean trailer captions are not blocked by package-label residue once project resolution is correct', () => {
+  const codes = getRSSCaptionHardInvalidReasonCodes(
+    "A new trailer for 'The Hunger Games: Sunrise on the Reaping' has been released.\n\nThe latest preview offers a new look at the prequel.",
+    {
+      articleTitle: "'The Hunger Games: Sunrise on the Reaping' Trailer Reveals New Look At Prequel",
+      feedName: 'ComicBook',
+      summary: 'Ahead of its release later this year, The Hunger Games: Sunrise on the Reaping gives a new teaser.',
+      articleBody: 'Ahead of its release later this year, the movie gets a new trailer.',
+      platform: 'X',
+      canonicalEntity: {
+        primarySubject: 'The Hunger Games: Sunrise on the Reaping',
+        mediaTitle: 'The Hunger Games: Sunrise on the Reaping',
+        entityType: 'movie',
+        confidence: 0.95,
+        ambiguityFlags: ['story_policy_trailer_cleanup_tolerant'],
+        allowedEntities: ['The Hunger Games: Sunrise on the Reaping', 'The Hunger Games'],
+      },
+      allowedEntities: ['The Hunger Games: Sunrise on the Reaping', 'The Hunger Games'],
+    } as any
+  );
+
+  assert.doesNotMatch(codes.join(','), /CAPTION_ARTICLE_PACKAGE_LABEL|CAPTION_HEADLINE_JUNK/);
+});
+
 test('targeted cleanup image policies prefer reveal stills and cast portraits in the expected lanes', () => {
   assert.equal(shouldUseFeedFallbackImages({
     title: "Sullivan's Crossing Season 4 First Look: Liam's Arrival Brings 'Tension' For Maggie And Cal (Exclusive)",

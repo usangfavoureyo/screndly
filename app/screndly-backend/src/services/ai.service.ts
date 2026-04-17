@@ -2310,6 +2310,10 @@ function buildTargetedRSSCaptionOverride(
         return `New first-look images from ${titleText} have been released.\n\nThe latest reveal focuses on the next chapter without leaning on outlet packaging.`;
     }
 
+    if (hasRSSCanonicalFlag(context, 'story_policy_trailer_cleanup_tolerant') && titleText) {
+        return `A new trailer for ${titleText} has been released.\n\nThe latest preview offers a new look at the prequel without carrying over article packaging.`;
+    }
+
     if (hasRSSCanonicalFlag(context, 'story_policy_series_order') && titleText) {
         return `${titleText} has been ordered to series.\n\nCBS is moving forward with the vampire comedy as part of its next lineup.`;
     }
@@ -2834,6 +2838,9 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
     const safePrimary = getSafeRSSResolvedSubject(context, extraction);
     const headline = getRSSHeadlineLine(normalized);
     const normalizedHeadline = normalizeRSSHeadlineInput(headline);
+    const canonicalFlags = new Set(context.canonicalEntity?.ambiguityFlags || []);
+    const trailerCleanupTolerant = canonicalFlags.has('story_policy_trailer_cleanup_tolerant') &&
+        (context.canonicalEntity?.entityType === 'movie' || context.canonicalEntity?.entityType === 'tv');
 
     for (const entry of RSS_HARD_BLOCKED_OUTPUT_PATTERNS) {
         if (entry.pattern.test(caption)) {
@@ -2845,7 +2852,7 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
         reasonCodes.add('CAPTION_CONTAINS_ELLIPSIS_PLACEHOLDER');
     }
 
-    if (hasRSSArticlePackageLabel(normalized)) {
+    if (hasRSSArticlePackageLabel(normalized) && !trailerCleanupTolerant) {
         reasonCodes.add('CAPTION_ARTICLE_PACKAGE_LABEL');
     }
 
@@ -2854,7 +2861,9 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
         (isMalformedRSSEntityJunk(normalizedHeadline) ||
             RSS_ARTICLE_PACKAGE_LABEL_PATTERNS.some((pattern) => pattern.test(normalizedHeadline)))
     ) {
-        reasonCodes.add('CAPTION_HEADLINE_JUNK');
+        if (!trailerCleanupTolerant) {
+            reasonCodes.add('CAPTION_HEADLINE_JUNK');
+        }
     }
 
     if (hasInvalidRSSJoinLead(normalized)) {

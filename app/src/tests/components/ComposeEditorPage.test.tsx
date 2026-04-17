@@ -6,6 +6,8 @@ import { ComposeEditorPage } from '../../components/create/ComposeEditorPage';
 import { buildComposeAssetStreamUrl } from '../../lib/create/composeStorage';
 import { useComposeStore } from '../../store/useComposeStore';
 
+const importComposeMediaUrlMock = vi.hoisted(() => vi.fn());
+
 const toastMock = vi.hoisted(() => ({
   success: vi.fn(),
   error: vi.fn(),
@@ -20,6 +22,14 @@ vi.mock('../../contexts/NotificationsContext', () => ({
     addNotification: vi.fn(),
   }),
 }));
+
+vi.mock('../../lib/create/composeStorage', async () => {
+  const actual = await vi.importActual<typeof import('../../lib/create/composeStorage')>('../../lib/create/composeStorage');
+  return {
+    ...actual,
+    importComposeMediaUrl: (...args: unknown[]) => importComposeMediaUrlMock(...args),
+  };
+});
 
 const settingsMock = {
   videoOpenaiModel: 'gpt-5-mini',
@@ -129,13 +139,19 @@ vi.mock('../../components/ui/input', () => ({
   Input: ({
     value,
     onChange,
+    onKeyDown,
+    placeholder,
   }: {
     value?: string;
     onChange?: (event: { target: { value: string } }) => void;
+    onKeyDown?: (event: { key: string; preventDefault: () => void }) => void;
+    placeholder?: string;
   }) => (
     <input
       value={value}
+      placeholder={placeholder}
       onChange={(event) => onChange?.({ target: { value: event.target.value } })}
+      onKeyDown={(event) => onKeyDown?.({ key: event.key, preventDefault: () => event.preventDefault() })}
     />
   ),
 }));
@@ -293,6 +309,7 @@ describe('ComposeEditorPage scheduling', () => {
     generateComposeThumbnailMock.mockReset();
     fetchYouTubePlaylistsMock.mockReset();
     fetchYouTubePlaylistsMock.mockResolvedValue([]);
+    importComposeMediaUrlMock.mockReset();
   });
 
   it('keeps the editor open after scheduling while nested pickers are active', () => {
@@ -692,5 +709,53 @@ describe('ComposeEditorPage scheduling', () => {
 
     expect(screen.getByText('The Matrix is still one of the cleanest sci-fi action movies ever made.')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Keep this caption')).toBeInTheDocument();
+  });
+
+  it('imports YouTube and Instagram media URLs into the media area', async () => {
+    importComposeMediaUrlMock.mockResolvedValue([
+      {
+        url: 'https://cdn.example.com/compose/videos/trailer.mp4',
+        previewUrl: 'https://cdn.example.com/compose/videos/trailer-preview.mp4',
+        fileId: 'video-1',
+        fileName: 'trailer.mp4',
+        contentType: 'video/mp4',
+        size: 2048,
+        durationSeconds: 90,
+        width: 1920,
+        height: 1080,
+        aspectRatioValue: 16 / 9,
+        aspectRatioLabel: '16:9',
+      },
+      {
+        url: 'https://cdn.example.com/compose/images/post-2.jpg',
+        previewUrl: 'https://cdn.example.com/compose/images/post-2-preview.jpg',
+        fileId: 'image-2',
+        fileName: 'post-2.jpg',
+        contentType: 'image/jpeg',
+        size: 1024,
+      },
+    ]);
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+        isCompactLayout
+      />,
+    );
+
+    const urlInput = screen.getByPlaceholderText('Paste a YouTube or Instagram URL...');
+    fireEvent.change(urlInput, { target: { value: 'https://www.instagram.com/p/test-carousel/' } });
+    fireEvent.keyDown(urlInput, { key: 'Enter', code: 'Enter' });
+
+    await waitFor(() => {
+      expect(importComposeMediaUrlMock).toHaveBeenCalledWith({
+        url: 'https://www.instagram.com/p/test-carousel/',
+      });
+    });
+
+    expect(await screen.findByText('trailer.mp4')).toBeInTheDocument();
+    expect(await screen.findByText('post-2.jpg')).toBeInTheDocument();
+    expect(screen.getByText('2 items')).toBeInTheDocument();
   });
 });

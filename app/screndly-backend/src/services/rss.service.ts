@@ -1417,6 +1417,57 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (
+    title.includes("timoth") &&
+    title.includes('luca guadagnino') &&
+    hasAll('call me by your name')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Call Me by Your Name',
+      primarySubject: 'Luca Guadagnino',
+      secondarySubject: 'Timothee Chalamet',
+      entityType: 'person',
+      eventType: 'interview_quote',
+      confidence: 0.95,
+      namedPeople: ['Luca Guadagnino', 'Timothee Chalamet'],
+      flags: ['story_family_person_commentary_on_project', 'story_policy_allow_quote_led_person_commentary'],
+      allowedEntities: ['Luca Guadagnino', 'Timothee Chalamet', 'Call Me by Your Name'],
+    };
+  }
+
+  if (
+    title.includes('jordan firstman') &&
+    title.includes("'club kid'") &&
+    /\b(first look|exclusive|reveals?)\b/i.test(normalizeRSSHeadlineInput(item.title || ''))
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Club Kid',
+      primarySubject: 'Club Kid',
+      secondarySubject: 'Jordan Firstman',
+      entityType: 'movie',
+      eventType: 'first_look',
+      confidence: 0.95,
+      namedPeople: ['Jordan Firstman'],
+      flags: ['story_family_visual_reveal_event', 'story_policy_article_image_first'],
+      allowedEntities: ['Club Kid', 'Jordan Firstman', 'Cannes'],
+    };
+  }
+
+  if (title.includes("'the hunger games: sunrise on the reaping'") && /\btrailer\b/i.test(combined)) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'The Hunger Games: Sunrise on the Reaping',
+      primarySubject: 'The Hunger Games: Sunrise on the Reaping',
+      entityType: 'movie',
+      eventType: 'trailer',
+      confidence: 0.95,
+      flags: ['story_policy_trailer_cleanup_tolerant'],
+      allowedEntities: ['The Hunger Games: Sunrise on the Reaping', 'The Hunger Games'],
+    };
+  }
+
   return null;
 }
 
@@ -2326,6 +2377,7 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
   const reasonCodes = new Set<string>();
   const allowed = (canonicalEntity.allowedEntities || []).map((entry) => entry.toLowerCase());
   const expectedPrimary = (canonicalEntity.primarySubject || canonicalEntity.mediaTitle || '').toLowerCase();
+  const canonicalFlags = new Set(canonicalEntity.ambiguityFlags || []);
 
   if (images.length > 1 && images.some((image) => !image.url || !image.url.trim())) {
     reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
@@ -2342,6 +2394,7 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
     if (
       index === 0 &&
       expectedPrimary &&
+      !canonicalFlags.has('story_family_person_commentary_on_project') &&
       image.source !== 'feed' &&
       allowed.length > 0 &&
       !allowed.some((entity) => normalizedReason.includes(entity.toLowerCase())) &&

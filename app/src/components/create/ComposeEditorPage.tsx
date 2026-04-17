@@ -52,6 +52,7 @@ import {
 import {
   buildComposeAssetStreamUrl,
   buildComposeRenderableUrls,
+  importComposeMediaUrl,
   importComposeRemoteImage,
   resolveComposeAssetAccess,
   resolveComposeAssetPreview,
@@ -309,6 +310,7 @@ export function ComposeEditorPage({
   const resetHistorySignatureRef = useRef('');
   const [, setHistoryVersion] = useState(0);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [mediaUrlInput, setMediaUrlInput] = useState('');
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
   const [tmdbResults, setTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
   const [selectedTmdbResult, setSelectedTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
@@ -829,6 +831,46 @@ export function ComposeEditorPage({
     }));
   };
 
+  const appendImportedMediaAssets = useCallback((assets: Array<{
+    kind: 'image' | 'video';
+    url: string;
+    previewUrl?: string;
+    fileId: string;
+    fileName: string;
+    contentType: string;
+    size: number;
+    durationSeconds?: number;
+    width?: number;
+    height?: number;
+    aspectRatioValue?: number;
+    aspectRatioLabel?: string;
+  }>) => {
+    setFormState((current) => ({
+      ...current,
+      mediaAssets: [
+        ...current.mediaAssets,
+        ...assets.map((asset, index) => ({
+          id: `${Date.now()}-${current.mediaAssets.length + index}-${asset.fileName}`,
+          kind: asset.kind,
+          fileName: asset.fileName,
+          mimeType: asset.contentType,
+          size: asset.size,
+          order: current.mediaAssets.length + index,
+          durationSeconds: asset.durationSeconds,
+          width: asset.width,
+          height: asset.height,
+          aspectRatioValue: asset.aspectRatioValue,
+          aspectRatioLabel: asset.aspectRatioLabel,
+          previewUrl: asset.previewUrl || asset.url,
+          storageUrl: asset.url,
+          storageFileId: asset.fileId,
+          uploadStatus: 'uploaded' as const,
+          uploadError: undefined,
+        })),
+      ],
+    }));
+  }, []);
+
   const handleMediaFiles = async (files: File[]) => {
     const acceptedFiles = files.filter(
       (file) => file.type.startsWith('image/') || file.type.startsWith('video/'),
@@ -903,6 +945,26 @@ export function ComposeEditorPage({
     );
 
     setIsUploadingMedia(false);
+  };
+
+  const handleImportMediaUrl = async () => {
+    const url = mediaUrlInput.trim();
+    if (!url) {
+      return;
+    }
+
+    setIsUploadingMedia(true);
+    try {
+      const importedAssets = await importComposeMediaUrl({ url });
+      appendImportedMediaAssets(importedAssets);
+      setMediaUrlInput('');
+      toast.success(importedAssets.length > 1 ? 'Media URL imported' : 'Media imported');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to import media URL';
+      toast.error(message);
+    } finally {
+      setIsUploadingMedia(false);
+    }
   };
 
   const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -2118,9 +2180,31 @@ export function ComposeEditorPage({
                 </Label>
                 <input id="compose-media" type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleMediaSelected} />
               </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={mediaUrlInput}
+                  onChange={(event) => setMediaUrlInput(event.target.value)}
+                  placeholder="Paste a YouTube or Instagram URL..."
+                  className="bg-white dark:bg-black"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void handleImportMediaUrl();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  onClick={() => void handleImportMediaUrl()}
+                  disabled={isUploadingMedia || !mediaUrlInput.trim()}
+                  className="shrink-0"
+                >
+                  {isUploadingMedia ? 'Importing...' : 'Upload'}
+                </Button>
+              </div>
               <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
                     <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                       Find a movie, TV show, person, network, or company, then add posters, backdrops, profiles, or logos directly to this post.
@@ -2132,7 +2216,7 @@ export function ComposeEditorPage({
                       variant="ghost"
                       size="icon"
                       onClick={handleClearTmdbSearch}
-                      className="h-8 w-8 shrink-0 rounded-full border border-gray-200 text-[#6B7280] hover:bg-white hover:text-[#ec1e24] dark:border-[#333333] dark:hover:bg-black"
+                      className="h-8 min-h-8 w-8 min-w-8 shrink-0 rounded-full border border-gray-200 p-0 text-[#6B7280] hover:bg-white hover:text-[#ec1e24] dark:border-[#333333] dark:hover:bg-black"
                       aria-label="Clear TMDb search"
                     >
                       <X className="h-4 w-4" />
@@ -2140,12 +2224,14 @@ export function ComposeEditorPage({
                   ) : null}
                 </div>
                 <div className="flex items-center gap-2">
-                  <Input
-                    value={tmdbSearchQuery}
-                    onChange={(event) => setTmdbSearchQuery(event.target.value)}
-                    placeholder="Search TMDb for movie, TV, person, or company..."
-                    className="bg-white dark:bg-black"
-                  />
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      value={tmdbSearchQuery}
+                      onChange={(event) => setTmdbSearchQuery(event.target.value)}
+                      placeholder="Search TMDb for movie, TV, person, or company..."
+                      className="w-full bg-white dark:bg-black"
+                    />
+                  </div>
                   <Button
                     type="button"
                     onClick={() => void handleTmdbSearch()}
@@ -2981,7 +3067,7 @@ export function ComposeEditorPage({
                               type="button"
                               onClick={() => handleGenerateThumbnail(key)}
                               disabled={isGeneratingThisThumbnail || !normalizeMetadataInput(formState.sourceMetadata)}
-                              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                              className="inline-flex h-10 min-h-10 w-10 min-w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white p-0 text-gray-900 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
                               aria-label={`Generate ${label}`}
                               title={`Generate ${label}`}
                             >
@@ -2996,7 +3082,7 @@ export function ComposeEditorPage({
                             <button
                               type="button"
                               onClick={() => removeThumbnail(key)}
-                              className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
+                              className="flex h-10 min-h-10 w-10 min-w-10 shrink-0 items-center justify-center rounded-full border border-gray-200 p-0 text-gray-600 transition-colors hover:bg-white dark:border-[#333333] dark:text-[#9CA3AF] dark:hover:bg-[#111111]"
                               aria-label={`Remove ${label}`}
                             >
                               <X className="h-4 w-4" />
@@ -3054,7 +3140,7 @@ export function ComposeEditorPage({
                       {key === 'sharedThumbnail' ? (
                         <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
                           <div className="mb-3 flex items-start justify-between gap-3">
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
                               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                                 Search TMDb and add a result directly to the shared thumbnail.
@@ -3064,7 +3150,7 @@ export function ComposeEditorPage({
                               <button
                                 type="button"
                                 onClick={handleClearThumbnailTmdbSearch}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-[#6B7280] transition-colors hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:text-[#9CA3AF]"
+                                className="inline-flex h-8 min-h-8 w-8 min-w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 p-0 text-[#6B7280] transition-colors hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:text-[#9CA3AF]"
                                 aria-label="Clear TMDb thumbnail search"
                               >
                                 <X className="h-4 w-4" />
@@ -3073,22 +3159,25 @@ export function ComposeEditorPage({
                           </div>
 
                           <div className="flex items-center gap-2">
-                            <Input
-                              value={thumbnailTmdbSearchQuery}
-                              onChange={(event) => setThumbnailTmdbSearchQuery(event.target.value)}
-                              placeholder="Search TMDb for movie, TV, person, or company..."
-                              className="border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
-                              onKeyDown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  void handleThumbnailTmdbSearch();
-                                }
-                              }}
-                            />
+                            <div className="min-w-0 flex-1">
+                              <Input
+                                value={thumbnailTmdbSearchQuery}
+                                onChange={(event) => setThumbnailTmdbSearchQuery(event.target.value)}
+                                placeholder="Search TMDb for movie, TV, person, or company..."
+                                className="w-full border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    void handleThumbnailTmdbSearch();
+                                  }
+                                }}
+                              />
+                            </div>
                             <Button
                               type="button"
                               onClick={() => void handleThumbnailTmdbSearch()}
                               disabled={!thumbnailTmdbSearchQuery.trim() || isSearchingThumbnailTmdb}
+                              className="shrink-0"
                             >
                               {isSearchingThumbnailTmdb ? 'Searching...' : 'Search'}
                             </Button>

@@ -8,6 +8,7 @@ import { promisify } from 'util';
 import {
     applyYouTubeDownloaderOptions,
     describeYtDlpAuthConfiguration,
+    DEFAULT_YT_DLP_USER_AGENT,
     getYtDlpAuthOptions,
     getYtDlpImpersonationTarget,
     getYtDlpNetworkContext,
@@ -1331,8 +1332,45 @@ export class YouTubePollerService {
         return this.sortRecentChannelVideos([...byVideoId.values()]);
     }
 
+    private async fetchYouTubeRssItems(rssUrl: string, channelName: string): Promise<any[]> {
+        const response = await fetch(rssUrl, {
+            headers: {
+                'user-agent': DEFAULT_YT_DLP_USER_AGENT,
+                accept: 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`RSS fetch failed with status ${response.status}`);
+        }
+
+        const xml = await response.text();
+        const feed = await parser.parseString(xml);
+        const items = Array.isArray(feed.items)
+            ? this.sortRecentChannelVideos(feed.items).slice(0, MAX_OWNED_VIDEO_CANDIDATES)
+            : [];
+
+        if (items.length === 0) {
+            console.warn(`[YouTubePoller] ${channelName}: direct RSS fetch returned no items`);
+        }
+
+        return items;
+    }
+
     private async getRecentChannelVideos(channel: any): Promise<ChannelVideoSourceResult> {
         const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`;
+        const normalizeOwnedItems = (items: any[]) => items.map((item) => ({
+            ...item,
+            primaryChannelId: channel.channelId,
+            primaryChannelName: channel.name,
+            detectedViaChannelId: channel.channelId,
+            detectedViaChannelName: channel.name,
+            detectedViaChannels: [channel.name],
+            collaboratorChannelIds: [],
+            collaboratorChannelNames: [],
+            isCollaborativePost: false,
+            discoveredVia: 'owned_upload',
+        }));
 
         try {
             const feed = await parser.parseURL(rssUrl);
@@ -1341,25 +1379,26 @@ export class YouTubePollerService {
                 : [];
             if (items.length > 0) {
                 return {
-                    items: items.map((item) => ({
-                        ...item,
-                        primaryChannelId: channel.channelId,
-                        primaryChannelName: channel.name,
-                        detectedViaChannelId: channel.channelId,
-                        detectedViaChannelName: channel.name,
-                        detectedViaChannels: [channel.name],
-                        collaboratorChannelIds: [],
-                        collaboratorChannelNames: [],
-                        isCollaborativePost: false,
-                        discoveredVia: 'owned_upload',
-                    })),
+                    items: normalizeOwnedItems(items),
                     source: 'rss',
                 };
             }
 
-            console.warn(`[YouTubePoller] ${channel.name}: RSS feed returned no items; trying yt-dlp channel fallback`);
+            console.warn(`[YouTubePoller] ${channel.name}: RSS parser returned no items; trying direct RSS fetch fallback`);
         } catch (error) {
-            console.warn(`[YouTubePoller] ${channel.name}: RSS feed fetch failed; trying yt-dlp channel fallback`, error);
+            console.warn(`[YouTubePoller] ${channel.name}: RSS parser fetch failed; trying direct RSS fetch fallback`, error);
+        }
+
+        try {
+            const items = await this.fetchYouTubeRssItems(rssUrl, channel.name);
+            if (items.length > 0) {
+                return {
+                    items: normalizeOwnedItems(items),
+                    source: 'rss',
+                };
+            }
+        } catch (error) {
+            console.warn(`[YouTubePoller] ${channel.name}: direct RSS fetch failed; trying yt-dlp channel fallback`, error);
         }
 
         return {
