@@ -90,7 +90,7 @@ export function compactComposeItemsForPersistence(items: ComposeItem[]) {
   const recentPublishedItems = items
     .filter((item) => item.status === 'published')
     .slice(0, COMPOSE_PERSISTED_PUBLISHED_LIMIT)
-    .map((item) => compactComposeItemForPersistence(item, false));
+    .map((item) => compactComposeItemForPersistence(item, true));
 
   return [...nonPublishedItems, ...recentPublishedItems].map((item) => ({
     ...item,

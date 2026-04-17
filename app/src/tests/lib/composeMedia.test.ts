@@ -137,7 +137,7 @@ describe('composeMedia story compatibility', () => {
     expect(sanitized.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/asset-persisted.jpg');
   });
 
-  it('keeps authorized preview URLs for actionable items while compacting published items', () => {
+  it('keeps authorized preview URLs for actionable items and recent published items', () => {
     const failedItem: ComposeItem = {
       id: 'failed-item',
       title: 'Failed item',
@@ -170,7 +170,7 @@ describe('composeMedia story compatibility', () => {
 
     expect(compactedFailed?.mediaAssets[0]?.previewUrl).toBe('https://authorized.example.com/video-failed.mp4?Authorization=abc123');
     expect(compactedFailed?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
-    expect(compactedPublished?.mediaAssets[0]?.previewUrl).toBeUndefined();
+    expect(compactedPublished?.mediaAssets[0]?.previewUrl).toBe('https://authorized.example.com/video-failed.mp4?Authorization=abc123');
     expect(compactedPublished?.mediaAssets[0]?.storageUrl).toBe('https://cdn.example.com/video-failed.mp4');
   });
 
