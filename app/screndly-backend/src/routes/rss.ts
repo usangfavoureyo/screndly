@@ -17,6 +17,7 @@ import {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  saveRSSEditorialBrainReview,
   reorderFeeds,
   RSSFeedInput,
 } from '../services/rss.service';
@@ -236,6 +237,21 @@ router.post('/activity/:id/retry', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: { message: error instanceof Error ? error.message : 'Failed to retry RSS activity item' },
+    });
+  }
+});
+
+router.post('/activity/:id/editorial-brain-review', async (req: Request, res: Response) => {
+  try {
+    const outcome = req.body?.outcome;
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes : undefined;
+    const activityItem = await saveRSSEditorialBrainReview(req.params.id, { outcome, notes });
+    res.json({ success: true, data: activityItem });
+  } catch (error) {
+    console.error('[RSS] Error saving editorial brain review:', error);
+    res.status(400).json({
+      success: false,
+      error: { message: error instanceof Error ? error.message : 'Failed to save editorial brain review' },
     });
   }
 });

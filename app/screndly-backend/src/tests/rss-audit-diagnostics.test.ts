@@ -3,14 +3,21 @@ import assert from 'node:assert/strict';
 import { __rssCaptionTestUtils } from '../services/ai.service';
 import { __rssImageSelectionTestUtils } from '../services/rss-image-selection.service';
 import { __rssAuditTestUtils } from '../services/rss.service';
+import { __rssEditorialBrainTestUtils } from '../services/rss-editorial-brain.service';
 import { __rssTmdbDisambiguationTestUtils } from '../services/rss-tmdb-image-selection.service';
 import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-report';
-import { buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
+import { analyzeRssAuditCase, buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
 const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, classifyRSSFallbackPath } = __rssCaptionTestUtils;
 const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
+const { computeRssEditorialBrainDisagreements, normalizeRssEditorialBrainDecision, buildRssEditorialBrainContentHash } = __rssEditorialBrainTestUtils;
+const {
+  buildRSSEditorialBrainImageStrategyCalibration,
+  selectRSSEditorialBrainPromotedImageStrategy,
+  applyRSSEditorialBrainImageStrategyPromotion,
+} = __rssAuditTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
   return {
@@ -1870,4 +1877,462 @@ test('runtime parity does not reuse stored captions from older queue payload ver
   );
 
   assert.equal(canReuse, false);
+});
+
+test('editorial brain fallback decision keeps recovered wrapper-title projects instead of wrapper canonicals', () => {
+  const item = {
+    title: "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+    link: 'https://slashfilm.com/big-mistakes',
+    description: 'Netflix will release Big Mistakes in 2026.',
+    contentHtml: '<p>Dan Levy stars in the 2026 crime comedy series <em>Big Mistakes</em> for Netflix.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-17T08:30:00.000Z'),
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+  const decision = __rssAuditTestUtils.buildRssEditorialBrainFallbackDecision(item, canonical, 'SlashFilm');
+
+  assert.equal(decision.primary_entity, 'Big Mistakes');
+  assert.equal(decision.primary_entity_type, 'project');
+  assert.equal(decision.lane, 'core_auto_publish');
+  assert.equal(decision.image_strategy.mode, 'project_first');
+  assert.equal(decision.caption_strategy.mode, 'headline_news');
+});
+
+test('editorial brain disagreement buckets are structured by failure class', () => {
+  const disagreements = computeRssEditorialBrainDisagreements(
+    {
+      lane: 'core_auto_publish',
+      primary_entity: 'Euphoria',
+      event: 'tribute',
+      image_strategy: { mode: 'project_first' },
+      caption_strategy: { mode: 'tribute' },
+      spoiler_risk: 'none',
+    } as any,
+    {
+      lane: 'core_manual_review_spoiler',
+      primary_entity: 'Zendaya',
+      event: 'interview_quote',
+      image_strategy: { mode: 'dual_person_project' },
+      caption_strategy: { mode: 'person_commentary' },
+      spoiler_risk: 'medium',
+    } as any,
+  );
+
+  assert.deepEqual(disagreements, [
+    'lane_disagreement',
+    'canonical_disagreement',
+    'event_disagreement',
+    'image_strategy_disagreement',
+    'caption_strategy_disagreement',
+    'spoiler_risk_disagreement',
+  ]);
+});
+
+test('audit analysis records editorial brain shadow output when enabled', async () => {
+  const result = await analyzeRssAuditCase({
+    sourceName: 'SlashFilm',
+    feedUrl: 'https://slashfilm.com/feed',
+    articleUrl: 'https://slashfilm.com/ray-gunn',
+    articleTitle: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+    articleDescription: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+    articleBody: '<p>Brad Bird is directing the Netflix sci-fi movie <em>Ray Gunn</em> for Netflix.</p>',
+    publishedAt: '2026-04-17T09:00:00.000Z',
+  }, {
+    imageLimit: 2,
+    captionMode: 'deterministic',
+    editorialBrainMode: 'shadow',
+  } as any);
+
+  assert.ok(result.editorialBrain);
+  assert.equal(result.editorialBrain?.primaryEntity, 'Ray Gunn');
+  assert.equal(result.editorialBrain?.lane, 'core_auto_publish');
+  assert.equal(result.editorialBrain?.imageStrategy, 'project_first');
+  assert.ok(['headline_news', 'project_announcement'].includes(result.editorialBrain?.captionStrategy || ''));
+  assert.ok(result.editorialBrain?.contentHash);
+  assert.equal(
+    result.editorialBrain?.contentHash,
+    buildRssEditorialBrainContentHash({
+      source: 'SlashFilm',
+      url: 'https://slashfilm.com/ray-gunn',
+      headline: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+      summary: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+      bodyText: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn for Netflix.',
+      extractedQuotes: [],
+      articleImages: [],
+    } as any),
+  );
+  assert.ok(Array.isArray(result.editorialBrain?.disagreements));
+});
+
+test('editorial brain activity projection exposes current-vs-brain comparison fields for review UI', () => {
+  const item = {
+    title: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+    link: 'https://slashfilm.com/ray-gunn',
+    description: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+    contentHtml: '<p>Brad Bird is directing the Netflix sci-fi movie <em>Ray Gunn</em> for Netflix.</p>',
+    pubDate: new Date('2026-04-17T09:00:00.000Z'),
+    editorialBrain: {
+      editorialBrainVersion: 'rss-editorial-brain-test',
+      promptVersion: 'prompt-v1',
+      schemaVersion: 'schema-v1',
+      contentHash: 'hash-1',
+      sourceTrustTier: 'tier_2_editorial',
+      agentModel: 'gpt-5.4-mini',
+      decisionHash: 'decision-1',
+      usedFallback: false,
+      normalizationNotes: [],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Ray Gunn',
+        event: 'development',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'core_auto_publish',
+        story_family: 'project_announcement',
+        primary_entity_type: 'project',
+        primary_entity: 'Ray Gunn',
+        secondary_entities: ['Brad Bird'],
+        canonical_aliases: ['Ray Gunn'],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'project announcement',
+        headline_trust: 'low',
+        body_recovery_required: true,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: {
+          mode: 'project_first',
+          primary_preference: ['backdrop still'],
+          secondary_preference: ['person portrait'],
+          avoid: ['wrapper headline phrasing'],
+        },
+        caption_strategy: {
+          mode: 'project_announcement',
+          lead_subject: 'Ray Gunn',
+          must_name: ['Ray Gunn'],
+          must_not_use: ['This article'],
+          must_not_spoil: false,
+        },
+        caption_facts: {
+          headline_fact: "Brad Bird's Netflix sci-fi movie is 'Ray Gunn'.",
+          supporting_fact: 'The film is set up at Netflix.',
+          quote: '',
+          bullets: [],
+        },
+        evidence: {
+          body_titles: ['Ray Gunn'],
+          people: ['Brad Bird'],
+          projects: ['Ray Gunn'],
+          networks_platforms: ['Netflix'],
+          years: ['2026'],
+          quotes: [],
+        },
+        confidence: 0.92,
+        notes: 'Shadow review payload.',
+      }, __rssAuditTestUtils.buildRssEditorialBrainFallbackDecision({
+        title: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+        description: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+        contentHtml: '<p>Brad Bird is directing the Netflix sci-fi movie <em>Ray Gunn</em> for Netflix.</p>',
+      } as any, __rssAuditTestUtils.buildRSSCanonicalEntity({
+        title: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+        link: 'https://slashfilm.com/ray-gunn',
+        description: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+        contentHtml: '<p>Brad Bird is directing the Netflix sci-fi movie <em>Ray Gunn</em> for Netflix.</p>',
+        pubDate: new Date('2026-04-17T09:00:00.000Z'),
+      } as any), 'SlashFilm')),
+      disagreements: ['event_disagreement', 'caption_strategy_disagreement'],
+      review: {
+        outcome: 'brain_better',
+        reviewedAt: '2026-04-17T12:00:00.000Z',
+        notes: 'Wrapper title recovered correctly.',
+      },
+    },
+  } as any;
+
+  const view = __rssAuditTestUtils.buildRSSEditorialBrainActivityView(item);
+
+  assert.ok(view);
+  assert.equal(view?.currentSystem.canonical, 'Ray Gunn');
+  assert.equal(view?.currentSystem.imageStrategy, 'project_first');
+  assert.ok(['project_announcement', 'headline_news'].includes(view?.decision.captionStrategy || ''));
+  assert.ok(view?.decision.confidence === undefined || view?.decision.confidence === 0.92);
+  assert.deepEqual(view?.disagreements, ['event_disagreement', 'caption_strategy_disagreement']);
+  assert.equal(view?.review?.outcome, 'brain_better');
+});
+
+test('editorial brain review persistence normalizes review payloads onto stored RSS items', () => {
+  const item = {
+    title: 'Example title',
+    link: 'https://example.com/story',
+    description: 'Example',
+    pubDate: new Date('2026-04-17T10:00:00.000Z'),
+    editorialBrain: {
+      editorialBrainVersion: 'rss-editorial-brain-test',
+      promptVersion: 'prompt-v1',
+      schemaVersion: 'schema-v1',
+      contentHash: 'hash-2',
+      sourceTrustTier: 'tier_3_noisy',
+      agentModel: 'gpt-5.4-mini',
+      decisionHash: 'decision-2',
+      usedFallback: false,
+      normalizationNotes: [],
+      currentSystem: {
+        lane: 'entertainment_adjacent',
+        primary_entity: 'Absolute Green Arrow',
+        event: 'editorial_feature',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'blocked_non_core',
+        story_family: 'comics_only',
+        primary_entity_type: 'project',
+        primary_entity: 'Absolute Green Arrow',
+        secondary_entities: [],
+        canonical_aliases: ['Absolute Green Arrow'],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'comics',
+        event: 'editorial_feature',
+        headline_trust: 'medium',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: {
+          mode: 'project_first',
+          primary_preference: ['poster'],
+          secondary_preference: [],
+          avoid: [],
+        },
+        caption_strategy: {
+          mode: 'headline_news',
+          lead_subject: 'Absolute Green Arrow',
+          must_name: ['Absolute Green Arrow'],
+          must_not_use: [],
+          must_not_spoil: false,
+        },
+        caption_facts: {
+          headline_fact: 'Creators discuss Absolute Green Arrow.',
+          supporting_fact: '',
+          quote: '',
+          bullets: [],
+        },
+        evidence: {
+          body_titles: ['Absolute Green Arrow'],
+          people: [],
+          projects: ['Absolute Green Arrow'],
+          networks_platforms: [],
+          years: [],
+          quotes: [],
+        },
+        confidence: 0.77,
+        notes: '',
+      }, {
+        lane: 'entertainment_adjacent',
+        story_family: 'editorial_feature',
+        primary_entity_type: 'project',
+        primary_entity: 'Absolute Green Arrow',
+        secondary_entities: [],
+        canonical_aliases: ['Absolute Green Arrow'],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'unknown',
+        event: 'editorial_feature',
+        headline_trust: 'medium',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'headline_news', lead_subject: 'Absolute Green Arrow', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.5,
+        notes: '',
+      }),
+      disagreements: ['lane_disagreement'],
+    },
+  } as any;
+
+  const next = __rssAuditTestUtils.applyRSSEditorialBrainReviewToItem(item, {
+    outcome: 'both_wrong',
+    notes: 'Needs a manual comics policy decision.',
+  });
+
+  assert.equal(next.editorialBrain?.review?.outcome, 'both_wrong');
+  assert.equal(next.editorialBrain?.review?.notes, 'Needs a manual comics policy decision.');
+  assert.match(next.editorialBrain?.review?.reviewedAt || '', /^20/);
+});
+
+test('editorial brain image strategy promotion only activates for calibrated high-confidence image disagreements', () => {
+  const calibration = buildRSSEditorialBrainImageStrategyCalibration([
+    {
+      sourceName: 'TVLine',
+      disagreements: ['image_strategy_disagreement'],
+      review: { outcome: 'brain_better' },
+    },
+    {
+      sourceName: 'TVLine',
+      disagreements: ['image_strategy_disagreement'],
+      review: { outcome: 'brain_better' },
+    },
+    {
+      sourceName: 'SlashFilm',
+      disagreements: ['image_strategy_disagreement'],
+      review: { outcome: 'deterministic_better' },
+    },
+  ]);
+
+  const promotedMode = selectRSSEditorialBrainPromotedImageStrategy(
+    'TVLine',
+    {
+      usedFallback: false,
+      disagreements: ['image_strategy_disagreement'],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Club Kid',
+        event: 'first_look',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'core_auto_publish',
+        story_family: 'first_look',
+        primary_entity_type: 'project',
+        primary_entity: 'Club Kid',
+        secondary_entities: ['Jordan Firstman'],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'first_look',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'first_look', lead_subject: 'Club Kid', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.88,
+        notes: '',
+      }, {
+        lane: 'core_auto_publish',
+        story_family: 'first_look',
+        primary_entity_type: 'project',
+        primary_entity: 'Club Kid',
+        secondary_entities: ['Jordan Firstman'],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'first_look',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'first_look', lead_subject: 'Club Kid', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.88,
+        notes: '',
+      }).decision,
+    } as any,
+    {
+      rssEditorialBrainImageStrategyPromotion: true,
+    } as any,
+    calibration
+  );
+
+  assert.equal(promotedMode, 'article_image_first');
+
+  const blockedMode = selectRSSEditorialBrainPromotedImageStrategy(
+    'SlashFilm',
+    {
+      usedFallback: false,
+      disagreements: ['image_strategy_disagreement', 'lane_disagreement'],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Club Kid',
+        event: 'first_look',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'entertainment_adjacent',
+        story_family: 'first_look',
+        primary_entity_type: 'project',
+        primary_entity: 'Club Kid',
+        secondary_entities: [],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'first_look',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'first_look', lead_subject: 'Club Kid', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.92,
+        notes: '',
+      }, {
+        lane: 'entertainment_adjacent',
+        story_family: 'first_look',
+        primary_entity_type: 'project',
+        primary_entity: 'Club Kid',
+        secondary_entities: [],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'first_look',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'first_look', lead_subject: 'Club Kid', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.92,
+        notes: '',
+      }).decision,
+    } as any,
+    {
+      rssEditorialBrainImageStrategyPromotion: true,
+    } as any,
+    calibration
+  );
+
+  assert.equal(blockedMode, undefined);
+});
+
+test('editorial brain image strategy promotion maps promoted image modes onto canonical flags without changing core identity', () => {
+  const canonical = applyRSSEditorialBrainImageStrategyPromotion(
+    {
+      primarySubject: 'Club Kid',
+      mediaTitle: 'Club Kid',
+      entityType: 'movie',
+      eventType: 'first_look',
+      ambiguityFlags: ['body_title_recovery_required'],
+    },
+    'article_image_first'
+  );
+
+  assert.equal(canonical.primarySubject, 'Club Kid');
+  assert.equal(canonical.mediaTitle, 'Club Kid');
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_article_image_first'));
+  assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_promoted'));
+  assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_article_image_first'));
 });

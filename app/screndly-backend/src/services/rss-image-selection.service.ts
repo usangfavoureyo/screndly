@@ -3107,6 +3107,59 @@ function determineSmartImagePlan(
   const primaryStreamingPlatform = getPrimaryStreamingPlatform(articleText);
   const projectLedCastingStory = isProjectLedCastingStory(article.title, articleText);
 
+  if (canonicalFlags.has('editorial_brain_image_strategy_person_first')) {
+    const personSubject =
+      canonicalPortraitPeople[0] ||
+      preferredPersonSubject ||
+      leadPerson ||
+      (looksLikeNamedPerson(analysis.primarySubject.name) ? analysis.primarySubject.name : '');
+    const projectSubject =
+      titleAnchor ||
+      analysis.contextProject ||
+      (isProjectAnchorType(analysis.primarySubject.type) ? analysis.primarySubject.name : null);
+
+    if (personSubject) {
+      return buildVisualPlan(
+        projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject) ? 'dual' : 'single',
+        analysis,
+        buildImageSlotPlan(personSubject, 'actor', 'person_portrait', analysis, false),
+        projectSubject && normalizeText(projectSubject) !== normalizeText(personSubject)
+          ? buildImageSlotPlan(
+              projectSubject,
+              inferSlotType(projectSubject, articleText, 'franchise', analysis),
+              'still',
+              analysis,
+              false
+            )
+          : null,
+        'editorial-brain promotion prefers a person-led primary image'
+      );
+    }
+  }
+
+  if (canonicalFlags.has('editorial_brain_image_strategy_spoiler_safe_neutral')) {
+    const neutralProjectSubject =
+      titleAnchor ||
+      analysis.contextProject ||
+      (isProjectAnchorType(analysis.primarySubject.type) ? analysis.primarySubject.name : null);
+
+    if (neutralProjectSubject && !looksLikeNamedPerson(neutralProjectSubject)) {
+      return buildVisualPlan(
+        'single',
+        analysis,
+        buildImageSlotPlan(
+          neutralProjectSubject,
+          inferSlotType(neutralProjectSubject, articleText, analysis.primarySubject.type, analysis),
+          'backdrop',
+          analysis,
+          false
+        ),
+        null,
+        'editorial-brain promotion keeps spoiler-sensitive stories on neutral project imagery'
+      );
+    }
+  }
+
   if (canonicalFlags.has('story_family_person_commentary_on_project')) {
     const speakerSubject =
       (analysis.canonicalEntity?.primarySubject && looksLikeNamedPerson(analysis.canonicalEntity.primarySubject))

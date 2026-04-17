@@ -32,6 +32,7 @@ import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right
 
 const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
+const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -742,11 +743,23 @@ export function EditDesignBottomSheet({
     }
 
     if (event.touches.length === 1 && expandedPreviewPanStartRef.current && expandedPreviewZoomRef.current > 1) {
-      event.preventDefault();
       const touch = event.touches[0];
+      const deltaX = touch.clientX - expandedPreviewPanStartRef.current.x;
+      const deltaY = touch.clientY - expandedPreviewPanStartRef.current.y;
+
+      if (
+        Math.abs(deltaX) <= EXPANDED_PREVIEW_PAN_START_TOLERANCE &&
+        Math.abs(deltaY) <= EXPANDED_PREVIEW_PAN_START_TOLERANCE &&
+        expandedPreviewTapStartRef.current
+      ) {
+        return;
+      }
+
+      expandedPreviewTapStartRef.current = null;
+      event.preventDefault();
       setExpandedPreviewOffset(clampExpandedPreviewOffset({
-        x: expandedPreviewPanStartRef.current.offsetX + (touch.clientX - expandedPreviewPanStartRef.current.x),
-        y: expandedPreviewPanStartRef.current.offsetY + (touch.clientY - expandedPreviewPanStartRef.current.y),
+        x: expandedPreviewPanStartRef.current.offsetX + deltaX,
+        y: expandedPreviewPanStartRef.current.offsetY + deltaY,
       }, expandedPreviewZoomRef.current));
       return;
     }

@@ -67,6 +67,10 @@ function captionModeArg(args: CliArgs): 'live' | 'deterministic' {
   return args['caption-mode'] === 'deterministic' ? 'deterministic' : 'live';
 }
 
+function editorialBrainModeArg(args: CliArgs): 'off' | 'shadow' {
+  return args['editorial-brain-mode'] === 'shadow' ? 'shadow' : 'off';
+}
+
 function scopeArg(args: CliArgs): RssAuditScope | undefined {
   const value = args.scope;
   if (
@@ -105,6 +109,7 @@ async function runAuditCommand(args: CliArgs): Promise<void> {
     imageLimit: numberArg(args, 'image-limit', 2),
     casesInput: typeof args['cases-input'] === 'string' ? args['cases-input'] : undefined,
     captionMode: captionModeArg(args),
+    editorialBrainMode: editorialBrainModeArg(args),
   });
 
   console.log(`[RSS Audit] Results saved to ${out}`);

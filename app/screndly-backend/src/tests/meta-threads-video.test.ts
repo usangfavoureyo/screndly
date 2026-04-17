@@ -105,3 +105,38 @@ test('postVideoToThreads returns a useful error for generic Threads processing f
     global.setTimeout = originalSetTimeout;
   }
 });
+
+test('postToThreads polls only supported Threads media status fields', async () => {
+  const originalPost: AxiosPost = axios.post.bind(axios);
+  const originalGet: AxiosGet = axios.get.bind(axios);
+
+  const requestedFields: string[] = [];
+
+  axios.post = (async (url: string) => {
+    if (url.includes('/threads_publish')) {
+      return { data: { id: 'publish-1' } } as any;
+    }
+
+    return { data: { id: 'container-1' } } as any;
+  }) as AxiosPost;
+
+  axios.get = (async (_url: string, config?: any) => {
+    requestedFields.push(String(config?.params?.fields || ''));
+    return { data: { status: 'FINISHED' } } as any;
+  }) as AxiosGet;
+
+  try {
+    const result = await metaService.postToThreads(
+      'user-1',
+      'caption',
+      ['https://example.com/image.png'],
+      'token-1',
+    );
+
+    assert.equal(result.success, true);
+    assert.deepEqual(requestedFields, ['status,error_message']);
+  } finally {
+    axios.post = originalPost;
+    axios.get = originalGet;
+  }
+});

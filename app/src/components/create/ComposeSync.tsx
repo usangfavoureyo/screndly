@@ -26,6 +26,25 @@ function sortComposeItems(items: ComposeItem[]) {
   });
 }
 
+function mergeRemotePublishedItems(localItems: ComposeItem[], remoteItems: ComposeItem[]) {
+  const localById = new Set(localItems.map((item) => item.id));
+  const merged = [...localItems];
+
+  for (const remoteItem of remoteItems) {
+    if (remoteItem.status !== 'published') {
+      continue;
+    }
+
+    if (localById.has(remoteItem.id)) {
+      continue;
+    }
+
+    merged.push(remoteItem);
+  }
+
+  return sortComposeItems(merged);
+}
+
 function getItemsUpdatedAt(items: ComposeItem[]) {
   return items.reduce((latestTimestamp, item) => {
     const itemTimestamp = Math.max(toTimestamp(item.updatedAt), toTimestamp(item.createdAt));
@@ -73,7 +92,9 @@ export function ComposeSync() {
         );
 
         const shouldPreferRemote = localUpdatedAt === 0 || remoteUpdatedAt > localUpdatedAt;
-        const nextItems = shouldPreferRemote ? remoteItems : sortComposeItems(localItems);
+        const nextItems = shouldPreferRemote
+          ? remoteItems
+          : mergeRemotePublishedItems(sortComposeItems(localItems), remoteItems);
         const nextSignature = buildSignature(nextItems);
         const nextModifiedAt = shouldPreferRemote
           ? (response.data.updatedAt ?? (remoteUpdatedAt > 0 ? new Date(remoteUpdatedAt).toISOString() : null))

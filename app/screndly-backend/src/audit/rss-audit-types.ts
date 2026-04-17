@@ -94,6 +94,19 @@ export type RssAuditEntityDecision = {
   ambiguityFlags: string[];
 };
 
+export type RssAuditEditorialBrainDecision = {
+  lane: string;
+  primaryEntity?: string;
+  storyFamily?: string;
+  event?: string;
+  imageStrategy?: string;
+  captionStrategy?: string;
+  confidence?: number;
+  contentHash?: string;
+  usedFallback?: boolean;
+  disagreements?: string[];
+};
+
 export type RssAuditResult = {
   caseId: string;
   input: RssAuditCase;
@@ -101,6 +114,7 @@ export type RssAuditResult = {
   normalizedTitle: string;
   normalizedDescription?: string;
   entity: RssAuditEntityDecision;
+  editorialBrain?: RssAuditEditorialBrainDecision;
   image: RssAuditImageDecision;
   caption: RssAuditCaptionDecision;
   publishBlocked: boolean;

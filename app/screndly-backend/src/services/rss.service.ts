@@ -10,6 +10,18 @@ import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEnt
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
+import {
+  DEFAULT_RSS_EDITORIAL_BRAIN_MODEL,
+  RSS_EDITORIAL_BRAIN_PROMPT_VERSION,
+  RSS_EDITORIAL_BRAIN_SCHEMA_VERSION,
+  RSS_EDITORIAL_BRAIN_VERSION,
+  buildRssEditorialBrainContentHash,
+  computeRssEditorialBrainDisagreements,
+  extractRssEditorialBrainSignals,
+  normalizeRssEditorialBrainEvent,
+  runRssEditorialBrain,
+  type RssEditorialBrainDecision,
+} from './rss-editorial-brain.service';
 
 const RSS_IMAGE_ANALYSIS_MODEL = DEFAULT_OPENAI_MODEL;
 const {
@@ -97,6 +109,7 @@ interface RSSItem {
   canonicalEntityVersion?: string;
   captionGenerationPath?: RSSCaptionGenerationPath;
   captionGenerationVersion?: string;
+  editorialBrain?: RSSEditorialBrainStoredDecision;
 }
 
 interface RSSFeedData {
@@ -154,7 +167,47 @@ export interface RSSActivityItem {
   duplicateEventKey?: string;
   winningSource?: string;
   suppressedSources?: string[];
+  editorialBrain?: RSSEditorialBrainActivityView;
   error?: string;
+}
+
+export type RSSEditorialBrainReviewOutcome =
+  | 'brain_better'
+  | 'deterministic_better'
+  | 'both_wrong'
+  | 'ignore';
+
+export interface RSSEditorialBrainActivityReview {
+  outcome: RSSEditorialBrainReviewOutcome;
+  reviewedAt: string;
+  notes?: string;
+}
+
+export interface RSSEditorialBrainActivityView {
+  sourceTrustTier: string;
+  agentModel: string;
+  contentHash: string;
+  usedFallback: boolean;
+  disagreements: string[];
+  currentSystem: {
+    lane: string;
+    canonical: string;
+    event: string;
+    imageStrategy: string;
+    captionStrategy: string;
+    spoilerRisk: string;
+  };
+  decision: {
+    lane: string;
+    canonical: string;
+    storyFamily?: string;
+    event: string;
+    imageStrategy: string;
+    captionStrategy: string;
+    spoilerRisk: string;
+    confidence?: number;
+  };
+  review?: RSSEditorialBrainActivityReview;
 }
 
 export interface RSSActivitySummary {
@@ -201,6 +254,7 @@ interface RSSActivityMetadata {
   duplicateEventKey?: string;
   winningSource?: string;
   suppressedSources?: string[];
+  editorialBrain?: RSSEditorialBrainActivityView;
   errorMessage?: string;
 }
 
@@ -229,6 +283,9 @@ interface RSSRuntimeSettings {
   rssCaptionTemperature?: number;
   rssCaptionTone?: string;
   rssCaptionMaxLength?: number;
+  rssEditorialBrainShadowMode: boolean;
+  rssEditorialBrainImageStrategyPromotion: boolean;
+  rssEditorialBrainModel?: string;
   rssOpenaiWebSearchEnabled: boolean;
   rssImageWebSearchModel?: string;
   rssPostingIntervalMinutes: number;
@@ -244,6 +301,10 @@ interface RSSRuntimeSettings {
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
 const RSS_RUNTIME_RULESET_VERSION = '2026-04-17-runtime-parity-1';
+const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE = 0.8;
+const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS = 2;
+const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS = 3;
+const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_ITEM_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 const RSS_ITEM_RECHECK_BUFFER_MS = 15 * 60 * 1000;
 const RSS_PUBLISH_CLAIM_STALE_MS = 15 * 60 * 1000;
@@ -301,6 +362,9 @@ let activeScheduledRSSRefresh: Promise<{
   isScheduledRun: boolean;
   results: RefreshResult[];
 }> | null = null;
+let cachedRSSEditorialBrainImageStrategyCalibration:
+  | { expiresAt: number; value: RSSEditorialBrainImageStrategyCalibration }
+  | null = null;
 const RSS_SETTINGS_KEYS = [
   'globalRSSPosting',
   'rssDeduplication',
@@ -311,6 +375,9 @@ const RSS_SETTINGS_KEYS = [
   'rssCaptionTemperature',
   'rssCaptionTone',
   'rssCaptionMaxLength',
+  'rssEditorialBrainShadowMode',
+  'rssEditorialBrainImageStrategyPromotion',
+  'rssEditorialBrainModel',
   'rssPostingInterval',
   'dailyQuotaX',
   'dailyQuotaThreads',
@@ -1475,6 +1542,53 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
   return null;
 }
 
+type RSSEditorialBrainLane =
+  | 'core_auto_publish'
+  | 'core_manual_review_spoiler'
+  | 'entertainment_adjacent'
+  | 'blocked_non_core'
+  | 'ignore_completely';
+
+interface RSSEditorialBrainStoredDecision {
+  editorialBrainVersion: string;
+  promptVersion: string;
+  schemaVersion: string;
+  contentHash: string;
+  sourceTrustTier: string;
+  agentModel: string;
+  decisionHash: string;
+  usedFallback: boolean;
+  normalizationNotes: string[];
+  error?: string;
+  rawResponse?: string;
+  currentSystem: {
+    lane: RSSEditorialBrainLane;
+    primary_entity: string;
+    event: string;
+    image_strategy: { mode: RssEditorialBrainDecision['image_strategy']['mode'] };
+    caption_strategy: { mode: RssEditorialBrainDecision['caption_strategy']['mode'] };
+    spoiler_risk: RssEditorialBrainDecision['spoiler_risk'];
+  };
+  decision: RssEditorialBrainDecision;
+  disagreements: string[];
+  review?: RSSEditorialBrainActivityReview;
+}
+
+interface RSSEditorialBrainImageStrategyCalibrationBucket {
+  reviewedCount: number;
+  decisiveCount: number;
+  brainBetterCount: number;
+  deterministicBetterCount: number;
+  bothWrongCount: number;
+  ignoreCount: number;
+  brainBetterRate: number;
+}
+
+interface RSSEditorialBrainImageStrategyCalibration {
+  global: RSSEditorialBrainImageStrategyCalibrationBucket;
+  bySource: Record<string, RSSEditorialBrainImageStrategyCalibrationBucket>;
+}
+
 function classifyRSSEditorialBlockType(
   item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>
 ): RSSEditorialBlockType | null {
@@ -2473,6 +2587,7 @@ function logRSSRuntimeParity(payload: {
   hadStoredSelectedImages: boolean;
   hadStoredImageUrls: boolean;
   finalFailureCodes: string[];
+  editorialBrainPromotedImageStrategy?: string;
 }): void {
   console.log('[RSS][RuntimeParity]', {
     phase: payload.phase,
@@ -2494,6 +2609,7 @@ function logRSSRuntimeParity(payload: {
     cachedSelectionsReused: false,
     hadStoredSelectedImages: payload.hadStoredSelectedImages,
     hadStoredImageUrls: payload.hadStoredImageUrls,
+    editorialBrainPromotedImageStrategy: payload.editorialBrainPromotedImageStrategy || null,
     imageStrategy: payload.resolvedImages.map((image) => ({
       source: image.source,
       reason: image.reason,
@@ -2603,6 +2719,306 @@ function validateRSSFinalPublishState(
     reasonCodes: [...reasonCodes],
     resolvedImages,
   };
+}
+
+function inferRssEditorialBrainLane(canonical: RSSCanonicalEntity): RSSEditorialBrainLane {
+  const flags = new Set(canonical.ambiguityFlags || []);
+  if (flags.has('story_lane_ignore_completely')) return 'ignore_completely';
+  if (flags.has('story_lane_blocked_non_core')) return 'blocked_non_core';
+  if (flags.has('story_lane_entertainment_adjacent')) return 'entertainment_adjacent';
+  if (flags.has('story_lane_core_manual_review_spoiler_safe')) return 'core_manual_review_spoiler';
+  return 'core_auto_publish';
+}
+
+function inferRssEditorialBrainStoryFamily(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  canonical: RSSCanonicalEntity,
+): RssEditorialBrainDecision['story_family'] {
+  const flags = new Set(canonical.ambiguityFlags || []);
+  const text = `${item.title} ${item.description || ''} ${sanitizeRSSPlainText(item.contentHtml || '')}`.toLowerCase();
+  const event = String(canonical.eventType || '').toLowerCase();
+
+  if (flags.has('story_family_person_commentary_on_project')) return 'person_commentary_on_project';
+  if (flags.has('story_lane_core_manual_review_spoiler_safe')) return 'spoiler_sensitive';
+  if (flags.has('article_family_editorial_listicle') || /\bretrospective|forgotten|over \d+ years later|still perfect\b/.test(text)) return 'retrospective';
+  if (/\breview\b/i.test(item.title)) return 'review';
+  if (/\brecap\b/i.test(item.title)) return 'recap';
+  if (flags.has('story_lane_entertainment_adjacent') && /\bcomics?\b/.test(text)) return 'comics_only';
+  if (flags.has('article_family_business_or_platform') || flags.has('story_lane_ignore_completely')) return 'non_target_media_business';
+  if (event === 'obituary') return 'obituary';
+  if (event === 'trailer') return 'trailer';
+  if (event === 'first_look') return 'first_look';
+  if (event === 'renewal') return 'renewal';
+  if (event === 'casting' || event === 'return') return 'casting';
+  if (/\btribute|memorial|honor(?:s|ed)?\b/.test(text)) return 'tribute';
+  if (event === 'development' || event === 'ordered_to_series' || event === 'series_order' || event === 'in_production') return 'project_announcement';
+  if (flags.has('story_lane_entertainment_adjacent') || flags.has('story_lane_blocked_non_core')) return 'editorial_feature';
+  return 'project_news';
+}
+
+function inferRssEditorialBrainPrimaryEntityType(canonical: RSSCanonicalEntity): RssEditorialBrainDecision['primary_entity_type'] {
+  if (canonical.entityType === 'person') return 'person';
+  if (canonical.entityType === 'franchise') return 'franchise';
+  if (canonical.mediaTitle || canonical.entityType === 'movie' || canonical.entityType === 'tv') return 'project';
+  return 'none';
+}
+
+function inferRssEditorialBrainFormat(canonical: RSSCanonicalEntity): RssEditorialBrainDecision['format'] {
+  if (canonical.entityType === 'movie') return 'movie';
+  if (canonical.entityType === 'tv') return 'tv';
+  return 'unknown';
+}
+
+function inferRssEditorialBrainImageMode(canonical: RSSCanonicalEntity): RssEditorialBrainDecision['image_strategy']['mode'] {
+  const flags = new Set(canonical.ambiguityFlags || []);
+  if (flags.has('story_lane_core_manual_review_spoiler_safe')) return 'spoiler_safe_neutral';
+  if (flags.has('story_family_person_commentary_on_project')) return 'dual_person_project';
+  if (flags.has('story_policy_article_image_first') || canonical.eventType === 'first_look') return 'article_image_first';
+  if (flags.has('story_policy_early_project_cast_portraits')) return 'dual_person';
+  if (canonical.entityType === 'person' || canonical.eventType === 'obituary') return 'person_first';
+  return 'project_first';
+}
+
+function inferRssEditorialBrainCaptionMode(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  canonical: RSSCanonicalEntity,
+): RssEditorialBrainDecision['caption_strategy']['mode'] {
+  const flags = new Set(canonical.ambiguityFlags || []);
+  const text = `${item.title} ${item.description || ''} ${sanitizeRSSPlainText(item.contentHtml || '')}`.toLowerCase();
+  if (flags.has('story_lane_core_manual_review_spoiler_safe')) return 'spoiler_safe';
+  if (flags.has('story_family_person_commentary_on_project')) return 'person_commentary';
+  if (canonical.eventType === 'obituary') return 'obituary';
+  if (canonical.eventType === 'trailer') return 'trailer';
+  if (canonical.eventType === 'first_look') return 'first_look';
+  if (/\btribute|memorial|honor(?:s|ed)?\b/.test(text)) return 'tribute';
+  if (canonical.eventType === 'development' || canonical.eventType === 'ordered_to_series' || canonical.eventType === 'series_order' || canonical.eventType === 'in_production') return 'project_announcement';
+  return 'headline_news';
+}
+
+function inferRssEditorialBrainHeadlineTrust(item: Pick<RSSItem, 'title'>, canonical: RSSCanonicalEntity): RssEditorialBrainDecision['headline_trust'] {
+  const flags = new Set(canonical.ambiguityFlags || []);
+  const title = item.title || '';
+  if (
+    flags.has('body_title_recovery_required')
+    || flags.has('quote_led_headline_junk')
+    || flags.has('canonical_project_weak')
+    || /\bexclusive\b|\bfirst look\b|\bcreator[s]?\b|\bdirector\b|\bactor\b/i.test(title)
+  ) {
+    return 'low';
+  }
+  if (/\btrailer\b|\brenewed\b|\bcast\b|\bjoins?\b|\bordered to series\b/i.test(title)) {
+    return 'high';
+  }
+  return 'medium';
+}
+
+function getRssEditorialBrainSourceTrustTier(sourceName: string): string {
+  const normalized = sourceName.trim().toLowerCase();
+  if (['deadline', 'variety', 'the hollywood reporter', 'hollywood reporter', 'thr', 'entertainment weekly', 'ew'].includes(normalized)) {
+    return 'tier_1_trade';
+  }
+  if (['tvline', 'indiewire', 'slashfilm', 'thewrap', 'wrap'].includes(normalized)) {
+    return 'tier_2_editorial';
+  }
+  if (['comicbook', 'screenrant'].includes(normalized)) {
+    return 'tier_3_noisy';
+  }
+  return 'tier_2_general';
+}
+
+function buildRssEditorialBrainFallbackDecision(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  canonical: RSSCanonicalEntity,
+  sourceName: string,
+): RssEditorialBrainDecision {
+  const lane = inferRssEditorialBrainLane(canonical);
+  const storyFamily = inferRssEditorialBrainStoryFamily(item, canonical);
+  const primaryEntityType = inferRssEditorialBrainPrimaryEntityType(canonical);
+  const primaryEntity =
+    primaryEntityType === 'person'
+      ? (canonical.primarySubject || '')
+      : primaryEntityType === 'franchise'
+        ? (canonical.franchise || canonical.primarySubject || '')
+        : (canonical.mediaTitle || canonical.primarySubject || canonical.franchise || '');
+  const imageMode = inferRssEditorialBrainImageMode(canonical);
+  const captionMode = inferRssEditorialBrainCaptionMode(item, canonical);
+  const bodyText = sanitizeRSSPlainText(item.contentHtml || '');
+  const currentTitleOverDevelopmentTitle = !/\binitially titled\b|\bformerly titled\b|\bworking title\b/i.test(bodyText);
+  const spoilerRisk = canonical.spoilerLevel || (lane === 'core_manual_review_spoiler' ? 'medium' : 'none');
+
+  return {
+    lane,
+    story_family: storyFamily,
+    primary_entity_type: primaryEntityType,
+    primary_entity: primaryEntity,
+    secondary_entities: [canonical.secondarySubject, ...(canonical.namedPeople || [])].filter(Boolean) as string[],
+    canonical_aliases: [canonical.mediaTitle, canonical.primarySubject, canonical.franchise].filter(Boolean) as string[],
+    current_title_over_development_title: currentTitleOverDevelopmentTitle,
+    development_title_aliases: [],
+    format: inferRssEditorialBrainFormat(canonical),
+    event: normalizeRssEditorialBrainEvent(canonical.eventType || 'other'),
+    headline_trust: inferRssEditorialBrainHeadlineTrust(item, canonical),
+    body_recovery_required: Boolean((canonical.ambiguityFlags || []).includes('body_title_recovery_required')),
+    spoiler_risk: spoilerRisk,
+    manual_review_reason: lane === 'core_manual_review_spoiler' ? 'spoiler-sensitive story requires manual review' : '',
+    image_strategy: {
+      mode: imageMode,
+      primary_preference: imageMode === 'article_image_first'
+        ? ['article hero image', 'inline reveal still', 'TMDb fallback']
+        : imageMode === 'dual_person'
+          ? ['lead cast portrait A', 'lead cast portrait B', 'article hero image']
+          : imageMode === 'dual_person_project'
+            ? ['speaker portrait', 'project still', 'referenced person portrait']
+            : imageMode === 'spoiler_safe_neutral'
+              ? ['neutral project still', 'backdrop', 'logo']
+              : imageMode === 'person_first'
+                ? ['person portrait', 'project still', 'project logo']
+                : ['backdrop still', 'scene still', 'poster'],
+      secondary_preference: imageMode === 'project_first'
+        ? ['person portrait', 'logo']
+        : imageMode === 'person_first'
+          ? ['project still', 'project logo']
+          : ['project still', 'person portrait'],
+      avoid: lane === 'core_manual_review_spoiler'
+        ? ['spoiler reveal frame']
+        : ['wrapper headline phrasing'],
+    },
+    caption_strategy: {
+      mode: captionMode,
+      lead_subject: primaryEntity,
+      must_name: [primaryEntity, canonical.secondarySubject].filter(Boolean) as string[],
+      must_not_use: ['This article', 'This piece', 'This review', 'This recap', '[...]'],
+      must_not_spoil: lane === 'core_manual_review_spoiler',
+    },
+    caption_facts: {
+      headline_fact: item.title,
+      supporting_fact: (item.description || '').replace(/\s+/g, ' ').trim().slice(0, 220),
+      quote: '',
+      bullets: [],
+    },
+    evidence: {
+      body_titles: [canonical.mediaTitle, canonical.franchise].filter(Boolean) as string[],
+      people: canonical.namedPeople || [],
+      projects: [canonical.mediaTitle, canonical.primarySubject, canonical.secondarySubject, canonical.franchise].filter(Boolean) as string[],
+      networks_platforms: [],
+      years: Array.from(new Set((bodyText.match(/\b(?:19|20)\d{2}\b/g) || []).slice(0, 6))),
+      quotes: [],
+    },
+    confidence: Math.max(0.35, canonical.confidence || 0.55),
+    notes: `Deterministic fallback projection for ${sourceName}.`,
+  };
+}
+
+function buildRssEditorialBrainComparisonSummary(decision: RssEditorialBrainDecision): RSSEditorialBrainStoredDecision['currentSystem'] {
+  return {
+    lane: decision.lane,
+    primary_entity: decision.primary_entity,
+    event: decision.event,
+    image_strategy: { mode: decision.image_strategy.mode },
+    caption_strategy: { mode: decision.caption_strategy.mode },
+    spoiler_risk: decision.spoiler_risk,
+  };
+}
+
+async function prepareRssEditorialBrainShadow(
+  feedName: string,
+  item: RSSItem,
+  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainShadowMode' | 'rssEditorialBrainImageStrategyPromotion' | 'rssEditorialBrainModel'>,
+  canonical: RSSCanonicalEntity,
+  options?: { force?: boolean },
+): Promise<RSSEditorialBrainStoredDecision | undefined> {
+  if (
+    !runtimeSettings.rssEditorialBrainShadowMode &&
+    !runtimeSettings.rssEditorialBrainImageStrategyPromotion &&
+    !options?.force
+  ) {
+    return item.editorialBrain;
+  }
+
+  const { extractedQuotes, articleImages } = extractRssEditorialBrainSignals(item.contentHtml);
+  const sourceTrustTier = getRssEditorialBrainSourceTrustTier(feedName);
+  const fallbackDecision = buildRssEditorialBrainFallbackDecision(item, canonical, feedName);
+  const input = {
+    source: feedName,
+    url: item.link,
+    headline: item.title,
+    summary: sanitizeRSSPlainText(item.description || ''),
+    bodyText: sanitizeRSSPlainText(item.contentHtml || ''),
+    extractedQuotes,
+    articleImages: Array.from(new Set([...(item.imageUrls || []), item.imageUrl, ...articleImages].filter(Boolean) as string[])).slice(0, 12),
+    sourceTrustTier,
+    currentDateTime: new Date().toISOString(),
+  };
+  const contentHash = buildRssEditorialBrainContentHash(input);
+  const expectedModel = normalizeAIModel(runtimeSettings.rssEditorialBrainModel || DEFAULT_RSS_EDITORIAL_BRAIN_MODEL, DEFAULT_RSS_EDITORIAL_BRAIN_MODEL);
+  const existing = item.editorialBrain;
+
+  if (
+    existing &&
+    existing.editorialBrainVersion === RSS_EDITORIAL_BRAIN_VERSION &&
+    existing.promptVersion === RSS_EDITORIAL_BRAIN_PROMPT_VERSION &&
+    existing.schemaVersion === RSS_EDITORIAL_BRAIN_SCHEMA_VERSION &&
+    existing.contentHash === contentHash &&
+    normalizeAIModel(existing.agentModel, expectedModel) === expectedModel
+  ) {
+    console.log('[RSS][EditorialBrain][Shadow]', {
+      feedName,
+      title: item.title,
+      cached: true,
+      contentHash,
+      model: existing.agentModel,
+      disagreements: existing.disagreements,
+      usedFallback: existing.usedFallback,
+    });
+    return existing;
+  }
+
+  const result = await runRssEditorialBrain(input, {
+    model: expectedModel,
+    enabled:
+      runtimeSettings.rssEditorialBrainShadowMode ||
+      runtimeSettings.rssEditorialBrainImageStrategyPromotion ||
+      Boolean(options?.force),
+    fallbackDecision,
+  });
+  const currentSystem = buildRssEditorialBrainComparisonSummary(fallbackDecision);
+  const disagreements = computeRssEditorialBrainDisagreements(currentSystem, result.decision);
+  const record: RSSEditorialBrainStoredDecision = {
+    editorialBrainVersion: result.editorialBrainVersion,
+    promptVersion: result.promptVersion,
+    schemaVersion: result.schemaVersion,
+    contentHash: result.contentHash,
+    sourceTrustTier,
+    agentModel: result.agentModel,
+    decisionHash: result.decisionHash,
+    usedFallback: result.usedFallback,
+    normalizationNotes: result.normalizationNotes,
+    error: result.error,
+    rawResponse: result.rawResponse,
+    currentSystem,
+    decision: result.decision,
+    disagreements,
+  };
+  item.editorialBrain = record;
+
+  console.log('[RSS][EditorialBrain][Shadow]', {
+    feedName,
+    title: item.title,
+    cached: false,
+    contentHash,
+    model: record.agentModel,
+    usedFallback: record.usedFallback,
+    disagreements: record.disagreements,
+    lane: record.decision.lane,
+    primaryEntity: record.decision.primary_entity,
+    storyFamily: record.decision.story_family,
+    event: record.decision.event,
+    imageStrategy: record.decision.image_strategy.mode,
+    captionStrategy: record.decision.caption_strategy.mode,
+    confidence: record.decision.confidence,
+  });
+
+  return record;
 }
 
 function withStoredImageSourceSettings(
@@ -4128,6 +4544,7 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     generatedCaption: item.generatedCaption ?? null,
     captionGenerationPath: item.captionGenerationPath ?? null,
     captionGenerationVersion: item.captionGenerationVersion ?? null,
+    editorialBrain: item.editorialBrain ?? null,
     platformPostIds: item.platformPostIds ?? null,
     platformResults: item.platformResults?.map((result) => ({
       platform: result.platform,
@@ -4207,6 +4624,9 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
         ? value.captionGenerationPath
         : undefined,
     captionGenerationVersion: typeof value.captionGenerationVersion === 'string' ? value.captionGenerationVersion : undefined,
+    editorialBrain: value.editorialBrain && typeof value.editorialBrain === 'object' && !Array.isArray(value.editorialBrain)
+      ? value.editorialBrain as RSSEditorialBrainStoredDecision
+      : undefined,
     platformPostIds: value.platformPostIds && typeof value.platformPostIds === 'object' && !Array.isArray(value.platformPostIds)
       ? Object.fromEntries(
           Object.entries(value.platformPostIds as Record<string, unknown>)
@@ -4578,6 +4998,18 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
     rssCaptionTemperature: asNumber(settingsMap.get('rssCaptionTemperature')),
     rssCaptionTone: asString(settingsMap.get('rssCaptionTone')) || 'Engaging',
     rssCaptionMaxLength: Math.max(50, savedCaptionMaxLength ?? defaultCaptionMaxLength),
+    rssEditorialBrainShadowMode:
+      asBoolean(settingsMap.get('rssEditorialBrainShadowMode'), false)
+      || process.env.RSS_EDITORIAL_BRAIN_SHADOW_MODE === '1'
+      || process.env.RSS_EDITORIAL_BRAIN_SHADOW_MODE?.toLowerCase() === 'true',
+    rssEditorialBrainImageStrategyPromotion:
+      asBoolean(settingsMap.get('rssEditorialBrainImageStrategyPromotion'), false)
+      || process.env.RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION === '1'
+      || process.env.RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION?.toLowerCase() === 'true',
+    rssEditorialBrainModel:
+      asString(settingsMap.get('rssEditorialBrainModel'))
+      || process.env.RSS_EDITORIAL_BRAIN_MODEL
+      || DEFAULT_RSS_EDITORIAL_BRAIN_MODEL,
     rssPostingIntervalMinutes: (() => {
       const configuredValue = asNumber(settingsMap.get('rssPostingInterval'), 10);
       if (configuredValue === undefined || configuredValue === null || Number.isNaN(configuredValue)) {
@@ -4688,6 +5120,354 @@ function parseRSSActivityPlatformResults(value: Prisma.JsonValue | undefined): P
   return results.length > 0 ? results : undefined;
 }
 
+function normalizeRSSEditorialBrainReviewInput(
+  value: unknown,
+  options: { now?: Date } = {}
+): RSSEditorialBrainActivityReview | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const outcome = record.outcome;
+  if (
+    outcome !== 'brain_better'
+    && outcome !== 'deterministic_better'
+    && outcome !== 'both_wrong'
+    && outcome !== 'ignore'
+  ) {
+    return undefined;
+  }
+
+  const reviewedAt = typeof record.reviewedAt === 'string' && record.reviewedAt.trim().length > 0
+    ? record.reviewedAt.trim()
+    : (options.now || new Date()).toISOString();
+  const notes = typeof record.notes === 'string' && record.notes.trim().length > 0
+    ? record.notes.trim().slice(0, 500)
+    : undefined;
+
+  return {
+    outcome,
+    reviewedAt,
+    notes,
+  };
+}
+
+function buildRSSEditorialBrainActivityView(
+  item: Pick<RSSItem, 'editorialBrain'> | undefined
+): RSSEditorialBrainActivityView | undefined {
+  const stored = item?.editorialBrain;
+  if (!stored) {
+    return undefined;
+  }
+
+  return {
+    sourceTrustTier: stored.sourceTrustTier,
+    agentModel: stored.agentModel,
+    contentHash: stored.contentHash,
+    usedFallback: stored.usedFallback,
+    disagreements: Array.isArray(stored.disagreements) ? [...stored.disagreements] : [],
+    currentSystem: {
+      lane: stored.currentSystem.lane,
+      canonical: stored.currentSystem.primary_entity,
+      event: stored.currentSystem.event,
+      imageStrategy: stored.currentSystem.image_strategy?.mode || 'project_first',
+      captionStrategy: stored.currentSystem.caption_strategy?.mode || 'headline_news',
+      spoilerRisk: stored.currentSystem.spoiler_risk,
+    },
+    decision: {
+      lane: stored.decision.lane,
+      canonical: stored.decision.primary_entity,
+      storyFamily: stored.decision.story_family,
+      event: stored.decision.event,
+      imageStrategy: stored.decision.image_strategy?.mode || 'project_first',
+      captionStrategy: stored.decision.caption_strategy?.mode || 'headline_news',
+      spoilerRisk: stored.decision.spoiler_risk,
+      confidence: stored.decision.confidence,
+    },
+    review: normalizeRSSEditorialBrainReviewInput(stored.review),
+  };
+}
+
+function applyRSSEditorialBrainReviewToItem(
+  item: RSSItem,
+  review: unknown,
+  options: { now?: Date } = {}
+): RSSItem {
+  if (!item.editorialBrain) {
+    throw new Error('RSS item has no editorial brain decision to review.');
+  }
+
+  const normalizedReview = normalizeRSSEditorialBrainReviewInput(review, options);
+  if (!normalizedReview) {
+    throw new Error('Invalid editorial brain review payload.');
+  }
+
+  return {
+    ...item,
+    editorialBrain: {
+      ...item.editorialBrain,
+      review: normalizedReview,
+    },
+  };
+}
+
+function createEmptyRSSEditorialBrainImageStrategyCalibrationBucket(): RSSEditorialBrainImageStrategyCalibrationBucket {
+  return {
+    reviewedCount: 0,
+    decisiveCount: 0,
+    brainBetterCount: 0,
+    deterministicBetterCount: 0,
+    bothWrongCount: 0,
+    ignoreCount: 0,
+    brainBetterRate: 0,
+  };
+}
+
+function finalizeRSSEditorialBrainImageStrategyCalibrationBucket(
+  bucket: RSSEditorialBrainImageStrategyCalibrationBucket
+): RSSEditorialBrainImageStrategyCalibrationBucket {
+  const decisiveCount =
+    bucket.brainBetterCount +
+    bucket.deterministicBetterCount +
+    bucket.bothWrongCount;
+
+  return {
+    ...bucket,
+    decisiveCount,
+    brainBetterRate: decisiveCount > 0
+      ? bucket.brainBetterCount / decisiveCount
+      : 0,
+  };
+}
+
+function normalizeRSSEditorialBrainCalibrationSourceName(sourceName: string): string {
+  return sanitizeRSSPlainText(sourceName || '').trim().toLowerCase();
+}
+
+function buildRSSEditorialBrainImageStrategyCalibration(
+  entries: Array<{
+    sourceName: string;
+    disagreements?: string[];
+    review?: Pick<RSSEditorialBrainActivityReview, 'outcome'> | null;
+  }>
+): RSSEditorialBrainImageStrategyCalibration {
+  const globalBucket = createEmptyRSSEditorialBrainImageStrategyCalibrationBucket();
+  const bySourceBuckets = new Map<string, RSSEditorialBrainImageStrategyCalibrationBucket>();
+
+  for (const entry of entries) {
+    const sourceName = normalizeRSSEditorialBrainCalibrationSourceName(entry.sourceName);
+    const disagreements = Array.isArray(entry.disagreements) ? entry.disagreements : [];
+    const outcome = entry.review?.outcome;
+    if (!sourceName || !disagreements.includes('image_strategy_disagreement')) {
+      continue;
+    }
+    if (
+      outcome !== 'brain_better' &&
+      outcome !== 'deterministic_better' &&
+      outcome !== 'both_wrong' &&
+      outcome !== 'ignore'
+    ) {
+      continue;
+    }
+
+    const sourceBucket = bySourceBuckets.get(sourceName) || createEmptyRSSEditorialBrainImageStrategyCalibrationBucket();
+    sourceBucket.reviewedCount += 1;
+    globalBucket.reviewedCount += 1;
+
+    switch (outcome) {
+      case 'brain_better':
+        sourceBucket.brainBetterCount += 1;
+        globalBucket.brainBetterCount += 1;
+        break;
+      case 'deterministic_better':
+        sourceBucket.deterministicBetterCount += 1;
+        globalBucket.deterministicBetterCount += 1;
+        break;
+      case 'both_wrong':
+        sourceBucket.bothWrongCount += 1;
+        globalBucket.bothWrongCount += 1;
+        break;
+      case 'ignore':
+        sourceBucket.ignoreCount += 1;
+        globalBucket.ignoreCount += 1;
+        break;
+    }
+
+    bySourceBuckets.set(sourceName, sourceBucket);
+  }
+
+  return {
+    global: finalizeRSSEditorialBrainImageStrategyCalibrationBucket(globalBucket),
+    bySource: Object.fromEntries(
+      Array.from(bySourceBuckets.entries()).map(([sourceName, bucket]) => [
+        sourceName,
+        finalizeRSSEditorialBrainImageStrategyCalibrationBucket(bucket),
+      ])
+    ),
+  };
+}
+
+function isRSSEditorialBrainImageStrategyPromotionSafeBucket(
+  bucket: RSSEditorialBrainImageStrategyCalibrationBucket | undefined,
+  minimumDecisiveReviews: number
+): boolean {
+  if (!bucket) {
+    return false;
+  }
+
+  return bucket.decisiveCount >= minimumDecisiveReviews &&
+    bucket.brainBetterCount >= minimumDecisiveReviews &&
+    bucket.deterministicBetterCount === 0 &&
+    bucket.brainBetterRate >= 0.75;
+}
+
+async function getRSSEditorialBrainImageStrategyCalibration(): Promise<RSSEditorialBrainImageStrategyCalibration> {
+  const cached = cachedRSSEditorialBrainImageStrategyCalibration;
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const records = await prisma.rSSFeedItem.findMany({
+    orderBy: { updatedAt: 'desc' },
+    take: 1500,
+    select: {
+      itemData: true,
+      feed: { select: { name: true } },
+    },
+  });
+
+  const calibration = buildRSSEditorialBrainImageStrategyCalibration(
+    records.map((record) => {
+      const item = deserializeRSSItem(record.itemData);
+      return {
+        sourceName: record.feed.name,
+        disagreements: item?.editorialBrain?.disagreements,
+        review: item?.editorialBrain?.review,
+      };
+    })
+  );
+
+  cachedRSSEditorialBrainImageStrategyCalibration = {
+    expiresAt: Date.now() + RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_CACHE_TTL_MS,
+    value: calibration,
+  };
+
+  return calibration;
+}
+
+function selectRSSEditorialBrainPromotedImageStrategy(
+  sourceName: string,
+  stored: Pick<RSSEditorialBrainStoredDecision, 'usedFallback' | 'disagreements' | 'currentSystem' | 'decision' | 'review'> | undefined,
+  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainImageStrategyPromotion'>,
+  calibration: RSSEditorialBrainImageStrategyCalibration
+): RssEditorialBrainDecision['image_strategy']['mode'] | undefined {
+  if (!runtimeSettings.rssEditorialBrainImageStrategyPromotion || !stored || stored.usedFallback) {
+    return undefined;
+  }
+
+  const disagreements = new Set(stored.disagreements || []);
+  if (!disagreements.has('image_strategy_disagreement')) {
+    return undefined;
+  }
+
+  if (
+    disagreements.has('lane_disagreement') ||
+    disagreements.has('canonical_disagreement') ||
+    disagreements.has('spoiler_risk_disagreement')
+  ) {
+    return undefined;
+  }
+
+  if ((stored.review?.outcome === 'deterministic_better') || (stored.review?.outcome === 'both_wrong')) {
+    return undefined;
+  }
+
+  if ((stored.decision.confidence || 0) < RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE) {
+    return undefined;
+  }
+
+  const sourceBucket = calibration.bySource[normalizeRSSEditorialBrainCalibrationSourceName(sourceName)];
+  if (!isRSSEditorialBrainImageStrategyPromotionSafeBucket(sourceBucket, RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS)) {
+    return undefined;
+  }
+
+  const globalBucket = calibration.global;
+  if (
+    globalBucket.decisiveCount < RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS ||
+    globalBucket.brainBetterCount <= globalBucket.deterministicBetterCount ||
+    globalBucket.brainBetterRate < 0.6
+  ) {
+    return undefined;
+  }
+
+  return stored.decision.image_strategy?.mode;
+}
+
+function applyRSSEditorialBrainImageStrategyPromotion(
+  canonicalEntity: RSSCanonicalEntity,
+  mode: RssEditorialBrainDecision['image_strategy']['mode']
+): RSSCanonicalEntity {
+  const nextFlags = new Set(canonicalEntity.ambiguityFlags || []);
+  nextFlags.add('editorial_brain_image_strategy_promoted');
+  nextFlags.add(`editorial_brain_image_strategy_${mode}`);
+
+  switch (mode) {
+    case 'article_image_first':
+      nextFlags.add('story_policy_article_image_first');
+      break;
+    case 'dual_person':
+      nextFlags.add('story_policy_early_project_cast_portraits');
+      break;
+    case 'dual_person_project':
+      nextFlags.add('story_family_person_commentary_on_project');
+      break;
+    case 'project_first':
+      nextFlags.add('story_policy_force_project_first_image');
+      break;
+    case 'person_first':
+      nextFlags.add('editorial_brain_image_strategy_person_first');
+      break;
+    case 'spoiler_safe_neutral':
+      nextFlags.add('editorial_brain_image_strategy_spoiler_safe_neutral');
+      break;
+  }
+
+  return {
+    ...canonicalEntity,
+    ambiguityFlags: Array.from(nextFlags),
+  };
+}
+
+function applyRSSEditorialBrainImageStrategyPromotionToItem(
+  item: RSSItem,
+  mode: RssEditorialBrainDecision['image_strategy']['mode']
+): RSSItem {
+  const canonicalEntity = ensureRSSCanonicalEntity(item);
+  return {
+    ...item,
+    canonicalEntity: applyRSSEditorialBrainImageStrategyPromotion(canonicalEntity, mode),
+  };
+}
+
+async function getRSSEditorialBrainPromotedImageStrategyForItem(
+  sourceName: string,
+  item: RSSItem,
+  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainImageStrategyPromotion'>
+): Promise<RssEditorialBrainDecision['image_strategy']['mode'] | undefined> {
+  if (!runtimeSettings.rssEditorialBrainImageStrategyPromotion) {
+    return undefined;
+  }
+
+  const calibration = await getRSSEditorialBrainImageStrategyCalibration();
+  return selectRSSEditorialBrainPromotedImageStrategy(
+    sourceName,
+    item.editorialBrain,
+    runtimeSettings,
+    calibration
+  );
+}
+
 function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prisma.JsonValue | null }): RSSActivityItem | null {
   const metadata = log.metadata as Prisma.JsonObject | null;
   if (!metadata || metadata.category !== RSS_ACTIVITY_CATEGORY) {
@@ -4761,6 +5541,9 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
           .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
           .map((entry) => entry.trim())
       : undefined,
+    editorialBrain: metadata.editorialBrain && typeof metadata.editorialBrain === 'object' && !Array.isArray(metadata.editorialBrain)
+      ? metadata.editorialBrain as unknown as RSSEditorialBrainActivityView
+      : undefined,
     error: typeof metadata.errorMessage === 'string' ? metadata.errorMessage : undefined,
   };
 }
@@ -4822,6 +5605,7 @@ function buildRSSActivityItemFromFeedRecord(record: {
     duplicateEventKey: undefined,
     winningSource: undefined,
     suppressedSources: undefined,
+    editorialBrain: buildRSSEditorialBrainActivityView(item || undefined),
     error: record.errorMessage || undefined,
   };
 }
@@ -5181,6 +5965,11 @@ async function attemptRSSPublish(
   try {
     const canonicalState = getRSSCanonicalEntityRuntimeState(item);
     const canonicalEntity = canonicalState.canonicalEntity;
+    await prepareRssEditorialBrainShadow(feed.name, item, runtimeSettings, canonicalEntity);
+    const promotedImageStrategy = await getRSSEditorialBrainPromotedImageStrategyForItem(feed.name, item, runtimeSettings);
+    const imageResolutionItem = promotedImageStrategy
+      ? applyRSSEditorialBrainImageStrategyPromotionToItem(item, promotedImageStrategy)
+      : item;
     const previousPlatformPostIds = item.platformPostIds || {};
     const previousPlatformResults = item.platformResults || [];
     const remainingPlatforms = platforms.filter((platform) => !previousPlatformPostIds[platform]);
@@ -5206,7 +5995,7 @@ async function attemptRSSPublish(
 
     const publishImages = await resolveRSSItemImages(
       feed,
-      item,
+      imageResolutionItem,
       imagePlan.maxImageCount,
       runtimeSettings
     );
@@ -5227,6 +6016,7 @@ async function attemptRSSPublish(
         hadStoredSelectedImages,
         hadStoredImageUrls,
         finalFailureCodes: ['IMAGE_NOT_RESOLVED_RUNTIME'],
+        editorialBrainPromotedImageStrategy: promotedImageStrategy,
       });
       return {
         status: 'failed',
@@ -5302,6 +6092,7 @@ async function attemptRSSPublish(
         hadStoredSelectedImages,
         hadStoredImageUrls,
         finalFailureCodes: publishValidation.reasonCodes,
+        editorialBrainPromotedImageStrategy: promotedImageStrategy,
       });
       return {
         status: 'failed',
@@ -5330,6 +6121,7 @@ async function attemptRSSPublish(
       hadStoredSelectedImages,
       hadStoredImageUrls,
       finalFailureCodes: [],
+      editorialBrainPromotedImageStrategy: promotedImageStrategy,
     });
 
     console.log('[RSS][Publish] Starting platform publish batch', {
@@ -6980,6 +7772,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
 
   const runtimeSettings = await getRuntimeSettings();
   previewItem.canonicalEntity = ensureRSSCanonicalEntity(previewItem);
+  await prepareRssEditorialBrainShadow(feed.name, previewItem, runtimeSettings, previewItem.canonicalEntity);
   const speculationAssessment = assessRSSArticleSpeculation(previewItem);
   if (speculationAssessment.shouldSkipPublish) {
     const message = buildRSSSpeculationFilterReason(speculationAssessment);
@@ -6995,9 +7788,12 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
   }
   const platforms = getEnabledPlatforms(feed.platformsEnabled as Record<string, boolean> | null);
   const imagePlan = getRSSPublishImagePlan(feed, platforms);
+  const promotedImageStrategy = await getRSSEditorialBrainPromotedImageStrategyForItem(feed.name, previewItem, runtimeSettings);
   const resolvedImages = await resolveRSSItemImages(
     feed as any,
-    previewItem,
+    promotedImageStrategy
+      ? applyRSSEditorialBrainImageStrategyPromotionToItem(previewItem, promotedImageStrategy)
+      : previewItem,
     imagePlan.maxImageCount,
     runtimeSettings
   );
@@ -7171,6 +7967,55 @@ async function deleteRSSActivity(id: string): Promise<void> {
   await prisma.log.delete({
     where: { id },
   });
+}
+
+async function saveRSSEditorialBrainReview(
+  id: string,
+  review: {
+    outcome: RSSEditorialBrainReviewOutcome;
+    notes?: string;
+  }
+): Promise<RSSActivityItem> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    throw new Error('Editorial brain review is not available in this build.');
+  }
+
+  const record = await prisma.rSSFeedItem.findUnique({
+    where: { id },
+    include: {
+      feed: {
+        select: {
+          id: true,
+          name: true,
+          platformsEnabled: true,
+        },
+      },
+    },
+  });
+
+  if (!record?.feed) {
+    throw new Error('RSS activity item not found.');
+  }
+
+  const item = deserializeRSSItem(record.itemData);
+  if (!item) {
+    throw new Error('RSS activity item is missing its stored publish payload.');
+  }
+
+  const updatedItem = applyRSSEditorialBrainReviewToItem(item, review);
+  await prisma.rSSFeedItem.update({
+    where: { id },
+    data: {
+      itemData: serializeRSSItem(updatedItem),
+    },
+  });
+  cachedRSSEditorialBrainImageStrategyCalibration = null;
+
+  return resolveRSSActivityItemImages(buildRSSActivityItemFromFeedRecord({
+    ...record,
+    itemData: serializeRSSItem(updatedItem),
+  }));
 }
 
 async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
@@ -7472,6 +8317,7 @@ export {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  saveRSSEditorialBrainReview,
   reorderFeeds,
 };
 
@@ -7489,6 +8335,7 @@ export default {
   getRSSActivity,
   retryRSSActivity,
   deleteRSSActivity,
+  saveRSSEditorialBrainReview,
   reorderFeeds,
 };
 
@@ -7522,6 +8369,12 @@ export const __rssAuditTestUtils = {
   validateRSSFinalPublishState,
   buildRSSCaptionAllowedEntities,
   buildRSSCaptionVisualContext,
+  buildRssEditorialBrainFallbackDecision,
+  buildRSSEditorialBrainActivityView,
+  applyRSSEditorialBrainReviewToItem,
+  buildRSSEditorialBrainImageStrategyCalibration,
+  selectRSSEditorialBrainPromotedImageStrategy,
+  applyRSSEditorialBrainImageStrategyPromotion,
   canReuseStoredRSSCaption,
   getRSSCanonicalEntityRuntimeState,
   buildRSSNewsEventFingerprint,

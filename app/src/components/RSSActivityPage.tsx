@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-re
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
-import { useRSSFeeds, RSSActivityItem } from '../contexts/RSSFeedsContext';
+import { useRSSFeeds, RSSActivityItem, RSSEditorialBrainReviewOutcome } from '../contexts/RSSFeedsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { useSettings } from '../contexts/SettingsContext';
 import { apiClient } from '../lib/api/client';
@@ -23,6 +23,14 @@ import {
   type RSSActivityDerivedStatus,
   type RSSDerivedPlatformState,
 } from '../lib/rss/activityStatus';
+import {
+  buildEditorialBrainCalibrationSummary,
+  buildEditorialBrainReviewExportRows,
+  compareEditorialBrainReviewPriority,
+  matchesEditorialBrainReviewFilters,
+  type EditorialBrainReviewFilters,
+} from '../lib/rss/editorialBrainReview';
+import { RSSEditorialBrainReviewPanel } from './rss/RSSEditorialBrainReviewPanel';
 
 interface RSSActivityPageProps {
   onNavigate: (page: string) => void;
@@ -83,6 +91,31 @@ function buildActivitySummary(items: RSSActivityItem[]) {
   };
 }
 
+function downloadTextFile(content: string, fileName: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(objectUrl);
+}
+
+function toCsv(rows: Array<Record<string, string>>): string {
+  if (rows.length === 0) {
+    return '';
+  }
+
+  const headers = Object.keys(rows[0]);
+  const escape = (value: string) => `"${String(value || '').replace(/"/g, '""')}"`;
+  return [
+    headers.join(','),
+    ...rows.map((row) => headers.map((header) => escape(row[header] || '')).join(',')),
+  ].join('\n');
+}
+
 interface RSSActivityViewModel {
   item: RSSActivityItem;
   derivedStatus: RSSActivityDerivedStatus;
@@ -98,9 +131,17 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
+  const [savingReviewItemId, setSavingReviewItemId] = useState<string | null>(null);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const [brainFilters, setBrainFilters] = useState<EditorialBrainReviewFilters>({
+    source: 'all',
+    disagreement: 'all',
+    reviewed: 'all',
+    confidence: 'all',
+    publishOutcome: 'all',
+  });
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const loadActivity = async () => {
@@ -183,12 +224,51 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     return true;
   });
 
-  const filteredItems = logLevelItems.filter(({ derivedStatus }) => {
-    if (filter === 'failures') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
-    if (filter === 'published') return derivedStatus === 'published';
-    if (filter === 'pending') return derivedStatus === 'publishing' || derivedStatus === 'scheduled';
-    return true;
-  });
+  const editorialBrainSourceOptions = useMemo(() => (
+    Array.from(new Set(
+      logLevelItems
+        .filter(({ item }) => item.editorialBrain)
+        .map(({ item }) => item.feedName.trim())
+        .filter(Boolean)
+    )).sort((left, right) => left.localeCompare(right))
+  ), [logLevelItems]);
+
+  const editorialBrainDisagreementOptions = useMemo(() => (
+    Array.from(new Set(
+      logLevelItems.flatMap(({ item }) => item.editorialBrain?.disagreements || [])
+    )).sort((left, right) => left.localeCompare(right))
+  ), [logLevelItems]);
+
+  const calibrationSummary = useMemo(() => (
+    buildEditorialBrainCalibrationSummary(logLevelItems.map(({ item }) => item))
+  ), [logLevelItems]);
+
+  const filteredItems = useMemo(() => {
+    const shouldPrioritizeReview = Boolean(
+      (brainFilters.source && brainFilters.source !== 'all')
+      || (brainFilters.disagreement && brainFilters.disagreement !== 'all')
+      || (brainFilters.reviewed && brainFilters.reviewed !== 'all')
+      || (brainFilters.confidence && brainFilters.confidence !== 'all')
+      || (brainFilters.publishOutcome && brainFilters.publishOutcome !== 'all')
+    );
+    const byPrimaryFilter = logLevelItems.filter(({ derivedStatus }) => {
+      if (filter === 'failures') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
+      if (filter === 'published') return derivedStatus === 'published';
+      if (filter === 'pending') return derivedStatus === 'publishing' || derivedStatus === 'scheduled';
+      return true;
+    });
+
+    const byBrainFilters = byPrimaryFilter.filter(({ item }) => matchesEditorialBrainReviewFilters(item, brainFilters));
+    return [...byBrainFilters].sort((left, right) => {
+      if (shouldPrioritizeReview) {
+        const reviewPriority = compareEditorialBrainReviewPriority(left.item, right.item);
+        if (reviewPriority !== 0) {
+          return reviewPriority;
+        }
+      }
+      return new Date(right.item.timestamp).getTime() - new Date(left.item.timestamp).getTime();
+    });
+  }, [brainFilters, filter, logLevelItems]);
   const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const summary = {
@@ -354,6 +434,49 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     toast.success('RSS activity refreshed');
   };
 
+  const handleEditorialBrainReview = async (
+    activityId: string,
+    outcome: RSSEditorialBrainReviewOutcome
+  ) => {
+    setSavingReviewItemId(activityId);
+    try {
+      const response = await apiClient.post<RSSActivityItem>(`/api/rss/activity/${activityId}/editorial-brain-review`, {
+        outcome,
+      });
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to save review');
+      }
+
+      setItems((prev) => {
+        const next = prev.map((item) => item.id === activityId ? response.data! : item);
+        void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
+        return next;
+      });
+      toast.success('Editorial brain review saved');
+    } catch (error) {
+      console.error('Failed to save editorial brain review:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save editorial brain review');
+    } finally {
+      setSavingReviewItemId(null);
+    }
+  };
+
+  const handleExportEditorialBrainReview = (format: 'json' | 'csv') => {
+    const rows = buildEditorialBrainReviewExportRows(filteredItems.map(({ item }) => item));
+    if (rows.length === 0) {
+      toast.error('No editorial brain review rows to export');
+      return;
+    }
+
+    const stamp = new Date().toISOString().slice(0, 10);
+    if (format === 'json') {
+      downloadTextFile(JSON.stringify(rows, null, 2), `rss-editorial-brain-review-${stamp}.json`, 'application/json');
+    } else {
+      downloadTextFile(toCsv(rows), `rss-editorial-brain-review-${stamp}.csv`, 'text/csv;charset=utf-8');
+    }
+    toast.success(`Editorial brain review ${format.toUpperCase()} exported`);
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -434,6 +557,147 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             </button>
           ))}
         </div>
+
+        {editorialBrainSourceOptions.length > 0 && (
+          <>
+            <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Shadow items</p>
+                <p className="text-xl text-gray-900 dark:text-white">{calibrationSummary.overview.shadowItems}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Reviewed</p>
+                <p className="text-xl text-gray-900 dark:text-white">{calibrationSummary.overview.reviewedItems}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Brain better</p>
+                <p className="text-xl text-gray-900 dark:text-white">{calibrationSummary.overview.brainBetter}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Current better</p>
+                <p className="text-xl text-gray-900 dark:text-white">{calibrationSummary.overview.deterministicBetter}</p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Unreviewed</p>
+                <p className="text-xl text-gray-900 dark:text-white">{calibrationSummary.overview.unreviewedItems}</p>
+              </div>
+            </div>
+
+            <div className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+              <label className="flex flex-col gap-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                <span>Source</span>
+                <select
+                  value={brainFilters.source || 'all'}
+                  onChange={(event) => setBrainFilters((current) => ({ ...current, source: event.target.value }))}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                >
+                  <option value="all">All sources</option>
+                  {editorialBrainSourceOptions.map((source) => (
+                    <option key={source} value={source.toLowerCase()}>{source}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                <span>Disagreement</span>
+                <select
+                  value={brainFilters.disagreement || 'all'}
+                  onChange={(event) => setBrainFilters((current) => ({ ...current, disagreement: event.target.value }))}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                >
+                  <option value="all">All buckets</option>
+                  {editorialBrainDisagreementOptions.map((code) => (
+                    <option key={code} value={code}>{code.replace(/_/g, ' ')}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                <span>Reviewed</span>
+                <select
+                  value={brainFilters.reviewed || 'all'}
+                  onChange={(event) => setBrainFilters((current) => ({ ...current, reviewed: event.target.value as EditorialBrainReviewFilters['reviewed'] }))}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                >
+                  <option value="all">All</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="unreviewed">Unreviewed</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                <span>Confidence</span>
+                <select
+                  value={brainFilters.confidence || 'all'}
+                  onChange={(event) => setBrainFilters((current) => ({ ...current, confidence: event.target.value as EditorialBrainReviewFilters['confidence'] }))}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                >
+                  <option value="all">All</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                <span>Publish Outcome</span>
+                <select
+                  value={brainFilters.publishOutcome || 'all'}
+                  onChange={(event) => setBrainFilters((current) => ({ ...current, publishOutcome: event.target.value as EditorialBrainReviewFilters['publishOutcome'] }))}
+                  className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#000000] dark:text-white"
+                >
+                  <option value="all">All</option>
+                  <option value="published">Published</option>
+                  <option value="pending">Pending</option>
+                  <option value="failed">Failed</option>
+                  <option value="filtered">Filtered</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="mb-6 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm text-gray-900 dark:text-white">Top Sources</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportEditorialBrainReview('csv')}
+                    className="h-8 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                  >
+                    Export CSV
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {calibrationSummary.bySource.slice(0, 5).map((row) => (
+                    <div key={row.source} className="flex items-center justify-between text-sm text-[#374151] dark:text-[#D1D5DB]">
+                      <span>{row.source}</span>
+                      <span>{row.brainBetter}/{row.deterministicBetter}/{row.reviewedItems}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm text-gray-900 dark:text-white">Top Disagreement Buckets</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportEditorialBrainReview('json')}
+                    className="h-8 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+                  >
+                    Export JSON
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {calibrationSummary.byBucket.slice(0, 6).map((row) => (
+                    <div key={row.disagreement} className="flex items-center justify-between text-sm text-[#374151] dark:text-[#D1D5DB]">
+                      <span>{row.disagreement.replace(/_/g, ' ')}</span>
+                      <span>{row.brainBetter}/{row.deterministicBetter}/{row.reviewedItems}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         <div className="space-y-3">
           {filteredItems.length === 0 ? (
@@ -645,8 +909,17 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                               ? 'bg-[#FEF3C7] text-[#92400E] dark:bg-[#78350F]/40 dark:text-[#FCD34D]'
                               : 'bg-[#FEE2E2] text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]'
                           }`}>
-                            {item.error}
+                            <p className="min-w-0 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                              {item.error}
+                            </p>
                           </div>
+                        )}
+                        {item.editorialBrain && (
+                          <RSSEditorialBrainReviewPanel
+                            item={item}
+                            isSaving={savingReviewItemId === item.id}
+                            onReview={(outcome) => handleEditorialBrainReview(item.id, outcome)}
+                          />
                         )}
                       </div>
                     </div>

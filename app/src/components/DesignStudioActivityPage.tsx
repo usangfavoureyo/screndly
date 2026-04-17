@@ -47,6 +47,7 @@ import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 
 const PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
+const PREVIEW_PAN_START_TOLERANCE = 10;
 
 interface DesignStudioActivityRecord {
   id: string;
@@ -1651,11 +1652,23 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     if (event.touches.length === 1 && previewPanStartRef.current && previewZoomRef.current > 1) {
-      event.preventDefault();
       const touch = event.touches[0];
+      const deltaX = touch.clientX - previewPanStartRef.current.x;
+      const deltaY = touch.clientY - previewPanStartRef.current.y;
+
+      if (
+        Math.abs(deltaX) <= PREVIEW_PAN_START_TOLERANCE &&
+        Math.abs(deltaY) <= PREVIEW_PAN_START_TOLERANCE &&
+        previewTapStartRef.current
+      ) {
+        return;
+      }
+
+      previewTapStartRef.current = null;
+      event.preventDefault();
       const nextOffset = clampPreviewOffset({
-        x: previewPanStartRef.current.offsetX + (touch.clientX - previewPanStartRef.current.x),
-        y: previewPanStartRef.current.offsetY + (touch.clientY - previewPanStartRef.current.y),
+        x: previewPanStartRef.current.offsetX + deltaX,
+        y: previewPanStartRef.current.offsetY + deltaY,
       }, previewZoomRef.current);
       previewOffsetRef.current = nextOffset;
       setPreviewOffset(nextOffset);

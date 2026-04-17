@@ -49,6 +49,36 @@ function hasTerminalTMDbError(item: TMDbActivityStatusSource): boolean {
   return Boolean(item.errorMessage) && item.status !== 'published' && item.status !== 'scheduled';
 }
 
+const TMDB_PLATFORM_LABELS = ['X', 'Threads', 'Facebook', 'YouTube', 'Pinterest'] as const;
+const TMDB_PLATFORM_FAILURE_PATTERN = new RegExp(
+  `(${TMDB_PLATFORM_LABELS.join('|')}):\\s*(.*?)(?=(?:,\\s*(?:${TMDB_PLATFORM_LABELS.join('|')}):)|(?:;\\s*(?:${TMDB_PLATFORM_LABELS.join('|')}):)|$)`,
+  'gi'
+);
+
+function getPlatformFailuresFromErrorMessage(errorMessage?: string): Map<string, string> {
+  const failures = new Map<string, string>();
+  if (!errorMessage) {
+    return failures;
+  }
+
+  for (const match of errorMessage.matchAll(TMDB_PLATFORM_FAILURE_PATTERN)) {
+    const [, label, message] = match;
+    if (!label || !message) {
+      continue;
+    }
+
+    const platformKey = normalizeTMDbPlatformKey(label);
+    const trimmedMessage = message.trim().replace(/[;,]\s*$/, '');
+    if (!trimmedMessage) {
+      continue;
+    }
+
+    failures.set(platformKey, trimmedMessage);
+  }
+
+  return failures;
+}
+
 export function normalizeTMDbPlatformKey(value: string): string {
   const normalized = value.trim().toLowerCase();
   return normalized === 'twitter' ? 'x' : normalized;
@@ -72,6 +102,7 @@ export function formatTMDbPlatformLabel(platform: string): string {
 }
 
 export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDerivedPlatformState[] {
+  const platformFailures = getPlatformFailuresFromErrorMessage(item.errorMessage);
   const selectedPlatforms = Array.from(
     new Set([
       ...(item.platforms || []).map((platform) => normalizeTMDbPlatformKey(platform)),
@@ -130,6 +161,16 @@ export function deriveTMDbPlatformStates(item: TMDbActivityStatusSource): TMDbDe
         platform,
         label: formatTMDbPlatformLabel(platform),
         status: 'skipped',
+      };
+    }
+
+    const platformFailure = platformFailures.get(platform);
+    if (platformFailure) {
+      return {
+        platform,
+        label: formatTMDbPlatformLabel(platform),
+        status: 'failed',
+        errorMessage: platformFailure,
       };
     }
 

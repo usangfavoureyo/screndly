@@ -34,6 +34,7 @@ const MIN_SCALE = 1;
 const MAX_SCALE = 4;
 const TAP_MOVE_TOLERANCE = 24;
 const DOUBLE_TAP_PROXIMITY = 32;
+const PAN_START_TOLERANCE = 10;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -368,12 +369,20 @@ export function MediaPreviewDialog({
     }
 
     if (event.touches.length === 1 && scaleRef.current > MIN_SCALE && panStartRef.current) {
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - panStartRef.current.x;
+      const deltaY = touch.clientY - panStartRef.current.y;
+
+      if (Math.abs(deltaX) <= PAN_START_TOLERANCE && Math.abs(deltaY) <= PAN_START_TOLERANCE && tapStartRef.current) {
+        return;
+      }
+
+      tapStartRef.current = null;
       event.preventDefault();
 
-      const touch = event.touches[0];
       updateTransform(scaleRef.current, {
-        x: panStartRef.current.offsetX + (touch.clientX - panStartRef.current.x),
-        y: panStartRef.current.offsetY + (touch.clientY - panStartRef.current.y),
+        x: panStartRef.current.offsetX + deltaX,
+        y: panStartRef.current.offsetY + deltaY,
       });
     }
   };

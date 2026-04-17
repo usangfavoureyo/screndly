@@ -97,6 +97,45 @@ export interface RSSPipelinePreview {
   captionCharCount: number;
 }
 
+export type RSSEditorialBrainReviewOutcome =
+  | 'brain_better'
+  | 'deterministic_better'
+  | 'both_wrong'
+  | 'ignore';
+
+export interface RSSEditorialBrainActivityReview {
+  outcome: RSSEditorialBrainReviewOutcome;
+  reviewedAt: string;
+  notes?: string;
+}
+
+export interface RSSEditorialBrainActivityView {
+  sourceTrustTier: string;
+  agentModel: string;
+  contentHash: string;
+  usedFallback: boolean;
+  disagreements: string[];
+  currentSystem: {
+    lane: string;
+    canonical: string;
+    event: string;
+    imageStrategy: string;
+    captionStrategy: string;
+    spoilerRisk: string;
+  };
+  decision: {
+    lane: string;
+    canonical: string;
+    storyFamily?: string;
+    event: string;
+    imageStrategy: string;
+    captionStrategy: string;
+    spoilerRisk: string;
+    confidence?: number;
+  };
+  review?: RSSEditorialBrainActivityReview;
+}
+
 export interface RSSActivityItem {
   id: string;
   feedId?: string;
@@ -130,6 +169,7 @@ export interface RSSActivityItem {
     url?: string;
     postedAt: string;
   }>;
+  editorialBrain?: RSSEditorialBrainActivityView;
   error?: string;
 }
 

@@ -113,6 +113,56 @@ function isRetryableThreadsVideoError(error: unknown): boolean {
     );
 }
 
+function isInstagramMediaIdNotReadyError(error: unknown): boolean {
+    const responseError = (error as any)?.response?.data?.error;
+    const code = Number(responseError?.code || (error as any)?.response?.data?.error_code || 0);
+    const subcode = Number(responseError?.error_subcode || (error as any)?.response?.data?.error_subcode || 0);
+    const message = extractMetaError(error).toLowerCase();
+
+    return (
+        (code === 9007 && subcode === 2207027)
+        || message.includes('media id is not available')
+    );
+}
+
+async function publishInstagramContainer(
+    igUserId: string,
+    creationId: string,
+    accessToken: string
+): Promise<string> {
+    const maxAttempts = 4;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+            const publishRes = await axios.post(
+                `${BASE_URL}/${igUserId}/media_publish`,
+                new URLSearchParams({
+                    creation_id: creationId,
+                    access_token: accessToken,
+                }).toString(),
+                {
+                    headers: FORM_URL_ENCODED_HEADERS,
+                }
+            );
+
+            if (!publishRes.data?.id) {
+                throw new Error('Failed to publish Instagram media container');
+            }
+
+            return String(publishRes.data.id);
+        } catch (error: any) {
+            const retryable = attempt < maxAttempts - 1 && isInstagramMediaIdNotReadyError(error);
+            if (!retryable) {
+                throw error;
+            }
+
+            await sleep((attempt + 1) * 3_000);
+        }
+    }
+
+    throw new Error('Failed to publish Instagram media container');
+}
+
 function buildInstagramProfileUrl(username?: string | null): string | undefined {
     if (!username) return undefined;
     return `https://www.instagram.com/${String(username).replace(/^@/, '')}`;
@@ -297,7 +347,7 @@ async function waitForThreadsMediaReady(containerId: string, accessToken: string
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const statusResponse = await axios.get(`${THREADS_BASE_URL}/${containerId}`, {
             params: {
-                fields: 'status,error_message,error_code,error_subcode',
+                fields: 'status,error_message',
                 access_token: accessToken,
             },
         });
@@ -822,25 +872,13 @@ export const metaService = {
             }
 
             const creationId = containerRes.data.id;
-            if (mediaKind === 'video') {
-                await waitForInstagramMediaReady(creationId, accessToken);
-            }
-
-            const publishRes = await axios.post(
-                `${BASE_URL}/${igUserId}/media_publish`,
-                new URLSearchParams({
-                    creation_id: creationId,
-                    access_token: accessToken,
-                }).toString(),
-                {
-                    headers: FORM_URL_ENCODED_HEADERS,
-                }
-            );
+            await waitForInstagramMediaReady(creationId, accessToken);
+            const publishId = await publishInstagramContainer(igUserId, creationId, accessToken);
 
             return {
                 success: true,
                 data: {
-                    id: publishRes.data.id,
+                    id: publishId,
                     platform: 'Instagram',
                 },
             };

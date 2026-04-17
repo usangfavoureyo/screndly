@@ -97,4 +97,69 @@ describe('ComposeSync', () => {
     expect(useComposeStore.getState().items[0]?.id).toBe('remote-post');
     expect(composeApiMock.saveState).not.toHaveBeenCalled();
   });
+
+  it('preserves remote published items when local state is newer but compacted', async () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'local-draft',
+          title: 'Local draft',
+          status: 'draft',
+          mediaAssets: [],
+          platforms: ['instagram_feed'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-27T07:00:00.000Z',
+          updatedAt: '2026-03-27T11:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+      lastModifiedAt: '2026-03-27T11:00:00.000Z',
+    });
+
+    composeApiMock.getState.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 'remote-published',
+            title: 'Remote published',
+            status: 'published',
+            mediaAssets: [],
+            platforms: ['threads'],
+            sharedCaption: '',
+            platformFields: {},
+            createdAt: '2026-03-27T07:30:00.000Z',
+            updatedAt: '2026-03-27T10:00:00.000Z',
+          },
+        ],
+        updatedAt: '2026-03-27T10:00:00.000Z',
+      },
+    });
+    composeApiMock.saveState.mockResolvedValue({
+      success: true,
+      data: {
+        items: [],
+        updatedAt: '2026-03-27T11:00:00.000Z',
+      },
+    });
+
+    render(<ComposeSync />);
+
+    await waitFor(() => {
+      expect(useComposeStore.getState().items.map((item) => item.id)).toEqual([
+        'local-draft',
+        'remote-published',
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(composeApiMock.saveState).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 'local-draft', status: 'draft' }),
+          expect.objectContaining({ id: 'remote-published', status: 'published' }),
+        ]),
+      );
+    });
+  });
 });

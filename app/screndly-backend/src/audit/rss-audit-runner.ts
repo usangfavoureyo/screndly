@@ -1,9 +1,17 @@
 import crypto from 'node:crypto';
 import aiService, { __rssCaptionTestUtils, type RSSCanonicalEntity, type RSSContext } from '../services/ai.service';
+import {
+  DEFAULT_RSS_EDITORIAL_BRAIN_MODEL,
+  buildRssEditorialBrainContentHash,
+  computeRssEditorialBrainDisagreements,
+  extractRssEditorialBrainSignals,
+  runRssEditorialBrain,
+} from '../services/rss-editorial-brain.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from '../services/rss-image-selection.service';
 import { fetchRSSFeed, parseRSSFeed, __rssAuditTestUtils } from '../services/rss.service';
 import type {
   RssAuditCaptionDecision,
+  RssAuditEditorialBrainDecision,
   RssAuditCase,
   RssAuditEntityDecision,
   RssAuditEntityType,
@@ -35,6 +43,7 @@ export type RssAuditRunnerOptions = {
   imageLimit?: number;
   casesInput?: string;
   captionMode?: 'live' | 'deterministic';
+  editorialBrainMode?: 'off' | 'shadow';
 };
 
 export function getRssAuditImageResolverOptions(imageLimit = 2) {
@@ -446,6 +455,77 @@ function buildCaptionDecision(generatedCaption: string, context: RSSContext): Rs
   };
 }
 
+function getAuditSourceTrustTier(sourceName: string): string {
+  const normalized = sourceName.trim().toLowerCase();
+  if (['deadline', 'variety', 'the hollywood reporter', 'hollywood reporter', 'thr', 'entertainment weekly', 'ew'].includes(normalized)) {
+    return 'tier_1_trade';
+  }
+  if (['tvline', 'indiewire', 'slashfilm', 'thewrap', 'wrap'].includes(normalized)) {
+    return 'tier_2_editorial';
+  }
+  if (['comicbook', 'screenrant'].includes(normalized)) {
+    return 'tier_3_noisy';
+  }
+  return 'tier_2_general';
+}
+
+async function buildEditorialBrainDecision(
+  input: RssAuditCase,
+  item: {
+    title: string;
+    link: string;
+    description: string;
+    contentHtml: string;
+    imageUrls: string[];
+  },
+  canonical: RSSCanonicalEntity,
+  options: { enabled?: boolean },
+): Promise<RssAuditEditorialBrainDecision | undefined> {
+  if (!options.enabled) {
+    return undefined;
+  }
+
+  const fallbackDecision = __rssAuditTestUtils.buildRssEditorialBrainFallbackDecision(item as any, canonical, input.sourceName);
+  const currentSystem = {
+    lane: fallbackDecision.lane,
+    primary_entity: fallbackDecision.primary_entity,
+    event: fallbackDecision.event,
+    image_strategy: { mode: fallbackDecision.image_strategy.mode },
+    caption_strategy: { mode: fallbackDecision.caption_strategy.mode },
+    spoiler_risk: fallbackDecision.spoiler_risk,
+  };
+  const extractedSignals = extractRssEditorialBrainSignals(input.articleBody);
+  const brainInput = {
+    source: input.sourceName,
+    url: input.articleUrl,
+    headline: input.articleTitle,
+    summary: input.articleDescription || '',
+    bodyText: __rssAuditTestUtils.sanitizeRSSPlainText(input.articleBody || ''),
+    extractedQuotes: extractedSignals.extractedQuotes,
+    articleImages: [...item.imageUrls, ...extractedSignals.articleImages].filter(Boolean),
+    sourceTrustTier: getAuditSourceTrustTier(input.sourceName),
+    currentDateTime: input.publishedAt || new Date().toISOString(),
+  };
+  const result = await runRssEditorialBrain(brainInput, {
+    model: DEFAULT_RSS_EDITORIAL_BRAIN_MODEL,
+    enabled: true,
+    fallbackDecision,
+  });
+
+  return {
+    lane: result.decision.lane,
+    primaryEntity: result.decision.primary_entity,
+    storyFamily: result.decision.story_family,
+    event: result.decision.event,
+    imageStrategy: result.decision.image_strategy.mode,
+    captionStrategy: result.decision.caption_strategy.mode,
+    confidence: result.decision.confidence,
+    contentHash: result.contentHash || buildRssEditorialBrainContentHash(brainInput),
+    usedFallback: result.usedFallback,
+    disagreements: computeRssEditorialBrainDisagreements(currentSystem, result.decision),
+  };
+}
+
 export function buildDiagnosisAndFixes(result: Pick<RssAuditResult, 'entity' | 'image' | 'caption' | 'publishFailureCodes'>): {
   diagnosis: string[];
   recommendedFixes: string[];
@@ -478,7 +558,7 @@ export function buildDiagnosisAndFixes(result: Pick<RssAuditResult, 'entity' | '
 
 export async function analyzeRssAuditCase(
   input: RssAuditCase,
-  options: { imageLimit?: number; captionMode?: 'live' | 'deterministic' } = {}
+  options: { imageLimit?: number; captionMode?: 'live' | 'deterministic'; editorialBrainMode?: 'off' | 'shadow' } = {}
 ): Promise<RssAuditResult> {
   const normalizedTitle = normalizeRSSHeadlineInput(input.articleTitle);
   const normalizedDescription = __rssAuditTestUtils.sanitizeRSSPlainText(input.articleDescription || '');
@@ -493,6 +573,9 @@ export async function analyzeRssAuditCase(
   };
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
   const entity = buildEntityDecision(canonical);
+  const editorialBrain = await buildEditorialBrainDecision(input, item, canonical, {
+    enabled: options.editorialBrainMode === 'shadow',
+  });
 
   const images = await resolveRelevantRSSImages(
     {
@@ -554,6 +637,7 @@ export async function analyzeRssAuditCase(
     normalizedTitle,
     normalizedDescription,
     entity,
+    editorialBrain,
     image,
     caption,
     publishBlocked: publishFailureCodes.length > 0 || image.failureCodes.length > 0 || caption.failureCodes.length > 0,
@@ -653,6 +737,7 @@ export async function runRssAudit(feeds: RssAuditFeedConfig[], options: RssAudit
     results.push(await analyzeRssAuditCase(auditCase, {
       imageLimit: options.imageLimit,
       captionMode: options.captionMode,
+      editorialBrainMode: options.editorialBrainMode,
     }));
     if (options.out) {
       await writeAuditResults(options.out, results);

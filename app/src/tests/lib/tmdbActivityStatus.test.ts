@@ -156,4 +156,25 @@ describe('tmdb activity status helpers', () => {
     expect(platformStates.map((platform) => platform.status)).toEqual(['failed', 'failed', 'failed']);
     expect(deriveTMDbActivityStatus(item, platformStates)).toBe('failed');
   });
+
+  it('treats published items with a platform-specific error as partial_failed', () => {
+    const item = buildItem({
+      status: 'published',
+      platforms: ['X', 'Threads'],
+      errorMessage: 'Threads: Tried accessing nonexistent field (error_code) (code 100)',
+    });
+
+    const platformStates = deriveTMDbPlatformStates(item);
+
+    expect(platformStates).toEqual([
+      expect.objectContaining({ platform: 'x', status: 'posted' }),
+      expect.objectContaining({
+        platform: 'threads',
+        status: 'failed',
+        errorMessage: 'Tried accessing nonexistent field (error_code) (code 100)',
+      }),
+    ]);
+    expect(deriveTMDbActivityStatus(item, platformStates)).toBe('partial_failed');
+    expect(getRetryableTMDbPlatforms(platformStates).map((platform) => platform.platform)).toEqual(['threads']);
+  });
 });
