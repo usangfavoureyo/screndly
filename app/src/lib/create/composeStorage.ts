@@ -1,3 +1,4 @@
+import type { SyntheticEvent } from 'react';
 import { ApiClient, apiClient } from '../api/client';
 import { getApiUrl, getDirectApiUrl } from '../api/config';
 
@@ -105,6 +106,25 @@ export function buildComposeRenderableUrls(input: { previewUrl?: string; storage
   ]);
 
   return candidates;
+}
+
+export function advanceComposeRenderableSource(
+  event: SyntheticEvent<HTMLImageElement | HTMLVideoElement>,
+  sources: string[],
+) {
+  const element = event.currentTarget;
+  const currentIndex = Number(element.dataset.fallbackIndex || '0');
+  const nextSource = sources[currentIndex + 1];
+
+  if (!nextSource) {
+    return;
+  }
+
+  element.dataset.fallbackIndex = String(currentIndex + 1);
+  element.setAttribute('src', nextSource);
+  if ('load' in element && typeof element.load === 'function') {
+    element.load();
+  }
 }
 
 export async function uploadComposeAsset(file: File): Promise<{ url: string; previewUrl?: string; fileId: string }> {

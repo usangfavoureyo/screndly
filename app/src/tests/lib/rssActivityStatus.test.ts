@@ -22,6 +22,35 @@ function buildItem(overrides: Partial<RSSActivityItem> = {}): RSSActivityItem {
 }
 
 describe('rss activity status helpers', () => {
+  it('treats published items without platform detail rows as published', () => {
+    const item = buildItem({
+      status: 'published',
+      platforms: [],
+      platformPostIds: {},
+      platformResults: [],
+    });
+
+    const platformStates = deriveRSSPlatformStates(item);
+
+    expect(platformStates).toEqual([]);
+    expect(deriveRSSActivityStatus(item, platformStates)).toBe('published');
+  });
+
+  it('treats failed items without platform detail rows as failed', () => {
+    const item = buildItem({
+      status: 'failed',
+      platforms: [],
+      platformPostIds: {},
+      platformResults: [],
+      error: 'Publish failed',
+    });
+
+    const platformStates = deriveRSSPlatformStates(item);
+
+    expect(platformStates).toEqual([]);
+    expect(deriveRSSActivityStatus(item, platformStates)).toBe('failed');
+  });
+
   it('treats all posted platforms as published with no retry targets', () => {
     const item = buildItem({
       status: 'published',

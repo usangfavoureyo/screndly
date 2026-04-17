@@ -134,6 +134,9 @@ export function deriveRSSActivityStatus(
 
   const activeStates = platformStates.filter((state) => state.status !== 'skipped');
   if (activeStates.length === 0) {
+    if (item.status === 'published') return 'published';
+    if (item.status === 'failed') return 'failed';
+    if (item.status === 'pending') return 'publishing';
     return 'scheduled';
   }
 

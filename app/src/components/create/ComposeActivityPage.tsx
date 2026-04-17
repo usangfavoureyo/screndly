@@ -11,7 +11,10 @@ import { haptics } from '../../utils/haptics';
 import { useBulkSelection } from '../../hooks/useBulkSelection';
 import { useComposeStore } from '../../store/useComposeStore';
 import { getComposeAssetPreviewUrl } from '../../lib/create/composeMedia';
-import { buildComposeAssetStreamUrl } from '../../lib/create/composeStorage';
+import {
+  advanceComposeRenderableSource,
+  buildComposeRenderableUrls,
+} from '../../lib/create/composeStorage';
 import { publishComposeItem } from '../../lib/create/composePublish';
 import { validateComposeItemAction } from '../../lib/create/composeValidation';
 import {
@@ -263,13 +266,17 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
   const previewMediaItems = useMemo<MediaPreviewItem[]>(
     () => (previewState?.assets ?? [])
       .map((asset) => {
-        const assetPreviewUrl = getComposeAssetPreviewUrl(asset);
-        if (!assetPreviewUrl) {
+        const renderableUrls = buildComposeRenderableUrls({
+          previewUrl: asset.previewUrl,
+          storageUrl: asset.storageUrl,
+        });
+        if (renderableUrls.length === 0) {
           return null;
         }
 
         return {
-          src: buildComposeAssetStreamUrl(assetPreviewUrl) || assetPreviewUrl,
+          src: renderableUrls[0],
+          fallbackSources: renderableUrls,
           mediaType: asset.kind,
           title: asset.fileName,
           badgeLabel: asset.kind,
@@ -361,8 +368,11 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                 ? Math.max(0, Math.min(rememberedIndex, previewableAssets.length - 1))
                 : 0;
               const primaryAsset = previewableAssets[boundedRememberedIndex] ?? getPrimaryAsset(item);
-              const primaryPreviewUrl = getComposeAssetPreviewUrl(primaryAsset);
-              const primaryCardPreviewUrl = buildComposeAssetStreamUrl(primaryPreviewUrl) || primaryPreviewUrl;
+              const primaryRenderableUrls = buildComposeRenderableUrls({
+                previewUrl: primaryAsset?.previewUrl,
+                storageUrl: primaryAsset?.storageUrl,
+              });
+              const primaryCardPreviewUrl = primaryRenderableUrls[0];
               const extraAssetCount = Math.max(previewableAssets.length - 1, 0);
 
               return (
@@ -398,6 +408,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                               muted
                               playsInline
                               preload="metadata"
+                              onError={(event) => advanceComposeRenderableSource(event, primaryRenderableUrls)}
                             />
                             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20">
                               <Film className="h-4 w-4 text-white" />
@@ -406,9 +417,10 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
                         ) : (
                             <img
                               src={primaryCardPreviewUrl}
-                            alt={primaryAsset.fileName}
-                            className="pointer-events-none h-full w-full object-cover"
-                          />
+                              alt={primaryAsset.fileName}
+                              className="pointer-events-none h-full w-full object-cover"
+                              onError={(event) => advanceComposeRenderableSource(event, primaryRenderableUrls)}
+                            />
                         )}
                         {extraAssetCount > 0 ? (
                           <span className="absolute bottom-1 right-1 rounded-full bg-black/75 px-1.5 py-0.5 text-[10px] text-white">

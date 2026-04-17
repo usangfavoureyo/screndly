@@ -23,8 +23,10 @@ vi.mock('../../components/SwipeableActivityCard', () => ({
   SwipeableActivityCard: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
+const mediaPreviewDialogMock = vi.fn(() => null);
+
 vi.mock('../../components/media/MediaPreviewDialog', () => ({
-  MediaPreviewDialog: () => null,
+  MediaPreviewDialog: (props: unknown) => mediaPreviewDialogMock(props),
 }));
 
 vi.mock('../../components/ui/date-picker', () => ({
@@ -47,6 +49,7 @@ vi.mock('../../components/ui/bottom-sheet', () => ({
 describe('ComposeActivityPage', () => {
   beforeEach(() => {
     useComposeStore.setState({ items: [], activeItemId: null });
+    mediaPreviewDialogMock.mockClear();
   });
 
   it('shows an edit action for scheduled post cards', () => {
@@ -166,5 +169,55 @@ describe('ComposeActivityPage', () => {
 
     expect(onNavigate).toHaveBeenCalledWith('compose-editor', 'create');
     expect(screen.queryByText('Schedule Post')).not.toBeInTheDocument();
+  });
+
+  it('prefers the authorized preview URL for published media thumbnails and preview dialog items', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'published-post',
+          title: 'Published trailer',
+          status: 'published',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://f005.backblazeb2.com/file/ScrendlyVideos/compose/videos/trailer.mp4?Authorization=fresh-token',
+              storageUrl: 'https://f005.backblazeb2.com/file/ScrendlyVideos/compose/videos/trailer.mp4',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['threads'],
+          sharedCaption: '',
+          platformFields: {},
+          createdAt: '2026-03-12T07:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+    });
+
+    const { container } = render(
+      <BackNavigationProvider>
+        <ComposeActivityPage onNavigate={vi.fn()} previousPage="create" />
+      </BackNavigationProvider>,
+    );
+
+    const thumbnail = container.querySelector('video');
+    expect(thumbnail).toHaveAttribute(
+      'src',
+      'https://f005.backblazeb2.com/file/ScrendlyVideos/compose/videos/trailer.mp4?Authorization=fresh-token',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preview video trailer.mp4' }));
+
+    const lastCall = mediaPreviewDialogMock.mock.lastCall?.[0] as { mediaItems?: Array<{ src: string }> } | undefined;
+    expect(lastCall?.mediaItems?.[0]?.src).toBe(
+      'https://f005.backblazeb2.com/file/ScrendlyVideos/compose/videos/trailer.mp4?Authorization=fresh-token',
+    );
   });
 });
