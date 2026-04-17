@@ -238,4 +238,22 @@ describe('PostFlowSheet', () => {
     expect(screen.getByText('Activity')).toBeInTheDocument();
     expect(handleOpenChange).not.toHaveBeenCalled();
   });
+
+  it('fully closes the mobile sheet when swipe-dismiss is triggered from the editor', () => {
+    const handleOpenChange = vi.fn();
+
+    render(
+      <PostFlowSheet
+        open
+        initialView="overview"
+        onOpenChange={handleOpenChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Editor' }));
+    expect(screen.getByText('Editor')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close Sheet' }));
+    expect(handleOpenChange).toHaveBeenCalledWith(false);
+  });
 });

@@ -137,13 +137,8 @@ export function PostFlowSheet({
       return;
     }
 
-    const handledBackNavigation = handleSheetBackRequest();
-    if (handledBackNavigation) {
-      return;
-    }
-
-    onOpenChange(false);
-  }, [handleSheetBackRequest, onOpenChange]);
+    requestClose();
+  }, [onOpenChange, requestClose]);
 
   const flowContent = currentView === 'activity' ? (
     <ComposeActivityPage
@@ -169,11 +164,6 @@ export function PostFlowSheet({
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             onOpenChange(true);
-            return;
-          }
-
-          const handledBackNavigation = handleSheetBackRequest();
-          if (handledBackNavigation) {
             return;
           }
 

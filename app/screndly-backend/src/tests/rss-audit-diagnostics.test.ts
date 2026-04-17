@@ -1646,6 +1646,13 @@ test('duplicate-event grouping clusters same story across sources', () => {
         articleDescription: "Chris Hemsworth will return for Netflix's Extraction 3.",
         articleBody: '<p>Sam Hargrave will direct the sequel.</p>',
       },
+      entity: {
+        canonicalEntity: 'Extraction 3',
+        canonicalEntityType: 'movie',
+        eventType: 'development',
+        confidence: 0.9,
+        ambiguityFlags: [],
+      },
     }),
     auditResult({
       caseId: 'deadline',
@@ -1656,6 +1663,13 @@ test('duplicate-event grouping clusters same story across sources', () => {
         articleTitle: "Chris Hemsworth is set to return for Netflix's Extraction 3",
         articleDescription: 'Sam Hargrave is returning to direct.',
         articleBody: '<p>Netflix is moving forward with Extraction 3.</p>',
+      },
+      entity: {
+        canonicalEntity: 'Extraction 3',
+        canonicalEntityType: 'movie',
+        eventType: 'development',
+        confidence: 0.9,
+        ambiguityFlags: [],
       },
     }),
   ]);
@@ -1675,6 +1689,7 @@ test('duplicate-event decision suppresses lower-priority matching source and kee
     contentHtml: '<p>Netflix is moving forward with Extraction 3.</p>',
     imageUrls: [],
     pubDate: new Date('2026-04-10T12:00:00.000Z'),
+    canonicalEntityVersion: '2026-04-17-runtime-parity-1',
     canonicalEntity: {
       primarySubject: 'Extraction 3',
       mediaTitle: 'Extraction 3',
@@ -1695,6 +1710,7 @@ test('duplicate-event decision suppresses lower-priority matching source and kee
         contentHtml: '<p>Sam Hargrave will direct the sequel.</p>',
         imageUrls: [],
         pubDate: new Date('2026-04-10T09:00:00.000Z'),
+        canonicalEntityVersion: '2026-04-17-runtime-parity-1',
         canonicalEntity: {
           primarySubject: 'Extraction 3',
           mediaTitle: 'Extraction 3',
@@ -1796,4 +1812,62 @@ test('report aggregation ranks failure codes and patch recommendations', () => {
   assert.equal(report.topFailureCodes[0].code, 'IMAGE_TMBD_CANDIDATE_ZERO_TOKEN_OVERLAP');
   assert.equal(report.topFailureCodes[0].count, 2);
   assert.match(report.recommendedPatches[0].recommendation, /canonical token overlap/);
+});
+
+test('runtime parity recomputes stale stored canonical entities from older queue payloads', () => {
+  const item = {
+    title: "Jordan Firstman's Buzzy Cannes Debut 'Club Kid' Boarded By UTA Independent Film Group And Charades, Unveils First Look (EXCLUSIVE)",
+    link: 'https://variety.com/club-kid',
+    description: "Jordan Firstman's film 'Club Kid' unveiled a first look.",
+    contentHtml: '<p>Variety has unveiled a first look at <em>Club Kid</em>.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-17T08:00:00.000Z'),
+    canonicalEntity: {
+      primarySubject: 'Jordan Firstman',
+      mediaTitle: 'Jordan Firstman',
+      entityType: 'person',
+      eventType: 'other',
+      ambiguityFlags: [],
+    },
+    canonicalEntityVersion: '2026-04-13-tail-fix',
+  } as any;
+
+  const runtimeState = __rssAuditTestUtils.getRSSCanonicalEntityRuntimeState(item);
+
+  assert.equal(runtimeState.recomputed, true);
+  assert.equal(runtimeState.canonicalEntity.mediaTitle, 'Club Kid');
+  assert.ok(runtimeState.canonicalEntity.ambiguityFlags?.includes('story_family_visual_reveal_event'));
+  assert.equal(item.canonicalEntityVersion, runtimeState.activeVersion);
+});
+
+test('runtime parity does not reuse stored captions from older queue payload versions', () => {
+  const item = {
+    title: "'Euphoria' season 3 trailer pays tribute to Angus Cloud",
+    link: 'https://example.com/euphoria-tribute',
+    description: 'The new episode ends on a black screen memorial.',
+    contentHtml: '<p>The episode ends with a memorial for Angus Cloud, Eric Dane and Kevin Turen.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-17T08:30:00.000Z'),
+    generatedCaption: "'Euphoria' has a new release date. The Season 3 premiere of 'Euphoria' paid tribute to three key members of the show who died after Season 2 [...]",
+    captionGenerationPath: 'ai_prompted',
+    captionGenerationVersion: '2026-04-13-caption-fix',
+    canonicalEntity: {
+      primarySubject: 'Euphoria',
+      mediaTitle: 'Euphoria',
+      entityType: 'tv',
+      eventType: 'tribute',
+      allowedEntities: ['Euphoria', 'Angus Cloud', 'Eric Dane', 'Kevin Turen'],
+    },
+    canonicalEntityVersion: '2026-04-17-runtime-parity-1',
+    platformPostIds: { facebook: '123' },
+  } as any;
+
+  const canReuse = __rssAuditTestUtils.canReuseStoredRSSCaption(
+    item,
+    'TVLine',
+    item.canonicalEntity,
+    item.platformPostIds,
+  );
+
+  assert.equal(canReuse, false);
 });

@@ -47,12 +47,69 @@ function sleep(ms: number): Promise<void> {
 }
 
 function extractMetaError(error: any): string {
-    return (
-        error?.response?.data?.error?.message
-        || error?.response?.data?.message
-        || error?.response?.data?.error_message
+    const responseError = error?.response?.data?.error;
+    const responseData = error?.response?.data;
+    const rawMessage = (
+        responseError?.message
+        || responseData?.message
+        || responseData?.error_message
         || error?.message
-        || 'Meta API request failed'
+        || ''
+    );
+    const message = typeof rawMessage === 'string' ? rawMessage.trim() : '';
+    const code = responseError?.code || responseData?.error_code || responseData?.code;
+    const subcode = responseError?.error_subcode || responseData?.error_subcode;
+
+    if (message && !/^error$/i.test(message)) {
+        if (code || subcode) {
+            return `${message} (${[code ? `code ${code}` : null, subcode ? `subcode ${subcode}` : null].filter(Boolean).join(', ')})`;
+        }
+        return message;
+    }
+
+    if (code || subcode) {
+        return `Meta API request failed (${[code ? `code ${code}` : null, subcode ? `subcode ${subcode}` : null].filter(Boolean).join(', ')})`;
+    }
+
+    return 'Meta API request failed';
+}
+
+function isGenericMetaErrorMessage(value: string | null | undefined): boolean {
+    const normalized = String(value || '').trim().toLowerCase();
+    return normalized.length === 0 || normalized === 'error' || normalized === 'unknown error';
+}
+
+function buildThreadsMediaFailureMessage(
+    status: string,
+    errorMessage?: string | null,
+    errorCode?: string | number | null,
+    errorSubcode?: string | number | null
+): string {
+    const suffixParts = [
+        errorCode ? `code ${errorCode}` : null,
+        errorSubcode ? `subcode ${errorSubcode}` : null,
+    ].filter(Boolean);
+    const suffix = suffixParts.length > 0 ? ` (${suffixParts.join(', ')})` : '';
+
+    if (isGenericMetaErrorMessage(errorMessage)) {
+        return `Threads media processing failed with status ${status}${suffix}`;
+    }
+
+    return `Threads media processing failed with status ${status}: ${String(errorMessage).trim()}${suffix}`;
+}
+
+function isRetryableThreadsVideoError(error: unknown): boolean {
+    const message = extractMetaError(error).toLowerCase();
+    const statusCode = Number((error as any)?.response?.status || 0);
+
+    return (
+        statusCode === 429
+        || statusCode >= 500
+        || message.includes('temporar')
+        || message.includes('retry your request later')
+        || message.includes('unexpected error')
+        || message.includes('processing failed with status error')
+        || message.includes('processing timed out')
     );
 }
 
@@ -235,12 +292,12 @@ async function waitForInstagramMediaReady(containerId: string, accessToken: stri
 }
 
 async function waitForThreadsMediaReady(containerId: string, accessToken: string): Promise<void> {
-  const maxAttempts = 30;
+  const maxAttempts = 48;
 
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
         const statusResponse = await axios.get(`${THREADS_BASE_URL}/${containerId}`, {
             params: {
-                fields: 'status,error_message',
+                fields: 'status,error_message,error_code,error_subcode',
                 access_token: accessToken,
             },
         });
@@ -251,7 +308,12 @@ async function waitForThreadsMediaReady(containerId: string, accessToken: string
         }
 
         if (status === 'ERROR' || status === 'EXPIRED' || status === 'FAILED') {
-            throw new Error(statusResponse.data?.error_message || `Threads media processing failed with status ${status}`);
+            throw new Error(buildThreadsMediaFailureMessage(
+                status,
+                statusResponse.data?.error_message,
+                statusResponse.data?.error_code,
+                statusResponse.data?.error_subcode,
+            ));
         }
 
         await sleep(5_000);
@@ -975,49 +1037,54 @@ export const metaService = {
         videoUrl: string,
         accessToken: string
     ): Promise<MetaPostResult> {
-        try {
-            const payload = new URLSearchParams({
-                media_type: 'VIDEO',
-                video_url: videoUrl,
-                text,
-                access_token: accessToken,
-            });
+        const maxAttempts = 3;
+        let lastError: unknown;
 
-            const containerRes = await axios.post(
-                `${THREADS_BASE_URL}/${userId}/threads`,
-                payload.toString(),
-                {
-                    headers: FORM_URL_ENCODED_HEADERS,
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                const payload = new URLSearchParams({
+                    media_type: 'VIDEO',
+                    video_url: videoUrl,
+                    text,
+                    access_token: accessToken,
+                });
+
+                const containerRes = await axios.post(
+                    `${THREADS_BASE_URL}/${userId}/threads`,
+                    payload.toString(),
+                    {
+                        headers: FORM_URL_ENCODED_HEADERS,
+                    }
+                );
+
+                if (!containerRes.data.id) {
+                    throw new Error('Failed to create Threads video container');
                 }
-            );
 
-            if (!containerRes.data.id) {
-                throw new Error('Failed to create Threads video container');
+                const creationId = containerRes.data.id;
+                await waitForThreadsMediaReady(creationId, accessToken);
+                const publishId = await publishThreadsContainer(userId, creationId, accessToken);
+
+                return {
+                    success: true,
+                    data: {
+                        id: publishId,
+                        platform: 'Threads',
+                    },
+                };
+            } catch (error: any) {
+                lastError = error;
+                const retryable = attempt < maxAttempts - 1 && isRetryableThreadsVideoError(error);
+                if (!retryable) {
+                    break;
+                }
+
+                await sleep((attempt + 1) * 4_000);
             }
+        }
 
-            const creationId = containerRes.data.id;
-            await waitForThreadsMediaReady(creationId, accessToken);
-
-            const publishPayload = new URLSearchParams({
-                creation_id: creationId,
-                access_token: accessToken,
-            });
-
-            const publishRes = await axios.post(
-                `${THREADS_BASE_URL}/${userId}/threads_publish`,
-                publishPayload.toString(),
-                {
-                    headers: FORM_URL_ENCODED_HEADERS,
-                }
-            );
-
-            return {
-                success: true,
-                data: {
-                    id: publishRes.data.id,
-                    platform: 'Threads',
-                },
-            };
+        try {
+            throw lastError;
         } catch (error: any) {
             console.error('[Meta] Threads Video Post Error:', error?.response?.data || error);
             return {

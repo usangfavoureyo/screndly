@@ -4,9 +4,18 @@ import path from 'path';
 import sharp from 'sharp';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import ytDlp from '../lib/yt-dlp';
+import ytDlp, {
+  applyYouTubeDownloaderOptions,
+  getYtDlpAuthOptions,
+  getYtDlpNetworkContext,
+  shouldAllowAndroidSdklessMediaFallback,
+  type YouTubeNetworkContext,
+  type YtDlpOptions,
+} from '../lib/yt-dlp';
+import { youtubePoTokenService } from './youtube-po-token.service';
 
 const execFileAsync = promisify(execFile);
+const YT_DLP_ANDROID_SDKLESS_ARGS = ['youtube:player-client=android_sdkless'];
 
 export type ComposeMediaUrlPlatform = 'youtube' | 'instagram';
 export type ComposeImportedMediaKind = 'image' | 'video';
@@ -227,18 +236,141 @@ export function buildComposeMediaDownloadOptions(
   };
 }
 
+function getYtDlpPublicOptions(target: 'download' | 'metadata', networkContext: YouTubeNetworkContext): YtDlpOptions {
+  const {
+    cookies: _cookies,
+    cookiesFromBrowser: _cookiesFromBrowser,
+    ...options
+  } = getYtDlpAuthOptions(target);
+
+  return applyYouTubeDownloaderOptions({
+    ...options,
+    userAgent: networkContext.userAgent,
+  });
+}
+
+function getYtDlpAuthenticatedOptions(target: 'download' | 'metadata', networkContext: YouTubeNetworkContext): YtDlpOptions {
+  return applyYouTubeDownloaderOptions({
+    ...getYtDlpAuthOptions(target),
+    userAgent: networkContext.userAgent,
+  });
+}
+
+async function fetchComposeMediaUrlMetadata(url: string): Promise<Record<string, any>> {
+  const platform = detectComposeMediaUrlPlatform(url);
+  if (platform !== 'youtube') {
+    return ytDlp(url, {
+      dumpSingleJson: true,
+      skipDownload: true,
+      noWarnings: true,
+      quiet: true,
+    } as any);
+  }
+
+  const networkContext = getYtDlpNetworkContext('metadata');
+  const publicOptions = getYtDlpPublicOptions('metadata', networkContext);
+  const authenticatedOptions = getYtDlpAuthenticatedOptions('metadata', networkContext);
+
+  try {
+    return await ytDlp(url, {
+      ...publicOptions,
+      dumpSingleJson: true,
+      skipDownload: true,
+      noWarnings: true,
+      quiet: true,
+      extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+    } as any);
+  } catch (error) {
+    console.warn('[compose-url-import] yt-dlp android-sdkless metadata fetch failed; retrying', error);
+  }
+
+  try {
+    return await ytDlp(url, {
+      ...authenticatedOptions,
+      dumpSingleJson: true,
+      skipDownload: true,
+      noWarnings: true,
+      quiet: true,
+    } as any);
+  } catch (error) {
+    console.warn('[compose-url-import] yt-dlp authenticated metadata fetch failed; retrying with PO token', error);
+  }
+
+  return ytDlp(url, {
+    ...authenticatedOptions,
+    dumpSingleJson: true,
+    skipDownload: true,
+    noWarnings: true,
+    quiet: true,
+    extractorArgs: await youtubePoTokenService.getExtractorArgs(undefined, networkContext),
+  } as any);
+}
+
+async function downloadComposeMediaUrlEntry(
+  platform: ComposeMediaUrlPlatform,
+  entry: NormalizedComposeMediaUrlEntry,
+  outputTemplate: string,
+): Promise<void> {
+  const baseOptions = buildComposeMediaDownloadOptions(platform, entry.kind, outputTemplate);
+  if (platform !== 'youtube' || entry.kind !== 'video') {
+    await ytDlp(entry.sourceUrl, baseOptions as any);
+    return;
+  }
+
+  const networkContext = getYtDlpNetworkContext('download');
+  const authenticatedOptions = getYtDlpAuthenticatedOptions('download', networkContext);
+  const publicOptions = getYtDlpPublicOptions('download', networkContext);
+  const attempts: Array<() => Promise<void>> = [
+    () => ytDlp(entry.sourceUrl, {
+      ...baseOptions,
+      ...authenticatedOptions,
+    } as any),
+    async () => ytDlp(entry.sourceUrl, {
+      ...baseOptions,
+      ...authenticatedOptions,
+      extractorArgs: await youtubePoTokenService.getExtractorArgs(entry.id, networkContext),
+    } as any),
+    async () => ytDlp(entry.sourceUrl, {
+      ...baseOptions,
+      ...publicOptions,
+      extractorArgs: await youtubePoTokenService.getExtractorArgs(entry.id, {
+        ...networkContext,
+        cookieFilePath: null,
+        cookiesFromBrowser: null,
+        cookiesEnabled: false,
+        cacheKey: `${networkContext.proxyUrl || 'direct'}|${networkContext.userAgent}|nocookies`,
+      }),
+    } as any),
+  ];
+
+  if (shouldAllowAndroidSdklessMediaFallback(networkContext)) {
+    attempts.push(() => ytDlp(entry.sourceUrl, {
+      ...baseOptions,
+      ...publicOptions,
+      extractorArgs: YT_DLP_ANDROID_SDKLESS_ARGS,
+    } as any));
+  }
+
+  let lastError: unknown;
+  for (const attempt of attempts) {
+    try {
+      await attempt();
+      return;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('Failed to download media from YouTube.');
+}
+
 export async function importComposeMediaFromUrl(url: string): Promise<ImportedComposeMediaItem[]> {
   const platform = detectComposeMediaUrlPlatform(url);
   if (!platform) {
     throw new Error('Only public YouTube and Instagram URLs are supported.');
   }
 
-  const metadata = await ytDlp(url, {
-    dumpSingleJson: true,
-    skipDownload: true,
-    noWarnings: true,
-    quiet: true,
-  } as any);
+  const metadata = await fetchComposeMediaUrlMetadata(url);
 
   const entries = normalizeComposeMediaUrlEntries(url, metadata as Record<string, any>);
   if (!entries.length) {
@@ -251,7 +383,7 @@ export async function importComposeMediaFromUrl(url: string): Promise<ImportedCo
     const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-compose-url-'));
     try {
       const outputTemplate = path.join(tempDirectory, 'asset.%(ext)s');
-      await ytDlp(entry.sourceUrl, buildComposeMediaDownloadOptions(platform, entry.kind, outputTemplate) as any);
+      await downloadComposeMediaUrlEntry(platform, entry, outputTemplate);
 
       const downloadedFilePath = await readSingleDownloadedFile(tempDirectory);
       const fileBuffer = await fs.readFile(downloadedFilePath);
