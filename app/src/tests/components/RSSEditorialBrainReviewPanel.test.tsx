@@ -38,6 +38,13 @@ function buildItem(overrides: Partial<RSSActivityItem> = {}): RSSActivityItem {
         spoilerRisk: 'none',
         confidence: 0.91,
       },
+      runtime: {
+        promotedImageStrategy: 'article_image_first',
+        promotedCaptionStrategy: 'project_announcement',
+        finalFailureCodes: ['CAPTION_HEADLINE_JUNK'],
+        lastOutcome: 'failed',
+        updatedAt: '2026-04-17T12:00:00.000Z',
+      },
     },
     ...overrides,
   };
@@ -52,6 +59,9 @@ describe('RSSEditorialBrainReviewPanel', () => {
     expect(screen.getByText('Editorial brain')).toBeInTheDocument();
     expect(screen.getByText(/Big Mistakes/)).toBeInTheDocument();
     expect(screen.getByText(/canonical disagreement/i)).toBeInTheDocument();
+    expect(screen.getByText(/Image promoted:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Caption promoted:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Runtime failure codes/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Brain Better' }));
     expect(onReview).toHaveBeenCalledWith('brain_better');

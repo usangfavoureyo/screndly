@@ -4,7 +4,7 @@ import { AlertTriangle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-re
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
-import { useRSSFeeds, RSSActivityItem } from '../contexts/RSSFeedsContext';
+import { useRSSFeeds, RSSActivityItem, type RSSEditorialBrainReviewOutcome } from '../contexts/RSSFeedsContext';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
 import { useSettings } from '../contexts/SettingsContext';
 import { apiClient } from '../lib/api/client';
@@ -14,6 +14,15 @@ import { useUndo } from './UndoContext';
 import { BackIconButton } from './BackIconButton';
 import { OptimizedImage } from './ui/optimized-image';
 import { saveRSSActivitySnapshot } from '../utils/rssOfflineStore';
+import { RSSEditorialBrainReviewPanel } from './rss/RSSEditorialBrainReviewPanel';
+import {
+  buildEditorialBrainCalibrationSummary,
+  buildEditorialBrainPromotionSummary,
+  buildEditorialBrainReviewExportRows,
+  compareEditorialBrainReviewPriority,
+  matchesEditorialBrainReviewFilters,
+  type EditorialBrainReviewFilters,
+} from '../lib/rss/editorialBrainReview';
 import {
   deriveRSSActivityStatus,
   deriveRSSPlatformStates,
@@ -83,6 +92,19 @@ function buildActivitySummary(items: RSSActivityItem[]) {
   };
 }
 
+function downloadFile(contents: string, filename: string, type: string) {
+  if (typeof window === 'undefined') return;
+  const blob = new Blob([contents], { type });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
 interface RSSActivityViewModel {
   item: RSSActivityItem;
   derivedStatus: RSSActivityDerivedStatus;
@@ -92,12 +114,21 @@ interface RSSActivityViewModel {
 }
 
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
-  const { getActivity, retryActivity } = useRSSFeeds();
+  const { getActivity, retryActivity, saveEditorialBrainReview } = useRSSFeeds();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
+  const [editorialFilters, setEditorialFilters] = useState<EditorialBrainReviewFilters>({
+    source: 'all',
+    disagreement: 'all',
+    reviewed: 'all',
+    confidence: 'all',
+    publishOutcome: 'all',
+    promotion: 'all',
+  });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
+  const [savingReviewItemId, setSavingReviewItemId] = useState<string | null>(null);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
@@ -183,12 +214,32 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     return true;
   });
 
+  const editorialBrainItems = useMemo(
+    () => retainedItems.filter((item) => Boolean(item.editorialBrain)),
+    [retainedItems]
+  );
+  const editorialCalibrationSummary = useMemo(
+    () => buildEditorialBrainCalibrationSummary(editorialBrainItems),
+    [editorialBrainItems]
+  );
+  const editorialPromotionSummary = useMemo(
+    () => buildEditorialBrainPromotionSummary(editorialBrainItems),
+    [editorialBrainItems]
+  );
+  const editorialSourceOptions = useMemo(
+    () => Array.from(new Set(editorialBrainItems.map((item) => item.feedName))).sort((left, right) => left.localeCompare(right)),
+    [editorialBrainItems]
+  );
+
   const filteredItems = logLevelItems.filter(({ derivedStatus }) => {
     if (filter === 'failures') return derivedStatus === 'failed' || derivedStatus === 'partial_failed';
     if (filter === 'published') return derivedStatus === 'published';
     if (filter === 'pending') return derivedStatus === 'publishing' || derivedStatus === 'scheduled';
     return true;
-  });
+  }).filter(({ item }) => matchesEditorialBrainReviewFilters(item, {
+    ...editorialFilters,
+    publishOutcome: editorialFilters.publishOutcome === 'all' ? 'all' : editorialFilters.publishOutcome,
+  })).sort((left, right) => compareEditorialBrainReviewPriority(left.item, right.item));
   const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const summary = {
@@ -263,6 +314,50 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
     } finally {
       setRetryingItemId(null);
     }
+  };
+
+  const handleEditorialReview = async (item: RSSActivityItem, outcome: RSSEditorialBrainReviewOutcome) => {
+    if (!item.editorialBrain) {
+      return;
+    }
+
+    setSavingReviewItemId(item.id);
+    try {
+      const updated = await saveEditorialBrainReview(item.id, { outcome });
+      if (updated) {
+        setItems((prev) => {
+          const next = prev.map((entry) => (entry.id === updated.id ? updated : entry));
+          void saveRSSActivitySnapshot({ items: next, summary: buildActivitySummary(next) });
+          return next;
+        });
+        toast.success('Editorial brain review saved');
+      }
+    } finally {
+      setSavingReviewItemId(null);
+    }
+  };
+
+  const exportEditorialRows = (format: 'json' | 'csv') => {
+    const rows = buildEditorialBrainReviewExportRows(filteredItems.map(({ item }) => item));
+    if (rows.length === 0) {
+      toast.info('No editorial brain activity matches the current filters.');
+      return;
+    }
+
+    if (format === 'json') {
+      downloadFile(JSON.stringify(rows, null, 2), 'rss-editorial-brain-review.json', 'application/json');
+      return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) => headers.map((header) => {
+        const value = String(row[header as keyof typeof row] ?? '');
+        return `"${value.replace(/"/g, '""')}"`;
+      }).join(',')),
+    ].join('\n');
+    downloadFile(csv, 'rss-editorial-brain-review.csv', 'text/csv;charset=utf-8');
   };
 
   const handleDelete = async (id?: string) => {
@@ -397,6 +492,189 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
         <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-5 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">
           <p className="text-[#6B7280] dark:text-[#9CA3AF] text-sm mb-1">Failed</p>
           <p className="text-gray-900 dark:text-white text-2xl">{summary.failed}</p>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 space-y-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-gray-900 dark:text-white text-lg">Editorial Brain Monitoring</h2>
+            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+              Review shadow disagreements and compare promoted vs non-promoted image/caption decisions.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportEditorialRows('json')}
+              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+            >
+              Export JSON
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => exportEditorialRows('csv')}
+              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+            >
+              Export CSV
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          {[
+            { label: 'Shadow Items', value: editorialCalibrationSummary.overview.shadowItems },
+            { label: 'Reviewed', value: editorialCalibrationSummary.overview.reviewedItems },
+            { label: 'Brain Better', value: editorialCalibrationSummary.overview.brainBetter },
+            { label: 'Promoted', value: editorialPromotionSummary.overview.promotedItems },
+            { label: 'Image Promoted', value: editorialPromotionSummary.overview.imagePromotedItems },
+            { label: 'Caption Promoted', value: editorialPromotionSummary.overview.captionPromotedItems },
+          ].map((card) => (
+            <div
+              key={card.label}
+              className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]"
+            >
+              <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{card.label}</p>
+              <p className="mt-1 text-xl text-gray-900 dark:text-white">{card.value}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Source
+            <select
+              value={editorialFilters.source || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, source: event.target.value }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All sources</option>
+              {editorialSourceOptions.map((source) => (
+                <option key={source} value={source}>{source}</option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Disagreement
+            <select
+              value={editorialFilters.disagreement || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, disagreement: event.target.value }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All buckets</option>
+              <option value="canonical_disagreement">Canonical</option>
+              <option value="lane_disagreement">Lane</option>
+              <option value="image_strategy_disagreement">Image strategy</option>
+              <option value="caption_strategy_disagreement">Caption strategy</option>
+              <option value="spoiler_risk_disagreement">Spoiler risk</option>
+              <option value="event_disagreement">Event</option>
+            </select>
+          </label>
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Reviewed
+            <select
+              value={editorialFilters.reviewed || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, reviewed: event.target.value as EditorialBrainReviewFilters['reviewed'] }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All</option>
+              <option value="reviewed">Reviewed</option>
+              <option value="unreviewed">Unreviewed</option>
+            </select>
+          </label>
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Confidence
+            <select
+              value={editorialFilters.confidence || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, confidence: event.target.value as EditorialBrainReviewFilters['confidence'] }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </label>
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Promotion
+            <select
+              value={editorialFilters.promotion || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, promotion: event.target.value as EditorialBrainReviewFilters['promotion'] }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All</option>
+              <option value="promoted">Any promoted</option>
+              <option value="unpromoted">Unpromoted</option>
+              <option value="image">Image promoted</option>
+              <option value="caption">Caption promoted</option>
+              <option value="both">Both promoted</option>
+            </select>
+          </label>
+          <label className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+            Outcome
+            <select
+              value={editorialFilters.publishOutcome || 'all'}
+              onChange={(event) => setEditorialFilters((current) => ({ ...current, publishOutcome: event.target.value as EditorialBrainReviewFilters['publishOutcome'] }))}
+              className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              <option value="all">All</option>
+              <option value="published">Published</option>
+              <option value="pending">Pending</option>
+              <option value="failed">Failed</option>
+              <option value="filtered">Filtered</option>
+            </select>
+          </label>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-4">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+            <p className="mb-2 text-sm text-gray-900 dark:text-white">Top promoted sources</p>
+            <div className="space-y-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              {editorialPromotionSummary.bySource.slice(0, 5).map((entry) => (
+                <div key={entry.source} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{entry.source}</span>
+                  <span>{entry.promotedItems} promoted</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+            <p className="mb-2 text-sm text-gray-900 dark:text-white">Top disagreement buckets</p>
+            <div className="space-y-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              {editorialCalibrationSummary.byBucket.slice(0, 5).map((entry) => (
+                <div key={entry.disagreement} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{entry.disagreement.replace(/_/g, ' ')}</span>
+                  <span>{entry.shadowItems}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+            <p className="mb-2 text-sm text-gray-900 dark:text-white">Promoted confidence</p>
+            <div className="space-y-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              {editorialPromotionSummary.byConfidence.map((entry) => (
+                <div key={entry.confidence} className="flex items-center justify-between gap-3">
+                  <span className="capitalize">{entry.confidence}</span>
+                  <span>{entry.promotedItems}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+            <p className="mb-2 text-sm text-gray-900 dark:text-white">Promoted failure codes</p>
+            <div className="space-y-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              {editorialPromotionSummary.byFailureCode.slice(0, 5).map((entry) => (
+                <div key={entry.failureCode} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{entry.failureCode}</span>
+                  <span>{entry.count}</span>
+                </div>
+              ))}
+              {editorialPromotionSummary.byFailureCode.length === 0 && <p>No promoted failures recorded yet.</p>}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -647,6 +925,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
                           }`}>
                             {item.error}
                           </div>
+                        )}
+                        {item.editorialBrain && (
+                          <RSSEditorialBrainReviewPanel
+                            item={item}
+                            isSaving={savingReviewItemId === item.id}
+                            onReview={(outcome) => handleEditorialReview(item, outcome)}
+                          />
                         )}
                       </div>
                     </div>

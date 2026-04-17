@@ -6,6 +6,7 @@ export type EditorialBrainReviewFilters = {
   reviewed?: 'all' | 'reviewed' | 'unreviewed';
   confidence?: 'all' | 'high' | 'medium' | 'low' | 'unknown';
   publishOutcome?: 'all' | 'published' | 'pending' | 'failed' | 'filtered';
+  promotion?: 'all' | 'promoted' | 'unpromoted' | 'image' | 'caption' | 'both';
 };
 
 export type EditorialBrainCalibrationBucket = {
@@ -25,6 +26,46 @@ export type EditorialBrainCalibrationSummary = {
   byBucket: Array<EditorialBrainCalibrationBucket & { disagreement: string }>;
 };
 
+export type EditorialBrainPromotionSummary = {
+  overview: {
+    shadowItems: number;
+    promotedItems: number;
+    imagePromotedItems: number;
+    captionPromotedItems: number;
+    bothPromotedItems: number;
+    promotedPublished: number;
+    promotedPending: number;
+    promotedFailed: number;
+    promotedFiltered: number;
+  };
+  bySource: Array<{
+    source: string;
+    promotedItems: number;
+    imagePromotedItems: number;
+    captionPromotedItems: number;
+    bothPromotedItems: number;
+    promotedFailed: number;
+  }>;
+  byBucket: Array<{
+    disagreement: string;
+    promotedItems: number;
+    imagePromotedItems: number;
+    captionPromotedItems: number;
+    bothPromotedItems: number;
+  }>;
+  byConfidence: Array<{
+    confidence: 'high' | 'medium' | 'low' | 'unknown';
+    promotedItems: number;
+    imagePromotedItems: number;
+    captionPromotedItems: number;
+    bothPromotedItems: number;
+  }>;
+  byFailureCode: Array<{
+    failureCode: string;
+    count: number;
+  }>;
+};
+
 export type EditorialBrainReviewExportRow = {
   id: string;
   source: string;
@@ -41,6 +82,9 @@ export type EditorialBrainReviewExportRow = {
   brainImageStrategy: string;
   currentCaptionStrategy: string;
   brainCaptionStrategy: string;
+  promotedImageStrategy: string;
+  promotedCaptionStrategy: string;
+  finalFailureCodes: string;
   disagreements: string;
   confidence: string;
   reviewOutcome: string;
@@ -57,6 +101,8 @@ const DISAGREEMENT_PRIORITY = [
   'event_disagreement',
 ] as const;
 
+export type EditorialBrainPromotionKind = 'none' | 'image' | 'caption' | 'both';
+
 export function getEditorialBrainConfidenceBucket(confidence?: number): 'high' | 'medium' | 'low' | 'unknown' {
   if (typeof confidence !== 'number' || Number.isNaN(confidence)) {
     return 'unknown';
@@ -64,6 +110,15 @@ export function getEditorialBrainConfidenceBucket(confidence?: number): 'high' |
   if (confidence >= 0.8) return 'high';
   if (confidence >= 0.5) return 'medium';
   return 'low';
+}
+
+export function getEditorialBrainPromotionKind(item: RSSActivityItem): EditorialBrainPromotionKind {
+  const promotedImage = Boolean(item.editorialBrain?.runtime?.promotedImageStrategy);
+  const promotedCaption = Boolean(item.editorialBrain?.runtime?.promotedCaptionStrategy);
+  if (promotedImage && promotedCaption) return 'both';
+  if (promotedImage) return 'image';
+  if (promotedCaption) return 'caption';
+  return 'none';
 }
 
 function getTopDisagreementPriority(item: RSSActivityItem): number {
@@ -98,13 +153,14 @@ export function matchesEditorialBrainReviewFilters(
     || (filters.disagreement && filters.disagreement !== 'all')
     || (filters.reviewed && filters.reviewed !== 'all')
     || (filters.confidence && filters.confidence !== 'all')
+    || (filters.promotion && filters.promotion !== 'all')
   );
   if (hasEditorialSpecificFilter && !item.editorialBrain) {
     return false;
   }
 
   const sourceFilter = filters.source?.trim().toLowerCase();
-  if (sourceFilter && item.feedName.trim().toLowerCase() !== sourceFilter) {
+  if (sourceFilter && sourceFilter !== 'all' && item.feedName.trim().toLowerCase() !== sourceFilter) {
     return false;
   }
 
@@ -129,6 +185,23 @@ export function matchesEditorialBrainReviewFilters(
     if (bucket !== filters.confidence) {
       return false;
     }
+  }
+
+  const promotionKind = getEditorialBrainPromotionKind(item);
+  if (filters.promotion === 'promoted' && promotionKind === 'none') {
+    return false;
+  }
+  if (filters.promotion === 'unpromoted' && promotionKind !== 'none') {
+    return false;
+  }
+  if (filters.promotion === 'image' && !['image', 'both'].includes(promotionKind)) {
+    return false;
+  }
+  if (filters.promotion === 'caption' && !['caption', 'both'].includes(promotionKind)) {
+    return false;
+  }
+  if (filters.promotion === 'both' && promotionKind !== 'both') {
+    return false;
   }
 
   return true;
@@ -199,6 +272,122 @@ export function buildEditorialBrainCalibrationSummary(items: RSSActivityItem[]):
   };
 }
 
+export function buildEditorialBrainPromotionSummary(items: RSSActivityItem[]): EditorialBrainPromotionSummary {
+  const overview = {
+    shadowItems: 0,
+    promotedItems: 0,
+    imagePromotedItems: 0,
+    captionPromotedItems: 0,
+    bothPromotedItems: 0,
+    promotedPublished: 0,
+    promotedPending: 0,
+    promotedFailed: 0,
+    promotedFiltered: 0,
+  };
+  const bySource = new Map<string, Omit<EditorialBrainPromotionSummary['bySource'][number], 'source'>>();
+  const byBucket = new Map<string, Omit<EditorialBrainPromotionSummary['byBucket'][number], 'disagreement'>>();
+  const byConfidence = new Map<'high' | 'medium' | 'low' | 'unknown', EditorialBrainPromotionSummary['byConfidence'][number]>();
+  const byFailureCode = new Map<string, number>();
+
+  for (const item of items) {
+    const brain = item.editorialBrain;
+    if (!brain) continue;
+
+    overview.shadowItems += 1;
+    const promotionKind = getEditorialBrainPromotionKind(item);
+    if (promotionKind === 'none') {
+      continue;
+    }
+
+    overview.promotedItems += 1;
+    if (promotionKind === 'image') overview.imagePromotedItems += 1;
+    if (promotionKind === 'caption') overview.captionPromotedItems += 1;
+    if (promotionKind === 'both') {
+      overview.imagePromotedItems += 1;
+      overview.captionPromotedItems += 1;
+      overview.bothPromotedItems += 1;
+    }
+
+    if (item.status === 'published') overview.promotedPublished += 1;
+    if (item.status === 'pending') overview.promotedPending += 1;
+    if (item.status === 'failed') overview.promotedFailed += 1;
+    if (item.status === 'filtered') overview.promotedFiltered += 1;
+
+    const sourceBucket = bySource.get(item.feedName) || {
+      promotedItems: 0,
+      imagePromotedItems: 0,
+      captionPromotedItems: 0,
+      bothPromotedItems: 0,
+      promotedFailed: 0,
+    };
+    sourceBucket.promotedItems += 1;
+    if (promotionKind === 'image') sourceBucket.imagePromotedItems += 1;
+    if (promotionKind === 'caption') sourceBucket.captionPromotedItems += 1;
+    if (promotionKind === 'both') {
+      sourceBucket.imagePromotedItems += 1;
+      sourceBucket.captionPromotedItems += 1;
+      sourceBucket.bothPromotedItems += 1;
+    }
+    if (item.status === 'failed') sourceBucket.promotedFailed += 1;
+    bySource.set(item.feedName, sourceBucket);
+
+    for (const disagreement of brain.disagreements || []) {
+      const bucket = byBucket.get(disagreement) || {
+        promotedItems: 0,
+        imagePromotedItems: 0,
+        captionPromotedItems: 0,
+        bothPromotedItems: 0,
+      };
+      bucket.promotedItems += 1;
+      if (promotionKind === 'image') bucket.imagePromotedItems += 1;
+      if (promotionKind === 'caption') bucket.captionPromotedItems += 1;
+      if (promotionKind === 'both') {
+        bucket.imagePromotedItems += 1;
+        bucket.captionPromotedItems += 1;
+        bucket.bothPromotedItems += 1;
+      }
+      byBucket.set(disagreement, bucket);
+    }
+
+    const confidence = getEditorialBrainConfidenceBucket(brain.decision.confidence);
+    const confidenceBucket = byConfidence.get(confidence) || {
+      confidence,
+      promotedItems: 0,
+      imagePromotedItems: 0,
+      captionPromotedItems: 0,
+      bothPromotedItems: 0,
+    };
+    confidenceBucket.promotedItems += 1;
+    if (promotionKind === 'image') confidenceBucket.imagePromotedItems += 1;
+    if (promotionKind === 'caption') confidenceBucket.captionPromotedItems += 1;
+    if (promotionKind === 'both') {
+      confidenceBucket.imagePromotedItems += 1;
+      confidenceBucket.captionPromotedItems += 1;
+      confidenceBucket.bothPromotedItems += 1;
+    }
+    byConfidence.set(confidence, confidenceBucket);
+
+    for (const failureCode of brain.runtime?.finalFailureCodes || []) {
+      byFailureCode.set(failureCode, (byFailureCode.get(failureCode) || 0) + 1);
+    }
+  }
+
+  return {
+    overview,
+    bySource: Array.from(bySource.entries())
+      .map(([source, bucket]) => ({ source, ...bucket }))
+      .sort((left, right) => right.promotedItems - left.promotedItems || left.source.localeCompare(right.source)),
+    byBucket: Array.from(byBucket.entries())
+      .map(([disagreement, bucket]) => ({ disagreement, ...bucket }))
+      .sort((left, right) => right.promotedItems - left.promotedItems || left.disagreement.localeCompare(right.disagreement)),
+    byConfidence: Array.from(byConfidence.values())
+      .sort((left, right) => right.promotedItems - left.promotedItems),
+    byFailureCode: Array.from(byFailureCode.entries())
+      .map(([failureCode, count]) => ({ failureCode, count }))
+      .sort((left, right) => right.count - left.count || left.failureCode.localeCompare(right.failureCode)),
+  };
+}
+
 export function buildEditorialBrainReviewExportRows(items: RSSActivityItem[]): EditorialBrainReviewExportRow[] {
   return items
     .filter((item) => item.editorialBrain)
@@ -218,6 +407,9 @@ export function buildEditorialBrainReviewExportRows(items: RSSActivityItem[]): E
       brainImageStrategy: item.editorialBrain?.decision.imageStrategy || '',
       currentCaptionStrategy: item.editorialBrain?.currentSystem.captionStrategy || '',
       brainCaptionStrategy: item.editorialBrain?.decision.captionStrategy || '',
+      promotedImageStrategy: item.editorialBrain?.runtime?.promotedImageStrategy || '',
+      promotedCaptionStrategy: item.editorialBrain?.runtime?.promotedCaptionStrategy || '',
+      finalFailureCodes: (item.editorialBrain?.runtime?.finalFailureCodes || []).join('|'),
       disagreements: (item.editorialBrain?.disagreements || []).join('|'),
       confidence: typeof item.editorialBrain?.decision.confidence === 'number'
         ? item.editorialBrain.decision.confidence.toFixed(2)

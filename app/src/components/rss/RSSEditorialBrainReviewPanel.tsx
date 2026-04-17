@@ -72,6 +72,16 @@ export function RSSEditorialBrainReviewPanel({
             Used fallback
           </span>
         )}
+        {editorialBrain.runtime?.promotedImageStrategy && (
+          <span className="rounded bg-[#DBEAFE] px-2 py-1 text-[#1D4ED8] dark:bg-[#1E3A8A]/40 dark:text-[#93C5FD]">
+            Image promoted: {formatValue(editorialBrain.runtime.promotedImageStrategy)}
+          </span>
+        )}
+        {editorialBrain.runtime?.promotedCaptionStrategy && (
+          <span className="rounded bg-[#DCFCE7] px-2 py-1 text-[#166534] dark:bg-[#14532D]/40 dark:text-[#86EFAC]">
+            Caption promoted: {formatValue(editorialBrain.runtime.promotedCaptionStrategy)}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 grid gap-3 text-sm text-[#374151] dark:text-[#D1D5DB] md:grid-cols-2">
@@ -106,6 +116,22 @@ export function RSSEditorialBrainReviewPanel({
           ))}
         </div>
       </div>
+
+      {editorialBrain.runtime?.finalFailureCodes?.length ? (
+        <div className="mt-3">
+          <p className="mb-2 text-xs uppercase tracking-wide text-[#6B7280] dark:text-[#9CA3AF]">Runtime failure codes</p>
+          <div className="flex flex-wrap gap-2">
+            {editorialBrain.runtime.finalFailureCodes.map((code) => (
+              <span
+                key={code}
+                className="rounded bg-[#FEE2E2] px-2 py-1 text-xs text-[#B91C1C] dark:bg-[#991B1B]/30 dark:text-[#FCA5A5]"
+              >
+                {formatValue(code)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
         {REVIEW_OPTIONS.map((option) => (

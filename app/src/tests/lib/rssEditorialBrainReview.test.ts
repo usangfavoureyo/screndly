@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { RSSActivityItem } from '../../contexts/RSSFeedsContext';
 import {
   buildEditorialBrainCalibrationSummary,
+  buildEditorialBrainPromotionSummary,
   buildEditorialBrainReviewExportRows,
   compareEditorialBrainReviewPriority,
   getEditorialBrainConfidenceBucket,
+  getEditorialBrainPromotionKind,
   matchesEditorialBrainReviewFilters,
 } from '../../lib/rss/editorialBrainReview';
 
@@ -42,6 +44,13 @@ function buildActivity(overrides: Partial<RSSActivityItem> = {}): RSSActivityIte
         captionStrategy: 'project_announcement',
         spoilerRisk: 'none',
         confidence: 0.92,
+      },
+      runtime: {
+        promotedImageStrategy: 'article_image_first',
+        promotedCaptionStrategy: 'first_look',
+        finalFailureCodes: ['CAPTION_HEADLINE_JUNK'],
+        lastOutcome: 'failed',
+        updatedAt: '2026-04-17T12:00:00.000Z',
       },
     },
     ...overrides,
@@ -99,6 +108,15 @@ describe('rss editorial brain review helpers', () => {
       confidence: 'high',
       publishOutcome: 'failed',
     })).toBe(false);
+
+    expect(matchesEditorialBrainReviewFilters(item, {
+      source: 'slashfilm',
+      disagreement: 'image_strategy_disagreement',
+      reviewed: 'reviewed',
+      confidence: 'high',
+      publishOutcome: 'failed',
+      promotion: 'both',
+    })).toBe(true);
   });
 
   it('maps numeric confidence into stable review buckets', () => {
@@ -160,6 +178,72 @@ describe('rss editorial brain review helpers', () => {
     });
   });
 
+  it('builds promotion monitoring summaries and promotion kind classifications', () => {
+    const items = [
+      buildActivity({
+        id: 'both',
+        feedName: 'TVLine',
+        editorialBrain: {
+          ...buildActivity().editorialBrain!,
+          disagreements: ['image_strategy_disagreement', 'caption_strategy_disagreement'],
+          runtime: {
+            promotedImageStrategy: 'article_image_first',
+            promotedCaptionStrategy: 'first_look',
+            finalFailureCodes: ['CAPTION_HEADLINE_JUNK'],
+            lastOutcome: 'failed',
+            updatedAt: '2026-04-17T12:00:00.000Z',
+          },
+        },
+      }),
+      buildActivity({
+        id: 'image-only',
+        feedName: 'SlashFilm',
+        status: 'published',
+        editorialBrain: {
+          ...buildActivity().editorialBrain!,
+          disagreements: ['image_strategy_disagreement'],
+          runtime: {
+            promotedImageStrategy: 'dual_person_project',
+            finalFailureCodes: [],
+            lastOutcome: 'published',
+            updatedAt: '2026-04-17T12:05:00.000Z',
+          },
+        },
+      }),
+      buildActivity({
+        id: 'shadow-only',
+        editorialBrain: {
+          ...buildActivity().editorialBrain!,
+          runtime: {
+            finalFailureCodes: [],
+            lastOutcome: 'failed',
+            updatedAt: '2026-04-17T12:10:00.000Z',
+          },
+        },
+      }),
+    ];
+
+    expect(getEditorialBrainPromotionKind(items[0])).toBe('both');
+    expect(getEditorialBrainPromotionKind(items[1])).toBe('image');
+    expect(getEditorialBrainPromotionKind(items[2])).toBe('none');
+
+    const summary = buildEditorialBrainPromotionSummary(items);
+    expect(summary.overview.promotedItems).toBe(2);
+    expect(summary.overview.imagePromotedItems).toBe(2);
+    expect(summary.overview.captionPromotedItems).toBe(1);
+    expect(summary.overview.bothPromotedItems).toBe(1);
+    expect(summary.overview.promotedPublished).toBe(1);
+    expect(summary.overview.promotedFailed).toBe(1);
+    expect(summary.bySource[0]).toMatchObject({
+      source: 'SlashFilm',
+      promotedItems: 1,
+    });
+    expect(summary.byFailureCode[0]).toMatchObject({
+      failureCode: 'CAPTION_HEADLINE_JUNK',
+      count: 1,
+    });
+  });
+
   it('builds export rows with current-vs-brain comparison and adjudication fields', () => {
     const rows = buildEditorialBrainReviewExportRows([
       buildActivity({
@@ -193,6 +277,9 @@ describe('rss editorial brain review helpers', () => {
       source: 'ComicBook',
       currentCanonical: 'Freakier Friday',
       brainCanonical: 'Troop Beverly Hills',
+      promotedImageStrategy: 'article_image_first',
+      promotedCaptionStrategy: 'first_look',
+      finalFailureCodes: 'CAPTION_HEADLINE_JUNK',
       disagreements: 'canonical_disagreement',
       reviewOutcome: 'brain_better',
       confidence: '0.88',

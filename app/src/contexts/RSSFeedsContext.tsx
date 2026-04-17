@@ -134,6 +134,13 @@ export interface RSSEditorialBrainActivityView {
     confidence?: number;
   };
   review?: RSSEditorialBrainActivityReview;
+  runtime?: {
+    promotedImageStrategy?: string;
+    promotedCaptionStrategy?: string;
+    finalFailureCodes: string[];
+    lastOutcome?: RSSActivityItem['status'];
+    updatedAt?: string;
+  };
 }
 
 export interface RSSActivityItem {
@@ -216,6 +223,10 @@ interface RSSFeedsContextType {
   previewFeedPipeline: (feedId: string) => Promise<RSSPipelinePreview | null>;
   getActivity: (limit?: number) => Promise<RSSActivityResponse | null>;
   retryActivity: (activityId: string) => Promise<RSSActivityItem | null>;
+  saveEditorialBrainReview: (
+    activityId: string,
+    review: { outcome: RSSEditorialBrainReviewOutcome; notes?: string }
+  ) => Promise<RSSActivityItem | null>;
   deleteActivity: (activityId: string) => Promise<void>;
   toggleFeedEnabled: (feedId: string, enabled: boolean) => Promise<void>;
   togglePlatform: (feedId: string, platform: keyof PlatformsEnabled, enabled: boolean) => Promise<void>;
@@ -575,6 +586,23 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const saveEditorialBrainReview = async (
+    activityId: string,
+    review: { outcome: RSSEditorialBrainReviewOutcome; notes?: string }
+  ): Promise<RSSActivityItem | null> => {
+    try {
+      const response = await apiClient.post<RSSActivityItem>(`/api/rss/activity/${activityId}/editorial-brain-review`, review);
+      if (!response.success || !response.data) {
+        throw new Error(response.error?.message || 'Failed to save editorial brain review');
+      }
+      return response.data;
+    } catch (err) {
+      console.error('Error saving RSS editorial brain review:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to save editorial brain review');
+      return null;
+    }
+  };
+
   const deleteActivity = async (activityId: string) => {
     try {
       const response = await apiClient.delete(`/api/rss/activity/${activityId}`);
@@ -608,6 +636,7 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     previewFeedPipeline,
     getActivity,
         retryActivity,
+        saveEditorialBrainReview,
         deleteActivity,
         toggleFeedEnabled,
         togglePlatform,

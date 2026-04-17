@@ -17,6 +17,8 @@ const {
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,
   applyRSSEditorialBrainImageStrategyPromotion,
+  buildRSSEditorialBrainCaptionStrategyCalibration,
+  selectRSSEditorialBrainPromotedCaptionStrategy,
 } = __rssAuditTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
@@ -2064,6 +2066,104 @@ test('editorial brain activity projection exposes current-vs-brain comparison fi
   assert.equal(view?.review?.outcome, 'brain_better');
 });
 
+test('editorial brain runtime outcome metadata is exposed in activity views for promotion monitoring', () => {
+  const item = __rssAuditTestUtils.applyRSSEditorialBrainRuntimeOutcomeToItem({
+    title: 'Jordan Firstmanâ€™s Buzzy Cannes Debut Club Kid Bowed by UTA Independent Film Group and Charades, Unveils First Look (EXCLUSIVE)',
+    link: 'https://variety.com/club-kid',
+    description: 'Club Kid first look revealed.',
+    pubDate: new Date('2026-04-17T10:00:00.000Z'),
+    editorialBrain: {
+      editorialBrainVersion: 'rss-editorial-brain-test',
+      promptVersion: 'prompt-v1',
+      schemaVersion: 'schema-v1',
+      contentHash: 'hash-runtime',
+      sourceTrustTier: 'tier_2_editorial',
+      agentModel: 'gpt-5.4-mini',
+      decisionHash: 'decision-runtime',
+      usedFallback: false,
+      normalizationNotes: [],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Club Kid',
+        event: 'first_look',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'core_auto_publish',
+        story_family: 'first_look',
+        primary_entity_type: 'project',
+        primary_entity: 'Club Kid',
+        secondary_entities: ['Jordan Firstman'],
+        canonical_aliases: ['Club Kid'],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'first_look',
+        headline_trust: 'medium',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: {
+          mode: 'article_image_first',
+          primary_preference: ['article_hero_image'],
+          secondary_preference: ['inline_reveal_still'],
+          avoid: ['ads'],
+        },
+        caption_strategy: {
+          mode: 'first_look',
+          lead_subject: 'Club Kid',
+          must_name: ['Club Kid'],
+          must_not_use: ['EXCLUSIVE'],
+          must_not_spoil: false,
+        },
+        caption_facts: {
+          headline_fact: "First look revealed for 'Club Kid'.",
+          supporting_fact: '',
+          quote: '',
+          bullets: [],
+        },
+        evidence: {
+          body_titles: ['Club Kid'],
+          people: ['Jordan Firstman'],
+          projects: ['Club Kid'],
+          networks_platforms: [],
+          years: [],
+          quotes: [],
+        },
+        confidence: 0.9,
+        notes: '',
+      }, __rssAuditTestUtils.buildRssEditorialBrainFallbackDecision({
+        title: 'Club Kid',
+        description: 'Club Kid first look revealed.',
+        contentHtml: '<p>First look at Club Kid.</p>',
+      } as any, __rssAuditTestUtils.buildRSSCanonicalEntity({
+        title: 'Club Kid',
+        link: 'https://variety.com/club-kid',
+        description: 'Club Kid first look revealed.',
+        contentHtml: '<p>First look at Club Kid.</p>',
+        pubDate: new Date('2026-04-17T10:00:00.000Z'),
+      } as any), 'Variety')),
+      disagreements: ['image_strategy_disagreement', 'caption_strategy_disagreement'],
+    },
+  } as any, {
+    promotedImageStrategy: 'article_image_first',
+    promotedCaptionStrategy: 'first_look',
+    finalFailureCodes: ['CAPTION_HEADLINE_JUNK'],
+    lastOutcome: 'failed',
+    now: new Date('2026-04-17T12:00:00.000Z'),
+  });
+
+  const view = __rssAuditTestUtils.buildRSSEditorialBrainActivityView(item);
+
+  assert.ok(view?.runtime);
+  assert.equal(view?.runtime?.promotedImageStrategy, 'article_image_first');
+  assert.equal(view?.runtime?.promotedCaptionStrategy, 'first_look');
+  assert.deepEqual(view?.runtime?.finalFailureCodes, ['CAPTION_HEADLINE_JUNK']);
+  assert.equal(view?.runtime?.lastOutcome, 'failed');
+});
+
 test('editorial brain review persistence normalizes review payloads onto stored RSS items', () => {
   const item = {
     title: 'Example title',
@@ -2335,4 +2435,162 @@ test('editorial brain image strategy promotion maps promoted image modes onto ca
   assert.ok(canonical.ambiguityFlags?.includes('story_policy_article_image_first'));
   assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_promoted'));
   assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_article_image_first'));
+});
+
+test('editorial brain caption strategy promotion only activates for calibrated high-confidence caption disagreements', () => {
+  const calibration = buildRSSEditorialBrainCaptionStrategyCalibration([
+    {
+      sourceName: 'SlashFilm',
+      disagreements: ['caption_strategy_disagreement'],
+      review: { outcome: 'brain_better' },
+    },
+    {
+      sourceName: 'SlashFilm',
+      disagreements: ['caption_strategy_disagreement'],
+      review: { outcome: 'brain_better' },
+    },
+    {
+      sourceName: 'TVLine',
+      disagreements: ['caption_strategy_disagreement'],
+      review: { outcome: 'deterministic_better' },
+    },
+  ]);
+
+  const promotedMode = selectRSSEditorialBrainPromotedCaptionStrategy(
+    'SlashFilm',
+    {
+      usedFallback: false,
+      disagreements: ['caption_strategy_disagreement'],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Ray Gunn',
+        event: 'trailer',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'core_auto_publish',
+        story_family: 'trailer',
+        primary_entity_type: 'project',
+        primary_entity: 'Ray Gunn',
+        secondary_entities: ['Brad Bird'],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'trailer',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'trailer', lead_subject: 'Ray Gunn', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.87,
+        notes: '',
+      }, {
+        lane: 'core_auto_publish',
+        story_family: 'trailer',
+        primary_entity_type: 'project',
+        primary_entity: 'Ray Gunn',
+        secondary_entities: ['Brad Bird'],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'trailer',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'trailer', lead_subject: 'Ray Gunn', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.87,
+        notes: '',
+      }).decision,
+    } as any,
+    { rssEditorialBrainCaptionStrategyPromotion: true } as any,
+    calibration
+  );
+
+  assert.equal(promotedMode, 'trailer');
+
+  const blockedMode = selectRSSEditorialBrainPromotedCaptionStrategy(
+    'TVLine',
+    {
+      usedFallback: false,
+      disagreements: ['caption_strategy_disagreement', 'canonical_disagreement'],
+      currentSystem: {
+        lane: 'core_auto_publish',
+        primary_entity: 'Ray Gunn',
+        event: 'trailer',
+        image_strategy: { mode: 'project_first' },
+        caption_strategy: { mode: 'headline_news' },
+        spoiler_risk: 'none',
+      },
+      decision: normalizeRssEditorialBrainDecision({
+        lane: 'core_auto_publish',
+        story_family: 'trailer',
+        primary_entity_type: 'project',
+        primary_entity: 'Ray Gunn',
+        secondary_entities: [],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'trailer',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'trailer', lead_subject: 'Ray Gunn', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.92,
+        notes: '',
+      }, {
+        lane: 'core_auto_publish',
+        story_family: 'trailer',
+        primary_entity_type: 'project',
+        primary_entity: 'Ray Gunn',
+        secondary_entities: [],
+        canonical_aliases: [],
+        current_title_over_development_title: true,
+        development_title_aliases: [],
+        format: 'movie',
+        event: 'trailer',
+        headline_trust: 'high',
+        body_recovery_required: false,
+        spoiler_risk: 'none',
+        manual_review_reason: '',
+        image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+        caption_strategy: { mode: 'trailer', lead_subject: 'Ray Gunn', must_name: [], must_not_use: [], must_not_spoil: false },
+        caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+        confidence: 0.92,
+        notes: '',
+      }).decision,
+    } as any,
+    { rssEditorialBrainCaptionStrategyPromotion: true } as any,
+    calibration
+  );
+
+  assert.equal(blockedMode, undefined);
+});
+
+test('caption system prompt includes promoted editorial-brain caption strategy constraints', () => {
+  const prompt = __rssAuditTestUtils.buildRSSCaptionSystemPrompt('Base prompt', {
+    tone: 'Engaging',
+    maxLength: 800,
+    promotedCaptionStrategy: 'person_commentary',
+  });
+
+  assert.match(prompt || '', /speaker-led/i);
+  assert.match(prompt || '', /comment or quote/i);
+  assert.match(prompt || '', /Base prompt/);
 });
