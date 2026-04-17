@@ -5,6 +5,16 @@ import { metaService } from '../services/platforms/meta';
 
 type AxiosPost = typeof axios.post;
 type AxiosGet = typeof axios.get;
+type TimeoutHandler = Parameters<typeof setTimeout>[0];
+
+function createImmediateSetTimeoutMock(): typeof setTimeout {
+  return ((handler: TimeoutHandler) => {
+    if (typeof handler === 'function') {
+      handler();
+    }
+    return 0 as any;
+  }) as typeof setTimeout;
+}
 
 test('postVideoToThreads retries generic processing errors and eventually succeeds', async () => {
   const originalPost: AxiosPost = axios.post.bind(axios);
@@ -15,12 +25,7 @@ test('postVideoToThreads retries generic processing errors and eventually succee
   let publishAttempt = 0;
   let statusAttempt = 0;
 
-  global.setTimeout = (((handler: TimerHandler) => {
-    if (typeof handler === 'function') {
-      handler();
-    }
-    return 0 as any;
-  }) as typeof setTimeout);
+  global.setTimeout = createImmediateSetTimeoutMock();
 
   axios.post = (async (url: string) => {
     if (url.includes('/threads_publish')) {
@@ -67,12 +72,7 @@ test('postVideoToThreads returns a useful error for generic Threads processing f
   const originalGet: AxiosGet = axios.get.bind(axios);
   const originalSetTimeout = global.setTimeout;
 
-  global.setTimeout = (((handler: TimerHandler) => {
-    if (typeof handler === 'function') {
-      handler();
-    }
-    return 0 as any;
-  }) as typeof setTimeout);
+  global.setTimeout = createImmediateSetTimeoutMock();
 
   axios.post = (async (url: string) => {
     if (url.includes('/threads_publish')) {
