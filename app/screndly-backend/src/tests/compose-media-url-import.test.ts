@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildComposeMediaDownloadOptions,
+  buildComposeMediaNetworkOptions,
   detectComposeMediaUrlPlatform,
   normalizeComposeMediaUrlEntries,
 } from '../services/compose-media-url-import.service';
@@ -35,6 +36,57 @@ test('buildComposeMediaDownloadOptions uses best available Instagram media quali
   assert.equal(videoOptions.mergeOutputFormat, 'mp4');
   assert.equal(imageOptions.output, '/tmp/image.%(ext)s');
   assert.equal(imageOptions.format, 'best');
+});
+
+test('buildComposeMediaNetworkOptions applies configured auth context to Instagram imports', () => {
+  const previousProxy = process.env.YT_DLP_PROXY_URL;
+  const previousUserAgent = process.env.YT_DLP_USER_AGENT;
+  const previousCookieFilePath = process.env.YT_DLP_COOKIE_FILE_PATH;
+  const previousCookiesFromBrowser = process.env.YT_DLP_COOKIES_FROM_BROWSER;
+
+  process.env.YT_DLP_PROXY_URL = 'http://127.0.0.1:8080';
+  process.env.YT_DLP_USER_AGENT = 'ScrendlyImportAgent/1.0';
+  process.env.YT_DLP_COOKIE_FILE_PATH = '/tmp/instagram-cookies.txt';
+  process.env.YT_DLP_COOKIES_FROM_BROWSER = 'chrome';
+
+  try {
+    const authenticated = buildComposeMediaNetworkOptions('download', 'authenticated');
+    const publicOptions = buildComposeMediaNetworkOptions('download', 'public');
+
+    assert.equal(authenticated.proxy, 'http://127.0.0.1:8080');
+    assert.equal(authenticated.userAgent, 'ScrendlyImportAgent/1.0');
+    assert.equal(authenticated.cookies, '/tmp/instagram-cookies.txt');
+    assert.equal(authenticated.cookiesFromBrowser, 'chrome');
+
+    assert.equal(publicOptions.proxy, 'http://127.0.0.1:8080');
+    assert.equal(publicOptions.userAgent, 'ScrendlyImportAgent/1.0');
+    assert.equal(publicOptions.cookies, undefined);
+    assert.equal(publicOptions.cookiesFromBrowser, undefined);
+  } finally {
+    if (previousProxy === undefined) {
+      delete process.env.YT_DLP_PROXY_URL;
+    } else {
+      process.env.YT_DLP_PROXY_URL = previousProxy;
+    }
+
+    if (previousUserAgent === undefined) {
+      delete process.env.YT_DLP_USER_AGENT;
+    } else {
+      process.env.YT_DLP_USER_AGENT = previousUserAgent;
+    }
+
+    if (previousCookieFilePath === undefined) {
+      delete process.env.YT_DLP_COOKIE_FILE_PATH;
+    } else {
+      process.env.YT_DLP_COOKIE_FILE_PATH = previousCookieFilePath;
+    }
+
+    if (previousCookiesFromBrowser === undefined) {
+      delete process.env.YT_DLP_COOKIES_FROM_BROWSER;
+    } else {
+      process.env.YT_DLP_COOKIES_FROM_BROWSER = previousCookiesFromBrowser;
+    }
+  }
 });
 
 test('normalizeComposeMediaUrlEntries expands Instagram carousel metadata into ordered media entries', () => {

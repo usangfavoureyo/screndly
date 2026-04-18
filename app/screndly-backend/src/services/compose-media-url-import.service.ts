@@ -236,6 +236,16 @@ export function buildComposeMediaDownloadOptions(
   };
 }
 
+export function buildComposeMediaNetworkOptions(
+  target: 'download' | 'metadata',
+  mode: 'authenticated' | 'public' = 'authenticated',
+): YtDlpOptions {
+  const networkContext = getYtDlpNetworkContext(target);
+  return mode === 'authenticated'
+    ? getYtDlpAuthenticatedOptions(target, networkContext)
+    : getYtDlpPublicOptions(target, networkContext);
+}
+
 function getYtDlpPublicOptions(target: 'download' | 'metadata', networkContext: YouTubeNetworkContext): YtDlpOptions {
   const {
     cookies: _cookies,
@@ -258,13 +268,34 @@ function getYtDlpAuthenticatedOptions(target: 'download' | 'metadata', networkCo
 
 async function fetchComposeMediaUrlMetadata(url: string): Promise<Record<string, any>> {
   const platform = detectComposeMediaUrlPlatform(url);
-  if (platform !== 'youtube') {
-    return ytDlp(url, {
-      dumpSingleJson: true,
-      skipDownload: true,
-      noWarnings: true,
-      quiet: true,
-    } as any);
+  if (platform === 'instagram') {
+    const attempts: Array<() => Promise<Record<string, any>>> = [
+      () => ytDlp(url, {
+        ...buildComposeMediaNetworkOptions('metadata', 'authenticated'),
+        dumpSingleJson: true,
+        skipDownload: true,
+        noWarnings: true,
+        quiet: true,
+      } as any),
+      () => ytDlp(url, {
+        ...buildComposeMediaNetworkOptions('metadata', 'public'),
+        dumpSingleJson: true,
+        skipDownload: true,
+        noWarnings: true,
+        quiet: true,
+      } as any),
+    ];
+
+    let lastError: unknown;
+    for (const attempt of attempts) {
+      try {
+        return await attempt();
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Failed to fetch media metadata from Instagram.');
   }
 
   const networkContext = getYtDlpNetworkContext('metadata');
@@ -312,6 +343,31 @@ async function downloadComposeMediaUrlEntry(
   outputTemplate: string,
 ): Promise<void> {
   const baseOptions = buildComposeMediaDownloadOptions(platform, entry.kind, outputTemplate);
+  if (platform === 'instagram') {
+    const attempts: Array<() => Promise<void>> = [
+      () => ytDlp(entry.sourceUrl, {
+        ...baseOptions,
+        ...buildComposeMediaNetworkOptions('download', 'authenticated'),
+      } as any),
+      () => ytDlp(entry.sourceUrl, {
+        ...baseOptions,
+        ...buildComposeMediaNetworkOptions('download', 'public'),
+      } as any),
+    ];
+
+    let lastError: unknown;
+    for (const attempt of attempts) {
+      try {
+        await attempt();
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('Failed to download media from Instagram.');
+  }
+
   if (platform !== 'youtube' || entry.kind !== 'video') {
     await ytDlp(entry.sourceUrl, baseOptions as any);
     return;
