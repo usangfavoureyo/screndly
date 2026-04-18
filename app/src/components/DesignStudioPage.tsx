@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink, Bookmark, BookmarkCheck, Filter, Check } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink, Bookmark, BookmarkCheck, ArrowDownWideNarrow, Check } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -304,6 +304,8 @@ function readPendingEditorTarget(): DesignStudioEditorTarget | null {
 type DesignStudioTab = 'manual' | 'auto';
 type DesignStudioTopTab = 'templates' | 'manual' | 'auto';
 type ManualWorkspaceTab = 'templates' | 'news_queue';
+type NewsQueueSortOption = 'recent-desc' | 'recent-asc';
+type NewsQueueFilterSheetTab = 'sort' | 'source';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
 type ManualRenderJob = DesignStudioManualRenderJob;
@@ -415,6 +417,10 @@ const DESIGN_STUDIO_TOP_TAB_KEY = 'designStudioTopTab';
 const DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY = 'designStudioNewsQueueDismissed';
 const DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY = 'designStudioNewsQueueSaved';
 const DESIGN_STUDIO_NEWS_QUEUE_USED_KEY = 'designStudioNewsQueueUsed';
+const NEWS_QUEUE_SORT_LABELS: Record<NewsQueueSortOption, string> = {
+  'recent-desc': 'Recently Added',
+  'recent-asc': 'Oldest Added',
+};
 
 function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'png'): DesignData {
   return {
@@ -702,6 +708,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
+  const [isTemplateListCollapsed, setIsTemplateListCollapsed] = useState(false);
   const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [isFinalizingTemplateUpload, setIsFinalizingTemplateUpload] = useState(false);
@@ -733,6 +740,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isLoadingNewsQueue, setIsLoadingNewsQueue] = useState(false);
   const [newsQueueError, setNewsQueueError] = useState<string | null>(null);
   const [isSourceFilterSheetOpen, setIsSourceFilterSheetOpen] = useState(false);
+  const [newsQueueFilterSheetTab, setNewsQueueFilterSheetTab] = useState<NewsQueueFilterSheetTab>('sort');
+  const [newsQueueSort, setNewsQueueSort] = useState<NewsQueueSortOption>('recent-desc');
   const [selectedNewsSources, setSelectedNewsSources] = useState<string[]>([]);
   const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY));
   const [savedQueueIds, setSavedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY));
@@ -1733,14 +1742,24 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return visibleNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
   }, [selectedNewsSources, visibleNewsQueueItems]);
 
+  const sortedNewsQueueItems = useMemo(() => {
+    const sorted = [...sourceFilteredNewsQueueItems];
+    sorted.sort((left, right) => {
+      const leftTime = new Date(left.timestamp).getTime();
+      const rightTime = new Date(right.timestamp).getTime();
+      return newsQueueSort === 'recent-asc' ? leftTime - rightTime : rightTime - leftTime;
+    });
+    return sorted;
+  }, [newsQueueSort, sourceFilteredNewsQueueItems]);
+
   const savedNewsQueueItems = useMemo(
-    () => sourceFilteredNewsQueueItems.filter((item) => savedQueueIds.has(item.id)),
-    [savedQueueIds, sourceFilteredNewsQueueItems],
+    () => sortedNewsQueueItems.filter((item) => savedQueueIds.has(item.id)),
+    [savedQueueIds, sortedNewsQueueItems],
   );
 
   const inboxNewsQueueItems = useMemo(
-    () => sourceFilteredNewsQueueItems.filter((item) => !savedQueueIds.has(item.id)),
-    [savedQueueIds, sourceFilteredNewsQueueItems],
+    () => sortedNewsQueueItems.filter((item) => !savedQueueIds.has(item.id)),
+    [savedQueueIds, sortedNewsQueueItems],
   );
 
   const setSavedStateForNewsQueueItem = (itemId: string, shouldSave: boolean) => {
@@ -1941,6 +1960,31 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 </div>
               ) : null}
 
+              <div className="flex items-center justify-between">
+                <h3 className="text-gray-900 dark:text-white font-medium">Templates ({templates.length})</h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    haptics.light();
+                    setIsTemplateListCollapsed((current) => !current);
+                  }}
+                  className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                  aria-label={isTemplateListCollapsed ? 'Show templates' : 'Hide templates'}
+                >
+                  <img
+                    src={isTemplateListCollapsed
+                      ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                      : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+                    alt=""
+                    className="h-4 w-4"
+                  />
+                </Button>
+              </div>
+
+              {!isTemplateListCollapsed ? (
+                <>
               {isLoadingState && templates.length === 0 ? (
                 <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">
                   <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">Loading your Design Studio templates...</p>
@@ -1977,6 +2021,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   </div>
                 </div>
               )}
+                </>
+              ) : null}
             </>
           ) : (
             <div className="space-y-6">
@@ -2008,47 +2054,87 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   showHandle
                 >
                   <BottomSheetHeader>
-                    <BottomSheetTitle>Filter by Source</BottomSheetTitle>
+                    <BottomSheetTitle>Sort Feeds</BottomSheetTitle>
                   </BottomSheetHeader>
                   <BottomSheetBody className="px-4 pb-4">
-                    <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
-                      <button
-                        type="button"
-                        onClick={() => {
+                    <div className="mb-4">
+                      <SegmentedTabSwitcher
+                        tabs={[
+                          { id: 'sort', label: 'Sort' },
+                          { id: 'source', label: 'Source' },
+                        ] as const}
+                        activeTab={newsQueueFilterSheetTab}
+                        onChange={(tab) => {
                           haptics.light();
-                          setSelectedNewsSources([]);
+                          setNewsQueueFilterSheetTab(tab);
                         }}
-                        className="flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]"
-                      >
-                        <span className="flex-1 truncate">All sources</span>
-                        {selectedNewsSources.length === 0 ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
-                      </button>
-                      {newsQueueSourceOptions.map((source) => {
-                        const selected = selectedNewsSources.includes(source);
-                        return (
-                          <button
-                            key={source}
-                            type="button"
-                            onClick={() => {
-                              haptics.light();
-                              setSelectedNewsSources((current) =>
-                                current.includes(source)
-                                  ? current.filter((entry) => entry !== source)
-                                  : [...current, source],
-                              );
-                            }}
-                            className={`flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
-                              selected
-                                ? 'font-medium text-gray-900 dark:text-white'
-                                : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
-                            }`}
-                          >
-                            <span className="flex-1 truncate">{source}</span>
-                            {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
-                          </button>
-                        );
-                      })}
+                      />
                     </div>
+
+                    {newsQueueFilterSheetTab === 'sort' ? (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+                        {(['recent-desc', 'recent-asc'] as const).map((option) => {
+                          const selected = newsQueueSort === option;
+                          return (
+                            <button
+                              key={option}
+                              type="button"
+                              onClick={() => {
+                                haptics.light();
+                                setNewsQueueSort(option);
+                              }}
+                              className={`relative flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
+                                selected
+                                  ? 'font-medium text-gray-900 dark:text-white'
+                                  : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
+                              }`}
+                            >
+                              <span className="flex-1 truncate">{NEWS_QUEUE_SORT_LABELS[option]}</span>
+                              {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            haptics.light();
+                            setSelectedNewsSources([]);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]"
+                        >
+                          <span className="flex-1 truncate">All sources</span>
+                          {selectedNewsSources.length === 0 ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                        </button>
+                        {newsQueueSourceOptions.map((source) => {
+                          const selected = selectedNewsSources.includes(source);
+                          return (
+                            <button
+                              key={source}
+                              type="button"
+                              onClick={() => {
+                                haptics.light();
+                                setSelectedNewsSources((current) =>
+                                  current.includes(source)
+                                    ? current.filter((entry) => entry !== source)
+                                    : [...current, source],
+                                );
+                              }}
+                              className={`flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
+                                selected
+                                  ? 'font-medium text-gray-900 dark:text-white'
+                                  : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
+                              }`}
+                            >
+                              <span className="flex-1 truncate">{source}</span>
+                              {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </BottomSheetBody>
                   <BottomSheetFooter>
                     <div className="flex w-full gap-3">
@@ -2088,10 +2174,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           haptics.light();
                           setIsSourceFilterSheetOpen(true);
                         }}
-                        className={`h-9 w-9 border-gray-200 bg-white p-0 text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white ${selectedNewsSources.length > 0 ? 'border-[#ec1e24] text-[#ec1e24]' : ''}`}
-                        aria-label="Filter fetched news by source"
+                        className={`h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333] ${selectedNewsSources.length > 0 ? '!border-[#ec1e24] !text-[#ec1e24]' : ''}`}
+                        aria-label={`Sort and filter fetched news. Current sort: ${NEWS_QUEUE_SORT_LABELS[newsQueueSort]}`}
                       >
-                        <Filter className="h-4 w-4" />
+                        <ArrowDownWideNarrow size={16} className="shrink-0" />
                       </Button>
                       <Button
                         type="button"
