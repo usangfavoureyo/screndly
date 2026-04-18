@@ -630,13 +630,18 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
     openImagePreview(selectedPost, rememberedPreviewImageIndexes[id] ?? 0);
   };
 
+  const tmdbBackTarget =
+    previousPage === 'feeds' || previousPage === 'tmdb' || previousPage === 'dashboard'
+      ? previousPage
+      : 'tmdb';
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div>
         <div className="flex items-start gap-4 mb-4">
           <BackIconButton
-            onClick={() => onNavigate(previousPage || 'tmdb')}
+            onClick={() => onNavigate(tmdbBackTarget)}
             className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
           />
           <div className="flex-1">

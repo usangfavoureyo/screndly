@@ -10,7 +10,7 @@ import { analyzeRssAuditCase, buildDiagnosisAndFixes, getRssAuditImageResolverOp
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
 const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, classifyRSSFallbackPath } = __rssCaptionTestUtils;
-const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
+const { validateImageCandidate, shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 const { computeRssEditorialBrainDisagreements, normalizeRssEditorialBrainDecision, buildRssEditorialBrainContentHash } = __rssEditorialBrainTestUtils;
 const {
@@ -1405,6 +1405,34 @@ test('person-commentary image validation does not block speaker-led two-image co
   } as any);
 
   assert.doesNotMatch(codes.join(','), /IMAGE_CANONICAL_ENTITY_MISMATCH/);
+});
+
+test('person-commentary image validation allows project fallback when the speaker portrait is unavailable', () => {
+  const analysis = guessPrimarySubject({
+    title: 'Ciara Miller Says Summer House Kind Of Has Left Her At A Loss For Words',
+    description: 'Ciara Miller reflected on Summer House.',
+    contentHtml: '<p>Ciara Miller reflected on Summer House and where things stand.</p>',
+    canonicalEntity: {
+      primarySubject: 'Ciara Miller',
+      mediaTitle: 'Summer House',
+      secondarySubject: 'Summer House',
+      entityType: 'person',
+      namedPeople: ['Ciara Miller'],
+      ambiguityFlags: ['story_family_person_commentary_on_project'],
+      allowedEntities: ['Ciara Miller', 'Summer House'],
+    },
+  } as any);
+
+  const result = validateImageCandidate({
+    imageUrl: 'https://image.tmdb.org/t/p/original/summer-house-backdrop.jpg',
+    domain: 'image.tmdb.org',
+    title: 'Summer House official backdrop',
+    source: 'TMDb',
+    imageWidth: 1920,
+    imageHeight: 1080,
+  } as any, analysis);
+
+  assert.equal(result.approved, true);
 });
 
 test('first-look reveal stories stay article-image-first even when project art is missing', () => {

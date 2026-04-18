@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeTMDbPublishImages } from '../services/tmdb-publish-image-selection';
+import { normalizeTMDbPublishImages, resolveTMDbPublishImages } from '../services/tmdb-publish-image-selection';
 
 test('preserves separate backdrop and logo assets for TMDb publish payloads', () => {
   const result = normalizeTMDbPublishImages({
@@ -29,4 +29,44 @@ test('falls back to single image payload when only imageUrl exists', () => {
   assert.deepEqual(result.imageTypes, ['poster']);
   assert.equal(result.imageUrl, 'https://example.com/poster.jpg');
   assert.equal(result.imageType, 'poster');
+});
+
+test('renders logo slot into a publish-ready logo card while keeping separate TMDb assets', async () => {
+  const result = await resolveTMDbPublishImages({
+    imageUrl: 'https://example.com/backdrop.jpg',
+    imageType: 'backdrop',
+    imageUrls: ['https://example.com/backdrop.jpg', 'https://example.com/tmdb-logo.png'],
+    imageTypes: ['backdrop', 'logo'],
+  }, {
+    renderLogoCard: async (sourceUrl) => `https://example.com/rendered?source=${encodeURIComponent(sourceUrl)}`,
+  });
+
+  assert.deepEqual(result.imageUrls, [
+    'https://example.com/backdrop.jpg',
+    'https://example.com/rendered?source=https%3A%2F%2Fexample.com%2Ftmdb-logo.png',
+  ]);
+  assert.deepEqual(result.imageTypes, ['backdrop', 'logo']);
+  assert.equal(result.imageUrl, 'https://example.com/backdrop.jpg');
+});
+
+test('does not re-render an already prepared TMDb logo card asset', async () => {
+  let renderCount = 0;
+
+  const result = await resolveTMDbPublishImages({
+    imageUrl: 'https://example.com/backdrop.jpg',
+    imageType: 'backdrop',
+    imageUrls: ['https://example.com/backdrop.jpg', 'https://cdn.example.com/rss/logo-cards/already-rendered.png'],
+    imageTypes: ['backdrop', 'logo'],
+  }, {
+    renderLogoCard: async (sourceUrl) => {
+      renderCount += 1;
+      return sourceUrl;
+    },
+  });
+
+  assert.equal(renderCount, 0);
+  assert.deepEqual(result.imageUrls, [
+    'https://example.com/backdrop.jpg',
+    'https://cdn.example.com/rss/logo-cards/already-rendered.png',
+  ]);
 });

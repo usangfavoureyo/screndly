@@ -138,4 +138,57 @@ describe('MediaPreviewDialog', () => {
     expect(document.querySelector('video')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Show previous media' })).toBeInTheDocument();
   });
+
+  it('zooms in and back out on touch double-tap, even with slight finger drift while zoomed', () => {
+    const onOpenChange = vi.fn();
+
+    render(
+      <MediaPreviewDialog
+        open
+        src="https://example.com/poster.jpg"
+        mediaType="image"
+        title="Hero image"
+        badgeLabel="image"
+        onOpenChange={onOpenChange}
+      />,
+    );
+
+    const image = screen.getByRole('img', { name: 'Hero image' });
+    const imageSurface = image.parentElement as HTMLElement;
+
+    Object.defineProperty(imageSurface, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        width: 320,
+        height: 640,
+        top: 0,
+        left: 0,
+        right: 320,
+        bottom: 640,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }),
+    });
+
+    const dispatchTap = (x: number, y: number) => {
+      fireEvent.touchStart(imageSurface, {
+        touches: [{ clientX: x, clientY: y }],
+      });
+      fireEvent.touchEnd(imageSurface, {
+        changedTouches: [{ clientX: x, clientY: y }],
+        touches: [],
+      });
+    };
+
+    dispatchTap(120, 180);
+    dispatchTap(124, 184);
+
+    expect(image).toHaveStyle({ transform: 'translate3d(0px, 0px, 0) scale(2)' });
+
+    dispatchTap(154, 214);
+    dispatchTap(162, 222);
+
+    expect(image).toHaveStyle({ transform: 'translate3d(0px, 0px, 0) scale(1)' });
+  });
 });

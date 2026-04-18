@@ -10,7 +10,7 @@ import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
-import { normalizeTMDbPublishImages } from './tmdb-publish-image-selection';
+import { resolveTMDbPublishImages } from './tmdb-publish-image-selection';
 import { getYouTubeRuntimeSettings } from './video-enrichment.service';
 import {
     getComposeState,
@@ -108,7 +108,7 @@ async function resolveTMDbPublishImageUrls(post: {
     imageType?: string | null;
     imageTypes?: string[] | null;
 }): Promise<string[]> {
-    return normalizeTMDbPublishImages(post).imageUrls;
+    return (await resolveTMDbPublishImages(post)).imageUrls;
 }
 let youtubePollingPauseReason: string | null = null;
 

@@ -1973,11 +1973,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
   };
 
+  const designStudioBackTarget =
+    previousPage === 'design-studio' || previousPage === 'dashboard'
+      ? previousPage
+      : 'design-studio';
+
   return (
     <div className="min-h-screen bg-white dark:bg-[#000000] pb-20 lg:pb-0">
       <div className="flex items-start gap-4">
         <BackIconButton
-          onClick={() => onNavigate(previousPage || 'design-studio')}
+          onClick={() => onNavigate(designStudioBackTarget)}
           className="text-gray-900 dark:text-white hover:text-[#ec1e24] p-2 -ml-2 mt-1"
         />
         <div>

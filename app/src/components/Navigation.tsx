@@ -102,7 +102,7 @@ export function Navigation({
                 onClick={onToggleDesktopSidebar}
                 onPointerUp={armPointerActivation('toggle-sidebar-collapsed', onToggleDesktopSidebar)}
                 className={cn(
-                  'absolute inset-0 z-20 hidden h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-md p-0 text-gray-600 opacity-0 transition-[opacity,color,transform] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
+                  'absolute left-1/2 top-0 z-20 hidden h-10 w-10 -translate-x-1/2 shrink-0 cursor-pointer items-center justify-center rounded-md p-0 text-gray-600 opacity-0 transition-[opacity,color,transform] duration-150 pointer-events-none group-hover/sidebar:opacity-100 group-hover/sidebar:pointer-events-auto hover:text-[#ec1e24] dark:text-[#9CA3AF] lg:inline-flex',
                 )}
                 size="icon"
                 variant="ghost"

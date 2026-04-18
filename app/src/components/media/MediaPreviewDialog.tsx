@@ -32,8 +32,9 @@ interface MediaPreviewDialogProps {
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 4;
-const TAP_MOVE_TOLERANCE = 24;
-const DOUBLE_TAP_PROXIMITY = 32;
+const TAP_MOVE_TOLERANCE = 32;
+const DOUBLE_TAP_PROXIMITY = 56;
+const DOUBLE_TAP_WINDOW_MS = 420;
 const PAN_START_TOLERANCE = 10;
 
 function clamp(value: number, min: number, max: number) {
@@ -420,7 +421,7 @@ export function MediaPreviewDialog({
       if (deltaX <= TAP_MOVE_TOLERANCE && deltaY <= TAP_MOVE_TOLERANCE) {
         if (
           lastTap &&
-          now - lastTap.time <= 320 &&
+          now - lastTap.time <= DOUBLE_TAP_WINDOW_MS &&
           Math.abs(lastTap.x - touch.clientX) <= DOUBLE_TAP_PROXIMITY &&
           Math.abs(lastTap.y - touch.clientY) <= DOUBLE_TAP_PROXIMITY
         ) {

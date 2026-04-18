@@ -25,7 +25,7 @@ import jwt from 'jsonwebtoken';
 import { pipeline } from 'stream/promises';
 import { createHash, randomBytes } from 'crypto';
 import sharp from 'sharp';
-import { normalizeTMDbPublishImages } from '../services/tmdb-publish-image-selection';
+import { resolveTMDbPublishImages } from '../services/tmdb-publish-image-selection';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -669,7 +669,7 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         let videoUrl = asNonEmptyString(parsedContent?.videoUrl);
         const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
         const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
-        const normalizedTmdbImages = normalizeTMDbPublishImages({
+        const normalizedTmdbImages = await resolveTMDbPublishImages({
             imageUrl,
             imageUrls,
             imageType: asNonEmptyString(parsedContent?.imageType),

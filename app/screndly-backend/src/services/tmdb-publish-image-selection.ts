@@ -1,3 +1,5 @@
+import { renderTMDbLogoCard } from './rss-logo-render.service';
+
 export interface TMDbPublishImageSelectionInput {
   imageUrl?: string | null;
   imageUrls?: string[] | null;
@@ -10,6 +12,14 @@ export interface TMDbPublishImageSelectionResult {
   imageUrls: string[];
   imageType: string;
   imageTypes: string[];
+}
+
+interface ResolveTMDbPublishImagesOptions {
+  renderLogoCard?: (sourceUrl: string, intent: 'logo') => Promise<string>;
+}
+
+function isRenderedLogoCardUrl(value: string): boolean {
+  return value.includes('/rss/logo-cards/');
 }
 
 export function normalizeTMDbPublishImages(
@@ -44,5 +54,38 @@ export function normalizeTMDbPublishImages(
     imageUrls,
     imageType: imageTypes[0] || fallbackImageType,
     imageTypes,
+  };
+}
+
+export async function resolveTMDbPublishImages(
+  input: TMDbPublishImageSelectionInput,
+  options: ResolveTMDbPublishImagesOptions = {},
+): Promise<TMDbPublishImageSelectionResult> {
+  const normalized = normalizeTMDbPublishImages(input);
+  const renderLogoCard = options.renderLogoCard ?? renderTMDbLogoCard;
+
+  const resolvedImageUrls = await Promise.all(
+    normalized.imageUrls.map(async (url, index) => {
+      const imageType = normalized.imageTypes[index] || normalized.imageType;
+      if (imageType !== 'logo' || isRenderedLogoCardUrl(url)) {
+        return url;
+      }
+
+      try {
+        return await renderLogoCard(url, 'logo');
+      } catch (error) {
+        console.warn('[TMDb] Failed to render publish-time logo card, using raw logo asset.', {
+          source: url,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return url;
+      }
+    }),
+  );
+
+  return {
+    ...normalized,
+    imageUrl: resolvedImageUrls[0] || normalized.imageUrl,
+    imageUrls: resolvedImageUrls,
   };
 }

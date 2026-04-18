@@ -5294,11 +5294,16 @@ function validateImageCandidate(
       (analysis.primarySubject.type === 'actor' || analysis.primarySubject.type === 'director' || analysis.primarySubject.type === 'producer') &&
       Boolean(analysis.contextProject)
     );
+  const canonicalFlags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
   const mentionsPrimarySubject = entityMatches(text, analysis.primarySubject.name);
   const mentionsContextProject = analysis.contextProject ? entityMatches(text, analysis.contextProject) : false;
   const mentionsSecondaryOnly = !mentionsPrimarySubject && !mentionsContextProject && secondaryEntityTerms.some((term) => entityMatches(text, term));
   const animationOfficial = analysis.animatedSubject &&
     (containsKeyword(text, OFFICIAL_ANIMATION_MARKERS) || looksOfficial);
+  const allowPersonCommentaryProjectFallback =
+    canonicalFlags.has('story_family_person_commentary_on_project') &&
+    mentionsContextProject &&
+    !mentionsPrimarySubject;
 
   if (!image.imageUrl) {
     return { approved: false, reason: 'missing image url', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
@@ -5336,7 +5341,7 @@ function validateImageCandidate(
     return { approved: false, reason: 'non-official illustration style detected', reasonCode: 'IMAGE_MEDIA_TYPE_MISMATCH' };
   }
 
-  if (primaryPersonLed && !mentionsPrimarySubject) {
+  if (primaryPersonLed && !mentionsPrimarySubject && !allowPersonCommentaryProjectFallback) {
     return {
       approved: false,
       reason: 'person-led story requires the speaking subject as the primary image anchor',

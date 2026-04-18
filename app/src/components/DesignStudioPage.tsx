@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink, Bookmark, BookmarkCheck, Filter, Check } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -302,6 +302,7 @@ function readPendingEditorTarget(): DesignStudioEditorTarget | null {
 }
 
 type DesignStudioTab = 'manual' | 'auto';
+type DesignStudioTopTab = 'templates' | 'manual' | 'auto';
 type ManualWorkspaceTab = 'templates' | 'news_queue';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
@@ -410,6 +411,7 @@ function toBackgroundImagePoolList(
 const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
 const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 const DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY = 'designStudioManualWorkspaceTab';
+const DESIGN_STUDIO_TOP_TAB_KEY = 'designStudioTopTab';
 const DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY = 'designStudioNewsQueueDismissed';
 const DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY = 'designStudioNewsQueueSaved';
 const DESIGN_STUDIO_NEWS_QUEUE_USED_KEY = 'designStudioNewsQueueUsed';
@@ -669,6 +671,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     const savedTab = localStorage.getItem('designStudioActiveTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
+  const [studioTopTab, setStudioTopTab] = useState<DesignStudioTopTab>(() => {
+    if (typeof window === 'undefined') return 'manual';
+    const savedTopTab = window.localStorage.getItem(DESIGN_STUDIO_TOP_TAB_KEY);
+    if (savedTopTab === 'templates' || savedTopTab === 'manual' || savedTopTab === 'auto') {
+      return savedTopTab;
+    }
+    return 'manual';
+  });
   const [manualWorkspaceTab, setManualWorkspaceTab] = useState<ManualWorkspaceTab>(() => {
     if (typeof window === 'undefined') return 'templates';
     const savedTab = window.localStorage.getItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY);
@@ -722,6 +732,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [newsQueueItems, setNewsQueueItems] = useState<RSSActivityItem[]>([]);
   const [isLoadingNewsQueue, setIsLoadingNewsQueue] = useState(false);
   const [newsQueueError, setNewsQueueError] = useState<string | null>(null);
+  const [isSourceFilterSheetOpen, setIsSourceFilterSheetOpen] = useState(false);
+  const [selectedNewsSources, setSelectedNewsSources] = useState<string[]>([]);
   const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY));
   const [savedQueueIds, setSavedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY));
   const [usedQueueIds, setUsedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_USED_KEY));
@@ -733,6 +745,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     safeStorageSetItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    safeStorageSetItem(DESIGN_STUDIO_TOP_TAB_KEY, studioTopTab);
+
+    if (studioTopTab === 'auto') {
+      setActiveTab('auto');
+      return;
+    }
+
+    setActiveTab('manual');
+    setManualWorkspaceTab(studioTopTab === 'templates' ? 'templates' : 'news_queue');
+  }, [studioTopTab]);
 
   useEffect(() => {
     safeStorageSetItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY, manualWorkspaceTab);
@@ -1163,6 +1187,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     }
 
     haptics.light();
+    setStudioTopTab('manual');
     setActiveTab('manual');
     setManualDraftSource(null);
     setSelectedTemplate(preferredTemplate);
@@ -1666,7 +1691,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   }, [getActivity]);
 
   useEffect(() => {
-    if (activeTab !== 'manual' || manualWorkspaceTab !== 'news_queue') {
+    if (studioTopTab !== 'manual') {
       return;
     }
 
@@ -1678,21 +1703,44 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [activeTab, loadNewsQueue, manualWorkspaceTab]);
+  }, [loadNewsQueue, studioTopTab]);
 
   const visibleNewsQueueItems = useMemo(
     () => newsQueueItems.filter((item) => !dismissedQueueIds.has(item.id)),
     [dismissedQueueIds, newsQueueItems],
   );
 
+  const newsQueueSourceOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          visibleNewsQueueItems.map((item) => (item.feedName || 'RSS Feed').trim() || 'RSS Feed'),
+        ),
+      ).sort((left, right) => left.localeCompare(right)),
+    [visibleNewsQueueItems],
+  );
+
+  useEffect(() => {
+    setSelectedNewsSources((current) => current.filter((source) => newsQueueSourceOptions.includes(source)));
+  }, [newsQueueSourceOptions]);
+
+  const sourceFilteredNewsQueueItems = useMemo(() => {
+    if (selectedNewsSources.length === 0) {
+      return visibleNewsQueueItems;
+    }
+
+    const selectedSourceSet = new Set(selectedNewsSources);
+    return visibleNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
+  }, [selectedNewsSources, visibleNewsQueueItems]);
+
   const savedNewsQueueItems = useMemo(
-    () => visibleNewsQueueItems.filter((item) => savedQueueIds.has(item.id)),
-    [savedQueueIds, visibleNewsQueueItems],
+    () => sourceFilteredNewsQueueItems.filter((item) => savedQueueIds.has(item.id)),
+    [savedQueueIds, sourceFilteredNewsQueueItems],
   );
 
   const inboxNewsQueueItems = useMemo(
-    () => visibleNewsQueueItems.filter((item) => !savedQueueIds.has(item.id)),
-    [savedQueueIds, visibleNewsQueueItems],
+    () => sourceFilteredNewsQueueItems.filter((item) => !savedQueueIds.has(item.id)),
+    [savedQueueIds, sourceFilteredNewsQueueItems],
   );
 
   const setSavedStateForNewsQueueItem = (itemId: string, shouldSave: boolean) => {
@@ -1763,6 +1811,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       initialData.backgroundImage = item.imageUrl;
     }
 
+    setStudioTopTab('manual');
     setActiveTab('manual');
     setSelectedTemplate(preferredTemplate);
     setEditingTemplateId(preferredTemplate.id);
@@ -1794,9 +1843,11 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         <div>
           <h1 className="text-gray-900 dark:text-white mb-2">Design Studio</h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
-            {activeTab === 'manual'
-              ? 'Build manual designs from templates or fetched feed stories'
-              : 'Generate editorial designs automatically'}
+            {studioTopTab === 'templates'
+              ? 'Upload, load, and manage your PSD template library'
+              : studioTopTab === 'manual'
+                ? 'Build manual designs from templates or fetched feed stories'
+                : 'Generate editorial designs automatically'}
           </p>
         </div>
         <Button
@@ -1814,34 +1865,23 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       <SegmentedTabSwitcher
         tabs={[
+          { id: 'templates', label: 'Templates' },
           { id: 'manual', label: 'Manual' },
           { id: 'auto', label: 'Auto' },
-        ]}
-        activeTab={activeTab}
+        ] as const}
+        activeTab={studioTopTab}
         onChange={(tab) => {
           haptics.light();
-          setActiveTab(tab);
+          setStudioTopTab(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
       />
 
       {activeTab === 'manual' ? (
         <>
-          <SegmentedTabSwitcher
-            tabs={[
-              { id: 'templates', label: 'Templates' },
-              { id: 'news_queue', label: 'News Queue' },
-            ] as const}
-            activeTab={manualWorkspaceTab}
-            onChange={(tab) => {
-              haptics.light();
-              setManualWorkspaceTab(tab);
-            }}
-          />
-
-          {manualWorkspaceTab === 'templates' ? (
+          {studioTopTab === 'templates' ? (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="block">
                   <input
                     ref={fileInputRef}
@@ -1872,18 +1912,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 >
                   <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
                   <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCreateDesign}
-                  className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
-                >
-                  <Plus className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
-                  <p className="text-gray-900 dark:text-white">Create Design</p>
-                  <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                    Start a new design using your saved template layout
-                  </p>
                 </button>
               </div>
 
@@ -1952,6 +1980,19 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             </>
           ) : (
             <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button
+                  type="button"
+                  onClick={handleCreateDesign}
+                  className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+                >
+                  <Plus className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+                  <p className="text-gray-900 dark:text-white">Create Design</p>
+                  <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    Start a new design using your saved template layout
+                  </p>
+                </button>
+              </div>
 
               {newsQueueError ? (
                 <div className="rounded-2xl border border-[#ec1e24]/40 bg-[#ec1e24]/10 px-4 py-3 text-sm text-[#ec1e24]">
@@ -1960,22 +2001,109 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               ) : null}
 
               <div className="space-y-6">
+                <BottomSheet
+                  open={isSourceFilterSheetOpen}
+                  onOpenChange={setIsSourceFilterSheetOpen}
+                  heightMode="auto"
+                  showHandle
+                >
+                  <BottomSheetHeader>
+                    <BottomSheetTitle>Filter by Source</BottomSheetTitle>
+                  </BottomSheetHeader>
+                  <BottomSheetBody className="px-4 pb-4">
+                    <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          haptics.light();
+                          setSelectedNewsSources([]);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm text-gray-900 transition-colors hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]"
+                      >
+                        <span className="flex-1 truncate">All sources</span>
+                        {selectedNewsSources.length === 0 ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                      </button>
+                      {newsQueueSourceOptions.map((source) => {
+                        const selected = selectedNewsSources.includes(source);
+                        return (
+                          <button
+                            key={source}
+                            type="button"
+                            onClick={() => {
+                              haptics.light();
+                              setSelectedNewsSources((current) =>
+                                current.includes(source)
+                                  ? current.filter((entry) => entry !== source)
+                                  : [...current, source],
+                              );
+                            }}
+                            className={`flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
+                              selected
+                                ? 'font-medium text-gray-900 dark:text-white'
+                                : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
+                            }`}
+                          >
+                            <span className="flex-1 truncate">{source}</span>
+                            {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </BottomSheetBody>
+                  <BottomSheetFooter>
+                    <div className="flex w-full gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          haptics.light();
+                          setSelectedNewsSources([]);
+                        }}
+                        className="flex-1 border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          haptics.light();
+                          setIsSourceFilterSheetOpen(false);
+                        }}
+                        className="flex-1 bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+                      >
+                        Done
+                      </Button>
+                    </div>
+                  </BottomSheetFooter>
+                </BottomSheet>
+
                 <section className="space-y-3">
                   <div className="flex items-center justify-between">
+                    <h3 className="text-gray-900 dark:text-white font-medium">Fetched News ({inboxNewsQueueItems.length})</h3>
                     <div className="flex items-center gap-2">
-                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Fetched News</p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{inboxNewsQueueItems.length}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          haptics.light();
+                          setIsSourceFilterSheetOpen(true);
+                        }}
+                        className={`h-9 w-9 border-gray-200 bg-white p-0 text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white ${selectedNewsSources.length > 0 ? 'border-[#ec1e24] text-[#ec1e24]' : ''}`}
+                        aria-label="Filter fetched news by source"
+                      >
+                        <Filter className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void loadNewsQueue()}
+                        disabled={isLoadingNewsQueue}
+                        className="h-9 w-9 border-gray-200 bg-white p-0 text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
+                      >
+                        {isLoadingNewsQueue ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                        <span className="sr-only">Refresh fetched news</span>
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => void loadNewsQueue()}
-                      disabled={isLoadingNewsQueue}
-                      className="h-9 w-9 border-gray-200 bg-white p-0 text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
-                    >
-                      {isLoadingNewsQueue ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      <span className="sr-only">Refresh fetched news</span>
-                    </Button>
                   </div>
                   {isLoadingNewsQueue && newsQueueItems.length === 0 ? (
                     <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
@@ -1983,7 +2111,11 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                     </div>
                   ) : inboxNewsQueueItems.length === 0 ? (
                     <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
-                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">No fetched news stories right now.</p>
+                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                        {selectedNewsSources.length > 0
+                          ? 'No fetched news stories for the selected source filters.'
+                          : 'No fetched news stories right now.'}
+                      </p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -2055,9 +2187,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
                 {savedNewsQueueItems.length > 0 ? (
                   <section className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Saved for later</p>
-                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{savedNewsQueueItems.length}</p>
+                    <div className="flex items-center">
+                      <h3 className="text-gray-900 dark:text-white font-medium">Saved For Later ({savedNewsQueueItems.length})</h3>
                     </div>
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                       {savedNewsQueueItems.map((item) => (
