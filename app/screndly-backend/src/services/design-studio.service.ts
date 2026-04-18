@@ -2669,7 +2669,27 @@ export const __designStudioRenderTestUtils = {
 };
 
 function deriveHeaderText(title: string): string {
-  return title.trim().length <= 120 ? title.trim() : `${title.trim().slice(0, 117).trim()}...`;
+  const trimmed = title.replace(/\s+/g, ' ').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutSourceSuffix = trimmed.replace(/\s+[-|]\s+[^-|]{1,45}$/, '').trim();
+  const withoutEditorialTags = withoutSourceSuffix
+    .replace(/^\s*(exclusive|report|watch|new)\s*:\s*/i, '')
+    .replace(/\s+\((exclusive|report|updated)\)\s*$/i, '')
+    .replace(/\s+\[(exclusive|report|updated)\]\s*$/i, '')
+    .trim();
+  const withoutFiller = withoutEditorialTags
+    .replace(/\s+in\s+latest\s+update$/i, '')
+    .replace(/\s+in\s+new\s+update$/i, '')
+    .replace(/\s+in\s+latest\s+trailer$/i, '')
+    .trim();
+
+  const words = withoutFiller.split(' ').filter(Boolean);
+  const compactWords = words.length > 10 ? words.slice(0, 10) : words;
+  const headline = compactWords.join(' ');
+  return headline.length <= 72 ? headline : `${headline.slice(0, 69).trimEnd()}...`;
 }
 
 function deriveSubtext(feedName?: string, matchedKeyword?: string): string {
@@ -3066,6 +3086,10 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
         headerText,
         subtext,
         backgroundImage: renderBackground.source,
+        fontScale: 1,
+        headlineWidthScale: 1,
+        lineHeightMultiplier: template.lineHeightMultiplier ?? 0.93,
+        maxLines: REFERENCE_VARIANTS[autoPlan.variant]?.maxLines || 4,
         headerTextColor: autoPlan.headerTextColor,
         overlayColor: autoPlan.overlayColor,
         overlayOpacity: autoPlan.overlayOpacity,

@@ -517,7 +517,7 @@ function TMDbFeedCardComponent({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-9 w-9 bg-transparent border border-gray-200 dark:border-[#333333]"
+                    className="h-9 w-9 border border-gray-200 bg-transparent p-0 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-transparent dark:hover:bg-[#111111]"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -525,7 +525,7 @@ function TMDbFeedCardComponent({
                       setIsMenuOpen(true);
                     }}
                   >
-                    <MoreVertical size={14} className="text-gray-900 dark:text-white" />
+                    <MoreVertical className="h-3 w-3 text-gray-900 dark:text-white" />
                   </Button>
                 </>
               )}

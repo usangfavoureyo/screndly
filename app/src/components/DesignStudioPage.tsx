@@ -566,9 +566,9 @@ function buildSuggestedEditorialHeadline(rawTitle: string): string {
     .trim();
 
   const words = withoutFiller.split(' ').filter(Boolean);
-  const compactWords = words.length > 16 ? words.slice(0, 16) : words;
+  const compactWords = words.length > 10 ? words.slice(0, 10) : words;
 
-  return compactWords
+  const headline = compactWords
     .map((word, index) => {
       if (/^[A-Z0-9]{2,}$/.test(word)) {
         return word;
@@ -579,6 +579,8 @@ function buildSuggestedEditorialHeadline(rawTitle: string): string {
       return word.charAt(0).toUpperCase() + word.slice(1);
     })
     .join(' ');
+
+  return headline.length <= 72 ? headline : `${headline.slice(0, 69).trimEnd()}...`;
 }
 
 function parseAutoEditorial(editorial: any): AutoEditorial {
@@ -2039,7 +2041,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                               </Button>
                               {item.link ? (
                                 <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
-                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  <ExternalLink className="mr-2 h-[12px] w-[12px]" />
                                   Open Source
                                 </Button>
                               ) : null}
@@ -2107,7 +2109,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                               </Button>
                               {item.link ? (
                                 <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
-                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  <ExternalLink className="mr-2 h-[12px] w-[12px]" />
                                   Open Source
                                 </Button>
                               ) : null}

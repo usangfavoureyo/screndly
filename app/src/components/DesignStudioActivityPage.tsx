@@ -2149,7 +2149,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                                 onClick={() => openOptionsMenu(activity)}
                                 className="h-9 w-9 border border-gray-200 bg-transparent p-0 text-gray-900 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-transparent dark:text-white dark:hover:bg-[#111111]"
                               >
-                                <MoreVertical className="h-[14px] w-[14px] text-gray-900 dark:text-white" />
+                                <MoreVertical className="h-3 w-3 text-gray-900 dark:text-white" />
                               </Button>
                             </div>
                           </div>

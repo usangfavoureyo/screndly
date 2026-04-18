@@ -120,7 +120,7 @@ export function EditDesignBottomSheet({
     bottom_center: 'bottom',
     bottom_left: 'right',
     bottom_right: 'left',
-    top_center: 'bottom',
+    top_center: 'top',
     top_left: 'right',
     top_right: 'left',
   };

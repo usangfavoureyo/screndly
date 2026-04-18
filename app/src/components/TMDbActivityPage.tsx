@@ -949,7 +949,7 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                             setOpenMenuItemId((current) => (current === item.id ? null : item.id));
                           }}
                         >
-                          <MoreVertical className="h-[14px] w-[14px] text-gray-900 dark:text-white" />
+                          <MoreVertical className="h-3 w-3 text-gray-900 dark:text-white" />
                         </Button>
 
                         {/* Options BottomSheet */}
