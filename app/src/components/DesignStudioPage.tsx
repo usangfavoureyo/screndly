@@ -126,16 +126,24 @@ function safeStorageSetItem(key: string, value: string) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, value);
-    window.sessionStorage.setItem(key, value);
   } catch (error) {
     console.warn(`Failed to persist Design Studio cache for ${key}:`, error);
+  }
+  try {
+    window.sessionStorage.setItem(key, value);
+  } catch (error) {
+    console.warn(`Failed to persist Design Studio session cache for ${key}:`, error);
   }
 }
 
 function safeStorageGetItem(key: string): string | null {
   if (typeof window === 'undefined') return null;
   try {
-    return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key);
+    const localValue = window.localStorage.getItem(key);
+    if (localValue !== null) {
+      return localValue;
+    }
+    return window.sessionStorage.getItem(key);
   } catch {
     return null;
   }
