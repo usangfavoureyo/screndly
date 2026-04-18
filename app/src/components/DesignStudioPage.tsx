@@ -339,6 +339,18 @@ interface ManualDraftSourceContext {
   matchedKeyword?: string;
 }
 
+function normalizeKeywordMatch(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function findMatchedKeyword(title: string, keywords: string[]): string | undefined {
+  const normalizedTitle = normalizeKeywordMatch(title || '');
+  if (!normalizedTitle) {
+    return undefined;
+  }
+  return keywords.find((keyword) => normalizedTitle.includes(normalizeKeywordMatch(keyword)));
+}
+
 type AutoEditorialAction =
   | 'caption'
   | 'header'
@@ -1771,14 +1783,60 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     });
   }, [manualNewsQueueRetentionMs, savedQueueIds, visibleNewsQueueItems]);
 
+  const triggerKeywords = useMemo(
+    () =>
+      (Array.isArray(settings.designStudioTriggerKeywords) ? settings.designStudioTriggerKeywords : [])
+        .map((keyword) => keyword.trim())
+        .filter(Boolean),
+    [settings.designStudioTriggerKeywords],
+  );
+
+  const bannedKeywords = useMemo(
+    () =>
+      (Array.isArray(settings.designStudioBannedKeywords) ? settings.designStudioBannedKeywords : [])
+        .map((keyword) => keyword.trim())
+        .filter(Boolean),
+    [settings.designStudioBannedKeywords],
+  );
+
+  const selectedAutoFeedIds = useMemo(
+    () => new Set(Array.isArray(settings.designStudioSelectedRssFeedIds) ? settings.designStudioSelectedRssFeedIds : []),
+    [settings.designStudioSelectedRssFeedIds],
+  );
+
+  const autoScopeFilteredNewsQueueItems = useMemo(() => {
+    return retentionFilteredNewsQueueItems.filter((item) => {
+      if (selectedAutoFeedIds.size > 0) {
+        if (!item.feedId || !selectedAutoFeedIds.has(item.feedId)) {
+          return false;
+        }
+      }
+
+      const title = item.title || '';
+      if (!title.trim()) {
+        return false;
+      }
+
+      if (bannedKeywords.length > 0 && findMatchedKeyword(title, bannedKeywords)) {
+        return false;
+      }
+
+      if (triggerKeywords.length === 0) {
+        return true;
+      }
+
+      return Boolean(findMatchedKeyword(title, triggerKeywords));
+    });
+  }, [bannedKeywords, retentionFilteredNewsQueueItems, selectedAutoFeedIds, triggerKeywords]);
+
   const newsQueueSourceOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          retentionFilteredNewsQueueItems.map((item) => (item.feedName || 'RSS Feed').trim() || 'RSS Feed'),
+          autoScopeFilteredNewsQueueItems.map((item) => (item.feedName || 'RSS Feed').trim() || 'RSS Feed'),
         ),
       ).sort((left, right) => left.localeCompare(right)),
-    [retentionFilteredNewsQueueItems],
+    [autoScopeFilteredNewsQueueItems],
   );
 
   useEffect(() => {
@@ -1787,12 +1845,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
   const sourceFilteredNewsQueueItems = useMemo(() => {
     if (selectedNewsSources.length === 0) {
-      return retentionFilteredNewsQueueItems;
+      return autoScopeFilteredNewsQueueItems;
     }
 
     const selectedSourceSet = new Set(selectedNewsSources);
-    return retentionFilteredNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
-  }, [selectedNewsSources, retentionFilteredNewsQueueItems]);
+    return autoScopeFilteredNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
+  }, [selectedNewsSources, autoScopeFilteredNewsQueueItems]);
 
   const sortedNewsQueueItems = useMemo(() => {
     const sorted = [...sourceFilteredNewsQueueItems];
@@ -1896,7 +1954,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       sourceUrl: item.link,
       sourceSummary: snippet,
       fetchedAt: item.timestamp,
-      matchedKeyword: item.editorialBrain?.decision?.event || undefined,
+      matchedKeyword:
+        item.editorialBrain?.decision?.event
+        || findMatchedKeyword(originalHeadline, triggerKeywords)
+        || undefined,
     });
     setIsEditSheetOpen(true);
     setUsedQueueIds((current) => {
@@ -2257,7 +2318,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                       <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
                         {selectedNewsSources.length > 0
                           ? 'No fetched news stories for the selected source filters.'
-                          : 'No fetched news stories right now.'}
+                          : 'No fetched news stories match your Auto feed + trigger keyword filters right now.'}
                       </p>
                     </div>
                   ) : (

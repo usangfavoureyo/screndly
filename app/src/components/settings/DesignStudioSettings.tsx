@@ -838,7 +838,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
               <div>
                 <h4 className="text-sm text-gray-900 dark:text-white">RSS Feed Sources</h4>
                 <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                  Choose which RSS feeds can generate auto editorials
+                  Choose which RSS feeds are used for Auto editorials and Manual News Queue filtering
                 </p>
               </div>
               {feeds.length > 0 && (
@@ -906,7 +906,7 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             <div>
               <h4 className="text-sm text-gray-900 dark:text-white">Editorial Trigger Keywords</h4>
               <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
-                Titles from selected feeds must match one of these keywords or phrases before an editorial is generated.
+                Titles from selected feeds must match one of these keywords or phrases before an Auto editorial is generated, and the same filter is used in Manual News Queue.
               </p>
             </div>
 
