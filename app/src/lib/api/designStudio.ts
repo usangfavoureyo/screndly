@@ -333,6 +333,10 @@ export async function startDesignStudioManualRender(payload: {
     sharedCaption?: string;
     pinterestTitle?: string;
     pinterestDescription?: string;
+    sourceHeadline?: string;
+    sourceSummary?: string;
+    sourceUrl?: string;
+    sourceName?: string;
     exportFormat?: DesignStudioExportFormat;
   };
 }): Promise<DesignStudioManualRenderJob> {

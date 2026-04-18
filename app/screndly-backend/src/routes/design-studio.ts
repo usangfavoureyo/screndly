@@ -249,6 +249,10 @@ const manualRenderRequestSchema = z.object({
     sharedCaption: z.string().optional(),
     pinterestTitle: z.string().optional(),
     pinterestDescription: z.string().optional(),
+    sourceHeadline: z.string().optional(),
+    sourceSummary: z.string().optional(),
+    sourceUrl: z.string().optional(),
+    sourceName: z.string().optional(),
     exportFormat: z.enum(['jpeg', 'png']).optional(),
   }),
 });

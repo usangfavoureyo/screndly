@@ -2,7 +2,6 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { ArrowLeft, Upload, X, Sparkles } from 'lucide-react';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
-import { Input } from './ui/input';
 import { Textarea } from './ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { BottomSheet, BottomSheetHeader, BottomSheetTitle, BottomSheetBody, BottomSheetFooter } from './ui/bottom-sheet';
@@ -33,6 +32,15 @@ import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right
 const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
 const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
+const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV1';
+const VARIANT_OVERLAY_DIRECTION_MAP: Record<DesignStudioLayoutVariant, 'top' | 'bottom' | 'left' | 'right'> = {
+  bottom_center: 'bottom',
+  bottom_left: 'left',
+  bottom_right: 'right',
+  top_center: 'top',
+  top_left: 'left',
+  top_right: 'right',
+};
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -116,15 +124,6 @@ export function EditDesignBottomSheet({
   onChange,
   isRendering = false,
 }: EditDesignBottomSheetProps) {
-  const variantOverlayDirectionMap: Record<DesignStudioLayoutVariant, 'top' | 'bottom' | 'left' | 'right'> = {
-    bottom_center: 'bottom',
-    bottom_left: 'right',
-    bottom_right: 'left',
-    top_center: 'top',
-    top_left: 'right',
-    top_right: 'left',
-  };
-
   const { settings: persistedSettings } = useSettings();
   const [headerText, setHeaderText] = useState(initialData?.headerText || '');
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
@@ -181,6 +180,27 @@ export function EditDesignBottomSheet({
     persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
   );
   const [, setHistoryVersion] = useState(0);
+
+  const readEditSheetPrefs = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const raw = window.localStorage.getItem(DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, any> : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const saveEditSheetPrefs = useCallback((prefs: Record<string, any>) => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // noop
+    }
+  }, []);
 
   const dismissActiveTextInput = () => {
     if (typeof document === 'undefined') return;
@@ -248,28 +268,124 @@ export function EditDesignBottomSheet({
     }
 
     appliedInitialDataRef.current = signature;
+    const persistedPrefs = readEditSheetPrefs();
+    const resolvedVariant = (persistedPrefs?.templateVariant as DesignStudioLayoutVariant | undefined)
+      || initialData.templateVariant
+      || 'bottom_center';
+    const resolvedGradientPosition = VARIANT_OVERLAY_DIRECTION_MAP[resolvedVariant] || 'bottom';
+
     setHeaderText(initialData.headerText || '');
     setSubtext(initialData.subtext || '');
-    setHeaderTextColor(initialData.headerTextColor || '#FFFFFF');
-    setSubtextColor(initialData.subtextColor || '#000000');
-    setFontScale(initialData.fontScale ?? 1);
-    setHeadlineWidthScale(initialData.headlineWidthScale ?? 1);
-    setLineHeightMultiplier(initialData.lineHeightMultiplier ?? 0.93);
+    setHeaderTextColor(
+      typeof persistedPrefs?.headerTextColor === 'string'
+        ? persistedPrefs.headerTextColor
+        : initialData.headerTextColor || '#FFFFFF',
+    );
+    setSubtextColor(
+      typeof persistedPrefs?.subtextColor === 'string'
+        ? persistedPrefs.subtextColor
+        : initialData.subtextColor || '#000000',
+    );
+    setFontScale(
+      typeof persistedPrefs?.fontScale === 'number'
+        ? persistedPrefs.fontScale
+        : initialData.fontScale ?? 1,
+    );
+    setHeadlineWidthScale(
+      typeof persistedPrefs?.headlineWidthScale === 'number'
+        ? persistedPrefs.headlineWidthScale
+        : initialData.headlineWidthScale ?? 1,
+    );
+    setLineHeightMultiplier(
+      typeof persistedPrefs?.lineHeightMultiplier === 'number'
+        ? persistedPrefs.lineHeightMultiplier
+        : initialData.lineHeightMultiplier ?? 0.93,
+    );
     setBackgroundImage(initialData.backgroundImage || '');
     setPreviewBackgroundImage(initialData.backgroundImage || '');
     setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
     setImageZoom(initialData.imageZoom || 1.0);
-    setOverlayEnabled(initialData.overlayEnabled || false);
-    setOverlayColor(initialData.overlayColor || '#000000');
-    setOverlayOpacity(initialData.overlayOpacity || 70);
-    setGradientPosition(initialData.gradientPosition || 'top');
-    setTemplateVariant(initialData.templateVariant || 'bottom_center');
-    setFadeEnabled(initialData.fadeEnabled ?? true);
-    setFadeOpacity(initialData.fadeOpacity ?? 90);
-    setBrandBlockMode(initialData.brandBlockMode || 'auto');
-    setExportFormat(persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg');
+    setOverlayEnabled(
+      typeof persistedPrefs?.overlayEnabled === 'boolean'
+        ? persistedPrefs.overlayEnabled
+        : initialData.overlayEnabled || false,
+    );
+    setOverlayColor(
+      typeof persistedPrefs?.overlayColor === 'string'
+        ? persistedPrefs.overlayColor
+        : initialData.overlayColor || '#000000',
+    );
+    setOverlayOpacity(
+      typeof persistedPrefs?.overlayOpacity === 'number'
+        ? persistedPrefs.overlayOpacity
+        : initialData.overlayOpacity || 70,
+    );
+    setTemplateVariant(resolvedVariant);
+    setGradientPosition(resolvedGradientPosition);
+    setFadeEnabled(
+      typeof persistedPrefs?.fadeEnabled === 'boolean'
+        ? persistedPrefs.fadeEnabled
+        : initialData.fadeEnabled ?? true,
+    );
+    setFadeOpacity(
+      typeof persistedPrefs?.fadeOpacity === 'number'
+        ? persistedPrefs.fadeOpacity
+        : initialData.fadeOpacity ?? 90,
+    );
+    setBrandBlockMode(
+      persistedPrefs?.brandBlockMode === 'auto' || persistedPrefs?.brandBlockMode === 'black' || persistedPrefs?.brandBlockMode === 'white'
+        ? persistedPrefs.brandBlockMode
+        : initialData.brandBlockMode || 'auto',
+    );
+    setExportFormat(
+      persistedPrefs?.exportFormat === 'png' || persistedPrefs?.exportFormat === 'jpeg'
+        ? persistedPrefs.exportFormat
+        : persistedSettings.exportFormat === 'png'
+          ? 'png'
+          : 'jpeg',
+    );
     resetHistorySignatureRef.current = signature;
-  }, [open, initialData, persistedSettings.exportFormat, templateName]);
+  }, [open, initialData, persistedSettings.exportFormat, readEditSheetPrefs, templateName]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    saveEditSheetPrefs({
+      headerTextColor,
+      subtextColor,
+      fontScale,
+      headlineWidthScale,
+      lineHeightMultiplier,
+      overlayEnabled,
+      overlayColor,
+      overlayOpacity,
+      templateVariant,
+      gradientPosition,
+      fadeEnabled,
+      fadeOpacity,
+      brandBlockMode,
+      exportFormat,
+    });
+  }, [
+    open,
+    headerTextColor,
+    subtextColor,
+    fontScale,
+    headlineWidthScale,
+    lineHeightMultiplier,
+    overlayEnabled,
+    overlayColor,
+    overlayOpacity,
+    templateVariant,
+    gradientPosition,
+    fadeEnabled,
+    fadeOpacity,
+    brandBlockMode,
+    exportFormat,
+    saveEditSheetPrefs,
+  ]);
 
   useEffect(() => {
     expandedPreviewOffsetRef.current = expandedPreviewOffset;
@@ -1037,7 +1153,7 @@ export function EditDesignBottomSheet({
                 {headerText.length}/90
               </span>
             </div>
-            <Input
+            <Textarea
               value={headerText}
               onChange={(e) => {
                 haptics.light();
@@ -1047,7 +1163,8 @@ export function EditDesignBottomSheet({
                 }
               }}
               placeholder="Enter header text..."
-              className="bg-white dark:bg-black border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#292929]"
+              rows={4}
+              className="min-h-[112px] bg-white dark:bg-black border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#292929] resize-y"
             />
             {headerText.length > 90 && (
                 <p className="text-xs text-[#ec1e24] mt-1">
@@ -1268,7 +1385,7 @@ export function EditDesignBottomSheet({
                       onClick={() => {
                         haptics.light();
                         setTemplateVariant(value);
-                        setGradientPosition(variantOverlayDirectionMap[value]);
+                        setGradientPosition(VARIANT_OVERLAY_DIRECTION_MAP[value]);
                       }}
                       variant="outline"
                       size="sm"

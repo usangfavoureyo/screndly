@@ -126,8 +126,18 @@ function safeStorageSetItem(key: string, value: string) {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, value);
+    window.sessionStorage.setItem(key, value);
   } catch (error) {
     console.warn(`Failed to persist Design Studio cache for ${key}:`, error);
+  }
+}
+
+function safeStorageGetItem(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage.getItem(key) ?? window.localStorage.getItem(key);
+  } catch {
+    return null;
   }
 }
 
@@ -414,6 +424,7 @@ const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
 const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 const DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY = 'designStudioManualWorkspaceTab';
 const DESIGN_STUDIO_TOP_TAB_KEY = 'designStudioTopTab';
+const DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY = 'designStudioTemplateListCollapsed';
 const DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY = 'designStudioNewsQueueDismissed';
 const DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY = 'designStudioNewsQueueSaved';
 const DESIGN_STUDIO_NEWS_QUEUE_USED_KEY = 'designStudioNewsQueueUsed';
@@ -674,20 +685,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const { feeds, getActivity } = useRSSFeeds();
   const { showUndo } = useUndo();
   const [activeTab, setActiveTab] = useState<DesignStudioTab>(() => {
-    const savedTab = localStorage.getItem('designStudioActiveTab');
+    const savedTab = safeStorageGetItem('designStudioActiveTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
   const [studioTopTab, setStudioTopTab] = useState<DesignStudioTopTab>(() => {
-    if (typeof window === 'undefined') return 'manual';
-    const savedTopTab = window.localStorage.getItem(DESIGN_STUDIO_TOP_TAB_KEY);
+    const savedTopTab = safeStorageGetItem(DESIGN_STUDIO_TOP_TAB_KEY);
     if (savedTopTab === 'templates' || savedTopTab === 'manual' || savedTopTab === 'auto') {
       return savedTopTab;
     }
     return 'manual';
   });
   const [manualWorkspaceTab, setManualWorkspaceTab] = useState<ManualWorkspaceTab>(() => {
-    if (typeof window === 'undefined') return 'templates';
-    const savedTab = window.localStorage.getItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY);
+    const savedTab = safeStorageGetItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY);
     return savedTab === 'news_queue' ? 'news_queue' : 'templates';
   });
   const [templates, setTemplates] = useState<Template[]>(cachedPageState?.templates || []);
@@ -708,7 +717,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isRendering, setIsRendering] = useState(false);
   const [publishTarget, setPublishTarget] = useState<RenderedDesign | null>(null);
   const [showBackblazeBrowser, setShowBackblazeBrowser] = useState(false);
-  const [isTemplateListCollapsed, setIsTemplateListCollapsed] = useState(false);
+  const [isTemplateListCollapsed, setIsTemplateListCollapsed] = useState(
+    () => safeStorageGetItem(DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY) === 'true',
+  );
   const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [isFinalizingTemplateUpload, setIsFinalizingTemplateUpload] = useState(false);
@@ -770,6 +781,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     safeStorageSetItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY, manualWorkspaceTab);
   }, [manualWorkspaceTab]);
+
+  useEffect(() => {
+    safeStorageSetItem(DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY, isTemplateListCollapsed ? 'true' : 'false');
+  }, [isTemplateListCollapsed]);
 
   useEffect(() => {
     saveStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY, dismissedQueueIds);
@@ -1214,6 +1229,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setIsEditSheetOpen(false);
 
     try {
+      const resolvedCaption = data.caption?.trim().length
+        ? data.caption
+        : manualDraftSource
+          ? [manualDraftSource.sourceHeadline, manualDraftSource.sourceSummary].filter(Boolean).join('\n\n')
+          : data.caption;
+
       const job = await startDesignStudioManualRender({
         template: {
           ...selectedTemplate,
@@ -1239,8 +1260,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           fadeEnabled: data.fadeEnabled,
           fadeOpacity: data.fadeOpacity,
           brandBlockMode: data.brandBlockMode,
-          caption: data.caption,
+          caption: resolvedCaption,
           contentType: data.contentType,
+          sourceHeadline: manualDraftSource?.sourceHeadline,
+          sourceSummary: manualDraftSource?.sourceSummary,
+          sourceUrl: manualDraftSource?.sourceUrl,
+          sourceName: manualDraftSource?.sourceName,
           exportFormat: data.exportFormat || (settings.exportFormat === 'png' ? 'png' : 'jpeg'),
         },
       });
@@ -1910,6 +1935,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         activeTab={studioTopTab}
         onChange={(tab) => {
           haptics.light();
+          safeStorageSetItem(DESIGN_STUDIO_TOP_TAB_KEY, tab);
           setStudioTopTab(tab);
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
@@ -1987,7 +2013,11 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   size="sm"
                   onClick={() => {
                     haptics.light();
-                    setIsTemplateListCollapsed((current) => !current);
+                    setIsTemplateListCollapsed((current) => {
+                      const next = !current;
+                      safeStorageSetItem(DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY, next ? 'true' : 'false');
+                      return next;
+                    });
                   }}
                   className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
                   aria-label={isTemplateListCollapsed ? 'Show templates' : 'Hide templates'}

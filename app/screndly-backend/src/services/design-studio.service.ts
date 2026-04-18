@@ -306,6 +306,10 @@ interface DesignStudioRenderPayload {
   sharedCaption?: string;
   pinterestTitle?: string;
   pinterestDescription?: string;
+  sourceHeadline?: string;
+  sourceSummary?: string;
+  sourceUrl?: string;
+  sourceName?: string;
   exportFormat?: DesignStudioExportFormat;
 }
 
@@ -2900,6 +2904,11 @@ async function processManualRenderJob(
         templateId: template.id,
         templateName: template.name,
         headerText: input.data.headerText,
+        sourceHeadline: input.data.sourceHeadline,
+        sourceSummary: input.data.sourceSummary,
+        sourceUrl: input.data.sourceUrl,
+        sourceName: input.data.sourceName,
+        sourceTitle: input.data.sourceHeadline || input.data.headerText,
         renderJobId: jobId,
         variant: renderedDesign.templateVariant,
         previewUrl: renderedDesign.previewUrl,

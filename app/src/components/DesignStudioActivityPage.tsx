@@ -56,6 +56,10 @@ interface DesignStudioActivityRecord {
     templateName?: string;
     headerText?: string;
     sourceTitle?: string;
+    sourceHeadline?: string;
+    sourceSummary?: string;
+    sourceUrl?: string;
+    sourceName?: string;
     designId?: string;
     platforms?: string;
     source?: string;
@@ -153,6 +157,10 @@ function normalizeActivityDetails(value: unknown): DesignStudioActivityRecord['d
     templateName: typeof details.templateName === 'string' ? details.templateName : undefined,
     headerText: typeof details.headerText === 'string' ? details.headerText : undefined,
     sourceTitle: typeof details.sourceTitle === 'string' ? details.sourceTitle : undefined,
+    sourceHeadline: typeof details.sourceHeadline === 'string' ? details.sourceHeadline : undefined,
+    sourceSummary: typeof details.sourceSummary === 'string' ? details.sourceSummary : undefined,
+    sourceUrl: typeof details.sourceUrl === 'string' ? details.sourceUrl : undefined,
+    sourceName: typeof details.sourceName === 'string' ? details.sourceName : undefined,
     designId: typeof details.designId === 'string' ? details.designId : undefined,
     platforms: typeof details.platforms === 'string' ? details.platforms : undefined,
     source: typeof details.source === 'string' ? details.source : undefined,
@@ -991,6 +999,38 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     exportFormat: data.exportFormat,
   });
 
+  const getActivitySourceContext = (
+    activity: DesignStudioActivityRecord,
+    autoEditorial?: DesignStudioAutoEditorialRecord | null,
+    renderedDesign?: DesignStudioRenderedDesignRecord | null,
+  ) => {
+    const renderedData = asRecord(renderedDesign?.data);
+    const sourceHeadline =
+      activity.details.sourceHeadline
+      || autoEditorial?.sourceTitle
+      || activity.details.sourceTitle
+      || (typeof renderedData.sourceHeadline === 'string' ? renderedData.sourceHeadline : '')
+      || (typeof renderedData.sourceTitle === 'string' ? renderedData.sourceTitle : '')
+      || '';
+    const sourceSummary =
+      activity.details.sourceSummary
+      || (typeof renderedData.sourceSummary === 'string' ? renderedData.sourceSummary : '')
+      || (typeof renderedData.sourceDescription === 'string' ? renderedData.sourceDescription : '')
+      || '';
+    const sourceUrl =
+      activity.details.sourceUrl
+      || autoEditorial?.sourceUrl
+      || (typeof renderedData.sourceUrl === 'string' ? renderedData.sourceUrl : '')
+      || '';
+    const sourceName =
+      activity.details.sourceName
+      || autoEditorial?.sourceFeedName
+      || (typeof renderedData.sourceName === 'string' ? renderedData.sourceName : '')
+      || '';
+
+    return { sourceHeadline, sourceSummary, sourceUrl, sourceName };
+  };
+
   const buildFallbackEditData = (activity: DesignStudioActivityRecord, autoEditorial?: DesignStudioAutoEditorialRecord | null): DesignData => ({
     headerText: activity.details.headerText || autoEditorial?.headerText || activity.details.templateName || '',
     subtext: autoEditorial?.subheaderText || '',
@@ -1045,9 +1085,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return;
     }
 
+    const sourceContext = getActivitySourceContext(activity, autoEditorial, null);
     await startDesignStudioManualRender({
       template,
-      data: buildRenderPayload(nextData),
+      data: {
+        ...buildRenderPayload(nextData),
+        sourceHeadline: sourceContext.sourceHeadline || undefined,
+        sourceSummary: sourceContext.sourceSummary || undefined,
+        sourceUrl: sourceContext.sourceUrl || undefined,
+        sourceName: sourceContext.sourceName || undefined,
+      },
     });
 
     if (autoEditorial) {
@@ -1088,13 +1135,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const openCardEditor = (activity: DesignStudioActivityRecord, mode: CardEditorMode) => {
-    const { autoEditorial, data } = resolveActivityEditContext(activity);
+    const { autoEditorial, data, renderedDesign } = resolveActivityEditContext(activity);
     const nextData = data || buildFallbackEditData(activity, autoEditorial);
+    const sourceContext = getActivitySourceContext(activity, autoEditorial, renderedDesign);
+    const sourceDrivenDraft = [sourceContext.sourceHeadline, sourceContext.sourceSummary].filter(Boolean).join('\n\n');
+    const existingCaption = (nextData.caption || autoEditorial?.caption || '').trim();
+    const existingIsHeadlineOnly =
+      existingCaption.length > 0 &&
+      existingCaption.toLowerCase() === (nextData.headerText || activity.details.headerText || '').trim().toLowerCase();
+    const captionDraft = existingCaption && !existingIsHeadlineOnly
+      ? existingCaption
+      : sourceDrivenDraft || existingCaption || activity.details.headerText || '';
 
     setCardEditor({ activity, mode });
     setCardTextDraft(
       mode === 'caption'
-        ? nextData.caption || autoEditorial?.caption || activity.details.headerText || ''
+        ? captionDraft
         : mode === 'header'
           ? nextData.headerText || ''
           : nextData.subtext || '',
@@ -1213,15 +1269,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const handleGenerateCardCaption = async () => {
     if (!cardEditor) return;
-    const { autoEditorial } = resolveActivityEditContext(cardEditor.activity);
+    const { autoEditorial, renderedDesign, data } = resolveActivityEditContext(cardEditor.activity);
+    const sourceContext = getActivitySourceContext(cardEditor.activity, autoEditorial, renderedDesign);
     setIsGeneratingCaption(true);
     try {
       const result = await generateDesignStudioCaption({
-        title: autoEditorial?.headerText || cardEditor.activity.details.headerText || cardEditor.activity.details.templateName || 'Rendered Design',
-        contentType: autoEditorial?.contentType || 'announcement',
-        tagline: autoEditorial?.sourceTitle || cardEditor.activity.details.sourceTitle,
-        context: autoEditorial?.subheaderText || autoEditorial?.sourceTitle || cardEditor.activity.details.sourceTitle,
-      });
+        title: data?.headerText || autoEditorial?.headerText || cardEditor.activity.details.headerText || cardEditor.activity.details.templateName || 'Rendered Design',
+        contentType: data?.contentType || autoEditorial?.contentType || 'announcement',
+        tagline: sourceContext.sourceHeadline || autoEditorial?.sourceTitle || cardEditor.activity.details.sourceTitle,
+        context: [sourceContext.sourceSummary, autoEditorial?.subheaderText, sourceContext.sourceUrl].filter(Boolean).join(' | '),
+      }, settings);
       setCardTextDraft(result.caption);
       haptics.success();
       toast.success('Caption regenerated');
