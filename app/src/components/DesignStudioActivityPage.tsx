@@ -2057,6 +2057,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               const linkedAutoEditorial = findAutoEditorialForActivity(activity);
               const platformLabels = parseActivityPlatforms(activity, linkedAutoEditorial);
               const isAutoActivity = activity.type.startsWith('auto_editorial_');
+              const hasRenderedActions = activity.type === 'design_rendered' || activity.type.startsWith('auto_editorial_');
 
               return (
               <div id={`design-studio-activity-card-${activity.id}`} key={activity.id}>
@@ -2112,32 +2113,46 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                               ))}
                             </div>
                           ) : null}
-                          <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 shadow-sm dark:border-[#333333] dark:bg-black dark:text-[#9CA3AF]">
-                            <Clock3 className="h-3.5 w-3.5 text-[#ec1e24]" />
-                            <span>{isAutoActivity ? 'Fetched' : 'Created'} {formatFetchedDateTime(activity.createdAt)}</span>
-                          </div>
+                          {!hasRenderedActions ? (
+                            <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-500 shadow-sm dark:border-[#333333] dark:bg-black dark:text-[#9CA3AF]">
+                              <Clock3 className="h-3.5 w-3.5 text-[#ec1e24]" />
+                              <span>{isAutoActivity ? 'Fetched' : 'Created'} {formatFetchedDateTime(activity.createdAt)}</span>
+                            </div>
+                          ) : null}
                         </div>
                       </div>
-                      {(activity.type === 'design_rendered' || activity.type.startsWith('auto_editorial_')) ? (
-                        <div className="mt-3 flex justify-end">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            onClick={() => handleDelete(activity.id)}
-                            className="mr-2 hidden h-10 w-11 rounded-[14px] border-gray-200 bg-white text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="outline"
-                            onClick={() => openOptionsMenu(activity)}
-                            className="h-11 w-11 rounded-full border-gray-200 bg-white text-gray-900 shadow-sm transition-[transform,background-color,color] hover:scale-[1.03] hover:bg-gray-50 active:scale-95 dark:border-[#333333] dark:bg-[#000000] dark:text-white dark:hover:bg-[#111111]"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
+                      {hasRenderedActions ? (
+                        <div className="mt-4 border-t border-gray-200 pt-4 dark:border-[#333333]">
+                          <div className="flex items-end justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <span className="text-sm text-gray-500 dark:text-[#8A8F98]">
+                                Created:{' '}
+                                <span className="text-gray-900 dark:text-white">
+                                  {formatFetchedDateTime(activity.createdAt)}
+                                </span>
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                onClick={() => handleDelete(activity.id)}
+                                className="hidden h-9 w-9 border border-gray-200 bg-transparent p-0 text-gray-900 opacity-0 transition-opacity hover:bg-gray-50 hover:text-[#ec1e24] group-hover:opacity-100 dark:border-[#333333] dark:bg-transparent dark:text-white dark:hover:bg-[#111111] lg:inline-flex"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon"
+                                variant="outline"
+                                onClick={() => openOptionsMenu(activity)}
+                                className="h-9 w-9 border border-gray-200 bg-transparent p-0 text-gray-900 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-transparent dark:text-white dark:hover:bg-[#111111]"
+                              >
+                                <MoreVertical className="h-[14px] w-[14px] text-gray-900 dark:text-white" />
+                              </Button>
+                            </div>
+                          </div>
                         </div>
                       ) : null}
                     </div>

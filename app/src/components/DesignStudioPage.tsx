@@ -1995,16 +1995,16 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           rightSwipeIcon={<Bookmark className="w-5 h-5" />}
                           hoverActions={[
                             {
-                              key: 'delete',
-                              label: 'Delete',
-                              icon: <X className="h-4 w-4" />,
-                              onClick: () => deleteNewsQueueItem(item),
-                            },
-                            {
                               key: 'save-for-later',
                               label: 'Save for Later',
                               icon: <Bookmark className="h-4 w-4" />,
                               onClick: () => setSavedStateForNewsQueueItem(item.id, true),
+                            },
+                            {
+                              key: 'delete',
+                              label: 'Delete',
+                              icon: <X className="h-4 w-4" />,
+                              onClick: () => deleteNewsQueueItem(item),
                             },
                           ]}
                           className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]"
@@ -2068,16 +2068,16 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           rightSwipeIcon={<BookmarkCheck className="w-5 h-5" />}
                           hoverActions={[
                             {
-                              key: 'delete',
-                              label: 'Delete',
-                              icon: <X className="h-4 w-4" />,
-                              onClick: () => deleteNewsQueueItem(item),
-                            },
-                            {
                               key: 'remove-save-for-later',
                               label: 'Remove Save',
                               icon: <BookmarkCheck className="h-4 w-4" />,
                               onClick: () => setSavedStateForNewsQueueItem(item.id, false),
+                            },
+                            {
+                              key: 'delete',
+                              label: 'Delete',
+                              icon: <X className="h-4 w-4" />,
+                              onClick: () => deleteNewsQueueItem(item),
                             },
                           ]}
                           className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]"

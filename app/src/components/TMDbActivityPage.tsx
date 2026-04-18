@@ -943,13 +943,13 @@ export function TMDbActivityPage({ onNavigate, previousPage }: TMDbActivityPageP
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-11 w-11 rounded-full border border-gray-200 bg-white p-0 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-[#000000] dark:hover:bg-[#111111]"
+                          className="h-9 w-9 border border-gray-200 bg-transparent p-0 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-transparent dark:hover:bg-[#111111]"
                           onClick={() => {
                             haptics.light();
                             setOpenMenuItemId((current) => (current === item.id ? null : item.id));
                           }}
                         >
-                          <MoreVertical className="h-[18px] w-[18px] text-gray-600 dark:text-[#9CA3AF]" />
+                          <MoreVertical className="h-[14px] w-[14px] text-gray-900 dark:text-white" />
                         </Button>
 
                         {/* Options BottomSheet */}
