@@ -481,6 +481,90 @@ describe('ComposeEditorPage scheduling', () => {
     expect(searchRow?.className).toContain('sm:flex-row');
   }, 60000);
 
+  it('shows shared and YouTube thumbnail sections together for a single video with Instagram Feed and YouTube selected', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Trailer drop',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://cdn.example.com/trailer.mp4',
+              storageUrl: 'https://cdn.example.com/trailer.mp4',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_feed', 'youtube_longform'],
+          sharedCaption: 'New trailer tonight',
+          platformFields: {},
+          createdAt: '2026-03-27T09:00:00.000Z',
+          updatedAt: '2026-03-27T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'draft-post',
+      lastModifiedAt: '2026-03-27T09:00:00.000Z',
+    });
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    expect(screen.getByText('Shared Thumbnail')).toBeInTheDocument();
+    expect(screen.getByText('YouTube Thumbnail')).toBeInTheDocument();
+  }, 60000);
+
+  it('does not show the shared thumbnail section for a Threads-only single video post', () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Threads trailer',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://cdn.example.com/trailer.mp4',
+              storageUrl: 'https://cdn.example.com/trailer.mp4',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['threads'],
+          sharedCaption: 'Threads trailer',
+          platformFields: {},
+          createdAt: '2026-03-27T09:00:00.000Z',
+          updatedAt: '2026-03-27T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'draft-post',
+      lastModifiedAt: '2026-03-27T09:00:00.000Z',
+    });
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    expect(screen.queryByText('Shared Thumbnail')).not.toBeInTheDocument();
+    expect(screen.queryByText('Video Thumbnails')).not.toBeInTheDocument();
+  }, 60000);
+
   it('blocks scheduling when a caption-required platform is selected but the caption is empty', () => {
     useComposeStore.setState({
       items: [

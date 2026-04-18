@@ -412,11 +412,7 @@ export function ComposeEditorPage({
     isSingleVideo &&
     formState.platforms.some((platform) => [
       'instagram_feed',
-      'instagram_reels',
-      'instagram_stories',
       'facebook_feed',
-      'facebook_stories',
-      'threads',
       'tiktok',
     ].includes(platform));
   const shouldShowYouTubeThumbnailSection = isSingleVideo && isYouTubeSelected;
@@ -3022,7 +3018,7 @@ export function ComposeEditorPage({
               <div className="mb-4">
                 <h3 className="mb-1 text-gray-900 dark:text-white">Video Thumbnails</h3>
                 <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                  Add optional thumbnails for a single-video post. Shared thumbnail is used for Facebook, Instagram, Threads, and TikTok.
+                  Add optional thumbnails for a single-video post. Shared thumbnail is used for Facebook, Instagram, and TikTok.
                 </p>
               </div>
 
@@ -3032,7 +3028,7 @@ export function ComposeEditorPage({
                     ? {
                         key: 'sharedThumbnail' as const,
                         label: 'Shared Thumbnail',
-                        description: 'Facebook, Instagram, Threads, TikTok',
+                        description: 'Facebook, Instagram, TikTok',
                         supportsGeneration: true,
                       }
                     : null,
