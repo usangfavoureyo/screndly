@@ -12,7 +12,11 @@ import {
   unmarkTMDbPostDeleted,
 } from '../utils/tmdbOfflineStore';
 import { deriveTMDbImageStyle, normalizeTMDbImageTypes, type TMDbFeedImageStyle, type TMDbImageAssetType } from '../lib/tmdb/feedImageSelection';
-import { type TMDbPlatformResultRecord } from '../lib/tmdb/activityStatus';
+import {
+  deriveTMDbActivityStatus,
+  deriveTMDbPlatformStates,
+  type TMDbPlatformResultRecord,
+} from '../lib/tmdb/activityStatus';
 import { __tmdbCaptionSanitizer, type FeedType } from '../utils/tmdbCaptionGenerator';
 
 interface FetchPostsOptions {
@@ -174,6 +178,53 @@ function normalizeTMDbPostRecord(post: any): TMDbPost {
   };
 }
 
+function mergeFetchedTMDbPostWithLocalRetryState(
+  incomingPost: TMDbPost,
+  existingPost?: TMDbPost,
+): TMDbPost {
+  if (!existingPost) {
+    return incomingPost;
+  }
+
+  const incomingHasPlatformResults = Array.isArray(incomingPost.platformResults) && incomingPost.platformResults.length > 0;
+  const incomingHasPlatformPostIds = incomingPost.platformPostIds && Object.keys(incomingPost.platformPostIds).length > 0;
+  const existingHasPlatformResults = Array.isArray(existingPost.platformResults) && existingPost.platformResults.length > 0;
+  const existingHasPlatformPostIds = existingPost.platformPostIds && Object.keys(existingPost.platformPostIds).length > 0;
+
+  if (!existingHasPlatformResults && !existingHasPlatformPostIds) {
+    return incomingPost;
+  }
+
+  const mergedPost: TMDbPost = {
+    ...incomingPost,
+    platforms: Array.from(new Set([...(incomingPost.platforms || []), ...(existingPost.platforms || [])])),
+    platformResults: incomingHasPlatformResults ? incomingPost.platformResults : existingPost.platformResults,
+    platformPostIds: incomingHasPlatformPostIds ? incomingPost.platformPostIds : existingPost.platformPostIds,
+    publishedTime: incomingPost.publishedTime || existingPost.publishedTime,
+  };
+
+  const platformStates = deriveTMDbPlatformStates(mergedPost);
+  const derivedStatus = deriveTMDbActivityStatus(mergedPost, platformStates);
+
+  if (derivedStatus === 'published') {
+    return {
+      ...mergedPost,
+      status: 'published',
+      errorMessage: undefined,
+    };
+  }
+
+  return mergedPost;
+}
+
+function mergeFetchedTMDbPostsWithLocalRetryState(
+  incomingPosts: TMDbPost[],
+  existingPosts: TMDbPost[],
+): TMDbPost[] {
+  const existingById = new Map(existingPosts.map((post) => [post.id, post] as const));
+  return incomingPosts.map((post) => mergeFetchedTMDbPostWithLocalRetryState(post, existingById.get(post.id)));
+}
+
 export function TMDbPostsProvider({ children }: { children: ReactNode }) {
   const [posts, setPosts] = useState<TMDbPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -207,10 +258,13 @@ export function TMDbPostsProvider({ children }: { children: ReactNode }) {
         const deletedIds = await getTMDbDeletedPostIds();
         const filteredPosts = transformedPosts.filter((post) => !deletedIds.has(post.id));
 
-        setPosts(filteredPosts);
+        setPosts((prev) => {
+          const mergedPosts = mergeFetchedTMDbPostsWithLocalRetryState(filteredPosts, prev);
+          void saveTMDbPostsSnapshot(mergedPosts);
+          return mergedPosts;
+        });
         setLastSyncTime(new Date());
         setError(null);
-        void saveTMDbPostsSnapshot(filteredPosts);
       } else {
         throw new Error(response.error?.message || 'Failed to fetch posts');
       }

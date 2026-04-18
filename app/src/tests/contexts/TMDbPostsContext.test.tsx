@@ -153,6 +153,7 @@ describe('TMDbPostsContext', () => {
       await result.current.updatePost('post-retry-state', {
         status: 'published',
         errorMessage: undefined,
+        platforms: ['Threads'],
         platformPostIds: { threads: 'threads-123' },
         platformResults: [
           {
@@ -183,6 +184,49 @@ describe('TMDbPostsContext', () => {
       }),
     );
     expect(backendPosts[0].status).toBe('published');
+  });
+
+  it('preserves successful local retry state across a stale TMDb backend refetch', async () => {
+    backendPosts = [createPost({ id: 'post-stale-refetch', status: 'failed', errorMessage: 'Threads: failed', platforms: ['Threads'] })];
+
+    const { result } = renderHook(() => useTMDbPosts(), { wrapper });
+
+    await waitFor(() => expect(result.current.posts).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updatePost('post-stale-refetch', {
+        status: 'published',
+        errorMessage: undefined,
+        publishedTime: '2026-04-18T09:00:00.000Z',
+        platforms: ['Threads'],
+        platformPostIds: { threads: 'threads-999' },
+        platformResults: [
+          {
+            platform: 'Threads',
+            status: 'posted',
+            id: 'threads-999',
+            postedAt: '2026-04-18T09:00:00.000Z',
+          },
+        ],
+      });
+    });
+
+    backendPosts = [createPost({ id: 'post-stale-refetch', status: 'failed', errorMessage: 'Threads: failed', platforms: ['Threads'] })];
+
+    await act(async () => {
+      await result.current.fetchPosts({ silent: true });
+    });
+
+    expect(result.current.posts[0].status).toBe('published');
+    expect(result.current.posts[0].errorMessage).toBeUndefined();
+    expect(result.current.posts[0].platformPostIds).toEqual({ threads: 'threads-999' });
+    expect(result.current.posts[0].platformResults).toEqual([
+      expect.objectContaining({
+        platform: 'Threads',
+        status: 'posted',
+        id: 'threads-999',
+      }),
+    ]);
   });
 
   it('sanitizes injected source links from backend TMDb captions', async () => {
