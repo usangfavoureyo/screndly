@@ -278,6 +278,7 @@ export interface Settings {
   designStudioTargetPlatforms?: string[];
   designStudioAutoUpdatedAt?: string;
   designStudioLogLevel?: string;
+  designStudioManualNewsQueueRetentionHours?: number;
   renderQuality?: 'low' | 'medium' | 'high' | 'maximum';
   exportFormat?: 'jpeg' | 'png';
   jpegQuality?: number;
@@ -583,6 +584,7 @@ function getDefaultSettings(): Settings {
     videoActivityRetention: 24,
     designStudioActivityRetention: 24,
     designStudioLogLevel: 'standard',
+    designStudioManualNewsQueueRetentionHours: 24,
     videoStudioActivityRetention: 24,
     videoStudioLogLevel: 'standard',
     tmdbActivityRetention: 24,

@@ -59,6 +59,7 @@ const DESIGN_STUDIO_SHARED_SETTING_KEYS = new Set([
   'designStudioMinimumScoreThreshold',
   'designStudioTargetPlatforms',
   'designStudioAutoUpdatedAt',
+  'designStudioManualNewsQueueRetentionHours',
 ]);
 
 const DESIGN_STUDIO_CAPTION_PROMPTS = [
@@ -324,6 +325,7 @@ Tone: Clear, category-focused, SEO-friendly`,
   designStudioMinimumScoreThreshold: 55,
   designStudioTargetPlatforms: ['x', 'threads'],
   designStudioAutoUpdatedAt: new Date().toISOString(),
+  designStudioManualNewsQueueRetentionHours: 24,
   ...designStudioPromptDefaults,
 };
 
@@ -1479,6 +1481,33 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
             <h3 className="text-gray-900 dark:text-white">Activity Retention</h3>
             <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
               Hide older design activity items in the page and remove them during backend cleanup after a specified time period
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="design-studio-news-queue-retention" className="text-[#6B7280] dark:text-[#9CA3AF]">Manual News Queue Retention</Label>
+            <Select
+              value={String(globalSettings.designStudioManualNewsQueueRetentionHours || 24)}
+              onValueChange={(value) => {
+                haptics.light();
+                updateGlobalSetting('designStudioManualNewsQueueRetentionHours', parseInt(value, 10) || 24);
+              }}
+            >
+              <SelectTrigger id="design-studio-news-queue-retention" className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="24">24 hours</SelectItem>
+                <SelectItem value="48">2 days</SelectItem>
+                <SelectItem value="72">3 days</SelectItem>
+                <SelectItem value="96">4 days</SelectItem>
+                <SelectItem value="120">5 days</SelectItem>
+                <SelectItem value="144">6 days</SelectItem>
+                <SelectItem value="168">1 week</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">
+              Applies to fetched items in Manual News Queue only. Items saved in "Saved For Later" are not affected.
             </p>
           </div>
 

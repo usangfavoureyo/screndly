@@ -1719,14 +1719,33 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     [dismissedQueueIds, newsQueueItems],
   );
 
+  const manualNewsQueueRetentionHours = Number(settings.designStudioManualNewsQueueRetentionHours || 24);
+  const manualNewsQueueRetentionMs = Math.max(1, manualNewsQueueRetentionHours) * 60 * 60 * 1000;
+
+  const retentionFilteredNewsQueueItems = useMemo(() => {
+    const now = Date.now();
+    return visibleNewsQueueItems.filter((item) => {
+      if (savedQueueIds.has(item.id)) {
+        return true;
+      }
+
+      const itemTime = new Date(item.timestamp).getTime();
+      if (Number.isNaN(itemTime)) {
+        return true;
+      }
+
+      return now - itemTime <= manualNewsQueueRetentionMs;
+    });
+  }, [manualNewsQueueRetentionMs, savedQueueIds, visibleNewsQueueItems]);
+
   const newsQueueSourceOptions = useMemo(
     () =>
       Array.from(
         new Set(
-          visibleNewsQueueItems.map((item) => (item.feedName || 'RSS Feed').trim() || 'RSS Feed'),
+          retentionFilteredNewsQueueItems.map((item) => (item.feedName || 'RSS Feed').trim() || 'RSS Feed'),
         ),
       ).sort((left, right) => left.localeCompare(right)),
-    [visibleNewsQueueItems],
+    [retentionFilteredNewsQueueItems],
   );
 
   useEffect(() => {
@@ -1735,12 +1754,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
   const sourceFilteredNewsQueueItems = useMemo(() => {
     if (selectedNewsSources.length === 0) {
-      return visibleNewsQueueItems;
+      return retentionFilteredNewsQueueItems;
     }
 
     const selectedSourceSet = new Set(selectedNewsSources);
-    return visibleNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
-  }, [selectedNewsSources, visibleNewsQueueItems]);
+    return retentionFilteredNewsQueueItems.filter((item) => selectedSourceSet.has((item.feedName || 'RSS Feed').trim() || 'RSS Feed'));
+  }, [selectedNewsSources, retentionFilteredNewsQueueItems]);
 
   const sortedNewsQueueItems = useMemo(() => {
     const sorted = [...sourceFilteredNewsQueueItems];
@@ -1978,7 +1997,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                       ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
                       : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
                     alt=""
-                    className="h-4 w-4"
+                    className="h-4 w-4 dark:invert"
                   />
                 </Button>
               </div>
