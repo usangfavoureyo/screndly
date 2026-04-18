@@ -1652,6 +1652,14 @@ function fitTextBlock(input: {
 }): TextFitResult {
   const normalized = input.text.replace(/\s+/g, ' ').trim();
   const words = normalized.split(' ').filter(Boolean);
+  if (words.length === 0) {
+    return { fontSize: Math.max(1, input.minFontSize), lines: [], lineHeight: Math.max(1, input.minFontSize) * input.lineHeightMultiplier };
+  }
+
+  // Prevent impossible text-fit ranges when templates carry very large font presets.
+  const maxFontByHeight = Math.max(1, Math.floor(input.boxHeight / Math.max(1, input.maxLines) / Math.max(input.lineHeightMultiplier, 0.25)));
+  const effectiveMaxFontSize = Math.max(1, Math.min(input.maxFontSize, maxFontByHeight));
+  const effectiveMinFontSize = Math.max(1, Math.min(input.minFontSize, effectiveMaxFontSize));
 
   const lineWidth = (lineWords: string[], fontSize: number): number =>
     estimateWordWidth(lineWords.join(' '), fontSize, input.tracking);
@@ -1720,8 +1728,8 @@ function fitTextBlock(input: {
       ?.lines.map((lineWords) => lineWords.join(' ')) || [];
   };
 
-  const preferredMinFontSize = Math.max(input.minFontSize, Math.round(input.maxFontSize * 0.8));
-  for (let fontSize = input.maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
+  const preferredMinFontSize = Math.max(effectiveMinFontSize, Math.round(effectiveMaxFontSize * 0.8));
+  for (let fontSize = effectiveMaxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     const lineHeight = fontSize * input.lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
@@ -1729,7 +1737,7 @@ function fitTextBlock(input: {
     }
   }
 
-  for (let fontSize = preferredMinFontSize - 2; fontSize >= input.minFontSize; fontSize -= 2) {
+  for (let fontSize = preferredMinFontSize - 2; fontSize >= effectiveMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     const lineHeight = fontSize * input.lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
@@ -1737,12 +1745,19 @@ function fitTextBlock(input: {
     }
   }
 
-  const fontSize = Math.max(input.minFontSize, preferredMinFontSize);
-  const lineHeight = fontSize * input.lineHeightMultiplier;
-  const lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
+  let fontSize = Math.max(effectiveMinFontSize, preferredMinFontSize);
+  let lineHeight = fontSize * input.lineHeightMultiplier;
+  let lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
+  while (fontSize > 1 && (lines.length === 0 || lines.length * lineHeight > input.boxHeight)) {
+    fontSize -= 1;
+    lineHeight = fontSize * input.lineHeightMultiplier;
+    lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
+  }
   if (lines.length > 0) {
     const lastLine = lines[lines.length - 1];
     lines[lines.length - 1] = lastLine.length > 3 ? `${lastLine.slice(0, Math.max(0, lastLine.length - 3)).trim()}...` : lastLine;
+  } else {
+    lines = [words.slice(0, Math.min(words.length, 3)).join(' ').trim()].filter(Boolean);
   }
   return { fontSize, lines, lineHeight };
 }

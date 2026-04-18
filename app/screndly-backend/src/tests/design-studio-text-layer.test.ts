@@ -71,10 +71,35 @@ test('fitTextBlock balances headline lines without orphan middle words or tiny f
   });
 
   const middleLines = fit.lines.slice(1, -1);
-  assert.ok(fit.fontSize >= 70, `expected a large editorial font size, received ${fit.fontSize}`);
+  assert.ok(fit.fontSize >= 40, `expected a readable editorial font size, received ${fit.fontSize}`);
+  assert.ok(fit.lines.length > 0, 'expected at least one rendered headline line');
   assert.ok(fit.lines.length <= 5, `expected headline to fit within variant max lines, received ${fit.lines.length}`);
+  assert.ok(
+    fit.lines.length * fit.lineHeight <= 420,
+    `expected headline to fit within text-box height, received lines=${fit.lines.length} lineHeight=${fit.lineHeight}`,
+  );
   assert.ok(
     middleLines.every((line) => line.split(/\s+/).filter(Boolean).length >= 2),
     `expected no one-word middle lines, received ${fit.lines.join(' / ')}`,
   );
+});
+
+test('fitTextBlock constrains oversized template fonts so long headlines stay inside the text box', () => {
+  const fit = __designStudioRenderTestUtils.fitTextBlock({
+    text: 'DAVID HARBOUR JOINS JOHN RAMBO CAST AS NOAH CENTINEO MENTOR MAJOR TRAUTMAN',
+    boxWidth: 560,
+    boxHeight: 230,
+    minFontSize: 120,
+    maxFontSize: 180,
+    maxLines: 4,
+    lineHeightMultiplier: 1.05,
+    tracking: 0,
+  });
+
+  assert.ok(fit.lines.length > 0, 'expected at least one rendered headline line');
+  assert.ok(
+    fit.lines.length * fit.lineHeight <= 230,
+    `expected headline to fit within the text box, received lines=${fit.lines.length} lineHeight=${fit.lineHeight}`,
+  );
+  assert.ok(fit.fontSize < 120, `expected font size to shrink below template minimum when needed, received ${fit.fontSize}`);
 });
