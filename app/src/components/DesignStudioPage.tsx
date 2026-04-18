@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink } from 'lucide-react';
+import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink, Bookmark, BookmarkCheck } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -1693,23 +1693,45 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     [savedQueueIds, visibleNewsQueueItems],
   );
 
-  const toggleSaveNewsQueueItem = (itemId: string) => {
+  const setSavedStateForNewsQueueItem = (itemId: string, shouldSave: boolean) => {
     setSavedQueueIds((current) => {
       const next = new Set(current);
-      if (next.has(itemId)) {
-        next.delete(itemId);
-      } else {
+      if (shouldSave) {
         next.add(itemId);
+      } else {
+        next.delete(itemId);
       }
       return next;
     });
   };
 
-  const dismissNewsQueueItem = (itemId: string) => {
+  const deleteNewsQueueItem = (item: RSSActivityItem) => {
+    const wasSaved = savedQueueIds.has(item.id);
     setDismissedQueueIds((current) => {
       const next = new Set(current);
-      next.add(itemId);
+      next.add(item.id);
       return next;
+    });
+    if (wasSaved) {
+      setSavedStateForNewsQueueItem(item.id, false);
+    }
+    showUndo({
+      id: `undo-news-queue-delete-${item.id}-${Date.now()}`,
+      itemName: 'Story deleted',
+      onUndo: async () => {
+        setDismissedQueueIds((current) => {
+          const next = new Set(current);
+          next.delete(item.id);
+          return next;
+        });
+        if (wasSaved) {
+          setSavedStateForNewsQueueItem(item.id, true);
+        }
+        toast.success('Story restored');
+      },
+      onConfirm: () => {
+        toast.success('Story deleted');
+      },
     });
   };
 
@@ -1928,26 +1950,6 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             </>
           ) : (
             <div className="space-y-6">
-              <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-gray-900 dark:text-white">Fetched News Queue</p>
-                    <p className="mt-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-                      Feed items are available for manual editorial drafts and do not trigger Auto posting by themselves.
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => void loadNewsQueue()}
-                    disabled={isLoadingNewsQueue}
-                    className="border-gray-200 dark:border-[#333333] bg-white dark:bg-black"
-                  >
-                    {isLoadingNewsQueue ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    Refresh
-                  </Button>
-                </div>
-              </div>
 
               {newsQueueError ? (
                 <div className="rounded-2xl border border-[#ec1e24]/40 bg-[#ec1e24]/10 px-4 py-3 text-sm text-[#ec1e24]">
@@ -1955,81 +1957,60 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 </div>
               ) : null}
 
-              {isLoadingNewsQueue && newsQueueItems.length === 0 ? (
-                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
-                  <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading fetched stories...</p>
-                </div>
-              ) : visibleNewsQueueItems.length === 0 ? (
-                <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center dark:border-[#333333] dark:bg-[#000000]">
-                  <p className="text-gray-600 dark:text-[#9CA3AF]">No queued stories right now</p>
-                  <p className="mt-1 text-sm text-gray-500 dark:text-[#6B7280]">
-                    Refresh feeds from Feeds, then return here to create manual designs.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {savedNewsQueueItems.length > 0 ? (
-                    <section className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Saved for later</p>
-                        <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{savedNewsQueueItems.length}</p>
-                      </div>
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        {savedNewsQueueItems.map((item) => (
-                          <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
-                            <div className="flex gap-3">
-                              {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
-                              ) : (
-                                <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                                  No image
-                                </div>
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-xs uppercase tracking-[0.14em] text-[#6B7280] dark:text-[#9CA3AF]">{item.feedName || 'RSS Feed'}</p>
-                                <p className="mt-1 text-sm leading-5 text-gray-900 dark:text-white">{item.title}</p>
-                                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Fetched {formatEditorialDateTime(item.timestamp)}</p>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF] line-clamp-2">
-                              {toPlainTextSnippet(item.description || item.contentHtml, 140) || 'No summary available.'}
-                            </p>
-                            <div className="mt-4 flex flex-wrap gap-2">
-                              <Button type="button" onClick={() => handleCreateDesignFromNewsQueue(item)} className="bg-[#ec1e24] hover:bg-[#d01a20] text-white">
-                                Create Design
-                              </Button>
-                              <Button type="button" variant="outline" onClick={() => toggleSaveNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
-                                Remove Save
-                              </Button>
-                              {item.link ? (
-                                <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
-                                  <ExternalLink className="mr-2 h-4 w-4" />
-                                  Open Source
-                                </Button>
-                              ) : null}
-                              <Button type="button" variant="outline" onClick={() => dismissNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
-                                Dismiss
-                              </Button>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  ) : null}
-
-                  <section className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Inbox</p>
+              <div className="space-y-6">
+                <section className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Fetched News</p>
                       <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{inboxNewsQueueItems.length}</p>
                     </div>
-                    {inboxNewsQueueItems.length === 0 ? (
-                      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
-                        <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">No inbox stories. Saved items are above.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        {inboxNewsQueueItems.map((item) => (
-                          <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void loadNewsQueue()}
+                      disabled={isLoadingNewsQueue}
+                      className="h-9 w-9 border-gray-200 bg-white p-0 text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
+                    >
+                      {isLoadingNewsQueue ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      <span className="sr-only">Refresh fetched news</span>
+                    </Button>
+                  </div>
+                  {isLoadingNewsQueue && newsQueueItems.length === 0 ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
+                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading fetched stories...</p>
+                    </div>
+                  ) : inboxNewsQueueItems.length === 0 ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
+                      <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">No fetched news stories right now.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                      {inboxNewsQueueItems.map((item) => (
+                        <SwipeableActivityCard
+                          key={item.id}
+                          id={item.id}
+                          onDelete={() => deleteNewsQueueItem(item)}
+                          onSwipeRight={() => setSavedStateForNewsQueueItem(item.id, true)}
+                          rightSwipeLabel="Save for Later"
+                          rightSwipeIcon={<Bookmark className="w-5 h-5" />}
+                          hoverActions={[
+                            {
+                              key: 'delete',
+                              label: 'Delete',
+                              icon: <X className="h-4 w-4" />,
+                              onClick: () => deleteNewsQueueItem(item),
+                            },
+                            {
+                              key: 'save-for-later',
+                              label: 'Save for Later',
+                              icon: <Bookmark className="h-4 w-4" />,
+                              onClick: () => setSavedStateForNewsQueueItem(item.id, true),
+                            },
+                          ]}
+                          className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]"
+                          deleteLabel="Delete"
+                        >
+                          <article>
                             <div className="flex gap-3">
                               {item.imageUrl ? (
                                 <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
@@ -2056,8 +2037,73 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                               <Button type="button" onClick={() => handleCreateDesignFromNewsQueue(item)} className="bg-[#ec1e24] hover:bg-[#d01a20] text-white">
                                 Create Design
                               </Button>
-                              <Button type="button" variant="outline" onClick={() => toggleSaveNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
-                                Save for Later
+                              {item.link ? (
+                                <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  Open Source
+                                </Button>
+                              ) : null}
+                            </div>
+                          </article>
+                        </SwipeableActivityCard>
+                      ))}
+                    </div>
+                  )}
+                </section>
+
+                {savedNewsQueueItems.length > 0 ? (
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Saved for later</p>
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{savedNewsQueueItems.length}</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                      {savedNewsQueueItems.map((item) => (
+                        <SwipeableActivityCard
+                          key={item.id}
+                          id={item.id}
+                          onDelete={() => deleteNewsQueueItem(item)}
+                          onSwipeRight={() => setSavedStateForNewsQueueItem(item.id, false)}
+                          rightSwipeLabel="Remove Save"
+                          rightSwipeIcon={<BookmarkCheck className="w-5 h-5" />}
+                          hoverActions={[
+                            {
+                              key: 'delete',
+                              label: 'Delete',
+                              icon: <X className="h-4 w-4" />,
+                              onClick: () => deleteNewsQueueItem(item),
+                            },
+                            {
+                              key: 'remove-save-for-later',
+                              label: 'Remove Save',
+                              icon: <BookmarkCheck className="h-4 w-4" />,
+                              onClick: () => setSavedStateForNewsQueueItem(item.id, false),
+                            },
+                          ]}
+                          className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]"
+                          deleteLabel="Delete"
+                        >
+                          <article>
+                            <div className="flex gap-3">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
+                              ) : (
+                                <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                  No image
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs uppercase tracking-[0.14em] text-[#6B7280] dark:text-[#9CA3AF]">{item.feedName || 'RSS Feed'}</p>
+                                <p className="mt-1 text-sm leading-5 text-gray-900 dark:text-white">{item.title}</p>
+                                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Fetched {formatEditorialDateTime(item.timestamp)}</p>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF] line-clamp-2">
+                              {toPlainTextSnippet(item.description || item.contentHtml, 140) || 'No summary available.'}
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button type="button" onClick={() => handleCreateDesignFromNewsQueue(item)} className="bg-[#ec1e24] hover:bg-[#d01a20] text-white">
+                                Create Design
                               </Button>
                               {item.link ? (
                                 <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
@@ -2065,17 +2111,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                                   Open Source
                                 </Button>
                               ) : null}
-                              <Button type="button" variant="outline" onClick={() => dismissNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
-                                Dismiss
-                              </Button>
                             </div>
                           </article>
-                        ))}
-                      </div>
-                    )}
+                        </SwipeableActivityCard>
+                      ))}
+                    </div>
                   </section>
-                </div>
-              )}
+                ) : null}
+              </div>
             </div>
           )}
         </>

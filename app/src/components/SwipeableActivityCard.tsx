@@ -1,33 +1,48 @@
 import { useState, useRef, ReactNode } from 'react';
-import { Check, Trash2 } from 'lucide-react';
+import { Bookmark, Check, Trash2 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
+
+interface HoverAction {
+  key: string;
+  label: string;
+  icon: ReactNode;
+  onClick: (id?: string) => void;
+}
 
 interface SwipeableActivityCardProps {
   id?: string;
   onDelete: (id?: string) => void;
+  onSwipeRight?: (id?: string) => void;
   children: ReactNode;
   className?: string;
   isScheduled?: boolean;
   deleteLabel?: string;
+  rightSwipeLabel?: string;
+  rightSwipeIcon?: ReactNode;
   selectionMode?: boolean;
   selected?: boolean;
   onEnterSelectionMode?: (id?: string) => void;
   onToggleSelection?: (id?: string) => void;
   showHoverDelete?: boolean;
+  hoverActions?: HoverAction[];
 }
 
 export function SwipeableActivityCard({
   id,
   onDelete,
+  onSwipeRight,
   children,
   className = '',
   isScheduled: _isScheduled = false,
   deleteLabel = 'Delete',
+  rightSwipeLabel = 'Save for Later',
+  rightSwipeIcon,
   selectionMode = false,
   selected = false,
   onEnterSelectionMode,
   onToggleSelection,
   showHoverDelete = true,
+  hoverActions,
 }: SwipeableActivityCardProps) {
   const [swipeX, setSwipeX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -116,21 +131,17 @@ export function SwipeableActivityCard({
       }
     }
     
-    // Only handle horizontal swipe (left only for delete)
+    // Only handle horizontal swipe
     if (swipeDirection === 'horizontal') {
       e.stopPropagation();
       e.preventDefault(); // Prevent scrolling while swiping horizontally
       
       const diff = currentX.current - startX.current;
-      
-      // Only allow left swipe (negative values)
-      if (diff <= 0) {
-        // Limit swipe distance
-        const maxSwipe = 120;
-        const clampedDiff = Math.max(-maxSwipe, diff);
-        
-        setSwipeX(clampedDiff);
-      }
+      const maxSwipe = 120;
+      const minSwipe = onSwipeRight ? -maxSwipe : -maxSwipe;
+      const maxAllowed = onSwipeRight ? maxSwipe : 0;
+      const clampedDiff = Math.min(maxAllowed, Math.max(minSwipe, diff));
+      setSwipeX(clampedDiff);
     }
   };
 
@@ -167,6 +178,9 @@ export function SwipeableActivityCard({
       if (swipeX < -threshold) {
         haptics.medium();
         onDelete(id);
+      } else if (swipeX > threshold && onSwipeRight) {
+        haptics.medium();
+        onSwipeRight(id);
       }
     }
     
@@ -228,11 +242,11 @@ export function SwipeableActivityCard({
       e.preventDefault();
 
       const diff = currentX.current - startX.current;
-      if (diff <= 0) {
-        const maxSwipe = 120;
-        const clampedDiff = Math.max(-maxSwipe, diff);
-        setSwipeX(clampedDiff);
-      }
+      const maxSwipe = 120;
+      const minSwipe = onSwipeRight ? -maxSwipe : -maxSwipe;
+      const maxAllowed = onSwipeRight ? maxSwipe : 0;
+      const clampedDiff = Math.min(maxAllowed, Math.max(minSwipe, diff));
+      setSwipeX(clampedDiff);
     }
   };
 
@@ -242,6 +256,9 @@ export function SwipeableActivityCard({
       if (swipeX < -90 && !selectionMode && !longPressTriggeredRef.current) {
         haptics.medium();
         onDelete(id);
+      } else if (swipeX > 90 && onSwipeRight && !selectionMode && !longPressTriggeredRef.current) {
+        haptics.medium();
+        onSwipeRight(id);
       }
       mouseSwipeActiveRef.current = false;
       setIsSwiping(false);
@@ -270,20 +287,47 @@ export function SwipeableActivityCard({
     onToggleSelection?.(id);
   };
 
+  const resolvedHoverActions: HoverAction[] = hoverActions ?? (
+    showHoverDelete
+      ? [{
+          key: 'delete',
+          label: deleteLabel,
+          icon: <Trash2 className="h-4 w-4" />,
+          onClick: onDelete,
+        }]
+      : []
+  );
+
   return (
     <div className="relative overflow-hidden rounded-2xl">
-      {/* Background delete button */}
-      <div className={`absolute inset-0 flex justify-end items-center rounded-2xl bg-[#ec1e24] ${selectionMode ? 'hidden' : ''}`}>
-        <div 
-          className="flex items-center justify-center px-6 text-white transition-opacity h-full"
-          style={{ 
-            opacity: swipeX < 0 ? 1 : 0,
-            width: '120px'
-          }}
-        >
-          <div className="flex flex-col items-center gap-1">
-            <Trash2 className="w-5 h-5" />
-            <span className="text-xs whitespace-nowrap">{deleteLabel}</span>
+      {/* Swipe background actions */}
+      <div className={`absolute inset-0 flex items-center justify-between rounded-2xl ${selectionMode ? 'hidden' : ''}`}>
+        <div className="h-full flex-1 rounded-l-2xl bg-[#16a34a]">
+          <div
+            className="flex h-full items-center justify-center px-6 text-white transition-opacity"
+            style={{
+              opacity: swipeX > 0 ? 1 : 0,
+              width: '120px',
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              {rightSwipeIcon || <Bookmark className="w-5 h-5" />}
+              <span className="text-xs whitespace-nowrap">{rightSwipeLabel}</span>
+            </div>
+          </div>
+        </div>
+        <div className="h-full flex-1 rounded-r-2xl bg-[#ec1e24]">
+          <div
+            className="ml-auto flex h-full items-center justify-center px-6 text-white transition-opacity"
+            style={{
+              opacity: swipeX < 0 ? 1 : 0,
+              width: '120px',
+            }}
+          >
+            <div className="flex flex-col items-center gap-1">
+              <Trash2 className="w-5 h-5" />
+              <span className="text-xs whitespace-nowrap">{deleteLabel}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -304,7 +348,27 @@ export function SwipeableActivityCard({
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchCancel}
       >
-        {!selectionMode && showHoverDelete && (
+        {!selectionMode && hoverActions && resolvedHoverActions.length > 0 ? (
+          <div className="absolute right-3 top-3 z-10 hidden items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100 lg:flex">
+            {resolvedHoverActions.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                aria-label={action.label}
+                className="rounded-full border border-gray-200 bg-white/95 p-2 text-gray-600 transition-colors hover:text-[#ec1e24] dark:border-[#333333] dark:bg-[#050505]/95 dark:text-[#9CA3AF] dark:hover:text-[#ec1e24]"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  haptics.medium();
+                  action.onClick(id);
+                }}
+              >
+                {action.icon}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {!selectionMode && !hoverActions && showHoverDelete && (
           <button
             type="button"
             aria-label={deleteLabel}
