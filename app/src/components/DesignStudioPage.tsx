@@ -351,6 +351,39 @@ function findMatchedKeyword(title: string, keywords: string[]): string | undefin
   return keywords.find((keyword) => normalizedTitle.includes(normalizeKeywordMatch(keyword)));
 }
 
+function toStringArraySetting(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter(Boolean);
+  }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter(Boolean);
+      }
+    } catch {
+      // Treat as comma-separated fallback.
+    }
+
+    return trimmed
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 type AutoEditorialAction =
   | 'caption'
   | 'header'
@@ -1784,30 +1817,42 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   }, [manualNewsQueueRetentionMs, savedQueueIds, visibleNewsQueueItems]);
 
   const triggerKeywords = useMemo(
-    () =>
-      (Array.isArray(settings.designStudioTriggerKeywords) ? settings.designStudioTriggerKeywords : [])
-        .map((keyword) => keyword.trim())
-        .filter(Boolean),
+    () => toStringArraySetting(settings.designStudioTriggerKeywords),
     [settings.designStudioTriggerKeywords],
   );
 
   const bannedKeywords = useMemo(
-    () =>
-      (Array.isArray(settings.designStudioBannedKeywords) ? settings.designStudioBannedKeywords : [])
-        .map((keyword) => keyword.trim())
-        .filter(Boolean),
+    () => toStringArraySetting(settings.designStudioBannedKeywords),
     [settings.designStudioBannedKeywords],
   );
 
   const selectedAutoFeedIds = useMemo(
-    () => new Set(Array.isArray(settings.designStudioSelectedRssFeedIds) ? settings.designStudioSelectedRssFeedIds : []),
+    () => new Set(toStringArraySetting(settings.designStudioSelectedRssFeedIds)),
     [settings.designStudioSelectedRssFeedIds],
   );
+
+  const selectedAutoFeedNames = useMemo(() => {
+    if (selectedAutoFeedIds.size === 0) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      feeds
+        .filter((feed) => selectedAutoFeedIds.has(feed.id))
+        .map((feed) => normalizeKeywordMatch(feed.name || ''))
+        .filter(Boolean),
+    );
+  }, [feeds, selectedAutoFeedIds]);
 
   const autoScopeFilteredNewsQueueItems = useMemo(() => {
     return retentionFilteredNewsQueueItems.filter((item) => {
       if (selectedAutoFeedIds.size > 0) {
-        if (!item.feedId || !selectedAutoFeedIds.has(item.feedId)) {
+        const itemFeedName = normalizeKeywordMatch(item.feedName || '');
+        const matchesSelectedFeed =
+          (Boolean(item.feedId) && selectedAutoFeedIds.has(item.feedId))
+          || (Boolean(itemFeedName) && selectedAutoFeedNames.has(itemFeedName));
+
+        if (!matchesSelectedFeed) {
           return false;
         }
       }
@@ -1827,7 +1872,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       return Boolean(findMatchedKeyword(title, triggerKeywords));
     });
-  }, [bannedKeywords, retentionFilteredNewsQueueItems, selectedAutoFeedIds, triggerKeywords]);
+  }, [bannedKeywords, retentionFilteredNewsQueueItems, selectedAutoFeedIds, selectedAutoFeedNames, triggerKeywords]);
 
   const newsQueueSourceOptions = useMemo(
     () =>
