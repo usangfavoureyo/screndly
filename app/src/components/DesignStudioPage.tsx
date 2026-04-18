@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Upload, Cloud, X, MoreVertical, Plus, Calendar, Clock3, ImagePlus, LoaderCircle, RefreshCw, Search, ExternalLink } from 'lucide-react';
 import { toast } from "sonner";
 import { Button } from './ui/button';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from './ui/dialog';
@@ -14,7 +14,7 @@ import { haptics } from '../utils/haptics';
 import { addRecentActivity, addLogEntry } from '../utils/activityStore';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { useSettings } from '../contexts/SettingsContext';
-import { useRSSFeeds } from '../contexts/RSSFeedsContext';
+import { useRSSFeeds, type RSSActivityItem } from '../contexts/RSSFeedsContext';
 import { useUndo } from './UndoContext';
 import { SegmentedTabSwitcher } from './SegmentedTabSwitcher';
 import { BottomSheet, BottomSheetBody, BottomSheetFooter, BottomSheetHeader, BottomSheetTitle } from './ui/bottom-sheet';
@@ -302,9 +302,21 @@ function readPendingEditorTarget(): DesignStudioEditorTarget | null {
 }
 
 type DesignStudioTab = 'manual' | 'auto';
+type ManualWorkspaceTab = 'templates' | 'news_queue';
 
 type AutoEditorial = DesignStudioAutoEditorialRecord;
 type ManualRenderJob = DesignStudioManualRenderJob;
+
+interface ManualDraftSourceContext {
+  feedItemId: string;
+  sourceName: string;
+  sourceHeadline: string;
+  suggestedHeadline: string;
+  sourceUrl?: string;
+  sourceSummary?: string;
+  fetchedAt: string;
+  matchedKeyword?: string;
+}
 
 type AutoEditorialAction =
   | 'caption'
@@ -397,6 +409,10 @@ function toBackgroundImagePoolList(
 
 const DESIGN_STUDIO_PAGE_CACHE_KEY = 'designStudioPageCache';
 const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
+const DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY = 'designStudioManualWorkspaceTab';
+const DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY = 'designStudioNewsQueueDismissed';
+const DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY = 'designStudioNewsQueueSaved';
+const DESIGN_STUDIO_NEWS_QUEUE_USED_KEY = 'designStudioNewsQueueUsed';
 
 function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'png'): DesignData {
   return {
@@ -481,6 +497,90 @@ function serializeRenderedDesigns(renderedDesigns: RenderedDesign[]) {
   }));
 }
 
+function readStoredIdSet(storageKey: string): Set<string> {
+  if (typeof window === 'undefined') {
+    return new Set<string>();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      return new Set<string>();
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return new Set<string>();
+    }
+    return new Set(parsed.filter((value): value is string => typeof value === 'string' && value.trim().length > 0));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function saveStoredIdSet(storageKey: string, ids: Set<string>) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  safeStorageSetItem(storageKey, JSON.stringify(Array.from(ids)));
+}
+
+function toPlainTextSnippet(value?: string, maxLength = 170): string {
+  if (!value) {
+    return '';
+  }
+
+  const stripped = value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (stripped.length <= maxLength) {
+    return stripped;
+  }
+  return `${stripped.slice(0, maxLength - 1).trimEnd()}...`;
+}
+
+function buildSuggestedEditorialHeadline(rawTitle: string): string {
+  const trimmed = rawTitle.replace(/\s+/g, ' ').trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const withoutSourceSuffix = trimmed.replace(/\s+[-|]\s+[^-|]{1,45}$/, '').trim();
+  const withoutEditorialTags = withoutSourceSuffix
+    .replace(/^\s*(exclusive|report|watch|new)\s*:\s*/i, '')
+    .replace(/\s+\((exclusive|report|updated)\)\s*$/i, '')
+    .replace(/\s+\[(exclusive|report|updated)\]\s*$/i, '')
+    .trim();
+
+  const withoutFiller = withoutEditorialTags
+    .replace(/\s+in\s+latest\s+update$/i, '')
+    .replace(/\s+in\s+new\s+update$/i, '')
+    .replace(/\s+in\s+latest\s+trailer$/i, '')
+    .trim();
+
+  const words = withoutFiller.split(' ').filter(Boolean);
+  const compactWords = words.length > 16 ? words.slice(0, 16) : words;
+
+  return compactWords
+    .map((word, index) => {
+      if (/^[A-Z0-9]{2,}$/.test(word)) {
+        return word;
+      }
+      if (/^[a-z]{1,3}$/.test(word) && index !== 0 && index !== compactWords.length - 1) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+}
+
 function parseAutoEditorial(editorial: any): AutoEditorial {
   const source = asRecord(editorial);
   return {
@@ -561,17 +661,23 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const cachedPageState = readDesignStudioPageCache();
   const { addNotification } = useNotifications();
   const { settings } = useSettings();
-  const { feeds } = useRSSFeeds();
+  const { feeds, getActivity } = useRSSFeeds();
   const { showUndo } = useUndo();
   const [activeTab, setActiveTab] = useState<DesignStudioTab>(() => {
     const savedTab = localStorage.getItem('designStudioActiveTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
+  });
+  const [manualWorkspaceTab, setManualWorkspaceTab] = useState<ManualWorkspaceTab>(() => {
+    if (typeof window === 'undefined') return 'templates';
+    const savedTab = window.localStorage.getItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY);
+    return savedTab === 'news_queue' ? 'news_queue' : 'templates';
   });
   const [templates, setTemplates] = useState<Template[]>(cachedPageState?.templates || []);
   const [renderedDesigns, setRenderedDesigns] = useState<RenderedDesign[]>(cachedPageState?.renderedDesigns || []);
   const [manualRenderJobs, setManualRenderJobs] = useState<ManualRenderJob[]>(cachedPageState?.manualRenderJobs || []);
   const [autoEditorials, setAutoEditorials] = useState<AutoEditorial[]>(cachedPageState?.autoEditorials || []);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+  const [manualDraftSource, setManualDraftSource] = useState<ManualDraftSourceContext | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedTemplate, setExpandedTemplate] = useState<Template | null>(null);
   const [expandedTemplateZoom, setExpandedTemplateZoom] = useState(1);
@@ -611,6 +717,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [backgroundImageAssets, setBackgroundImageAssets] = useState<Array<DesignStudioTMDbImageAsset & { kind: 'backdrop' | 'poster' | 'logo' | 'profile' }>>([]);
   const [isSearchingBackgrounds, setIsSearchingBackgrounds] = useState(false);
   const [isLoadingBackgroundAssets, setIsLoadingBackgroundAssets] = useState(false);
+  const [newsQueueItems, setNewsQueueItems] = useState<RSSActivityItem[]>([]);
+  const [isLoadingNewsQueue, setIsLoadingNewsQueue] = useState(false);
+  const [newsQueueError, setNewsQueueError] = useState<string | null>(null);
+  const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY));
+  const [savedQueueIds, setSavedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY));
+  const [usedQueueIds, setUsedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_USED_KEY));
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backgroundFileInputRef = useRef<HTMLInputElement>(null);
@@ -619,6 +731,22 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     safeStorageSetItem('designStudioActiveTab', activeTab);
   }, [activeTab]);
+
+  useEffect(() => {
+    safeStorageSetItem(DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY, manualWorkspaceTab);
+  }, [manualWorkspaceTab]);
+
+  useEffect(() => {
+    saveStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY, dismissedQueueIds);
+  }, [dismissedQueueIds]);
+
+  useEffect(() => {
+    saveStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY, savedQueueIds);
+  }, [savedQueueIds]);
+
+  useEffect(() => {
+    saveStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_USED_KEY, usedQueueIds);
+  }, [usedQueueIds]);
 
   useEffect(() => {
     if (!pendingEditorTarget) {
@@ -1034,6 +1162,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     haptics.light();
     setActiveTab('manual');
+    setManualDraftSource(null);
     setSelectedTemplate(preferredTemplate);
     setEditingTemplateId(preferredTemplate.id);
     const initialData = buildTemplateInitialData(preferredTemplate, settings.exportFormat === 'png' ? 'png' : 'jpeg');
@@ -1084,6 +1213,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       setIsRendering(false);
       toast.success('Moved to render queue. You can leave this page while it finishes.');
       haptics.success();
+      setManualDraftSource(null);
     } catch (error) {
       console.error('Failed to queue Design Studio render:', error);
       setIsRendering(false);
@@ -1500,6 +1630,139 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     });
   };
 
+  const loadNewsQueue = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (!options.silent) {
+      setIsLoadingNewsQueue(true);
+    }
+    setNewsQueueError(null);
+
+    try {
+      const response = await getActivity(300);
+      const activityItems = response?.items || [];
+
+      const ordered = [...activityItems]
+        .sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime());
+
+      const dedupedByStory = new Map<string, RSSActivityItem>();
+      for (const item of ordered) {
+        const key = (item.link || item.title || item.id).trim().toLowerCase();
+        if (!key || dedupedByStory.has(key)) {
+          continue;
+        }
+        dedupedByStory.set(key, item);
+      }
+
+      setNewsQueueItems(Array.from(dedupedByStory.values()).slice(0, 120));
+    } catch (error) {
+      console.error('Failed to load Design Studio news queue:', error);
+      setNewsQueueError(error instanceof Error ? error.message : 'Failed to load fetched stories');
+    } finally {
+      if (!options.silent) {
+        setIsLoadingNewsQueue(false);
+      }
+    }
+  }, [getActivity]);
+
+  useEffect(() => {
+    if (activeTab !== 'manual' || manualWorkspaceTab !== 'news_queue') {
+      return;
+    }
+
+    void loadNewsQueue();
+    const intervalId = window.setInterval(() => {
+      void loadNewsQueue({ silent: true });
+    }, 60000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeTab, loadNewsQueue, manualWorkspaceTab]);
+
+  const visibleNewsQueueItems = useMemo(
+    () => newsQueueItems.filter((item) => !dismissedQueueIds.has(item.id)),
+    [dismissedQueueIds, newsQueueItems],
+  );
+
+  const savedNewsQueueItems = useMemo(
+    () => visibleNewsQueueItems.filter((item) => savedQueueIds.has(item.id)),
+    [savedQueueIds, visibleNewsQueueItems],
+  );
+
+  const inboxNewsQueueItems = useMemo(
+    () => visibleNewsQueueItems.filter((item) => !savedQueueIds.has(item.id)),
+    [savedQueueIds, visibleNewsQueueItems],
+  );
+
+  const toggleSaveNewsQueueItem = (itemId: string) => {
+    setSavedQueueIds((current) => {
+      const next = new Set(current);
+      if (next.has(itemId)) {
+        next.delete(itemId);
+      } else {
+        next.add(itemId);
+      }
+      return next;
+    });
+  };
+
+  const dismissNewsQueueItem = (itemId: string) => {
+    setDismissedQueueIds((current) => {
+      const next = new Set(current);
+      next.add(itemId);
+      return next;
+    });
+  };
+
+  const handleCreateDesignFromNewsQueue = (item: RSSActivityItem) => {
+    const preferredTemplate = templates.find((template) => template.isDefaultManual)
+      || templates.find((template) => template.isValidated !== false)
+      || templates[0];
+
+    if (!preferredTemplate) {
+      toast.error('Upload or load a template first');
+      return;
+    }
+
+    const originalHeadline = item.title?.trim() || 'Untitled story';
+    const suggestedHeadline = buildSuggestedEditorialHeadline(originalHeadline) || originalHeadline;
+    const snippet = toPlainTextSnippet(item.description || item.contentHtml, 200);
+
+    const initialData = buildTemplateInitialData(preferredTemplate, settings.exportFormat === 'png' ? 'png' : 'jpeg');
+    initialData.headerText = suggestedHeadline;
+    initialData.subtext = '';
+    initialData.caption = [
+      suggestedHeadline,
+      snippet || null,
+      item.link ? `Source: ${item.link}` : null,
+    ].filter(Boolean).join('\n\n');
+    if (item.imageUrl) {
+      initialData.backgroundImage = item.imageUrl;
+    }
+
+    setActiveTab('manual');
+    setSelectedTemplate(preferredTemplate);
+    setEditingTemplateId(preferredTemplate.id);
+    setEditorInitialData(initialData);
+    setLivePreviewData(initialData);
+    setManualDraftSource({
+      feedItemId: item.id,
+      sourceName: item.feedName || 'RSS Feed',
+      sourceHeadline: originalHeadline,
+      suggestedHeadline,
+      sourceUrl: item.link,
+      sourceSummary: snippet,
+      fetchedAt: item.timestamp,
+      matchedKeyword: item.editorialBrain?.decision?.event || undefined,
+    });
+    setIsEditSheetOpen(true);
+    setUsedQueueIds((current) => {
+      const next = new Set(current);
+      next.add(item.id);
+      return next;
+    });
+    haptics.light();
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1508,7 +1771,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           <h1 className="text-gray-900 dark:text-white mb-2">Design Studio</h1>
           <p className="text-[#6B7280] dark:text-[#9CA3AF]">
             {activeTab === 'manual'
-              ? 'Create and edit PSD templates manually'
+              ? 'Build manual designs from templates or fetched feed stories'
               : 'Generate editorial designs automatically'}
           </p>
         </div>
@@ -1540,113 +1803,279 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       {activeTab === 'manual' ? (
         <>
-          {/* Template Ingestion Section */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="block">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={PSD_FILE_ACCEPT}
-                onChange={handleUploadPSD}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={handleOpenPsdPicker}
-                disabled={isUploadingTemplate}
-                className="w-full border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
-              >
-                <Upload className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
-                <p className="text-gray-900 dark:text-white">
-                  {isUploadingTemplate ? 'Uploading PSD Template...' : 'Upload PSD Template'}
-                </p>
-                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                  Select a `.psd` file from Files or Documents, not Photos
-                </p>
-              </button>
-            </div>
+          <SegmentedTabSwitcher
+            tabs={[
+              { id: 'templates', label: 'Templates' },
+              { id: 'news_queue', label: 'News Queue' },
+            ] as const}
+            activeTab={manualWorkspaceTab}
+            onChange={(tab) => {
+              haptics.light();
+              setManualWorkspaceTab(tab);
+            }}
+          />
 
-            <button
-              onClick={handleLoadFromBackblaze}
-              className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
-            >
-              <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
-              <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleCreateDesign}
-              className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
-            >
-              <Plus className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
-              <p className="text-gray-900 dark:text-white">Create Design</p>
-              <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                Start a new design using your saved template layout
-              </p>
-            </button>
-          </div>
-
-          {isUploadingTemplate ? (
-            <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm text-gray-900 dark:text-white">Uploading PSD template</p>
-                  <p className="mt-1 truncate text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                    {uploadingTemplateName || 'Preparing upload...'}
-                  </p>
+          {manualWorkspaceTab === 'templates' ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="block">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept={PSD_FILE_ACCEPT}
+                    onChange={handleUploadPSD}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleOpenPsdPicker}
+                    disabled={isUploadingTemplate}
+                    className="w-full border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+                  >
+                    <Upload className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+                    <p className="text-gray-900 dark:text-white">
+                      {isUploadingTemplate ? 'Uploading PSD Template...' : 'Upload PSD Template'}
+                    </p>
+                    <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                      Select a `.psd` file from Files or Documents, not Photos
+                    </p>
+                  </button>
                 </div>
-                <p className="shrink-0 text-sm text-[#ec1e24]">{uploadProgress}%</p>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-[#111111]">
-                <div
-                  className="h-full rounded-full bg-[#ec1e24] transition-[width] duration-200 ease-out"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-              </div>
-            </div>
-          ) : null}
 
-          {isFinalizingTemplateUpload ? (
-            <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
-              Finalizing PSD template...
-            </div>
-          ) : null}
+                <button
+                  onClick={handleLoadFromBackblaze}
+                  className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+                >
+                  <Cloud className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+                  <p className="text-gray-900 dark:text-white">Load from Backblaze</p>
+                </button>
 
-          {isLoadingState && templates.length === 0 ? (
-            <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">
-              <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">Loading your Design Studio templates...</p>
-              <p className="text-sm text-gray-500 dark:text-[#6B7280]">
-                Saved templates will appear here as soon as the workspace finishes syncing.
-              </p>
-            </div>
-          ) : templates.length === 0 ? (
-            <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
-              <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No templates yet</p>
-              <p className="text-sm text-gray-500 dark:text-[#6B7280]">
-                Upload a PSD template or load from Backblaze to get started
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {isLoadingState ? (
-                <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
-                  Refreshing templates...
+                <button
+                  type="button"
+                  onClick={handleCreateDesign}
+                  className="border border-gray-200 dark:border-[#333333] rounded-2xl p-6 text-center hover:border-[#ec1e24] transition-colors bg-white dark:bg-[#000000]"
+                >
+                  <Plus className="w-8 h-8 text-gray-400 dark:text-[#666666] mx-auto mb-3" />
+                  <p className="text-gray-900 dark:text-white">Create Design</p>
+                  <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                    Start a new design using your saved template layout
+                  </p>
+                </button>
+              </div>
+
+              {isUploadingTemplate ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-900 dark:text-white">Uploading PSD template</p>
+                      <p className="mt-1 truncate text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                        {uploadingTemplateName || 'Preparing upload...'}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-sm text-[#ec1e24]">{uploadProgress}%</p>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-[#111111]">
+                    <div
+                      className="h-full rounded-full bg-[#ec1e24] transition-[width] duration-200 ease-out"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
                 </div>
               ) : null}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {templates.map((template) => (
-                  <SwipeableTemplateCard
-                    key={template.id}
-                    template={template}
-                  onDelete={handleDeleteTemplate}
-                  onEdit={handleEditTemplate}
-                  onExpand={handleExpandTemplate}
-                  livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
-                  isBeingEdited={editingTemplateId === template.id}
-                />
-              ))}
+
+              {isFinalizingTemplateUpload ? (
+                <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
+                  Finalizing PSD template...
+                </div>
+              ) : null}
+
+              {isLoadingState && templates.length === 0 ? (
+                <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-8 text-center">
+                  <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">Loading your Design Studio templates...</p>
+                  <p className="text-sm text-gray-500 dark:text-[#6B7280]">
+                    Saved templates will appear here as soon as the workspace finishes syncing.
+                  </p>
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="bg-white dark:bg-[#000000] rounded-2xl border border-gray-200 dark:border-[#333333] p-12 text-center">
+                  <p className="text-gray-600 dark:text-[#9CA3AF] mb-2">No templates yet</p>
+                  <p className="text-sm text-gray-500 dark:text-[#6B7280]">
+                    Upload a PSD template or load from Backblaze to get started
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {isLoadingState ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-600 dark:border-[#333333] dark:bg-[#000000] dark:text-[#9CA3AF]">
+                      Refreshing templates...
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {templates.map((template) => (
+                      <SwipeableTemplateCard
+                        key={template.id}
+                        template={template}
+                        onDelete={handleDeleteTemplate}
+                        onEdit={handleEditTemplate}
+                        onExpand={handleExpandTemplate}
+                        livePreviewData={editingTemplateId === template.id ? livePreviewData : null}
+                        isBeingEdited={editingTemplateId === template.id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-gray-900 dark:text-white">Fetched News Queue</p>
+                    <p className="mt-1 text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                      Feed items are available for manual editorial drafts and do not trigger Auto posting by themselves.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void loadNewsQueue()}
+                    disabled={isLoadingNewsQueue}
+                    className="border-gray-200 dark:border-[#333333] bg-white dark:bg-black"
+                  >
+                    {isLoadingNewsQueue ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+                    Refresh
+                  </Button>
+                </div>
               </div>
+
+              {newsQueueError ? (
+                <div className="rounded-2xl border border-[#ec1e24]/40 bg-[#ec1e24]/10 px-4 py-3 text-sm text-[#ec1e24]">
+                  {newsQueueError}
+                </div>
+              ) : null}
+
+              {isLoadingNewsQueue && newsQueueItems.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
+                  <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">Loading fetched stories...</p>
+                </div>
+              ) : visibleNewsQueueItems.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center dark:border-[#333333] dark:bg-[#000000]">
+                  <p className="text-gray-600 dark:text-[#9CA3AF]">No queued stories right now</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-[#6B7280]">
+                    Refresh feeds from Feeds, then return here to create manual designs.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {savedNewsQueueItems.length > 0 ? (
+                    <section className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Saved for later</p>
+                        <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{savedNewsQueueItems.length}</p>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        {savedNewsQueueItems.map((item) => (
+                          <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+                            <div className="flex gap-3">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
+                              ) : (
+                                <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                  No image
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs uppercase tracking-[0.14em] text-[#6B7280] dark:text-[#9CA3AF]">{item.feedName || 'RSS Feed'}</p>
+                                <p className="mt-1 text-sm leading-5 text-gray-900 dark:text-white">{item.title}</p>
+                                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Fetched {formatEditorialDateTime(item.timestamp)}</p>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF] line-clamp-2">
+                              {toPlainTextSnippet(item.description || item.contentHtml, 140) || 'No summary available.'}
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button type="button" onClick={() => handleCreateDesignFromNewsQueue(item)} className="bg-[#ec1e24] hover:bg-[#d01a20] text-white">
+                                Create Design
+                              </Button>
+                              <Button type="button" variant="outline" onClick={() => toggleSaveNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
+                                Remove Save
+                              </Button>
+                              {item.link ? (
+                                <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  Open Source
+                                </Button>
+                              ) : null}
+                              <Button type="button" variant="outline" onClick={() => dismissNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
+                                Dismiss
+                              </Button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
+
+                  <section className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm uppercase tracking-[0.16em] text-[#6B7280] dark:text-[#9CA3AF]">Inbox</p>
+                      <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{inboxNewsQueueItems.length}</p>
+                    </div>
+                    {inboxNewsQueueItems.length === 0 ? (
+                      <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center dark:border-[#333333] dark:bg-[#000000]">
+                        <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">No inbox stories. Saved items are above.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        {inboxNewsQueueItems.map((item) => (
+                          <article key={item.id} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-[#333333] dark:bg-[#000000]">
+                            <div className="flex gap-3">
+                              {item.imageUrl ? (
+                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
+                              ) : (
+                                <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                                  No image
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs uppercase tracking-[0.14em] text-[#6B7280] dark:text-[#9CA3AF]">{item.feedName || 'RSS Feed'}</p>
+                                <p className="mt-1 text-sm leading-5 text-gray-900 dark:text-white">{item.title}</p>
+                                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">Fetched {formatEditorialDateTime(item.timestamp)}</p>
+                                {usedQueueIds.has(item.id) ? (
+                                  <span className="mt-2 inline-flex rounded-full bg-[#ec1e24]/10 px-2.5 py-1 text-[11px] text-[#ec1e24]">
+                                    Used in manual draft
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                            <p className="mt-3 text-sm text-[#6B7280] dark:text-[#9CA3AF] line-clamp-2">
+                              {toPlainTextSnippet(item.description || item.contentHtml, 140) || 'No summary available.'}
+                            </p>
+                            <div className="mt-4 flex flex-wrap gap-2">
+                              <Button type="button" onClick={() => handleCreateDesignFromNewsQueue(item)} className="bg-[#ec1e24] hover:bg-[#d01a20] text-white">
+                                Create Design
+                              </Button>
+                              <Button type="button" variant="outline" onClick={() => toggleSaveNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
+                                Save for Later
+                              </Button>
+                              {item.link ? (
+                                <Button type="button" variant="outline" onClick={() => window.open(item.link, '_blank', 'noopener,noreferrer')} className="border-gray-200 dark:border-[#333333]">
+                                  <ExternalLink className="mr-2 h-4 w-4" />
+                                  Open Source
+                                </Button>
+                              ) : null}
+                              <Button type="button" variant="outline" onClick={() => dismissNewsQueueItem(item.id)} className="border-gray-200 dark:border-[#333333]">
+                                Dismiss
+                              </Button>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </div>
+              )}
             </div>
           )}
         </>
@@ -1833,6 +2262,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               setEditingTemplateId(null);
               setEditorInitialData(null);
               setLivePreviewData(null);
+              setManualDraftSource(null);
             }
           }}
           templateName={selectedTemplate.name}
@@ -1842,6 +2272,15 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           hasBackground={selectedTemplate.hasBackground}
           hasSubtext={selectedTemplate.hasSubtext}
           hasOverlay={selectedTemplate.hasOverlay}
+          sourceContext={manualDraftSource ? {
+            sourceHeadline: manualDraftSource.sourceHeadline,
+            suggestedHeadline: manualDraftSource.suggestedHeadline,
+            sourceName: manualDraftSource.sourceName,
+            sourceSummary: manualDraftSource.sourceSummary,
+            sourceUrl: manualDraftSource.sourceUrl,
+            fetchedAt: manualDraftSource.fetchedAt,
+            matchedKeyword: manualDraftSource.matchedKeyword,
+          } : undefined}
           onSave={handleSaveDesign}
           onChange={(data) => setLivePreviewData(data)}
           isRendering={isRendering}

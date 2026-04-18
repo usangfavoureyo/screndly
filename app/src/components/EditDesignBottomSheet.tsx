@@ -63,6 +63,15 @@ interface EditDesignBottomSheetProps {
   hasBackground?: boolean;
   hasSubtext?: boolean;
   hasOverlay?: boolean; // Whether template has a gradient overlay adjustment layer
+  sourceContext?: {
+    sourceHeadline: string;
+    suggestedHeadline?: string;
+    sourceName?: string;
+    sourceSummary?: string;
+    sourceUrl?: string;
+    fetchedAt?: string;
+    matchedKeyword?: string;
+  };
   onSave: (data: DesignData) => void;
   onChange?: (data: DesignData) => void; // Real-time preview updates
   isRendering?: boolean;
@@ -102,6 +111,7 @@ export function EditDesignBottomSheet({
   hasBackground = true,
   hasSubtext = false,
   hasOverlay = false,
+  sourceContext,
   onSave,
   onChange,
   isRendering = false,
@@ -957,6 +967,50 @@ export function EditDesignBottomSheet({
               </button>
             </div>
           </div>
+          {sourceContext ? (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-gray-900 dark:text-white">Source Headline</Label>
+                <div className="flex items-center gap-2 text-[11px] text-[#6B7280] dark:text-[#9CA3AF]">
+                  {sourceContext.sourceName ? <span>{sourceContext.sourceName}</span> : null}
+                  {sourceContext.fetchedAt ? (
+                    <span>{new Date(sourceContext.fetchedAt).toLocaleString()}</span>
+                  ) : null}
+                </div>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-gray-900 dark:text-white">
+                {sourceContext.sourceHeadline}
+              </p>
+              {sourceContext.sourceSummary ? (
+                <p className="mt-2 text-sm leading-6 text-[#6B7280] dark:text-[#9CA3AF]">
+                  {sourceContext.sourceSummary}
+                </p>
+              ) : null}
+              {sourceContext.suggestedHeadline && sourceContext.suggestedHeadline !== sourceContext.sourceHeadline ? (
+                <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+                  Suggested headline prefill: {sourceContext.suggestedHeadline}
+                </p>
+              ) : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {sourceContext.matchedKeyword ? (
+                  <span className="rounded-full bg-[#ec1e24]/10 px-2.5 py-1 text-[11px] text-[#ec1e24]">
+                    {sourceContext.matchedKeyword}
+                  </span>
+                ) : null}
+                {sourceContext.sourceUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open(sourceContext.sourceUrl, '_blank', 'noopener,noreferrer')}
+                    className="border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] text-gray-900 dark:text-white text-xs"
+                  >
+                    Open Source
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {/* Header Text (Required) */}
           {hasHeader && (
           <div>
