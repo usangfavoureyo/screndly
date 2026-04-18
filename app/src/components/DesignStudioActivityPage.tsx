@@ -368,6 +368,17 @@ function formatFetchedDateTime(value: string): string {
   });
 }
 
+function toCssAspectRatio(value?: string): string {
+  if (!value) return '4 / 5';
+  const [wRaw, hRaw] = value.split(':');
+  const w = Number(wRaw);
+  const h = Number(hRaw);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
+    return '4 / 5';
+  }
+  return `${w} / ${h}`;
+}
+
 function normalizePlatformLabel(value: string): string {
   const normalized = value.trim().toLowerCase();
   if (!normalized) return '';
@@ -1466,6 +1477,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       isAutoEditorial: Boolean(resolvedAutoEditorial),
     });
     setIsPublishSheetOpen(true);
+  };
+
+  const getBackgroundEditorAspectRatio = () => {
+    if (!cardEditor || cardEditor.mode !== 'background') {
+      return '4 / 5';
+    }
+
+    const { template, renderedDesign } = resolveActivityEditContext(cardEditor.activity);
+    return toCssAspectRatio(template?.aspectRatio || renderedDesign?.aspectRatio || '4:5');
   };
 
   const openOptionsMenu = (activity: DesignStudioActivityRecord) => {
@@ -2679,7 +2699,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
                   <div>
                     <Label className="mb-2 block text-xs text-gray-700 dark:text-[#9CA3AF]">Composition Preview</Label>
-                    <div className="relative h-48 w-full overflow-hidden rounded-xl border border-gray-200 bg-[#050505] dark:border-[#333333]">
+                    <div
+                      className="relative w-full overflow-hidden rounded-xl border border-gray-200 bg-[#050505] dark:border-[#333333]"
+                      style={{ aspectRatio: getBackgroundEditorAspectRatio() }}
+                    >
                       <img
                         src={backgroundDraftUrl}
                         alt="Selected background preview"
