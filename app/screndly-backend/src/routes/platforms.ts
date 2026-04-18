@@ -25,7 +25,7 @@ import jwt from 'jsonwebtoken';
 import { pipeline } from 'stream/promises';
 import { createHash, randomBytes } from 'crypto';
 import sharp from 'sharp';
-import { renderTMDbBackdropLogoComposite } from '../services/rss-logo-render.service';
+import { normalizeTMDbPublishImages } from '../services/tmdb-publish-image-selection';
 
 const router = Router();
 const upload = multer({ dest: 'uploads/' });
@@ -666,42 +666,17 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         let imageUrl = asNonEmptyString(parsedContent?.imageUrl);
         let imageUrls = asNonEmptyStringArray(parsedContent?.imageUrls);
         const imageTypes = normalizeImageAssetTypes(parsedContent?.imageTypes);
-        const imageStyle = asNonEmptyString(parsedContent?.imageStyle)?.toLowerCase();
         let videoUrl = asNonEmptyString(parsedContent?.videoUrl);
         const hasUploadedImage = Boolean(localFilePath && isImageMimeType(req.file?.mimetype));
         const hasUploadedVideo = Boolean(localFilePath && isVideoMimeType(req.file?.mimetype));
-
-        const shouldRenderTmdbBackdropLogo =
-            !hasUploadedImage &&
-            !hasUploadedVideo &&
-            !videoUrl &&
-            (
-                imageStyle === 'backdrop_logo' ||
-                (imageTypes.length >= 2 && imageTypes.includes('backdrop') && imageTypes.includes('logo'))
-            );
-
-        if (shouldRenderTmdbBackdropLogo) {
-            const backdropIndex = imageTypes.findIndex((type) => type === 'backdrop');
-            const logoIndex = imageTypes.findIndex((type) => type === 'logo');
-            const backdropSource = (backdropIndex >= 0 ? imageUrls[backdropIndex] : undefined) || imageUrl;
-            const logoSource = logoIndex >= 0 ? imageUrls[logoIndex] : undefined;
-
-            if (backdropSource && logoSource) {
-                try {
-                    const compositeUrl = await renderTMDbBackdropLogoComposite(backdropSource, logoSource);
-                    imageUrl = compositeUrl;
-                    imageUrls = [compositeUrl];
-
-                    console.log('[Platforms] Rendered TMDb backdrop+logo composite for publish', {
-                        backdropSource,
-                        logoSource,
-                        compositeUrl,
-                    });
-                } catch (error) {
-                    console.warn('[Platforms] Failed to render TMDb backdrop+logo composite, falling back to raw media URLs', error);
-                }
-            }
-        }
+        const normalizedTmdbImages = normalizeTMDbPublishImages({
+            imageUrl,
+            imageUrls,
+            imageType: asNonEmptyString(parsedContent?.imageType),
+            imageTypes,
+        });
+        imageUrl = normalizedTmdbImages.imageUrl;
+        imageUrls = normalizedTmdbImages.imageUrls;
 
         const coverImageUrl = sharedThumbnailUrl || imageUrl || imageUrls[0];
         const preferredMedia = resolvePreferredMediaChoice({

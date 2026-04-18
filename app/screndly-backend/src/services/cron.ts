@@ -10,7 +10,7 @@ import { notificationService } from './notification.service';
 import { commentsService } from './comments.service';
 import { purgeExpiredNotifications } from './notification-retention.service';
 import { deleteBackblazeFile, listBackblazeFiles, type BackblazeBucketType } from './backblaze';
-import { renderTMDbBackdropLogoComposite } from './rss-logo-render.service';
+import { normalizeTMDbPublishImages } from './tmdb-publish-image-selection';
 import { getYouTubeRuntimeSettings } from './video-enrichment.service';
 import {
     getComposeState,
@@ -108,32 +108,7 @@ async function resolveTMDbPublishImageUrls(post: {
     imageType?: string | null;
     imageTypes?: string[] | null;
 }): Promise<string[]> {
-    const resolvedImageUrls = Array.isArray(post.imageUrls) && post.imageUrls.length > 0
-        ? post.imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [post.imageUrl].filter((value): value is string => typeof value === 'string' && value.length > 0);
-
-    if (resolvedImageUrls.length === 0) {
-        return [];
-    }
-
-    const resolvedImageTypes = Array.isArray(post.imageTypes) && post.imageTypes.length === resolvedImageUrls.length
-        ? post.imageTypes
-        : [post.imageType || 'poster', ...new Array(Math.max(0, resolvedImageUrls.length - 1)).fill('backdrop')];
-    const posterUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'poster');
-    const backdropUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'backdrop');
-    const logoUrl = resolvedImageUrls.find((_, index) => resolvedImageTypes[index] === 'logo');
-
-    if (backdropUrl && logoUrl && !posterUrl) {
-        try {
-            const compositeUrl = await renderTMDbBackdropLogoComposite(backdropUrl, logoUrl);
-            return [compositeUrl];
-        } catch (error) {
-            console.warn(`[Cron] Failed to render TMDb backdrop+logo composite for post ${String(post.id || post.imageUrl || '')}:`, error);
-            return [backdropUrl];
-        }
-    }
-
-    return resolvedImageUrls;
+    return normalizeTMDbPublishImages(post).imageUrls;
 }
 let youtubePollingPauseReason: string | null = null;
 

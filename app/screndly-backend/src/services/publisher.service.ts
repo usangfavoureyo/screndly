@@ -185,6 +185,24 @@ export class PublisherService {
         return this.isDirectMetaSafeRemoteImageSource(value) && !this.isRiskyGeneratedImageSource(value);
     }
 
+    private toThreadsCompatibleImageUrl(value: string): string {
+        try {
+            const parsed = new URL(value.trim());
+            if (!parsed.hostname.toLowerCase().includes('backblazeb2.com')) {
+                return parsed.toString();
+            }
+
+            if (!parsed.searchParams.has('Authorization')) {
+                return parsed.toString();
+            }
+
+            parsed.searchParams.delete('Authorization');
+            return parsed.toString();
+        } catch {
+            return value.trim();
+        }
+    }
+
     private isRiskyGeneratedImageSource(value: string): boolean {
         const normalized = value.trim().toLowerCase();
         return normalized.includes('/rss/logo-cards/')
@@ -571,6 +589,9 @@ export class PublisherService {
 
         const safeUrls = resolved.filter((value) => this.isAcceptedMetaPublishImageUrl(value));
         if (safeUrls.length > 0) {
+            if (platform === 'Threads') {
+                return safeUrls.map((value) => this.toThreadsCompatibleImageUrl(value));
+            }
             return safeUrls;
         }
 

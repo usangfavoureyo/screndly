@@ -118,6 +118,8 @@ function normalizeTmdbPayload(payload: Record<string, any>) {
   const normalized: Record<string, any> = { ...payload };
 
   delete normalized.imageStyle;
+  delete normalized.platformPostIds;
+  delete normalized.platformResults;
 
   if (Object.prototype.hasOwnProperty.call(payload, 'publishedTime') && payload.publishedTime === undefined) {
     normalized.publishedTime = null;

@@ -142,6 +142,49 @@ describe('TMDbPostsContext', () => {
     expect(backendPosts[0].title).toBe('After Update');
   });
 
+  it('keeps platform retry state locally while stripping unsupported TMDb backend fields', async () => {
+    backendPosts = [createPost({ id: 'post-retry-state', status: 'failed', errorMessage: 'Threads: failed' })];
+
+    const { result } = renderHook(() => useTMDbPosts(), { wrapper });
+
+    await waitFor(() => expect(result.current.posts).toHaveLength(1));
+
+    await act(async () => {
+      await result.current.updatePost('post-retry-state', {
+        status: 'published',
+        errorMessage: undefined,
+        platformPostIds: { threads: 'threads-123' },
+        platformResults: [
+          {
+            platform: 'Threads',
+            status: 'posted',
+            id: 'threads-123',
+            postedAt: '2026-04-18T08:00:00.000Z',
+          },
+        ],
+      });
+    });
+
+    expect(result.current.posts[0].status).toBe('published');
+    expect(result.current.posts[0].platformPostIds).toEqual({ threads: 'threads-123' });
+    expect(result.current.posts[0].platformResults).toEqual([
+      expect.objectContaining({
+        platform: 'Threads',
+        status: 'posted',
+        id: 'threads-123',
+      }),
+    ]);
+
+    expect(apiClientMock.put).toHaveBeenCalledWith(
+      '/api/tmdb/posts/post-retry-state',
+      expect.not.objectContaining({
+        platformPostIds: expect.anything(),
+        platformResults: expect.anything(),
+      }),
+    );
+    expect(backendPosts[0].status).toBe('published');
+  });
+
   it('sanitizes injected source links from backend TMDb captions', async () => {
     backendPosts = [
       createPost({

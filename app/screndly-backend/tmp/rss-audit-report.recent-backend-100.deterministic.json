@@ -1,0 +1,1322 @@
+{
+  "generatedAt": "2026-04-17T19:53:55.610Z",
+  "totalArticles": 100,
+  "publishPasses": 23,
+  "publishBlocks": 77,
+  "topFailureCodes": [
+    {
+      "code": "IMAGE_NOT_FOUND",
+      "count": 57
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+      "count": 55
+    },
+    {
+      "code": "CAPTION_HEADLINE_JUNK",
+      "count": 29
+    },
+    {
+      "code": "CAPTION_MALFORMED_HEADLINE",
+      "count": 29
+    },
+    {
+      "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+      "count": 24
+    },
+    {
+      "code": "CAPTION_PACKAGE_LABEL_LEAK",
+      "count": 24
+    },
+    {
+      "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+      "count": 18
+    },
+    {
+      "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+      "count": 16
+    },
+    {
+      "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+      "count": 13
+    },
+    {
+      "code": "PROJECT_FALLBACK_EMPTY",
+      "count": 12
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED",
+      "count": 9
+    },
+    {
+      "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+      "count": 9
+    },
+    {
+      "code": "TMDB_TITLE_NOT_RESOLVED",
+      "count": 9
+    },
+    {
+      "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+      "count": 5
+    },
+    {
+      "code": "PERSON_FALLBACK_NOT_ALLOWED_TRUE",
+      "count": 3
+    },
+    {
+      "code": "IMAGE_COMPANY_LOGO_MISUSED",
+      "count": 2
+    },
+    {
+      "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+      "count": 2
+    },
+    {
+      "code": "POSTER_FALLBACK_FAILED",
+      "count": 2
+    },
+    {
+      "code": "IMAGE_LOGO_OVERUSE",
+      "count": 1
+    },
+    {
+      "code": "SPOILER_SAFE_MANUAL_REVIEW_REQUIRED",
+      "count": 1
+    }
+  ],
+  "failureCodesBySource": {
+    "Comicbook | TV": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 12
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 12
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 10
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 6
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 4
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED_TRUE",
+        "count": 2
+      },
+      {
+        "code": "SPOILER_SAFE_MANUAL_REVIEW_REQUIRED",
+        "count": 1
+      }
+    ],
+    "Deadline | Movie": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 15
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 14
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "Deadline | TV": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 13
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 12
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 7
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "Comicbook | Movie": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 17
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 17
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 10
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED_TRUE",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ]
+  },
+  "failureCodesByEventType": {
+    "licensing": [
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 1
+      }
+    ],
+    "other": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 8
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 4
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 4
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "listicle": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 14
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 14
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 6
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 2
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 1
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 1
+      }
+    ],
+    "business": [
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 6
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 3
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      }
+    ],
+    "casting": [
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 9
+      },
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 3
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED_TRUE",
+        "count": 3
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 1
+      }
+    ],
+    "obituary": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 1
+      }
+    ],
+    "interview_quote": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "shopping": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 12
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 12
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ],
+    "event": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 5
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 3
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 3
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 1
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 1
+      }
+    ],
+    "release_date": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 1
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 1
+      }
+    ],
+    "renewal": [],
+    "development": [],
+    "reveal": [
+      {
+        "code": "SPOILER_SAFE_MANUAL_REVIEW_REQUIRED",
+        "count": 1
+      }
+    ],
+    "return": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 2
+      }
+    ]
+  },
+  "scopeCounts": [
+    {
+      "scope": "screenrender_core",
+      "count": 46
+    },
+    {
+      "scope": "entertainment_adjacent",
+      "count": 39
+    },
+    {
+      "scope": "not_screenrender_core",
+      "count": 15
+    }
+  ],
+  "failureCodesByScope": {
+    "entertainment_adjacent": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 25
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 25
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 11
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 10
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 8
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 6
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 6
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 6
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 6
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 5
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 1
+      },
+      {
+        "code": "IMAGE_LOGO_OVERUSE",
+        "count": 1
+      }
+    ],
+    "screenrender_core": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 17
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 15
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 13
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 13
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 9
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 9
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_WEAK_PROJECT",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 4
+      },
+      {
+        "code": "IMAGE_CANONICAL_ENTITY_MISMATCH",
+        "count": 4
+      },
+      {
+        "code": "PERSON_FALLBACK_NOT_ALLOWED_TRUE",
+        "count": 3
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 3
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_COMPANY_LOGO_MISUSED",
+        "count": 2
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_SAFE_BLOCK",
+        "count": 2
+      },
+      {
+        "code": "POSTER_FALLBACK_FAILED",
+        "count": 2
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 2
+      },
+      {
+        "code": "SPOILER_SAFE_MANUAL_REVIEW_REQUIRED",
+        "count": 1
+      }
+    ],
+    "not_screenrender_core": [
+      {
+        "code": "IMAGE_NOT_FOUND",
+        "count": 15
+      },
+      {
+        "code": "IMAGE_NOT_FOUND_FALSE_BLOCK",
+        "count": 15
+      },
+      {
+        "code": "PERSON_FALLBACK_BLOCKED_NON_PERSON_LED",
+        "count": 10
+      },
+      {
+        "code": "CAPTION_CANONICAL_ENTITY_MISMATCH",
+        "count": 7
+      },
+      {
+        "code": "CAPTION_ARTICLE_PACKAGE_LABEL",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_HEADLINE_JUNK",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_MALFORMED_HEADLINE",
+        "count": 5
+      },
+      {
+        "code": "CAPTION_PACKAGE_LABEL_LEAK",
+        "count": 5
+      },
+      {
+        "code": "PROJECT_FALLBACK_EMPTY",
+        "count": 4
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED",
+        "count": 1
+      },
+      {
+        "code": "ENTITY_NOT_RESOLVED_SAFE_BLOCK",
+        "count": 1
+      },
+      {
+        "code": "TMDB_TITLE_NOT_RESOLVED",
+        "count": 1
+      }
+    ]
+  },
+  "repeatedBadTmdbMatches": [],
+  "duplicateGroups": [
+    {
+      "signature": "casting|jaws||1975",
+      "duplicateEventKey": "casting|jaws||1975",
+      "count": 6,
+      "sources": [
+        "Comicbook | Movie",
+        "Comicbook | TV",
+        "Deadline | Movie"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Comicbook | Movie",
+        "Comicbook | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "4ced9afc5490c805",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "Two Years After Under Paris, Netflix Just Dropped a New Shark Movie (& It’s the Perfect Crawl Replacement)",
+          "articleUrl": "https://comicbook.com/movies/news/two-years-after-under-paris-netflix-just-dropped-a-new-shark-movie-its-the-perfect-crawl-replacement/",
+          "canonicalEntity": "Jaws",
+          "eventType": "casting"
+        },
+        {
+          "caseId": "71ae73e1079d18b4",
+          "sourceName": "Comicbook | TV",
+          "articleTitle": "22 Years Later, Scrubs Just Delivered the Perfect Follow-Up to Its Devastating 10/10 Masterpiece Episode",
+          "articleUrl": "https://comicbook.com/tv-shows/feature/22-years-later-scrubs-just-delivered-the-perfect-follow-up-to-its-devastating-10-10-masterpiece-episode/",
+          "canonicalEntity": "My Odds",
+          "eventType": "shopping"
+        },
+        {
+          "caseId": "bda19e6753e9e9db",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "After Scream 7, Netflix Just Added One of the Best Scream Movies Since the Original",
+          "articleUrl": "https://comicbook.com/movies/news/after-scream-7-netflix-just-added-one-of-the-best-scream-movies-since-the-original/",
+          "canonicalEntity": "s no denying that West Craven",
+          "eventType": "listicle"
+        },
+        {
+          "caseId": "3ee6792f7163938e",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "Idris Elba’s Underrated Horror Thriller Just Hit Netflix 4 Years After a Lackluster Box Office Performance",
+          "articleUrl": "https://comicbook.com/movies/news/idris-elbas-underrated-horror-thriller-just-hit-netflix-4-years-after-a-lackluster-box-office-performance/",
+          "canonicalEntity": "Idris Elba's Underrated Horror",
+          "eventType": "business"
+        },
+        {
+          "caseId": "0b72ebf7b5093fc6",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "Olympic Pic ‘Perfect’ Not Moving Forward At Netflix After Millie Bobby Brown Exits Project",
+          "articleUrl": "https://deadline.com/2026/04/perfect-millie-bobby-brown-1236786287/",
+          "canonicalEntity": "Perfect",
+          "eventType": "interview_quote"
+        },
+        {
+          "caseId": "4d0bb192a539b32a",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "Thrash Stars Reveal What Makes Netflix’s New Shark Movie Different From B Movies Like Sharknado (Exclusive)",
+          "articleUrl": "https://comicbook.com/movies/news/thrash-stars-reveal-what-makes-netflixs-new-shark-movie-different-from-b-movies-like-sharknado-exclusive/",
+          "canonicalEntity": "New Shark",
+          "eventType": "shopping"
+        }
+      ]
+    },
+    {
+      "signature": "casting|talent agent sam rubin|talent agent sam rubin||casting",
+      "duplicateEventKey": "casting|talent agent sam rubin|talent agent sam rubin||casting",
+      "count": 2,
+      "sources": [
+        "Deadline | Movie",
+        "Deadline | TV"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Deadline | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "8dbc0013eba0eae5",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "Talent Agent Sam Rubin Joins Artists & Representatives",
+          "articleUrl": "https://deadline.com/2026/04/sam-rubin-artists-and-representatives-talent-agent-1236786723/",
+          "canonicalEntity": "Talent Agent Sam Rubin",
+          "eventType": "casting"
+        },
+        {
+          "caseId": "cabbff726934775a",
+          "sourceName": "Deadline | TV",
+          "articleTitle": "Talent Agent Sam Rubin Joins Artists & Representatives",
+          "articleUrl": "https://deadline.com/2026/04/sam-rubin-artists-and-representatives-talent-agent-1236786723/",
+          "canonicalEntity": "Talent Agent Sam Rubin",
+          "eventType": "casting"
+        }
+      ]
+    },
+    {
+      "signature": "event||2026",
+      "duplicateEventKey": "event||2026",
+      "count": 2,
+      "sources": [
+        "Deadline | Movie",
+        "Deadline | TV"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Deadline | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "de89f0e02e229e93",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; ‘The Testaments’",
+          "articleUrl": "https://deadline.com/2026/04/cannes-film-festival-the-testaments-international-insider-1236785655/",
+          "eventType": "event"
+        },
+        {
+          "caseId": "8770b6991e86f116",
+          "sourceName": "Deadline | TV",
+          "articleTitle": "International Insider: Cannes Keeps Biz Guessing; Netflix Bets House On Argentina; ‘The Testaments’",
+          "articleUrl": "https://deadline.com/2026/04/cannes-film-festival-the-testaments-international-insider-1236785655/",
+          "eventType": "event"
+        }
+      ]
+    },
+    {
+      "signature": "listicle|",
+      "duplicateEventKey": "listicle|",
+      "count": 2,
+      "sources": [
+        "Comicbook | Movie",
+        "Comicbook | TV"
+      ],
+      "winningSource": "Comicbook | Movie",
+      "suppressedSources": [
+        "Comicbook | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "4063b4a1d9e1726b",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "Two of the Biggest Animated Movie Franchises of All Time Are in Netflix’s U.S. Top 5 Right Now",
+          "articleUrl": "https://comicbook.com/movies/news/two-of-the-biggest-animated-movie-franchises-of-all-time-are-in-netflixs-u-s-top-5-right-now/",
+          "eventType": "listicle"
+        },
+        {
+          "caseId": "6b42dd66fefaa443",
+          "sourceName": "Comicbook | TV",
+          "articleTitle": "5 Criminally Cancelled Sci-Fi Shows We’ll Never Get Over",
+          "articleUrl": "https://comicbook.com/tv-shows/list/5-criminally-cancelled-sci-fi-shows-well-never-get-over/",
+          "eventType": "listicle"
+        }
+      ]
+    },
+    {
+      "signature": "listicle||reboot",
+      "duplicateEventKey": "listicle||reboot",
+      "count": 2,
+      "sources": [
+        "Comicbook | TV",
+        "Deadline | TV"
+      ],
+      "winningSource": "Deadline | TV",
+      "suppressedSources": [
+        "Comicbook | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "9249d606c3827601",
+          "sourceName": "Comicbook | TV",
+          "articleTitle": "Malcolm in the Middle Revival’s Rotten Tomatoes Score Revealed (& It’s Not Unfair)",
+          "articleUrl": "https://comicbook.com/tv-shows/news/malcolm-in-the-middle-revivals-rotten-tomatoes-score-revealed-its-not-unfair/",
+          "eventType": "listicle"
+        },
+        {
+          "caseId": "8c5025010fc6b0ae",
+          "sourceName": "Deadline | TV",
+          "articleTitle": "‘Malcolm in the Middle: Life’s Still Unfair’ Creator & EP Wife On Bryan Cranston’s “Constant Nudity,” Channeling “Parental Pressure” & Representing Their LGBTQ Kids: “Really Important To Us”",
+          "articleUrl": "https://deadline.com/2026/04/malcolm-in-the-middle-creator-ep-wife-lgbtq-kids-1236786214/",
+          "canonicalEntity": "Malcolm in the Middle: Life",
+          "eventType": "business"
+        }
+      ]
+    },
+    {
+      "signature": "listicle|awards season calendar updated||2026",
+      "duplicateEventKey": "listicle|awards season calendar updated||2026",
+      "count": 2,
+      "sources": [
+        "Deadline | TV",
+        "Deadline | Movie"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Deadline | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "0dbe175f9aecc9ba",
+          "sourceName": "Deadline | TV",
+          "articleTitle": "2026-27 Awards Season Calendar",
+          "articleUrl": "https://deadline.com/feature/awards-season-calendar-oscars-emmys-golden-globes-list-1234814076/",
+          "canonicalEntity": "Awards Season Calendar UPDATED",
+          "eventType": "listicle"
+        },
+        {
+          "caseId": "0063bf59d65c4ea7",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "2026-27 Awards Season Calendar",
+          "articleUrl": "https://deadline.com/feature/awards-season-calendar-oscars-emmys-golden-globes-list-1234814076/",
+          "canonicalEntity": "Awards Season Calendar UPDATED",
+          "eventType": "listicle"
+        }
+      ]
+    },
+    {
+      "signature": "listicle|the reaping footage highlights the new||2025",
+      "duplicateEventKey": "listicle|the reaping footage highlights the new||2025",
+      "count": 2,
+      "sources": [
+        "Comicbook | Movie",
+        "Deadline | Movie"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Comicbook | Movie"
+      ],
+      "articles": [
+        {
+          "caseId": "1c6445c1664de0c1",
+          "sourceName": "Comicbook | Movie",
+          "articleTitle": "The Hunger Games Reveals New Sunrise on the Reaping Footage (That Will Make Fans Emotional)",
+          "articleUrl": "https://comicbook.com/movies/news/the-hunger-games-reveals-new-sunrise-on-the-reaping-footage-that-will-make-fans-emotional/",
+          "canonicalEntity": "the Reaping Footage Highlights the New",
+          "eventType": "listicle"
+        },
+        {
+          "caseId": "b75a0537ae1d792d",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "‘Hunger Games: Sunrise on the Reaping’ Promo Teases New Look At Old Faves Played By Elle Fanning, Kieran Culkin, Maya Hawke & More",
+          "articleUrl": "https://deadline.com/2026/04/sunrise-on-the-reaping-first-look-maya-hawke-kieran-culkin-teaser-1236791206/",
+          "canonicalEntity": "Hunger Games: Sunrise on the Reaping",
+          "eventType": "other"
+        }
+      ]
+    },
+    {
+      "signature": "other|the nightingale||production",
+      "duplicateEventKey": "other|the nightingale||production",
+      "count": 2,
+      "sources": [
+        "Deadline | Movie",
+        "Deadline | TV"
+      ],
+      "winningSource": "Deadline | Movie",
+      "suppressedSources": [
+        "Deadline | TV"
+      ],
+      "articles": [
+        {
+          "caseId": "0f91513a96becd86",
+          "sourceName": "Deadline | Movie",
+          "articleTitle": "Hello Sunshine’s President Of Film & Television Lauren Neustadter Previews Upcoming TV Shows ‘Elle’ & ‘Lucky’ And ‘The Nightingale’ Film As Production Gets Underway",
+          "articleUrl": "https://deadline.com/2026/04/hello-sunshine-film-tv-slate-lauren-neustadter-elle-lucky-1236821878/",
+          "canonicalEntity": "The Nightingale",
+          "eventType": "other"
+        },
+        {
+          "caseId": "b23ca10111f6b79f",
+          "sourceName": "Deadline | TV",
+          "articleTitle": "Hello Sunshine’s President Of Film & Television Lauren Neustadter Previews Upcoming TV Shows ‘Elle’ & ‘Lucky’ And ‘The Nightingale’ Film As Production Gets Underway",
+          "articleUrl": "https://deadline.com/2026/04/hello-sunshine-film-tv-slate-lauren-neustadter-elle-lucky-1236821878/",
+          "canonicalEntity": "The Nightingale",
+          "eventType": "other"
+        }
+      ]
+    }
+  ],
+  "recommendedPatches": [
+    {
+      "recommendation": "Improve fallback policy for feed images only when they are explicitly project-linked and renderable.",
+      "count": 57,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "b70e1cf036432f94",
+        "ab070bfcd2367f8f",
+        "787693042f3504cd",
+        "153fd2867a679a58",
+        "1c6445c1664de0c1"
+      ]
+    },
+    {
+      "recommendation": "Add a recovery path for valid TMDb assets once canonical extraction is reliable.",
+      "count": 55,
+      "failureCodes": [
+        "IMAGE_NOT_FOUND_FALSE_BLOCK"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "b70e1cf036432f94",
+        "ab070bfcd2367f8f",
+        "787693042f3504cd",
+        "153fd2867a679a58",
+        "1c6445c1664de0c1"
+      ]
+    },
+    {
+      "recommendation": "Strip outlet package labels before deterministic caption generation.",
+      "count": 29,
+      "failureCodes": [
+        "CAPTION_MALFORMED_HEADLINE",
+        "CAPTION_PACKAGE_LABEL_LEAK"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts"
+      ],
+      "exampleCaseIds": [
+        "2a68b454035efde5",
+        "ab070bfcd2367f8f",
+        "b0d1d2587598cd9e",
+        "b735ec641fe73176",
+        "dd3c138618a8ee8c"
+      ]
+    },
+    {
+      "recommendation": "Validate caption headline entity against canonical media title and allowed entities.",
+      "count": 16,
+      "failureCodes": [
+        "CAPTION_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "ab070bfcd2367f8f",
+        "dd3c138618a8ee8c",
+        "4063b4a1d9e1726b",
+        "a756c3daf7537727",
+        "373a65475563594b"
+      ]
+    },
+    {
+      "recommendation": "Tighten canonical entity extraction before image or caption generation.",
+      "count": 9,
+      "failureCodes": [
+        "ENTITY_NOT_RESOLVED"
+      ],
+      "likelyFiles": [
+        "src/services/ai.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "4063b4a1d9e1726b",
+        "9249d606c3827601",
+        "373a65475563594b",
+        "779992df25722d33",
+        "79493bab2797ed1a"
+      ]
+    },
+    {
+      "recommendation": "Require selected images to be grounded in canonical allowed entities.",
+      "count": 5,
+      "failureCodes": [
+        "IMAGE_CANONICAL_ENTITY_MISMATCH"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss.service.ts"
+      ],
+      "exampleCaseIds": [
+        "ab070bfcd2367f8f",
+        "61aafcad8198e2ec",
+        "59b3885fade4e4f6",
+        "28a4d4f0fa4e6b30",
+        "b0722a1432ebdac3"
+      ]
+    },
+    {
+      "recommendation": "Block company logos as primary images when a project or person entity exists.",
+      "count": 3,
+      "failureCodes": [
+        "IMAGE_COMPANY_LOGO_MISUSED",
+        "IMAGE_LOGO_OVERUSE"
+      ],
+      "likelyFiles": [
+        "src/services/rss-image-selection.service.ts",
+        "src/services/rss-tmdb-image-selection.service.ts"
+      ],
+      "exampleCaseIds": [
+        "ab070bfcd2367f8f",
+        "7fd85fe5df498453",
+        "d6f8df71c7b1bccc"
+      ]
+    }
+  ]
+}
