@@ -1656,8 +1656,9 @@ function fitTextBlock(input: {
     return { fontSize: Math.max(1, input.minFontSize), lines: [], lineHeight: Math.max(1, input.minFontSize) * input.lineHeightMultiplier };
   }
 
-  // Prevent impossible text-fit ranges when templates carry very large font presets.
-  const maxFontByHeight = Math.max(1, Math.floor(input.boxHeight / Math.max(1, input.maxLines) / Math.max(input.lineHeightMultiplier, 0.25)));
+  // Prevent impossible text-fit ranges when templates carry very large font presets,
+  // without forcing the headline into a tiny fixed size.
+  const maxFontByHeight = Math.max(1, Math.floor(input.boxHeight / Math.max(input.lineHeightMultiplier, 0.25)));
   const effectiveMaxFontSize = Math.max(1, Math.min(input.maxFontSize, maxFontByHeight));
   const effectiveMinFontSize = Math.max(1, Math.min(input.minFontSize, effectiveMaxFontSize));
 

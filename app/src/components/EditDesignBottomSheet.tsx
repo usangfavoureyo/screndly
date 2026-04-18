@@ -116,6 +116,15 @@ export function EditDesignBottomSheet({
   onChange,
   isRendering = false,
 }: EditDesignBottomSheetProps) {
+  const variantOverlayDirectionMap: Record<DesignStudioLayoutVariant, 'top' | 'bottom' | 'left' | 'right'> = {
+    bottom_center: 'bottom',
+    bottom_left: 'right',
+    bottom_right: 'left',
+    top_center: 'bottom',
+    top_left: 'right',
+    top_right: 'left',
+  };
+
   const { settings: persistedSettings } = useSettings();
   const [headerText, setHeaderText] = useState(initialData?.headerText || '');
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
@@ -1259,6 +1268,7 @@ export function EditDesignBottomSheet({
                       onClick={() => {
                         haptics.light();
                         setTemplateVariant(value);
+                        setGradientPosition(variantOverlayDirectionMap[value]);
                       }}
                       variant="outline"
                       size="sm"
