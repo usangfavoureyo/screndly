@@ -3055,9 +3055,9 @@ export function ComposeEditorPage({
                       : xThumbnailDrop;
 
                   return (
-                    <div key={key} className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
+                    <div key={key} className="min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-[#333333] dark:bg-[#050505]">
                       <div className="flex items-start justify-between gap-3">
-                        <div>
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gray-900 dark:text-white">{label}</p>
                           <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">{description}</p>
                         </div>
@@ -3091,7 +3091,7 @@ export function ComposeEditorPage({
                         </div>
                       </div>
 
-                      <div className="mt-3 flex items-center gap-3">
+                      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
                         <Label
                           htmlFor={`compose-thumbnail-${key}`}
                           className={`cursor-pointer ${thumbnailDrop.isDragging ? 'rounded-lg ring-1 ring-[#ec1e24]/50' : ''}`}
@@ -3138,7 +3138,7 @@ export function ComposeEditorPage({
                       </div>
 
                       {key === 'sharedThumbnail' ? (
-                        <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                        <div className="mt-4 min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
                           <div className="mb-3 flex items-start justify-between gap-3">
                             <div className="min-w-0 flex-1">
                               <p className="text-sm text-gray-900 dark:text-white">Search TMDb Images</p>
@@ -3158,7 +3158,7 @@ export function ComposeEditorPage({
                             ) : null}
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                             <div className="min-w-0 flex-1">
                               <Input
                                 value={thumbnailTmdbSearchQuery}
@@ -3177,7 +3177,7 @@ export function ComposeEditorPage({
                               type="button"
                               onClick={() => void handleThumbnailTmdbSearch()}
                               disabled={!thumbnailTmdbSearchQuery.trim() || isSearchingThumbnailTmdb}
-                              className="shrink-0"
+                              className="w-full sm:w-auto"
                             >
                               {isSearchingThumbnailTmdb ? 'Searching...' : 'Search'}
                             </Button>

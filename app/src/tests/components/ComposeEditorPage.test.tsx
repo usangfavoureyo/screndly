@@ -432,6 +432,55 @@ describe('ComposeEditorPage scheduling', () => {
     );
   }, 60000);
 
+  it('uses a mobile-safe stacked layout for shared thumbnail TMDb search', async () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'draft-post',
+          title: 'Trailer drop',
+          status: 'draft',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'trailer.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://cdn.example.com/trailer.mp4',
+              storageUrl: 'https://cdn.example.com/trailer.mp4',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_feed'],
+          sharedCaption: 'New trailer tonight',
+          platformFields: {},
+          createdAt: '2026-03-27T09:00:00.000Z',
+          updatedAt: '2026-03-27T09:00:00.000Z',
+        },
+      ],
+      activeItemId: 'draft-post',
+      lastModifiedAt: '2026-03-27T09:00:00.000Z',
+    });
+
+    render(
+      <ComposeEditorPage
+        onNavigate={vi.fn()}
+        previousPage="create"
+      />,
+    );
+
+    const sharedThumbnailHeading = screen.getByText('Shared Thumbnail');
+    const sharedThumbnailCard = sharedThumbnailHeading.closest('div[class*="rounded-2xl"]');
+    expect(sharedThumbnailCard?.className).toContain('min-w-0');
+    expect(sharedThumbnailCard?.className).toContain('overflow-hidden');
+
+    const thumbnailTmdbInput = screen.getByPlaceholderText('Search TMDb for movie, TV, person, or company...');
+    const searchRow = thumbnailTmdbInput.parentElement?.parentElement;
+    expect(searchRow?.className).toContain('flex-col');
+    expect(searchRow?.className).toContain('sm:flex-row');
+  }, 60000);
+
   it('blocks scheduling when a caption-required platform is selected but the caption is empty', () => {
     useComposeStore.setState({
       items: [
