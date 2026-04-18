@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertCircle, Calendar, Clock3, Image as ImageIcon, ImagePlus, LoaderCircle, MoreVertical, RefreshCw, Search, Send, Trash2, Upload, X } from 'lucide-react';
+import { AlertCircle, Calendar, Clock3, Image as ImageIcon, LoaderCircle, MoreVertical, RefreshCw, Send, Trash2, Upload, X } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { apiClient } from '../lib/api/client';
 import {
@@ -586,6 +586,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [cardTextDraft, setCardTextDraft] = useState('');
   const [isSavingCardEdit, setIsSavingCardEdit] = useState(false);
   const [backgroundDraftUrl, setBackgroundDraftUrl] = useState('');
+  const [backgroundDraftFocalPoint, setBackgroundDraftFocalPoint] = useState({ x: 50, y: 50 });
+  const [backgroundDraftZoom, setBackgroundDraftZoom] = useState(1);
   const [isBackgroundDragging, setIsBackgroundDragging] = useState(false);
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState('');
   const [tmdbSearchResults, setTmdbSearchResults] = useState<DesignStudioTMDbSearchResult[]>([]);
@@ -1156,6 +1158,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           : nextData.subtext || '',
     );
     setBackgroundDraftUrl(nextData.backgroundImage || getActivityImageUrl(activity));
+    setBackgroundDraftFocalPoint(nextData.imageFocalPoint || { x: 50, y: 50 });
+    setBackgroundDraftZoom(typeof nextData.imageZoom === 'number' ? nextData.imageZoom : 1);
     setOverlayDraft({
       color: nextData.overlayColor || '#000000',
       opacity: typeof nextData.overlayOpacity === 'number' ? nextData.overlayOpacity : 70,
@@ -1233,6 +1237,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     try {
       const uploaded = await uploadDesignStudioAsset(file, 'renders');
       setBackgroundDraftUrl(uploaded.url);
+      setBackgroundDraftFocalPoint({ x: 50, y: 50 });
+      setBackgroundDraftZoom(1);
       haptics.success();
       toast.success('Image uploaded and ready to save');
     } catch (error) {
@@ -1323,6 +1329,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       await persistCardEdit(activity, {
         ...baseData,
         backgroundImage: backgroundDraftUrl,
+        imageFocalPoint: backgroundDraftFocalPoint,
+        imageZoom: backgroundDraftZoom,
       }, 'background');
       haptics.success();
       toast.success('Background saved and render queued');
@@ -2489,7 +2497,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                   onClick={() => backgroundFileInputRef.current?.click()}
                   className="mt-4 rounded-full border-gray-200 bg-white text-gray-900 dark:border-[#333333] dark:bg-black dark:text-white"
                 >
-                  <ImagePlus className="mr-2 h-4 w-4" />
                   Upload Image
                 </Button>
               </div>
@@ -2515,7 +2522,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                     disabled={isSearchingTmdb}
                     className="rounded-full bg-[#ec1e24] text-white hover:bg-[#d01a20]"
                   >
-                    {isSearchingTmdb ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    {isSearchingTmdb ? 'Searching...' : 'Search'}
                   </Button>
                 </div>
 
@@ -2548,6 +2555,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                             onClick={() => {
                               haptics.light();
                               setBackgroundDraftUrl(asset.url);
+                              setBackgroundDraftFocalPoint({ x: 50, y: 50 });
+                              setBackgroundDraftZoom(1);
                             }}
                             className={`relative overflow-hidden rounded-xl border-2 transition-colors ${
                               backgroundDraftUrl === asset.url ? 'border-[#ec1e24]' : 'border-transparent hover:border-[#ec1e24]/70'
@@ -2590,8 +2599,99 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               </div>
 
               {backgroundDraftUrl ? (
-                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-[#050505] dark:border-[#333333]">
-                  <img src={backgroundDraftUrl} alt="Selected background preview" className="h-48 w-full object-cover" />
+                <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                  <div>
+                    <Label className="mb-2 block text-gray-900 dark:text-white">Adjust Composition</Label>
+                    <p className="text-xs text-gray-500 dark:text-[#9CA3AF]">
+                      Fine-tune framing before saving.
+                    </p>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">Horizontal Position</Label>
+                      <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{Math.round(backgroundDraftFocalPoint.x)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={backgroundDraftFocalPoint.x}
+                      onChange={(event) => {
+                        haptics.light();
+                        setBackgroundDraftFocalPoint((current) => ({ ...current, x: Number(event.target.value) }));
+                      }}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#ec1e24] dark:bg-[#333333]"
+                    />
+                    <div className="mt-1 flex justify-between text-[11px] text-gray-500 dark:text-[#6B7280]">
+                      <span>Left</span>
+                      <span>Center</span>
+                      <span>Right</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">Vertical Position</Label>
+                      <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{Math.round(backgroundDraftFocalPoint.y)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={backgroundDraftFocalPoint.y}
+                      onChange={(event) => {
+                        haptics.light();
+                        setBackgroundDraftFocalPoint((current) => ({ ...current, y: Number(event.target.value) }));
+                      }}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#ec1e24] dark:bg-[#333333]"
+                    />
+                    <div className="mt-1 flex justify-between text-[11px] text-gray-500 dark:text-[#6B7280]">
+                      <span>Top</span>
+                      <span>Center</span>
+                      <span>Bottom</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">Zoom</Label>
+                      <span className="text-xs text-gray-500 dark:text-[#9CA3AF]">{Math.round(backgroundDraftZoom * 100)}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0.5"
+                      max="4"
+                      step="0.1"
+                      value={backgroundDraftZoom}
+                      onChange={(event) => {
+                        haptics.light();
+                        setBackgroundDraftZoom(Number(event.target.value));
+                      }}
+                      className="h-2 w-full cursor-pointer appearance-none rounded-lg bg-gray-200 accent-[#ec1e24] dark:bg-[#333333]"
+                    />
+                    <div className="mt-1 flex justify-between text-[11px] text-gray-500 dark:text-[#6B7280]">
+                      <span>50%</span>
+                      <span>100%</span>
+                      <span>400%</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="mb-2 block text-xs text-gray-700 dark:text-[#9CA3AF]">Composition Preview</Label>
+                    <div className="relative h-48 w-full overflow-hidden rounded-xl border border-gray-200 bg-[#050505] dark:border-[#333333]">
+                      <img
+                        src={backgroundDraftUrl}
+                        alt="Selected background preview"
+                        className="h-full w-full object-cover"
+                        style={{
+                          objectPosition: `${backgroundDraftFocalPoint.x}% ${backgroundDraftFocalPoint.y}%`,
+                          transform: `scale(${backgroundDraftZoom})`,
+                          transformOrigin: 'center center',
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               ) : null}
             </div>
