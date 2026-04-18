@@ -1565,6 +1565,13 @@ type RSSEditorialBrainLane =
   | 'blocked_non_core'
   | 'ignore_completely';
 
+interface RSSEditorialBrainInvocationPlan {
+  enabled: boolean;
+  reason: string;
+  compressedBodyText: string;
+  imageEvidence: string[];
+}
+
 interface RSSEditorialBrainStoredDecision {
   editorialBrainVersion: string;
   promptVersion: string;
@@ -2945,6 +2952,190 @@ function buildRssEditorialBrainComparisonSummary(decision: RssEditorialBrainDeci
   };
 }
 
+function extractRssEditorialBrainImageEvidence(articleHtml?: string): string[] {
+  if (!articleHtml) {
+    return [];
+  }
+
+  const imageText = [
+    ...Array.from(articleHtml.matchAll(/<img[^>]*(?:alt|title)=["']([^"']+)["'][^>]*>/gi)).map((match) => sanitizeRSSPlainText(match[1] || '')),
+    ...Array.from(articleHtml.matchAll(/<figcaption[^>]*>([\s\S]*?)<\/figcaption>/gi)).map((match) => sanitizeRSSPlainText(match[1] || '')),
+  ];
+
+  return Array.from(new Set(
+    imageText
+      .map((value) => value.replace(/\s+/g, ' ').trim())
+      .filter((value) => value.length >= 8)
+      .slice(0, 8)
+  ));
+}
+
+function buildCompressedRssEditorialBrainEvidencePacket(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  canonical: RSSCanonicalEntity,
+): { compressedBodyText: string; imageEvidence: string[] } {
+  const rawHtml = String(item.contentHtml || '');
+  const bodyText = sanitizeRSSPlainText(rawHtml);
+  const canonicalTokens = new Set(
+    [
+      canonical.mediaTitle,
+      canonical.primarySubject,
+      canonical.secondarySubject,
+      canonical.franchise,
+      ...(canonical.namedPeople || []),
+    ]
+      .flatMap((value) => String(value || '').toLowerCase().split(/[^a-z0-9]+/))
+      .filter((token) => token.length > 2)
+  );
+
+  const paragraphs = Array.from(
+    rawHtml.matchAll(/<(?:p|li|blockquote|figcaption|h2|h3)[^>]*>([\s\S]*?)<\/(?:p|li|blockquote|figcaption|h2|h3)>/gi)
+  )
+    .map((match) => sanitizeRSSPlainText(match[1] || ''))
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  const fallbackParagraphs = paragraphs.length > 0
+    ? paragraphs
+    : bodyText.split(/(?<=[.!?])\s+/).map((value) => value.trim()).filter(Boolean);
+
+  const scoredParagraphs = fallbackParagraphs.map((paragraph, index) => {
+    const normalized = paragraph.toLowerCase();
+    let score = 0;
+    if (index < 3) score += 3;
+    if (/[“"'][^"'”]{2,120}[”"']/.test(paragraph)) score += 3;
+    if (/<(?:em|i|strong|b)\b/i.test(rawHtml) && paragraph.length <= 240) score += 1;
+    if (/\b(?:called|titled|named|initially titled|formerly titled|working title|ordered to series|series order|first look|exclusive|spoiler|spotted|trailer|teaser)\b/i.test(paragraph)) score += 3;
+    if (/\b(?:netflix|hulu|max|prime video|apple tv\+|paramount\+|peacock|cbs|abc|nbc|fx|itv|disney)\b/i.test(paragraph)) score += 2;
+    if (/\b(?:director|creator|showrunner|writer|producer|star|starring|joins|boards|returns|cast|season|episode|movie|film|series|show|anime)\b/i.test(paragraph)) score += 2;
+    if (/\b(?:19|20)\d{2}\b/.test(paragraph)) score += 1;
+    if ([...canonicalTokens].some((token) => normalized.includes(token))) score += 4;
+    return { paragraph, score, index };
+  });
+
+  const selected = scoredParagraphs
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, 8)
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => entry.paragraph);
+
+  const compressedBodyText = Array.from(new Set([
+    sanitizeRSSPlainText(item.title || ''),
+    sanitizeRSSPlainText(item.description || ''),
+    ...selected,
+  ].filter(Boolean)))
+    .join('\n\n')
+    .slice(0, 5200);
+
+  return {
+    compressedBodyText,
+    imageEvidence: extractRssEditorialBrainImageEvidence(rawHtml),
+  };
+}
+
+function planRssEditorialBrainInvocation(
+  feedName: string,
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  canonical: RSSCanonicalEntity,
+): RSSEditorialBrainInvocationPlan {
+  const sourceTrustTier = getRssEditorialBrainSourceTrustTier(feedName);
+  const lane = inferRssEditorialBrainLane(canonical);
+  const storyFamily = inferRssEditorialBrainStoryFamily(item, canonical);
+  const headlineStyle = classifyRSSHeadlineStyle(item.title);
+  const articleFamily = classifyRSSArticleFamily(item);
+  const bodyRecoveryCandidates = extractRSSBodyTitleRecoveryCandidates(item);
+  const flags = new Set(canonical.ambiguityFlags || []);
+  const canonicalEntity = canonical.mediaTitle || canonical.primarySubject || canonical.franchise || '';
+  const isCoreLane = lane === 'core_auto_publish' || lane === 'core_manual_review_spoiler';
+  const isEditorialSkipFamily =
+    storyFamily === 'review' ||
+    storyFamily === 'recap' ||
+    storyFamily === 'retrospective' ||
+    storyFamily === 'editorial_feature' ||
+    storyFamily === 'comics_only' ||
+    storyFamily === 'non_target_media_business' ||
+    isRSSNonProjectArticleFamily(articleFamily);
+
+  const wrapperShaped =
+    headlineStyle === 'wrapper' ||
+    headlineStyle === 'quote_led' ||
+    headlineStyle === 'teaser' ||
+    headlineStyle === 'person_first';
+  const edgeCaseFamily =
+    storyFamily === 'person_commentary_on_project' ||
+    storyFamily === 'spoiler_sensitive' ||
+    storyFamily === 'first_look' ||
+    storyFamily === 'obituary' ||
+    storyFamily === 'project_announcement';
+  const ambiguous =
+    wrapperShaped ||
+    flags.has('body_title_recovery_required') ||
+    flags.has('canonical_project_weak') ||
+    flags.has('canonical_person_weak') ||
+    flags.has('quote_led_headline_junk') ||
+    !canonicalEntity ||
+    (canonical.confidence || 0) < 0.82 ||
+    bodyRecoveryCandidates.length > 0;
+
+  const evidencePacket = buildCompressedRssEditorialBrainEvidencePacket(item, canonical);
+
+  if (!isCoreLane) {
+    return {
+      enabled: false,
+      reason: 'editorial_brain_skipped_non_core_lane',
+      compressedBodyText: evidencePacket.compressedBodyText,
+      imageEvidence: evidencePacket.imageEvidence,
+    };
+  }
+
+  if (isEditorialSkipFamily) {
+    return {
+      enabled: false,
+      reason: 'editorial_brain_skipped_obvious_editorial_or_non_target',
+      compressedBodyText: evidencePacket.compressedBodyText,
+      imageEvidence: evidencePacket.imageEvidence,
+    };
+  }
+
+  if (sourceTrustTier === 'tier_1_trade') {
+    return {
+      enabled: ambiguous || edgeCaseFamily,
+      reason: ambiguous || edgeCaseFamily
+        ? 'editorial_brain_enabled_trade_ambiguous_or_edge_case'
+        : 'editorial_brain_skipped_trade_clean_headline',
+      compressedBodyText: evidencePacket.compressedBodyText,
+      imageEvidence: evidencePacket.imageEvidence,
+    };
+  }
+
+  if (sourceTrustTier === 'tier_3_noisy') {
+    const obviousCleanNoisyCase =
+      headlineStyle === 'direct_project' &&
+      !ambiguous &&
+      !edgeCaseFamily &&
+      (canonical.confidence || 0) >= 0.92 &&
+      !flags.has('body_title_recovery_required');
+
+    return {
+      enabled: !obviousCleanNoisyCase,
+      reason: obviousCleanNoisyCase
+        ? 'editorial_brain_skipped_noisy_but_clean_project_headline'
+        : 'editorial_brain_enabled_noisy_core_case',
+      compressedBodyText: evidencePacket.compressedBodyText,
+      imageEvidence: evidencePacket.imageEvidence,
+    };
+  }
+
+  return {
+    enabled: ambiguous || edgeCaseFamily || headlineStyle !== 'direct_project',
+    reason: ambiguous || edgeCaseFamily || headlineStyle !== 'direct_project'
+      ? 'editorial_brain_enabled_editorial_or_general_ambiguous_case'
+      : 'editorial_brain_skipped_clean_general_case',
+    compressedBodyText: evidencePacket.compressedBodyText,
+    imageEvidence: evidencePacket.imageEvidence,
+  };
+}
+
 async function prepareRssEditorialBrainShadow(
   feedName: string,
   item: RSSItem,
@@ -2964,14 +3155,16 @@ async function prepareRssEditorialBrainShadow(
   const { extractedQuotes, articleImages } = extractRssEditorialBrainSignals(item.contentHtml);
   const sourceTrustTier = getRssEditorialBrainSourceTrustTier(feedName);
   const fallbackDecision = buildRssEditorialBrainFallbackDecision(item, canonical, feedName);
+  const invocationPlan = planRssEditorialBrainInvocation(feedName, item, canonical);
   const input = {
     source: feedName,
     url: item.link,
     headline: item.title,
     summary: sanitizeRSSPlainText(item.description || ''),
-    bodyText: sanitizeRSSPlainText(item.contentHtml || ''),
+    bodyText: invocationPlan.compressedBodyText,
     extractedQuotes,
     articleImages: Array.from(new Set([...(item.imageUrls || []), item.imageUrl, ...articleImages].filter(Boolean) as string[])).slice(0, 12),
+    imageEvidence: invocationPlan.imageEvidence,
     sourceTrustTier,
     currentDateTime: new Date().toISOString(),
   };
@@ -3001,12 +3194,14 @@ async function prepareRssEditorialBrainShadow(
 
   const result = await runRssEditorialBrain(input, {
     model: expectedModel,
-    enabled:
+    enabled: (
       runtimeSettings.rssEditorialBrainShadowMode ||
       runtimeSettings.rssEditorialBrainCaptionStrategyPromotion ||
       runtimeSettings.rssEditorialBrainImageStrategyPromotion ||
-      Boolean(options?.force),
+      Boolean(options?.force)
+    ) && invocationPlan.enabled,
     fallbackDecision,
+    disableReason: invocationPlan.reason,
   });
   const currentSystem = buildRssEditorialBrainComparisonSummary(fallbackDecision);
   const disagreements = computeRssEditorialBrainDisagreements(currentSystem, result.decision);
@@ -3035,6 +3230,7 @@ async function prepareRssEditorialBrainShadow(
     contentHash,
     model: record.agentModel,
     usedFallback: record.usedFallback,
+    invocationReason: invocationPlan.reason,
     disagreements: record.disagreements,
     lane: record.decision.lane,
     primaryEntity: record.decision.primary_entity,
@@ -8692,9 +8888,11 @@ export const __rssAuditTestUtils = {
   buildRSSCaptionAllowedEntities,
   buildRSSCaptionVisualContext,
   buildRssEditorialBrainFallbackDecision,
+  buildCompressedRssEditorialBrainEvidencePacket,
   buildRSSEditorialBrainActivityView,
   applyRSSEditorialBrainRuntimeOutcomeToItem,
   applyRSSEditorialBrainReviewToItem,
+  planRssEditorialBrainInvocation,
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,
   applyRSSEditorialBrainImageStrategyPromotion,

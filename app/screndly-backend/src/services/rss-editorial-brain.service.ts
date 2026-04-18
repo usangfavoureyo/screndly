@@ -2,8 +2,8 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { generateCompletion, normalizeAIModel, type AIModel } from './ai.service';
 
-export const RSS_EDITORIAL_BRAIN_VERSION = 'rss-editorial-brain-2026-04-17-v1';
-export const RSS_EDITORIAL_BRAIN_PROMPT_VERSION = '2026-04-17-shadow-v1';
+export const RSS_EDITORIAL_BRAIN_VERSION = 'rss-editorial-brain-2026-04-18-v2';
+export const RSS_EDITORIAL_BRAIN_PROMPT_VERSION = '2026-04-18-gated-v1';
 export const RSS_EDITORIAL_BRAIN_SCHEMA_VERSION = '2026-04-17-schema-v1';
 export const DEFAULT_RSS_EDITORIAL_BRAIN_MODEL: AIModel = 'gpt-5.4-mini';
 
@@ -113,6 +113,7 @@ export interface RssEditorialBrainInput {
   bodyText?: string;
   extractedQuotes: string[];
   articleImages: string[];
+  imageEvidence?: string[];
   sourceTrustTier: string;
   tmdbCandidates?: Array<{ title: string; mediaType?: string; score?: number }>;
   currentDateTime: string;
@@ -251,9 +252,10 @@ export function buildRssEditorialBrainContentHash(input: RssEditorialBrainInput)
       url: normalizeString(input.url, 500),
       headline: normalizeString(input.headline, 500),
       summary: normalizeString(input.summary, 1500),
-      bodyText: normalizeString(input.bodyText, 12000),
+      bodyText: normalizeString(input.bodyText, 6000),
       extractedQuotes: normalizeList(input.extractedQuotes, 8),
       articleImages: normalizeList(input.articleImages, 12),
+      imageEvidence: normalizeList(input.imageEvidence, 8),
     }))
     .digest('hex');
 }
@@ -305,14 +307,17 @@ Source trust tier: ${input.sourceTrustTier}
 URL: ${input.url}
 Headline: ${input.headline}
 Summary: ${input.summary || ''}
-Body text:
-${(input.bodyText || '').slice(0, 12000)}
+Evidence packet:
+${(input.bodyText || '').slice(0, 6000)}
 
 Extracted quotes:
 ${input.extractedQuotes.length > 0 ? input.extractedQuotes.map((quote) => `- ${quote}`).join('\n') : '- None'}
 
 Article images:
 ${input.articleImages.length > 0 ? input.articleImages.map((image) => `- ${image}`).join('\n') : '- None'}
+
+Image captions / alt text:
+${input.imageEvidence && input.imageEvidence.length > 0 ? input.imageEvidence.map((entry) => `- ${entry}`).join('\n') : '- None'}
 
 TMDb candidates:
 ${input.tmdbCandidates && input.tmdbCandidates.length > 0
@@ -423,6 +428,7 @@ export async function runRssEditorialBrain(
     model?: string;
     enabled?: boolean;
     fallbackDecision: RssEditorialBrainDecision;
+    disableReason?: string;
   },
 ): Promise<RssEditorialBrainResult> {
   const normalizedModel = normalizeAIModel(options.model || DEFAULT_RSS_EDITORIAL_BRAIN_MODEL, DEFAULT_RSS_EDITORIAL_BRAIN_MODEL);
@@ -433,7 +439,7 @@ export async function runRssEditorialBrain(
     return {
       decision: fallbackDecision,
       usedFallback: true,
-      normalizationNotes: ['editorial_brain_disabled'],
+      normalizationNotes: [options.disableReason || 'editorial_brain_disabled'],
       editorialBrainVersion: RSS_EDITORIAL_BRAIN_VERSION,
       promptVersion: RSS_EDITORIAL_BRAIN_PROMPT_VERSION,
       schemaVersion: RSS_EDITORIAL_BRAIN_SCHEMA_VERSION,
@@ -457,7 +463,7 @@ export async function runRssEditorialBrain(
       model: normalizedModel,
       prompt,
       systemPrompt,
-      maxTokens: 1600,
+      maxTokens: 1200,
       temperature: 0.1,
       jsonMode: true,
       webSearchUsageScope: 'rss',

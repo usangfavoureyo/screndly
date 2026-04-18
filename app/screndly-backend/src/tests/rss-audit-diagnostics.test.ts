@@ -14,6 +14,8 @@ const { shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondar
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 const { computeRssEditorialBrainDisagreements, normalizeRssEditorialBrainDecision, buildRssEditorialBrainContentHash } = __rssEditorialBrainTestUtils;
 const {
+  buildCompressedRssEditorialBrainEvidencePacket,
+  planRssEditorialBrainInvocation,
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,
   applyRSSEditorialBrainImageStrategyPromotion,
@@ -1964,6 +1966,64 @@ test('audit analysis records editorial brain shadow output when enabled', async 
     } as any),
   );
   assert.ok(Array.isArray(result.editorialBrain?.disagreements));
+});
+
+test('editorial brain invocation skips obvious non-core editorial items', () => {
+  const item = {
+    title: "Malcolm In The Middle Review: Hulu's Messy Family Reunion Struggles To Recapture The Original's Zing",
+    description: 'A review of the revival episode.',
+    contentHtml: '<p>This review breaks down the revival and whether it works.</p>',
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  const plan = planRssEditorialBrainInvocation('TVLine', item, canonical);
+
+  assert.equal(plan.enabled, false);
+  assert.equal(plan.reason, 'editorial_brain_skipped_non_core_lane');
+});
+
+test('editorial brain invocation enables wrapper-headline trade cases with compressed evidence packets', () => {
+  const item = {
+    title: "Incredibles Director Brad Bird's Netflix Sci-Fi Movie Looks Like Everything We've Always Wanted",
+    description: 'Brad Bird is directing the Netflix sci-fi movie Ray Gunn.',
+    contentHtml: [
+      '<p>Brad Bird is directing the Netflix sci-fi movie <em>Ray Gunn</em> for Netflix.</p>',
+      '<p>Ray Gunn is set in 2026 and stars a cast led by emerging sci-fi talent.</p>',
+      '<p>The project was first unveiled by Netflix with new artwork.</p>',
+      '<figure><img src="https://example.com/ray-gunn.jpg" alt="Ray Gunn concept art"><figcaption>Ray Gunn concept art released by Netflix.</figcaption></figure>',
+    ].join(''),
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  const plan = planRssEditorialBrainInvocation('SlashFilm', item, canonical);
+
+  assert.equal(plan.enabled, true);
+  assert.match(plan.reason, /enabled/i);
+  assert.match(plan.compressedBodyText, /Ray Gunn/);
+  assert.match(plan.compressedBodyText, /Netflix/);
+  assert.ok(plan.compressedBodyText.length < 1200);
+  assert.deepEqual(plan.imageEvidence, ['Ray Gunn concept art', 'Ray Gunn concept art released by Netflix.']);
+});
+
+test('compressed editorial brain evidence packet preserves title-bearing and platform paragraphs without shipping the whole body', () => {
+  const item = {
+    title: "Dan Levy's New Crime Comedy Series Is A Must-Watch On Netflix",
+    description: 'Netflix will release Big Mistakes in 2026.',
+    contentHtml: [
+      '<p>This opening paragraph is mostly filler about the broader streaming landscape.</p>',
+      '<p>Dan Levy stars in the 2026 crime comedy series <em>Big Mistakes</em> for Netflix.</p>',
+      '<p>The show was initially titled Good News but is now called Big Mistakes.</p>',
+      '<p>Another filler paragraph about how audiences respond to crime comedies in general.</p>',
+      '<p>Netflix confirmed the project will debut in 2026.</p>',
+    ].join(''),
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  const packet = buildCompressedRssEditorialBrainEvidencePacket(item, canonical);
+
+  assert.match(packet.compressedBodyText, /Big Mistakes/);
+  assert.match(packet.compressedBodyText, /Netflix confirmed/);
+  assert.ok(packet.compressedBodyText.length < 1000);
 });
 
 test('editorial brain activity projection exposes current-vs-brain comparison fields for review UI', () => {
