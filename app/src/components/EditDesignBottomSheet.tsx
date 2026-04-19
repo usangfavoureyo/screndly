@@ -1552,10 +1552,10 @@ export function EditDesignBottomSheet({
                     <button
                       type="button"
                       onClick={handleBackToTmdbResults}
-                      className="flex items-center gap-2 text-sm text-gray-700 dark:text-[#9CA3AF]"
+                      aria-label="Back to TMDB results"
+                      className="inline-flex items-center text-sm text-gray-700 dark:text-[#9CA3AF]"
                     >
                       <ArrowLeft className="h-4 w-4" />
-                      Back
                     </button>
                     <div className="text-right">
                       <p className="text-sm text-gray-900 dark:text-white">{selectedTmdbResult.title}</p>
