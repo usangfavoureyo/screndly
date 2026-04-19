@@ -186,14 +186,24 @@ export interface DesignStudioRenderedDesignRecord {
   id: string;
   templateId: string;
   templateName: string;
+  mode?: 'manual' | 'auto';
   templateVariant?: DesignStudioLayoutVariant;
   exportFormat?: DesignStudioExportFormat;
   outputUrl: string;
   previewUrl?: string;
   data: Record<string, any>;
   createdAt: string;
+  updatedAt?: string;
   aspectRatio: string;
   caption?: string;
+  captionSource?: 'generated' | 'manual';
+  selectedPlatforms?: string[];
+  scheduledFor?: string | null;
+  publishedAt?: string | null;
+  status?: 'draft' | 'rendered' | 'scheduled' | 'published' | 'failed';
+  articleTitle?: string;
+  articleSummary?: string;
+  sourceUrl?: string;
   captions?: Record<string, any>;
   contentType?: DesignStudioContentType;
 }
@@ -2878,14 +2888,24 @@ async function processManualRenderJob(
         id: `design-render-${randomUUID()}`,
         templateId: template.id,
         templateName: template.name,
+        mode: 'manual',
         templateVariant: activeVariant,
         exportFormat: rendered.format,
         outputUrl: uploaded.url,
         previewUrl: uploaded.url,
         data: input.data,
         createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
         aspectRatio: template.aspectRatio,
         caption: captions.shared_caption,
+        captionSource: captions.shared_caption ? 'generated' : 'manual',
+        selectedPlatforms: [],
+        scheduledFor: null,
+        publishedAt: null,
+        status: 'draft',
+        articleTitle: input.data.sourceHeadline || input.data.headerText,
+        articleSummary: input.data.sourceSummary,
+        sourceUrl: input.data.sourceUrl,
         captions,
         contentType: input.data.contentType,
       };
@@ -3186,61 +3206,65 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
 
 export async function publishScheduledDesignStudioAutoEditorials(): Promise<DesignStudioRunResult> {
   const settings = await getAutoSettings();
-  if (!settings.enabled || !settings.autoPost) {
-    return { generated: 0, published: 0, failed: 0 };
-  }
-
-  const editorials = await getAutoEditorials();
-  const dueItems = editorials
-    .filter((item) =>
-      item.status === 'queued'
-      && typeof item.scheduleTime === 'string'
-      && new Date(item.scheduleTime).getTime() <= Date.now(),
-    )
-    .sort((left, right) => toTimestamp(left.scheduleTime) - toTimestamp(right.scheduleTime))
-    .slice(0, 5);
-
-  if (dueItems.length === 0) {
-    return { generated: 0, published: 0, failed: 0 };
-  }
-
   let published = 0;
   let failed = 0;
-  const editorialMap = new Map(editorials.map((entry) => [entry.id, { ...entry }]));
+  if (settings.enabled && settings.autoPost) {
+    const editorials = await getAutoEditorials();
+    const dueItems = editorials
+      .filter((item) =>
+        item.status === 'queued'
+        && typeof item.scheduleTime === 'string'
+        && new Date(item.scheduleTime).getTime() <= Date.now(),
+      )
+      .sort((left, right) => toTimestamp(left.scheduleTime) - toTimestamp(right.scheduleTime))
+      .slice(0, 5);
 
-  for (const editorial of dueItems) {
-    const target = editorialMap.get(editorial.id);
-    if (!target) {
-      continue;
-    }
+    const editorialMap = new Map(editorials.map((entry) => [entry.id, { ...entry }]));
 
-    try {
-      const results = await publisherService.publish(target.targetPlatforms, {
-        text: target.caption,
-        title: target.headerText,
-        imageUrl: target.renderedImage,
-      });
-      const success = results.some((result) => result.status === 'posted');
-      const failureMessage = results
-        .filter((result) => result.status !== 'posted')
-        .map((result) => `${result.platform}: ${result.error || 'Publish failed'}`)
-        .join(', ');
+    for (const editorial of dueItems) {
+      const target = editorialMap.get(editorial.id);
+      if (!target) {
+        continue;
+      }
 
-      target.status = success ? 'posted' : 'failed';
-      target.updatedAt = new Date().toISOString();
-      target.postedAt = success ? new Date().toISOString() : null;
-      target.failureReason = success ? (failureMessage || null) : (failureMessage || 'Failed to publish auto editorial');
-
-      if (success) {
-        published += 1;
-        await createDesignStudioActivity('auto_editorial_posted', {
-          sourceTitle: target.sourceTitle,
-          templateName: target.templateName,
-          targetPlatforms: target.targetPlatforms,
-          previewUrl: target.renderedImage,
-          outputUrl: target.renderedImage,
+      try {
+        const results = await publisherService.publish(target.targetPlatforms, {
+          text: target.caption,
+          title: target.headerText,
+          imageUrl: target.renderedImage,
         });
-      } else {
+        const success = results.some((result) => result.status === 'posted');
+        const failureMessage = results
+          .filter((result) => result.status !== 'posted')
+          .map((result) => `${result.platform}: ${result.error || 'Publish failed'}`)
+          .join(', ');
+
+        target.status = success ? 'posted' : 'failed';
+        target.updatedAt = new Date().toISOString();
+        target.postedAt = success ? new Date().toISOString() : null;
+        target.failureReason = success ? (failureMessage || null) : (failureMessage || 'Failed to publish auto editorial');
+
+        if (success) {
+          published += 1;
+          await createDesignStudioActivity('auto_editorial_posted', {
+            sourceTitle: target.sourceTitle,
+            templateName: target.templateName,
+            targetPlatforms: target.targetPlatforms,
+            previewUrl: target.renderedImage,
+            outputUrl: target.renderedImage,
+          });
+        } else {
+          failed += 1;
+          await createDesignStudioActivity('auto_editorial_failed', {
+            sourceTitle: target.sourceTitle,
+            failureReason: target.failureReason,
+            previewUrl: target.renderedImage,
+          });
+        }
+      } catch (error) {
+        target.status = 'failed';
+        target.updatedAt = new Date().toISOString();
+        target.failureReason = error instanceof Error ? error.message : 'Failed to publish auto editorial';
         failed += 1;
         await createDesignStudioActivity('auto_editorial_failed', {
           sourceTitle: target.sourceTitle,
@@ -3248,20 +3272,103 @@ export async function publishScheduledDesignStudioAutoEditorials(): Promise<Desi
           previewUrl: target.renderedImage,
         });
       }
-    } catch (error) {
-      target.status = 'failed';
-      target.updatedAt = new Date().toISOString();
-      target.failureReason = error instanceof Error ? error.message : 'Failed to publish auto editorial';
-      failed += 1;
-      await createDesignStudioActivity('auto_editorial_failed', {
-        sourceTitle: target.sourceTitle,
-        failureReason: target.failureReason,
-        previewUrl: target.renderedImage,
-      });
     }
+
+    await saveAutoEditorials(Array.from(editorialMap.values()));
   }
 
-  await saveAutoEditorials(Array.from(editorialMap.values()));
+  const renderedDesigns = await getRenderedDesigns();
+  const dueRenderedDesigns = renderedDesigns
+    .filter((item) => {
+      const status = String(item.status || '').toLowerCase();
+      const scheduleTime = typeof item.scheduledFor === 'string' ? new Date(item.scheduledFor).getTime() : Number.NaN;
+      return (status === 'scheduled' || !item.status)
+        && typeof item.scheduledFor === 'string'
+        && !Number.isNaN(scheduleTime)
+        && scheduleTime <= Date.now()
+        && !item.publishedAt;
+    })
+    .sort((left, right) => toTimestamp(left.scheduledFor || left.createdAt) - toTimestamp(right.scheduledFor || right.createdAt))
+    .slice(0, 5);
+
+  if (dueRenderedDesigns.length > 0) {
+    const designMap = new Map(renderedDesigns.map((entry) => [entry.id, { ...entry }]));
+
+    for (const renderedDesign of dueRenderedDesigns) {
+      const target = designMap.get(renderedDesign.id);
+      if (!target) {
+        continue;
+      }
+
+      const targetPlatforms = asStringArray(target.selectedPlatforms);
+      if (targetPlatforms.length === 0) {
+        target.status = 'failed';
+        target.updatedAt = new Date().toISOString();
+        failed += 1;
+        await createDesignStudioActivity('design_render_failed', {
+          templateName: target.templateName,
+          headerText: String(target.data?.headerText || target.templateName || 'Rendered Design'),
+          previewUrl: target.previewUrl || target.outputUrl,
+          outputUrl: target.outputUrl,
+          failureReason: 'No selected platforms configured for scheduled publish',
+        });
+        continue;
+      }
+
+      try {
+        const results = await publisherService.publish(targetPlatforms, {
+          text: target.caption || String(target.data?.headerText || target.templateName || ''),
+          title: String(target.data?.headerText || target.templateName || 'Rendered Design'),
+          imageUrl: target.outputUrl,
+        });
+        const success = results.some((result) => result.status === 'posted');
+        const failureMessage = results
+          .filter((result) => result.status !== 'posted')
+          .map((result) => `${result.platform}: ${result.error || 'Publish failed'}`)
+          .join(', ');
+
+        target.updatedAt = new Date().toISOString();
+        if (success) {
+          target.status = 'published';
+          target.publishedAt = new Date().toISOString();
+          target.scheduledFor = null;
+          published += 1;
+          await createDesignStudioActivity('design_published', {
+            templateName: target.templateName,
+            headerText: String(target.data?.headerText || target.templateName || 'Rendered Design'),
+            previewUrl: target.previewUrl || target.outputUrl,
+            outputUrl: target.outputUrl,
+            targetPlatforms,
+            platforms: targetPlatforms.join(', '),
+          });
+        } else {
+          target.status = 'failed';
+          failed += 1;
+          await createDesignStudioActivity('design_render_failed', {
+            templateName: target.templateName,
+            headerText: String(target.data?.headerText || target.templateName || 'Rendered Design'),
+            previewUrl: target.previewUrl || target.outputUrl,
+            outputUrl: target.outputUrl,
+            failureReason: failureMessage || 'Failed to publish scheduled rendered design',
+          });
+        }
+      } catch (error) {
+        target.status = 'failed';
+        target.updatedAt = new Date().toISOString();
+        failed += 1;
+        await createDesignStudioActivity('design_render_failed', {
+          templateName: target.templateName,
+          headerText: String(target.data?.headerText || target.templateName || 'Rendered Design'),
+          previewUrl: target.previewUrl || target.outputUrl,
+          outputUrl: target.outputUrl,
+          failureReason: error instanceof Error ? error.message : 'Failed to publish scheduled rendered design',
+        });
+      }
+    }
+
+    await saveRenderedDesigns(Array.from(designMap.values()));
+  }
+
   return { generated: 0, published, failed };
 }
 

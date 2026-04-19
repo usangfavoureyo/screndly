@@ -32,7 +32,6 @@ import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { BackIconButton } from './BackIconButton';
 import { SegmentedTabSwitcher } from './SegmentedTabSwitcher';
-import { PublishBottomSheet } from './PublishBottomSheet';
 import { publishContent, type PlatformSelection } from '../lib/api/platforms';
 import { generateDesignStudioCaption } from '../utils/designStudioCaptionGenerator';
 import { Button } from './ui/button';
@@ -44,6 +43,11 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dial
 import { VisuallyHidden } from './ui/visually-hidden';
 import { Input } from './ui/input';
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
+import { XIcon } from './icons/XIcon';
+import { ThreadsIcon } from './icons/ThreadsIcon';
+import { FacebookIcon } from './icons/FacebookIcon';
+import { InstagramIcon } from './icons/InstagramIcon';
+import { PinterestIcon } from './icons/PinterestIcon';
 
 const PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
@@ -80,18 +84,6 @@ interface DesignStudioActivityRecord {
     targetPlatforms?: string[] | string;
   };
   createdAt: string;
-}
-
-interface ActivityPublishTarget {
-  activityId: string;
-  title: string;
-  outputUrl: string;
-  caption?: string;
-  contentType?: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
-  context?: string;
-  sourceTitle?: string;
-  matchedKeyword?: string;
-  isAutoEditorial?: boolean;
 }
 
 interface ActivityPreviewTarget {
@@ -327,6 +319,36 @@ interface DesignStudioActivityPageProps {
 }
 
 type DesignStudioActivityTab = 'manual' | 'auto';
+type DesignStudioActivityStatusTab = 'rendered' | 'scheduled' | 'published';
+type UnifiedRenderedDesignStatus = 'rendered' | 'scheduled' | 'published' | 'failed';
+
+interface UnifiedRenderedDesignRecord {
+  id: string;
+  mode: DesignStudioActivityTab;
+  sourceType: 'manual' | 'auto';
+  title: string;
+  outputUrl: string;
+  previewUrl: string;
+  caption: string;
+  captionSource: 'generated' | 'manual';
+  selectedPlatforms: string[];
+  scheduledFor: string | null;
+  publishedAt: string | null;
+  status: UnifiedRenderedDesignStatus;
+  createdAt: string;
+  updatedAt: string;
+  contentType: 'poster' | 'carousel' | 'story' | 'announcement' | 'general';
+  context?: string;
+  sourceTitle?: string;
+  matchedKeyword?: string;
+  articleTitle?: string;
+  articleSummary?: string;
+  sourceUrl?: string;
+  templateId?: string;
+  templateName?: string;
+  renderDesignId?: string;
+  autoEditorialId?: string;
+}
 
 const DESIGN_STUDIO_ACTIVITY_CACHE_KEY = 'designStudioActivityCache';
 const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY = 'designStudioActivityDismissed';
@@ -570,6 +592,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const savedTab = localStorage.getItem('designStudioActivityTab');
     return savedTab === 'auto' ? 'auto' : 'manual';
   });
+  const [activeStatusTab, setActiveStatusTab] = useState<DesignStudioActivityStatusTab>(() => {
+    if (typeof window === 'undefined') return 'rendered';
+    const savedTab = window.localStorage.getItem('designStudioActivityStatusTab');
+    return savedTab === 'scheduled' || savedTab === 'published' ? savedTab : 'rendered';
+  });
   const [activities, setActivities] = useState<DesignStudioActivityRecord[]>(cachedActivityState?.activities || []);
   const [manualRenderJobs, setManualRenderJobs] = useState<DesignStudioManualRenderJob[]>(cachedActivityState?.manualRenderJobs || []);
   const [designTemplates, setDesignTemplates] = useState<DesignStudioTemplateRecord[]>(cachedActivityState?.designTemplates || []);
@@ -578,18 +605,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [autoEditorials, setAutoEditorials] = useState<DesignStudioAutoEditorialRecord[]>(cachedActivityState?.autoEditorials || []);
   const [isLoading, setIsLoading] = useState(!(cachedActivityState && (cachedActivityState.activities?.length || cachedActivityState.manualRenderJobs?.length)));
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [publishTarget, setPublishTarget] = useState<ActivityPublishTarget | null>(null);
+  const [publishTarget, setPublishTarget] = useState<UnifiedRenderedDesignRecord | null>(null);
   const [isPublishSheetOpen, setIsPublishSheetOpen] = useState(false);
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [menuActivity, setMenuActivity] = useState<DesignStudioActivityRecord | null>(null);
-  const [scheduleActivity, setScheduleActivity] = useState<DesignStudioActivityRecord | null>(null);
+  const [scheduleActivity, setScheduleActivity] = useState<UnifiedRenderedDesignRecord | null>(null);
   const [isScheduleSheetOpen, setIsScheduleSheetOpen] = useState(false);
+  const [activeEditorTarget, setActiveEditorTarget] = useState<UnifiedRenderedDesignRecord | null>(null);
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(new Date());
   const [scheduledTime, setScheduledTime] = useState(() => {
     const nextHour = new Date();
     nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
     return nextHour.toTimeString().slice(0, 5);
   });
+  const [sharedCaptionDraft, setSharedCaptionDraft] = useState('');
+  const [sharedCaptionSource, setSharedCaptionSource] = useState<'generated' | 'manual'>('generated');
+  const [sharedSelectedPlatforms, setSharedSelectedPlatforms] = useState<string[]>([]);
   const [renameActivity, setRenameActivity] = useState<DesignStudioActivityRecord | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [isRenameSheetOpen, setIsRenameSheetOpen] = useState(false);
@@ -704,6 +735,10 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   }, [activeTab]);
 
   useEffect(() => {
+    safeStorageSetItem('designStudioActivityStatusTab', activeStatusTab);
+  }, [activeStatusTab]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
     safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_CACHE_KEY, JSON.stringify({
       activities: activities
@@ -801,7 +836,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         createdAt: job.createdAt,
       }));
 
-    return [...manualRenderActivityRecords, ...activities]
+    const scopedActivities = [...manualRenderActivityRecords, ...activities]
       .filter((activity) => !dismissedActivityIds.includes(activity.id))
       .filter((activity) => {
         const timestamp = new Date(activity.createdAt).getTime();
@@ -822,7 +857,48 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           ? MANUAL_ACTIVITY_TYPES.has(activity.type)
           : AUTO_ACTIVITY_TYPES.has(activity.type)
       ));
-  }, [activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
+
+    if (activeStatusTab === 'rendered') {
+      const movedMediaKeys = new Set(
+        scopedActivities
+          .filter((activity) => activity.type === 'design_scheduled' || activity.type === 'design_published')
+          .map((activity) => normalizeMediaKey(activity.details.outputUrl || activity.details.previewUrl || activity.details.designId || ''))
+          .filter(Boolean),
+      );
+      const movedAutoKeys = new Set(
+        scopedActivities
+          .filter((activity) => activity.type === 'auto_editorial_posted')
+          .map((activity) => normalizeMediaKey(activity.details.outputUrl || activity.details.previewUrl || activity.details.sourceTitle || ''))
+          .filter(Boolean),
+      );
+
+      return scopedActivities.filter((activity) => {
+        if (activeTab === 'manual') {
+          if (activity.type !== 'design_rendered' && activity.type !== 'design_render_failed') return false;
+          const mediaKey = normalizeMediaKey(activity.details.outputUrl || activity.details.previewUrl || activity.details.designId || '');
+          return !mediaKey || !movedMediaKeys.has(mediaKey);
+        }
+        if (activity.type !== 'auto_editorial_generated' && activity.type !== 'auto_editorial_updated') return false;
+        const mediaKey = normalizeMediaKey(activity.details.outputUrl || activity.details.previewUrl || activity.details.sourceTitle || '');
+        return !mediaKey || !movedAutoKeys.has(mediaKey);
+      });
+    }
+
+    if (activeStatusTab === 'scheduled') {
+      return scopedActivities.filter((activity) => {
+        if (activeTab === 'manual') {
+          return activity.type === 'design_scheduled';
+        }
+        return activity.type === 'auto_editorial_generated' && String(activity.details.status || '').toLowerCase() === 'queued';
+      });
+    }
+
+    return scopedActivities.filter((activity) => (
+      activeTab === 'manual'
+        ? activity.type === 'design_published'
+        : activity.type === 'auto_editorial_posted'
+    ));
+  }, [activeStatusTab, activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
 
   useEffect(() => {
     const targetActivityId = window.localStorage.getItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
@@ -845,15 +921,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const selection = useBulkSelection(visibleActivities.map((activity) => activity.id));
 
-  const summary = useMemo(() => ({
-    total: visibleActivities.length,
-    primary: activeTab === 'manual'
-      ? visibleActivities.filter((activity) => activity.type === 'design_rendered').length
-      : visibleActivities.filter((activity) => activity.type === 'auto_editorial_generated').length,
-    secondary: activeTab === 'manual'
-      ? visibleActivities.filter((activity) => activity.type === 'design_published').length
-      : visibleActivities.filter((activity) => activity.type === 'auto_editorial_posted').length,
-  }), [activeTab, visibleActivities]);
+  const summary = useMemo(() => {
+    const modeActivities = activities.filter((activity) => (
+      activeTab === 'manual'
+        ? MANUAL_ACTIVITY_TYPES.has(activity.type)
+        : AUTO_ACTIVITY_TYPES.has(activity.type)
+    ));
+    return {
+      total: visibleActivities.length,
+      primary: activeTab === 'manual'
+        ? modeActivities.filter((activity) => activity.type === 'design_rendered').length
+        : modeActivities.filter((activity) => activity.type === 'auto_editorial_generated' || activity.type === 'auto_editorial_updated').length,
+      secondary: activeTab === 'manual'
+        ? modeActivities.filter((activity) => activity.type === 'design_published').length
+        : modeActivities.filter((activity) => activity.type === 'auto_editorial_posted').length,
+    };
+  }, [activeTab, activities, visibleActivities.length]);
 
   const renderedDesignByOutputUrl = useMemo(
     () => new Map(renderedDesigns.map((renderedDesign) => [renderedDesign.outputUrl, renderedDesign])),
@@ -982,6 +1065,115 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         : null;
 
     return { autoEditorial, data, renderedDesign, template };
+  };
+
+  const parseSelectedPlatforms = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return Array.from(new Set(value.map((entry) => String(entry).trim().toLowerCase()).filter(Boolean)));
+    }
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return Array.from(new Set(value.split(',').map((entry) => entry.trim().toLowerCase()).filter(Boolean)));
+    }
+    return [];
+  };
+
+  const resolveUnifiedStatus = (
+    record: Pick<DesignStudioRenderedDesignRecord, 'status' | 'scheduledFor' | 'publishedAt'> | Pick<DesignStudioAutoEditorialRecord, 'status' | 'scheduleTime' | 'postedAt'>,
+  ): UnifiedRenderedDesignStatus => {
+    const statusValue = String((record as any).status || '').toLowerCase();
+    if (statusValue === 'published' || statusValue === 'posted') return 'published';
+    if (statusValue === 'failed') return 'failed';
+    if (statusValue === 'scheduled' || statusValue === 'queued') return 'scheduled';
+    if ((record as any).publishedAt || (record as any).postedAt) return 'published';
+    const scheduledFor = (record as any).scheduledFor || (record as any).scheduleTime;
+    if (typeof scheduledFor === 'string') {
+      const timestamp = new Date(scheduledFor).getTime();
+      if (!Number.isNaN(timestamp) && timestamp > Date.now()) {
+        return 'scheduled';
+      }
+    }
+    return 'rendered';
+  };
+
+  const resolveUnifiedRecordFromActivity = (activity: DesignStudioActivityRecord): UnifiedRenderedDesignRecord | null => {
+    const { autoEditorial, renderedDesign } = resolveActivityEditContext(activity);
+    if (renderedDesign) {
+      const contentType = renderedDesign.contentType || 'announcement';
+      return {
+        id: `manual:${renderedDesign.id}`,
+        mode: 'manual',
+        sourceType: 'manual',
+        title: String(renderedDesign.data?.headerText || activity.details.headerText || renderedDesign.templateName || 'Rendered Design'),
+        outputUrl: renderedDesign.outputUrl,
+        previewUrl: renderedDesign.previewUrl || renderedDesign.outputUrl,
+        caption: renderedDesign.caption || renderedDesign.captions?.shared_caption || '',
+        captionSource: renderedDesign.captionSource || 'generated',
+        selectedPlatforms: parseSelectedPlatforms(renderedDesign.selectedPlatforms),
+        scheduledFor: renderedDesign.scheduledFor || null,
+        publishedAt: renderedDesign.publishedAt || null,
+        status: resolveUnifiedStatus(renderedDesign),
+        createdAt: renderedDesign.createdAt,
+        updatedAt: renderedDesign.updatedAt || renderedDesign.createdAt,
+        contentType,
+        context: String(renderedDesign.data?.subtext || renderedDesign.templateName || ''),
+        sourceTitle: renderedDesign.articleTitle || activity.details.sourceTitle,
+        matchedKeyword: activity.details.matchedKeyword,
+        articleTitle: renderedDesign.articleTitle,
+        articleSummary: renderedDesign.articleSummary,
+        sourceUrl: renderedDesign.sourceUrl,
+        templateId: renderedDesign.templateId,
+        templateName: renderedDesign.templateName,
+        renderDesignId: renderedDesign.id,
+      };
+    }
+
+    if (autoEditorial) {
+      const contentType = autoEditorial.contentType || 'announcement';
+      return {
+        id: `auto:${autoEditorial.id}`,
+        mode: 'auto',
+        sourceType: 'auto',
+        title: autoEditorial.headerText || autoEditorial.sourceTitle || 'Rendered Design',
+        outputUrl: autoEditorial.renderedImage,
+        previewUrl: autoEditorial.renderedImage,
+        caption: autoEditorial.caption || autoEditorial.captions?.shared_caption || '',
+        captionSource: 'generated',
+        selectedPlatforms: parseSelectedPlatforms(autoEditorial.targetPlatforms),
+        scheduledFor: autoEditorial.scheduleTime || null,
+        publishedAt: autoEditorial.postedAt || null,
+        status: resolveUnifiedStatus(autoEditorial),
+        createdAt: autoEditorial.createdAt,
+        updatedAt: autoEditorial.updatedAt,
+        contentType,
+        context: autoEditorial.subheaderText || autoEditorial.templateName || '',
+        sourceTitle: autoEditorial.sourceTitle,
+        matchedKeyword: autoEditorial.matchedKeyword,
+        articleTitle: autoEditorial.sourceTitle,
+        articleSummary: autoEditorial.subheaderText,
+        sourceUrl: autoEditorial.sourceUrl,
+        templateId: autoEditorial.templateId,
+        templateName: autoEditorial.templateName,
+        autoEditorialId: autoEditorial.id,
+      };
+    }
+
+    return null;
+  };
+
+  const hydrateSharedFields = (record: UnifiedRenderedDesignRecord) => {
+    setSharedCaptionDraft(record.caption || '');
+    setSharedCaptionSource(record.captionSource || 'generated');
+    const platforms = record.selectedPlatforms.length > 0
+      ? record.selectedPlatforms
+      : (settings.designStudioTargetPlatforms || ['x', 'threads']);
+    setSharedSelectedPlatforms(Array.from(new Set(platforms.map((entry) => entry.toLowerCase()))));
+    const nextSchedule = record.scheduledFor ? new Date(record.scheduledFor) : new Date();
+    if (Number.isNaN(nextSchedule.getTime()) || nextSchedule.getTime() <= Date.now()) {
+      nextSchedule.setHours(nextSchedule.getHours() + 1, 0, 0, 0);
+    }
+    setScheduledDate(nextSchedule);
+    setScheduledTime(nextSchedule.toTimeString().slice(0, 5));
+    setActiveEditorTarget(record);
   };
 
   const buildRenderPayload = (data: DesignData) => ({
@@ -1148,6 +1340,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const openCardEditor = (activity: DesignStudioActivityRecord, mode: CardEditorMode) => {
+    const unifiedRecord = resolveUnifiedRecordFromActivity(activity);
     const { autoEditorial, data, renderedDesign } = resolveActivityEditContext(activity);
     const nextData = data || buildFallbackEditData(activity, autoEditorial);
     const sourceContext = getActivitySourceContext(activity, autoEditorial, renderedDesign);
@@ -1160,10 +1353,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       ? existingCaption
       : sourceDrivenDraft || existingCaption || activity.details.headerText || '';
 
+    if (mode === 'caption' && unifiedRecord) {
+      hydrateSharedFields(unifiedRecord);
+    }
+
     setCardEditor({ activity, mode });
     setCardTextDraft(
       mode === 'caption'
-        ? captionDraft
+        ? (unifiedRecord?.caption || captionDraft)
         : mode === 'header'
           ? nextData.headerText || ''
           : nextData.subtext || '',
@@ -1196,6 +1393,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     const { activity, mode } = cardEditor;
+    const unifiedRecord = resolveUnifiedRecordFromActivity(activity);
     const { data, autoEditorial } = resolveActivityEditContext(activity);
     const baseData = data || buildFallbackEditData(activity, autoEditorial);
     const value = cardTextDraft.trim();
@@ -1213,6 +1411,20 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
     setIsSavingCardEdit(true);
     try {
+      if (mode === 'caption' && unifiedRecord) {
+        await persistUnifiedRecord(unifiedRecord, {
+          caption: value,
+          captionSource: 'manual',
+        });
+        setSharedCaptionDraft(value);
+        setSharedCaptionSource('manual');
+        haptics.success();
+        toast.success('Caption saved');
+        setCardEditor(null);
+        await loadActivities({ silent: true });
+        return;
+      }
+
       await persistCardEdit(activity, nextData, mode === 'caption' ? 'caption' : mode === 'header' ? 'header' : 'subtext');
       setActivities((current) => current.map((entry) => (
         entry.id === activity.id
@@ -1297,6 +1509,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         context: [sourceContext.sourceSummary, autoEditorial?.subheaderText, sourceContext.sourceUrl].filter(Boolean).join(' | '),
       }, settings);
       setCardTextDraft(result.caption);
+      setSharedCaptionDraft(result.caption);
+      setSharedCaptionSource('generated');
       haptics.success();
       toast.success('Caption regenerated');
     } catch (error) {
@@ -1401,6 +1615,91 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     return activity.details.previewUrl || activity.details.outputUrl || autoEditorial?.renderedImage || '';
   };
 
+  const toPlatformSelection = (platforms: string[]): PlatformSelection => {
+    const normalized = new Set(platforms.map((entry) => entry.toLowerCase()));
+    return {
+      x: normalized.has('x') || normalized.has('twitter'),
+      threads: normalized.has('threads'),
+      facebook: normalized.has('facebook'),
+      instagram: normalized.has('instagram'),
+      pinterest: normalized.has('pinterest'),
+    };
+  };
+
+  const persistUnifiedRecord = async (
+    target: UnifiedRenderedDesignRecord,
+    updates: {
+      caption?: string;
+      captionSource?: 'generated' | 'manual';
+      selectedPlatforms?: string[];
+      scheduledFor?: string | null;
+      publishedAt?: string | null;
+      status?: UnifiedRenderedDesignStatus;
+    },
+  ) => {
+    const nowIso = new Date().toISOString();
+
+    if (target.sourceType === 'manual' && target.renderDesignId) {
+      const nextRenderedDesigns = renderedDesigns.map((item) => {
+        if (item.id !== target.renderDesignId) {
+          return item;
+        }
+        const nextStatus = updates.status || item.status || 'draft';
+        return {
+          ...item,
+          caption: updates.caption ?? item.caption ?? '',
+          captionSource: updates.captionSource ?? item.captionSource ?? 'generated',
+          selectedPlatforms: updates.selectedPlatforms ?? item.selectedPlatforms ?? [],
+          scheduledFor: updates.scheduledFor !== undefined ? updates.scheduledFor : (item.scheduledFor || null),
+          publishedAt: updates.publishedAt !== undefined ? updates.publishedAt : (item.publishedAt || null),
+          status: nextStatus === 'rendered' ? 'draft' : nextStatus,
+          updatedAt: nowIso,
+          captions: {
+            shared_caption: updates.caption ?? item.caption ?? '',
+            pinterest_title: item.captions?.pinterest_title || '',
+            pinterest_description: item.captions?.pinterest_description || '',
+          },
+        };
+      });
+      setRenderedDesigns(nextRenderedDesigns);
+      await saveDesignStudioState({
+        templates: designTemplates,
+        renderedDesigns: nextRenderedDesigns,
+        autoEditorials,
+      });
+      return;
+    }
+
+    if (target.sourceType === 'auto' && target.autoEditorialId) {
+      const nextAutoEditorials = autoEditorials.map((item) => {
+        if (item.id !== target.autoEditorialId) {
+          return item;
+        }
+        const nextStatus = updates.status || resolveUnifiedStatus(item);
+        return {
+          ...item,
+          caption: updates.caption ?? item.caption ?? '',
+          targetPlatforms: updates.selectedPlatforms ?? item.targetPlatforms ?? [],
+          scheduleTime: updates.scheduledFor !== undefined ? updates.scheduledFor : (item.scheduleTime || null),
+          postedAt: updates.publishedAt !== undefined ? updates.publishedAt : (item.postedAt || null),
+          status: nextStatus === 'rendered' ? 'detected' : nextStatus === 'scheduled' ? 'queued' : nextStatus === 'published' ? 'posted' : 'failed',
+          updatedAt: nowIso,
+          captions: {
+            shared_caption: updates.caption ?? item.caption ?? '',
+            pinterest_title: item.captions?.pinterest_title || '',
+            pinterest_description: item.captions?.pinterest_description || '',
+          },
+        };
+      });
+      setAutoEditorials(nextAutoEditorials);
+      await saveDesignStudioState({
+        templates: designTemplates,
+        renderedDesigns,
+        autoEditorials: nextAutoEditorials,
+      });
+    }
+  };
+
   const handleDownload = async (activity: DesignStudioActivityRecord) => {
     const downloadUrl = getActivityDownloadUrl(activity);
     if (!downloadUrl) {
@@ -1439,43 +1738,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handleOpenPublish = (activity: DesignStudioActivityRecord) => {
-    const autoEditorial = findAutoEditorialForActivity(activity);
-    const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorial?.renderedImage;
-    if (!outputUrl) {
+    const resolvedRecord = resolveUnifiedRecordFromActivity(activity);
+    if (!resolvedRecord?.outputUrl) {
       toast.error('No rendered image available to publish');
       return;
     }
 
-    const renderedDesign = renderedDesignByOutputUrl.get(outputUrl)
-      || renderedDesignByOutputUrlNormalized.get(normalizeMediaKey(outputUrl))
-      || (activity.details.designId ? renderedDesignById.get(activity.details.designId) : undefined);
-    const resolvedAutoEditorial = autoEditorialByImageUrl.get(outputUrl)
-      || autoEditorialByImageUrlNormalized.get(normalizeMediaKey(outputUrl))
-      || autoEditorial;
-    const resolvedTitle = renderedDesign?.data?.headerText
-      || activity.details.headerText
-      || resolvedAutoEditorial?.headerText
-      || resolvedAutoEditorial?.sourceTitle
-      || activity.details.sourceTitle
-      || activity.details.templateName
-      || 'Rendered Design';
-
-    setPublishTarget({
-      activityId: activity.id,
-      title: resolvedTitle,
-      outputUrl,
-      caption: resolvedAutoEditorial?.caption || renderedDesign?.caption,
-      contentType: resolvedAutoEditorial
-        ? 'announcement'
-        : renderedDesign?.contentType,
-      context: resolvedAutoEditorial?.subheaderText
-        || renderedDesign?.data?.subtext
-        || renderedDesign?.templateName
-        || activity.details.templateName,
-      sourceTitle: resolvedAutoEditorial?.sourceTitle || activity.details.sourceTitle,
-      matchedKeyword: resolvedAutoEditorial?.matchedKeyword || activity.details.matchedKeyword,
-      isAutoEditorial: Boolean(resolvedAutoEditorial),
-    });
+    hydrateSharedFields(resolvedRecord);
+    setPublishTarget(resolvedRecord);
     setIsPublishSheetOpen(true);
   };
 
@@ -1498,12 +1768,23 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     window.setTimeout(action, 120);
   };
 
+  const toggleSharedPlatform = (platform: string) => {
+    const normalized = platform.toLowerCase();
+    setSharedSelectedPlatforms((current) => (
+      current.includes(normalized)
+        ? current.filter((entry) => entry !== normalized)
+        : [...current, normalized]
+    ));
+  };
+
   const openScheduleSheet = (activity: DesignStudioActivityRecord) => {
-    const nextHour = new Date();
-    nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
-    setScheduledDate(nextHour);
-    setScheduledTime(nextHour.toTimeString().slice(0, 5));
-    setScheduleActivity(activity);
+    const resolvedRecord = resolveUnifiedRecordFromActivity(activity);
+    if (!resolvedRecord) {
+      toast.error('Unable to load this rendered design');
+      return;
+    }
+    hydrateSharedFields(resolvedRecord);
+    setScheduleActivity(resolvedRecord);
     setIsScheduleSheetOpen(true);
   };
 
@@ -1618,6 +1899,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return;
     }
 
+    if (!sharedCaptionDraft.trim()) {
+      toast.error('Add a caption before scheduling');
+      return;
+    }
+
+    if (sharedSelectedPlatforms.length === 0) {
+      toast.error('Select at least one platform');
+      return;
+    }
+
     const [hours, minutes] = scheduledTime.split(':').map(Number);
     const scheduledAt = new Date(scheduledDate);
     scheduledAt.setHours(hours || 0, minutes || 0, 0, 0);
@@ -1628,12 +1919,23 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
 
     try {
-      await createDesignStudioActivity('design_scheduled', {
-        templateName: scheduleActivity.details.templateName,
-        headerText: scheduleActivity.details.headerText,
-        previewUrl: scheduleActivity.details.previewUrl,
-        outputUrl: scheduleActivity.details.outputUrl,
-        exportFormat: scheduleActivity.details.exportFormat,
+      await persistUnifiedRecord(scheduleActivity, {
+        caption: sharedCaptionDraft.trim(),
+        captionSource: sharedCaptionSource,
+        selectedPlatforms: sharedSelectedPlatforms,
+        scheduledFor: scheduledAt.toISOString(),
+        status: 'scheduled',
+      });
+
+      await createDesignStudioActivity(scheduleActivity.sourceType === 'auto' ? 'auto_editorial_updated' : 'design_scheduled', {
+        templateName: scheduleActivity.templateName,
+        headerText: scheduleActivity.title,
+        previewUrl: scheduleActivity.previewUrl,
+        outputUrl: scheduleActivity.outputUrl,
+        targetPlatforms: sharedSelectedPlatforms,
+        sourceTitle: scheduleActivity.sourceTitle,
+        matchedKeyword: scheduleActivity.matchedKeyword,
+        status: 'scheduled',
         scheduleTime: scheduledAt.toISOString(),
       });
 
@@ -1848,15 +2150,28 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     previewPanStartRef.current = null;
   };
 
-  const handlePublish = async (caption: string, platforms: PlatformSelection) => {
+  const handlePublish = async () => {
     if (!publishTarget) {
       return;
     }
 
+    const caption = sharedCaptionDraft.trim();
+    if (!caption) {
+      toast.error('Add a caption before publishing');
+      return;
+    }
+
+    if (sharedSelectedPlatforms.length === 0) {
+      toast.error('Select at least one platform');
+      return;
+    }
+
+    const platforms = toPlatformSelection(sharedSelectedPlatforms);
+
     haptics.medium();
     try {
       const result = await publishContent(platforms, {
-        text: caption || publishTarget.title,
+        text: caption,
         title: publishTarget.title,
         imageUrl: publishTarget.outputUrl,
       });
@@ -1873,17 +2188,32 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       if (platforms.pinterest) platformsList.push('Pinterest');
 
       await apiClient.post('/api/design-studio/activity', {
-        type: 'design_published',
+        type: publishTarget.sourceType === 'auto' ? 'auto_editorial_posted' : 'design_published',
         details: {
           templateName: publishTarget.title,
-          designId: publishTarget.activityId,
+          designId: publishTarget.renderDesignId || publishTarget.autoEditorialId || publishTarget.id,
+          previewUrl: publishTarget.previewUrl,
+          outputUrl: publishTarget.outputUrl,
           platforms: platformsList.join(', '),
+          targetPlatforms: sharedSelectedPlatforms,
+          sourceTitle: publishTarget.sourceTitle,
+          matchedKeyword: publishTarget.matchedKeyword,
         },
+      });
+
+      await persistUnifiedRecord(publishTarget, {
+        caption,
+        captionSource: sharedCaptionSource,
+        selectedPlatforms: sharedSelectedPlatforms,
+        status: 'published',
+        publishedAt: new Date().toISOString(),
+        scheduledFor: null,
       });
 
       toast.success(`Published to ${platformsList.join(', ')}`);
       setIsPublishSheetOpen(false);
       setPublishTarget(null);
+      setScheduleActivity(null);
       await loadActivities({ silent: true });
     } catch (error) {
       console.error('Failed to publish rendered design:', error);
@@ -1892,24 +2222,27 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   };
 
   const handleGenerateCaption = async () => {
-    if (!publishTarget) {
+    const target = publishTarget || scheduleActivity || activeEditorTarget;
+    if (!target) {
       return '';
     }
 
     setIsGeneratingCaption(true);
     try {
       const result = await generateDesignStudioCaption({
-        contentType: publishTarget.contentType || 'announcement',
-        title: publishTarget.title,
-        tagline: publishTarget.isAutoEditorial ? publishTarget.sourceTitle : undefined,
-        releaseInfo: publishTarget.matchedKeyword,
-        context: publishTarget.context,
+        contentType: target.contentType || 'announcement',
+        title: target.title,
+        tagline: target.sourceTitle || target.articleTitle,
+        releaseInfo: target.matchedKeyword,
+        context: target.articleSummary || target.context,
       }, settings);
+      setSharedCaptionDraft(result.caption);
+      setSharedCaptionSource('generated');
       return result.caption;
     } catch (error) {
       console.error('Failed to generate publish caption:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to generate caption');
-      return publishTarget.caption || publishTarget.title;
+      return sharedCaptionDraft || target.title;
     } finally {
       setIsGeneratingCaption(false);
     }
@@ -2094,14 +2427,29 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         />
       </div>
 
+      <div className="mt-4">
+        <SegmentedTabSwitcher
+          tabs={[
+            { id: 'rendered', label: 'Rendered' },
+            { id: 'scheduled', label: 'Scheduled' },
+            { id: 'published', label: 'Published' },
+          ]}
+          activeTab={activeStatusTab}
+          onChange={(tab) => {
+            haptics.light();
+            setActiveStatusTab(tab as DesignStudioActivityStatusTab);
+          }}
+        />
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-        <SummaryCard label="Total Activity" value={summary.total} />
+        <SummaryCard label="Total Items" value={summary.total} />
         <SummaryCard
-          label={activeTab === 'manual' ? 'Designs Rendered' : 'Auto Generated'}
+          label={activeTab === 'manual' ? 'Rendered' : 'Auto Rendered'}
           value={summary.primary}
         />
         <SummaryCard
-          label={activeTab === 'manual' ? 'Designs Published' : 'Auto Posted'}
+          label={activeTab === 'manual' ? 'Published' : 'Auto Published'}
           value={summary.secondary}
         />
       </div>
@@ -2147,7 +2495,17 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               const linkedAutoEditorial = findAutoEditorialForActivity(activity);
               const platformLabels = parseActivityPlatforms(activity, linkedAutoEditorial);
               const isAutoActivity = activity.type.startsWith('auto_editorial_');
-              const hasRenderedActions = activity.type === 'design_rendered' || activity.type.startsWith('auto_editorial_');
+              const unifiedRecord = resolveUnifiedRecordFromActivity(activity);
+              const hasRenderedActions = Boolean(unifiedRecord) && (
+                activity.type === 'design_rendered'
+                || activity.type.startsWith('auto_editorial_')
+                || activity.type === 'design_scheduled'
+                || activity.type === 'design_published'
+              );
+              const scheduledTimestamp = unifiedRecord?.scheduledFor
+                || activity.details.scheduleTime
+                || (linkedAutoEditorial?.scheduleTime || null);
+              const showScheduledMetadata = activeStatusTab === 'scheduled' && Boolean(scheduledTimestamp);
 
               return (
               <div id={`design-studio-activity-card-${activity.id}`} key={activity.id}>
@@ -2215,12 +2573,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                         <div className="mt-4 border-t border-gray-200 pt-4 dark:border-[#333333]">
                           <div className="flex items-end justify-between gap-4">
                             <div className="min-w-0 flex-1">
-                              <span className="text-sm text-gray-500 dark:text-[#8A8F98]">
-                                Created:{' '}
-                                <span className="text-gray-900 dark:text-white">
-                                  {formatFetchedDateTime(activity.createdAt)}
+                              <div className="space-y-1">
+                                <span className="block text-sm text-gray-500 dark:text-[#8A8F98]">
+                                  Created:{' '}
+                                  <span className="text-gray-900 dark:text-white">
+                                    {formatFetchedDateTime(unifiedRecord?.createdAt || activity.createdAt)}
+                                  </span>
                                 </span>
-                              </span>
+                                {showScheduledMetadata ? (
+                                  <span className="block text-sm text-gray-500 dark:text-[#8A8F98]">
+                                    Scheduled:{' '}
+                                    <span className="text-gray-900 dark:text-white">
+                                      {formatFetchedDateTime(String(scheduledTimestamp))}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Button
@@ -2268,22 +2636,108 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       </div>
 
       {publishTarget ? (
-        <PublishBottomSheet
+        <BottomSheet
           open={isPublishSheetOpen}
           onOpenChange={(open) => {
             setIsPublishSheetOpen(open);
             if (!open) {
               setPublishTarget(null);
+              setActiveEditorTarget(null);
             }
           }}
-          title="Publish Rendered Design"
-          description="Select platforms and add a caption for this rendered editorial"
-          initialCaption={publishTarget.caption || publishTarget.title}
-          onPublish={(caption, platforms) => void handlePublish(caption, platforms)}
-          onCaptionGenerate={handleGenerateCaption}
-          isGeneratingCaption={isGeneratingCaption}
-          allowedPlatforms={['x', 'threads', 'facebook', 'instagram', 'pinterest']}
-        />
+        >
+          <BottomSheetHeader>
+            <BottomSheetTitle>Publish Rendered Design</BottomSheetTitle>
+            <BottomSheetDescription>Select platforms and add a caption for this rendered editorial</BottomSheetDescription>
+          </BottomSheetHeader>
+          <BottomSheetBody>
+            <div className="space-y-5">
+              <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+                <div className="flex items-center justify-between gap-3">
+                  <Label className="text-gray-900 dark:text-white">Social Media Caption</Label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      haptics.light();
+                      void handleGenerateCaption();
+                    }}
+                    disabled={isGeneratingCaption}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                  >
+                    {isGeneratingCaption ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  </button>
+                </div>
+                <textarea
+                  value={sharedCaptionDraft}
+                  onChange={(event) => {
+                    haptics.light();
+                    setSharedCaptionDraft(event.target.value);
+                    setSharedCaptionSource('manual');
+                  }}
+                  rows={6}
+                  className="min-h-[140px] w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-900 outline-none transition-colors focus:border-[#ec1e24] dark:border-[#333333] dark:bg-black dark:text-white"
+                />
+                <div className="text-right text-xs text-gray-500 dark:text-[#6B7280]">{sharedCaptionDraft.length} chars</div>
+              </div>
+
+              <div className="space-y-3">
+                <Label className="text-gray-900 dark:text-white">Select Platforms</Label>
+                <div className="flex justify-center">
+                  <div className="grid grid-cols-3 gap-3 max-w-fit">
+                    {[
+                      { id: 'x', icon: <XIcon className="w-4 h-4" />, title: 'X' },
+                      { id: 'threads', icon: <ThreadsIcon className="w-5 h-5" />, title: 'Threads' },
+                      { id: 'facebook', icon: <FacebookIcon className="w-5 h-5" />, title: 'Facebook' },
+                      { id: 'instagram', icon: <InstagramIcon className="w-5 h-5" />, title: 'Instagram' },
+                      { id: 'pinterest', icon: <PinterestIcon className="w-5 h-5" />, title: 'Pinterest' },
+                    ].map((platform) => (
+                      <button
+                        key={platform.id}
+                        type="button"
+                        onClick={() => {
+                          haptics.light();
+                          toggleSharedPlatform(platform.id);
+                        }}
+                        className={`flex items-center justify-center w-14 h-14 rounded-lg transition-all ${
+                          sharedSelectedPlatforms.includes(platform.id)
+                            ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                            : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                        }`}
+                        title={platform.title}
+                      >
+                        {platform.icon}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </BottomSheetBody>
+          <BottomSheetFooter>
+            <div className="flex w-full gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  haptics.light();
+                  setIsPublishSheetOpen(false);
+                  setPublishTarget(null);
+                  setActiveEditorTarget(null);
+                }}
+                className="flex-1 border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handlePublish()}
+                className="flex-1 bg-[#ec1e24] text-white hover:bg-[#d01a20]"
+              >
+                Publish
+              </Button>
+            </div>
+          </BottomSheetFooter>
+        </BottomSheet>
       ) : null}
 
       <BottomSheet open={Boolean(menuActivity)} onOpenChange={(open) => !open && setMenuActivity(null)}>
@@ -2426,7 +2880,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               ? 'Upload, drag, search, or pick a new visual. Saving queues a fresh render.'
               : cardEditor?.mode === 'overlay'
                 ? 'Tune the overlay color, opacity, and direction for this render.'
-                : 'Update the text and queue a fresh render for this design.'}
+                : cardEditor?.mode === 'caption'
+                  ? 'Update or regenerate the shared social caption for this rendered design.'
+                  : 'Update the text and queue a fresh render for this design.'}
           </BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetBody>
@@ -2813,41 +3269,109 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         </BottomSheetFooter>
       </BottomSheet>
 
-      <BottomSheet open={isScheduleSheetOpen} onOpenChange={setIsScheduleSheetOpen}>
+      <BottomSheet
+        open={isScheduleSheetOpen}
+        onOpenChange={(open) => {
+          setIsScheduleSheetOpen(open);
+          if (!open) {
+            setScheduleActivity(null);
+            setActiveEditorTarget(null);
+          }
+        }}
+      >
         <BottomSheetHeader>
-          <BottomSheetTitle>Schedule Design</BottomSheetTitle>
-          <BottomSheetDescription>Set the date and time for this rendered design.</BottomSheetDescription>
+          <BottomSheetTitle>Schedule Rendered Design</BottomSheetTitle>
+          <BottomSheetDescription>
+            Select platforms, refine the caption, and choose the publish date and time for this rendered design
+          </BottomSheetDescription>
         </BottomSheetHeader>
         <BottomSheetBody>
-          <div className="space-y-4">
-            <div>
-              <Label>Date</Label>
-              <DatePicker
-                date={scheduledDate}
-                onDateChange={(date) => {
-                  if (date) {
+          <div className="space-y-5">
+            <div className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+              <div className="flex items-center justify-between gap-3">
+                <Label className="text-gray-900 dark:text-white">Social Media Caption</Label>
+                <button
+                  type="button"
+                  onClick={() => {
                     haptics.light();
-                  }
-                  setScheduledDate(date);
-                }}
-                className="mt-2"
-              />
-            </div>
-            <div>
-              <Label>Time</Label>
-              <TimePicker
-                value={scheduledTime}
-                onChange={(time) => {
+                    void handleGenerateCaption();
+                  }}
+                  disabled={isGeneratingCaption}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                >
+                  {isGeneratingCaption ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                </button>
+              </div>
+              <textarea
+                value={sharedCaptionDraft}
+                onChange={(event) => {
                   haptics.light();
-                  setScheduledTime(time);
+                  setSharedCaptionDraft(event.target.value);
+                  setSharedCaptionSource('manual');
                 }}
-                className="mt-2"
+                rows={6}
+                className="min-h-[140px] w-full resize-none rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm leading-6 text-gray-900 outline-none transition-colors focus:border-[#ec1e24] dark:border-[#333333] dark:bg-black dark:text-white"
               />
+              <div className="text-right text-xs text-gray-500 dark:text-[#6B7280]">{sharedCaptionDraft.length} chars</div>
             </div>
-            <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
-              <p className="text-xs text-gray-600 dark:text-[#9CA3AF]">
-                Scheduled designs are saved into Design Studio activity with the chosen publish time.
-              </p>
+
+            <div className="space-y-3">
+              <Label className="text-gray-900 dark:text-white">Select Platforms</Label>
+              <div className="flex justify-center">
+                <div className="grid grid-cols-3 gap-3 max-w-fit">
+                  {[
+                    { id: 'x', icon: <XIcon className="w-4 h-4" />, title: 'X' },
+                    { id: 'threads', icon: <ThreadsIcon className="w-5 h-5" />, title: 'Threads' },
+                    { id: 'facebook', icon: <FacebookIcon className="w-5 h-5" />, title: 'Facebook' },
+                    { id: 'instagram', icon: <InstagramIcon className="w-5 h-5" />, title: 'Instagram' },
+                    { id: 'pinterest', icon: <PinterestIcon className="w-5 h-5" />, title: 'Pinterest' },
+                  ].map((platform) => (
+                    <button
+                      key={platform.id}
+                      type="button"
+                      onClick={() => {
+                        haptics.light();
+                        toggleSharedPlatform(platform.id);
+                      }}
+                      className={`flex items-center justify-center w-14 h-14 rounded-lg transition-all ${
+                        sharedSelectedPlatforms.includes(platform.id)
+                          ? 'bg-[#ec1e24]/10 border-2 border-[#ec1e24]'
+                          : 'bg-gray-100 dark:bg-[#111111] border-2 border-transparent opacity-40'
+                      }`}
+                      title={platform.title}
+                    >
+                      {platform.icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-[#333333] dark:bg-black">
+              <div>
+                <Label>Date</Label>
+                <DatePicker
+                  date={scheduledDate}
+                  onDateChange={(date) => {
+                    if (date) {
+                      haptics.light();
+                    }
+                    setScheduledDate(date);
+                  }}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label>Time</Label>
+                <TimePicker
+                  value={scheduledTime}
+                  onChange={(time) => {
+                    haptics.light();
+                    setScheduledTime(time);
+                  }}
+                  className="mt-2"
+                />
+              </div>
             </div>
           </div>
         </BottomSheetBody>
@@ -2860,6 +3384,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
                 haptics.light();
                 setIsScheduleSheetOpen(false);
                 setScheduleActivity(null);
+                setActiveEditorTarget(null);
               }}
               className="flex-1 border-gray-200 bg-white text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
             >

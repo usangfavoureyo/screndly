@@ -68,14 +68,24 @@ export interface DesignStudioRenderedDesignRecord {
   id: string;
   templateId: string;
   templateName: string;
+  mode?: 'manual' | 'auto';
   templateVariant?: DesignStudioLayoutVariant;
   exportFormat?: DesignStudioExportFormat;
   outputUrl: string;
   previewUrl?: string;
   data: Record<string, any>;
   createdAt: string;
+  updatedAt?: string;
   aspectRatio: string;
   caption?: string;
+  captionSource?: 'generated' | 'manual';
+  selectedPlatforms?: string[];
+  scheduledFor?: string | null;
+  publishedAt?: string | null;
+  status?: 'draft' | 'rendered' | 'scheduled' | 'published' | 'failed';
+  articleTitle?: string;
+  articleSummary?: string;
+  sourceUrl?: string;
   captions?: {
     shared_caption: string;
     pinterest_title: string;
