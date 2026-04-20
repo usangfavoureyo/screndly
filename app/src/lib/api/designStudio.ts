@@ -330,6 +330,7 @@ export async function startDesignStudioManualRender(payload: {
     headerAlignment?: 'left' | 'center' | 'right';
     fontScale?: number;
     headlineWidthScale?: number;
+    headlineDensity?: number;
     lineHeightMultiplier?: number;
     maxLines?: number;
     overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';

@@ -16,6 +16,7 @@ type PreviewLayout = {
 
 const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1350;
+const PREVIEW_SAFE_MARGIN = 48;
 const FALLBACK_BACKGROUND =
   'radial-gradient(circle at 18% 88%, rgba(110, 102, 255, 0.92) 0%, rgba(110, 102, 255, 0.28) 22%, rgba(110, 102, 255, 0) 48%), radial-gradient(circle at 82% 14%, rgba(150, 118, 255, 0.32) 0%, rgba(150, 118, 255, 0) 30%), linear-gradient(180deg, #5b4f8d 0%, #463d78 24%, #2a274f 58%, #171925 100%)';
 
@@ -78,8 +79,14 @@ function estimateWordWidth(word: string, fontSize: number) {
 function resolvePreviewTextBox(
   layout: PreviewLayout,
   widthScale: number,
+  densityScale: number,
 ): PreviewLayout['textBox'] {
-  const nextWidth = layout.textBox.width * widthScale;
+  const maxWrapWidth = CANVAS_WIDTH - (PREVIEW_SAFE_MARGIN * 2);
+  const nextWidth = clamp(
+    layout.textBox.width * widthScale * densityScale,
+    layout.textBox.width * 0.70,
+    maxWrapWidth,
+  );
   if (layout.alignment === 'center') {
     const centerX = layout.textBox.x + layout.textBox.width / 2;
     return {
@@ -103,7 +110,12 @@ function resolvePreviewTextBox(
   };
 }
 
-function fitHeadline(text: string, layout: PreviewLayout, textBox: PreviewLayout['textBox']) {
+function fitHeadline(
+  text: string,
+  layout: PreviewLayout,
+  textBox: PreviewLayout['textBox'],
+  targetWordsPerLine: number,
+) {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
     return { lines: [], fontSize: 88, lineHeight: 82 };
@@ -130,7 +142,7 @@ function fitHeadline(text: string, layout: PreviewLayout, textBox: PreviewLayout
 
           const lineWords = words.slice(start, end);
           const width = lineWidth(lineWords, fontSize);
-          if (width > textBox.width && lineWords.length > 1) continue;
+          if ((width > textBox.width && lineWords.length > 1) || lineWords.length > targetWordsPerLine) continue;
 
           const lineIndex = lineCount - 1;
           const isLastLine = end === words.length;
@@ -138,7 +150,7 @@ function fitHeadline(text: string, layout: PreviewLayout, textBox: PreviewLayout
             ? (lineIndex > 0 && !isLastLine ? 1_000_000 : 120_000)
             : 0;
           const unusedRatio = clamp((textBox.width - Math.min(width, textBox.width)) / textBox.width, 0, 1);
-          const wordTarget = words.length / Math.min(maxLines, Math.max(1, Math.ceil(words.length / 2)));
+          const wordTarget = targetWordsPerLine;
           const score = previous.score
             + singletonPenalty
             + Math.abs(lineWords.length - wordTarget) * 18
@@ -269,10 +281,21 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const fadeOpacity = designData?.fadeOpacity ?? 90;
   const fontScale = designData?.fontScale ?? 1;
   const headlineWidthScale = designData?.headlineWidthScale ?? 1;
+  const requestedHeadlineDensity = designData?.headlineDensity ?? 1;
+  const headlineWords = (designData?.headerText || '').trim().split(/\s+/).filter(Boolean);
+  const averageWordLength = headlineWords.length > 0
+    ? headlineWords.reduce((sum, word) => sum + word.length, 0) / headlineWords.length
+    : 0;
+  const headlineDensity = clamp(
+    requestedHeadlineDensity + (averageWordLength > 0 && averageWordLength < 5 ? 0.1 : 0),
+    0.70,
+    2.20,
+  );
+  const targetWordsPerLine = clamp(Math.round(2 + (headlineDensity * 2)), 2, 8);
   const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 0.93;
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
-  const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale);
-  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox);
+  const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
+  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine);
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
   const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
   const previewImageStyle = useMemo(() => {

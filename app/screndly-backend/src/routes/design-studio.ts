@@ -246,6 +246,7 @@ const manualRenderRequestSchema = z.object({
     headerAlignment: z.enum(['left', 'center', 'right']).optional(),
     fontScale: z.number().optional(),
     headlineWidthScale: z.number().optional(),
+    headlineDensity: z.number().optional(),
     lineHeightMultiplier: z.number().optional(),
     maxLines: z.number().optional(),
     overlayType: z.enum(['linear', 'radial', 'full_fade', 'top_fade', 'bottom_fade']).optional(),

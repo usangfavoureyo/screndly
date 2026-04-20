@@ -303,6 +303,7 @@ interface DesignStudioRenderPayload {
   headerAlignment?: 'left' | 'center' | 'right';
   fontScale?: number;
   headlineWidthScale?: number;
+  headlineDensity?: number;
   lineHeightMultiplier?: number;
   maxLines?: number;
   overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
@@ -1661,6 +1662,7 @@ function fitTextBlock(input: {
   minFontSize: number;
   maxFontSize: number;
   maxLines: number;
+  targetWordsPerLine: number;
   lineHeightMultiplier: number;
   tracking: number;
 }): TextFitResult {
@@ -1695,7 +1697,7 @@ function fitTextBlock(input: {
 
           const lineWords = words.slice(start, end);
           const width = lineWidth(lineWords, fontSize);
-          if (width > input.boxWidth && lineWords.length > 1) {
+          if ((width > input.boxWidth && lineWords.length > 1) || lineWords.length > input.targetWordsPerLine) {
             continue;
           }
 
@@ -1705,7 +1707,7 @@ function fitTextBlock(input: {
             ? (lineIndex > 0 && !isLastLine ? 1_000_000 : 120_000)
             : 0;
           const unusedRatio = clamp((input.boxWidth - Math.min(width, input.boxWidth)) / input.boxWidth, 0, 1);
-          const wordTarget = words.length / Math.min(input.maxLines, Math.max(1, Math.ceil(words.length / 2)));
+          const wordTarget = input.targetWordsPerLine;
           const wordBalancePenalty = Math.abs(lineWords.length - wordTarget) * 18;
           const underfilledPenalty = unusedRatio * unusedRatio * 100;
           const score = previous.score + singletonPenalty + wordBalancePenalty + underfilledPenalty;
@@ -1787,14 +1789,26 @@ export async function buildTextLayer(input: {
   const alignment = input.payload.headerAlignment || input.variant.alignment;
   const fontScale = input.payload.fontScale ?? 1;
   const headlineWidthScale = input.payload.headlineWidthScale ?? 1;
+  const requestedHeadlineDensity = input.payload.headlineDensity ?? 1;
+  const headlineWords = input.payload.headerText.trim().split(/\s+/).filter(Boolean);
+  const averageWordLength = headlineWords.length > 0
+    ? headlineWords.reduce((sum, word) => sum + word.length, 0) / headlineWords.length
+    : 0;
+  const headlineDensity = clamp(
+    requestedHeadlineDensity + (averageWordLength > 0 && averageWordLength < 5 ? 0.1 : 0),
+    0.70,
+    2.20,
+  );
+  const targetWordsPerLine = clamp(Math.round(2 + (headlineDensity * 2)), 2, 8);
   const maxLines = input.payload.maxLines || input.variant.maxLines;
   const fontColor = input.payload.useTemplateDefaultStyling
     ? (input.template.fontColor || '#ffffff')
     : (input.payload.headerTextColor || input.template.fontColor || '#ffffff');
+  const safeMargin = input.variant.safeMargin || 48;
   const scaledBoxWidth = clamp(
-    Math.round(input.variant.textBox.width * headlineWidthScale),
-    Math.round(input.variant.textBox.width * 0.72),
-    Math.round(input.width - ((input.variant.safeMargin || 48) * 2)),
+    Math.round(input.variant.textBox.width * headlineWidthScale * headlineDensity),
+    Math.round(input.variant.textBox.width * 0.70),
+    Math.round(input.width - (safeMargin * 2)),
   );
   const scaledTextBoxX = alignment === 'center'
     ? Math.round(input.variant.textBox.x + (input.variant.textBox.width - scaledBoxWidth) / 2)
@@ -1808,6 +1822,7 @@ export async function buildTextLayer(input: {
     minFontSize: Math.round(input.variant.minFontSize * fontScale),
     maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
     maxLines,
+    targetWordsPerLine,
     lineHeightMultiplier: input.payload.lineHeightMultiplier
       || input.variant.lineHeightMultiplier
       || input.template.lineHeightMultiplier
@@ -3117,6 +3132,7 @@ export async function generateDesignStudioAutoEditorials(): Promise<DesignStudio
         backgroundImage: renderBackground.source,
         fontScale: 1,
         headlineWidthScale: 1,
+        headlineDensity: 1,
         lineHeightMultiplier: template.lineHeightMultiplier ?? 0.93,
         maxLines: REFERENCE_VARIANTS[autoPlan.variant]?.maxLines || 4,
         headerTextColor: autoPlan.headerTextColor,

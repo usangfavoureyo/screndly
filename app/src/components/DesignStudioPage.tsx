@@ -478,6 +478,8 @@ const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 const DESIGN_STUDIO_MANUAL_WORKSPACE_TAB_KEY = 'designStudioManualWorkspaceTab';
 const DESIGN_STUDIO_TOP_TAB_KEY = 'designStudioTopTab';
 const DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY = 'designStudioTemplateListCollapsed';
+const DESIGN_STUDIO_SAVED_NEWS_LIST_COLLAPSED_KEY = 'designStudioSavedNewsListCollapsed';
+const DESIGN_STUDIO_AUTO_CONTROLS_COLLAPSED_KEY = 'designStudioAutoControlsCollapsed';
 const DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY = 'designStudioNewsQueueDismissed';
 const DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY = 'designStudioNewsQueueSaved';
 const DESIGN_STUDIO_NEWS_QUEUE_USED_KEY = 'designStudioNewsQueueUsed';
@@ -493,6 +495,7 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
     headerTextColor: template.fontColor || '#FFFFFF',
     fontScale: 1,
     headlineWidthScale: 1,
+    headlineDensity: 1,
     lineHeightMultiplier: template.lineHeightMultiplier || 0.93,
     backgroundImage: '',
     imageFocalPoint: { x: 50, y: 50 },
@@ -773,6 +776,12 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [isTemplateListCollapsed, setIsTemplateListCollapsed] = useState(
     () => safeStorageGetItem(DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY) === 'true',
   );
+  const [isSavedNewsListCollapsed, setIsSavedNewsListCollapsed] = useState(
+    () => safeStorageGetItem(DESIGN_STUDIO_SAVED_NEWS_LIST_COLLAPSED_KEY) === 'true',
+  );
+  const [isAutoControlsCollapsed, setIsAutoControlsCollapsed] = useState(
+    () => safeStorageGetItem(DESIGN_STUDIO_AUTO_CONTROLS_COLLAPSED_KEY) === 'true',
+  );
   const [isLoadingState, setIsLoadingState] = useState(!(cachedPageState && cachedPageState.templates.length > 0));
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
   const [isFinalizingTemplateUpload, setIsFinalizingTemplateUpload] = useState(false);
@@ -810,6 +819,8 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [dismissedQueueIds, setDismissedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY));
   const [savedQueueIds, setSavedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_SAVED_KEY));
   const [usedQueueIds, setUsedQueueIds] = useState<Set<string>>(() => readStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_USED_KEY));
+  const seenNewsQueueItemIdsRef = useRef<Set<string>>(new Set());
+  const initializedNewsQueueSeenSetRef = useRef(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backgroundFileInputRef = useRef<HTMLInputElement>(null);
@@ -838,6 +849,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   useEffect(() => {
     safeStorageSetItem(DESIGN_STUDIO_TEMPLATE_LIST_COLLAPSED_KEY, isTemplateListCollapsed ? 'true' : 'false');
   }, [isTemplateListCollapsed]);
+
+  useEffect(() => {
+    safeStorageSetItem(DESIGN_STUDIO_SAVED_NEWS_LIST_COLLAPSED_KEY, isSavedNewsListCollapsed ? 'true' : 'false');
+  }, [isSavedNewsListCollapsed]);
+
+  useEffect(() => {
+    safeStorageSetItem(DESIGN_STUDIO_AUTO_CONTROLS_COLLAPSED_KEY, isAutoControlsCollapsed ? 'true' : 'false');
+  }, [isAutoControlsCollapsed]);
 
   useEffect(() => {
     saveStoredIdSet(DESIGN_STUDIO_NEWS_QUEUE_DISMISSED_KEY, dismissedQueueIds);
@@ -1303,6 +1322,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           subtextColor: data.subtextColor,
           fontScale: data.fontScale,
           headlineWidthScale: data.headlineWidthScale,
+          headlineDensity: data.headlineDensity,
           lineHeightMultiplier: data.lineHeightMultiplier,
           backgroundImage: data.backgroundImage,
           imageFocalPoint: data.imageFocalPoint,
@@ -1766,7 +1786,31 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         dedupedByStory.set(key, item);
       }
 
-      setNewsQueueItems(Array.from(dedupedByStory.values()).slice(0, 120));
+      const nextItems = Array.from(dedupedByStory.values()).slice(0, 120);
+      const nextIds = new Set(nextItems.map((item) => item.id));
+
+      if (!initializedNewsQueueSeenSetRef.current) {
+        seenNewsQueueItemIdsRef.current = nextIds;
+        initializedNewsQueueSeenSetRef.current = true;
+      } else {
+        const newlyQueuedItems = nextItems.filter((item) => !seenNewsQueueItemIdsRef.current.has(item.id));
+        if (newlyQueuedItems.length > 0) {
+          const latestItem = newlyQueuedItems[0];
+          const feedName = (latestItem.feedName || 'RSS Feed').trim() || 'RSS Feed';
+          addNotification({
+            type: 'info',
+            title: 'New Fetched News Available',
+            message: newlyQueuedItems.length === 1
+              ? `${feedName}: ${latestItem.title}`
+              : `${newlyQueuedItems.length} new stories were queued for Manual News Queue.`,
+            source: 'design_studio',
+            actionPage: 'design-studio',
+          });
+        }
+        seenNewsQueueItemIdsRef.current = nextIds;
+      }
+
+      setNewsQueueItems(nextItems);
     } catch (error) {
       console.error('Failed to load Design Studio news queue:', error);
       setNewsQueueError(error instanceof Error ? error.message : 'Failed to load fetched stories');
@@ -1775,7 +1819,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         setIsLoadingNewsQueue(false);
       }
     }
-  }, [getActivity]);
+  }, [addNotification, getActivity]);
 
   useEffect(() => {
     if (studioTopTab !== 'manual') {
@@ -2328,7 +2372,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
                 <section className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-gray-900 dark:text-white font-medium">Fetched News ({inboxNewsQueueItems.length})</h3>
+                    <h3 className="text-base font-medium text-gray-900 dark:text-white">Fetched News ({inboxNewsQueueItems.length})</h3>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
@@ -2436,9 +2480,29 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
                 {savedNewsQueueItems.length > 0 ? (
                   <section className="space-y-3">
-                    <div className="flex items-center">
-                      <h3 className="text-gray-900 dark:text-white font-medium">Saved For Later ({savedNewsQueueItems.length})</h3>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-base font-medium text-gray-900 dark:text-white">Saved For Later ({savedNewsQueueItems.length})</h3>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          haptics.light();
+                          setIsSavedNewsListCollapsed((current) => !current);
+                        }}
+                        className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                        aria-label={isSavedNewsListCollapsed ? 'Show saved stories' : 'Hide saved stories'}
+                      >
+                        <img
+                          src={isSavedNewsListCollapsed
+                            ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                            : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+                          alt=""
+                          className="h-4 w-4 dark:invert"
+                        />
+                      </Button>
                     </div>
+                    {!isSavedNewsListCollapsed ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                       {savedNewsQueueItems.map((item) => (
                         <SwipeableActivityCard
@@ -2498,6 +2562,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                         </SwipeableActivityCard>
                       ))}
                     </div>
+                    ) : null}
                   </section>
                 ) : null}
               </div>
@@ -2521,59 +2586,85 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           </div>
 
           <div className="rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 lg:p-6 space-y-4">
-            <div className="flex flex-col gap-3">
-              <div>
-                <p className="text-gray-900 dark:text-white">Auto Editorial Controls</p>
-                <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mt-1 max-w-2xl">
-                  Auto watches your selected RSS feeds, filters matching titles, and rotates through your validated PSD templates automatically.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-dashed border-gray-200 dark:border-[#333333] px-4 py-3">
-                <p className="text-xs uppercase tracking-[0.18em] text-[#6B7280] dark:text-[#9CA3AF]">
-                  Current behavior
-                </p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {settings.designStudioAutoEnabled
-                    ? isGeneratingAutoEditorials
-                      ? 'Auto is scanning selected feeds and preparing editorials now.'
-                      : 'Auto is enabled and will generate editorials in the background when matching feed updates arrive.'
-                    : 'Auto is off. Turn it on in Design Studio settings to let the system run automatically.'}
-                </p>
-              </div>
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-gray-900 dark:text-white">Auto Editorial Controls</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  haptics.light();
+                  setIsAutoControlsCollapsed((current) => !current);
+                }}
+                className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                aria-label={isAutoControlsCollapsed ? 'Show auto editorial controls' : 'Hide auto editorial controls'}
+              >
+                <img
+                  src={isAutoControlsCollapsed
+                    ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                    : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+                  alt=""
+                  className="h-4 w-4 dark:invert"
+                />
+              </Button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Editorials</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {settings.designStudioAutoEnabled ? 'Enabled' : 'Disabled'}
-                </p>
+            {!isAutoControlsCollapsed ? (
+              <div className="space-y-4">
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF] mt-1 max-w-2xl">
+                      Auto watches your selected RSS feeds, filters matching titles, and rotates through your validated PSD templates automatically.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-gray-200 dark:border-[#333333] px-4 py-3">
+                    <p className="text-xs uppercase tracking-[0.18em] text-[#6B7280] dark:text-[#9CA3AF]">
+                      Current behavior
+                    </p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                      {settings.designStudioAutoEnabled
+                        ? isGeneratingAutoEditorials
+                          ? 'Auto is scanning selected feeds and preparing editorials now.'
+                          : 'Auto is enabled and will generate editorials in the background when matching feed updates arrive.'
+                        : 'Auto is off. Turn it on in Design Studio settings to let the system run automatically.'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Editorials</p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                      {settings.designStudioAutoEnabled ? 'Enabled' : 'Disabled'}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Posting Interval</p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioPostingInterval || '5'} min</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Templates</p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                      {autoTemplatePool.length === 0
+                        ? 'None loaded'
+                        : autoTemplatePool.length === 1
+                          ? '1 template'
+                          : `${autoTemplatePool.length} templates`}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Post</p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioAutoPost ? 'On' : 'Off'}</p>
+                  </div>
+                  <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4 col-span-2 lg:col-span-1">
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected Feeds</p>
+                    <p className="mt-2 text-sm text-gray-900 dark:text-white">
+                      {settings.designStudioSelectedRssFeedIds?.length || 0} of {feeds.length}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Posting Interval</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioPostingInterval || '5'} min</p>
-              </div>
-              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Templates</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {autoTemplatePool.length === 0
-                    ? 'None loaded'
-                    : autoTemplatePool.length === 1
-                      ? '1 template'
-                      : `${autoTemplatePool.length} templates`}
-                </p>
-              </div>
-              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Auto Post</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">{settings.designStudioAutoPost ? 'On' : 'Off'}</p>
-              </div>
-              <div className="rounded-2xl border border-gray-200 dark:border-[#333333] p-4 col-span-2 lg:col-span-1">
-                <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Selected Feeds</p>
-                <p className="mt-2 text-sm text-gray-900 dark:text-white">
-                  {settings.designStudioSelectedRssFeedIds?.length || 0} of {feeds.length}
-                </p>
-              </div>
-            </div>
+            ) : null}
           </div>
 
           {autoEditorials.length === 0 ? (

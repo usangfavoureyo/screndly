@@ -989,6 +989,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     headerTextColor: renderedDesign.data?.headerTextColor || '#FFFFFF',
     subtextColor: renderedDesign.data?.subtextColor || '#000000',
     fontScale: typeof renderedDesign.data?.fontScale === 'number' ? renderedDesign.data.fontScale : 1,
+    headlineWidthScale:
+      typeof renderedDesign.data?.headlineWidthScale === 'number'
+        ? renderedDesign.data.headlineWidthScale
+        : 1,
+    headlineDensity:
+      typeof renderedDesign.data?.headlineDensity === 'number'
+        ? renderedDesign.data.headlineDensity
+        : 1,
     lineHeightMultiplier:
       typeof renderedDesign.data?.lineHeightMultiplier === 'number'
         ? renderedDesign.data.lineHeightMultiplier
@@ -1015,6 +1023,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     headerTextColor: editorial.headerTextColor || '#FFFFFF',
     subtextColor: '#000000',
     fontScale: 1,
+    headlineWidthScale: 1,
+    headlineDensity: 1,
     lineHeightMultiplier: 0.93,
     backgroundImage: editorial.backgroundSource || editorial.renderedImage || '',
     imageFocalPoint: {
@@ -1184,6 +1194,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     subtextColor: data.subtextColor,
     fontScale: data.fontScale,
     headlineWidthScale: data.headlineWidthScale,
+    headlineDensity: data.headlineDensity,
     lineHeightMultiplier: data.lineHeightMultiplier,
     backgroundImage: data.backgroundImage,
     imageFocalPoint: data.imageFocalPoint,
@@ -1242,6 +1253,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     headerTextColor: autoEditorial?.headerTextColor || '#FFFFFF',
     subtextColor: '#000000',
     fontScale: 1,
+    headlineWidthScale: 1,
+    headlineDensity: 1,
     lineHeightMultiplier: 0.93,
     backgroundImage: autoEditorial?.backgroundSource || getActivityImageUrl(activity),
     imageFocalPoint: {
@@ -2427,6 +2440,18 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         />
       </div>
 
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
+        <SummaryCard label="Total Items" value={summary.total} />
+        <SummaryCard
+          label={activeTab === 'manual' ? 'Rendered' : 'Auto Rendered'}
+          value={summary.primary}
+        />
+        <SummaryCard
+          label={activeTab === 'manual' ? 'Published' : 'Auto Published'}
+          value={summary.secondary}
+        />
+      </div>
+
       <div className="mt-4">
         <SegmentedTabSwitcher
           tabs={[
@@ -2439,18 +2464,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             haptics.light();
             setActiveStatusTab(tab as DesignStudioActivityStatusTab);
           }}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-        <SummaryCard label="Total Items" value={summary.total} />
-        <SummaryCard
-          label={activeTab === 'manual' ? 'Rendered' : 'Auto Rendered'}
-          value={summary.primary}
-        />
-        <SummaryCard
-          label={activeTab === 'manual' ? 'Published' : 'Auto Published'}
-          value={summary.secondary}
         />
       </div>
 

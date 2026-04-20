@@ -66,6 +66,7 @@ test('fitTextBlock balances headline lines without orphan middle words or tiny f
     minFontSize: 56,
     maxFontSize: 88,
     maxLines: 5,
+    targetWordsPerLine: 4,
     lineHeightMultiplier: 0.93,
     tracking: 0,
   });
@@ -92,6 +93,7 @@ test('fitTextBlock constrains oversized template fonts so long headlines stay in
     minFontSize: 120,
     maxFontSize: 180,
     maxLines: 4,
+    targetWordsPerLine: 4,
     lineHeightMultiplier: 1.05,
     tracking: 0,
   });

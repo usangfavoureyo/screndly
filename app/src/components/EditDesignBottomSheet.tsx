@@ -55,6 +55,7 @@ interface EditDesignBottomSheetProps {
     subtextColor?: string; // Text color for subtext
     fontScale?: number;
     headlineWidthScale?: number;
+    headlineDensity?: number;
     lineHeightMultiplier?: number;
     backgroundImage?: string;
     imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
@@ -93,6 +94,7 @@ export interface DesignData {
   subtextColor?: string; // Text color for subtext
   fontScale?: number;
   headlineWidthScale?: number;
+  headlineDensity?: number;
   lineHeightMultiplier?: number;
   backgroundImage?: string;
   imageFocalPoint?: { x: number; y: number }; // Percentage (0-100) for repositioning
@@ -132,6 +134,7 @@ export function EditDesignBottomSheet({
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
   const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
   const [headlineWidthScale, setHeadlineWidthScale] = useState(initialData?.headlineWidthScale ?? 1);
+  const [headlineDensity, setHeadlineDensity] = useState(initialData?.headlineDensity ?? 1);
   const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? 0.93);
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
@@ -250,6 +253,7 @@ export function EditDesignBottomSheet({
       subtextColor: initialData.subtextColor || '#000000',
       fontScale: initialData.fontScale ?? 1,
       headlineWidthScale: initialData.headlineWidthScale ?? 1,
+      headlineDensity: initialData.headlineDensity ?? 1,
       lineHeightMultiplier: initialData.lineHeightMultiplier ?? 0.93,
       backgroundImage: initialData.backgroundImage || '',
       imageFocalPoint: initialData.imageFocalPoint || { x: 50, y: 50 },
@@ -296,6 +300,11 @@ export function EditDesignBottomSheet({
       typeof persistedPrefs?.headlineWidthScale === 'number'
         ? persistedPrefs.headlineWidthScale
         : initialData.headlineWidthScale ?? 1,
+    );
+    setHeadlineDensity(
+      typeof persistedPrefs?.headlineDensity === 'number'
+        ? persistedPrefs.headlineDensity
+        : initialData.headlineDensity ?? 1,
     );
     setLineHeightMultiplier(
       typeof persistedPrefs?.lineHeightMultiplier === 'number'
@@ -358,6 +367,7 @@ export function EditDesignBottomSheet({
       subtextColor,
       fontScale,
       headlineWidthScale,
+      headlineDensity,
       lineHeightMultiplier,
       overlayEnabled,
       overlayColor,
@@ -375,6 +385,7 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     headlineWidthScale,
+    headlineDensity,
     lineHeightMultiplier,
     overlayEnabled,
     overlayColor,
@@ -462,6 +473,7 @@ export function EditDesignBottomSheet({
     setSubtextColor(snapshot.subtextColor || '#000000');
     setFontScale(snapshot.fontScale ?? 1);
     setHeadlineWidthScale(snapshot.headlineWidthScale ?? 1);
+    setHeadlineDensity(snapshot.headlineDensity ?? 1);
     setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? 0.93);
     setBackgroundImage(snapshot.backgroundImage || '');
     setPreviewBackgroundImage(snapshot.backgroundImage || '');
@@ -568,6 +580,7 @@ export function EditDesignBottomSheet({
         subtextColor,
         fontScale,
         headlineWidthScale,
+        headlineDensity,
         lineHeightMultiplier,
         backgroundImage: backgroundImage,
         imageFocalPoint,
@@ -591,6 +604,7 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     headlineWidthScale,
+    headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
     previewBackgroundImage,
@@ -742,6 +756,7 @@ export function EditDesignBottomSheet({
       subtextColor,
       fontScale,
       headlineWidthScale,
+      headlineDensity,
       lineHeightMultiplier,
       backgroundImage: hasBackground ? backgroundImage : undefined,
       imageFocalPoint,
@@ -767,6 +782,7 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     headlineWidthScale,
+    headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
     imageFocalPoint,
@@ -1257,6 +1273,30 @@ export function EditDesignBottomSheet({
                   onChange={(e) => {
                     haptics.light();
                     setHeadlineWidthScale(Number(e.target.value));
+                  }}
+                  className="w-full accent-[#ec1e24]"
+                />
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
+                    Headline Density
+                  </Label>
+                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
+                    {headlineDensity.toFixed(2)}x
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.70"
+                  max="2.20"
+                  step="0.05"
+                  value={headlineDensity}
+                  {...sliderInteractionProps}
+                  onChange={(e) => {
+                    haptics.light();
+                    setHeadlineDensity(Number(e.target.value));
                   }}
                   className="w-full accent-[#ec1e24]"
                 />
