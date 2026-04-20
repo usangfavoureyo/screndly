@@ -20,6 +20,11 @@ import {
     getYouTubeRuntimeSettings,
 } from '../services/video-enrichment.service';
 import { getBackblazeAuthorizedDownloadUrl } from '../services/backblaze';
+import {
+    buildAnniversaryPromptGuardrail,
+    buildDeterministicTMDbCaption,
+    sanitizeTMDbCaption,
+} from '../services/tmdb-caption-helpers';
 
 const router = Router();
 router.use(authenticate);
@@ -140,24 +145,47 @@ router.post('/generate/tmdb-caption', async (req: Request, res: Response) => {
             return res.status(400).json({ success: false, error: { message: 'TMDb caption context is incomplete' } });
         }
 
-        const caption = await aiService.generateTMDbCaption(
-            {
-                title,
-                mediaType,
-                temporalTag,
-                daysUntil,
-                releaseDate,
-                anniversaryYears,
-                cast: Array.isArray(cast) ? cast : [],
-                genres: Array.isArray(genres) ? genres : [],
-                platform
-            },
-            model,
-            customSystemPrompt,
-            customTemperature
-        );
+        const captionContext = {
+            title,
+            mediaType,
+            temporalTag,
+            daysUntil,
+            releaseDate,
+            anniversaryYears,
+            cast: Array.isArray(cast) ? cast : [],
+            genres: Array.isArray(genres) ? genres : [],
+            platform
+        };
+        const deterministicCaption = buildDeterministicTMDbCaption({
+            title,
+            mediaType,
+            temporalTag,
+            timingMode: temporalTag === 'anniversary' ? 'anniversary_today' : undefined,
+            anniversaryYears,
+            cast: Array.isArray(cast) ? cast : [],
+        });
+        const prompt = temporalTag === 'anniversary'
+            ? buildAnniversaryPromptGuardrail(customSystemPrompt)
+            : customSystemPrompt;
 
-        res.json({ success: true, data: { content: caption } });
+        const resolveCaption = async (systemPrompt?: string) => {
+            const rawCaption = await aiService.generateTMDbCaption(
+                captionContext,
+                model,
+                systemPrompt,
+                customTemperature
+            );
+            const sanitized = sanitizeTMDbCaption(rawCaption);
+            return sanitized.isValid ? sanitized.caption : null;
+        };
+
+        let caption = await resolveCaption(prompt);
+        if (!caption) {
+            const retryPrompt = `${prompt || ''}\n\nPrevious output was invalid. Return only complete sentences. Do not output orphan fragments or dangling follow-up words.`.trim();
+            caption = await resolveCaption(retryPrompt);
+        }
+
+        res.json({ success: true, data: { content: caption || deterministicCaption } });
     } catch (e) {
         res.status(500).json({ success: false, error: { message: 'Failed to generate TMDb caption' } });
     }

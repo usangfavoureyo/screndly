@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { env } from '../lib/env';
 import prisma from '../lib/prisma';
 import { getSecretSetting } from '../lib/settings';
@@ -40,6 +40,12 @@ import {
 } from './tmdb-image-selection.service';
 import { notificationService } from './notification.service';
 import { prepareTMDbLogoAsset } from './rss-logo-render.service';
+import {
+    buildAnniversaryPromptGuardrail,
+    buildDeterministicTMDbCaption,
+    hasBrokenTMDbCaptionFragment,
+    sanitizeTMDbCaption,
+} from './tmdb-caption-helpers';
 
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/original';
@@ -929,8 +935,45 @@ function buildPromptForModule(moduleType: TMDbModuleType, config: RefreshSetting
         case 'monthly':
             return config.monthlyPrompt;
         case 'anniversary':
-            return config.anniversaryPrompt;
+            return buildAnniversaryPromptGuardrail(config.anniversaryPrompt);
     }
+}
+
+async function logTMDbCaptionDebug(input: {
+    postId?: string;
+    tmdbId: number;
+    moduleType: TMDbModuleType;
+    prompt?: string;
+    contextHash: string;
+    rawCaption: string;
+    sanitizedCaption: string;
+    path: 'ai_prompted' | 'ai_retry' | 'deterministic_template';
+    issue?: string;
+}): Promise<void> {
+    const promptHash = input.prompt
+        ? createHash('sha1').update(input.prompt).digest('hex')
+        : null;
+
+    await prisma.log.create({
+        data: {
+            level: 'info',
+            service: 'tmdb-caption',
+            message: `TMDb caption generated for ${input.moduleType}:${input.tmdbId}`,
+            metadata: {
+                postId: input.postId || null,
+                tmdbId: input.tmdbId,
+                moduleType: input.moduleType,
+                path: input.path,
+                issue: input.issue || null,
+                promptHash,
+                contextHash: input.contextHash,
+                rawCaption: input.rawCaption,
+                sanitizedCaption: input.sanitizedCaption,
+            },
+        },
+    }).catch((error) => {
+        console.warn('[TMDb] Failed to write caption debug log:', error);
+    });
 }
 
 async function generateCaptionForCandidate(
@@ -938,35 +981,86 @@ async function generateCaptionForCandidate(
     context: CaptionContext,
     config: RefreshSettings,
 ): Promise<string> {
-    try {
-        return await generateTMDbCaption(
-            buildAICaptionContext(candidate, context, config),
-            (config.tmdbCaptionModel || 'gpt-5-mini') as any,
-            buildPromptForModule(candidate.moduleType, config),
-        );
-    } catch {
-        if (context.timingMode === 'release_today') {
-            return `${candidate.title} releases today.`;
-        }
+    const aiContext = buildAICaptionContext(candidate, context, config);
+    const prompt = buildPromptForModule(candidate.moduleType, config);
+    const contextHash = hashCaptionContext(context);
+    const deterministicCaption = buildDeterministicTMDbCaption({
+        title: candidate.title,
+        mediaType: candidate.mediaType,
+        temporalTag: aiContext.temporalTag,
+        timingMode: aiContext.timingMode,
+        formattedReleaseDate: aiContext.formattedReleaseDate,
+        anniversaryYears: aiContext.anniversaryYears,
+        cast: aiContext.cast,
+    });
 
-        if (context.timingMode === 'exact_d_plus_7') {
-            return `${candidate.title} releases in one week.`;
-        }
-
-        if (context.timingMode === 'exact_calendar_month_plus_1') {
-            return `${candidate.title} arrives ${context.formattedReleaseDate}.`;
-        }
-
-        if (context.timingMode === 'anniversary_today' && candidate.anniversaryMilestone) {
-            return `${candidate.title} celebrates its ${candidate.anniversaryMilestone}th anniversary today.`;
-        }
-
-        if (context.exactDayDelta > 0) {
-            return `${candidate.title} arrives in ${context.exactDayDelta} days.`;
-        }
-
-        return `${candidate.title} arrives ${context.formattedReleaseDate}.`;
+    if (context.timingMode === 'anniversary_today' && candidate.anniversaryMilestone) {
+        await logTMDbCaptionDebug({
+            tmdbId: candidate.tmdbId,
+            moduleType: candidate.moduleType,
+            prompt,
+            contextHash,
+            rawCaption: deterministicCaption,
+            sanitizedCaption: deterministicCaption,
+            path: 'deterministic_template',
+        });
+        return deterministicCaption;
     }
+
+    const sanitizeOrFallback = async (
+        rawCaption: string,
+        path: 'ai_prompted' | 'ai_retry',
+    ): Promise<string | null> => {
+        const sanitized = sanitizeTMDbCaption(rawCaption);
+        await logTMDbCaptionDebug({
+            tmdbId: candidate.tmdbId,
+            moduleType: candidate.moduleType,
+            prompt,
+            contextHash,
+            rawCaption,
+            sanitizedCaption: sanitized.caption,
+            path,
+            issue: sanitized.issue,
+        });
+
+        return sanitized.isValid ? sanitized.caption : null;
+    };
+
+    try {
+        const initialCaption = await generateTMDbCaption(
+            aiContext,
+            (config.tmdbCaptionModel || 'gpt-5-mini') as any,
+            prompt,
+        );
+        const sanitizedInitial = await sanitizeOrFallback(initialCaption, 'ai_prompted');
+        if (sanitizedInitial) {
+            return sanitizedInitial;
+        }
+
+        const retryPrompt = `${prompt || ''}\n\nPrevious output was invalid. Return only complete sentences. Do not output orphan fragments or dangling follow-up words.`;
+        const retryCaption = await generateTMDbCaption(
+            aiContext,
+            (config.tmdbCaptionModel || 'gpt-5-mini') as any,
+            retryPrompt.trim(),
+        );
+        const sanitizedRetry = await sanitizeOrFallback(retryCaption, 'ai_retry');
+        if (sanitizedRetry) {
+            return sanitizedRetry;
+        }
+    } catch {
+        // Fall through to deterministic fallback.
+    }
+
+    await logTMDbCaptionDebug({
+        tmdbId: candidate.tmdbId,
+        moduleType: candidate.moduleType,
+        prompt,
+        contextHash,
+        rawCaption: deterministicCaption,
+        sanitizedCaption: deterministicCaption,
+        path: 'deterministic_template',
+    });
+    return deterministicCaption;
 }
 
 async function upsertFeedHistory(
@@ -1206,6 +1300,8 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
     const now = new Date();
     const runId = randomUUID();
 
+    await repairQueuedAnniversaryCaptions();
+
     await prisma.log.create({
         data: {
             level: 'info',
@@ -1351,6 +1447,39 @@ export async function refreshTMDbContent(settings?: RefreshSettings): Promise<{ 
     }
 
     return { added, errors, addedTitles, missingImageTitles, runId };
+}
+
+async function repairQueuedAnniversaryCaptions(): Promise<number> {
+    const posts = await prisma.tMDbPost.findMany({
+        where: {
+            moduleType: 'anniversary',
+            status: { in: ['queued', 'scheduled'] },
+        },
+        orderBy: { scheduledTime: 'asc' },
+    });
+
+    let repaired = 0;
+    for (const post of posts) {
+        if (!hasBrokenTMDbCaptionFragment(post.caption)) {
+            continue;
+        }
+
+        const captionResult = await regenerateCaptionForTMDbPost(post.id, post.scheduledTime);
+        await prisma.tMDbPost.update({
+            where: { id: post.id },
+            data: {
+                caption: captionResult.caption,
+                captionContextHash: captionResult.captionContextHash,
+            },
+        });
+        repaired += 1;
+    }
+
+    if (repaired > 0) {
+        console.log(`[TMDb] Repaired ${repaired} queued/scheduled anniversary caption(s).`);
+    }
+
+    return repaired;
 }
 
 export async function regenerateCaptionForTMDbPost(postId: string, scheduledTime?: Date): Promise<{ caption: string; captionContextHash: string }> {

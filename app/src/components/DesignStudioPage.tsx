@@ -517,6 +517,7 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
     circleImageOffsetY: 0,
     circleStrokeWidth: 6,
     circleStrokeColor: '#FFFFFF',
+    circleImageFit: 'contain',
     fadeEnabled: true,
     fadeOpacity: 90,
     brandBlockMode: 'auto',
@@ -1344,6 +1345,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
           circleImageOffsetY: data.circleImageOffsetY,
           circleStrokeWidth: data.circleStrokeWidth,
           circleStrokeColor: data.circleStrokeColor,
+          circleImageFit: data.circleImageFit,
           backgroundImage: data.backgroundImage,
           imageFocalPoint: data.imageFocalPoint,
           imageZoom: data.imageZoom,
@@ -2502,25 +2504,39 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                   <section className="space-y-3">
                     <div className="flex items-center justify-between">
                       <h3 className="text-base font-medium text-gray-900 dark:text-white">Saved For Later ({savedNewsQueueItems.length})</h3>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          haptics.light();
-                          setIsSavedNewsListCollapsed((current) => !current);
-                        }}
-                        className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
-                        aria-label={isSavedNewsListCollapsed ? 'Show saved stories' : 'Hide saved stories'}
-                      >
-                        <img
-                          src={isSavedNewsListCollapsed
-                            ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
-                            : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
-                          alt=""
-                          className="h-4 w-4 dark:invert"
-                        />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => {
+                            haptics.light();
+                            setIsSourceFilterSheetOpen(true);
+                          }}
+                          className={`h-9 w-9 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333] ${selectedNewsSources.length > 0 ? '!border-[#ec1e24] !text-[#ec1e24]' : ''}`}
+                          aria-label={`Sort and filter saved news. Current sort: ${NEWS_QUEUE_SORT_LABELS[newsQueueSort]}`}
+                        >
+                          <ArrowDownWideNarrow size={16} className="shrink-0" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            haptics.light();
+                            setIsSavedNewsListCollapsed((current) => !current);
+                          }}
+                          className="h-8 w-8 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+                          aria-label={isSavedNewsListCollapsed ? 'Show saved stories' : 'Hide saved stories'}
+                        >
+                          <img
+                            src={isSavedNewsListCollapsed
+                              ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                              : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+                            alt=""
+                            className="h-4 w-4 dark:invert"
+                          />
+                        </Button>
+                      </div>
                     </div>
                     {!isSavedNewsListCollapsed ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

@@ -329,6 +329,34 @@ function removeAnniversaryDateDuplication(value: string): string {
     .trim();
 }
 
+const ORPHAN_FRAGMENT_PATTERN = /^(originally|streaming|premiering|exclusively|also|meanwhile)\.?$/i;
+
+function removeDanglingCaptionFragments(value: string): string {
+  const paragraphs = value
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+
+  if (paragraphs.length === 0) {
+    return value.trim();
+  }
+
+  const filteredParagraphs = paragraphs.filter((paragraph, index) => {
+    if (!ORPHAN_FRAGMENT_PATTERN.test(paragraph)) {
+      return true;
+    }
+
+    return paragraphs.length === 1 && index === 0;
+  });
+
+  const candidate = filteredParagraphs.join('\n\n').trim();
+  if (candidate && !ORPHAN_FRAGMENT_PATTERN.test(candidate)) {
+    return candidate;
+  }
+
+  return '';
+}
+
 function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGenerationOptions): string {
   let sanitized = stripCaptionLinks(caption)
     .replace(/\r\n?/g, '\n')
@@ -357,6 +385,11 @@ function sanitizeTMDbCaption(caption: string, item: TMDbItem, options: CaptionGe
 
   if (options.feedType === 'anniversary') {
     sanitized = removeAnniversaryDateDuplication(sanitized);
+  }
+
+  sanitized = removeDanglingCaptionFragments(sanitized);
+  if (!sanitized) {
+    sanitized = buildPromptAlignedFallbackCaption(item, options);
   }
 
   sanitized = sanitized

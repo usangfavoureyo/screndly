@@ -456,6 +456,7 @@ export class PublisherService {
     private formatThreadsPublishFailureMessage(input: {
         error?: string;
         errorCode?: string;
+        errorSubcode?: string;
         errorUserTitle?: string;
         errorUserMessage?: string;
         errorDetails?: Record<string, unknown>;
@@ -504,7 +505,62 @@ export class PublisherService {
             return parts.join(' ').trim();
         }
 
-        return input.error || 'Threads publish failed.';
+        const genericMessage = String(input.error || '').trim();
+        const isGeneric = !genericMessage || /^meta api request failed$/i.test(genericMessage);
+        if (isGeneric) {
+            const parts: string[] = ['Meta API request failed'];
+            if (input.errorCode || input.errorSubcode) {
+                const codeParts = [
+                    input.errorCode ? `code ${input.errorCode}` : null,
+                    input.errorSubcode ? `subcode ${input.errorSubcode}` : null,
+                ].filter(Boolean);
+                if (codeParts.length > 0) {
+                    parts[0] += ` (${codeParts.join(', ')})`;
+                }
+            }
+            if (input.errorUserTitle) {
+                parts.push(input.errorUserTitle);
+            }
+            if (input.errorUserMessage) {
+                parts.push(input.errorUserMessage);
+            }
+            return parts.join('. ').trim();
+        }
+
+        return genericMessage || 'Threads publish failed.';
+    }
+
+    private formatInstagramPublishFailureMessage(input: {
+        error?: string;
+        errorCode?: string;
+        errorSubcode?: string;
+        errorUserTitle?: string;
+        errorUserMessage?: string;
+    }): string {
+        const genericMessage = String(input.error || '').trim();
+        const isGeneric = !genericMessage || /^meta api request failed$/i.test(genericMessage);
+        if (!isGeneric) {
+            return genericMessage;
+        }
+
+        const parts: string[] = ['Meta API request failed'];
+        if (input.errorCode || input.errorSubcode) {
+            const codeParts = [
+                input.errorCode ? `code ${input.errorCode}` : null,
+                input.errorSubcode ? `subcode ${input.errorSubcode}` : null,
+            ].filter(Boolean);
+            if (codeParts.length > 0) {
+                parts[0] += ` (${codeParts.join(', ')})`;
+            }
+        }
+        if (input.errorUserTitle) {
+            parts.push(input.errorUserTitle);
+        }
+        if (input.errorUserMessage) {
+            parts.push(input.errorUserMessage);
+        }
+
+        return parts.join('. ').trim();
     }
 
     private async logThreadsFailure(input: {
@@ -1431,12 +1487,21 @@ export class PublisherService {
                                                 instagramAccessToken
                                             )
                                             : { success: false as const, error: 'Instagram requires an image or video' };
-                                    result = {
-                                        platform,
-                                        ...igResult,
-                                        status: igResult.success ? 'posted' : 'failed',
-                                        postedAt: new Date().toISOString()
-                                    };
+                                result = {
+                                    platform,
+                                    ...igResult,
+                                    error: igResult.success
+                                        ? undefined
+                                        : this.formatInstagramPublishFailureMessage({
+                                            error: (igResult as any).error,
+                                            errorCode: (igResult as any).errorCode,
+                                            errorSubcode: (igResult as any).errorSubcode,
+                                            errorUserTitle: (igResult as any).errorUserTitle,
+                                            errorUserMessage: (igResult as any).errorUserMessage,
+                                        }),
+                                    status: igResult.success ? 'posted' : 'failed',
+                                    postedAt: new Date().toISOString()
+                                };
                                 }
                             } else {
                                 result = {
@@ -1486,6 +1551,7 @@ export class PublisherService {
                                         : this.formatThreadsPublishFailureMessage({
                                             error: threadsResult.error,
                                             errorCode: threadsErrorCode,
+                                            errorSubcode: (threadsResult as any).errorSubcode,
                                             errorUserTitle: (threadsResult as any).errorUserTitle,
                                             errorUserMessage: (threadsResult as any).errorUserMessage,
                                             errorDetails: threadsErrorDetails,

@@ -239,11 +239,12 @@ export function buildComposeMediaDownloadOptions(
 export function buildComposeMediaNetworkOptions(
   target: 'download' | 'metadata',
   mode: 'authenticated' | 'public' = 'authenticated',
+  sourceTarget: 'download' | 'metadata' = target,
 ): YtDlpOptions {
-  const networkContext = getYtDlpNetworkContext(target);
+  const networkContext = getYtDlpNetworkContext(sourceTarget);
   return mode === 'authenticated'
-    ? getYtDlpAuthenticatedOptions(target, networkContext)
-    : getYtDlpPublicOptions(target, networkContext);
+    ? getYtDlpAuthenticatedOptions(sourceTarget, networkContext)
+    : getYtDlpPublicOptions(sourceTarget, networkContext);
 }
 
 function getYtDlpPublicOptions(target: 'download' | 'metadata', networkContext: YouTubeNetworkContext): YtDlpOptions {
@@ -300,7 +301,9 @@ async function fetchComposeMediaUrlMetadata(url: string): Promise<Record<string,
 
   const networkContext = getYtDlpNetworkContext('metadata');
   const publicOptions = getYtDlpPublicOptions('metadata', networkContext);
-  const authenticatedOptions = getYtDlpAuthenticatedOptions('metadata', networkContext);
+  const authenticatedOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated', 'download');
+  const cookieBackedPublicOptions = buildComposeMediaNetworkOptions('metadata', 'public', 'download');
+  const cookieBackedNetworkContext = getYtDlpNetworkContext('download');
 
   try {
     return await ytDlp(url, {
@@ -328,12 +331,12 @@ async function fetchComposeMediaUrlMetadata(url: string): Promise<Record<string,
   }
 
   return ytDlp(url, {
-    ...authenticatedOptions,
+    ...cookieBackedPublicOptions,
     dumpSingleJson: true,
     skipDownload: true,
     noWarnings: true,
     quiet: true,
-    extractorArgs: await youtubePoTokenService.getExtractorArgs(undefined, networkContext),
+    extractorArgs: await youtubePoTokenService.getExtractorArgs(undefined, cookieBackedNetworkContext),
   } as any);
 }
 

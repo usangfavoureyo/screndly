@@ -258,6 +258,7 @@ const manualRenderRequestSchema = z.object({
     circleImageOffsetY: z.number().optional(),
     circleStrokeWidth: z.number().optional(),
     circleStrokeColor: z.string().optional(),
+    circleImageFit: z.enum(['contain', 'cover']).optional(),
     maxLines: z.number().optional(),
     overlayType: z.enum(['linear', 'radial', 'full_fade', 'top_fade', 'bottom_fade']).optional(),
     useTemplateDefaultStyling: z.boolean().optional(),

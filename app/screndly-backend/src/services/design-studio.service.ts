@@ -315,6 +315,7 @@ interface DesignStudioRenderPayload {
   circleImageOffsetY?: number;
   circleStrokeWidth?: number;
   circleStrokeColor?: string;
+  circleImageFit?: 'contain' | 'cover';
   maxLines?: number;
   overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
   useTemplateDefaultStyling?: boolean;
@@ -929,8 +930,8 @@ function buildTextBoxFromLayer(input: {
   const sideVariant = input.variant.endsWith('left') || input.variant.endsWith('right');
   const horizontalPadding = Math.round(input.safeMargin * 0.4);
   const verticalPadding = Math.round(input.safeMargin * 0.35);
-  const minWidth = Math.round(input.width * (sideVariant ? 0.42 : 0.68));
-  const maxWidth = Math.round(input.width * (sideVariant ? 0.58 : 0.82));
+  const minWidth = Math.round(input.width * (sideVariant ? 0.62 : 0.76));
+  const maxWidth = Math.round(input.width * 0.92);
   const minHeight = Math.round(input.height * 0.18);
   const maxHeight = Math.round(input.height * 0.34);
 
@@ -989,7 +990,7 @@ function deriveVariants(
 ): DesignStudioVariantRecord[] {
   const safeMargin = Math.round(Math.min(width, height) * 0.1111);
   const centeredWidth = width - safeMargin * 2;
-  const sideWidth = Math.round(width * 0.52);
+  const sideWidth = centeredWidth;
   const topTextY = safeMargin;
   const bottomTextHeight = 300;
   const topTextHeight = 280;
@@ -1094,7 +1095,8 @@ function deriveVariants(
     fallback: baseRecord.brandBox,
   });
   const actualTextBox = detectedTextBox || baseRecord.textBox;
-  const textWidth = actualTextBox.width;
+  const maxUsableWidth = width - safeMargin * 2;
+  const textWidth = clamp(actualTextBox.width, Math.round(maxUsableWidth * 0.82), maxUsableWidth);
   const textHeight = actualTextBox.height;
   const brandWidth = detectedBrandBox.width;
   const brandHeight = detectedBrandBox.height;
@@ -2203,11 +2205,7 @@ async function buildCircleInsetLayer(input: {
   const zoom = clamp(input.payload.circleImageZoom ?? 1, 0.6, 3);
   const offsetX = clamp(input.payload.circleImageOffsetX ?? 0, -100, 100) / 100;
   const offsetY = clamp(input.payload.circleImageOffsetY ?? 0, -100, 100) / 100;
-  const zoomedSize = Math.max(diameter, Math.round(diameter * zoom));
-  const resized = await sharp(source).resize(zoomedSize, zoomedSize, { fit: 'cover' }).png().toBuffer();
-  const overflow = Math.max(0, zoomedSize - diameter);
-  const extractLeft = clamp(Math.round((overflow / 2) - (offsetX * (overflow / 2))), 0, overflow);
-  const extractTop = clamp(Math.round((overflow / 2) - (offsetY * (overflow / 2))), 0, overflow);
+  const imageFit = input.payload.circleImageFit === 'cover' ? 'cover' : 'contain';
 
   const circularMask = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
@@ -2215,8 +2213,53 @@ async function buildCircleInsetLayer(input: {
     </svg>`,
   );
 
-  const croppedCircle = await sharp(resized)
-    .extract({ left: extractLeft, top: extractTop, width: diameter, height: diameter })
+  let circleImageLayer: Buffer;
+  if (imageFit === 'cover') {
+    const zoomedSize = Math.max(diameter, Math.round(diameter * zoom));
+    const resized = await sharp(source).resize(zoomedSize, zoomedSize, { fit: 'cover' }).png().toBuffer();
+    const overflow = Math.max(0, zoomedSize - diameter);
+    const extractLeft = clamp(Math.round((overflow / 2) - (offsetX * (overflow / 2))), 0, overflow);
+    const extractTop = clamp(Math.round((overflow / 2) - (offsetY * (overflow / 2))), 0, overflow);
+    circleImageLayer = await sharp(resized)
+      .extract({ left: extractLeft, top: extractTop, width: diameter, height: diameter })
+      .png()
+      .toBuffer();
+  } else {
+    const metadata = await sharp(source).metadata();
+    const sourceWidth = Math.max(1, metadata.width || diameter);
+    const sourceHeight = Math.max(1, metadata.height || diameter);
+    const containScale = Math.min(diameter / sourceWidth, diameter / sourceHeight);
+    const renderWidth = Math.max(1, Math.round(sourceWidth * containScale * zoom));
+    const renderHeight = Math.max(1, Math.round(sourceHeight * containScale * zoom));
+    const fitted = await sharp(source).resize(renderWidth, renderHeight, { fit: 'fill' }).png().toBuffer();
+    const baseLeft = Math.round((diameter - renderWidth) / 2);
+    const baseTop = Math.round((diameter - renderHeight) / 2);
+    const leftPanRange = Math.abs(diameter - renderWidth) / 2;
+    const topPanRange = Math.abs(diameter - renderHeight) / 2;
+    const layerLeft = clamp(
+      Math.round(baseLeft + (offsetX * leftPanRange)),
+      Math.min(0, diameter - renderWidth),
+      Math.max(0, diameter - renderWidth),
+    );
+    const layerTop = clamp(
+      Math.round(baseTop + (offsetY * topPanRange)),
+      Math.min(0, diameter - renderHeight),
+      Math.max(0, diameter - renderHeight),
+    );
+    circleImageLayer = await sharp({
+      create: {
+        width: diameter,
+        height: diameter,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      },
+    })
+      .composite([{ input: fitted, left: layerLeft, top: layerTop }])
+      .png()
+      .toBuffer();
+  }
+
+  const croppedCircle = await sharp(circleImageLayer)
     .composite([{ input: circularMask, blend: 'dest-in' }])
     .png()
     .toBuffer();

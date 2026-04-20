@@ -75,6 +75,7 @@ interface EditDesignBottomSheetProps {
     circleImageOffsetY?: number;
     circleStrokeWidth?: number;
     circleStrokeColor?: string;
+    circleImageFit?: 'contain' | 'cover';
     fadeEnabled?: boolean;
     fadeOpacity?: number;
     brandBlockMode?: DesignStudioBrandBlockMode;
@@ -124,6 +125,7 @@ export interface DesignData {
   circleImageOffsetY?: number;
   circleStrokeWidth?: number;
   circleStrokeColor?: string;
+  circleImageFit?: 'contain' | 'cover';
   fadeEnabled?: boolean;
   fadeOpacity?: number;
   brandBlockMode?: DesignStudioBrandBlockMode;
@@ -186,6 +188,7 @@ export function EditDesignBottomSheet({
   const [circleImageOffsetY, setCircleImageOffsetY] = useState(initialData?.circleImageOffsetY ?? 0);
   const [circleStrokeWidth, setCircleStrokeWidth] = useState(initialData?.circleStrokeWidth ?? 6);
   const [circleStrokeColor, setCircleStrokeColor] = useState(initialData?.circleStrokeColor || '#FFFFFF');
+  const [circleImageFit, setCircleImageFit] = useState<'contain' | 'cover'>(initialData?.circleImageFit === 'cover' ? 'cover' : 'contain');
   const [fadeEnabled, setFadeEnabled] = useState(initialData?.fadeEnabled ?? true);
   const [fadeOpacity, setFadeOpacity] = useState(initialData?.fadeOpacity ?? 90);
   const [brandBlockMode, setBrandBlockMode] = useState<DesignStudioBrandBlockMode>(initialData?.brandBlockMode || 'auto');
@@ -316,6 +319,7 @@ export function EditDesignBottomSheet({
       circleImageOffsetY: initialData.circleImageOffsetY ?? 0,
       circleStrokeWidth: initialData.circleStrokeWidth ?? 6,
       circleStrokeColor: initialData.circleStrokeColor || '#FFFFFF',
+      circleImageFit: initialData.circleImageFit === 'cover' ? 'cover' : 'contain',
       fadeEnabled: initialData.fadeEnabled ?? true,
       fadeOpacity: initialData.fadeOpacity ?? 90,
       brandBlockMode: initialData.brandBlockMode || 'auto',
@@ -388,6 +392,7 @@ export function EditDesignBottomSheet({
     setCircleImageOffsetY(initialData.circleImageOffsetY ?? 0);
     setCircleStrokeWidth(initialData.circleStrokeWidth ?? 6);
     setCircleStrokeColor(initialData.circleStrokeColor || '#FFFFFF');
+    setCircleImageFit(initialData.circleImageFit === 'cover' ? 'cover' : 'contain');
     setFadeEnabled(
       typeof persistedPrefs?.fadeEnabled === 'boolean'
         ? persistedPrefs.fadeEnabled
@@ -437,6 +442,7 @@ export function EditDesignBottomSheet({
       circleImageOffsetY,
       circleStrokeWidth,
       circleStrokeColor,
+      circleImageFit,
       fadeEnabled,
       fadeOpacity,
       brandBlockMode,
@@ -462,6 +468,7 @@ export function EditDesignBottomSheet({
     circleImageOffsetY,
     circleStrokeWidth,
     circleStrokeColor,
+    circleImageFit,
     fadeEnabled,
     fadeOpacity,
     brandBlockMode,
@@ -502,6 +509,7 @@ export function EditDesignBottomSheet({
     circleImageOffsetY,
     circleStrokeWidth,
     circleStrokeColor,
+    circleImageFit,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -536,6 +544,7 @@ export function EditDesignBottomSheet({
     circleImageOffsetY,
     circleStrokeWidth,
     circleStrokeColor,
+    circleImageFit,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -587,6 +596,7 @@ export function EditDesignBottomSheet({
     setCircleImageOffsetY(snapshot.circleImageOffsetY ?? 0);
     setCircleStrokeWidth(snapshot.circleStrokeWidth ?? 6);
     setCircleStrokeColor(snapshot.circleStrokeColor || '#FFFFFF');
+    setCircleImageFit(snapshot.circleImageFit === 'cover' ? 'cover' : 'contain');
     setFadeEnabled(snapshot.fadeEnabled ?? true);
     setFadeOpacity(snapshot.fadeOpacity ?? 90);
     setBrandBlockMode(snapshot.brandBlockMode || 'auto');
@@ -696,6 +706,7 @@ export function EditDesignBottomSheet({
         circleImageOffsetY,
         circleStrokeWidth,
         circleStrokeColor,
+        circleImageFit,
         imageFocalPoint,
         imageZoom,
         overlayEnabled,
@@ -738,6 +749,7 @@ export function EditDesignBottomSheet({
     circleImageOffsetY,
     circleStrokeWidth,
     circleStrokeColor,
+    circleImageFit,
     fadeEnabled,
     fadeOpacity,
     brandBlockMode,
@@ -866,6 +878,16 @@ export function EditDesignBottomSheet({
     if (circleTmdbImageCategory === 'posters') return circleTmdbImagePool.posters || [];
     return circleTmdbImagePool.backdrops || [];
   }, [circleTmdbImageCategory, circleTmdbImagePool]);
+
+  const getMediaTypeLabel = (mediaType: DesignStudioTMDbSearchResult['mediaType']) => {
+    if (mediaType === 'tv') return 'TV';
+    if (mediaType === 'person') return 'Person';
+    if (mediaType === 'company') return 'Company';
+    return 'Movie';
+  };
+
+  const getReleaseYear = (releaseDate: string | null | undefined) =>
+    releaseDate && releaseDate.length >= 4 ? releaseDate.slice(0, 4) : null;
 
   const headerTextAlignment = useMemo<'left' | 'center' | 'right'>(() => {
     if (templateVariant.includes('left')) return 'left';
@@ -1497,7 +1519,7 @@ export function EditDesignBottomSheet({
                   type="range"
                   min="0.8"
                   max="1.4"
-                  step="0.05"
+                  step="0.02"
                   value={fontScale}
                   {...sliderInteractionProps}
                   onChange={(e) => {
@@ -1715,6 +1737,7 @@ export function EditDesignBottomSheet({
                     type="range"
                     min="0"
                     max="100"
+                    step="1"
                     value={fadeOpacity}
                     disabled={!fadeEnabled}
                     {...sliderInteractionProps}
@@ -1891,7 +1914,7 @@ export function EditDesignBottomSheet({
                           <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
                           <p className="mt-1 text-xs uppercase text-[#6B7280] dark:text-[#9CA3AF]">
                             {result.mediaType}
-                            {result.releaseDate ? ` • ${result.releaseDate.slice(0, 4)}` : ''}
+                            {result.releaseDate ? ` - ${result.releaseDate.slice(0, 4)}` : ''}
                           </p>
                         </div>
                       </button>
@@ -1961,6 +1984,7 @@ export function EditDesignBottomSheet({
                       type="range"
                       min="0"
                       max="100"
+                      step="1"
                       value={imageFocalPoint.x}
                       {...sliderInteractionProps}
                       onChange={(e) => {
@@ -1990,6 +2014,7 @@ export function EditDesignBottomSheet({
                       type="range"
                       min="0"
                       max="100"
+                      step="1"
                       value={imageFocalPoint.y}
                       {...sliderInteractionProps}
                       onChange={(e) => {
@@ -2019,7 +2044,7 @@ export function EditDesignBottomSheet({
                       type="range"
                       min="0.5"
                       max="4"
-                      step="0.1"
+                      step="0.02"
                       value={imageZoom}
                       {...sliderInteractionProps}
                       onChange={(e) => {
@@ -2147,7 +2172,7 @@ export function EditDesignBottomSheet({
 
                   {selectedCircleTmdbResult ? (
                     <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
-                      <div className="mb-2 flex items-center justify-between">
+                      <div className="mb-3 flex items-center justify-between gap-3">
                         <button
                           type="button"
                           onClick={handleBackToCircleTmdbResults}
@@ -2155,19 +2180,36 @@ export function EditDesignBottomSheet({
                         >
                           <ArrowLeft className="h-4 w-4" />
                         </button>
-                        <p className="text-sm text-gray-900 dark:text-white truncate">{selectedCircleTmdbResult.title}</p>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-900 dark:text-white truncate">{selectedCircleTmdbResult.title}</p>
+                          <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF] uppercase">
+                            {getMediaTypeLabel(selectedCircleTmdbResult.mediaType)}
+                            {getReleaseYear(selectedCircleTmdbResult.releaseDate)
+                              ? ` - ${getReleaseYear(selectedCircleTmdbResult.releaseDate)}`
+                              : ''}
+                          </p>
+                        </div>
                       </div>
-                      <div className="mb-2 grid grid-cols-3 gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('profiles')} className={`text-xs ${circleTmdbImageCategory === 'profiles' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Profiles</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('posters')} className={`text-xs ${circleTmdbImageCategory === 'posters' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Posters</Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('backdrops')} className={`text-xs ${circleTmdbImageCategory === 'backdrops' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Backdrops</Button>
+
+                      <div className="mb-3 grid grid-cols-3 gap-2">
+                        {selectedCircleTmdbResult.mediaType !== 'person' ? (
+                          <>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('backdrops')} className={`text-xs ${circleTmdbImageCategory === 'backdrops' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}>Backdrops</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('posters')} className={`text-xs ${circleTmdbImageCategory === 'posters' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}>Posters</Button>
+                            <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('profiles')} className={`text-xs ${circleTmdbImageCategory === 'profiles' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}>Profiles</Button>
+                          </>
+                        ) : (
+                          <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('profiles')} className="col-span-3 text-xs bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white">Profiles</Button>
+                        )}
                       </div>
                       {isLoadingCircleTmdbImages ? (
                         <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading TMDb images...</p>
+                      ) : activeCircleTmdbImages.length === 0 ? (
+                        <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">No images available in this section.</p>
                       ) : (
                         <div className="grid max-h-48 grid-cols-3 gap-2 overflow-y-auto">
                           {activeCircleTmdbImages.map((asset) => (
-                            <button key={asset.url} type="button" onClick={() => handleSelectCircleTmdbImage(asset.url)} className="aspect-square overflow-hidden rounded-md border border-gray-200 dark:border-[#333333]">
+                            <button key={asset.url} type="button" onClick={() => handleSelectCircleTmdbImage(asset.url)} className={`overflow-hidden rounded-md border border-gray-200 dark:border-[#333333] ${circleTmdbImageCategory === 'backdrops' ? 'aspect-video' : 'aspect-square'}`}>
                               <img src={asset.url} alt="Circle inset candidate" className="h-full w-full object-cover" />
                             </button>
                           ))}
@@ -2181,14 +2223,20 @@ export function EditDesignBottomSheet({
                           key={`circle-${result.mediaType}-${result.id}`}
                           type="button"
                           onClick={() => void handleSelectCircleTmdbResult(result)}
-                          className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 text-left dark:border-[#333333] dark:bg-black"
+                          className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 text-left transition-colors hover:border-[#ec1e24] dark:border-[#333333] dark:bg-black"
                         >
-                          <div className="h-10 w-10 overflow-hidden rounded-md bg-[#111111]">
+                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-md bg-[#111111]">
                             {(result.profile || result.poster || result.backdrop) ? (
                               <img src={result.profile || result.poster || result.backdrop || ''} alt={result.title} className="h-full w-full object-cover" />
                             ) : null}
                           </div>
-                          <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                            <p className="mt-1 text-xs uppercase text-[#6B7280] dark:text-[#9CA3AF]">
+                              {getMediaTypeLabel(result.mediaType)}
+                              {getReleaseYear(result.releaseDate) ? ` - ${getReleaseYear(result.releaseDate)}` : ''}
+                            </p>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -2200,7 +2248,7 @@ export function EditDesignBottomSheet({
                         <img
                           src={buildDesignStudioMediaStreamUrl(previewCircleInsetImage || circleInsetImage) || (previewCircleInsetImage || circleInsetImage)}
                           alt="Circle inset preview"
-                          className="absolute h-full w-full object-cover"
+                          className={`absolute h-full w-full ${circleImageFit === 'cover' ? 'object-cover' : 'object-contain'}`}
                           style={{
                             transform: `translate(${circleImageOffsetX}%, ${circleImageOffsetY}%) scale(${circleImageZoom})`,
                             transformOrigin: 'center center',
@@ -2209,32 +2257,57 @@ export function EditDesignBottomSheet({
                       </div>
                       <div className="grid grid-cols-1 gap-3">
                         <div>
+                          <Label className="text-xs text-gray-700 dark:text-[#9CA3AF] mb-2 block">
+                            Image Fit
+                          </Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCircleImageFit('contain')}
+                              className={`text-xs ${circleImageFit === 'contain' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}
+                            >
+                              Contain
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setCircleImageFit('cover')}
+                              className={`text-xs ${circleImageFit === 'cover' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : 'bg-white dark:bg-[#000000]'}`}
+                            >
+                              Cover
+                            </Button>
+                          </div>
+                        </div>
+                        <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Horizontal Position</span><span>{circleX}%</span></div>
-                          <input type="range" min="0" max="100" value={circleX} {...sliderInteractionProps} onChange={(e) => setCircleX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="0" max="100" step="1" value={circleX} {...sliderInteractionProps} onChange={(e) => setCircleX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Vertical Position</span><span>{circleY}%</span></div>
-                          <input type="range" min="0" max="100" value={circleY} {...sliderInteractionProps} onChange={(e) => setCircleY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="0" max="100" step="1" value={circleY} {...sliderInteractionProps} onChange={(e) => setCircleY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Circle Size</span><span>{circleSize}px</span></div>
-                          <input type="range" min="80" max="420" value={circleSize} {...sliderInteractionProps} onChange={(e) => setCircleSize(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="80" max="420" step="4" value={circleSize} {...sliderInteractionProps} onChange={(e) => setCircleSize(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Zoom</span><span>{circleImageZoom.toFixed(2)}x</span></div>
-                          <input type="range" min="0.6" max="3" step="0.05" value={circleImageZoom} {...sliderInteractionProps} onChange={(e) => setCircleImageZoom(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="0.6" max="3" step="0.02" value={circleImageZoom} {...sliderInteractionProps} onChange={(e) => setCircleImageZoom(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Horizontal</span><span>{circleImageOffsetX}%</span></div>
-                          <input type="range" min="-100" max="100" value={circleImageOffsetX} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="-100" max="100" step="1" value={circleImageOffsetX} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Vertical</span><span>{circleImageOffsetY}%</span></div>
-                          <input type="range" min="-100" max="100" value={circleImageOffsetY} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="-100" max="100" step="1" value={circleImageOffsetY} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div>
                           <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Stroke Width</span><span>{circleStrokeWidth}px</span></div>
-                          <input type="range" min="0" max="24" value={circleStrokeWidth} {...sliderInteractionProps} onChange={(e) => setCircleStrokeWidth(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                          <input type="range" min="0" max="24" step="1" value={circleStrokeWidth} {...sliderInteractionProps} onChange={(e) => setCircleStrokeWidth(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
                         </div>
                         <div className="flex items-center gap-3">
                           <button
@@ -2249,9 +2322,44 @@ export function EditDesignBottomSheet({
                             onChange={(e) => setCircleStrokeColor(e.target.value)}
                             className="flex-1 px-3 py-2 bg-white dark:bg-black border border-gray-200 dark:border-[#333333] rounded-xl text-gray-900 dark:text-white uppercase"
                           />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             type="button"
                             variant="outline"
+                            size="sm"
+                            className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
+                            onClick={() => {
+                              setCircleX(80);
+                              setCircleY(24);
+                              setCircleSize(220);
+                              setCircleStrokeWidth(6);
+                              setCircleStrokeColor('#FFFFFF');
+                              setCircleImageFit('contain');
+                              toast.success('Circle settings reset');
+                            }}
+                          >
+                            Reset Circle
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
+                            onClick={() => {
+                              setCircleImageZoom(1);
+                              setCircleImageOffsetX(0);
+                              setCircleImageOffsetY(0);
+                              toast.success('Image position reset');
+                            }}
+                          >
+                            Reset Image Position
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="ml-auto bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
                             onClick={() => {
                               if (previewCircleInsetImage.startsWith('blob:')) {
                                 URL.revokeObjectURL(previewCircleInsetImage);
@@ -2261,7 +2369,7 @@ export function EditDesignBottomSheet({
                               setUseCircleInset(false);
                             }}
                           >
-                            Remove
+                            Remove Image
                           </Button>
                         </div>
                       </div>
@@ -2332,6 +2440,7 @@ export function EditDesignBottomSheet({
                     type="range"
                     min="0"
                     max="100"
+                    step="1"
                     value={overlayOpacity}
                     {...sliderInteractionProps}
                     onChange={(e) => {

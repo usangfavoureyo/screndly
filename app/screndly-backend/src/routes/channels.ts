@@ -10,6 +10,8 @@ import { authenticate } from '../middleware/auth';
 const router = Router();
 router.use(authenticate);
 
+const VISIBLE_FEED_ITEM_STATUSES = ['accepted', 'failed', 'queued'] as const;
+
 function getStatusFromBody(body: any): string | undefined {
     if (typeof body?.status === 'string') {
         return body.status;
@@ -50,7 +52,7 @@ router.get('/', async (_req, res) => {
 router.get('/activity', async (_req, res) => {
     try {
         const feedItemWhere = (await hasFeedItemStatusColumn())
-            ? { status: { in: ['accepted', 'failed'] } }
+            ? { status: { in: [...VISIBLE_FEED_ITEM_STATUSES] } }
             : {};
         const items = await prisma.feedItem.findMany({
             where: feedItemWhere,
@@ -279,7 +281,7 @@ router.get('/:id/videos', async (req, res) => {
         }
 
         const feedItemWhere = (await hasFeedItemStatusColumn())
-            ? { status: { in: ['accepted', 'failed'] } }
+            ? { status: { in: [...VISIBLE_FEED_ITEM_STATUSES] } }
             : {};
         const videos = await prisma.feedItem.findMany({
             where: {

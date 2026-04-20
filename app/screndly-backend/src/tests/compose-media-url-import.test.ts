@@ -89,6 +89,60 @@ test('buildComposeMediaNetworkOptions applies configured auth context to Instagr
   }
 });
 
+test('buildComposeMediaNetworkOptions can reuse download auth context for YouTube metadata fallbacks', () => {
+  const previousProxy = process.env.YT_DLP_PROXY_URL;
+  const previousUserAgent = process.env.YT_DLP_USER_AGENT;
+  const previousCookieFilePath = process.env.YT_DLP_COOKIE_FILE_PATH;
+  const previousCookiesFromBrowser = process.env.YT_DLP_COOKIES_FROM_BROWSER;
+  const previousUseCookiesForMetadata = process.env.YT_DLP_USE_COOKIES_FOR_METADATA;
+
+  process.env.YT_DLP_PROXY_URL = 'http://127.0.0.1:8080';
+  process.env.YT_DLP_USER_AGENT = 'ScrendlyYouTubeImportAgent/1.0';
+  process.env.YT_DLP_COOKIE_FILE_PATH = '/tmp/youtube-cookies.txt';
+  delete process.env.YT_DLP_COOKIES_FROM_BROWSER;
+  delete process.env.YT_DLP_USE_COOKIES_FOR_METADATA;
+
+  try {
+    const defaultMetadataOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated');
+    const cookieBackedMetadataOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated', 'download' as any);
+
+    assert.equal(defaultMetadataOptions.cookies, undefined);
+    assert.equal(cookieBackedMetadataOptions.proxy, 'http://127.0.0.1:8080');
+    assert.equal(cookieBackedMetadataOptions.userAgent, 'ScrendlyYouTubeImportAgent/1.0');
+    assert.equal(cookieBackedMetadataOptions.cookies, '/tmp/youtube-cookies.txt');
+  } finally {
+    if (previousProxy === undefined) {
+      delete process.env.YT_DLP_PROXY_URL;
+    } else {
+      process.env.YT_DLP_PROXY_URL = previousProxy;
+    }
+
+    if (previousUserAgent === undefined) {
+      delete process.env.YT_DLP_USER_AGENT;
+    } else {
+      process.env.YT_DLP_USER_AGENT = previousUserAgent;
+    }
+
+    if (previousCookieFilePath === undefined) {
+      delete process.env.YT_DLP_COOKIE_FILE_PATH;
+    } else {
+      process.env.YT_DLP_COOKIE_FILE_PATH = previousCookieFilePath;
+    }
+
+    if (previousCookiesFromBrowser === undefined) {
+      delete process.env.YT_DLP_COOKIES_FROM_BROWSER;
+    } else {
+      process.env.YT_DLP_COOKIES_FROM_BROWSER = previousCookiesFromBrowser;
+    }
+
+    if (previousUseCookiesForMetadata === undefined) {
+      delete process.env.YT_DLP_USE_COOKIES_FOR_METADATA;
+    } else {
+      process.env.YT_DLP_USE_COOKIES_FOR_METADATA = previousUseCookiesForMetadata;
+    }
+  }
+});
+
 test('normalizeComposeMediaUrlEntries expands Instagram carousel metadata into ordered media entries', () => {
   const entries = normalizeComposeMediaUrlEntries('https://www.instagram.com/p/test/', {
     title: 'Carousel',

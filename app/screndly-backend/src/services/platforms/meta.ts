@@ -934,9 +934,16 @@ export const metaService = {
             };
         } catch (error: any) {
             console.error('[Meta] Instagram Reel Post Error:', error?.response?.data || error);
+            const details = extractMetaErrorDetails(error);
             return {
                 success: false,
                 error: extractMetaError(error),
+                errorCode: details.code,
+                errorSubcode: details.subcode,
+                errorUserTitle: details.errorUserTitle,
+                errorUserMessage: details.errorUserMessage,
+                fbtraceId: details.fbtraceId,
+                rawError: details.rawError,
             };
         }
     },
@@ -999,9 +1006,16 @@ export const metaService = {
             };
         } catch (error: any) {
             console.error('[Meta] Instagram Story Post Error:', error?.response?.data || error);
+            const details = extractMetaErrorDetails(error);
             return {
                 success: false,
                 error: extractMetaError(error),
+                errorCode: details.code,
+                errorSubcode: details.subcode,
+                errorUserTitle: details.errorUserTitle,
+                errorUserMessage: details.errorUserMessage,
+                fbtraceId: details.fbtraceId,
+                rawError: details.rawError,
             };
         }
     },

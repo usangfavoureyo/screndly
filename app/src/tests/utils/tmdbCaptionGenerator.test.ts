@@ -98,6 +98,22 @@ describe('tmdb caption sanitizer', () => {
     expect(output).not.toContain('OUT NOW');
   });
 
+  it('removes orphan anniversary fragments like Originally. instead of preserving them', () => {
+    const output = __tmdbCaptionSanitizer.sanitizeTMDbCaption(
+      "'Dead Ringers' premiered 3 years ago today.\n\nOriginally.",
+      {
+        title: 'Dead Ringers',
+        mediaType: 'tv',
+        releaseDate: '2023-04-20',
+        cast: ['Rachel Weisz', 'Britne Oldford', 'Poppy Liu'],
+      },
+      { model: 'gpt-5.4-nano', prompt: '', maxLength: 280, includeCast: true, includeDate: true, feedType: 'anniversary' }
+    );
+
+    expect(output).toBe("'Dead Ringers' premiered 3 years ago today.");
+    expect(output).not.toContain('Originally.');
+  });
+
   it('builds weekly temporal guidance with weekday and date for next-week releases', () => {
     const RealDate = Date;
 

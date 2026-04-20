@@ -342,6 +342,7 @@ export async function startDesignStudioManualRender(payload: {
     circleImageOffsetY?: number;
     circleStrokeWidth?: number;
     circleStrokeColor?: string;
+    circleImageFit?: 'contain' | 'cover';
     maxLines?: number;
     overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
     useTemplateDefaultStyling?: boolean;

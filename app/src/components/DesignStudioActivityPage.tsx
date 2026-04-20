@@ -1011,6 +1011,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     circleImageOffsetY: typeof renderedDesign.data?.circleImageOffsetY === 'number' ? renderedDesign.data.circleImageOffsetY : 0,
     circleStrokeWidth: typeof renderedDesign.data?.circleStrokeWidth === 'number' ? renderedDesign.data.circleStrokeWidth : 6,
     circleStrokeColor: typeof renderedDesign.data?.circleStrokeColor === 'string' ? renderedDesign.data.circleStrokeColor : '#FFFFFF',
+    circleImageFit: renderedDesign.data?.circleImageFit === 'cover' ? 'cover' : 'contain',
     backgroundImage: renderedDesign.data?.backgroundImage || '',
     imageFocalPoint: renderedDesign.data?.imageFocalPoint || { x: 50, y: 50 },
     imageZoom: typeof renderedDesign.data?.imageZoom === 'number' ? renderedDesign.data.imageZoom : 1,
@@ -1046,6 +1047,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     circleImageOffsetY: 0,
     circleStrokeWidth: 6,
     circleStrokeColor: '#FFFFFF',
+    circleImageFit: 'contain',
     backgroundImage: editorial.backgroundSource || editorial.renderedImage || '',
     imageFocalPoint: {
       x: typeof editorial.backgroundOffsetX === 'number' ? 50 + editorial.backgroundOffsetX : 50,
@@ -1226,6 +1228,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     circleImageOffsetY: data.circleImageOffsetY,
     circleStrokeWidth: data.circleStrokeWidth,
     circleStrokeColor: data.circleStrokeColor,
+    circleImageFit: data.circleImageFit,
     backgroundImage: data.backgroundImage,
     imageFocalPoint: data.imageFocalPoint,
     imageZoom: data.imageZoom,
@@ -1296,6 +1299,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     circleImageOffsetY: 0,
     circleStrokeWidth: 6,
     circleStrokeColor: '#FFFFFF',
+    circleImageFit: 'contain',
     backgroundImage: autoEditorial?.backgroundSource || getActivityImageUrl(activity),
     imageFocalPoint: {
       x: typeof autoEditorial?.backgroundOffsetX === 'number' ? 50 + autoEditorial.backgroundOffsetX : 50,

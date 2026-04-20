@@ -22,32 +22,32 @@ const FALLBACK_BACKGROUND =
 
 const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
   bottom_center: {
-    textBox: { x: 88, y: 1042, width: 904, height: 260 },
+    textBox: { x: 48, y: 1042, width: 984, height: 260 },
     alignment: 'center',
     brandBox: { x: 369, y: 48, width: 341, height: 73 },
   },
   bottom_left: {
-    textBox: { x: 49, y: 895, width: 510, height: 372 },
+    textBox: { x: 49, y: 895, width: 982, height: 372 },
     alignment: 'left',
     brandBox: { x: 49, y: 49, width: 341, height: 73 },
   },
   bottom_right: {
-    textBox: { x: 541, y: 844, width: 490, height: 423 },
+    textBox: { x: 49, y: 844, width: 982, height: 423 },
     alignment: 'right',
     brandBox: { x: 688, y: 49, width: 341, height: 73 },
   },
   top_center: {
-    textBox: { x: 108, y: 44, width: 864, height: 322 },
+    textBox: { x: 44, y: 44, width: 992, height: 322 },
     alignment: 'center',
     brandBox: { x: 369, y: 1221, width: 341, height: 73 },
   },
   top_left: {
-    textBox: { x: 46, y: 36, width: 495, height: 438 },
+    textBox: { x: 46, y: 36, width: 988, height: 438 },
     alignment: 'left',
     brandBox: { x: 49, y: 1223, width: 341, height: 73 },
   },
   top_right: {
-    textBox: { x: 548, y: 34, width: 486, height: 432 },
+    textBox: { x: 46, y: 34, width: 988, height: 432 },
     alignment: 'right',
     brandBox: { x: 688, y: 1223, width: 341, height: 73 },
   },
@@ -331,6 +331,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const circleImageOffsetY = clamp(designData?.circleImageOffsetY ?? 0, -100, 100);
   const circleStrokeWidth = clamp(designData?.circleStrokeWidth ?? 6, 0, 24);
   const circleStrokeColor = designData?.circleStrokeColor || '#FFFFFF';
+  const circleImageFit = designData?.circleImageFit === 'cover' ? 'cover' : 'contain';
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine);
@@ -483,7 +484,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
           <img
             src={circleInsetSource}
             alt=""
-            className="absolute h-full w-full object-cover"
+            className={`absolute h-full w-full ${circleImageFit === 'cover' ? 'object-cover' : 'object-contain'}`}
             style={{
               transform: `translate(${circleImageOffsetX}%, ${circleImageOffsetY}%) scale(${circleImageZoom})`,
               transformOrigin: 'center center',
