@@ -1061,7 +1061,7 @@ export class YouTubePollerService {
             activeChannel = await this.timeStage(channel.name, 'canonicalize_channel', stageDurations, () => this.ensureCanonicalChannel(channel));
             const supportsFeedItemStatus = await this.timeStage(activeChannel.name, 'check_feed_item_status', stageDurations, () => hasFeedItemStatusColumn());
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
-            const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel));
+            const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel, settings));
             const latestVideos = await this.timeStage(
                 activeChannel.name,
                 'prioritize_owned_candidates',
@@ -1228,7 +1228,7 @@ export class YouTubePollerService {
 
         const activeChannel = await this.ensureCanonicalChannel(channel);
         const { keywords: trailerKeywords } = this.getTrailerKeywords(settings);
-        const { items: ownedVideos } = await this.getRecentChannelVideos(activeChannel);
+        const { items: ownedVideos } = await this.getRecentChannelVideos(activeChannel, settings);
         const collaborativeVideos = await this.fetchCollaborativeVideosForChannel(activeChannel, trailerKeywords);
         const latestVideos = this.mergeDiscoveredCandidates([...ownedVideos, ...collaborativeVideos]).slice(0, Math.max(1, limit));
 
@@ -1357,7 +1357,54 @@ export class YouTubePollerService {
         return items;
     }
 
-    private async getRecentChannelVideos(channel: any): Promise<ChannelVideoSourceResult> {
+    private getNewestChannelVideoPublishedAt(items: any[]): Date | null {
+        for (const item of items) {
+            const rawPublishedAt = item?.pubDate || item?.isoDate || item?.published || item?.publishedAt;
+            if (!rawPublishedAt) {
+                continue;
+            }
+
+            const parsed = new Date(rawPublishedAt);
+            if (!Number.isNaN(parsed.getTime())) {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private shouldRunOwnedVideoYtDlpFallback(channel: any, settings: LoadedVideoSettings | undefined, rssItems: any[]): { shouldFallback: boolean; reason?: string } {
+        if (!rssItems.length) {
+            return { shouldFallback: true, reason: 'RSS returned no items' };
+        }
+
+        const newestPublishedAt = this.getNewestChannelVideoPublishedAt(rssItems);
+        const lastCheckAt = channel?.lastCheck ? new Date(channel.lastCheck) : null;
+        if (newestPublishedAt && lastCheckAt && !Number.isNaN(lastCheckAt.getTime()) && newestPublishedAt.getTime() <= lastCheckAt.getTime()) {
+            return {
+                shouldFallback: true,
+                reason: `RSS newest item ${newestPublishedAt.toISOString()} is not newer than lastCheck ${lastCheckAt.toISOString()}`,
+            };
+        }
+
+        const pollIntervalMinutes = settings
+            ? this.getChannelPollIntervalMinutes(channel, settings)
+            : (Number(channel?.pollIntervalMinutesOverride) > 0 ? Number(channel.pollIntervalMinutesOverride) : 10);
+        const freshnessThresholdMinutes = Math.max(15, pollIntervalMinutes * 3);
+        if (newestPublishedAt) {
+            const rssAgeMinutes = (Date.now() - newestPublishedAt.getTime()) / (1000 * 60);
+            if (rssAgeMinutes > freshnessThresholdMinutes) {
+                return {
+                    shouldFallback: true,
+                    reason: `RSS newest item is ${rssAgeMinutes.toFixed(1)} minutes old (threshold ${freshnessThresholdMinutes} minutes)`,
+                };
+            }
+        }
+
+        return { shouldFallback: false };
+    }
+
+    private async getRecentChannelVideos(channel: any, settings?: LoadedVideoSettings): Promise<ChannelVideoSourceResult> {
         const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channel.channelId}`;
         const normalizeOwnedItems = (items: any[]) => items.map((item) => ({
             ...item,
@@ -1372,38 +1419,57 @@ export class YouTubePollerService {
             discoveredVia: 'owned_upload',
         }));
 
+        let rssItems: any[] = [];
+        let rssSource: 'rss' | 'none' = 'none';
+
         try {
             const feed = await parser.parseURL(rssUrl);
-            const items = Array.isArray(feed.items)
+            rssItems = Array.isArray(feed.items)
                 ? this.sortRecentChannelVideos(feed.items).slice(0, MAX_OWNED_VIDEO_CANDIDATES)
                 : [];
-            if (items.length > 0) {
-                return {
-                    items: normalizeOwnedItems(items),
-                    source: 'rss',
-                };
+            if (rssItems.length > 0) {
+                rssSource = 'rss';
+            } else {
+                console.warn(`[YouTubePoller] ${channel.name}: RSS parser returned no items; trying direct RSS fetch fallback`);
             }
-
-            console.warn(`[YouTubePoller] ${channel.name}: RSS parser returned no items; trying direct RSS fetch fallback`);
         } catch (error) {
             console.warn(`[YouTubePoller] ${channel.name}: RSS parser fetch failed; trying direct RSS fetch fallback`, error);
         }
 
-        try {
-            const items = await this.fetchYouTubeRssItems(rssUrl, channel.name);
-            if (items.length > 0) {
-                return {
-                    items: normalizeOwnedItems(items),
-                    source: 'rss',
-                };
+        if (!rssItems.length) {
+            try {
+                rssItems = await this.fetchYouTubeRssItems(rssUrl, channel.name);
+                if (rssItems.length > 0) {
+                    rssSource = 'rss';
+                }
+            } catch (error) {
+                console.warn(`[YouTubePoller] ${channel.name}: direct RSS fetch failed; trying yt-dlp channel fallback`, error);
             }
-        } catch (error) {
-            console.warn(`[YouTubePoller] ${channel.name}: direct RSS fetch failed; trying yt-dlp channel fallback`, error);
+        }
+
+        const fallbackDecision = this.shouldRunOwnedVideoYtDlpFallback(channel, settings, rssItems);
+        if (!fallbackDecision.shouldFallback) {
+            return {
+                items: normalizeOwnedItems(rssItems),
+                source: rssSource === 'rss' ? 'rss' : 'yt-dlp',
+            };
+        }
+
+        if (rssItems.length > 0) {
+            console.warn(`[YouTubePoller] ${channel.name}: RSS appears stale; merging yt-dlp fallback (${fallbackDecision.reason})`);
+        }
+
+        const ytDlpItems = await this.fetchRecentChannelVideosWithYtDlp(channel.channelId, channel.name);
+        if (!rssItems.length) {
+            return {
+                items: ytDlpItems,
+                source: 'yt-dlp',
+            };
         }
 
         return {
-            items: await this.fetchRecentChannelVideosWithYtDlp(channel.channelId, channel.name),
-            source: 'yt-dlp',
+            items: this.mergeDiscoveredCandidates([...normalizeOwnedItems(rssItems), ...ytDlpItems]).slice(0, MAX_OWNED_VIDEO_CANDIDATES),
+            source: 'merged',
         };
     }
 

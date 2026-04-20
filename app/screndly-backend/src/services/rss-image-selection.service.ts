@@ -3109,6 +3109,9 @@ function determineSmartImagePlan(
 
   if (canonicalFlags.has('editorial_brain_image_strategy_person_first')) {
     const personSubject =
+      (analysis.canonicalEntity?.primarySubject && looksLikeNamedPerson(analysis.canonicalEntity.primarySubject))
+        ? analysis.canonicalEntity.primarySubject
+        :
       canonicalPortraitPeople[0] ||
       preferredPersonSubject ||
       leadPerson ||
@@ -5300,9 +5303,14 @@ function validateImageCandidate(
   const mentionsSecondaryOnly = !mentionsPrimarySubject && !mentionsContextProject && secondaryEntityTerms.some((term) => entityMatches(text, term));
   const animationOfficial = analysis.animatedSubject &&
     (containsKeyword(text, OFFICIAL_ANIMATION_MARKERS) || looksOfficial);
+  const mentionsCanonicalProject =
+    analysis.canonicalEntity?.mediaTitle &&
+    !looksLikeNamedPerson(analysis.canonicalEntity.mediaTitle)
+      ? entityMatches(text, analysis.canonicalEntity.mediaTitle)
+      : false;
   const allowPersonCommentaryProjectFallback =
     canonicalFlags.has('story_family_person_commentary_on_project') &&
-    mentionsContextProject &&
+    (mentionsProject || mentionsCanonicalProject) &&
     !mentionsPrimarySubject;
 
   if (!image.imageUrl) {
@@ -5680,6 +5688,9 @@ function canUseExplicitFeedFallback(
   slot?: ImageSlotPlan | null
 ): boolean {
   const flags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
+  if (flags.has('story_policy_memorial_feed_fallback')) {
+    return true;
+  }
   if (flags.has('story_policy_early_project_cast_portraits')) {
     return true;
   }
@@ -5735,7 +5746,8 @@ export async function resolveRelevantRSSImages(
   const trustedInlineFallbackOverride =
     (
       canonicalFlags.has('story_policy_force_project_first_image') ||
-      canonicalFlags.has('story_policy_early_project_cast_portraits')
+      canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+      canonicalFlags.has('story_policy_memorial_feed_fallback')
     ) &&
     Array.isArray(article.fallbackImages) &&
     article.fallbackImages.length > 0

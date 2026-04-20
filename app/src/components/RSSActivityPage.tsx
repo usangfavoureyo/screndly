@@ -39,6 +39,25 @@ interface RSSActivityPageProps {
 }
 
 const RSS_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_rss_activity_target';
+const RSS_EDITORIAL_BRAIN_MONITORING_COLLAPSED_KEY = 'screndly_rss_editorial_brain_monitoring_collapsed';
+
+function safeStorageSetItem(key: string, value: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function safeStorageGetItem(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
 
 function formatActivityTimestamp(value: string): string {
   const date = new Date(value);
@@ -130,6 +149,9 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const [retryingItemId, setRetryingItemId] = useState<string | null>(null);
   const [savingReviewItemId, setSavingReviewItemId] = useState<string | null>(null);
   const [items, setItems] = useState<RSSActivityItem[]>([]);
+  const [isEditorialBrainMonitoringCollapsed, setIsEditorialBrainMonitoringCollapsed] = useState(
+    () => safeStorageGetItem(RSS_EDITORIAL_BRAIN_MONITORING_COLLAPSED_KEY) === 'true',
+  );
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -146,6 +168,13 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   useEffect(() => {
     loadActivity();
   }, []);
+
+  useEffect(() => {
+    safeStorageSetItem(
+      RSS_EDITORIAL_BRAIN_MONITORING_COLLAPSED_KEY,
+      isEditorialBrainMonitoringCollapsed ? 'true' : 'false',
+    );
+  }, [isEditorialBrainMonitoringCollapsed]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || items.length === 0) {
@@ -497,30 +526,54 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
 
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 space-y-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="text-gray-900 dark:text-white text-lg">Editorial Brain Monitoring</h2>
-            <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
-              Review shadow disagreements and compare promoted vs non-promoted image/caption decisions.
-            </p>
-          </div>
-          <div className="flex gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-gray-900 dark:text-white text-lg">Editorial Brain Monitoring</h2>
+              <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
+                Review shadow disagreements and compare promoted vs non-promoted image/caption decisions.
+              </p>
+            </div>
             <Button
+              type="button"
               variant="outline"
               size="sm"
-              onClick={() => exportEditorialRows('json')}
-              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+              onClick={() => {
+                haptics.light();
+                setIsEditorialBrainMonitoringCollapsed((current) => !current);
+              }}
+              className="h-8 w-8 shrink-0 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+              aria-label={isEditorialBrainMonitoringCollapsed ? 'Show editorial brain monitoring' : 'Hide editorial brain monitoring'}
             >
-              Export JSON
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => exportEditorialRows('csv')}
-              className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
-            >
-              Export CSV
+              <img
+                src={isEditorialBrainMonitoringCollapsed
+                  ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                  : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+                alt=""
+                className="h-4 w-4 dark:invert"
+              />
             </Button>
           </div>
+        </div>
+
+        {!isEditorialBrainMonitoringCollapsed ? (
+        <>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportEditorialRows('json')}
+            className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          >
+            Export JSON
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportEditorialRows('csv')}
+            className="h-9 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+          >
+            Export CSV
+          </Button>
         </div>
 
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
@@ -676,6 +729,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             </div>
           </div>
         </div>
+        </>
+        ) : null}
       </div>
 
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 hover:shadow-md dark:hover:shadow-[0_4px_16px_rgba(255,255,255,0.08)] transition-all duration-200">

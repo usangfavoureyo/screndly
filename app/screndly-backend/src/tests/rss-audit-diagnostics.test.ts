@@ -1425,7 +1425,7 @@ test('person-commentary image validation allows project fallback when the speake
 
   const result = validateImageCandidate({
     imageUrl: 'https://image.tmdb.org/t/p/original/summer-house-backdrop.jpg',
-    domain: 'image.tmdb.org',
+    domain: 'www.themoviedb.org',
     title: 'Summer House official backdrop',
     source: 'TMDb',
     imageWidth: 1920,
@@ -1433,6 +1433,60 @@ test('person-commentary image validation allows project fallback when the speake
   } as any, analysis);
 
   assert.equal(result.approved, true);
+});
+
+test('charlize theron ai commentary routes out of core with person-led image planning', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Charlize Theron Says 'In 10 Years, AI Is Going To Be Able To Do' Timothee Chalamet's Job, But It Will Not Be Able To Replace Live Performance Like Ballet",
+    description: 'Charlize Theron discussed AI and live performance while mentioning Timothee Chalamet.',
+    contentHtml: '<p>Charlize Theron reflected on AI, Timothee Chalamet and live performance.</p>',
+  });
+
+  assert.ok(canonical.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
+  assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_person_first'));
+
+  const plan = determineSmartImagePlan({
+    title: "Charlize Theron Says 'In 10 Years, AI Is Going To Be Able To Do' Timothee Chalamet's Job, But It Will Not Be Able To Replace Live Performance Like Ballet",
+    description: 'Charlize Theron discussed AI and live performance while mentioning Timothee Chalamet.',
+    contentHtml: '<p>Charlize Theron reflected on AI, Timothee Chalamet and live performance.</p>',
+    canonicalEntity: canonical,
+  } as any, guessPrimarySubject({
+    title: "Charlize Theron Says 'In 10 Years, AI Is Going To Be Able To Do' Timothee Chalamet's Job, But It Will Not Be Able To Replace Live Performance Like Ballet",
+    description: 'Charlize Theron discussed AI and live performance while mentioning Timothee Chalamet.',
+    contentHtml: '<p>Charlize Theron reflected on AI, Timothee Chalamet and live performance.</p>',
+    canonicalEntity: canonical,
+  } as any));
+
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.primary.subject, 'Charlize Theron');
+});
+
+test('nathalie baye obituary stays person-led and allows obituary feed fallback imagery', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Nathalie Baye Dies: French Actress Who Appeared In 'Catch Me If You Can' & 'Downton Abbey: A New Era' Was 77",
+    description: 'Nathalie Baye has died at 77.',
+    contentHtml: '<p>Nathalie Baye, the French actress known for Catch Me If You Can and Downton Abbey: A New Era, has died at 77.</p>',
+  });
+
+  assert.equal(canonical.entityType, 'person');
+  assert.equal(canonical.primarySubject, 'Nathalie Baye');
+  assert.equal(canonical.eventType, 'obituary');
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_memorial_feed_fallback'));
+});
+
+test('the batman part ii charles dance casting story resolves as core with early project image fallback', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "'The Batman Part II': Charles Dance Joins Robert Pattinson In DC Studios Sequel",
+    description: 'Charles Dance has joined the cast of The Batman Part II.',
+    contentHtml: '<p>Charles Dance has joined Robert Pattinson in The Batman Part II.</p>',
+  });
+
+  assert.equal(canonical.mediaTitle, 'The Batman Part II');
+  assert.equal(canonical.primarySubject, 'The Batman Part II');
+  assert.equal(canonical.entityType, 'movie');
+  assert.equal(canonical.eventType, 'casting');
+  assert.ok(canonical.namedPeople?.includes('Charles Dance'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_force_project_first_image'));
 });
 
 test('first-look reveal stories stay article-image-first even when project art is missing', () => {

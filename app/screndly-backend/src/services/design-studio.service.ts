@@ -305,6 +305,16 @@ interface DesignStudioRenderPayload {
   headlineWidthScale?: number;
   headlineDensity?: number;
   lineHeightMultiplier?: number;
+  useCircleInset?: boolean;
+  circleInsetImage?: string;
+  circleX?: number;
+  circleY?: number;
+  circleSize?: number;
+  circleImageZoom?: number;
+  circleImageOffsetX?: number;
+  circleImageOffsetY?: number;
+  circleStrokeWidth?: number;
+  circleStrokeColor?: string;
   maxLines?: number;
   overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
   useTemplateDefaultStyling?: boolean;
@@ -1655,6 +1665,44 @@ function estimateWordWidth(word: string, fontSize: number, tracking: number): nu
   return base * fontSize + Math.max(0, word.length - 1) * tracking * 0.08;
 }
 
+function fitManualComposedLines(input: {
+  text: string;
+  boxWidth: number;
+  boxHeight: number;
+  minFontSize: number;
+  maxFontSize: number;
+  lineHeightMultiplier: number;
+  tracking: number;
+}): TextFitResult {
+  const normalized = input.text.replace(/\r\n/g, '\n');
+  const rawLines = normalized.split('\n');
+  while (rawLines.length > 0 && rawLines[0].trim().length === 0) rawLines.shift();
+  while (rawLines.length > 0 && rawLines[rawLines.length - 1].trim().length === 0) rawLines.pop();
+  const lines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return { fontSize: Math.max(1, input.minFontSize), lines: [], lineHeight: Math.max(1, input.minFontSize) * input.lineHeightMultiplier };
+  }
+
+  const measureLine = (line: string, fontSize: number) =>
+    estimateWordWidth(line, fontSize, input.tracking);
+
+  for (let fontSize = input.maxFontSize; fontSize >= input.minFontSize; fontSize -= 1) {
+    const lineHeight = fontSize * input.lineHeightMultiplier;
+    const totalHeight = lines.length * lineHeight;
+    const widestLine = Math.max(...lines.map((line) => measureLine(line, fontSize)));
+    if (widestLine <= input.boxWidth && totalHeight <= input.boxHeight) {
+      return { fontSize, lines, lineHeight };
+    }
+  }
+
+  const fallbackFontSize = Math.max(1, input.minFontSize);
+  return {
+    fontSize: fallbackFontSize,
+    lines,
+    lineHeight: fallbackFontSize * input.lineHeightMultiplier,
+  };
+}
+
 function fitTextBlock(input: {
   text: string;
   boxWidth: number;
@@ -1788,6 +1836,8 @@ export async function buildTextLayer(input: {
 }): Promise<Buffer> {
   const alignment = input.payload.headerAlignment || input.variant.alignment;
   const fontScale = input.payload.fontScale ?? 1;
+  const normalizedHeadline = input.payload.headerText.replace(/\r\n/g, '\n');
+  const hasManualLineBreaks = normalizedHeadline.includes('\n');
   const headlineWidthScale = input.payload.headlineWidthScale ?? 1;
   const requestedHeadlineDensity = input.payload.headlineDensity ?? 1;
   const headlineWords = input.payload.headerText.trim().split(/\s+/).filter(Boolean);
@@ -1815,20 +1865,31 @@ export async function buildTextLayer(input: {
     : alignment === 'right'
       ? Math.round(input.variant.textBox.x + input.variant.textBox.width - scaledBoxWidth)
       : input.variant.textBox.x;
-  const fit = fitTextBlock({
-    text: input.payload.headerText.toUpperCase(),
-    boxWidth: scaledBoxWidth,
-    boxHeight: input.variant.textBox.height,
-    minFontSize: Math.round(input.variant.minFontSize * fontScale),
-    maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
-    maxLines,
-    targetWordsPerLine,
-    lineHeightMultiplier: input.payload.lineHeightMultiplier
-      || input.variant.lineHeightMultiplier
-      || input.template.lineHeightMultiplier
-      || 1.05,
-    tracking: input.template.tracking || 0,
-  });
+  const lineHeightMultiplier = input.payload.lineHeightMultiplier
+    || input.variant.lineHeightMultiplier
+    || input.template.lineHeightMultiplier
+    || 1.05;
+  const fit = hasManualLineBreaks
+    ? fitManualComposedLines({
+        text: normalizedHeadline.toUpperCase(),
+        boxWidth: scaledBoxWidth,
+        boxHeight: input.variant.textBox.height,
+        minFontSize: Math.round(input.variant.minFontSize * fontScale),
+        maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
+        lineHeightMultiplier,
+        tracking: input.template.tracking || 0,
+      })
+    : fitTextBlock({
+        text: normalizedHeadline.toUpperCase(),
+        boxWidth: scaledBoxWidth,
+        boxHeight: input.variant.textBox.height,
+        minFontSize: Math.round(input.variant.minFontSize * fontScale),
+        maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
+        maxLines,
+        targetWordsPerLine,
+        lineHeightMultiplier,
+        tracking: input.template.tracking || 0,
+      });
 
   const totalTextHeight = Math.max(1, Math.ceil(fit.lines.length * fit.lineHeight));
   const top = input.variant.variant.startsWith('bottom')
@@ -2120,6 +2181,74 @@ async function buildFadeLayer(width: number, height: number, opacity: number): P
     },
   })
     .joinChannel(alphaChannel)
+    .png()
+    .toBuffer();
+}
+
+async function buildCircleInsetLayer(input: {
+  width: number;
+  height: number;
+  payload: DesignStudioRenderPayload;
+}): Promise<Buffer | null> {
+  if (!input.payload.useCircleInset || !input.payload.circleInsetImage) {
+    return null;
+  }
+
+  const source = await fetchSourceBuffer(input.payload.circleInsetImage);
+  if (!source) {
+    return null;
+  }
+
+  const diameter = clamp(Math.round(input.payload.circleSize ?? 220), 80, Math.round(Math.min(input.width, input.height) * 0.65));
+  const zoom = clamp(input.payload.circleImageZoom ?? 1, 0.6, 3);
+  const offsetX = clamp(input.payload.circleImageOffsetX ?? 0, -100, 100) / 100;
+  const offsetY = clamp(input.payload.circleImageOffsetY ?? 0, -100, 100) / 100;
+  const zoomedSize = Math.max(diameter, Math.round(diameter * zoom));
+  const resized = await sharp(source).resize(zoomedSize, zoomedSize, { fit: 'cover' }).png().toBuffer();
+  const overflow = Math.max(0, zoomedSize - diameter);
+  const extractLeft = clamp(Math.round((overflow / 2) - (offsetX * (overflow / 2))), 0, overflow);
+  const extractTop = clamp(Math.round((overflow / 2) - (offsetY * (overflow / 2))), 0, overflow);
+
+  const circularMask = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
+      <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - 1}" fill="#ffffff" />
+    </svg>`,
+  );
+
+  const croppedCircle = await sharp(resized)
+    .extract({ left: extractLeft, top: extractTop, width: diameter, height: diameter })
+    .composite([{ input: circularMask, blend: 'dest-in' }])
+    .png()
+    .toBuffer();
+
+  const strokeWidth = clamp(Math.round(input.payload.circleStrokeWidth ?? 6), 0, 24);
+  const strokeColor = (input.payload.circleStrokeColor || '#FFFFFF').trim() || '#FFFFFF';
+  const strokeLayer = strokeWidth > 0
+    ? Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
+          <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - Math.max(1, strokeWidth / 2)}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+        </svg>`,
+      )
+    : null;
+
+  const circleWithStroke = strokeLayer
+    ? await sharp(croppedCircle).composite([{ input: strokeLayer }]).png().toBuffer()
+    : croppedCircle;
+
+  const centerX = clamp(input.payload.circleX ?? 80, 0, 100);
+  const centerY = clamp(input.payload.circleY ?? 24, 0, 100);
+  const left = clamp(Math.round((centerX / 100) * input.width - (diameter / 2)), 0, Math.max(0, input.width - diameter));
+  const top = clamp(Math.round((centerY / 100) * input.height - (diameter / 2)), 0, Math.max(0, input.height - diameter));
+
+  return sharp({
+    create: {
+      width: input.width,
+      height: input.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([{ input: circleWithStroke, left, top }])
     .png()
     .toBuffer();
 }
@@ -2442,6 +2571,11 @@ export async function renderDesignStudioImage(
 
   if (fadeEnabled) {
     composites.push({ input: await buildFadeLayer(width, height, fadeOpacity) });
+  }
+
+  const circleInsetLayer = await buildCircleInsetLayer({ width, height, payload });
+  if (circleInsetLayer) {
+    composites.push({ input: circleInsetLayer });
   }
 
   composites.push({ input: await sharp(textOverlay).resize(width, height, { fit: 'fill' }).png().toBuffer() });

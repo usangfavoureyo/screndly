@@ -116,6 +116,30 @@ function fitHeadline(
   textBox: PreviewLayout['textBox'],
   targetWordsPerLine: number,
 ) {
+  const normalizedText = text.replace(/\r\n/g, '\n');
+  const hasManualBreaks = normalizedText.includes('\n');
+  if (hasManualBreaks) {
+    const rawLines = normalizedText.split('\n');
+    while (rawLines.length > 0 && rawLines[0].trim().length === 0) rawLines.shift();
+    while (rawLines.length > 0 && rawLines[rawLines.length - 1].trim().length === 0) rawLines.pop();
+    const manualLines = rawLines.map((line) => line.trim()).filter((line) => line.length > 0);
+    if (manualLines.length === 0) {
+      return { lines: [], fontSize: 88, lineHeight: 82 };
+    }
+    const maxFontSize = 96;
+    const minFontSize = 34;
+    for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
+      const lineHeight = fontSize * 0.93;
+      const totalHeight = manualLines.length * lineHeight;
+      const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, fontSize)));
+      if (widestLine <= textBox.width && totalHeight <= textBox.height) {
+        return { lines: manualLines, fontSize, lineHeight };
+      }
+    }
+    const fallbackFontSize = minFontSize;
+    return { lines: manualLines, fontSize: fallbackFontSize, lineHeight: fallbackFontSize * 0.93 };
+  }
+
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) {
     return { lines: [], fontSize: 88, lineHeight: 82 };
@@ -293,6 +317,20 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   );
   const targetWordsPerLine = clamp(Math.round(2 + (headlineDensity * 2)), 2, 8);
   const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 0.93;
+  const useCircleInset = Boolean(designData?.useCircleInset);
+  const rawCircleInsetSource = designData?.circleInsetImage || '';
+  const circleInsetSource = useMemo(
+    () => buildDesignStudioMediaStreamUrl(rawCircleInsetSource) || rawCircleInsetSource,
+    [rawCircleInsetSource],
+  );
+  const circleX = clamp(designData?.circleX ?? 80, 0, 100);
+  const circleY = clamp(designData?.circleY ?? 24, 0, 100);
+  const circleSize = clamp(designData?.circleSize ?? 220, 80, 420);
+  const circleImageZoom = clamp(designData?.circleImageZoom ?? 1, 0.6, 3);
+  const circleImageOffsetX = clamp(designData?.circleImageOffsetX ?? 0, -100, 100);
+  const circleImageOffsetY = clamp(designData?.circleImageOffsetY ?? 0, -100, 100);
+  const circleStrokeWidth = clamp(designData?.circleStrokeWidth ?? 6, 0, 24);
+  const circleStrokeColor = designData?.circleStrokeColor || '#FFFFFF';
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine);
@@ -427,6 +465,31 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
             style={{ zIndex: 20, opacity: clamp(fadeOpacity / 100, 0, 1) }}
           />
         )
+      ) : null}
+
+      {useCircleInset && circleInsetSource ? (
+        <div
+          className="absolute overflow-hidden rounded-full"
+          style={{
+            zIndex: 25,
+            left: `${circleX}%`,
+            top: `${circleY}%`,
+            width: `${(circleSize / CANVAS_WIDTH) * 100}%`,
+            height: `${(circleSize / CANVAS_HEIGHT) * 100}%`,
+            transform: 'translate(-50%, -50%)',
+            border: `${Math.max(1, circleStrokeWidth)}px solid ${circleStrokeColor}`,
+          }}
+        >
+          <img
+            src={circleInsetSource}
+            alt=""
+            className="absolute h-full w-full object-cover"
+            style={{
+              transform: `translate(${circleImageOffsetX}%, ${circleImageOffsetY}%) scale(${circleImageZoom})`,
+              transformOrigin: 'center center',
+            }}
+          />
+        </div>
       ) : null}
 
       {designData?.headerText ? (

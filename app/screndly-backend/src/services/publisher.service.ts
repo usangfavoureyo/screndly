@@ -34,17 +34,32 @@ export interface PublishResult {
     platform: string;
     status: 'posted' | 'failed' | 'skipped';
     error?: string;
+    errorCode?: string;
+    errorDetails?: Record<string, unknown>;
     id?: string;
     url?: string;
     postedAt: string;
 }
 
 interface ImagePreflightResult {
+    originalSource?: string;
     source: string;
+    httpStatus?: number;
     mimeType: string;
     bytes: number;
     width?: number;
     height?: number;
+}
+
+class MediaPreflightError extends Error {
+    constructor(
+        message: string,
+        public readonly errorCode: string,
+        public readonly details: Record<string, unknown> = {},
+    ) {
+        super(message);
+        this.name = 'MediaPreflightError';
+    }
 }
 
 export interface PublishOptions {
@@ -325,40 +340,198 @@ export class PublisherService {
         const normalizedSource = await getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(source));
         const response = await fetch(normalizedSource);
         if (!response.ok) {
-            throw new Error(`preflight fetch failed (${response.status})`);
+            throw new MediaPreflightError(
+                `preflight fetch failed (${response.status})`,
+                platform === 'Threads' ? 'THREADS_MEDIA_URL_NOT_PUBLIC' : 'MEDIA_FETCH_FAILED',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                },
+            );
         }
 
         const mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
         if (!mimeType.startsWith('image/')) {
-            throw new Error(`preflight expected image content but received ${mimeType || 'unknown content type'}`);
+            throw new MediaPreflightError(
+                `preflight expected image content but received ${mimeType || 'unknown content type'}`,
+                platform === 'Threads' ? 'THREADS_MEDIA_INVALID_CONTENT_TYPE' : 'MEDIA_INVALID_CONTENT_TYPE',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                },
+            );
         }
 
         const buffer = Buffer.from(await response.arrayBuffer());
         if (buffer.length === 0) {
-            throw new Error('preflight fetched an empty image');
+            throw new MediaPreflightError(
+                'preflight fetched an empty image',
+                platform === 'Threads' ? 'THREADS_MEDIA_FETCH_FAILED' : 'MEDIA_FETCH_FAILED',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                    bytes: 0,
+                },
+            );
         }
 
         const byteLimit = this.getImageByteLimit(platform);
         if (buffer.length > byteLimit) {
-            throw new Error(`preflight image exceeds ${Math.round(byteLimit / (1024 * 1024))}MB limit`);
+            throw new MediaPreflightError(
+                `preflight image exceeds ${Math.round(byteLimit / (1024 * 1024))}MB limit`,
+                platform === 'Threads' ? 'THREADS_MEDIA_FETCH_FAILED' : 'MEDIA_FETCH_FAILED',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                    bytes: buffer.length,
+                },
+            );
         }
 
         const metadata = await sharp(buffer, { animated: false }).metadata().catch(() => null);
         if (!metadata?.width || !metadata?.height) {
-            throw new Error('preflight could not read image dimensions');
+            throw new MediaPreflightError(
+                'preflight could not read image dimensions',
+                platform === 'Threads' ? 'THREADS_MEDIA_FETCH_FAILED' : 'MEDIA_FETCH_FAILED',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                    bytes: buffer.length,
+                },
+            );
         }
 
         if (metadata.width < 200 || metadata.height < 200) {
-            throw new Error(`preflight image is too small (${metadata.width}x${metadata.height})`);
+            throw new MediaPreflightError(
+                `preflight image is too small (${metadata.width}x${metadata.height})`,
+                platform === 'Threads' ? 'THREADS_MEDIA_FETCH_FAILED' : 'MEDIA_FETCH_FAILED',
+                {
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                    bytes: buffer.length,
+                    width: metadata.width,
+                    height: metadata.height,
+                },
+            );
         }
 
         return {
-            source: normalizedSource,
+            originalSource: source,
+            source: response.url || normalizedSource,
+            httpStatus: response.status,
             mimeType,
             bytes: buffer.length,
             width: metadata.width,
             height: metadata.height,
         };
+    }
+
+    private async verifyThreadsImageReadiness(resolvedImageUrls: string[]): Promise<ImagePreflightResult[]> {
+        const diagnostics: ImagePreflightResult[] = [];
+
+        for (const imageUrl of resolvedImageUrls) {
+            const firstPass = await this.preflightRemoteImage(imageUrl, 'Threads');
+            diagnostics.push(firstPass);
+
+            if (this.isBackblazeHostedUrl(firstPass.source) || this.isBackblazeHostedUrl(imageUrl)) {
+                await new Promise((resolve) => setTimeout(resolve, 4000));
+                diagnostics.push(await this.preflightRemoteImage(imageUrl, 'Threads'));
+            }
+        }
+
+        return diagnostics;
+    }
+
+    private formatThreadsPublishFailureMessage(input: {
+        error?: string;
+        errorCode?: string;
+        errorUserTitle?: string;
+        errorUserMessage?: string;
+        errorDetails?: Record<string, unknown>;
+    }): string {
+        if (input.errorCode === 'THREADS_MEDIA_FETCH_FAILED') {
+            const prefix = 'Meta could not fetch the image from the provided media URL.';
+            const suffixParts: string[] = [];
+            const contentType = typeof input.errorDetails?.contentType === 'string' ? input.errorDetails.contentType : undefined;
+            const httpStatus = typeof input.errorDetails?.httpStatus === 'number' ? input.errorDetails.httpStatus : undefined;
+
+            if (input.errorUserTitle) {
+                suffixParts.push(input.errorUserTitle);
+            }
+            if (input.errorUserMessage) {
+                suffixParts.push(input.errorUserMessage);
+            }
+            if (httpStatus !== undefined) {
+                suffixParts.push(`HTTP status ${httpStatus}.`);
+            }
+            if (contentType) {
+                suffixParts.push(`Content-Type ${contentType}.`);
+            }
+
+            return [prefix, ...suffixParts].join(' ').trim();
+        }
+
+        if (input.errorCode === 'THREADS_MEDIA_URL_NOT_PUBLIC') {
+            const httpStatus = typeof input.errorDetails?.httpStatus === 'number' ? input.errorDetails.httpStatus : undefined;
+            const parts = ['Meta could not fetch the image from the provided media URL because it was not publicly reachable.'];
+            if (httpStatus !== undefined) {
+                parts.push(`HTTP status ${httpStatus}.`);
+            }
+            return parts.join(' ').trim();
+        }
+
+        if (input.errorCode === 'THREADS_MEDIA_INVALID_CONTENT_TYPE') {
+            const contentType = typeof input.errorDetails?.contentType === 'string' ? input.errorDetails.contentType : undefined;
+            const httpStatus = typeof input.errorDetails?.httpStatus === 'number' ? input.errorDetails.httpStatus : undefined;
+            const parts = ['Meta could not fetch the image from the provided media URL.'];
+            if (httpStatus !== undefined) {
+                parts.push(`HTTP status ${httpStatus}.`);
+            }
+            if (contentType) {
+                parts.push(`Content-Type ${contentType}.`);
+            }
+            return parts.join(' ').trim();
+        }
+
+        return input.error || 'Threads publish failed.';
+    }
+
+    private async logThreadsFailure(input: {
+        stage: string;
+        platform: string;
+        itemLabel: string;
+        error?: string;
+        errorCode?: string;
+        errorDetails?: Record<string, unknown>;
+    }): Promise<void> {
+        await prisma.log.create({
+            data: {
+                level: 'error',
+                service: 'publisher',
+                message: `Threads publish failure during ${input.stage}: ${input.itemLabel}`,
+                metadata: {
+                    platform: input.platform,
+                    stage: input.stage,
+                    itemLabel: input.itemLabel,
+                    error: input.error,
+                    errorCode: input.errorCode,
+                    ...input.errorDetails,
+                },
+            },
+        }).catch((error) => {
+            console.error('[Publisher] Failed to log Threads failure metadata:', error);
+        });
     }
 
     private async preflightPublishImages(
@@ -1279,6 +1452,9 @@ export class PublisherService {
                             if (hasPublishablePlatformConnection(connection)) {
                                 const threadsUserId = connection.userId as string;
                                 const threadsAccessToken = connection.accessToken as string;
+                                const threadsPreflightResults = resolvedImageUrls.length > 0
+                                    ? await this.verifyThreadsImageReadiness(resolvedImageUrls)
+                                    : [];
                                 const threadsResult = localVideoFile || this.isDirectVideoUrl(directVideoUrl)
                                     ? await metaService.postVideoToThreads(
                                         threadsUserId,
@@ -1292,9 +1468,30 @@ export class PublisherService {
                                         resolvedImageUrls.length > 0 ? resolvedImageUrls : (primaryImageUrl || null),
                                         threadsAccessToken
                                     );
+                                const threadsErrorCode = !threadsResult.success ? (threadsResult as any).errorCode : undefined;
+                                const threadsErrorDetails = !threadsResult.success ? {
+                                    mediaUrls: resolvedImageUrls,
+                                    preflight: threadsPreflightResults,
+                                    rawError: (threadsResult as any).rawError,
+                                    errorSubcode: (threadsResult as any).errorSubcode,
+                                    errorUserTitle: (threadsResult as any).errorUserTitle,
+                                    errorUserMessage: (threadsResult as any).errorUserMessage,
+                                    fbtraceId: (threadsResult as any).fbtraceId,
+                                } : undefined;
                                 result = {
                                     platform,
                                     ...threadsResult,
+                                    error: threadsResult.success
+                                        ? undefined
+                                        : this.formatThreadsPublishFailureMessage({
+                                            error: threadsResult.error,
+                                            errorCode: threadsErrorCode,
+                                            errorUserTitle: (threadsResult as any).errorUserTitle,
+                                            errorUserMessage: (threadsResult as any).errorUserMessage,
+                                            errorDetails: threadsErrorDetails,
+                                        }),
+                                    errorCode: threadsErrorCode,
+                                    errorDetails: threadsErrorDetails,
                                     status: threadsResult.success ? 'posted' : 'failed',
                                     postedAt: new Date().toISOString()
                                 };
@@ -1427,7 +1624,19 @@ export class PublisherService {
 
                 } catch (err: any) {
                     console.error(`[Publisher] Error posting to ${platform} (Attempt ${attempts + 1}):`, err);
-                    result.error = err.message;
+                    if (err instanceof MediaPreflightError) {
+                        result.errorCode = err.errorCode;
+                        result.errorDetails = err.details;
+                        result.error = platform === 'Threads'
+                            ? this.formatThreadsPublishFailureMessage({
+                                error: err.message,
+                                errorCode: err.errorCode,
+                                errorDetails: err.details,
+                            })
+                            : err.message;
+                    } else {
+                        result.error = err.message;
+                    }
                     attempts++;
                 }
             }
@@ -1435,6 +1644,16 @@ export class PublisherService {
             // Notification Logic using helper (Only errors for now)
             if (result.status === 'failed') {
                 const itemLabel = describePublishItem(platformContent, mediaFilePath);
+                if (platform === 'Threads') {
+                    await this.logThreadsFailure({
+                        stage: 'publish',
+                        platform,
+                        itemLabel,
+                        error: result.error,
+                        errorCode: result.errorCode,
+                        errorDetails: result.errorDetails,
+                    });
+                }
                 await notificationService.notifyUser({
                     title: `${platform} publish failed`,
                     message: `${itemLabel} failed to publish to ${platform}: ${result.error}`,

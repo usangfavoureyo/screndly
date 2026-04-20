@@ -1555,6 +1555,62 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (
+    title.includes('charlize theron says') &&
+    title.includes('ai is going to be able to do') &&
+    title.includes('timoth')
+  ) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is person commentary on AI/live performance, not a core project-news item.',
+      mediaTitle: undefined,
+      primarySubject: 'Charlize Theron',
+      secondarySubject: 'Timothee Chalamet',
+      entityType: 'person',
+      eventType: 'interview_quote',
+      confidence: 0.94,
+      namedPeople: ['Charlize Theron', 'Timothee Chalamet'],
+      flags: ['story_lane_entertainment_adjacent', 'editorial_brain_image_strategy_person_first'],
+      allowedEntities: ['Charlize Theron', 'Timothee Chalamet'],
+    };
+  }
+
+  if (
+    title.includes('nathalie baye dies') &&
+    hasAll('catch me if you can')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Nathalie Baye',
+      primarySubject: 'Nathalie Baye',
+      secondarySubject: 'Catch Me If You Can',
+      entityType: 'person',
+      eventType: 'obituary',
+      confidence: 0.96,
+      namedPeople: ['Nathalie Baye'],
+      flags: ['story_policy_memorial_feed_fallback'],
+      allowedEntities: ['Nathalie Baye', 'Catch Me If You Can', 'Downton Abbey: A New Era'],
+    };
+  }
+
+  if (
+    title.includes("'the batman part ii'") &&
+    title.includes('charles dance joins')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'The Batman Part II',
+      primarySubject: 'The Batman Part II',
+      secondarySubject: 'Charles Dance',
+      entityType: 'movie',
+      eventType: 'casting',
+      confidence: 0.95,
+      namedPeople: ['Charles Dance', 'Robert Pattinson'],
+      flags: ['story_policy_force_project_first_image'],
+      allowedEntities: ['The Batman Part II', 'Charles Dance', 'Robert Pattinson', 'DC Studios'],
+    };
+  }
+
   return null;
 }
 

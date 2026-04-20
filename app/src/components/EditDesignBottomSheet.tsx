@@ -65,6 +65,16 @@ interface EditDesignBottomSheetProps {
     overlayOpacity?: number; // 0-100
     gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
     templateVariant?: DesignStudioLayoutVariant;
+    useCircleInset?: boolean;
+    circleInsetImage?: string;
+    circleX?: number;
+    circleY?: number;
+    circleSize?: number;
+    circleImageZoom?: number;
+    circleImageOffsetX?: number;
+    circleImageOffsetY?: number;
+    circleStrokeWidth?: number;
+    circleStrokeColor?: string;
     fadeEnabled?: boolean;
     fadeOpacity?: number;
     brandBlockMode?: DesignStudioBrandBlockMode;
@@ -104,6 +114,16 @@ export interface DesignData {
   overlayOpacity?: number; // 0-100
   gradientPosition?: 'top' | 'bottom' | 'left' | 'right'; // Gradient direction
   templateVariant?: DesignStudioLayoutVariant;
+  useCircleInset?: boolean;
+  circleInsetImage?: string;
+  circleX?: number;
+  circleY?: number;
+  circleSize?: number;
+  circleImageZoom?: number;
+  circleImageOffsetX?: number;
+  circleImageOffsetY?: number;
+  circleStrokeWidth?: number;
+  circleStrokeColor?: string;
   fadeEnabled?: boolean;
   fadeOpacity?: number;
   brandBlockMode?: DesignStudioBrandBlockMode;
@@ -133,8 +153,8 @@ export function EditDesignBottomSheet({
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
   const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
-  const [headlineWidthScale, setHeadlineWidthScale] = useState(initialData?.headlineWidthScale ?? 1);
-  const [headlineDensity, setHeadlineDensity] = useState(initialData?.headlineDensity ?? 1);
+  const [headlineWidthScale, setHeadlineWidthScale] = useState(1);
+  const [headlineDensity, setHeadlineDensity] = useState(1);
   const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? 0.93);
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
@@ -155,6 +175,17 @@ export function EditDesignBottomSheet({
   const [overlayOpacity, setOverlayOpacity] = useState(initialData?.overlayOpacity || 70);
   const [gradientPosition, setGradientPosition] = useState(initialData?.gradientPosition || 'top');
   const [templateVariant, setTemplateVariant] = useState<DesignStudioLayoutVariant>(initialData?.templateVariant || 'bottom_center');
+  const [useCircleInset, setUseCircleInset] = useState(initialData?.useCircleInset ?? false);
+  const [circleInsetImage, setCircleInsetImage] = useState(initialData?.circleInsetImage || '');
+  const [previewCircleInsetImage, setPreviewCircleInsetImage] = useState(initialData?.circleInsetImage || '');
+  const [circleX, setCircleX] = useState(initialData?.circleX ?? 80);
+  const [circleY, setCircleY] = useState(initialData?.circleY ?? 24);
+  const [circleSize, setCircleSize] = useState(initialData?.circleSize ?? 220);
+  const [circleImageZoom, setCircleImageZoom] = useState(initialData?.circleImageZoom ?? 1);
+  const [circleImageOffsetX, setCircleImageOffsetX] = useState(initialData?.circleImageOffsetX ?? 0);
+  const [circleImageOffsetY, setCircleImageOffsetY] = useState(initialData?.circleImageOffsetY ?? 0);
+  const [circleStrokeWidth, setCircleStrokeWidth] = useState(initialData?.circleStrokeWidth ?? 6);
+  const [circleStrokeColor, setCircleStrokeColor] = useState(initialData?.circleStrokeColor || '#FFFFFF');
   const [fadeEnabled, setFadeEnabled] = useState(initialData?.fadeEnabled ?? true);
   const [fadeOpacity, setFadeOpacity] = useState(initialData?.fadeOpacity ?? 90);
   const [brandBlockMode, setBrandBlockMode] = useState<DesignStudioBrandBlockMode>(initialData?.brandBlockMode || 'auto');
@@ -165,6 +196,14 @@ export function EditDesignBottomSheet({
   const [caption, setCaption] = useState('');
   const [isGeneratingCaption, setIsGeneratingCaption] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
+  const [isUploadingCircleInset, setIsUploadingCircleInset] = useState(false);
+  const [circleTmdbSearchQuery, setCircleTmdbSearchQuery] = useState('');
+  const [circleTmdbResults, setCircleTmdbResults] = useState<DesignStudioTMDbSearchResult[]>([]);
+  const [selectedCircleTmdbResult, setSelectedCircleTmdbResult] = useState<DesignStudioTMDbSearchResult | null>(null);
+  const [circleTmdbImagePool, setCircleTmdbImagePool] = useState<DesignStudioTMDbImagePool | null>(null);
+  const [circleTmdbImageCategory, setCircleTmdbImageCategory] = useState<'backdrops' | 'posters' | 'profiles'>('profiles');
+  const [isSearchingCircleTmdb, setIsSearchingCircleTmdb] = useState(false);
+  const [isLoadingCircleTmdbImages, setIsLoadingCircleTmdbImages] = useState(false);
   const [expandedPreviewZoom, setExpandedPreviewZoom] = useState(1);
   const [expandedPreviewOffset, setExpandedPreviewOffset] = useState({ x: 0, y: 0 });
   const expandedPreviewViewportRef = useRef<HTMLDivElement | null>(null);
@@ -180,6 +219,7 @@ export function EditDesignBottomSheet({
   const lastHistorySignatureRef = useRef('');
   const skipHistorySignatureRef = useRef('');
   const resetHistorySignatureRef = useRef('');
+  const circleInsetFileInputRef = useRef<HTMLInputElement>(null);
   const [exportFormat, setExportFormat] = useState<'jpeg' | 'png'>(
     persistedSettings.exportFormat === 'png' ? 'png' : 'jpeg',
   );
@@ -233,8 +273,11 @@ export function EditDesignBottomSheet({
       if (previewBackgroundImage.startsWith('blob:')) {
         URL.revokeObjectURL(previewBackgroundImage);
       }
+      if (previewCircleInsetImage.startsWith('blob:')) {
+        URL.revokeObjectURL(previewCircleInsetImage);
+      }
     };
-  }, [previewBackgroundImage]);
+  }, [previewBackgroundImage, previewCircleInsetImage]);
 
   useEffect(() => {
     if (!open || !initialData) {
@@ -263,6 +306,16 @@ export function EditDesignBottomSheet({
       overlayOpacity: initialData.overlayOpacity || 70,
       gradientPosition: initialData.gradientPosition || 'top',
       templateVariant: initialData.templateVariant || 'bottom_center',
+      useCircleInset: initialData.useCircleInset ?? false,
+      circleInsetImage: initialData.circleInsetImage || '',
+      circleX: initialData.circleX ?? 80,
+      circleY: initialData.circleY ?? 24,
+      circleSize: initialData.circleSize ?? 220,
+      circleImageZoom: initialData.circleImageZoom ?? 1,
+      circleImageOffsetX: initialData.circleImageOffsetX ?? 0,
+      circleImageOffsetY: initialData.circleImageOffsetY ?? 0,
+      circleStrokeWidth: initialData.circleStrokeWidth ?? 6,
+      circleStrokeColor: initialData.circleStrokeColor || '#FFFFFF',
       fadeEnabled: initialData.fadeEnabled ?? true,
       fadeOpacity: initialData.fadeOpacity ?? 90,
       brandBlockMode: initialData.brandBlockMode || 'auto',
@@ -296,16 +349,8 @@ export function EditDesignBottomSheet({
         ? persistedPrefs.fontScale
         : initialData.fontScale ?? 1,
     );
-    setHeadlineWidthScale(
-      typeof persistedPrefs?.headlineWidthScale === 'number'
-        ? persistedPrefs.headlineWidthScale
-        : initialData.headlineWidthScale ?? 1,
-    );
-    setHeadlineDensity(
-      typeof persistedPrefs?.headlineDensity === 'number'
-        ? persistedPrefs.headlineDensity
-        : initialData.headlineDensity ?? 1,
-    );
+    setHeadlineWidthScale(1);
+    setHeadlineDensity(1);
     setLineHeightMultiplier(
       typeof persistedPrefs?.lineHeightMultiplier === 'number'
         ? persistedPrefs.lineHeightMultiplier
@@ -332,6 +377,17 @@ export function EditDesignBottomSheet({
     );
     setTemplateVariant(resolvedVariant);
     setGradientPosition(resolvedGradientPosition);
+    setUseCircleInset(initialData.useCircleInset ?? false);
+    setCircleInsetImage(initialData.circleInsetImage || '');
+    setPreviewCircleInsetImage(initialData.circleInsetImage || '');
+    setCircleX(initialData.circleX ?? 80);
+    setCircleY(initialData.circleY ?? 24);
+    setCircleSize(initialData.circleSize ?? 220);
+    setCircleImageZoom(initialData.circleImageZoom ?? 1);
+    setCircleImageOffsetX(initialData.circleImageOffsetX ?? 0);
+    setCircleImageOffsetY(initialData.circleImageOffsetY ?? 0);
+    setCircleStrokeWidth(initialData.circleStrokeWidth ?? 6);
+    setCircleStrokeColor(initialData.circleStrokeColor || '#FFFFFF');
     setFadeEnabled(
       typeof persistedPrefs?.fadeEnabled === 'boolean'
         ? persistedPrefs.fadeEnabled
@@ -366,14 +422,21 @@ export function EditDesignBottomSheet({
       headerTextColor,
       subtextColor,
       fontScale,
-      headlineWidthScale,
-      headlineDensity,
       lineHeightMultiplier,
       overlayEnabled,
       overlayColor,
       overlayOpacity,
       templateVariant,
       gradientPosition,
+      useCircleInset,
+      circleX,
+      circleY,
+      circleSize,
+      circleImageZoom,
+      circleImageOffsetX,
+      circleImageOffsetY,
+      circleStrokeWidth,
+      circleStrokeColor,
       fadeEnabled,
       fadeOpacity,
       brandBlockMode,
@@ -384,14 +447,21 @@ export function EditDesignBottomSheet({
     headerTextColor,
     subtextColor,
     fontScale,
-    headlineWidthScale,
-    headlineDensity,
     lineHeightMultiplier,
     overlayEnabled,
     overlayColor,
     overlayOpacity,
     templateVariant,
     gradientPosition,
+    useCircleInset,
+    circleX,
+    circleY,
+    circleSize,
+    circleImageZoom,
+    circleImageOffsetX,
+    circleImageOffsetY,
+    circleStrokeWidth,
+    circleStrokeColor,
     fadeEnabled,
     fadeOpacity,
     brandBlockMode,
@@ -419,8 +489,19 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     headlineWidthScale,
+    headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
+    circleInsetImage,
+    useCircleInset,
+    circleX,
+    circleY,
+    circleSize,
+    circleImageZoom,
+    circleImageOffsetX,
+    circleImageOffsetY,
+    circleStrokeWidth,
+    circleStrokeColor,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -442,8 +523,19 @@ export function EditDesignBottomSheet({
     subtextColor,
     fontScale,
     headlineWidthScale,
+    headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
+    circleInsetImage,
+    useCircleInset,
+    circleX,
+    circleY,
+    circleSize,
+    circleImageZoom,
+    circleImageOffsetX,
+    circleImageOffsetY,
+    circleStrokeWidth,
+    circleStrokeColor,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -472,11 +564,13 @@ export function EditDesignBottomSheet({
     setHeaderTextColor(snapshot.headerTextColor || '#FFFFFF');
     setSubtextColor(snapshot.subtextColor || '#000000');
     setFontScale(snapshot.fontScale ?? 1);
-    setHeadlineWidthScale(snapshot.headlineWidthScale ?? 1);
-    setHeadlineDensity(snapshot.headlineDensity ?? 1);
+    setHeadlineWidthScale(1);
+    setHeadlineDensity(1);
     setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? 0.93);
     setBackgroundImage(snapshot.backgroundImage || '');
     setPreviewBackgroundImage(snapshot.backgroundImage || '');
+    setCircleInsetImage(snapshot.circleInsetImage || '');
+    setPreviewCircleInsetImage(snapshot.circleInsetImage || '');
     setImageFocalPoint(snapshot.imageFocalPoint || { x: 50, y: 50 });
     setImageZoom(snapshot.imageZoom || 1);
     setOverlayEnabled(snapshot.overlayEnabled || false);
@@ -484,6 +578,15 @@ export function EditDesignBottomSheet({
     setOverlayOpacity(snapshot.overlayOpacity || 70);
     setGradientPosition(snapshot.gradientPosition || 'top');
     setTemplateVariant(snapshot.templateVariant || 'bottom_center');
+    setUseCircleInset(snapshot.useCircleInset ?? false);
+    setCircleX(snapshot.circleX ?? 80);
+    setCircleY(snapshot.circleY ?? 24);
+    setCircleSize(snapshot.circleSize ?? 220);
+    setCircleImageZoom(snapshot.circleImageZoom ?? 1);
+    setCircleImageOffsetX(snapshot.circleImageOffsetX ?? 0);
+    setCircleImageOffsetY(snapshot.circleImageOffsetY ?? 0);
+    setCircleStrokeWidth(snapshot.circleStrokeWidth ?? 6);
+    setCircleStrokeColor(snapshot.circleStrokeColor || '#FFFFFF');
     setFadeEnabled(snapshot.fadeEnabled ?? true);
     setFadeOpacity(snapshot.fadeOpacity ?? 90);
     setBrandBlockMode(snapshot.brandBlockMode || 'auto');
@@ -583,6 +686,16 @@ export function EditDesignBottomSheet({
         headlineDensity,
         lineHeightMultiplier,
         backgroundImage: backgroundImage,
+        circleInsetImage,
+        useCircleInset,
+        circleX,
+        circleY,
+        circleSize,
+        circleImageZoom,
+        circleImageOffsetX,
+        circleImageOffsetY,
+        circleStrokeWidth,
+        circleStrokeColor,
         imageFocalPoint,
         imageZoom,
         overlayEnabled,
@@ -607,6 +720,7 @@ export function EditDesignBottomSheet({
     headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
+    circleInsetImage,
     previewBackgroundImage,
     imageFocalPoint.x, 
     imageFocalPoint.y, 
@@ -615,6 +729,15 @@ export function EditDesignBottomSheet({
     overlayColor, 
     overlayOpacity, 
     templateVariant,
+    useCircleInset,
+    circleX,
+    circleY,
+    circleSize,
+    circleImageZoom,
+    circleImageOffsetX,
+    circleImageOffsetY,
+    circleStrokeWidth,
+    circleStrokeColor,
     fadeEnabled,
     fadeOpacity,
     brandBlockMode,
@@ -737,6 +860,113 @@ export function EditDesignBottomSheet({
     return tmdbImagePool.backdrops || [];
   }, [tmdbImageCategory, tmdbImagePool]);
 
+  const activeCircleTmdbImages = useMemo(() => {
+    if (!circleTmdbImagePool) return [];
+    if (circleTmdbImageCategory === 'profiles') return circleTmdbImagePool.profiles || [];
+    if (circleTmdbImageCategory === 'posters') return circleTmdbImagePool.posters || [];
+    return circleTmdbImagePool.backdrops || [];
+  }, [circleTmdbImageCategory, circleTmdbImagePool]);
+
+  const headerTextAlignment = useMemo<'left' | 'center' | 'right'>(() => {
+    if (templateVariant.includes('left')) return 'left';
+    if (templateVariant.includes('right')) return 'right';
+    return 'center';
+  }, [templateVariant]);
+
+  const handleCircleInsetFile = async (file: File) => {
+    haptics.light();
+    const localPreviewUrl = URL.createObjectURL(file);
+    if (previewCircleInsetImage.startsWith('blob:')) {
+      URL.revokeObjectURL(previewCircleInsetImage);
+    }
+    setPreviewCircleInsetImage(localPreviewUrl);
+    setIsUploadingCircleInset(true);
+    try {
+      const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
+      setCircleInsetImage(uploadedImage.url);
+      setUseCircleInset(true);
+      toast.success('Circle inset image uploaded');
+    } catch (error) {
+      console.error('Circle inset upload failed:', error);
+      setPreviewCircleInsetImage(circleInsetImage);
+      toast.error(error instanceof Error ? error.message : 'Failed to upload circle inset image');
+    } finally {
+      setIsUploadingCircleInset(false);
+    }
+  };
+
+  const handleCircleInsetFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      await handleCircleInsetFile(file);
+      e.target.value = '';
+    }
+  };
+
+  const handleCircleTmdbSearch = async () => {
+    if (!circleTmdbSearchQuery.trim()) return;
+    haptics.medium();
+    setIsSearchingCircleTmdb(true);
+    try {
+      setSelectedCircleTmdbResult(null);
+      setCircleTmdbImagePool(null);
+      const results = await searchDesignStudioTMDb(circleTmdbSearchQuery);
+      setCircleTmdbResults(results);
+      if (results.length === 0) {
+        toast('No TMDb matches found', { description: 'Try a more exact title or person.' });
+      }
+    } catch (error) {
+      console.error('Circle TMDb search failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to search TMDb');
+      setCircleTmdbResults([]);
+    } finally {
+      setIsSearchingCircleTmdb(false);
+    }
+  };
+
+  const handleSelectCircleTmdbResult = async (result: DesignStudioTMDbSearchResult) => {
+    haptics.light();
+    setSelectedCircleTmdbResult(result);
+    setIsLoadingCircleTmdbImages(true);
+    try {
+      const pool = await fetchDesignStudioTMDbImages(result.mediaType, result.id);
+      setCircleTmdbImagePool(pool);
+      const nextCategory = result.mediaType === 'person'
+        ? 'profiles'
+        : pool.profiles?.length
+          ? 'profiles'
+          : pool.posters?.length
+            ? 'posters'
+            : 'backdrops';
+      setCircleTmdbImageCategory(nextCategory);
+    } catch (error) {
+      console.error('Circle TMDb image fetch failed:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to load TMDb images');
+      setSelectedCircleTmdbResult(null);
+      setCircleTmdbImagePool(null);
+    } finally {
+      setIsLoadingCircleTmdbImages(false);
+    }
+  };
+
+  const handleSelectCircleTmdbImage = (imageUrl: string) => {
+    haptics.light();
+    setCircleInsetImage(imageUrl);
+    setPreviewCircleInsetImage(imageUrl);
+    setUseCircleInset(true);
+    setSelectedCircleTmdbResult(null);
+    setCircleTmdbImagePool(null);
+    setCircleTmdbResults([]);
+    setCircleTmdbSearchQuery('');
+    toast.success('Circle inset image selected');
+  };
+
+  const handleBackToCircleTmdbResults = () => {
+    haptics.light();
+    setSelectedCircleTmdbResult(null);
+    setCircleTmdbImagePool(null);
+  };
+
   const handleSave = () => {
     if (hasHeader && !headerText.trim()) {
       toast.error('Header text is required');
@@ -759,6 +989,16 @@ export function EditDesignBottomSheet({
       headlineDensity,
       lineHeightMultiplier,
       backgroundImage: hasBackground ? backgroundImage : undefined,
+      useCircleInset,
+      circleInsetImage: useCircleInset ? circleInsetImage : undefined,
+      circleX,
+      circleY,
+      circleSize,
+      circleImageZoom,
+      circleImageOffsetX,
+      circleImageOffsetY,
+      circleStrokeWidth,
+      circleStrokeColor,
       imageFocalPoint,
       imageZoom,
       overlayEnabled,
@@ -785,6 +1025,16 @@ export function EditDesignBottomSheet({
     headlineDensity,
     lineHeightMultiplier,
     backgroundImage,
+    useCircleInset,
+    circleInsetImage,
+    circleX,
+    circleY,
+    circleSize,
+    circleImageZoom,
+    circleImageOffsetX,
+    circleImageOffsetY,
+    circleStrokeWidth,
+    circleStrokeColor,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -1182,7 +1432,11 @@ export function EditDesignBottomSheet({
               placeholder="Enter header text..."
               rows={4}
               className="min-h-[112px] bg-white dark:bg-black border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#292929] resize-y"
+              style={{ textAlign: headerTextAlignment }}
             />
+            <p className="mt-1 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
+              Press Enter to control line breaks
+            </p>
             {headerText.length > 90 && (
                 <p className="text-xs text-[#ec1e24] mt-1">
                   Warning: exceeds recommended limit and may use a smaller font.
@@ -1249,54 +1503,6 @@ export function EditDesignBottomSheet({
                   onChange={(e) => {
                     haptics.light();
                     setFontScale(Number(e.target.value));
-                  }}
-                  className="w-full accent-[#ec1e24]"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
-                    Headline Width
-                  </Label>
-                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
-                    {headlineWidthScale.toFixed(2)}x
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.8"
-                  max="1.2"
-                  step="0.02"
-                  value={headlineWidthScale}
-                  {...sliderInteractionProps}
-                  onChange={(e) => {
-                    haptics.light();
-                    setHeadlineWidthScale(Number(e.target.value));
-                  }}
-                  className="w-full accent-[#ec1e24]"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <Label className="text-xs text-gray-700 dark:text-[#9CA3AF]">
-                    Headline Density
-                  </Label>
-                  <span className="text-xs text-gray-600 dark:text-[#6B7280]">
-                    {headlineDensity.toFixed(2)}x
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="0.70"
-                  max="2.20"
-                  step="0.05"
-                  value={headlineDensity}
-                  {...sliderInteractionProps}
-                  onChange={(e) => {
-                    haptics.light();
-                    setHeadlineDensity(Number(e.target.value));
                   }}
                   className="w-full accent-[#ec1e24]"
                 />
@@ -1869,6 +2075,204 @@ export function EditDesignBottomSheet({
             )}
           </div>
           )}
+
+          {/* Circle Inset Controls */}
+          <div>
+            <Label className="text-gray-900 dark:text-white mb-2 block">Circle Inset</Label>
+            <div className="bg-white dark:bg-black rounded-lg p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm text-gray-700 dark:text-[#9CA3AF]">Use Circle Inset</Label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptics.light();
+                    setUseCircleInset((current) => !current);
+                  }}
+                  className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
+                    useCircleInset ? 'bg-[#ec1e24]' : 'bg-gray-300 dark:bg-[#333333]'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                      useCircleInset ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {useCircleInset ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <input
+                      ref={circleInsetFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleCircleInsetFileUpload}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={isUploadingCircleInset}
+                      onClick={() => {
+                        haptics.light();
+                        circleInsetFileInputRef.current?.click();
+                      }}
+                      className="w-full"
+                    >
+                      {isUploadingCircleInset ? 'Uploading...' : 'Upload Image'}
+                    </Button>
+                    <div className="flex gap-2">
+                      <Input
+                        value={circleTmdbSearchQuery}
+                        onChange={(e) => setCircleTmdbSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            void handleCircleTmdbSearch();
+                          }
+                        }}
+                        placeholder="Search TMDb image..."
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        onClick={() => void handleCircleTmdbSearch()}
+                        disabled={isSearchingCircleTmdb || !circleTmdbSearchQuery.trim()}
+                        className="h-9 bg-[#ec1e24] hover:bg-[#d01a20] text-white"
+                      >
+                        Search
+                      </Button>
+                    </div>
+                  </div>
+
+                  {selectedCircleTmdbResult ? (
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-[#333333] dark:bg-black">
+                      <div className="mb-2 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={handleBackToCircleTmdbResults}
+                          className="inline-flex items-center text-sm text-gray-700 dark:text-[#9CA3AF]"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                        </button>
+                        <p className="text-sm text-gray-900 dark:text-white truncate">{selectedCircleTmdbResult.title}</p>
+                      </div>
+                      <div className="mb-2 grid grid-cols-3 gap-2">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('profiles')} className={`text-xs ${circleTmdbImageCategory === 'profiles' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Profiles</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('posters')} className={`text-xs ${circleTmdbImageCategory === 'posters' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Posters</Button>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCircleTmdbImageCategory('backdrops')} className={`text-xs ${circleTmdbImageCategory === 'backdrops' ? 'bg-[#ec1e24] border-[#ec1e24] text-white hover:bg-[#ec1e24] hover:text-white' : ''}`}>Backdrops</Button>
+                      </div>
+                      {isLoadingCircleTmdbImages ? (
+                        <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Loading TMDb images...</p>
+                      ) : (
+                        <div className="grid max-h-48 grid-cols-3 gap-2 overflow-y-auto">
+                          {activeCircleTmdbImages.map((asset) => (
+                            <button key={asset.url} type="button" onClick={() => handleSelectCircleTmdbImage(asset.url)} className="aspect-square overflow-hidden rounded-md border border-gray-200 dark:border-[#333333]">
+                              <img src={asset.url} alt="Circle inset candidate" className="h-full w-full object-cover" />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ) : circleTmdbResults.length > 0 ? (
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {circleTmdbResults.map((result) => (
+                        <button
+                          key={`circle-${result.mediaType}-${result.id}`}
+                          type="button"
+                          onClick={() => void handleSelectCircleTmdbResult(result)}
+                          className="flex w-full items-center gap-3 rounded-lg border border-gray-200 bg-white p-2 text-left dark:border-[#333333] dark:bg-black"
+                        >
+                          <div className="h-10 w-10 overflow-hidden rounded-md bg-[#111111]">
+                            {(result.profile || result.poster || result.backdrop) ? (
+                              <img src={result.profile || result.poster || result.backdrop || ''} alt={result.title} className="h-full w-full object-cover" />
+                            ) : null}
+                          </div>
+                          <p className="truncate text-sm text-gray-900 dark:text-white">{result.title}</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {previewCircleInsetImage || circleInsetImage ? (
+                    <div className="space-y-3">
+                      <div className="relative mx-auto h-28 w-28 overflow-hidden rounded-full border" style={{ borderColor: circleStrokeColor, borderWidth: `${Math.max(1, circleStrokeWidth)}px` }}>
+                        <img
+                          src={buildDesignStudioMediaStreamUrl(previewCircleInsetImage || circleInsetImage) || (previewCircleInsetImage || circleInsetImage)}
+                          alt="Circle inset preview"
+                          className="absolute h-full w-full object-cover"
+                          style={{
+                            transform: `translate(${circleImageOffsetX}%, ${circleImageOffsetY}%) scale(${circleImageZoom})`,
+                            transformOrigin: 'center center',
+                          }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 gap-3">
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Horizontal Position</span><span>{circleX}%</span></div>
+                          <input type="range" min="0" max="100" value={circleX} {...sliderInteractionProps} onChange={(e) => setCircleX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Vertical Position</span><span>{circleY}%</span></div>
+                          <input type="range" min="0" max="100" value={circleY} {...sliderInteractionProps} onChange={(e) => setCircleY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Circle Size</span><span>{circleSize}px</span></div>
+                          <input type="range" min="80" max="420" value={circleSize} {...sliderInteractionProps} onChange={(e) => setCircleSize(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Zoom</span><span>{circleImageZoom.toFixed(2)}x</span></div>
+                          <input type="range" min="0.6" max="3" step="0.05" value={circleImageZoom} {...sliderInteractionProps} onChange={(e) => setCircleImageZoom(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Horizontal</span><span>{circleImageOffsetX}%</span></div>
+                          <input type="range" min="-100" max="100" value={circleImageOffsetX} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetX(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Image Vertical</span><span>{circleImageOffsetY}%</span></div>
+                          <input type="range" min="-100" max="100" value={circleImageOffsetY} {...sliderInteractionProps} onChange={(e) => setCircleImageOffsetY(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-xs text-gray-600 dark:text-[#6B7280]"><span>Stroke Width</span><span>{circleStrokeWidth}px</span></div>
+                          <input type="range" min="0" max="24" value={circleStrokeWidth} {...sliderInteractionProps} onChange={(e) => setCircleStrokeWidth(Number(e.target.value))} className="w-full accent-[#ec1e24]" />
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setCircleStrokeColor('#FFFFFF')}
+                            className="h-10 w-10 rounded-lg border border-gray-200 dark:border-[#333333]"
+                            style={{ backgroundColor: circleStrokeColor }}
+                          />
+                          <input
+                            type="text"
+                            value={circleStrokeColor}
+                            onChange={(e) => setCircleStrokeColor(e.target.value)}
+                            className="flex-1 px-3 py-2 bg-white dark:bg-black border border-gray-200 dark:border-[#333333] rounded-xl text-gray-900 dark:text-white uppercase"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              if (previewCircleInsetImage.startsWith('blob:')) {
+                                URL.revokeObjectURL(previewCircleInsetImage);
+                              }
+                              setCircleInsetImage('');
+                              setPreviewCircleInsetImage('');
+                              setUseCircleInset(false);
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[#6B7280] dark:text-[#9CA3AF]">Upload or pick an image to use circle inset.</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          </div>
 
           {/* Text Overlay Gradient Controls */}
           {

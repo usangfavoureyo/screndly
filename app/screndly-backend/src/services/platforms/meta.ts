@@ -11,7 +11,16 @@ const THREADS_BASE_URL = `https://graph.threads.net/${THREADS_API_VERSION}`;
 
 type MetaPostResult =
     | { success: true; data: { id: string; platform: string } }
-    | { success: false; error: string };
+    | {
+        success: false;
+        error: string;
+        errorCode?: string;
+        errorSubcode?: string;
+        errorUserTitle?: string;
+        errorUserMessage?: string;
+        fbtraceId?: string;
+        rawError?: unknown;
+      };
 
 export interface MetaCommentItem {
     commentId: string;
@@ -74,6 +83,62 @@ function extractMetaError(error: any): string {
     return 'Meta API request failed';
 }
 
+function extractMetaErrorDetails(error: any): {
+    message?: string;
+    code?: string;
+    subcode?: string;
+    errorUserTitle?: string;
+    errorUserMessage?: string;
+    fbtraceId?: string;
+    rawError?: unknown;
+} {
+    const responseError = error?.response?.data?.error;
+    const responseData = error?.response?.data;
+    const rawMessage = (
+        responseError?.message
+        || responseData?.message
+        || responseData?.error_message
+        || error?.message
+        || ''
+    );
+
+    const message = typeof rawMessage === 'string' && rawMessage.trim().length > 0
+        ? rawMessage.trim()
+        : undefined;
+    const code = responseError?.code ?? responseData?.error_code ?? responseData?.code;
+    const subcode = responseError?.error_subcode ?? responseData?.error_subcode;
+    const errorUserTitle = typeof responseError?.error_user_title === 'string'
+        ? responseError.error_user_title.trim()
+        : undefined;
+    const errorUserMessage = typeof responseError?.error_user_msg === 'string'
+        ? responseError.error_user_msg.trim()
+        : undefined;
+    const fbtraceId = typeof responseError?.fbtrace_id === 'string'
+        ? responseError.fbtrace_id.trim()
+        : typeof responseData?.fbtrace_id === 'string'
+            ? responseData.fbtrace_id.trim()
+            : undefined;
+
+    return {
+        message,
+        code: code !== undefined && code !== null ? String(code) : undefined,
+        subcode: subcode !== undefined && subcode !== null ? String(subcode) : undefined,
+        errorUserTitle,
+        errorUserMessage,
+        fbtraceId,
+        rawError: responseData,
+    };
+}
+
+function classifyThreadsMetaErrorCode(error: any): string | undefined {
+    const details = extractMetaErrorDetails(error);
+    if (details.code === '1' && details.subcode === '2207052') {
+        return 'THREADS_MEDIA_FETCH_FAILED';
+    }
+
+    return undefined;
+}
+
 function isGenericMetaErrorMessage(value: string | null | undefined): boolean {
     const normalized = String(value || '').trim().toLowerCase();
     return normalized.length === 0 || normalized === 'error' || normalized === 'unknown error';
@@ -99,17 +164,42 @@ function buildThreadsMediaFailureMessage(
 }
 
 function isRetryableThreadsVideoError(error: unknown): boolean {
+    const responseError = (error as any)?.response?.data?.error;
+    const code = Number(responseError?.code || (error as any)?.response?.data?.error_code || 0);
+    const subcode = Number(responseError?.error_subcode || (error as any)?.response?.data?.error_subcode || 0);
     const message = extractMetaError(error).toLowerCase();
     const statusCode = Number((error as any)?.response?.status || 0);
 
     return (
-        statusCode === 429
+        code === 1
+        || subcode === 2207052
+        || statusCode === 429
         || statusCode >= 500
+        || message.includes('an unknown error occurred')
         || message.includes('temporar')
         || message.includes('retry your request later')
         || message.includes('unexpected error')
         || message.includes('processing failed with status error')
         || message.includes('processing timed out')
+    );
+}
+
+function isRetryableThreadsPublishError(error: unknown): boolean {
+    const responseError = (error as any)?.response?.data?.error;
+    const code = Number(responseError?.code || (error as any)?.response?.data?.error_code || 0);
+    const subcode = Number(responseError?.error_subcode || (error as any)?.response?.data?.error_subcode || 0);
+    const message = extractMetaError(error).toLowerCase();
+    const statusCode = Number((error as any)?.response?.status || 0);
+
+    return (
+        code === 1
+        || subcode === 2207052
+        || statusCode === 429
+        || statusCode >= 500
+        || message.includes('an unknown error occurred')
+        || message.includes('unexpected error')
+        || message.includes('retry your request later')
+        || message.includes('temporar')
     );
 }
 
@@ -122,6 +212,23 @@ function isInstagramMediaIdNotReadyError(error: unknown): boolean {
     return (
         (code === 9007 && subcode === 2207027)
         || message.includes('media id is not available')
+    );
+}
+
+function isRetryableInstagramStoryError(error: unknown): boolean {
+    const responseError = (error as any)?.response?.data?.error;
+    const code = Number(responseError?.code || (error as any)?.response?.data?.error_code || 0);
+    const statusCode = Number((error as any)?.response?.status || 0);
+    const message = extractMetaError(error).toLowerCase();
+
+    return (
+        code === 1
+        || statusCode === 429
+        || statusCode >= 500
+        || message.includes('an unknown error has occurred')
+        || message.includes('unexpected error')
+        || message.includes('retry your request later')
+        || message.includes('temporar')
     );
 }
 
@@ -151,7 +258,8 @@ async function publishInstagramContainer(
 
             return String(publishRes.data.id);
         } catch (error: any) {
-            const retryable = attempt < maxAttempts - 1 && isInstagramMediaIdNotReadyError(error);
+            const retryable = attempt < maxAttempts - 1
+                && (isInstagramMediaIdNotReadyError(error) || isRetryableInstagramStoryError(error));
             if (!retryable) {
                 throw error;
             }
@@ -263,15 +371,7 @@ async function publishThreadsContainer(
 
             return String(publishRes.data.id);
         } catch (error: any) {
-            const message = extractMetaError(error);
-            const statusCode = Number(error?.response?.status || 0);
-            const isRetryable =
-                attempt < maxAttempts - 1 &&
-                (
-                    statusCode === 429 ||
-                    statusCode >= 500 ||
-                    /retry your request later|unexpected error|temporar/i.test(message)
-                );
+            const isRetryable = attempt < maxAttempts - 1 && isRetryableThreadsPublishError(error);
 
             if (!isRetryable) {
                 throw error;
@@ -848,24 +948,39 @@ export const metaService = {
         mediaKind: 'image' | 'video'
     ): Promise<MetaPostResult> {
         try {
-            const containerParams = new URLSearchParams({
-                media_type: 'STORIES',
-                access_token: accessToken,
-            });
+            const maxContainerAttempts = 3;
+            let containerRes: any;
 
-            if (mediaKind === 'video') {
-                containerParams.append('video_url', mediaUrl);
-            } else {
-                containerParams.append('image_url', mediaUrl);
-            }
+            for (let attempt = 0; attempt < maxContainerAttempts; attempt += 1) {
+                try {
+                    const containerParams = new URLSearchParams({
+                        media_type: 'STORIES',
+                        access_token: accessToken,
+                    });
 
-            const containerRes = await axios.post(
-                `${BASE_URL}/${igUserId}/media`,
-                containerParams.toString(),
-                {
-                    headers: FORM_URL_ENCODED_HEADERS,
+                    if (mediaKind === 'video') {
+                        containerParams.append('video_url', mediaUrl);
+                    } else {
+                        containerParams.append('image_url', mediaUrl);
+                    }
+
+                    containerRes = await axios.post(
+                        `${BASE_URL}/${igUserId}/media`,
+                        containerParams.toString(),
+                        {
+                            headers: FORM_URL_ENCODED_HEADERS,
+                        }
+                    );
+                    break;
+                } catch (error: any) {
+                    const retryable = attempt < maxContainerAttempts - 1 && isRetryableInstagramStoryError(error);
+                    if (!retryable) {
+                        throw error;
+                    }
+
+                    await sleep((attempt + 1) * 3_000);
                 }
-            );
+            }
 
             if (!containerRes.data.id) {
                 throw new Error('Failed to create Instagram story media container');
@@ -1062,9 +1177,16 @@ export const metaService = {
 
         } catch (error: any) {
             console.error('[Meta] Threads Post Error:', error?.response?.data || error);
+            const details = extractMetaErrorDetails(error);
             return {
                 success: false,
-                error: extractMetaError(error)
+                error: extractMetaError(error),
+                errorCode: classifyThreadsMetaErrorCode(error) || details.code,
+                errorSubcode: details.subcode,
+                errorUserTitle: details.errorUserTitle,
+                errorUserMessage: details.errorUserMessage,
+                fbtraceId: details.fbtraceId,
+                rawError: details.rawError,
             };
         }
     },
@@ -1125,9 +1247,16 @@ export const metaService = {
             throw lastError;
         } catch (error: any) {
             console.error('[Meta] Threads Video Post Error:', error?.response?.data || error);
+            const details = extractMetaErrorDetails(error);
             return {
                 success: false,
                 error: extractMetaError(error),
+                errorCode: classifyThreadsMetaErrorCode(error) || details.code,
+                errorSubcode: details.subcode,
+                errorUserTitle: details.errorUserTitle,
+                errorUserMessage: details.errorUserMessage,
+                fbtraceId: details.fbtraceId,
+                rawError: details.rawError,
             };
         }
     },

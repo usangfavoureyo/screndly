@@ -52,6 +52,8 @@ const LOGO_BORDER_COLUMN_RATIO = 0.985;
 const LOGO_MAX_TRIM_RATIO = 0.35;
 const LOGO_LOW_CONTRAST_RATIO = 4.0;
 const LOGO_WIDE_RATIO = 1.9;
+const LOGO_VISIBLE_ALPHA_THRESHOLD = 36;
+const LOGO_STRONG_ALPHA_THRESHOLD = 168;
 const DARK_SURFACE_CANDIDATES: RGB[] = BACKGROUND_CANDIDATES.slice(0, 4);
 const LIGHT_SURFACE_CANDIDATES: RGB[] = BACKGROUND_CANDIDATES.slice(4);
 const LOGO_DARK_BIAS_CONTRAST_TOLERANCE = 1.25;
@@ -233,14 +235,14 @@ function chooseLogoCardDimensions(
 ): { width: number; height: number; maxWidth: number; maxHeight: number } {
   if (intent === 'brand_backdrop' || logoAspectRatio >= LOGO_WIDE_RATIO || contrastRatio < LOGO_LOW_CONTRAST_RATIO) {
     if (logoAspectRatio >= 3.4) {
-      return { width: 1600, height: 900, maxWidth: 1240, maxHeight: 300 };
+      return { width: 1600, height: 900, maxWidth: 1040, maxHeight: 240 };
     }
 
     if (logoAspectRatio >= 2.2) {
-      return { width: 1600, height: 900, maxWidth: 1120, maxHeight: 340 };
+      return { width: 1600, height: 900, maxWidth: 980, maxHeight: 280 };
     }
 
-    return { width: 1600, height: 900, maxWidth: 900, maxHeight: 380 };
+    return { width: 1600, height: 900, maxWidth: 820, maxHeight: 340 };
   }
 
   if (logoAspectRatio >= 1.35) {
@@ -316,18 +318,38 @@ async function analyzeVisibleColor(buffer: Buffer): Promise<RGB> {
   let weightedG = 0;
   let weightedB = 0;
   let totalWeight = 0;
+  let strongWeightedR = 0;
+  let strongWeightedG = 0;
+  let strongWeightedB = 0;
+  let strongTotalWeight = 0;
 
   for (let index = 0; index < data.length; index += info.channels) {
     const alpha = data[index + 3] ?? 255;
-    if (alpha < 18) {
+    if (alpha < LOGO_VISIBLE_ALPHA_THRESHOLD) {
       continue;
     }
 
-    const weight = alpha / 255;
+    const normalizedAlpha = alpha / 255;
+    const weight = normalizedAlpha * normalizedAlpha;
     weightedR += (data[index] ?? 0) * weight;
     weightedG += (data[index + 1] ?? 0) * weight;
     weightedB += (data[index + 2] ?? 0) * weight;
     totalWeight += weight;
+
+    if (alpha >= LOGO_STRONG_ALPHA_THRESHOLD) {
+      strongWeightedR += (data[index] ?? 0) * weight;
+      strongWeightedG += (data[index + 1] ?? 0) * weight;
+      strongWeightedB += (data[index + 2] ?? 0) * weight;
+      strongTotalWeight += weight;
+    }
+  }
+
+  if (strongTotalWeight > 0) {
+    return {
+      r: Math.round(strongWeightedR / strongTotalWeight),
+      g: Math.round(strongWeightedG / strongTotalWeight),
+      b: Math.round(strongWeightedB / strongTotalWeight),
+    };
   }
 
   if (totalWeight <= 0) {

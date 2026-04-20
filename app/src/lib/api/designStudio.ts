@@ -332,6 +332,16 @@ export async function startDesignStudioManualRender(payload: {
     headlineWidthScale?: number;
     headlineDensity?: number;
     lineHeightMultiplier?: number;
+    useCircleInset?: boolean;
+    circleInsetImage?: string;
+    circleX?: number;
+    circleY?: number;
+    circleSize?: number;
+    circleImageZoom?: number;
+    circleImageOffsetX?: number;
+    circleImageOffsetY?: number;
+    circleStrokeWidth?: number;
+    circleStrokeColor?: string;
     maxLines?: number;
     overlayType?: 'linear' | 'radial' | 'full_fade' | 'top_fade' | 'bottom_fade';
     useTemplateDefaultStyling?: boolean;
