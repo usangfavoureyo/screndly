@@ -286,6 +286,46 @@ test('identity concurrency limit serializes same-identity downloads', async () =
     });
 });
 
+test('preserves paragraph spacing while stripping hashtags in platform captions', () => {
+    const service = new YouTubePollerService() as any;
+    const captions = {
+        generated: 'First paragraph line one. #Trailer\n\nSecond paragraph line two. #AppleTV',
+        fallback: 'Fallback text',
+    };
+    const settings = {
+        platformSettings: {
+            instagram: {
+                autoCaption: true,
+                autoHashtag: false,
+            },
+        },
+    };
+
+    const text = service.buildPlatformPostText('Instagram', captions, {}, settings);
+
+    assert.equal(text, 'First paragraph line one.\n\nSecond paragraph line two.');
+});
+
+test('preserves paragraph spacing when hashtags remain enabled', () => {
+    const service = new YouTubePollerService() as any;
+    const captions = {
+        generated: 'Paragraph one.\n\nParagraph two with #Tag',
+        fallback: 'Fallback text',
+    };
+    const settings = {
+        platformSettings: {
+            instagram: {
+                autoCaption: true,
+                autoHashtag: true,
+            },
+        },
+    };
+
+    const text = service.buildPlatformPostText('Instagram', captions, {}, settings);
+
+    assert.equal(text, 'Paragraph one.\n\nParagraph two with #Tag');
+});
+
 test('respects the configured polling schedule window', () => {
     const service = new YouTubePollerService() as any;
     const schedule = {

@@ -3574,7 +3574,37 @@ Respond ONLY as strict JSON:
     }
 
     private stripHashtags(text: string): string {
-        return text.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+        const normalized = text.replace(/\r\n/g, '\n');
+        const strippedLines = normalized.split('\n').map((line) =>
+            line
+                .replace(/(^|\s)#\w+\b/g, '$1')
+                .replace(/[ \t]{2,}/g, ' ')
+                .trimEnd()
+        );
+        return strippedLines.join('\n').trim();
+    }
+
+    private normalizeCaptionSpacing(text: string): string {
+        const normalized = text.replace(/\r\n/g, '\n');
+        const rawLines = normalized.split('\n');
+        const compactedLines: string[] = [];
+        let previousWasBlank = false;
+
+        for (const rawLine of rawLines) {
+            const line = rawLine.replace(/[ \t]+/g, ' ').trim();
+            if (!line) {
+                if (!previousWasBlank) {
+                    compactedLines.push('');
+                }
+                previousWasBlank = true;
+                continue;
+            }
+
+            compactedLines.push(line);
+            previousWasBlank = false;
+        }
+
+        return compactedLines.join('\n').trim();
     }
 
     private buildFallbackCaption(video: any, metadata: { cleanedTitle: string; tmdbMatch?: { title: string } }): string {
@@ -3592,10 +3622,10 @@ Respond ONLY as strict JSON:
             this.isAutoCaptionEnabled(platform, settings) && captions.generated
                 ? captions.generated
                 : captions.fallback;
-
-        return this.shouldStripHashtags(platform, settings)
+        const text = this.shouldStripHashtags(platform, settings)
             ? this.stripHashtags(baseCaption)
             : baseCaption;
+        return this.normalizeCaptionSpacing(text);
     }
 
     private buildPlatformPostText(
