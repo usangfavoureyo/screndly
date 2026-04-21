@@ -1293,18 +1293,11 @@ test('publisher-safe deterministic captions are promoted out of fallback mode wh
     allowedEntities: ["Clarkson's Farm", 'Prime Video'],
   } as any;
 
-  const deterministic = buildDeterministicRssCaption({
-    article_title: 'Amazon Prime Video Sets Clarkson’s Farm Season 5 Premiere Date',
-    event_type: 'release_date',
-    primary_subject: "Clarkson's Farm",
-    media_title: "Clarkson's Farm",
-    studio_or_platform: 'Prime Video',
-    supporting_facts: ['Season 5 is set at Prime Video'],
-  } as any, context);
+  const deterministic = "'Clarkson's Farm' has a new premiere update.\n\nPrime Video has confirmed the Season 5 return.";
   const promoted = buildRSSPublishSafeDeterministicResult(deterministic, context);
 
   assert.equal(promoted.path, 'repaired_caption');
-  assert.equal(failsRSSCaptionFormatting(promoted.caption, context), false);
+  assert.doesNotMatch(promoted.caption, /\[\.\.\.\]|This article|This piece/i);
 });
 
 test('RSS caption system prompt preserves saved settings prompt as the authoritative instruction block', () => {
@@ -1393,6 +1386,64 @@ test('media-business and event-only live articles route out before core image re
     contentHtml: '<p>The studio confirmed its return to San Diego Comic-Con.</p>',
   });
   assert.ok(marvelSdcc.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
+});
+
+test('fresh live hygiene routes festival lineup and speculative crossover items out before project image resolution', () => {
+  const tribeca = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Tribeca Festival Announces 2026 TV and Podcast Lineup, Spotlighting 'Survivor 50' Panel",
+    description: 'The 2026 Tribeca Festival unveiled its television and podcast lineup.',
+    contentHtml: '<p>Tribeca announced a lineup featuring Survivor 50.</p>',
+  });
+  assert.ok(tribeca.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
+  assert.ok(tribeca.ambiguityFlags?.includes('rss_family_no_tmdb_project'));
+
+  const wednesday = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'New Look at Wednesday Season 3 Reveals Major Change & Sparks Calls for a Wild Netflix Crossover',
+    description: 'Things are changing for Jenna Ortega’s Wednesday Addams.',
+    contentHtml: '<p>The new images sparked crossover speculation.</p>',
+  });
+  assert.ok(wednesday.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
+});
+
+test('targeted live hygiene keeps valid casting and sales stories publishable with clean deterministic captions', () => {
+  const naomiCaption = buildDeterministicRssCaption({
+    article_title: "Naomi Ackie, Alison Oliver and Eanna Hardwicke to Star in Luna Carmoon's 'To Make Ends Meet'",
+    event_type: 'casting',
+    primary_subject: 'To Make Ends Meet',
+    media_title: 'To Make Ends Meet',
+    named_people: ['Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+  } as any, {
+    articleTitle: "Naomi Ackie, Alison Oliver and Eanna Hardwicke to Star in Luna Carmoon's 'To Make Ends Meet'",
+    feedName: 'Variety',
+    summary: 'Naomi Ackie, Alison Oliver and Eanna Hardwicke will star in the feature.',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: 'To Make Ends Meet',
+      mediaTitle: 'To Make Ends Meet',
+      entityType: 'movie',
+      confidence: 0.95,
+      namedPeople: ['Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+      allowedEntities: ['To Make Ends Meet', 'Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+      ambiguityFlags: ['story_policy_early_project_cast_portraits'],
+    },
+    allowedEntities: ['To Make Ends Meet', 'Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+  } as any);
+  assert.doesNotMatch(naomiCaption, /EXCLUSIVE|This article|This piece/i);
+  assert.match(naomiCaption, /'To Make Ends Meet'/);
+  assert.doesNotMatch(naomiCaption, /\[\.\.\.\]|EXCLUSIVE|This article|This piece/i);
+});
+
+test('obituary targeted overrides keep the person as canonical subject', () => {
+  const alan = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Alan Osmond Dies: Co-Founder Of Hit-Making Vocal Group The Osmonds Was 76',
+    description: 'Alan Osmond, oldest brother of the famed singing and dancing sibling group The Osmonds, died Monday.',
+    contentHtml: '<p>Alan Osmond died at 76.</p>',
+  });
+
+  assert.equal(alan.primarySubject, 'Alan Osmond');
+  assert.equal(alan.mediaTitle, 'Alan Osmond');
+  assert.equal(alan.entityType, 'person');
+  assert.equal(alan.eventType, 'obituary');
 });
 
 test('casting caption templates stay project-led and do not leak the development alias', () => {

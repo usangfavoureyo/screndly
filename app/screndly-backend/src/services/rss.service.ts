@@ -1573,6 +1573,173 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (title.includes('tribeca festival announces 2026 tv and podcast lineup')) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is festival lineup/event coverage, not project-led core movie/TV news.',
+      primarySubject: 'Tribeca Festival',
+      secondarySubject: 'Survivor 50',
+      entityType: 'unknown',
+      eventType: 'event',
+      confidence: 0.95,
+      flags: ['story_policy_event_only_non_core'],
+      allowedEntities: ['Tribeca Festival', 'Survivor 50'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (
+    title.includes('new look at wednesday season 3 reveals major change') ||
+    title.includes('sparks calls for a wild netflix crossover')
+  ) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is speculative/editorial crossover commentary, not a clean core project-news item.',
+      mediaTitle: 'Wednesday',
+      primarySubject: 'Wednesday',
+      entityType: 'tv',
+      eventType: 'other',
+      confidence: 0.93,
+      flags: ['story_policy_editorial_speculation'],
+      allowedEntities: ['Wednesday', 'Jenna Ortega', 'Netflix'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (
+    title.includes('lost cartoon network movie') &&
+    title.includes('franchise revival')
+  ) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is retrospective/editorial franchise coverage, not a core publishable project-news item.',
+      mediaTitle: 'Regular Show',
+      primarySubject: 'Regular Show',
+      secondarySubject: 'Regular Show: The Movie',
+      entityType: 'tv',
+      eventType: 'other',
+      confidence: 0.94,
+      flags: ['story_policy_editorial_retrospective'],
+      allowedEntities: ['Regular Show', 'Regular Show: The Movie', 'Cartoon Network'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (
+    title.includes('director of jair bolsonaro biopic') &&
+    title.includes('jim caviezel')
+  ) {
+    return {
+      lane: 'blocked_non_core',
+      reason: 'Filtered at RSS intake because this article is political-biopic coverage outside Screen Render core routing.',
+      entityType: 'unknown',
+      eventType: 'other',
+      confidence: 0.95,
+      flags: ['story_policy_non_target_media_business'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (
+    title.includes('alan osmond dies') &&
+    title.includes('the osmonds')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Alan Osmond',
+      primarySubject: 'Alan Osmond',
+      secondarySubject: 'The Osmonds',
+      entityType: 'person',
+      eventType: 'obituary',
+      confidence: 0.96,
+      namedPeople: ['Alan Osmond'],
+      flags: ['story_policy_memorial_feed_fallback'],
+      allowedEntities: ['Alan Osmond', 'The Osmonds'],
+    };
+  }
+
+  if (
+    title.includes('naomi ackie') &&
+    title.includes("'to make ends meet'")
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'To Make Ends Meet',
+      primarySubject: 'To Make Ends Meet',
+      secondarySubject: 'Naomi Ackie',
+      entityType: 'movie',
+      eventType: 'casting',
+      confidence: 0.95,
+      namedPeople: ['Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+      flags: ['story_policy_early_project_cast_portraits'],
+      allowedEntities: ['To Make Ends Meet', 'Naomi Ackie', 'Alison Oliver', 'Eanna Hardwicke', 'Luna Carmoon'],
+    };
+  }
+
+  if (
+    title.includes("good boy's ben leonberg to direct horror film 'ankle snatcher' for sony pictures")
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Ankle Snatcher',
+      primarySubject: 'Ankle Snatcher',
+      secondarySubject: 'Ben Leonberg',
+      entityType: 'movie',
+      eventType: 'development',
+      confidence: 0.95,
+      namedPeople: ['Ben Leonberg'],
+      flags: ['story_policy_early_project_cast_portraits'],
+      allowedEntities: ['Ankle Snatcher', 'Ben Leonberg', 'Sony Pictures', 'Good Boy'],
+    };
+  }
+
+  if (
+    title.includes("lebanon-set 'yesterday the eye didn't sleep' boarded by salaud morisset")
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: "Yesterday the Eye Didn't Sleep",
+      primarySubject: "Yesterday the Eye Didn't Sleep",
+      secondarySubject: 'Salaud Morisset',
+      entityType: 'movie',
+      eventType: 'development',
+      confidence: 0.95,
+      flags: ['story_policy_sales_boarding', 'story_policy_force_project_first_image'],
+      allowedEntities: ["Yesterday the Eye Didn't Sleep", 'Salaud Morisset', 'Cannes'],
+    };
+  }
+
+  if (
+    title.includes("'embassy: prime video secures multi-territory rights to action series")
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'Embassy',
+      primarySubject: 'Embassy',
+      secondarySubject: 'Prime Video',
+      entityType: 'tv',
+      eventType: 'development',
+      confidence: 0.95,
+      namedPeople: ['Luke Treadaway', 'Morea Jean Kendrick', 'Sam Heughan', 'J.K. Simmons'],
+      flags: ['story_policy_force_project_first_image'],
+      allowedEntities: ['Embassy', 'Prime Video', 'Luke Treadaway', 'Morea Jean Kendrick', 'Sam Heughan', 'J.K. Simmons'],
+    };
+  }
+
+  if (
+    title.includes('how to train your dragon 2 crew member suffers major injury')
+  ) {
+    return {
+      lane: 'core_auto_publish',
+      mediaTitle: 'How to Train Your Dragon 2',
+      primarySubject: 'How to Train Your Dragon 2',
+      entityType: 'movie',
+      eventType: 'production',
+      confidence: 0.94,
+      allowedEntities: ['How to Train Your Dragon 2'],
+    };
+  }
+
   if (title.includes("'the hunger games: sunrise on the reaping'") && /\btrailer\b/i.test(combined)) {
     return {
       lane: 'core_auto_publish',
