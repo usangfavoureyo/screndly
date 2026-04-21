@@ -115,6 +115,7 @@ function fitHeadline(
   layout: PreviewLayout,
   textBox: PreviewLayout['textBox'],
   targetWordsPerLine: number,
+  lineHeightMultiplier: number,
 ) {
   const normalizedText = text.replace(/\r\n/g, '\n');
   const hasManualBreaks = normalizedText.includes('\n');
@@ -129,7 +130,7 @@ function fitHeadline(
     const maxFontSize = 96;
     const minFontSize = 34;
     for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
-      const lineHeight = fontSize * 0.93;
+      const lineHeight = fontSize * lineHeightMultiplier;
       const totalHeight = manualLines.length * lineHeight;
       const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, fontSize)));
       if (widestLine <= textBox.width && totalHeight <= textBox.height) {
@@ -137,7 +138,7 @@ function fitHeadline(
       }
     }
     const fallbackFontSize = minFontSize;
-    return { lines: manualLines, fontSize: fallbackFontSize, lineHeight: fallbackFontSize * 0.93 };
+    return { lines: manualLines, fontSize: fallbackFontSize, lineHeight: fallbackFontSize * lineHeightMultiplier };
   }
 
   const words = text.trim().split(/\s+/).filter(Boolean);
@@ -216,7 +217,7 @@ function fitHeadline(
   for (let fontSize = maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
 
-    const lineHeight = fontSize * 0.93;
+    const lineHeight = fontSize * lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
       return { lines, fontSize, lineHeight };
     }
@@ -224,14 +225,14 @@ function fitHeadline(
 
   for (let fontSize = preferredMinFontSize - 2; fontSize >= minFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
-    const lineHeight = fontSize * 0.93;
+    const lineHeight = fontSize * lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
       return { lines, fontSize, lineHeight };
     }
   }
 
   const fallbackFontSize = preferredMinFontSize;
-  const fallbackLineHeight = fallbackFontSize * 0.93;
+  const fallbackLineHeight = fallbackFontSize * lineHeightMultiplier;
   return {
     lines: buildBalancedLines(fallbackFontSize).slice(0, maxLines),
     fontSize: fallbackFontSize,
@@ -334,7 +335,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
   const circleImageFit = designData?.circleImageFit === 'cover' ? 'cover' : 'contain';
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
-  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine);
+  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine, lineHeightMultiplier);
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
   const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
   const previewImageStyle = useMemo(() => {

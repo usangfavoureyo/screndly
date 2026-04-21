@@ -1005,11 +1005,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     circleInsetImage: typeof renderedDesign.data?.circleInsetImage === 'string' ? renderedDesign.data.circleInsetImage : '',
     circleX: typeof renderedDesign.data?.circleX === 'number' ? renderedDesign.data.circleX : 80,
     circleY: typeof renderedDesign.data?.circleY === 'number' ? renderedDesign.data.circleY : 24,
-    circleSize: typeof renderedDesign.data?.circleSize === 'number' ? renderedDesign.data.circleSize : 220,
+    circleSize: typeof renderedDesign.data?.circleSize === 'number' ? renderedDesign.data.circleSize : 420,
     circleImageZoom: typeof renderedDesign.data?.circleImageZoom === 'number' ? renderedDesign.data.circleImageZoom : 1,
     circleImageOffsetX: typeof renderedDesign.data?.circleImageOffsetX === 'number' ? renderedDesign.data.circleImageOffsetX : 0,
     circleImageOffsetY: typeof renderedDesign.data?.circleImageOffsetY === 'number' ? renderedDesign.data.circleImageOffsetY : 0,
-    circleStrokeWidth: typeof renderedDesign.data?.circleStrokeWidth === 'number' ? renderedDesign.data.circleStrokeWidth : 6,
+    circleStrokeWidth: typeof renderedDesign.data?.circleStrokeWidth === 'number' ? renderedDesign.data.circleStrokeWidth : 3,
     circleStrokeColor: typeof renderedDesign.data?.circleStrokeColor === 'string' ? renderedDesign.data.circleStrokeColor : '#FFFFFF',
     circleImageFit: renderedDesign.data?.circleImageFit === 'cover' ? 'cover' : 'contain',
     backgroundImage: renderedDesign.data?.backgroundImage || '',
@@ -2343,46 +2343,58 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (!deletedActivity || deletedIndex === -1) return;
     const linkedRenderJobDismissals = getLinkedRenderJobDismissals(deletedActivity, manualRenderJobs);
     const dismissIds = [id, ...linkedRenderJobDismissals];
+    const previousRenderedDesigns = [...renderedDesigns];
+    const previousAutoEditorials = [...autoEditorials];
 
     setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
     setActivities((prev) => prev.filter((activity) => activity.id !== id));
+    try {
+      const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
+      if (!response.success) {
+        throw new Error(response.error?.message || 'Failed to delete activity');
+      }
 
-    showUndo({
-      id,
-      itemName: activityTitle(deletedActivity),
-      onUndo: () => {
-        setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
-        setActivities((prev) => {
-          if (prev.some((activity) => activity.id === deletedActivity.id)) {
-            return prev;
+      void loadActivities({ silent: true });
+
+      showUndo({
+        id,
+        itemName: activityTitle(deletedActivity),
+        onUndo: async () => {
+          try {
+            await apiClient.post('/api/design-studio/activity', {
+              type: deletedActivity.type,
+              details: deletedActivity.details,
+            });
+            await saveDesignStudioState({
+              templates: designTemplates,
+              renderedDesigns: previousRenderedDesigns,
+              autoEditorials: previousAutoEditorials,
+            });
+            setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+            await loadActivities({ silent: true });
+            toast.success('Activity restored');
+          } catch (error) {
+            console.error('Failed to restore design studio activity:', error);
+            toast.error(error instanceof Error ? error.message : 'Failed to restore activity');
           }
-          const next = [...prev];
-          next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
-          return next;
-        });
-      },
-      onConfirm: async () => {
-        try {
-          const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
-          if (!response.success) {
-            throw new Error(response.error?.message || 'Failed to delete activity');
-          }
+        },
+        onConfirm: async () => {
           toast.success('Activity deleted');
-        } catch (error) {
-          console.error('Failed to delete design studio activity:', error);
-          setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
-          setActivities((prev) => {
-            if (prev.some((activity) => activity.id === deletedActivity.id)) {
-              return prev;
-            }
-            const next = [...prev];
-            next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
-            return next;
-          });
-          toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+        },
+      });
+    } catch (error) {
+      console.error('Failed to delete design studio activity:', error);
+      setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+      setActivities((prev) => {
+        if (prev.some((activity) => activity.id === deletedActivity.id)) {
+          return prev;
         }
-      },
-    });
+        const next = [...prev];
+        next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
+        return next;
+      });
+      toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
+    }
   };
 
   const handleDeleteSelected = async () => {

@@ -33,7 +33,7 @@ import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right
 const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
 const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
-const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV1';
+const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV2';
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.1;
 const DEFAULT_CIRCLE_SIZE = 420;
 const DEFAULT_CIRCLE_STROKE_WIDTH = 3;
