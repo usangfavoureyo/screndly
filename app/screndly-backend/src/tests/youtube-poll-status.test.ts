@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { YouTubePollerService } from '../services/youtube-poller.service';
+import { getYtDlpAuthOptions } from '../lib/yt-dlp';
 
 function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => Promise<T> | T): Promise<T> | T {
     const previous = new Map<string, string | undefined>();
@@ -204,6 +205,142 @@ test('applies escalating download retry backoff delays', () => {
     assert.equal(service.getDownloadRetryDelayMinutes(2), 10);
     assert.equal(service.getDownloadRetryDelayMinutes(3), 30);
     assert.equal(service.getDownloadRetryDelayMinutes(4), 120);
+});
+
+test('uses hardened downloader pacing defaults when env is unset', () => {
+    withEnv({
+        YT_DLP_PACING_ENABLED: undefined,
+        YT_DLP_SLEEP_REQUESTS_SECONDS: undefined,
+        YT_DLP_SLEEP_INTERVAL_SECONDS: undefined,
+        YT_DLP_MAX_SLEEP_INTERVAL_SECONDS: undefined,
+        YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS: undefined,
+        YT_DLP_MAX_CONCURRENT_JOBS_PER_IDENTITY: undefined,
+    }, () => {
+        const service = new YouTubePollerService() as any;
+        const pacing = service.getDownloaderPacingConfig();
+        assert.equal(pacing.enabled, true);
+        assert.equal(pacing.sleepRequestsSeconds, 2.5);
+        assert.equal(pacing.minSleepBeforeDownloadSeconds, 10);
+        assert.equal(pacing.maxSleepBeforeDownloadSeconds, 20);
+        assert.equal(pacing.minGapBetweenJobsSeconds, 45);
+        assert.equal(pacing.maxConcurrentJobsPerIdentity, 1);
+    });
+});
+
+test('opens identity breaker after repeated 403/bot-challenge failures and blocks new download starts', async () => {
+    const service = new YouTubePollerService() as any;
+    const identityKey = 'direct|stable-ua|cookies:on|impersonate:none';
+    const attempts = [{
+        mode: 'stable_authenticated_session',
+        identityKey,
+        proxyEnabled: false,
+        cookiesEnabled: true,
+        poTokenEnabled: false,
+        userAgent: 'stable-ua',
+        downloaderMode: 'stable_authenticated_session',
+        impersonationTarget: null,
+        pacing: {
+            enabled: true,
+            sleepRequestsSeconds: 2.5,
+            minSleepBeforeDownloadSeconds: 10,
+            maxSleepBeforeDownloadSeconds: 20,
+            minGapBetweenJobsSeconds: 45,
+        },
+        success: false,
+        errorSummary: 'HTTP Error 403: Forbidden',
+    }];
+
+    await service.recordDownloaderIdentityFailure(identityKey, 'other', 'HTTP Error 403: Forbidden', attempts);
+    await service.recordDownloaderIdentityFailure(identityKey, 'bot_challenge', 'Sign in to confirm you are not a bot', attempts);
+
+    const state = service.getDownloaderIdentityState(identityKey);
+    assert.ok(state.breakerOpenUntil instanceof Date);
+    assert.equal(state.isHealthy, false);
+
+    const health = await service.ensureDownloaderIdentityHealthy(identityKey, {
+        proxyUrl: null,
+        userAgent: 'stable-ua',
+        cookieFilePath: null,
+        cookiesFromBrowser: null,
+        cookiesEnabled: true,
+        cacheKey: 'download|direct|stable-ua',
+    }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ');
+
+    assert.equal(health.healthy, false);
+    assert.ok(health.deferredMs > 0);
+});
+
+test('preflight success restores identity health', async () => {
+    const service = new YouTubePollerService() as any;
+    const identityKey = 'proxy|stable-ua|cookies:on|impersonate:none';
+    const state = service.getDownloaderIdentityState(identityKey);
+    state.isHealthy = false;
+    state.breakerOpenUntil = null;
+    state.lastPreflightAt = null;
+
+    const originalFetch = service.fetchYtDlpInfo;
+    service.fetchYtDlpInfo = async () => ({ id: 'ok' });
+
+    const ok = await service.runDownloaderIdentityPreflight(identityKey, {
+        proxyUrl: 'http://proxy.example:8080',
+        userAgent: 'stable-ua',
+        cookieFilePath: 'cookies.txt',
+        cookiesFromBrowser: null,
+        cookiesEnabled: true,
+        cacheKey: 'download|proxy|stable-ua',
+    }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ');
+
+    service.fetchYtDlpInfo = originalFetch;
+
+    assert.equal(ok, true);
+    assert.equal(state.isHealthy, true);
+    assert.equal(state.lastPreflightStatus, 'ok');
+    assert.equal(state.breakerOpenUntil, null);
+});
+
+test('preflight failure keeps identity unhealthy and opens breaker', async () => {
+    const service = new YouTubePollerService() as any;
+    const identityKey = 'proxy|stable-ua|cookies:on|impersonate:none';
+    const state = service.getDownloaderIdentityState(identityKey);
+    state.isHealthy = false;
+    state.breakerOpenUntil = null;
+
+    const originalFetch = service.fetchYtDlpInfo;
+    const originalIsBotChallenge = service.isYouTubeBotChallengeError;
+    service.fetchYtDlpInfo = async () => {
+        throw new Error('HTTP Error 403: Forbidden');
+    };
+    service.isYouTubeBotChallengeError = () => false;
+
+    const ok = await service.runDownloaderIdentityPreflight(identityKey, {
+        proxyUrl: 'http://proxy.example:8080',
+        userAgent: 'stable-ua',
+        cookieFilePath: 'cookies.txt',
+        cookiesFromBrowser: null,
+        cookiesEnabled: true,
+        cacheKey: 'download|proxy|stable-ua',
+    }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'dQw4w9WgXcQ');
+
+    service.fetchYtDlpInfo = originalFetch;
+    service.isYouTubeBotChallengeError = originalIsBotChallenge;
+
+    assert.equal(ok, false);
+    assert.equal(state.isHealthy, false);
+    assert.equal(state.lastPreflightStatus, 'failed');
+    assert.ok(state.breakerOpenUntil instanceof Date);
+});
+
+test('metadata auth options do not inherit downloader proxy/cookies by default', () => {
+    withEnv({
+        YT_DLP_PROXY_URL: 'http://download-proxy.example:8080',
+        YT_DLP_COOKIE_FILE_PATH: 'C:\\\\cookies.txt',
+        YT_DLP_USE_PROXY_FOR_METADATA: undefined,
+        YT_DLP_USE_COOKIES_FOR_METADATA: undefined,
+    }, () => {
+        const metadataOptions = getYtDlpAuthOptions('metadata');
+        assert.equal(metadataOptions.proxy, undefined);
+        assert.equal(metadataOptions.cookies, undefined);
+    });
 });
 
 test('reads queued download retry state from an existing failed feed item', () => {

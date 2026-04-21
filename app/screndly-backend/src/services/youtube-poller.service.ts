@@ -110,6 +110,20 @@ interface DownloadResult {
 }
 
 interface DownloaderIdentityState {
+    key: string;
+    isHealthy: boolean;
+    consecutiveBotChallengeFailures: number;
+    consecutive403Failures: number;
+    consecutiveTrustFailures: number;
+    recentTrustFailureAtMs: number[];
+    breakerOpenCount: number;
+    breakerOpenUntil: Date | null;
+    lastFailureAt: Date | null;
+    lastSuccessAt: Date | null;
+    lastPreflightAt: Date | null;
+    lastPreflightStatus: 'ok' | 'failed' | 'unknown';
+    alertSentAt: Date | null;
+    preflightPromise: Promise<boolean> | null;
     activeJobs: number;
     lastCompletedAtMs: number | null;
     waiters: Array<() => void>;
@@ -245,7 +259,7 @@ interface ChannelVideoSourceResult {
     source: 'rss' | 'yt-dlp' | 'merged';
 }
 
-type YouTubeAccessIssueKind = 'bot_challenge' | 'unavailable' | 'restricted' | 'other';
+type YouTubeAccessIssueKind = 'bot_challenge' | 'unavailable' | 'restricted' | 'other' | 'identity_unhealthy';
 
 type YouTubeDownloadFailureCategory =
     | 'bot_challenge'
@@ -264,6 +278,7 @@ type YouTubeDownloadFailureCategory =
     | 'extractor_outdated_or_client_breakage'
     | 'cooldown_delayed'
     | 'identity_concurrency_wait'
+    | 'identity_unhealthy_paused'
     | 'unknown_download_failure';
 
 interface YouTubeDownloadFailureClassification {
@@ -387,6 +402,16 @@ const YOUTUBE_INFO_OPTIONS = {
     playerClients: ['WEB', 'WEB_EMBEDDED', 'TV', 'IOS', 'ANDROID'] as Array<'WEB' | 'WEB_EMBEDDED' | 'TV' | 'IOS' | 'ANDROID'>,
 };
 const DOWNLOAD_FAILURE_NOTIFICATION_WINDOW_MINUTES = 180;
+const IDENTITY_HEALTH_PRECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const IDENTITY_FAILURE_CONSECUTIVE_WINDOW_MS = 15 * 60 * 1000;
+const IDENTITY_FAILURE_TOTAL_WINDOW_MS = 30 * 60 * 1000;
+const IDENTITY_BREAKER_COOLDOWN_STEPS_MS = [
+    45 * 60 * 1000,
+    2 * 60 * 60 * 1000,
+    6 * 60 * 60 * 1000,
+    12 * 60 * 60 * 1000,
+] as const;
+const IDENTITY_UNHEALTHY_NOTIFICATION_WINDOW_MINUTES = 180;
 const TMDB_POSTER_NOTIFICATION_WINDOW_MINUTES = 180;
 const YOUTUBE_PUBLISH_INTERVAL_STATE_KEY = 'youtubePublishIntervalState';
 const PUBLISH_INTERVAL_RESERVATION_EXTRA_MINUTES = 5;
@@ -891,6 +916,7 @@ export class YouTubePollerService {
                 };
             }
             await this.clearResolvedSchedulePauseNotifications();
+            await this.runPeriodicDownloaderIdentityPreflight();
             const availableSlots = Math.max(0, MAX_CONCURRENT_CHANNEL_POLLS - this.activeChannelJobs.size);
 
             if (availableSlots === 0) {
@@ -976,6 +1002,7 @@ export class YouTubePollerService {
 
         try {
             const settings = await getYouTubeRuntimeSettings();
+            await this.runPeriodicDownloaderIdentityPreflight();
             const where: Record<string, any> = { status: 'active' };
             if (options.channelDbId) {
                 where.id = options.channelDbId;
@@ -2299,6 +2326,18 @@ export class YouTubePollerService {
         const retrySummary = `Screndly will retry automatically in ${params.nextRetryDelayMinutes}m.`;
         const httpStatus = this.extractHttpStatusFromText(combinedText);
 
+        if (params.issueKind === 'identity_unhealthy') {
+            return {
+                category: 'identity_unhealthy_paused',
+                confidence: 'high',
+                title: 'Trailer Download Deferred',
+                probableCause: 'Probable cause: downloader identity is temporarily unhealthy.',
+                detail: 'Screndly paused this downloader identity after repeated bot-challenge/403 failures and will resume after health preflight.',
+                retrySummary,
+                httpStatus,
+            };
+        }
+
         if (combinedText.includes('too many requests') || httpStatus === 429) {
             return {
                 category: 'http_429_rate_limited',
@@ -2957,7 +2996,14 @@ export class YouTubePollerService {
                 const failedStatus = this.getDownloadFailureFeedStatus(youtubeAccessIssueKind, authConfigured);
                 const previousDownloadAttemptCount = downloadRetryState?.attemptCount || 0;
                 const downloadAttemptCount = previousDownloadAttemptCount + 1;
-                const nextRetryDelayMinutes = this.getDownloadRetryDelayMinutes(downloadAttemptCount);
+                let nextRetryDelayMinutes = this.getDownloadRetryDelayMinutes(downloadAttemptCount);
+                if (youtubeAccessIssueKind === 'identity_unhealthy') {
+                    const identityKey = downloadAttempts[0]?.identityKey;
+                    if (identityKey) {
+                        const breakerDelayMinutes = Math.max(1, Math.ceil(this.getIdentityBreakerRemainingMs(identityKey) / 60000));
+                        nextRetryDelayMinutes = Math.max(nextRetryDelayMinutes, breakerDelayMinutes);
+                    }
+                }
                 const nextRetryAt = new Date(Date.now() + nextRetryDelayMinutes * 60 * 1000).toISOString();
                 const failureClassification = this.classifyYouTubeDownloadFailure({
                     issueKind: youtubeAccessIssueKind,
@@ -3010,7 +3056,7 @@ export class YouTubePollerService {
                         `Cookies: ${downloadAttempts.some((attempt) => attempt.cookiesEnabled) ? 'enabled' : 'disabled'}.`,
                         `PO-token: ${downloadAttempts.some((attempt) => attempt.poTokenEnabled) ? 'enabled' : 'disabled'}.`,
                         failureClassification.httpStatus ? `HTTP: ${failureClassification.httpStatus}.` : null,
-                        failureClassification.retrySummary,
+                        'Screndly will retry automatically.',
                     ].filter((value): value is string => Boolean(value)).join(' '),
                     type: 'error',
                     source: 'youtube',
@@ -4187,12 +4233,292 @@ Respond ONLY as strict JSON:
         }
 
         const created: DownloaderIdentityState = {
+            key: identityKey,
+            isHealthy: false,
+            consecutiveBotChallengeFailures: 0,
+            consecutive403Failures: 0,
+            consecutiveTrustFailures: 0,
+            recentTrustFailureAtMs: [],
+            breakerOpenCount: 0,
+            breakerOpenUntil: null,
+            lastFailureAt: null,
+            lastSuccessAt: null,
+            lastPreflightAt: null,
+            lastPreflightStatus: 'unknown',
+            alertSentAt: null,
+            preflightPromise: null,
             activeJobs: 0,
             lastCompletedAtMs: null,
             waiters: [],
         };
         this.downloaderIdentityState.set(identityKey, created);
         return created;
+    }
+
+    private pruneRecentTrustFailures(state: DownloaderIdentityState, nowMs: number): void {
+        state.recentTrustFailureAtMs = state.recentTrustFailureAtMs.filter((ts) => (nowMs - ts) <= IDENTITY_FAILURE_TOTAL_WINDOW_MS);
+    }
+
+    private getIdentityBreakerDelayMs(state: DownloaderIdentityState): number {
+        const currentStep = Math.max(0, state.breakerOpenCount - 1);
+        const index = Math.min(currentStep, IDENTITY_BREAKER_COOLDOWN_STEPS_MS.length - 1);
+        return IDENTITY_BREAKER_COOLDOWN_STEPS_MS[index];
+    }
+
+    private getIdentityBreakerRemainingMs(identityKey: string): number {
+        const state = this.downloaderIdentityState.get(identityKey);
+        if (!state?.breakerOpenUntil) {
+            return 0;
+        }
+
+        return Math.max(0, state.breakerOpenUntil.getTime() - Date.now());
+    }
+
+    private async notifyIdentityUnhealthy(identityKey: string, reason: string, breakerOpenUntil: Date): Promise<void> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        const now = Date.now();
+        const shouldSend = !state.alertSentAt || (now - state.alertSentAt.getTime()) > (IDENTITY_UNHEALTHY_NOTIFICATION_WINDOW_MINUTES * 60 * 1000);
+        if (!shouldSend) {
+            return;
+        }
+
+        state.alertSentAt = new Date(now);
+        await notificationService.notifyUserOnceWithinWindow({
+            title: 'YouTube Downloader Identity Unhealthy',
+            message: [
+                `Screndly paused YouTube media downloads for identity ${this.getSafeDownloaderIdentitySummary(identityKey)}.`,
+                `Probable cause: ${reason}.`,
+                `Cooldown until ${breakerOpenUntil.toISOString()}.`,
+                'A preflight check will run before downloads resume.',
+            ].join(' '),
+            type: 'warning',
+            source: 'youtube',
+            actionPage: '/channels',
+        }, IDENTITY_UNHEALTHY_NOTIFICATION_WINDOW_MINUTES);
+    }
+
+    private async openIdentityBreaker(identityKey: string, reason: string): Promise<void> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        state.breakerOpenCount += 1;
+        const delayMs = this.getIdentityBreakerDelayMs(state);
+        const breakerOpenUntil = new Date(Date.now() + delayMs);
+        state.breakerOpenUntil = breakerOpenUntil;
+        state.isHealthy = false;
+        console.warn('[YouTubePoller] downloader identity breaker opened', {
+            identity: this.getSafeDownloaderIdentitySummary(identityKey),
+            reason,
+            breakerOpenCount: state.breakerOpenCount,
+            cooldownMinutes: Math.ceil(delayMs / 60000),
+            breakerOpenUntil: breakerOpenUntil.toISOString(),
+        });
+        await this.notifyIdentityUnhealthy(identityKey, reason, breakerOpenUntil);
+    }
+
+    private async recordDownloaderIdentitySuccess(identityKey: string): Promise<void> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        state.isHealthy = true;
+        state.consecutiveBotChallengeFailures = 0;
+        state.consecutive403Failures = 0;
+        state.consecutiveTrustFailures = 0;
+        state.recentTrustFailureAtMs = [];
+        state.lastFailureAt = null;
+        state.lastSuccessAt = new Date();
+        state.breakerOpenUntil = null;
+        state.lastPreflightStatus = 'ok';
+        state.breakerOpenCount = 0;
+        state.alertSentAt = null;
+    }
+
+    private detectTrustFailureSignal(issueKind: YouTubeAccessIssueKind | undefined, issueMessage: string | undefined, attempts: YtDlpAttemptSummary[]): {
+        isBotChallenge: boolean;
+        isHttp403: boolean;
+    } {
+        const combinedText = [issueMessage || '', this.getDownloadAttemptErrorText(attempts)].join('\n');
+        const httpStatus = this.extractHttpStatusFromText(combinedText);
+        return {
+            isBotChallenge: issueKind === 'bot_challenge' || /not a bot|bot challenge|confirm you're not a bot|automated traffic/i.test(combinedText),
+            isHttp403: httpStatus === 403 || /http(?: error)?\s*403|forbidden/i.test(combinedText),
+        };
+    }
+
+    private async recordDownloaderIdentityFailure(
+        identityKey: string,
+        issueKind: YouTubeAccessIssueKind | undefined,
+        issueMessage: string | undefined,
+        attempts: YtDlpAttemptSummary[]
+    ): Promise<void> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        const nowMs = Date.now();
+        const now = new Date(nowMs);
+        const previousFailureAt = state.lastFailureAt ? state.lastFailureAt.getTime() : null;
+        const trustSignal = this.detectTrustFailureSignal(issueKind, issueMessage, attempts);
+
+        state.lastFailureAt = now;
+        state.lastPreflightStatus = state.lastPreflightStatus === 'ok' ? 'unknown' : state.lastPreflightStatus;
+        state.isHealthy = false;
+
+        if (!trustSignal.isBotChallenge && !trustSignal.isHttp403) {
+            state.consecutiveTrustFailures = 0;
+            return;
+        }
+
+        if (previousFailureAt && (nowMs - previousFailureAt) <= IDENTITY_FAILURE_CONSECUTIVE_WINDOW_MS) {
+            state.consecutiveTrustFailures += 1;
+        } else {
+            state.consecutiveTrustFailures = 1;
+        }
+
+        if (trustSignal.isBotChallenge) {
+            state.consecutiveBotChallengeFailures += 1;
+        } else {
+            state.consecutiveBotChallengeFailures = 0;
+        }
+
+        if (trustSignal.isHttp403) {
+            state.consecutive403Failures += 1;
+        } else {
+            state.consecutive403Failures = 0;
+        }
+
+        state.recentTrustFailureAtMs.push(nowMs);
+        this.pruneRecentTrustFailures(state, nowMs);
+
+        const consecutiveThresholdHit = state.consecutiveTrustFailures >= 2;
+        const totalThresholdHit = state.recentTrustFailureAtMs.length >= 3;
+        if (consecutiveThresholdHit || totalThresholdHit) {
+            await this.openIdentityBreaker(
+                identityKey,
+                trustSignal.isBotChallenge
+                    ? 'repeated YouTube bot challenge'
+                    : 'repeated HTTP 403/media forbidden responses'
+            );
+        }
+    }
+
+    private shouldRunIdentityPreflight(state: DownloaderIdentityState): boolean {
+        const nowMs = Date.now();
+        const lastPreflightAtMs = state.lastPreflightAt?.getTime() || 0;
+        if (!lastPreflightAtMs) {
+            return true;
+        }
+
+        if ((nowMs - lastPreflightAtMs) >= IDENTITY_HEALTH_PRECHECK_INTERVAL_MS) {
+            return true;
+        }
+
+        if (state.breakerOpenUntil && nowMs >= state.breakerOpenUntil.getTime()) {
+            return true;
+        }
+
+        return !state.isHealthy;
+    }
+
+    private async runDownloaderIdentityPreflight(
+        identityKey: string,
+        networkContext: YouTubeNetworkContext,
+        videoUrl: string,
+        videoId?: string
+    ): Promise<boolean> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        const targetVideoUrl = (process.env.YT_DLP_PREFLIGHT_VIDEO_URL || '').trim() || videoUrl;
+        const targetVideoId = videoId || this.extractVideoId(targetVideoUrl, '');
+        state.lastPreflightAt = new Date();
+
+        console.log('[YouTubePoller] downloader identity preflight starting', {
+            identity: this.getSafeDownloaderIdentitySummary(identityKey),
+            videoId: targetVideoId || null,
+            proxyEnabled: Boolean(networkContext.proxyUrl),
+            cookiesEnabled: networkContext.cookiesEnabled,
+        });
+
+        try {
+            await this.fetchYtDlpInfo(targetVideoUrl, undefined, this.getYtDlpAuthenticatedOptions(networkContext));
+            await this.recordDownloaderIdentitySuccess(identityKey);
+            state.lastPreflightStatus = 'ok';
+            console.log('[YouTubePoller] downloader identity preflight succeeded', {
+                identity: this.getSafeDownloaderIdentitySummary(identityKey),
+            });
+            return true;
+        } catch (error) {
+            if (targetVideoId && this.isYouTubeBotChallengeError(error)) {
+                try {
+                    await this.fetchYtDlpInfo(
+                        targetVideoUrl,
+                        await youtubePoTokenService.getExtractorArgs(targetVideoId, networkContext),
+                        this.getYtDlpAuthenticatedOptions(networkContext)
+                    );
+                    await this.recordDownloaderIdentitySuccess(identityKey);
+                    state.lastPreflightStatus = 'ok';
+                    console.log('[YouTubePoller] downloader identity preflight succeeded with PO token', {
+                        identity: this.getSafeDownloaderIdentitySummary(identityKey),
+                    });
+                    return true;
+                } catch {
+                    // fall through to breaker open below
+                }
+            }
+
+            state.lastPreflightStatus = 'failed';
+            const reason = this.summarizeYtDlpError(error);
+            await this.openIdentityBreaker(identityKey, `preflight failed: ${reason}`);
+            console.warn('[YouTubePoller] downloader identity preflight failed', {
+                identity: this.getSafeDownloaderIdentitySummary(identityKey),
+                reason,
+            });
+            return false;
+        }
+    }
+
+    private async ensureDownloaderIdentityHealthy(
+        identityKey: string,
+        networkContext: YouTubeNetworkContext,
+        videoUrl: string,
+        videoId?: string
+    ): Promise<{ healthy: boolean; deferredMs: number }> {
+        const state = this.getDownloaderIdentityState(identityKey);
+        const nowMs = Date.now();
+        const breakerRemainingMs = state.breakerOpenUntil ? Math.max(0, state.breakerOpenUntil.getTime() - nowMs) : 0;
+        if (breakerRemainingMs > 0) {
+            console.warn('[YouTubePoller] skipping download because identity breaker is open', {
+                identity: this.getSafeDownloaderIdentitySummary(identityKey),
+                deferredSeconds: Math.ceil(breakerRemainingMs / 1000),
+                breakerOpenUntil: state.breakerOpenUntil?.toISOString() || null,
+            });
+            return { healthy: false, deferredMs: breakerRemainingMs };
+        }
+
+        if (!this.shouldRunIdentityPreflight(state)) {
+            return { healthy: true, deferredMs: 0 };
+        }
+
+        if (!state.preflightPromise) {
+            state.preflightPromise = this.runDownloaderIdentityPreflight(identityKey, networkContext, videoUrl, videoId)
+                .finally(() => {
+                    const latestState = this.getDownloaderIdentityState(identityKey);
+                    latestState.preflightPromise = null;
+                });
+        }
+
+        const preflightOk = await state.preflightPromise;
+        if (preflightOk) {
+            return { healthy: true, deferredMs: 0 };
+        }
+
+        return { healthy: false, deferredMs: this.getIdentityBreakerRemainingMs(identityKey) };
+    }
+
+    private async runPeriodicDownloaderIdentityPreflight(): Promise<void> {
+        const networkContext = getYtDlpNetworkContext('download');
+        const identityKey = this.getDownloaderIdentityKey(networkContext);
+        const state = this.getDownloaderIdentityState(identityKey);
+        if (!this.shouldRunIdentityPreflight(state)) {
+            return;
+        }
+
+        const fallbackVideoUrl = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
+        const preflightVideoUrl = (process.env.YT_DLP_PREFLIGHT_VIDEO_URL || '').trim() || fallbackVideoUrl;
+        const preflightVideoId = this.extractVideoId(preflightVideoUrl, '');
+        await this.ensureDownloaderIdentityHealthy(identityKey, networkContext, preflightVideoUrl, preflightVideoId || undefined);
     }
 
     private waitForDownloaderIdentityAvailability(identityKey: string): Promise<void> {
@@ -4537,6 +4863,26 @@ Respond ONLY as strict JSON:
         let firstStrongModeAttempted: string | undefined;
         let lastStrongModeAttempted: string | undefined;
 
+        const identityHealth = await this.ensureDownloaderIdentityHealthy(identityKey, networkContext, videoUrl, videoId);
+        if (!identityHealth.healthy) {
+            const deferredMinutes = Math.max(1, Math.ceil(identityHealth.deferredMs / 60000));
+            const deferredUntil = new Date(Date.now() + identityHealth.deferredMs).toISOString();
+            const deferredAttempt = this.buildYtDlpAttemptSummary('identity_health_gate', networkContext, {
+                cookiesEnabled: networkContext.cookiesEnabled,
+                poTokenEnabled: false,
+                success: false,
+                error: new Error(`Downloader identity paused until ${deferredUntil}`),
+            });
+            attempts.push(deferredAttempt);
+            this.logYtDlpAttempt(videoId, deferredAttempt);
+            return {
+                path: null,
+                attempts,
+                issueKind: 'identity_unhealthy',
+                issueMessage: `Downloader identity is unhealthy and paused for ${deferredMinutes}m (until ${deferredUntil}).`,
+            };
+        }
+
         return this.withDownloaderIdentityGate(identityKey, pacing, async (gate) => {
             const runAttempt = async (
                 mode: string,
@@ -4569,6 +4915,7 @@ Respond ONLY as strict JSON:
                     });
                     attempts.push(attempt);
                     this.logYtDlpAttempt(videoId, attempt);
+                    await this.recordDownloaderIdentitySuccess(identityKey);
 
                     return success;
                 } catch (error) {
@@ -4642,6 +4989,7 @@ Respond ONLY as strict JSON:
             }
 
             if (lastIssueKind === 'bot_challenge') {
+                await this.recordDownloaderIdentityFailure(identityKey, lastIssueKind, lastIssueMessage, attempts);
                 return {
                     path: null,
                     attempts,
@@ -4651,6 +4999,7 @@ Respond ONLY as strict JSON:
                 };
             }
 
+            await this.recordDownloaderIdentityFailure(identityKey, lastIssueKind, lastIssueMessage, attempts);
             return {
                 path: null,
                 attempts,

@@ -182,10 +182,10 @@ export function getYtDlpNetworkContext(target: YtDlpNetworkTarget = 'download'):
 export function getYouTubeDownloaderPacingConfig(): YouTubeDownloaderPacingConfig {
     return {
         enabled: parseBooleanEnv(process.env.YT_DLP_PACING_ENABLED, true),
-        sleepRequestsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_REQUESTS_SECONDS, 1.5),
-        minSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_INTERVAL_SECONDS, 8),
-        maxSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MAX_SLEEP_INTERVAL_SECONDS, 15),
-        minGapBetweenJobsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS, 30),
+        sleepRequestsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_REQUESTS_SECONDS, 2.5),
+        minSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_SLEEP_INTERVAL_SECONDS, 10),
+        maxSleepBeforeDownloadSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MAX_SLEEP_INTERVAL_SECONDS, 20),
+        minGapBetweenJobsSeconds: parsePositiveNumberEnv(process.env.YT_DLP_MIN_GAP_BETWEEN_JOBS_SECONDS, 45),
         maxConcurrentJobsPerIdentity: parsePositiveIntegerEnv(process.env.YT_DLP_MAX_CONCURRENT_JOBS_PER_IDENTITY, 1),
     };
 }
