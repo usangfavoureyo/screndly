@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canonicalizeComposeMediaUrl,
   buildComposeSourceTextFromMetadata,
+  extractComposeSourceMetadataFromHtml,
   buildComposeMediaDownloadOptions,
   buildComposeMediaNetworkOptions,
   detectComposeMediaUrlPlatform,
@@ -17,6 +19,20 @@ test('detectComposeMediaUrlPlatform supports public YouTube URLs', () => {
 test('detectComposeMediaUrlPlatform supports public Instagram URLs', () => {
   assert.equal(detectComposeMediaUrlPlatform('https://www.instagram.com/p/abc123/'), 'instagram');
   assert.equal(detectComposeMediaUrlPlatform('https://www.instagram.com/reel/abc123/'), 'instagram');
+});
+
+test('canonicalizeComposeMediaUrl strips Instagram share query parameters', () => {
+  assert.equal(
+    canonicalizeComposeMediaUrl('https://www.instagram.com/p/DXZdZY3ks4c/?igsh=MWszMW5jejE0Nm9sMg=='),
+    'https://www.instagram.com/p/DXZdZY3ks4c/',
+  );
+});
+
+test('canonicalizeComposeMediaUrl keeps only the YouTube watch id', () => {
+  assert.equal(
+    canonicalizeComposeMediaUrl('https://www.youtube.com/watch?v=abc123&si=test&feature=shared'),
+    'https://www.youtube.com/watch?v=abc123',
+  );
 });
 
 test('buildComposeMediaDownloadOptions caps YouTube video imports at 1080p mp4', () => {
@@ -198,4 +214,19 @@ test('buildComposeSourceTextFromMetadata formats Instagram captions into generat
   assert.match(sourceText, /Description: Behind the scenes from the new video\./);
   assert.match(sourceText, /Source Platform: Instagram/);
   assert.match(sourceText, /Creator: animalfarmmovie/);
+});
+
+test('extractComposeSourceMetadataFromHtml reads Instagram meta tags for source generation', () => {
+  const metadata = extractComposeSourceMetadataFromHtml(`
+    <html>
+      <head>
+        <meta property="og:title" content="Instagram post by @animalfarmmovie" />
+        <meta property="og:description" content="Animal Farm on Instagram: &quot;Behind the scenes from the new video.&quot;" />
+        <meta name="description" content="Animal Farm on Instagram: &quot;Behind the scenes from the new video.&quot;" />
+      </head>
+    </html>
+  `);
+
+  assert.equal(metadata.title, 'Instagram post by @animalfarmmovie');
+  assert.equal(metadata.description, 'Behind the scenes from the new video.');
 });

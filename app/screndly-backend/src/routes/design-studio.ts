@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import {
+  deleteDesignStudioActivityArtifacts,
   generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
   getDesignStudioStateSnapshot,
@@ -664,6 +665,7 @@ router.put('/activity/:id', authenticate, async (req, res) => {
 
 router.delete('/activity/:id', authenticate, async (req, res) => {
   try {
+    await deleteDesignStudioActivityArtifacts(req.params.id);
     await prisma.designStudioActivity.delete({
       where: { id: req.params.id },
     });

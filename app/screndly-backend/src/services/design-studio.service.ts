@@ -3593,3 +3593,78 @@ export async function saveDesignStudioStateSnapshot(state: {
     saveAutoEditorials(state.autoEditorials || []),
   ]);
 }
+
+export async function deleteDesignStudioActivityArtifacts(activityId: string): Promise<void> {
+  const activity = await prisma.designStudioActivity.findUnique({
+    where: { id: activityId },
+    select: {
+      id: true,
+      type: true,
+      details: true,
+    },
+  });
+
+  if (!activity) {
+    return;
+  }
+
+  const details = activity.details && typeof activity.details === 'object' && !Array.isArray(activity.details)
+    ? activity.details as Record<string, unknown>
+    : {};
+
+  const outputUrl = typeof details.outputUrl === 'string' ? details.outputUrl.trim() : '';
+  const previewUrl = typeof details.previewUrl === 'string' ? details.previewUrl.trim() : '';
+  const templateName = typeof details.templateName === 'string' ? details.templateName.trim() : '';
+  const headerText = typeof details.headerText === 'string' ? details.headerText.trim() : '';
+  const sourceTitle = typeof details.sourceTitle === 'string' ? details.sourceTitle.trim() : '';
+
+  const matchesMedia = (value?: string | null) => {
+    const candidate = typeof value === 'string' ? value.trim() : '';
+    return Boolean(candidate) && (candidate === outputUrl || candidate === previewUrl);
+  };
+
+  const [renderedDesigns, autoEditorials] = await Promise.all([
+    getRenderedDesigns(),
+    getAutoEditorials(),
+  ]);
+
+  const nextRenderedDesigns = renderedDesigns.filter((item) => {
+    if (matchesMedia(item.outputUrl) || matchesMedia(item.previewUrl)) {
+      return false;
+    }
+
+    if (
+      activity.type === 'design_rendered'
+      && templateName
+      && headerText
+      && item.templateName === templateName
+      && String(item.data?.headerText || '').trim() === headerText
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const nextAutoEditorials = autoEditorials.filter((item) => {
+    if (matchesMedia(item.renderedImage)) {
+      return false;
+    }
+
+    if (
+      templateName
+      && sourceTitle
+      && item.templateName === templateName
+      && item.sourceTitle.trim() === sourceTitle
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+
+  await Promise.all([
+    nextRenderedDesigns.length !== renderedDesigns.length ? saveRenderedDesigns(nextRenderedDesigns) : Promise.resolve(),
+    nextAutoEditorials.length !== autoEditorials.length ? saveAutoEditorials(nextAutoEditorials) : Promise.resolve(),
+  ]);
+}

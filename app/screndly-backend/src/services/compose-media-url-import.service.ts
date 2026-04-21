@@ -2,10 +2,12 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
+import { JSDOM } from 'jsdom';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import ytDlp, {
   applyYouTubeDownloaderOptions,
+  DEFAULT_YT_DLP_USER_AGENT,
   getYtDlpAuthOptions,
   getYtDlpNetworkContext,
   shouldAllowAndroidSdklessMediaFallback,
@@ -181,6 +183,53 @@ export function detectComposeMediaUrlPlatform(url: string): ComposeMediaUrlPlatf
   return null;
 }
 
+export function canonicalizeComposeMediaUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+  if (hostname.endsWith('instagram.com')) {
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  }
+
+  if (hostname === 'youtu.be') {
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  }
+
+  if (hostname.endsWith('youtube.com')) {
+    if (parsed.pathname === '/watch') {
+      const videoId = parsed.searchParams.get('v');
+      parsed.search = '';
+      if (videoId) {
+        parsed.searchParams.set('v', videoId);
+      }
+      parsed.hash = '';
+      return parsed.toString();
+    }
+
+    parsed.hash = '';
+    return parsed.toString();
+  }
+
+  return parsed.toString();
+}
+
+function buildComposeSourceInputErrorMessage(platform: ComposeMediaUrlPlatform): string {
+  if (platform === 'instagram') {
+    return 'Unable to read that Instagram link. Make sure the post is public and try the direct post or reel link.';
+  }
+
+  return 'Unable to read that YouTube link. Make sure the video is public and try the direct watch or shorts link.';
+}
+
 function formatSourceDate(value: unknown): string {
   const raw = String(value || '').trim();
   if (!raw) {
@@ -260,6 +309,49 @@ export function buildComposeSourceTextFromMetadata(
   ].filter(Boolean);
 
   return lineItems.join('\n');
+}
+
+function normalizeInstagramDescription(value: string): string {
+  const normalized = normalizeSourceLine(value);
+  const match = normalized.match(/on Instagram:\s*["“]?(.+?)["”]?$/i);
+  if (match?.[1]) {
+    return normalizeSourceLine(match[1]);
+  }
+
+  return normalized;
+}
+
+export function extractComposeSourceMetadataFromHtml(html: string): Record<string, any> {
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+
+  const readMeta = (selector: string) =>
+    normalizeSourceLine(document.querySelector(selector)?.getAttribute('content') || '');
+
+  const ogTitle = readMeta('meta[property="og:title"]');
+  const ogDescription = readMeta('meta[property="og:description"]');
+  const metaDescription = readMeta('meta[name="description"]');
+
+  return {
+    title: ogTitle,
+    description: normalizeInstagramDescription(ogDescription || metaDescription),
+  };
+}
+
+async function fetchComposeSourceMetadataFromHtml(url: string): Promise<Record<string, any>> {
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': DEFAULT_YT_DLP_USER_AGENT,
+      'Accept-Language': 'en-US,en;q=0.9',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch source page (${response.status})`);
+  }
+
+  const html = await response.text();
+  return extractComposeSourceMetadataFromHtml(html);
 }
 
 export function normalizeComposeMediaUrlEntries(
@@ -427,14 +519,39 @@ export async function resolveComposeSourceInputText(value: string): Promise<stri
     return value;
   }
 
-  const platform = detectComposeMediaUrlPlatform(normalizedValue);
+  const canonicalUrl = canonicalizeComposeMediaUrl(normalizedValue);
+  const platform = detectComposeMediaUrlPlatform(canonicalUrl);
   if (!platform) {
     return value;
   }
 
-  const metadata = await fetchComposeMediaUrlMetadata(normalizedValue);
-  const sourceText = buildComposeSourceTextFromMetadata(platform, normalizedValue, metadata as Record<string, any>);
-  return sourceText || value;
+  try {
+    const metadata = await fetchComposeMediaUrlMetadata(canonicalUrl);
+    const sourceText = buildComposeSourceTextFromMetadata(platform, canonicalUrl, metadata as Record<string, any>);
+    return sourceText || value;
+  } catch (error) {
+    if (platform === 'instagram') {
+      try {
+        const metadata = await fetchComposeSourceMetadataFromHtml(canonicalUrl);
+        const sourceText = buildComposeSourceTextFromMetadata(platform, canonicalUrl, metadata);
+        if (sourceText) {
+          return sourceText;
+        }
+      } catch (fallbackError) {
+        console.warn('[compose-source-input] Instagram HTML fallback failed', {
+          url: canonicalUrl,
+          error: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+        });
+      }
+    }
+
+    console.warn('[compose-source-input] Failed to resolve source link metadata', {
+      platform,
+      url: canonicalUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw new Error(buildComposeSourceInputErrorMessage(platform));
+  }
 }
 
 async function downloadComposeMediaUrlEntry(

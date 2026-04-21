@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { publisherService } from '../services/publisher.service';
 
-test('threads-compatible hosted image URLs drop Backblaze Authorization query tokens', () => {
+test('threads-compatible hosted image URLs preserve Backblaze Authorization query tokens', () => {
   const sanitized = (publisherService as any).toThreadsCompatibleImageUrl(
     'https://f004.backblazeb2.com/file/Screndly/social-publish/meta-images/test.jpg?Authorization=secret-token&foo=bar',
   );
 
   assert.equal(
     sanitized,
-    'https://f004.backblazeb2.com/file/Screndly/social-publish/meta-images/test.jpg?foo=bar',
+    'https://f004.backblazeb2.com/file/Screndly/social-publish/meta-images/test.jpg?Authorization=secret-token&foo=bar',
   );
 });
 
@@ -59,4 +59,30 @@ test('threads media preflight formatter includes public reachability failures', 
 
   assert.match(formatted, /not publicly reachable/i);
   assert.match(formatted, /HTTP status 403/i);
+});
+
+test('instagram failure formatter includes Meta diagnostics for generic failures', () => {
+  const formatted = (publisherService as any).formatInstagramPublishFailureMessage({
+    error: 'Meta API request failed',
+    errorCode: '190',
+    errorSubcode: '463',
+    errorUserTitle: 'Session expired',
+    errorUserMessage: 'Please re-authenticate your account.',
+    fbtraceId: 'ABC123TRACE',
+  });
+
+  assert.match(formatted, /code 190/i);
+  assert.match(formatted, /subcode 463/i);
+  assert.match(formatted, /Session expired/i);
+  assert.match(formatted, /re-authenticate/i);
+  assert.match(formatted, /trace ABC123TRACE/i);
+});
+
+test('instagram failure formatter preserves specific non-generic message as-is', () => {
+  const formatted = (publisherService as any).formatInstagramPublishFailureMessage({
+    error: 'Instagram media processing timed out',
+    errorCode: '2',
+  });
+
+  assert.equal(formatted, 'Instagram media processing timed out');
 });

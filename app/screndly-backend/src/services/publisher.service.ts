@@ -51,6 +51,14 @@ interface ImagePreflightResult {
     height?: number;
 }
 
+interface VideoPreflightResult {
+    originalSource?: string;
+    source: string;
+    httpStatus?: number;
+    mimeType: string;
+    bytes?: number;
+}
+
 class MediaPreflightError extends Error {
     constructor(
         message: string,
@@ -527,6 +535,7 @@ export class PublisherService {
         errorSubcode?: string;
         errorUserTitle?: string;
         errorUserMessage?: string;
+        fbtraceId?: string;
     }): string {
         const genericMessage = String(input.error || '').trim();
         const isGeneric = !genericMessage || /^meta api request failed$/i.test(genericMessage);
@@ -550,8 +559,38 @@ export class PublisherService {
         if (input.errorUserMessage) {
             parts.push(input.errorUserMessage);
         }
+        if (input.fbtraceId) {
+            parts.push(`trace ${input.fbtraceId}`);
+        }
 
         return parts.join('. ').trim();
+    }
+
+    private async logInstagramFailure(input: {
+        stage: string;
+        platform: string;
+        itemLabel: string;
+        error?: string;
+        errorCode?: string;
+        errorDetails?: Record<string, unknown>;
+    }): Promise<void> {
+        await prisma.log.create({
+            data: {
+                level: 'error',
+                service: 'publisher',
+                message: `Instagram publish failure during ${input.stage}: ${input.itemLabel}`,
+                metadata: {
+                    platform: input.platform,
+                    stage: input.stage,
+                    itemLabel: input.itemLabel,
+                    error: input.error,
+                    errorCode: input.errorCode,
+                    ...input.errorDetails,
+                },
+            },
+        }).catch((error) => {
+            console.error('[Publisher] Failed to log Instagram failure metadata:', error);
+        });
     }
 
     private async logThreadsFailure(input: {
@@ -604,6 +643,47 @@ export class PublisherService {
         })));
 
         return results;
+    }
+
+    private async preflightRemoteVideoSource(source: string, platform: string): Promise<VideoPreflightResult> {
+        const normalizedSource = await getBackblazeAuthorizedDownloadUrl(this.normalizeRemoteMediaUrl(source));
+        const response = await fetch(normalizedSource);
+        if (!response.ok) {
+            throw new MediaPreflightError(
+                `preflight video fetch failed (${response.status})`,
+                'MEDIA_FETCH_FAILED',
+                {
+                    platform,
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                },
+            );
+        }
+
+        const mimeType = (response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+        if (!mimeType.startsWith('video/')) {
+            throw new MediaPreflightError(
+                `preflight expected video content but received ${mimeType || 'unknown content type'}`,
+                'MEDIA_INVALID_CONTENT_TYPE',
+                {
+                    platform,
+                    mediaUrl: source,
+                    resolvedUrl: response.url || normalizedSource,
+                    httpStatus: response.status,
+                    contentType: mimeType || 'unknown',
+                },
+            );
+        }
+
+        const bytes = Number(response.headers.get('content-length') || '0') || undefined;
+        return {
+            originalSource: source,
+            source: response.url || normalizedSource,
+            httpStatus: response.status,
+            mimeType,
+            bytes,
+        };
     }
 
     private async buildMediaFingerprintParts(
@@ -1130,10 +1210,28 @@ export class PublisherService {
 
             if (!storyResult.success) {
                 const prefix = postedCount > 0 ? `Published ${postedCount} of ${queue.length} story items before failure. ` : '';
+                const formattedError = platform === 'InstagramStories'
+                    ? this.formatInstagramPublishFailureMessage({
+                        error: storyResult.error,
+                        errorCode: (storyResult as any).errorCode,
+                        errorSubcode: (storyResult as any).errorSubcode,
+                        errorUserTitle: (storyResult as any).errorUserTitle,
+                        errorUserMessage: (storyResult as any).errorUserMessage,
+                        fbtraceId: (storyResult as any).fbtraceId,
+                    })
+                    : (storyResult.error || `Story item ${index + 1} failed.`);
                 return {
                     platform,
                     status: 'failed',
-                    error: `${prefix}${storyResult.error || `Story item ${index + 1} failed.`}`.trim(),
+                    error: `${prefix}${formattedError}`.trim(),
+                    errorCode: (storyResult as any).errorCode,
+                    errorDetails: {
+                        errorSubcode: (storyResult as any).errorSubcode,
+                        errorUserTitle: (storyResult as any).errorUserTitle,
+                        errorUserMessage: (storyResult as any).errorUserMessage,
+                        fbtraceId: (storyResult as any).fbtraceId,
+                        rawError: (storyResult as any).rawError,
+                    },
                     postedAt: new Date().toISOString(),
                 };
             }
@@ -1470,11 +1568,17 @@ export class PublisherService {
                                         hostedMetaImageUrlCache,
                                     );
                                 } else {
+                                    const hostedVideoUrl = mediaKind === 'video'
+                                        ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
+                                        : undefined;
+                                    if (platform === 'InstagramReels' && hostedVideoUrl) {
+                                        await this.preflightRemoteVideoSource(hostedVideoUrl, platform);
+                                    }
                                     const igResult = mediaKind === 'video'
                                         ? await metaService.postVideoToInstagramReel(
                                             connection.userId,
                                             platformContent.text,
-                                            await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                            hostedVideoUrl as string,
                                             instagramAccessToken,
                                             remoteCoverImageUrl
                                         )
@@ -1497,7 +1601,18 @@ export class PublisherService {
                                             errorSubcode: (igResult as any).errorSubcode,
                                             errorUserTitle: (igResult as any).errorUserTitle,
                                             errorUserMessage: (igResult as any).errorUserMessage,
+                                            fbtraceId: (igResult as any).fbtraceId,
                                         }),
+                                    errorCode: igResult.success ? undefined : (igResult as any).errorCode,
+                                    errorDetails: igResult.success
+                                        ? undefined
+                                        : {
+                                            errorSubcode: (igResult as any).errorSubcode,
+                                            errorUserTitle: (igResult as any).errorUserTitle,
+                                            errorUserMessage: (igResult as any).errorUserMessage,
+                                            fbtraceId: (igResult as any).fbtraceId,
+                                            rawError: (igResult as any).rawError,
+                                        },
                                     status: igResult.success ? 'posted' : 'failed',
                                     postedAt: new Date().toISOString()
                                 };
@@ -1719,9 +1834,20 @@ export class PublisherService {
                         errorDetails: result.errorDetails,
                     });
                 }
+                if (platform === 'Instagram' || platform === 'InstagramFeed' || platform === 'InstagramReels' || platform === 'InstagramStories') {
+                    await this.logInstagramFailure({
+                        stage: 'publish',
+                        platform,
+                        itemLabel,
+                        error: result.error,
+                        errorCode: result.errorCode,
+                        errorDetails: result.errorDetails,
+                    });
+                }
+                const errorCodeSuffix = result.errorCode ? ` (code ${result.errorCode})` : '';
                 await notificationService.notifyUser({
                     title: `${platform} publish failed`,
-                    message: `${itemLabel} failed to publish to ${platform}: ${result.error}`,
+                    message: `${itemLabel} failed to publish to ${platform}: ${result.error}${errorCodeSuffix}`,
                     type: 'error',
                     source: 'upload', // Using 'upload' as generic publish source
                     actionPage: '/uploads' // or history
