@@ -203,15 +203,6 @@ export class PublisherService {
     private toThreadsCompatibleImageUrl(value: string): string {
         try {
             const parsed = new URL(value.trim());
-            if (!parsed.hostname.toLowerCase().includes('backblazeb2.com')) {
-                return parsed.toString();
-            }
-
-            if (!parsed.searchParams.has('Authorization')) {
-                return parsed.toString();
-            }
-
-            parsed.searchParams.delete('Authorization');
             return parsed.toString();
         } catch {
             return value.trim();
@@ -1059,8 +1050,16 @@ export class PublisherService {
         const hasLocalImage = Boolean(mediaFilePath && this.isImage(mediaFilePath));
         const hasAnyVideo = Boolean((mediaFilePath && this.isVideo(mediaFilePath)) || this.getResolvedVideoUrls(content).length > 0);
 
-        if (hasAnyVideo && (imageQueue.length > 0 || hasLocalImage)) {
-            throw new Error('Story publishing does not support mixed image and video uploads in the same post.');
+        const hasAnyImage = imageQueue.length > 0 || hasLocalImage;
+        if (hasAnyVideo && hasAnyImage) {
+            console.warn(
+                `[PublisherService] ${platform} received mixed story media; proceeding with video-only story publish.`,
+                {
+                    platform,
+                    imageCount: imageQueue.length + (hasLocalImage ? 1 : 0),
+                    hasVideo: hasAnyVideo,
+                }
+            );
         }
 
         if (hasAnyVideo) {

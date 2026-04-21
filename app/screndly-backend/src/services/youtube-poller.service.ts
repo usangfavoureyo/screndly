@@ -3313,7 +3313,8 @@ export class YouTubePollerService {
                 },
                 InstagramStories: {
                     text: this.buildPlatformPostText('Instagram', captions, video, settings),
-                    imageUrl: this.isAutoThumbnailEnabled('Instagram', settings) ? generatedSocialImageUrl : undefined,
+                    // Stories with video uploads must not include image media in the same publish payload.
+                    imageUrl: undefined,
                 },
                 Threads: {
                     text: this.buildPlatformPostText('Threads', captions, video, settings),
