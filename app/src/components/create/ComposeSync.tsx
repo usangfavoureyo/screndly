@@ -26,8 +26,22 @@ function sortComposeItems(items: ComposeItem[]) {
   });
 }
 
+function mergePublishedItem(localItem: ComposeItem, remoteItem: ComposeItem) {
+  return {
+    ...localItem,
+    ...remoteItem,
+    status: 'published' as const,
+    scheduledAt: undefined,
+    mediaAssets: remoteItem.mediaAssets.length > 0 ? remoteItem.mediaAssets : localItem.mediaAssets,
+    platformFields:
+      remoteItem.platformFields && Object.keys(remoteItem.platformFields).length > 0
+        ? remoteItem.platformFields
+        : localItem.platformFields,
+  };
+}
+
 function mergeRemotePublishedItems(localItems: ComposeItem[], remoteItems: ComposeItem[]) {
-  const localById = new Set(localItems.map((item) => item.id));
+  const localById = new Map(localItems.map((item, index) => [item.id, { item, index }]));
   const merged = [...localItems];
 
   for (const remoteItem of remoteItems) {
@@ -35,7 +49,11 @@ function mergeRemotePublishedItems(localItems: ComposeItem[], remoteItems: Compo
       continue;
     }
 
-    if (localById.has(remoteItem.id)) {
+    const localMatch = localById.get(remoteItem.id);
+    if (localMatch) {
+      if (localMatch.item.status !== 'published') {
+        merged[localMatch.index] = mergePublishedItem(localMatch.item, remoteItem);
+      }
       continue;
     }
 

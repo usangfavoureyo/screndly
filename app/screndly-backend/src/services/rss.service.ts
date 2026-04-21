@@ -1504,6 +1504,37 @@ function buildRSSTargetedStoryOverride(item: Pick<RSSItem, 'title' | 'descriptio
     };
   }
 
+  if (title.includes('marvel officially returning to san diego comic-con after shocking 2025 absence')) {
+    return {
+      lane: 'entertainment_adjacent',
+      reason: 'Filtered at RSS intake because this article is convention/event coverage, not project-led core movie/TV news.',
+      primarySubject: 'Marvel Studios',
+      entityType: 'company',
+      eventType: 'event',
+      confidence: 0.94,
+      flags: ['story_policy_event_only_non_core'],
+      allowedEntities: ['Marvel Studios', 'San Diego Comic-Con'],
+      noTmdbProject: true,
+    };
+  }
+
+  if (
+    title.includes('openai ceo sam altman says ai in hollywood will get people to')
+    || title.includes('fox one expands podcast lineup with shows from fox news, red seat ventures')
+    || title.includes("one of tv news' most respected consultants says format is breaking")
+    || title.includes("barack obama says his and michelle's production company higher ground will go independent after netflix deal ends")
+  ) {
+    return {
+      lane: 'ignore_completely',
+      reason: 'Filtered at RSS intake because this article is platform, industry, or media-business coverage, not Screen Render core entertainment publishing.',
+      entityType: 'unknown',
+      eventType: 'business',
+      confidence: 0.95,
+      flags: ['story_policy_non_target_media_business'],
+      noTmdbProject: true,
+    };
+  }
+
   if (
     title.includes("timoth") &&
     title.includes('luca guadagnino') &&
@@ -1814,7 +1845,7 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
     return 'political_or_non_entertainment';
   }
 
-  if (/\b(subscription prices?|price increase|raises prices?|earnings|chief operating officer|ceo|coo|cfo|promoted|elevated|executive|acquisition|merger|layoffs?|restructuring|strategy)\b/i.test(text)) {
+  if (/\b(subscription prices?|price increase|raises prices?|earnings|chief operating officer|ceo|coo|cfo|promoted|elevated|executive|acquisition|merger|layoffs?|restructuring|strategy|podcast lineup|production company|consultants?|tv news|streamer|higher ground)\b/i.test(text)) {
     return 'business_or_platform';
   }
 
@@ -2188,7 +2219,7 @@ function shouldApplyEarlyProjectCastPortraitPolicy(
     return true;
   }
 
-  if (!mediaTitle || namedPeople.length < 2 || isRSSNonProjectArticleFamily(articleFamily)) {
+  if (!mediaTitle || namedPeople.length < 1 || isRSSNonProjectArticleFamily(articleFamily)) {
     return false;
   }
 
@@ -2308,6 +2339,12 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   }
   if (isRSSNonProjectArticleFamily(articleFamily)) {
     ambiguityFlags.push('rss_family_no_tmdb_project');
+  }
+  if (!targetedOverride && articleFamily === 'business_or_platform') {
+    ambiguityFlags.push('story_lane_ignore_completely', 'rss_family_no_tmdb_project');
+  }
+  if (!targetedOverride && articleFamily === 'event_or_festival') {
+    ambiguityFlags.push('story_lane_entertainment_adjacent', 'rss_family_no_tmdb_project');
   }
   if (targetedOverride) {
     ambiguityFlags.push(`story_lane_${targetedOverride.lane}`);

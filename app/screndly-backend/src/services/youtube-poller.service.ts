@@ -2296,7 +2296,7 @@ export class YouTubePollerService {
         const cookiesEnabled = params.attempts.some((attempt) => attempt.cookiesEnabled);
         const poTokenEnabled = params.attempts.some((attempt) => attempt.poTokenEnabled);
         const proxyEnabled = params.attempts.some((attempt) => attempt.proxyEnabled);
-        const retrySummary = `Screndly will retry automatically in ${params.nextRetryDelayMinutes}m (next attempt: ${params.nextRetryAt}).`;
+        const retrySummary = `Screndly will retry automatically in ${params.nextRetryDelayMinutes}m.`;
         const httpStatus = this.extractHttpStatusFromText(combinedText);
 
         if (combinedText.includes('too many requests') || httpStatus === 429) {
@@ -2522,6 +2522,19 @@ export class YouTubePollerService {
     private getDownloadFailureFeedStatus(issueKind: YouTubeAccessIssueKind | null, authConfigured: boolean): FeedItemStatus {
         const shouldPauseRetries = this.shouldPauseDownloadRetries(issueKind, authConfigured);
         return shouldPauseRetries ? 'ignored' : 'failed';
+    }
+
+    private getPrimaryFailedAttemptMode(downloadAttempts: YtDlpAttemptSummary[]): string {
+        if (!downloadAttempts.length) {
+            return 'unknown';
+        }
+
+        const preferred = downloadAttempts.find((attempt) =>
+            attempt.mode === 'stable_authenticated_session'
+            || attempt.mode === 'stable_authenticated_session_po_token'
+        );
+
+        return (preferred || downloadAttempts[0]).mode;
     }
 
     private cleanupGeneratedFiles(downloadPath: string | null, assets: Array<PlatformThumbnailAsset | null>) {
@@ -2992,7 +3005,7 @@ export class YouTubePollerService {
                         `${videoTitle} matched detection rules but the YouTube media download failed.`,
                         failureClassification.probableCause,
                         failureClassification.detail,
-                        `Mode: ${downloadAttempts[downloadAttempts.length - 1]?.mode || 'unknown'}.`,
+                        `Primary mode: ${this.getPrimaryFailedAttemptMode(downloadAttempts)}.`,
                         `Proxy: ${downloadAttempts.some((attempt) => attempt.proxyEnabled) ? 'enabled' : 'disabled'}.`,
                         `Cookies: ${downloadAttempts.some((attempt) => attempt.cookiesEnabled) ? 'enabled' : 'disabled'}.`,
                         `PO-token: ${downloadAttempts.some((attempt) => attempt.poTokenEnabled) ? 'enabled' : 'disabled'}.`,

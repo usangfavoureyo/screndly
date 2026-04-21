@@ -2192,108 +2192,115 @@ async function buildCircleInsetLayer(input: {
   height: number;
   payload: DesignStudioRenderPayload;
 }): Promise<Buffer | null> {
-  if (!input.payload.useCircleInset || !input.payload.circleInsetImage) {
-    return null;
-  }
+  try {
+    if (!input.payload.useCircleInset || !input.payload.circleInsetImage) {
+      return null;
+    }
 
-  const source = await fetchSourceBuffer(input.payload.circleInsetImage);
-  if (!source) {
-    return null;
-  }
+    const source = await fetchSourceBuffer(input.payload.circleInsetImage);
+    if (!source) {
+      return null;
+    }
 
-  const diameter = clamp(Math.round(input.payload.circleSize ?? 220), 80, Math.round(Math.min(input.width, input.height) * 0.65));
-  const zoom = clamp(input.payload.circleImageZoom ?? 1, 0.6, 3);
-  const offsetX = clamp(input.payload.circleImageOffsetX ?? 0, -100, 100) / 100;
-  const offsetY = clamp(input.payload.circleImageOffsetY ?? 0, -100, 100) / 100;
-  const imageFit = input.payload.circleImageFit === 'cover' ? 'cover' : 'contain';
+    const diameter = clamp(Math.round(input.payload.circleSize ?? 220), 80, Math.round(Math.min(input.width, input.height) * 0.65));
+    const zoom = clamp(input.payload.circleImageZoom ?? 1, 0.6, 3);
+    const offsetX = clamp(input.payload.circleImageOffsetX ?? 0, -100, 100) / 100;
+    const offsetY = clamp(input.payload.circleImageOffsetY ?? 0, -100, 100) / 100;
+    const imageFit = input.payload.circleImageFit === 'cover' ? 'cover' : 'contain';
 
-  const circularMask = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
-      <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - 1}" fill="#ffffff" />
-    </svg>`,
-  );
+    const circularMask = Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
+        <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - 1}" fill="#ffffff" />
+      </svg>`,
+    );
 
-  let circleImageLayer: Buffer;
-  if (imageFit === 'cover') {
-    const zoomedSize = Math.max(diameter, Math.round(diameter * zoom));
-    const resized = await sharp(source).resize(zoomedSize, zoomedSize, { fit: 'cover' }).png().toBuffer();
-    const overflow = Math.max(0, zoomedSize - diameter);
-    const extractLeft = clamp(Math.round((overflow / 2) - (offsetX * (overflow / 2))), 0, overflow);
-    const extractTop = clamp(Math.round((overflow / 2) - (offsetY * (overflow / 2))), 0, overflow);
-    circleImageLayer = await sharp(resized)
-      .extract({ left: extractLeft, top: extractTop, width: diameter, height: diameter })
+    let circleImageLayer: Buffer;
+    if (imageFit === 'cover') {
+      const zoomedSize = Math.max(diameter, Math.round(diameter * zoom));
+      const resized = await sharp(source).resize(zoomedSize, zoomedSize, { fit: 'cover' }).png().toBuffer();
+      const overflow = Math.max(0, zoomedSize - diameter);
+      const extractLeft = clamp(Math.round((overflow / 2) - (offsetX * (overflow / 2))), 0, overflow);
+      const extractTop = clamp(Math.round((overflow / 2) - (offsetY * (overflow / 2))), 0, overflow);
+      circleImageLayer = await sharp(resized)
+        .extract({ left: extractLeft, top: extractTop, width: diameter, height: diameter })
+        .png()
+        .toBuffer();
+    } else {
+      const metadata = await sharp(source).metadata();
+      const sourceWidth = Math.max(1, metadata.width || diameter);
+      const sourceHeight = Math.max(1, metadata.height || diameter);
+      const containScale = Math.min(diameter / sourceWidth, diameter / sourceHeight);
+      const renderWidth = Math.max(1, Math.round(sourceWidth * containScale * zoom));
+      const renderHeight = Math.max(1, Math.round(sourceHeight * containScale * zoom));
+      const fitted = await sharp(source).resize(renderWidth, renderHeight, { fit: 'fill' }).png().toBuffer();
+      const baseLeft = Math.round((diameter - renderWidth) / 2);
+      const baseTop = Math.round((diameter - renderHeight) / 2);
+      const leftPanRange = Math.abs(diameter - renderWidth) / 2;
+      const topPanRange = Math.abs(diameter - renderHeight) / 2;
+      const layerLeft = clamp(
+        Math.round(baseLeft + (offsetX * leftPanRange)),
+        Math.min(0, diameter - renderWidth),
+        Math.max(0, diameter - renderWidth),
+      );
+      const layerTop = clamp(
+        Math.round(baseTop + (offsetY * topPanRange)),
+        Math.min(0, diameter - renderHeight),
+        Math.max(0, diameter - renderHeight),
+      );
+      circleImageLayer = await sharp({
+        create: {
+          width: diameter,
+          height: diameter,
+          channels: 4,
+          background: { r: 0, g: 0, b: 0, alpha: 0 },
+        },
+      })
+        .composite([{ input: fitted, left: layerLeft, top: layerTop }])
+        .png()
+        .toBuffer();
+    }
+
+    const croppedCircle = await sharp(circleImageLayer)
+      .composite([{ input: circularMask, blend: 'dest-in' }])
       .png()
       .toBuffer();
-  } else {
-    const metadata = await sharp(source).metadata();
-    const sourceWidth = Math.max(1, metadata.width || diameter);
-    const sourceHeight = Math.max(1, metadata.height || diameter);
-    const containScale = Math.min(diameter / sourceWidth, diameter / sourceHeight);
-    const renderWidth = Math.max(1, Math.round(sourceWidth * containScale * zoom));
-    const renderHeight = Math.max(1, Math.round(sourceHeight * containScale * zoom));
-    const fitted = await sharp(source).resize(renderWidth, renderHeight, { fit: 'fill' }).png().toBuffer();
-    const baseLeft = Math.round((diameter - renderWidth) / 2);
-    const baseTop = Math.round((diameter - renderHeight) / 2);
-    const leftPanRange = Math.abs(diameter - renderWidth) / 2;
-    const topPanRange = Math.abs(diameter - renderHeight) / 2;
-    const layerLeft = clamp(
-      Math.round(baseLeft + (offsetX * leftPanRange)),
-      Math.min(0, diameter - renderWidth),
-      Math.max(0, diameter - renderWidth),
-    );
-    const layerTop = clamp(
-      Math.round(baseTop + (offsetY * topPanRange)),
-      Math.min(0, diameter - renderHeight),
-      Math.max(0, diameter - renderHeight),
-    );
-    circleImageLayer = await sharp({
+
+    const strokeWidth = clamp(Math.round(input.payload.circleStrokeWidth ?? 6), 0, 24);
+    const strokeColor = (input.payload.circleStrokeColor || '#FFFFFF').trim() || '#FFFFFF';
+    const strokeLayer = strokeWidth > 0
+      ? Buffer.from(
+          `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
+            <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - Math.max(1, strokeWidth / 2)}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
+          </svg>`,
+        )
+      : null;
+
+    const circleWithStroke = strokeLayer
+      ? await sharp(croppedCircle).composite([{ input: strokeLayer }]).png().toBuffer()
+      : croppedCircle;
+
+    const centerX = clamp(input.payload.circleX ?? 80, 0, 100);
+    const centerY = clamp(input.payload.circleY ?? 24, 0, 100);
+    const left = clamp(Math.round((centerX / 100) * input.width - (diameter / 2)), 0, Math.max(0, input.width - diameter));
+    const top = clamp(Math.round((centerY / 100) * input.height - (diameter / 2)), 0, Math.max(0, input.height - diameter));
+
+    return sharp({
       create: {
-        width: diameter,
-        height: diameter,
+        width: input.width,
+        height: input.height,
         channels: 4,
         background: { r: 0, g: 0, b: 0, alpha: 0 },
       },
     })
-      .composite([{ input: fitted, left: layerLeft, top: layerTop }])
+      .composite([{ input: circleWithStroke, left, top }])
       .png()
       .toBuffer();
+  } catch (error) {
+    console.warn('[DesignStudio] Circle inset render skipped due to processing error', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
   }
-
-  const croppedCircle = await sharp(circleImageLayer)
-    .composite([{ input: circularMask, blend: 'dest-in' }])
-    .png()
-    .toBuffer();
-
-  const strokeWidth = clamp(Math.round(input.payload.circleStrokeWidth ?? 6), 0, 24);
-  const strokeColor = (input.payload.circleStrokeColor || '#FFFFFF').trim() || '#FFFFFF';
-  const strokeLayer = strokeWidth > 0
-    ? Buffer.from(
-        `<svg xmlns="http://www.w3.org/2000/svg" width="${diameter}" height="${diameter}" viewBox="0 0 ${diameter} ${diameter}">
-          <circle cx="${diameter / 2}" cy="${diameter / 2}" r="${(diameter / 2) - Math.max(1, strokeWidth / 2)}" fill="none" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
-        </svg>`,
-      )
-    : null;
-
-  const circleWithStroke = strokeLayer
-    ? await sharp(croppedCircle).composite([{ input: strokeLayer }]).png().toBuffer()
-    : croppedCircle;
-
-  const centerX = clamp(input.payload.circleX ?? 80, 0, 100);
-  const centerY = clamp(input.payload.circleY ?? 24, 0, 100);
-  const left = clamp(Math.round((centerX / 100) * input.width - (diameter / 2)), 0, Math.max(0, input.width - diameter));
-  const top = clamp(Math.round((centerY / 100) * input.height - (diameter / 2)), 0, Math.max(0, input.height - diameter));
-
-  return sharp({
-    create: {
-      width: input.width,
-      height: input.height,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([{ input: circleWithStroke, left, top }])
-    .png()
-    .toBuffer();
 }
 
 async function measureVisibleLogoLuminance(logoBuffer: Buffer): Promise<number> {

@@ -5,7 +5,9 @@ import {
   Clapperboard,
   ExternalLink,
   Film,
+  Image as ImageIcon,
   MoreVertical,
+  Play,
   Rss,
   Settings as SettingsIcon,
   X,
@@ -314,7 +316,26 @@ export function NotificationPanel({
     }
   };
 
+  const isYouTubeRelatedNotification = (notification: Notification) => {
+    if (notification.source === 'youtube') return true;
+    return /youtube/i.test(`${notification.title} ${notification.message}`);
+  };
+
+  const isDesignStudioNotification = (notification: Notification) => {
+    if (notification.source === 'design_studio') return true;
+    const combinedText = `${notification.title} ${notification.message}`;
+    return /design studio|new fetched news available/i.test(combinedText);
+  };
+
   const getIcon = (notification: Notification) => {
+    if (isYouTubeRelatedNotification(notification)) {
+      return <Play className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
+    if (isDesignStudioNotification(notification)) {
+      return <ImageIcon className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
     if (notification.source === 'rss') {
       return <Rss className="w-5 h-5 text-[#ec1e24]" />;
     }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildComposeSourceTextFromMetadata,
   buildComposeMediaDownloadOptions,
   buildComposeMediaNetworkOptions,
   detectComposeMediaUrlPlatform,
@@ -104,7 +105,7 @@ test('buildComposeMediaNetworkOptions can reuse download auth context for YouTub
 
   try {
     const defaultMetadataOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated');
-    const cookieBackedMetadataOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated', 'download' as any);
+    const cookieBackedMetadataOptions = buildComposeMediaNetworkOptions('metadata', 'authenticated', 'download');
 
     assert.equal(defaultMetadataOptions.cookies, undefined);
     assert.equal(cookieBackedMetadataOptions.proxy, 'http://127.0.0.1:8080');
@@ -155,4 +156,46 @@ test('normalizeComposeMediaUrlEntries expands Instagram carousel metadata into o
   assert.equal(entries.length, 2);
   assert.deepEqual(entries.map((entry) => entry.kind), ['image', 'video']);
   assert.deepEqual(entries.map((entry) => entry.order), [0, 1]);
+});
+
+test('buildComposeSourceTextFromMetadata formats YouTube descriptions into generation-friendly source text', () => {
+  const sourceText = buildComposeSourceTextFromMetadata(
+    'youtube',
+    'https://www.youtube.com/watch?v=test123',
+    {
+      title: 'Animal Farm Trailer',
+      description: 'A new adaptation arrives this fall.',
+      uploader: 'StudioChannel',
+      channel: 'StudioChannel',
+      duration: 95,
+      upload_date: '20260421',
+      tags: ['trailer', 'movie'],
+      webpage_url: 'https://www.youtube.com/watch?v=test123',
+    },
+  );
+
+  assert.match(sourceText, /Title: Animal Farm Trailer/);
+  assert.match(sourceText, /Description: A new adaptation arrives this fall\./);
+  assert.match(sourceText, /Source Platform: YouTube/);
+  assert.match(sourceText, /Duration Seconds: 95/);
+  assert.match(sourceText, /Tags: trailer, movie/);
+});
+
+test('buildComposeSourceTextFromMetadata formats Instagram captions into generation-friendly source text', () => {
+  const sourceText = buildComposeSourceTextFromMetadata(
+    'instagram',
+    'https://www.instagram.com/reel/test123/',
+    {
+      title: 'Animal Farm reel',
+      description: 'Behind the scenes from the new video.',
+      uploader: 'animalfarmmovie',
+      channel: 'animalfarmmovie',
+      webpage_url: 'https://www.instagram.com/reel/test123/',
+    },
+  );
+
+  assert.match(sourceText, /Title: Animal Farm reel/);
+  assert.match(sourceText, /Description: Behind the scenes from the new video\./);
+  assert.match(sourceText, /Source Platform: Instagram/);
+  assert.match(sourceText, /Creator: animalfarmmovie/);
 });

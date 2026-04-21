@@ -9,7 +9,7 @@ import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-re
 import { analyzeRssAuditCase, buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
-const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, classifyRSSFallbackPath } = __rssCaptionTestUtils;
+const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, buildRSSPublishSafeDeterministicResult, classifyRSSFallbackPath } = __rssCaptionTestUtils;
 const { validateImageCandidate, shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 const { computeRssEditorialBrainDisagreements, normalizeRssEditorialBrainDecision, buildRssEditorialBrainContentHash } = __rssEditorialBrainTestUtils;
@@ -1274,6 +1274,39 @@ test('RSS fallback path classifier detects excerpt-style leakage', () => {
   );
 });
 
+test('publisher-safe deterministic captions are promoted out of fallback mode when they satisfy caption rules', () => {
+  const context = {
+    articleTitle: 'Amazon Prime Video Sets Clarkson’s Farm Season 5 Premiere Date',
+    feedName: 'Deadline',
+    summary: 'Clarkson’s Farm will return for a fifth season on Prime Video.',
+    articleBody: 'Prime Video confirmed Clarkson’s Farm will return for Season 5.',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: "Clarkson's Farm",
+      mediaTitle: "Clarkson's Farm",
+      entityType: 'tv',
+      eventType: 'release_date',
+      confidence: 0.94,
+      allowedEntities: ["Clarkson's Farm", 'Prime Video'],
+      ambiguityFlags: [],
+    },
+    allowedEntities: ["Clarkson's Farm", 'Prime Video'],
+  } as any;
+
+  const deterministic = buildDeterministicRssCaption({
+    article_title: 'Amazon Prime Video Sets Clarkson’s Farm Season 5 Premiere Date',
+    event_type: 'release_date',
+    primary_subject: "Clarkson's Farm",
+    media_title: "Clarkson's Farm",
+    studio_or_platform: 'Prime Video',
+    supporting_facts: ['Season 5 is set at Prime Video'],
+  } as any, context);
+  const promoted = buildRSSPublishSafeDeterministicResult(deterministic, context);
+
+  assert.equal(promoted.path, 'repaired_caption');
+  assert.equal(failsRSSCaptionFormatting(promoted.caption, context), false);
+});
+
 test('RSS caption system prompt preserves saved settings prompt as the authoritative instruction block', () => {
   const systemPrompt = __rssAuditTestUtils.buildRSSCaptionSystemPrompt(
     'CUSTOM CULTURE CRAVE PROMPT',
@@ -1329,6 +1362,37 @@ test('newly announced renamed TV projects recover current canonical title and al
   assert.ok(plan.secondary);
   assert.equal(plan.primary.subject, 'Jonathan Pryce');
   assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
+test('single-person early project announcements still enable cast-led image fallback', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "'Good Boy's Ben Leonberg To Direct Horror Film 'Ankle Snatcher' For Sony Pictures",
+    description: 'EXCLUSIVE: Ben Leonberg has inked a deal to direct Ankle Snatcher for Sony Pictures.',
+    contentHtml: `
+      <p>Ben Leonberg will direct the horror film <em>Ankle Snatcher</em> for Sony Pictures.</p>
+      <p>The project is in development with Leonberg attached to direct.</p>
+    `,
+  });
+
+  assert.equal(canonical.mediaTitle, 'Ankle Snatcher');
+  assert.ok(canonical.namedPeople?.includes('Ben Leonberg'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_early_project_cast_portraits'));
+});
+
+test('media-business and event-only live articles route out before core image resolution', () => {
+  const samAltman = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'OpenAI CEO Sam Altman Says AI in Hollywood Will Get People to “Care More About Human Creators, Not Less”',
+    description: 'The OpenAI CEO spoke about AI and creators in Hollywood.',
+    contentHtml: '<p>Sam Altman discussed AI in Hollywood and creator economics.</p>',
+  });
+  assert.ok(samAltman.ambiguityFlags?.includes('story_lane_ignore_completely'));
+
+  const marvelSdcc = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'Marvel Officially Returning To San Diego Comic-Con After Shocking 2025 Absence',
+    description: 'Marvel Studios is heading back to Comic-Con this summer.',
+    contentHtml: '<p>The studio confirmed its return to San Diego Comic-Con.</p>',
+  });
+  assert.ok(marvelSdcc.ambiguityFlags?.includes('story_lane_entertainment_adjacent'));
 });
 
 test('casting caption templates stay project-led and do not leak the development alias', () => {

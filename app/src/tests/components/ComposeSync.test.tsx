@@ -162,4 +162,87 @@ describe('ComposeSync', () => {
       );
     });
   });
+
+  it('upgrades a local scheduled item to the remote published version for the same id', async () => {
+    useComposeStore.setState({
+      items: [
+        {
+          id: 'shared-post',
+          title: 'Scheduled locally',
+          status: 'scheduled',
+          mediaAssets: [
+            {
+              id: 'asset-1',
+              kind: 'video',
+              fileName: 'clip.mp4',
+              mimeType: 'video/mp4',
+              size: 1024,
+              order: 0,
+              previewUrl: 'https://cdn.example.com/local-preview.mp4',
+              storageUrl: 'https://cdn.example.com/local.mp4',
+              uploadStatus: 'uploaded',
+            },
+          ],
+          platforms: ['instagram_stories', 'facebook_stories', 'threads'],
+          sharedCaption: 'Scheduled caption',
+          platformFields: {},
+          scheduledAt: '2026-04-21T18:30:00.000Z',
+          createdAt: '2026-04-21T09:00:00.000Z',
+          updatedAt: '2026-04-21T18:00:00.000Z',
+        },
+      ],
+      activeItemId: null,
+      lastModifiedAt: '2026-04-21T18:00:00.000Z',
+    });
+
+    composeApiMock.getState.mockResolvedValue({
+      success: true,
+      data: {
+        items: [
+          {
+            id: 'shared-post',
+            title: 'Published remotely',
+            status: 'published',
+            mediaAssets: [
+              {
+                id: 'asset-1',
+                kind: 'video',
+                fileName: 'clip.mp4',
+                mimeType: 'video/mp4',
+                size: 1024,
+                order: 0,
+                previewUrl: 'https://cdn.example.com/remote-preview.mp4',
+                storageUrl: 'https://cdn.example.com/remote.mp4',
+                uploadStatus: 'uploaded',
+              },
+            ],
+            platforms: ['instagram_stories', 'facebook_stories', 'threads'],
+            sharedCaption: 'Published caption',
+            platformFields: {},
+            createdAt: '2026-04-21T09:00:00.000Z',
+            updatedAt: '2026-04-21T17:59:00.000Z',
+          },
+        ],
+        updatedAt: '2026-04-21T17:59:00.000Z',
+      },
+    });
+    composeApiMock.saveState.mockResolvedValue({
+      success: true,
+      data: {
+        items: [],
+        updatedAt: '2026-04-21T18:00:00.000Z',
+      },
+    });
+
+    render(<ComposeSync />);
+
+    await waitFor(() => {
+      const item = useComposeStore.getState().items.find((entry) => entry.id === 'shared-post');
+      expect(item?.status).toBe('published');
+      expect(item?.scheduledAt).toBeUndefined();
+      expect(item?.sharedCaption).toBe('Published caption');
+    });
+
+    expect(composeApiMock.saveState).not.toHaveBeenCalled();
+  });
 });

@@ -6,6 +6,7 @@
 import prisma from '../lib/prisma';
 import { readSecretSettingValue } from '../lib/settings';
 import { trackApiUsage } from './api-usage.service';
+import { resolveComposeSourceInputText } from './compose-media-url-import.service';
 import { createHash } from 'crypto';
 
 // ============================================
@@ -3021,6 +3022,25 @@ function classifyRSSFallbackPath(caption: string): RSSCaptionGenerationPath {
     return 'deterministic_template';
 }
 
+function buildRSSPublishSafeDeterministicResult(
+    caption: string,
+    context: RSSContext,
+): RSSCaptionGenerationResult {
+    const normalized = enforceRSSCaptionPunctuation(caption);
+    if (!normalized) {
+        return buildRSSFallbackResult(caption);
+    }
+
+    if (!failsRSSCaptionFormatting(normalized, context)) {
+        return {
+            caption: normalized,
+            path: 'repaired_caption',
+        };
+    }
+
+    return buildRSSFallbackResult(normalized);
+}
+
 function buildRSSFallbackResult(caption: string): RSSCaptionGenerationResult {
     return {
         caption,
@@ -3118,7 +3138,7 @@ Write ONLY the caption.`;
     });
 
     if (!response.success) {
-        return buildRSSFallbackResult(deterministicFallback);
+        return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
     const normalizedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
@@ -3168,7 +3188,7 @@ Write ONLY the corrected caption.`;
     });
 
     if (!retryResponse.success) {
-        return buildRSSFallbackResult(deterministicFallback);
+        return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
 
     const correctedCaption = enforceRSSCaptionPunctuation(
@@ -3214,7 +3234,7 @@ Write ONLY the final caption.`;
     });
 
     if (!hardRebuildResponse.success) {
-        return buildRSSFallbackResult(deterministicFallback);
+        return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
 
     const rebuiltCaption = enforceRSSCaptionPunctuation(
@@ -3244,6 +3264,7 @@ export async function generateRSSCaption(
 export const __rssCaptionTestUtils = {
     buildHeuristicRssCaptionExtraction,
     buildDeterministicRssCaption,
+    buildRSSPublishSafeDeterministicResult,
     enforceRSSCaptionPunctuation,
     sanitizeRSSCaptionSurfaceText,
     failsRSSCaptionFormatting,
@@ -4440,7 +4461,9 @@ export async function generateComposeContent(
     input: ComposeContentGenerationInput,
     model: AIModel = DEFAULT_OPENAI_MODEL
 ): Promise<ComposeContentGenerationResult> {
-    const requestText = normalizeComposeMetadataText(input.requestText || input.metadataText || '');
+    const requestText = normalizeComposeMetadataText(
+        await resolveComposeSourceInputText(input.requestText || input.metadataText || ''),
+    );
     if (!requestText) {
         throw new Error('Source or prompt input is required.');
     }

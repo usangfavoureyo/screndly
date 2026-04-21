@@ -34,6 +34,9 @@ const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
 const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
 const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV1';
+const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.1;
+const DEFAULT_CIRCLE_SIZE = 420;
+const DEFAULT_CIRCLE_STROKE_WIDTH = 3;
 const VARIANT_OVERLAY_DIRECTION_MAP: Record<DesignStudioLayoutVariant, 'top' | 'bottom' | 'left' | 'right'> = {
   bottom_center: 'bottom',
   bottom_left: 'left',
@@ -42,6 +45,11 @@ const VARIANT_OVERLAY_DIRECTION_MAP: Record<DesignStudioLayoutVariant, 'top' | '
   top_left: 'left',
   top_right: 'right',
 };
+
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
 
 interface EditDesignBottomSheetProps {
   open: boolean;
@@ -157,7 +165,7 @@ export function EditDesignBottomSheet({
   const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
   const [headlineWidthScale, setHeadlineWidthScale] = useState(1);
   const [headlineDensity, setHeadlineDensity] = useState(1);
-  const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? 0.93);
+  const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
   const [backgroundImage, setBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [previewBackgroundImage, setPreviewBackgroundImage] = useState(initialData?.backgroundImage || '');
   const [imageFocalPoint, setImageFocalPoint] = useState(initialData?.imageFocalPoint || { x: 50, y: 50 });
@@ -182,11 +190,11 @@ export function EditDesignBottomSheet({
   const [previewCircleInsetImage, setPreviewCircleInsetImage] = useState(initialData?.circleInsetImage || '');
   const [circleX, setCircleX] = useState(initialData?.circleX ?? 80);
   const [circleY, setCircleY] = useState(initialData?.circleY ?? 24);
-  const [circleSize, setCircleSize] = useState(initialData?.circleSize ?? 220);
+  const [circleSize, setCircleSize] = useState(initialData?.circleSize ?? DEFAULT_CIRCLE_SIZE);
   const [circleImageZoom, setCircleImageZoom] = useState(initialData?.circleImageZoom ?? 1);
   const [circleImageOffsetX, setCircleImageOffsetX] = useState(initialData?.circleImageOffsetX ?? 0);
   const [circleImageOffsetY, setCircleImageOffsetY] = useState(initialData?.circleImageOffsetY ?? 0);
-  const [circleStrokeWidth, setCircleStrokeWidth] = useState(initialData?.circleStrokeWidth ?? 6);
+  const [circleStrokeWidth, setCircleStrokeWidth] = useState(initialData?.circleStrokeWidth ?? DEFAULT_CIRCLE_STROKE_WIDTH);
   const [circleStrokeColor, setCircleStrokeColor] = useState(initialData?.circleStrokeColor || '#FFFFFF');
   const [circleImageFit, setCircleImageFit] = useState<'contain' | 'cover'>(initialData?.circleImageFit === 'cover' ? 'cover' : 'contain');
   const [fadeEnabled, setFadeEnabled] = useState(initialData?.fadeEnabled ?? true);
@@ -300,7 +308,7 @@ export function EditDesignBottomSheet({
       fontScale: initialData.fontScale ?? 1,
       headlineWidthScale: initialData.headlineWidthScale ?? 1,
       headlineDensity: initialData.headlineDensity ?? 1,
-      lineHeightMultiplier: initialData.lineHeightMultiplier ?? 0.93,
+      lineHeightMultiplier: initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER,
       backgroundImage: initialData.backgroundImage || '',
       imageFocalPoint: initialData.imageFocalPoint || { x: 50, y: 50 },
       imageZoom: initialData.imageZoom || 1,
@@ -313,11 +321,11 @@ export function EditDesignBottomSheet({
       circleInsetImage: initialData.circleInsetImage || '',
       circleX: initialData.circleX ?? 80,
       circleY: initialData.circleY ?? 24,
-      circleSize: initialData.circleSize ?? 220,
+      circleSize: initialData.circleSize ?? DEFAULT_CIRCLE_SIZE,
       circleImageZoom: initialData.circleImageZoom ?? 1,
       circleImageOffsetX: initialData.circleImageOffsetX ?? 0,
       circleImageOffsetY: initialData.circleImageOffsetY ?? 0,
-      circleStrokeWidth: initialData.circleStrokeWidth ?? 6,
+      circleStrokeWidth: initialData.circleStrokeWidth ?? DEFAULT_CIRCLE_STROKE_WIDTH,
       circleStrokeColor: initialData.circleStrokeColor || '#FFFFFF',
       circleImageFit: initialData.circleImageFit === 'cover' ? 'cover' : 'contain',
       fadeEnabled: initialData.fadeEnabled ?? true,
@@ -358,7 +366,7 @@ export function EditDesignBottomSheet({
     setLineHeightMultiplier(
       typeof persistedPrefs?.lineHeightMultiplier === 'number'
         ? persistedPrefs.lineHeightMultiplier
-        : initialData.lineHeightMultiplier ?? 0.93,
+        : initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER,
     );
     setBackgroundImage(initialData.backgroundImage || '');
     setPreviewBackgroundImage(initialData.backgroundImage || '');
@@ -386,11 +394,11 @@ export function EditDesignBottomSheet({
     setPreviewCircleInsetImage(initialData.circleInsetImage || '');
     setCircleX(initialData.circleX ?? 80);
     setCircleY(initialData.circleY ?? 24);
-    setCircleSize(initialData.circleSize ?? 220);
+    setCircleSize(initialData.circleSize ?? DEFAULT_CIRCLE_SIZE);
     setCircleImageZoom(initialData.circleImageZoom ?? 1);
     setCircleImageOffsetX(initialData.circleImageOffsetX ?? 0);
     setCircleImageOffsetY(initialData.circleImageOffsetY ?? 0);
-    setCircleStrokeWidth(initialData.circleStrokeWidth ?? 6);
+    setCircleStrokeWidth(initialData.circleStrokeWidth ?? DEFAULT_CIRCLE_STROKE_WIDTH);
     setCircleStrokeColor(initialData.circleStrokeColor || '#FFFFFF');
     setCircleImageFit(initialData.circleImageFit === 'cover' ? 'cover' : 'contain');
     setFadeEnabled(
@@ -575,7 +583,7 @@ export function EditDesignBottomSheet({
     setFontScale(snapshot.fontScale ?? 1);
     setHeadlineWidthScale(1);
     setHeadlineDensity(1);
-    setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? 0.93);
+    setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
     setBackgroundImage(snapshot.backgroundImage || '');
     setPreviewBackgroundImage(snapshot.backgroundImage || '');
     setCircleInsetImage(snapshot.circleInsetImage || '');
@@ -590,11 +598,11 @@ export function EditDesignBottomSheet({
     setUseCircleInset(snapshot.useCircleInset ?? false);
     setCircleX(snapshot.circleX ?? 80);
     setCircleY(snapshot.circleY ?? 24);
-    setCircleSize(snapshot.circleSize ?? 220);
+    setCircleSize(snapshot.circleSize ?? DEFAULT_CIRCLE_SIZE);
     setCircleImageZoom(snapshot.circleImageZoom ?? 1);
     setCircleImageOffsetX(snapshot.circleImageOffsetX ?? 0);
     setCircleImageOffsetY(snapshot.circleImageOffsetY ?? 0);
-    setCircleStrokeWidth(snapshot.circleStrokeWidth ?? 6);
+    setCircleStrokeWidth(snapshot.circleStrokeWidth ?? DEFAULT_CIRCLE_STROKE_WIDTH);
     setCircleStrokeColor(snapshot.circleStrokeColor || '#FFFFFF');
     setCircleImageFit(snapshot.circleImageFit === 'cover' ? 'cover' : 'contain');
     setFadeEnabled(snapshot.fadeEnabled ?? true);
@@ -902,6 +910,23 @@ export function EditDesignBottomSheet({
       URL.revokeObjectURL(previewCircleInsetImage);
     }
     setPreviewCircleInsetImage(localPreviewUrl);
+    try {
+      const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+        img.onerror = () => reject(new Error('Failed to read circle inset image dimensions'));
+        img.src = localPreviewUrl;
+      });
+      const shortestSide = Math.max(1, Math.min(dimensions.width, dimensions.height));
+      const longestSide = Math.max(1, Math.max(dimensions.width, dimensions.height));
+      const autoFitZoom = clampNumber(longestSide / shortestSide, 0.6, 3);
+      setCircleImageFit('contain');
+      setCircleImageZoom(autoFitZoom);
+      setCircleImageOffsetX(0);
+      setCircleImageOffsetY(0);
+    } catch {
+      // keep current zoom/pan when dimensions cannot be resolved
+    }
     setIsUploadingCircleInset(true);
     try {
       const uploadedImage = await uploadDesignStudioAsset(file, 'renders');
@@ -971,8 +996,25 @@ export function EditDesignBottomSheet({
     }
   };
 
-  const handleSelectCircleTmdbImage = (imageUrl: string) => {
+  const handleSelectCircleTmdbImage = async (imageUrl: string) => {
     haptics.light();
+    try {
+      const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+        img.onerror = () => reject(new Error('Failed to read TMDb image dimensions'));
+        img.src = imageUrl;
+      });
+      const shortestSide = Math.max(1, Math.min(dimensions.width, dimensions.height));
+      const longestSide = Math.max(1, Math.max(dimensions.width, dimensions.height));
+      const autoFitZoom = clampNumber(longestSide / shortestSide, 0.6, 3);
+      setCircleImageFit('contain');
+      setCircleImageZoom(autoFitZoom);
+      setCircleImageOffsetX(0);
+      setCircleImageOffsetY(0);
+    } catch {
+      // keep current zoom/pan when dimensions cannot be resolved
+    }
     setCircleInsetImage(imageUrl);
     setPreviewCircleInsetImage(imageUrl);
     setUseCircleInset(true);
@@ -999,6 +1041,10 @@ export function EditDesignBottomSheet({
       toast.error('Please wait for the background image upload to finish');
       return;
     }
+    if (isUploadingCircleInset) {
+      toast.error('Please wait for the circle inset image upload to finish');
+      return;
+    }
 
     haptics.medium();
     onSave({
@@ -1021,6 +1067,7 @@ export function EditDesignBottomSheet({
       circleImageOffsetY,
       circleStrokeWidth,
       circleStrokeColor,
+      circleImageFit,
       imageFocalPoint,
       imageZoom,
       overlayEnabled,
@@ -1057,6 +1104,7 @@ export function EditDesignBottomSheet({
     circleImageOffsetY,
     circleStrokeWidth,
     circleStrokeColor,
+    circleImageFit,
     imageFocalPoint,
     imageZoom,
     overlayEnabled,
@@ -2332,28 +2380,14 @@ export function EditDesignBottomSheet({
                             onClick={() => {
                               setCircleX(80);
                               setCircleY(24);
-                              setCircleSize(220);
-                              setCircleStrokeWidth(6);
+                              setCircleSize(DEFAULT_CIRCLE_SIZE);
+                              setCircleStrokeWidth(DEFAULT_CIRCLE_STROKE_WIDTH);
                               setCircleStrokeColor('#FFFFFF');
                               setCircleImageFit('contain');
                               toast.success('Circle settings reset');
                             }}
                           >
                             Reset Circle
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333]"
-                            onClick={() => {
-                              setCircleImageZoom(1);
-                              setCircleImageOffsetX(0);
-                              setCircleImageOffsetY(0);
-                              toast.success('Image position reset');
-                            }}
-                          >
-                            Reset Image Position
                           </Button>
                           <Button
                             type="button"

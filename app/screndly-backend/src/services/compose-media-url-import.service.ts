@@ -181,6 +181,87 @@ export function detectComposeMediaUrlPlatform(url: string): ComposeMediaUrlPlatf
   return null;
 }
 
+function formatSourceDate(value: unknown): string {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '';
+  }
+
+  const compactMatch = raw.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactMatch) {
+    return `${compactMatch[1]}-${compactMatch[2]}-${compactMatch[3]}`;
+  }
+
+  return raw;
+}
+
+function normalizeSourceLine(value: unknown): string {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function firstNonEmptyString(...values: unknown[]): string {
+  for (const value of values) {
+    const normalized = normalizeSourceLine(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return '';
+}
+
+function uniqueNonEmptyStrings(values: unknown[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const value of values) {
+    const normalized = normalizeSourceLine(value);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+
+    seen.add(normalized);
+    output.push(normalized);
+  }
+
+  return output;
+}
+
+export function buildComposeSourceTextFromMetadata(
+  platform: ComposeMediaUrlPlatform,
+  originalUrl: string,
+  metadata: Record<string, any>,
+): string {
+  const title = firstNonEmptyString(metadata.title, metadata.fulltitle);
+  const description = firstNonEmptyString(
+    metadata.description,
+    metadata.caption,
+    metadata.summary,
+    metadata.full_description,
+  );
+  const creator = firstNonEmptyString(
+    metadata.uploader,
+    metadata.channel,
+    metadata.uploader_id,
+    metadata.channel_id,
+    metadata.creator,
+  );
+  const sourceUrl = firstNonEmptyString(metadata.webpage_url, metadata.original_url, originalUrl);
+  const tags = Array.isArray(metadata.tags) ? uniqueNonEmptyStrings(metadata.tags).slice(0, 12) : [];
+  const lineItems = [
+    `Source Platform: ${platform === 'youtube' ? 'YouTube' : 'Instagram'}`,
+    title ? `Title: ${title}` : '',
+    creator ? `Creator: ${creator}` : '',
+    description ? `Description: ${description}` : '',
+    typeof metadata.duration === 'number' && Number.isFinite(metadata.duration) ? `Duration Seconds: ${Math.round(metadata.duration)}` : '',
+    formatSourceDate(metadata.upload_date) ? `Published Date: ${formatSourceDate(metadata.upload_date)}` : '',
+    tags.length > 0 ? `Tags: ${tags.join(', ')}` : '',
+    sourceUrl ? `Source URL: ${sourceUrl}` : '',
+  ].filter(Boolean);
+
+  return lineItems.join('\n');
+}
+
 export function normalizeComposeMediaUrlEntries(
   originalUrl: string,
   metadata: Record<string, any>,
@@ -338,6 +419,22 @@ async function fetchComposeMediaUrlMetadata(url: string): Promise<Record<string,
     quiet: true,
     extractorArgs: await youtubePoTokenService.getExtractorArgs(undefined, cookieBackedNetworkContext),
   } as any);
+}
+
+export async function resolveComposeSourceInputText(value: string): Promise<string> {
+  const normalizedValue = String(value || '').trim();
+  if (!normalizedValue || /\s/.test(normalizedValue)) {
+    return value;
+  }
+
+  const platform = detectComposeMediaUrlPlatform(normalizedValue);
+  if (!platform) {
+    return value;
+  }
+
+  const metadata = await fetchComposeMediaUrlMetadata(normalizedValue);
+  const sourceText = buildComposeSourceTextFromMetadata(platform, normalizedValue, metadata as Record<string, any>);
+  return sourceText || value;
 }
 
 async function downloadComposeMediaUrlEntry(

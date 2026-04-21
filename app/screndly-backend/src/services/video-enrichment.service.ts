@@ -665,11 +665,131 @@ function parsePlatformSettings(value: unknown): Record<string, PlatformSettingsV
 }
 
 function parseThumbnailConfig(platform: LandscapePlatform, value: unknown): ThumbnailConfig {
-    const parsed = parseJsonValue<Partial<ThumbnailConfig>>(value);
+    return resolveThumbnailConfigForPlatform(platform, value);
+}
+
+function parsePossiblyNestedJson(value: unknown): unknown {
+    let current: unknown = value;
+
+    for (let index = 0; index < 3; index += 1) {
+        if (typeof current !== 'string') {
+            return current;
+        }
+
+        const trimmed = current.trim();
+        if (!trimmed) {
+            return undefined;
+        }
+
+        if (!['{', '[', '"'].includes(trimmed[0])) {
+            return current;
+        }
+
+        try {
+            current = JSON.parse(trimmed);
+        } catch {
+            return current;
+        }
+    }
+
+    return current;
+}
+
+function normalizeThumbnailLogoDisplayMode(value: unknown): ThumbnailLogoDisplayMode | undefined {
+    if (typeof value !== 'string') {
+        return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, '-');
+
+    if (normalized === 'boxed' || normalized === 'box' || normalized === 'logo-boxed') {
+        return 'boxed';
+    }
+
+    if (normalized === 'logo-only' || normalized === 'logo') {
+        return 'logo-only';
+    }
+
+    if (normalized === 'branded' || normalized === 'brand' || normalized === 'branded-logo') {
+        return 'branded';
+    }
+
+    return undefined;
+}
+
+function normalizeBrandedAppearanceMode(value: unknown): BrandedOverlayAppearanceMode | undefined {
+    if (value === 'adaptive' || value === 'fixed') {
+        return value;
+    }
+
+    return undefined;
+}
+
+function normalizeBrandedVariant(value: unknown): BrandedOverlayVariant | undefined {
+    if (value === 'white' || value === 'black') {
+        return value;
+    }
+
+    return undefined;
+}
+
+export function resolveThumbnailConfigForPlatform(platform: LandscapePlatform, persistedValue: unknown): ThumbnailConfig {
+    const fallback = DEFAULT_THUMBNAIL_CONFIG[platform];
+    const parsed = parsePossiblyNestedJson(persistedValue);
+    const parsedObject = parsed && typeof parsed === 'object'
+        ? parsed as Record<string, unknown>
+        : null;
+
+    const candidate = parsedObject
+        && parsedObject.thumbnailConfig
+        && typeof parsedObject.thumbnailConfig === 'object'
+        ? parsedObject.thumbnailConfig as Record<string, unknown>
+        : parsedObject;
+
+    if (!candidate) {
+        return {
+            ...fallback,
+            platform,
+        };
+    }
+
+    const resolvedStyle = normalizeThumbnailLogoDisplayMode(
+        candidate.logoDisplayMode
+        ?? candidate.thumbnailStyle
+        ?? candidate.overlayStyle
+        ?? candidate.style
+        ?? (candidate.branded === true ? 'branded' : undefined)
+    );
+
+    const brandedOverlayAssetsRaw = parsePossiblyNestedJson(candidate.brandedOverlayAssets);
+    const brandedOverlayAssets = brandedOverlayAssetsRaw && typeof brandedOverlayAssetsRaw === 'object'
+        ? brandedOverlayAssetsRaw as BrandedOverlayAssets
+        : fallback.brandedOverlayAssets;
+
+    const brandedOverlayCustomTypesRaw = parsePossiblyNestedJson(candidate.brandedOverlayCustomTypes);
+    const brandedOverlayCustomTypes = Array.isArray(brandedOverlayCustomTypesRaw)
+        ? brandedOverlayCustomTypesRaw.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        : fallback.brandedOverlayCustomTypes;
+
     return {
-        ...DEFAULT_THUMBNAIL_CONFIG[platform],
-        ...(parsed || {}),
+        ...fallback,
+        ...candidate as Partial<ThumbnailConfig>,
         platform,
+        logoDisplayMode: resolvedStyle || fallback.logoDisplayMode,
+        brandedOverlayAssets,
+        brandedOverlayCustomTypes,
+        brandedOverlayAppearanceMode:
+            normalizeBrandedAppearanceMode(candidate.brandedOverlayAppearanceMode)
+            || fallback.brandedOverlayAppearanceMode,
+        brandedOverlayFixedVariant:
+            normalizeBrandedVariant(candidate.brandedOverlayFixedVariant)
+            || fallback.brandedOverlayFixedVariant,
+        maxLogoSize: Math.max(10, Math.min(90, asNumber(candidate.maxLogoSize, fallback.maxLogoSize))),
+        trailerTextSize: Math.max(12, Math.min(120, asNumber(candidate.trailerTextSize, fallback.trailerTextSize))),
+        autoScale: asBoolean(candidate.autoScale, fallback.autoScale),
+        autoContrastBackdrop: asBoolean(candidate.autoContrastBackdrop, fallback.autoContrastBackdrop),
+        autoContrastOverlay: asBoolean(candidate.autoContrastOverlay, fallback.autoContrastOverlay),
+        showTrailerTypeText: asBoolean(candidate.showTrailerTypeText, fallback.showTrailerTypeText),
     };
 }
 
@@ -1647,6 +1767,24 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
     const map = new Map(settings.map((entry) => [entry.key, entry.value]));
     const parsedVideoAgeGateHours = parseVideoAgeGateHours(map.get('videoAgeGateHours'));
 
+    const rawYoutubeThumbnailConfig = map.get('thumbnailConfig_youtube');
+    const rawXThumbnailConfig = map.get('thumbnailConfig_x');
+    const resolvedYoutubeThumbnailConfig = parseThumbnailConfig('youtube', rawYoutubeThumbnailConfig);
+    const resolvedXThumbnailConfig = parseThumbnailConfig('x', rawXThumbnailConfig);
+
+    if (process.env.THUMBNAIL_CONFIG_DEBUG === 'true') {
+        console.log('[VideoEnrichment] Thumbnail config payload', {
+            key: 'thumbnailConfig_youtube',
+            raw: rawYoutubeThumbnailConfig,
+            resolved: resolvedYoutubeThumbnailConfig,
+        });
+        console.log('[VideoEnrichment] Thumbnail config payload', {
+            key: 'thumbnailConfig_x',
+            raw: rawXThumbnailConfig,
+            resolved: resolvedXThumbnailConfig,
+        });
+    }
+
     return {
         fetchInterval: Math.max(1, asNumber(map.get('fetchInterval'), 10)),
         pollingSchedule: parsePollingSchedule({
@@ -1686,8 +1824,8 @@ export async function getYouTubeRuntimeSettings(): Promise<LoadedVideoSettings> 
         videoPinterestLinkStrategy: asString(map.get('videoPinterestLinkStrategy')),
         videoPinterestDefaultLink: asString(map.get('videoPinterestDefaultLink')),
         platformSettings: parsePlatformSettings(map.get('platformSettings')),
-        thumbnailConfigYoutube: parseThumbnailConfig('youtube', map.get('thumbnailConfig_youtube')),
-        thumbnailConfigX: parseThumbnailConfig('x', map.get('thumbnailConfig_x')),
+        thumbnailConfigYoutube: resolvedYoutubeThumbnailConfig,
+        thumbnailConfigX: resolvedXThumbnailConfig,
     };
 }
 
@@ -1912,6 +2050,15 @@ export async function generateLandscapeThumbnail(
         const config = platform === 'youtube' ? settings.thumbnailConfigYoutube : settings.thumbnailConfigX;
         const match = metadata.tmdbMatch;
         const shouldRenderLogoBox = config.logoDisplayMode === 'boxed';
+        console.log('[VideoEnrichment] Resolved thumbnail config', {
+            platform,
+            logoDisplayMode: config.logoDisplayMode,
+            logoPosition: config.logoPosition,
+            maxLogoSize: config.maxLogoSize,
+            brandedOverlayAssetCount: Object.keys(config.brandedOverlayAssets || {}).length,
+            brandedOverlayAppearanceMode: config.brandedOverlayAppearanceMode,
+            brandedOverlayFixedVariant: config.brandedOverlayFixedVariant,
+        });
         const sourceThumbnailCandidates = normalizeRemoteAssetCandidates(sourceThumbnailUrl);
 
         let baseUrl = match?.backdropUrl;
@@ -1976,6 +2123,10 @@ export async function generateLandscapeThumbnail(
         const composites: sharp.OverlayOptions[] = [];
 
         if (config.logoDisplayMode === 'branded') {
+            console.log('[VideoEnrichment] Using branded thumbnail renderer branch', {
+                platform,
+                title: originalTitle,
+            });
             const resizedBackdrop = await image.png().toBuffer();
             const overlayType = detectBrandedOverlayType(
                 originalTitle,
@@ -2025,8 +2176,22 @@ export async function generateLandscapeThumbnail(
                         strategy: resolvedOverlay.key ? `tmdb_backdrop_branded_${resolvedOverlay.key}` : 'tmdb_backdrop_branded',
                     };
                 } catch (error) {
-                    console.warn('[VideoEnrichment] Failed to apply branded overlay, falling back to existing thumbnail flow:', error);
+                    console.warn('[VideoEnrichment] Failed to apply branded overlay, falling back to logo renderer', {
+                        platform,
+                        title: originalTitle,
+                        overlayType,
+                        overlayVariant,
+                        resolvedOverlayKey: resolvedOverlay.key,
+                        reason: error instanceof Error ? error.message : String(error),
+                    });
                 }
+            } else {
+                console.warn('[VideoEnrichment] Branded overlay asset missing, falling back to logo renderer', {
+                    platform,
+                    title: originalTitle,
+                    overlayType,
+                    overlayVariant,
+                });
             }
         }
 

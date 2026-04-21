@@ -6,6 +6,8 @@ import {
   AlertCircle,
   Settings as SettingsIcon,
   Film,
+  Image as ImageIcon,
+  Play,
   Rss,
   WifiNoSignal,
 } from 'lucide-react';
@@ -260,7 +262,26 @@ export function SwipeableNotificationCard({
     }
   };
 
+  const isYouTubeRelatedNotification = (currentNotification: Notification) => {
+    if (currentNotification.source === 'youtube') return true;
+    return /youtube/i.test(`${currentNotification.title} ${currentNotification.message}`);
+  };
+
+  const isDesignStudioNotification = (currentNotification: Notification) => {
+    if (currentNotification.source === 'design_studio') return true;
+    const combinedText = `${currentNotification.title} ${currentNotification.message}`;
+    return /design studio|new fetched news available/i.test(combinedText);
+  };
+
   const getIcon = (currentNotification: Notification) => {
+    if (isYouTubeRelatedNotification(currentNotification)) {
+      return <Play className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
+    if (isDesignStudioNotification(currentNotification)) {
+      return <ImageIcon className="w-5 h-5 text-[#ec1e24]" />;
+    }
+
     if (currentNotification.source === 'rss') {
       return <Rss className="w-5 h-5 text-[#ec1e24]" />;
     }
