@@ -284,6 +284,17 @@ function resolveBrandMode(requestedMode: DesignStudioBrandBlockMode | undefined,
   return headerColor.trim().toLowerCase() === '#000000' ? 'black' : 'white';
 }
 
+function normalizePreviewFontFamily(value?: string): string {
+  const normalized = typeof value === 'string' ? value.replace(/["']/g, '').trim() : '';
+  if (!normalized) {
+    return 'PFDinTextCompPro';
+  }
+  if (normalized.toLowerCase().includes('pfdin')) {
+    return 'PFDinTextCompPro';
+  }
+  return normalized;
+}
+
 export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesignPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [frameScale, setFrameScale] = useState(1);
@@ -317,7 +328,8 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     2.20,
   );
   const targetWordsPerLine = clamp(Math.round(2 + (headlineDensity * 2)), 2, 8);
-  const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 0.93;
+  const lineHeightMultiplier = designData?.lineHeightMultiplier ?? 1.1;
+  const previewFontFamily = normalizePreviewFontFamily(designData?.fontFamily);
   const useCircleInset = Boolean(designData?.useCircleInset);
   const rawCircleInsetSource = designData?.circleInsetImage || '';
   const circleInsetSource = useMemo(
@@ -423,7 +435,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
         @font-face {
-          font-family: 'ScrendlyHeadline';
+          font-family: 'PFDinTextCompPro';
           src: url('/design-studio/z-PFDinTextCompPro-Bold.ttf') format('truetype');
           font-weight: 700;
           font-style: normal;
@@ -510,7 +522,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
             fontWeight: 800,
             textTransform: 'uppercase',
             letterSpacing: '-0.03em',
-            fontFamily: '"ScrendlyHeadline", "Impact", "Arial Narrow Bold", sans-serif',
+            fontFamily: `"${previewFontFamily}", "PFDinTextCompPro", "Impact", "Arial Narrow Bold", sans-serif`,
             textShadow: headerColor.toLowerCase() === '#000000' ? 'none' : '0 1px 2px rgba(0,0,0,0.28)',
             zIndex: 30,
           }}

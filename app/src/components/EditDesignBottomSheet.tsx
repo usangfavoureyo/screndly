@@ -59,6 +59,7 @@ interface EditDesignBottomSheetProps {
   initialData?: {
     headerText?: string;
     subtext?: string;
+    fontFamily?: string;
     headerTextColor?: string; // Text color for header
     subtextColor?: string; // Text color for subtext
     fontScale?: number;
@@ -109,6 +110,7 @@ interface EditDesignBottomSheetProps {
 export interface DesignData {
   headerText: string;
   subtext?: string;
+  fontFamily?: string;
   headerTextColor?: string; // Text color for header
   subtextColor?: string; // Text color for subtext
   fontScale?: number;
@@ -1087,6 +1089,7 @@ export function EditDesignBottomSheet({
   const currentPreviewData: DesignData = {
     headerText,
     subtext: hasSubtext ? subtext : undefined,
+    fontFamily: initialData?.fontFamily,
     headerTextColor,
     subtextColor,
     fontScale,

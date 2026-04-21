@@ -492,6 +492,7 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
   return {
     headerText: '',
     subtext: '',
+    fontFamily: template.fontFamily,
     headerTextColor: template.fontColor || '#FFFFFF',
     fontScale: 1,
     headlineWidthScale: 1,

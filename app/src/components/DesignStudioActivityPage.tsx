@@ -986,6 +986,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const buildManualEditData = (renderedDesign: DesignStudioRenderedDesignRecord): DesignData => ({
     headerText: String(renderedDesign.data?.headerText || ''),
     subtext: typeof renderedDesign.data?.subtext === 'string' ? renderedDesign.data.subtext : '',
+    fontFamily: typeof renderedDesign.data?.fontFamily === 'string' ? renderedDesign.data.fontFamily : undefined,
     headerTextColor: renderedDesign.data?.headerTextColor || '#FFFFFF',
     subtextColor: renderedDesign.data?.subtextColor || '#000000',
     fontScale: typeof renderedDesign.data?.fontScale === 'number' ? renderedDesign.data.fontScale : 1,
@@ -1031,6 +1032,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const buildAutoEditData = (editorial: DesignStudioAutoEditorialRecord): DesignData => ({
     headerText: editorial.headerText || '',
     subtext: editorial.subheaderText || '',
+    fontFamily: undefined,
     headerTextColor: editorial.headerTextColor || '#FFFFFF',
     subtextColor: '#000000',
     fontScale: 1,
