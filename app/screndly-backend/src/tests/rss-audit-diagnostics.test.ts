@@ -1263,6 +1263,38 @@ test('publish validation blocks non-publisher fallback captions', () => {
   assert.ok(result.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'));
 });
 
+test('publish validation allows deterministic captions that are already publisher-safe for early-project casting stories', () => {
+  const result = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "'Paradise' Season 3 has added Julianna Margulies.\n\nProduction is now underway.",
+    [
+      {
+        url: 'https://example.com/julianna.jpg',
+        reason: 'Primary cast portrait for Julianna Margulies',
+        source: 'tmdb',
+      },
+    ] as any,
+    {
+      primarySubject: 'Paradise',
+      mediaTitle: 'Paradise',
+      secondarySubject: 'Julianna Margulies',
+      entityType: 'tv',
+      confidence: 0.95,
+      ambiguityFlags: ['story_policy_early_project_cast_portraits'],
+      allowedEntities: ['Paradise', 'Julianna Margulies'],
+    } as any,
+    'deterministic_template',
+    {
+      articleTitle: "'Paradise' Season 3 Casts Julianna Margulies",
+      feedName: 'Variety',
+      summary: 'Julianna Margulies has joined the cast of Paradise Season 3.',
+      articleBody: 'Julianna Margulies has joined the cast of Paradise Season 3. Production is now underway.',
+      allowedEntities: ['Paradise', 'Julianna Margulies'],
+    }
+  );
+
+  assert.equal(result.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+});
+
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
   assert.equal(
     classifyRSSFallbackPath("This piece contains spoilers for 'Rooster' Episode 6. [...]"),
@@ -1369,6 +1401,44 @@ test('single-person early project announcements still enable cast-led image fall
 
   assert.equal(canonical.mediaTitle, 'Ankle Snatcher');
   assert.ok(canonical.namedPeople?.includes('Ben Leonberg'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_early_project_cast_portraits'));
+});
+
+test('person-led moviemaking commentary canonicals promote the speaker instead of quoted junk fragments', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Shawn Levy Says AI Will Become an 'Essential Tool' for Moviemaking but He Hasn't 'Incorporated' It in 'Any Meaningful Way' Yet",
+    description: "Director Shawn Levy has wrapped and is in post-production on 'Star Wars: Starfighter.'",
+    contentHtml: '<p>Director Shawn Levy has wrapped and is in post-production on Star Wars: Starfighter. He said AI will become an essential tool for moviemaking but has not incorporated it in any meaningful way yet.</p>',
+  });
+
+  assert.equal(canonical.primarySubject, 'Shawn Levy');
+  assert.equal(canonical.entityType, 'person');
+  assert.ok(canonical.ambiguityFlags?.includes('story_family_person_commentary_on_project'));
+  assert.notEqual(canonical.secondarySubject, 'Will Become');
+});
+
+test('overall-deal stories are not misclassified as shopping and keep a person-led business lane', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Rachel Shukert Strikes Overall Deal With UCP; 'Listen For The Lie' & 'Summer Sisters' Adaptations In The Works At Peacock",
+    description: 'Rachel Shukert is staying in business with UCP.',
+    contentHtml: "<p>EXCLUSIVE: Rachel Shukert, fresh from writing and exec producing Peacock's The Burbs, is staying in business with UCP under a new overall deal.</p>",
+  });
+
+  assert.equal(canonical.primarySubject, 'Rachel Shukert');
+  assert.ok(canonical.ambiguityFlags?.includes('article_family_business_or_platform'));
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_entertainment_business_person_first'));
+  assert.ok(!canonical.ambiguityFlags?.includes('article_family_shopping_or_product'));
+});
+
+test('quoted early-project casting headlines recover the project title instead of leaving the canonical weak', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Melissa McCarthy In Talks To Star In Thriller 'Turpentine' From Director Craig Zobel; T-Street & ShivHans Pictures Producing",
+    description: 'Melissa McCarthy is in talks to star in Turpentine, a new thriller.',
+    contentHtml: '<p>EXCLUSIVE: Melissa McCarthy is in talks to star in Turpentine, a new thriller from director Craig Zobel.</p>',
+  });
+
+  assert.equal(canonical.primarySubject, 'Turpentine');
+  assert.equal(canonical.mediaTitle, 'Turpentine');
   assert.ok(canonical.ambiguityFlags?.includes('story_policy_early_project_cast_portraits'));
 });
 
@@ -1978,6 +2048,44 @@ test('obituary duplicate-event decision ignores movie vs tv project tagging when
   assert.ok(decision);
   assert.match(decision?.duplicateEventKey || '', /obituary\|john nolan\|87/i);
   assert.deepEqual(decision?.suppressedSources, ['Deadline']);
+});
+
+test('person-led commentary duplicate-event fingerprints collapse movie-vs-tv interpretation drift', () => {
+  const movieFingerprint = __rssAuditTestUtils.buildRSSNewsEventFingerprint({
+    title: "Shawn Levy Says AI Will Become an 'Essential Tool' for Moviemaking but He Hasn't 'Incorporated' It in 'Any Meaningful Way' Yet",
+    link: 'https://variety.com/shawn-levy-ai-movie',
+    description: "Director Shawn Levy has wrapped and is in post-production on 'Star Wars: Starfighter.'",
+    contentHtml: '<p>Director Shawn Levy has wrapped and is in post-production on Star Wars: Starfighter.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-21T10:00:00.000Z'),
+    canonicalEntity: {
+      primarySubject: 'Shawn Levy',
+      mediaTitle: 'Star Wars: Starfighter',
+      entityType: 'movie',
+      eventType: 'interview_quote',
+      namedPeople: ['Shawn Levy'],
+      ambiguityFlags: ['story_family_person_commentary_on_project'],
+    } as any,
+  } as any);
+
+  const tvFingerprint = __rssAuditTestUtils.buildRSSNewsEventFingerprint({
+    title: "Shawn Levy Says AI Will Become an 'Essential Tool' for Moviemaking but He Hasn't 'Incorporated' It in 'Any Meaningful Way' Yet",
+    link: 'https://variety.com/shawn-levy-ai-tv',
+    description: "Director Shawn Levy has wrapped and is in post-production on 'Star Wars: Starfighter.'",
+    contentHtml: '<p>Director Shawn Levy has wrapped and is in post-production on Star Wars: Starfighter.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-04-21T10:05:00.000Z'),
+    canonicalEntity: {
+      primarySubject: 'Shawn Levy',
+      mediaTitle: 'Star Wars: Starfighter',
+      entityType: 'tv',
+      eventType: 'interview_quote',
+      namedPeople: ['Shawn Levy'],
+      ambiguityFlags: ['story_family_person_commentary_on_project'],
+    } as any,
+  } as any);
+
+  assert.equal(__rssAuditTestUtils.areRSSNewsEventsSimilar(movieFingerprint, tvFingerprint), true);
 });
 
 test('report aggregation ranks failure codes and patch recommendations', () => {

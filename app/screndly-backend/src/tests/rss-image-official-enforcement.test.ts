@@ -251,6 +251,60 @@ test('person-led interview stories keep the speaking subject as the primary imag
   assert.equal(plan.secondary?.subject, 'The Drew Barrymore Show');
 });
 
+test('early-project casting stories allow a single cast portrait when safe project art is unavailable', () => {
+  const analysis = buildAnalysis({
+    title: "Jesse Garcia joins HBO Max pilot 'American Blue' as series regular",
+    description: 'Jesse Garcia has joined the HBO Max pilot American Blue as a series regular.',
+    canonicalEntity: {
+      primarySubject: 'American Blue',
+      mediaTitle: 'American Blue',
+      secondarySubject: 'Jesse Garcia',
+      entityType: 'tv',
+      namedPeople: ['Jesse Garcia'],
+      ambiguityFlags: ['story_policy_early_project_cast_portraits'],
+      allowedEntities: ['American Blue', 'Jesse Garcia', 'HBO Max'],
+    },
+  });
+
+  const result = validateImageCandidate({
+    title: 'Jesse Garcia official portrait',
+    imageUrl: 'https://image.tmdb.org/t/p/original/jesse-garcia.jpg',
+    imageWidth: 1200,
+    imageHeight: 1800,
+    domain: 'themoviedb.org',
+    link: 'https://www.themoviedb.org/person/123',
+    source: 'tmdb',
+  }, analysis);
+
+  assert.equal(result.approved, true);
+});
+
+test('entertainment business stories allow person-led portraits without forcing project art overlap', () => {
+  const analysis = buildAnalysis({
+    title: "Fox movie boss says execs thought 'X-Men' was a 'disaster' and Rupert Murdoch flipped out over 'Fight Club'",
+    description: 'Bill Mechanic spoke to Business Insider about Fox film history.',
+    canonicalEntity: {
+      primarySubject: 'Bill Mechanic',
+      entityType: 'person',
+      namedPeople: ['Bill Mechanic', 'Rupert Murdoch'],
+      ambiguityFlags: ['article_family_business_or_platform', 'story_policy_entertainment_business_person_first'],
+      allowedEntities: ['Bill Mechanic', 'Rupert Murdoch', 'X-Men', 'Fight Club'],
+    },
+  });
+
+  const result = validateImageCandidate({
+    title: 'Bill Mechanic portrait',
+    imageUrl: 'https://example.com/bill-mechanic.jpg',
+    imageWidth: 1600,
+    imageHeight: 900,
+    domain: 'deadline.com',
+    link: 'https://deadline.com/example',
+    source: 'feed',
+  }, analysis);
+
+  assert.equal(result.approved, true);
+});
+
 test('single-subject reaction stories stay in single-image mode', () => {
   const article = {
     title: 'James Gunn reacts to fan theories about the DCU',

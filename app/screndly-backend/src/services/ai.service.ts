@@ -1561,6 +1561,7 @@ const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }>
 ];
 
 const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
+    /^(?:EXCLUSIVE|LISTEN|WATCH|REPORT|SCOOP|BREAKING|FIRST LOOK|SPOILER ALERT)\s*:/i,
     /\bmore to come\b/i,
     /\bbroke the news\b/i,
     /\bdetails are still under wraps\b/i,
@@ -3068,6 +3069,27 @@ function buildRSSPublishSafeDeterministicResult(
     return buildRSSFallbackResult(normalized);
 }
 
+function shouldAllowDeterministicPublisherSafeCaption(
+    caption: string,
+    context: RSSContext,
+    captionPath?: RSSCaptionGenerationPath
+): boolean {
+    if (!caption.trim()) {
+        return false;
+    }
+
+    if (captionPath === 'excerpt_fallback') {
+        return false;
+    }
+
+    if (captionPath === 'repaired_caption' || captionPath === 'ai_prompted') {
+        return true;
+    }
+
+    const hardInvalidCodes = getRSSCaptionHardInvalidReasonCodes(caption, context);
+    return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context);
+}
+
 function buildRSSFallbackResult(caption: string): RSSCaptionGenerationResult {
     return {
         caption,
@@ -3099,6 +3121,26 @@ Goal: Summarize the value prop and encourage a click (without saying "click here
 `;
 
     const systemPrompt = customSystemPrompt || defaultSystemPrompt;
+    const logCaptionDiagnostics = (
+        stage: string,
+        payload: {
+            caption?: string;
+            reasonCodes?: string[];
+            responseSuccess?: boolean;
+            path?: RSSCaptionGenerationPath;
+        }
+    ) => {
+        console.log('[RSS][CaptionDiagnostics]', {
+            stage,
+            articleTitle: normalizedPromptTitle,
+            feedName: context.feedName,
+            platform: context.platform,
+            responseSuccess: payload.responseSuccess ?? null,
+            path: payload.path ?? null,
+            reasonCodes: payload.reasonCodes || [],
+            captionPreview: (payload.caption || '').slice(0, 220),
+        });
+    };
     const visualContext = Array.isArray(context.selectedVisuals) && context.selectedVisuals.length > 0
         ? `Selected visuals:\n${context.selectedVisuals.map((entry) => `- ${entry}`).join('\n')}\n`
         : '';
@@ -3165,17 +3207,29 @@ Write ONLY the caption.`;
     });
 
     if (!response.success) {
+        logCaptionDiagnostics('initial_generation_failed', {
+            responseSuccess: false,
+            caption: deterministicFallback,
+            path: classifyRSSFallbackPath(deterministicFallback),
+        });
         return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
     const normalizedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
     );
+    const initialInvalidCodes = getRSSCaptionHardInvalidReasonCodes(normalizedCaption, context);
     if (!failsRSSCaptionFormatting(normalizedCaption, context)) {
         return {
             caption: normalizedCaption,
             path: 'ai_prompted',
         };
     }
+    logCaptionDiagnostics('initial_generation_rejected', {
+        responseSuccess: true,
+        caption: normalizedCaption,
+        reasonCodes: initialInvalidCodes,
+        path: 'ai_prompted',
+    });
 
     const validationPrompt = `Rewrite this caption so it is publication-style, factual, and specific.
 
@@ -3215,18 +3269,30 @@ Write ONLY the corrected caption.`;
     });
 
     if (!retryResponse.success) {
+        logCaptionDiagnostics('repair_generation_failed', {
+            responseSuccess: false,
+            caption: deterministicFallback,
+            path: classifyRSSFallbackPath(deterministicFallback),
+        });
         return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
 
     const correctedCaption = enforceRSSCaptionPunctuation(
         normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content'])
     );
+    const repairedInvalidCodes = getRSSCaptionHardInvalidReasonCodes(correctedCaption, context);
     if (!failsRSSCaptionFormatting(correctedCaption, context)) {
         return {
             caption: correctedCaption,
             path: 'repaired_caption',
         };
     }
+    logCaptionDiagnostics('repair_generation_rejected', {
+        responseSuccess: true,
+        caption: correctedCaption,
+        reasonCodes: repairedInvalidCodes,
+        path: 'repaired_caption',
+    });
 
     const hardRebuildPrompt = `Rebuild this caption from structured facts only.
 
@@ -3261,6 +3327,11 @@ Write ONLY the final caption.`;
     });
 
     if (!hardRebuildResponse.success) {
+        logCaptionDiagnostics('hard_rebuild_failed', {
+            responseSuccess: false,
+            caption: deterministicFallback,
+            path: classifyRSSFallbackPath(deterministicFallback),
+        });
         return buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
     }
 
@@ -3269,7 +3340,19 @@ Write ONLY the final caption.`;
     );
 
     if (failsRSSCaptionFormatting(rebuiltCaption, context)) {
-        return buildRSSFallbackResult(deterministicFallback);
+        logCaptionDiagnostics('hard_rebuild_rejected', {
+            responseSuccess: true,
+            caption: rebuiltCaption,
+            reasonCodes: getRSSCaptionHardInvalidReasonCodes(rebuiltCaption, context),
+            path: 'repaired_caption',
+        });
+        const fallbackResult = buildRSSFallbackResult(deterministicFallback);
+        logCaptionDiagnostics('deterministic_fallback_selected', {
+            responseSuccess: true,
+            caption: fallbackResult.caption,
+            path: fallbackResult.path,
+        });
+        return fallbackResult;
     }
 
     return {
@@ -3292,6 +3375,7 @@ export const __rssCaptionTestUtils = {
     buildHeuristicRssCaptionExtraction,
     buildDeterministicRssCaption,
     buildRSSPublishSafeDeterministicResult,
+    shouldAllowDeterministicPublisherSafeCaption,
     enforceRSSCaptionPunctuation,
     sanitizeRSSCaptionSurfaceText,
     failsRSSCaptionFormatting,
@@ -3854,6 +3938,27 @@ function normalizeComposeMetadataText(value: string): string {
     return value.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
 }
 
+export function extractComposeMetadataPreviewText(
+    requestText: string,
+    mediaMetadata?: Partial<ComposeMediaMetadata> | null
+): string {
+    const normalized = normalizeComposeMetadataText(requestText || '');
+    if (!normalized) {
+        return normalizeComposeMetadataText(mediaMetadata?.synopsis || '');
+    }
+
+    const descriptionLine = normalized
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => /^Description:\s+/i.test(line));
+
+    if (descriptionLine) {
+        return descriptionLine.replace(/^Description:\s+/i, '').trim();
+    }
+
+    return normalizeComposeMetadataText(mediaMetadata?.synopsis || '');
+}
+
 function parseDurationSeconds(value: string): number | null {
     const secondMatch = value.match(/\b(\d{1,3})\s*(?:second|seconds|sec)\b/i);
     if (secondMatch) {
@@ -4275,6 +4380,14 @@ async function generateComposeEditorialResult(
             : intentResult.intent === 'summary_generation'
                 ? 'summary'
                 : 'editorial';
+
+    if (intentResult.intent === 'metadata_extraction') {
+        return {
+            type: editorialType,
+            text: extractComposeMetadataPreviewText(requestText, mediaMetadata),
+        };
+    }
+
     const promptGuide =
         editorialType === 'review'
             ? input.reviewPrompt || 'Write a sharp, publishable review that sounds natural and specific.'

@@ -28,6 +28,7 @@ const {
   buildHeuristicRssCaptionExtraction,
   getRSSCaptionHardInvalidReasonCodes,
   normalizeRSSHeadlineInput,
+  shouldAllowDeterministicPublisherSafeCaption,
 } = __rssCaptionTestUtils;
 
 export interface RSSFeedFilters {
@@ -308,7 +309,7 @@ interface RSSRuntimeSettings {
 }
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
-const RSS_RUNTIME_RULESET_VERSION = '2026-04-17-runtime-parity-1';
+const RSS_RUNTIME_RULESET_VERSION = '2026-04-22-live-lanes-1';
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE = 0.8;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS = 2;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS = 3;
@@ -1995,7 +1996,13 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
   const title = sanitizeRSSPlainText(item.title || '');
   const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
 
-  if (/\b(where to (?:buy|score|shop|get)|sneakers?|merch(?:andise)?|deals?|sale|discount|online|price|gift guide|affiliate)\b/i.test(text)) {
+  if (
+    /\b(where to (?:buy|score|shop|get)|sneakers?|merch(?:andise)?|sale|discount|online|price|gift guide|affiliate)\b/i.test(text) ||
+    (
+      /\bdeals?\b/i.test(text) &&
+      !/\b(?:overall deal|first-look deal|adaptations? in the works|in talks to star|series regular|pilot|casting|joins?|joined|will star|staying in business with)\b/i.test(text)
+    )
+  ) {
     return 'shopping_or_product';
   }
 
@@ -2012,7 +2019,7 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
     return 'political_or_non_entertainment';
   }
 
-  if (/\b(subscription prices?|price increase|raises prices?|earnings|chief operating officer|ceo|coo|cfo|promoted|elevated|executive|acquisition|merger|layoffs?|restructuring|strategy|podcast lineup|production company|consultants?|tv news|streamer|higher ground)\b/i.test(text)) {
+  if (/\b(subscription prices?|price increase|raises prices?|earnings|chief operating officer|ceo|coo|cfo|promoted|elevated|executive|acquisition|merger|layoffs?|restructuring|strategy|podcast lineup|production company|consultants?|tv news|streamer|higher ground|overall deal|first-look deal|staying in business with|adaptations? in the works)\b/i.test(text)) {
     return 'business_or_platform';
   }
 
@@ -2139,7 +2146,7 @@ function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
     hasRSSQuoteLedHeadlineJunk(candidate) ||
     /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,2}['’]s\s+(?:new|hit|latest|upcoming)\b/i.test(candidate) ||
     /(?:^|[\s:,'’])(?:revi|review|trailer|season|premiere|finale|creator|boss|breaks|told|gets|lands|confirms|production team|to series)$/i.test(candidate) ||
-    /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya|free to stream|what to watch|movie quiz|tv quiz|ranked)\b/i.test(candidate) ||
+    /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya|free to stream|what to watch|movie quiz|tv quiz|ranked|essential tool|meaningful way|what kind of|in any meaningful way)\b/i.test(candidate) ||
     /^(?:s\s+come\s+and\s+gone|did\s+\w+|boards?\s+ground|jimmy kimmel jokes|latest boot reveals)\b/i.test(normalized) ||
     (tokens.length > 6 && !/^(?:the|a|an)\s+[A-Z]/.test(candidate)) ||
     tokens.every((token) => RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token)) ||
@@ -2374,6 +2381,50 @@ function chooseRSSBodyRecoveredTitle(
     || null;
 }
 
+function looksLikeRSSValidPersonName(value?: string | null): boolean {
+  const candidate = sanitizeRSSPlainText(value || '').replace(/\s+/g, ' ').trim();
+  if (!candidate) {
+    return false;
+  }
+
+  if (
+    /\b(?:says?|said|joins?|joined|strikes?|deal|overall|pilot|season|movie|movies|series|show|film|films|director|producer|exec|executive|boss|adaptations?|in talks|will|become|tool|incorporated|meaningful|way|yet)\b/i.test(candidate)
+  ) {
+    return false;
+  }
+
+  return /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3}$/.test(candidate);
+}
+
+function extractRSSLeadPersonCandidate(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): string | undefined {
+  const sources = [
+    sanitizeRSSPlainText(item.title || ''),
+    sanitizeRSSPlainText(item.description || ''),
+    sanitizeRSSPlainText(item.contentHtml || ''),
+  ].filter(Boolean);
+
+  for (const source of sources) {
+    const titleAnchored =
+      source.match(/^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:says?|said|joins?|joined|strikes?|lands?|boards?|talks about|reacts?|addresses|opens up|in talks\b|to star\b))/i)
+      || source.match(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:has joined|joined|is in talks|will star|strikes an overall deal|strikes overall deal|spoke to|recently spoke|talked to))/i);
+
+    if (titleAnchored?.[1] && looksLikeRSSValidPersonName(titleAnchored[1])) {
+      return titleAnchored[1];
+    }
+  }
+
+  return undefined;
+}
+
+function extractRSSEarlyProjectQuotedTitle(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): string | undefined {
+  const title = sanitizeRSSPlainText(item.title || '');
+  if (!/\b(?:in talks|to star|will star|joins?|joined|boards?|pilot|series regular|cast|casting|adaptation|thriller|drama|comedy|movie|film|series|show)\b/i.test(title)) {
+    return undefined;
+  }
+
+  return extractStrictRSSQuotedSubjects(title).find((candidate) => !isWeakRSSCanonicalCandidate(candidate));
+}
+
 function shouldApplyEarlyProjectCastPortraitPolicy(
   item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
   articleFamily: RSSArticleFamily,
@@ -2398,7 +2449,7 @@ function shouldApplyEarlyProjectCastPortraitPolicy(
 
   const hasEarlyProjectSignals = /\b(initially titl(?:ed|ing)|in development|new (?:series|show|film|movie|drama)|drama about|series order|ordered to series|project announcement)\b/i.test(text);
   const hasCastAnnouncementSignals = /\b(will star|set to star|starring in|star(?:ring)?|teaming up|joins?|boards?)\b/i.test(text);
-  const hasProjectFormatSignals = /\b(tv|series|show|drama|film|movie)\b/i.test(text);
+  const hasProjectFormatSignals = /\b(tv|series|show|drama|film|movie|feature|thriller|comedy|horror|adaptation)\b/i.test(text);
   const isEligibleEvent = eventType === 'casting' || eventType === 'development' || eventType === 'ordered_to_series' || eventType === 'other';
 
   return isEligibleEvent && hasProjectFormatSignals && (hasEarlyProjectSignals || hasCastAnnouncementSignals);
@@ -2437,6 +2488,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     .filter((entry): entry is string => Boolean(entry));
   const initialPrimarySubject = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.primary_subject);
   const initialMediaTitle = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.media_title);
+  const leadPersonCandidate = extractRSSLeadPersonCandidate(item);
   const obituaryPrimarySubject = extraction.event_type === 'obituary'
     ? namedPeople[0] || initialPrimarySubject
     : undefined;
@@ -2444,9 +2496,12 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     || extraction.event_type === 'obituary'
     ? null
     : chooseRSSBodyRecoveredTitle(item, initialPrimarySubject, initialMediaTitle, headlineStyle);
-  const primarySubject = sanitizeRSSCanonicalEntityValue(targetedOverride?.primarySubject || obituaryPrimarySubject || bodyRecoveredTitle || projectAnchorOverride || extraction.primary_subject);
-  const mediaTitle = sanitizeRSSCanonicalEntityValue(targetedOverride?.mediaTitle || bodyRecoveredTitle || projectAnchorOverride || extraction.media_title);
-  const secondarySubject = sanitizeRSSCanonicalEntityValue(targetedOverride?.secondarySubject || extraction.secondary_subject);
+  const quotedEarlyProjectTitle = !bodyRecoveredTitle
+    ? extractRSSEarlyProjectQuotedTitle(item)
+    : undefined;
+  let primarySubject = sanitizeRSSCanonicalEntityValue(targetedOverride?.primarySubject || obituaryPrimarySubject || bodyRecoveredTitle || quotedEarlyProjectTitle || projectAnchorOverride || extraction.primary_subject);
+  let mediaTitle = sanitizeRSSCanonicalEntityValue(targetedOverride?.mediaTitle || bodyRecoveredTitle || quotedEarlyProjectTitle || projectAnchorOverride || extraction.media_title);
+  let secondarySubject = sanitizeRSSCanonicalEntityValue(targetedOverride?.secondarySubject || extraction.secondary_subject);
   const franchise = sanitizeRSSCanonicalEntityValue(targetedOverride?.franchise || extraction.franchise_or_universe);
   const eventType = targetedOverride?.eventType || (articleFamily === 'business_or_platform'
     ? 'business'
@@ -2504,11 +2559,44 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   if (bodyRecoveredTitle) {
     ambiguityFlags.push('body_title_recovered');
   }
+  const quotedProjectHints = extractStrictRSSQuotedSubjects([
+    sanitizeRSSPlainText(item.description || ''),
+    sanitizeRSSPlainText(item.contentHtml || ''),
+    sanitizeRSSPlainText(item.title || ''),
+  ].join(' '))
+    .map((entry) => sanitizeRSSCanonicalEntityValue(entry))
+    .filter((entry): entry is string => Boolean(entry) && !looksLikeRSSValidPersonName(entry))
+    .filter((entry) => !isWeakRSSCanonicalCandidate(entry));
+  const recoveredProjectHint = quotedProjectHints.find((entry) => entry !== primarySubject);
+  const canPromoteLeadPersonCommentary =
+    !targetedOverride &&
+    articleFamily === 'person_interview_or_reaction' &&
+    Boolean(leadPersonCandidate) &&
+    (
+      !primarySubject ||
+      !looksLikeRSSValidPersonName(primarySubject) ||
+      ambiguityFlags.includes('quote_led_headline_junk') ||
+      ambiguityFlags.includes('unsafe_canonical_entity_removed')
+    );
+  if (canPromoteLeadPersonCommentary && leadPersonCandidate) {
+    primarySubject = leadPersonCandidate;
+    secondarySubject = recoveredProjectHint && recoveredProjectHint !== primarySubject && !isWeakRSSCanonicalCandidate(recoveredProjectHint)
+      ? recoveredProjectHint
+      : undefined;
+    mediaTitle = recoveredProjectHint && !looksLikeRSSValidPersonName(recoveredProjectHint)
+      ? recoveredProjectHint
+      : undefined;
+    ambiguityFlags.push('story_family_person_commentary_on_project');
+  }
   if (isRSSNonProjectArticleFamily(articleFamily)) {
     ambiguityFlags.push('rss_family_no_tmdb_project');
   }
   if (!targetedOverride && articleFamily === 'business_or_platform') {
-    ambiguityFlags.push('story_lane_ignore_completely', 'rss_family_no_tmdb_project');
+    if (leadPersonCandidate || namedPeople.length > 0) {
+      ambiguityFlags.push('story_lane_entertainment_adjacent', 'rss_family_no_tmdb_project');
+    } else {
+      ambiguityFlags.push('story_lane_ignore_completely', 'rss_family_no_tmdb_project');
+    }
   }
   if (!targetedOverride && articleFamily === 'event_or_festival') {
     ambiguityFlags.push('story_lane_entertainment_adjacent', 'rss_family_no_tmdb_project');
@@ -2523,6 +2611,27 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   if (shouldApplyEarlyProjectCastPortraitPolicy(item, articleFamily, eventType, mediaTitle, namedPeople, targetedOverride)) {
     ambiguityFlags.push('story_policy_early_project_cast_portraits');
   }
+  if (
+    !targetedOverride &&
+    articleFamily === 'business_or_platform' &&
+    (namedPeople.length > 0 || Boolean(leadPersonCandidate))
+  ) {
+    ambiguityFlags.push('story_policy_entertainment_business_person_first');
+    if (leadPersonCandidate && !namedPeople.some((entry) => normalizeRSSDedupeValue(entry) === normalizeRSSDedupeValue(leadPersonCandidate))) {
+      namedPeople.unshift(leadPersonCandidate);
+    }
+    if (leadPersonCandidate) {
+      if (!mediaTitle && primarySubject && primarySubject !== leadPersonCandidate && !looksLikeRSSValidPersonName(primarySubject)) {
+        mediaTitle = primarySubject;
+      }
+      if (!secondarySubject && mediaTitle && mediaTitle !== leadPersonCandidate) {
+        secondarySubject = mediaTitle;
+      }
+      primarySubject = leadPersonCandidate;
+    } else if (!primarySubject || isWeakRSSCanonicalCandidate(primarySubject) || !looksLikeRSSValidPersonName(primarySubject)) {
+      primarySubject = namedPeople[0] || primarySubject;
+    }
+  }
   const allowedEntities = Array.from(new Set([
     primarySubject,
     secondarySubject,
@@ -2536,6 +2645,12 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   let entityType: RSSCanonicalEntity['entityType'] = targetedOverride?.entityType || 'unknown';
   if (targetedOverride?.entityType) {
     entityType = targetedOverride.entityType;
+  } else if (
+    (ambiguityFlags.includes('story_family_person_commentary_on_project') || ambiguityFlags.includes('story_policy_entertainment_business_person_first')) &&
+    primarySubject &&
+    looksLikeRSSValidPersonName(primarySubject)
+  ) {
+    entityType = 'person';
   } else if (eventType === 'obituary' && namedPeople.length > 0) {
     entityType = 'person';
   } else if (articleFamily === 'business_or_platform' && extraction.studio_or_platform) {
@@ -2916,8 +3031,13 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
   const allowed = (canonicalEntity.allowedEntities || []).map((entry) => entry.toLowerCase());
   const expectedPrimary = (canonicalEntity.primarySubject || canonicalEntity.mediaTitle || '').toLowerCase();
   const canonicalFlags = new Set(canonicalEntity.ambiguityFlags || []);
+  const allowSingleSubjectFallback =
+    canonicalFlags.has('story_family_person_commentary_on_project') ||
+    canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+    canonicalFlags.has('article_family_business_or_platform') ||
+    canonicalFlags.has('story_policy_entertainment_business_person_first');
 
-  if (images.length > 1 && images.some((image) => !image.url || !image.url.trim())) {
+  if (!allowSingleSubjectFallback && images.length > 1 && images.some((image) => !image.url || !image.url.trim())) {
     reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
   }
 
@@ -2933,6 +3053,7 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
       index === 0 &&
       expectedPrimary &&
       !canonicalFlags.has('story_family_person_commentary_on_project') &&
+      !allowSingleSubjectFallback &&
       image.source !== 'feed' &&
       allowed.length > 0 &&
       !allowed.some((entity) => normalizedReason.includes(entity.toLowerCase())) &&
@@ -2976,7 +3097,16 @@ function validateRSSFinalPublishState(
     reasonCodes.add('SPOILER_SAFE_MANUAL_REVIEW_REQUIRED');
   }
 
-  if (captionPath === 'deterministic_template' || captionPath === 'excerpt_fallback') {
+  if (!shouldAllowDeterministicPublisherSafeCaption(caption, {
+    articleTitle: contextOverride?.articleTitle || canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
+    feedName: contextOverride?.feedName || '',
+    summary: contextOverride?.summary || '',
+    articleBody: contextOverride?.articleBody || '',
+    articleContentHtml: contextOverride?.articleContentHtml,
+    platform: 'Threads',
+    allowedEntities: contextOverride?.allowedEntities || canonicalEntity.allowedEntities,
+    canonicalEntity,
+  }, captionPath) && (captionPath === 'deterministic_template' || captionPath === 'excerpt_fallback')) {
     reasonCodes.add('CAPTION_NON_PUBLISHER_FALLBACK');
   }
 
@@ -3065,6 +3195,7 @@ function inferRssEditorialBrainImageMode(canonical: RSSCanonicalEntity): RssEdit
   const flags = new Set(canonical.ambiguityFlags || []);
   if (flags.has('story_lane_core_manual_review_spoiler_safe')) return 'spoiler_safe_neutral';
   if (flags.has('story_family_person_commentary_on_project')) return 'dual_person_project';
+  if (flags.has('story_policy_entertainment_business_person_first')) return 'person_first';
   if (flags.has('story_policy_article_image_first') || canonical.eventType === 'first_look') return 'article_image_first';
   if (flags.has('story_policy_early_project_cast_portraits')) return 'dual_person';
   if (canonical.entityType === 'person' || canonical.eventType === 'obituary') return 'person_first';
@@ -4924,6 +5055,10 @@ function areRSSNewsEventsSimilar(left: RSSNewsEventFingerprint, right: RSSNewsEv
   }
 
   if (sameEventType && samePerson && sameTemporalCue && (sameProject || sharedAnchors >= 2)) {
+    return true;
+  }
+
+  if (sameEventType && samePerson && sameTemporalCue && sharedCues >= 1) {
     return true;
   }
 
@@ -6817,6 +6952,15 @@ async function attemptRSSPublish(
     const resolvedPublishImageUrl = resolvedPublishImageUrls[0];
 
     if (!publishValidation.valid) {
+      console.log('[RSS][CaptionValidationFailed]', {
+        feedId: feed.id,
+        title: item.title,
+        captionPath: captionResult.path,
+        reusedStoredCaption: shouldReuseStoredCaption,
+        reasonCodes: publishValidation.reasonCodes,
+        captionPreview: (caption || '').slice(0, 220),
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+      });
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,

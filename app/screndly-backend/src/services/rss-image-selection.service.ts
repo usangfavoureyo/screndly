@@ -2279,6 +2279,13 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
   );
 
   if (
+    canonicalFlags.has('story_policy_entertainment_business_person_first') &&
+    canonical?.primarySubject &&
+    looksLikeNamedPerson(canonical.primarySubject)
+  ) {
+    primaryName = canonical.primarySubject;
+    primaryType = 'actor';
+  } else if (
     canonicalFlags.has('story_family_person_commentary_on_project') &&
     canonical?.primarySubject &&
     looksLikeNamedPerson(canonical.primarySubject)
@@ -2353,7 +2360,19 @@ function guessPrimarySubject(article: RSSImageSelectionArticle): RSSSubjectAnaly
     : contextType;
   const targetFormat = resolveTargetFormat(articleText, primaryType);
   const animatedSubject = detectAnimatedSubject(articleText, primaryName, secondarySubjects);
-  const visual = resolveImageIntent(primaryType, finalContextType, primaryName, secondarySubjects, studios);
+  const defaultVisual = resolveImageIntent(primaryType, finalContextType, primaryName, secondarySubjects, studios);
+  const visual =
+    (canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+      canonicalFlags.has('story_policy_early_project_cast_portraits'))
+      ? {
+          visualSubject:
+            canonical?.namedPeople?.find((person) => looksLikeNamedPerson(person))
+            || secondarySubjects.find((subject) => looksLikeNamedPerson(subject))
+            || primaryName,
+          imageIntent: 'person_portrait' as const,
+          allowLogoOnly: false,
+        }
+      : defaultVisual;
   const contextProject = extractContextProject(
     articleText,
     primaryName,
@@ -5299,8 +5318,9 @@ function validateImageCandidate(
     );
   const canonicalFlags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
   const mentionsPrimarySubject = entityMatches(text, analysis.primarySubject.name);
+  const mentionsVisualSubject = entityMatches(text, analysis.visualSubject);
   const mentionsContextProject = analysis.contextProject ? entityMatches(text, analysis.contextProject) : false;
-  const mentionsSecondaryOnly = !mentionsPrimarySubject && !mentionsContextProject && secondaryEntityTerms.some((term) => entityMatches(text, term));
+  const mentionsSecondaryOnly = !mentionsPrimarySubject && !mentionsVisualSubject && !mentionsContextProject && secondaryEntityTerms.some((term) => entityMatches(text, term));
   const animationOfficial = analysis.animatedSubject &&
     (containsKeyword(text, OFFICIAL_ANIMATION_MARKERS) || looksOfficial);
   const mentionsCanonicalProject =
@@ -5312,6 +5332,13 @@ function validateImageCandidate(
     canonicalFlags.has('story_family_person_commentary_on_project') &&
     (mentionsProject || mentionsCanonicalProject) &&
     !mentionsPrimarySubject;
+  const allowSinglePortraitOrArticleFallback =
+    canonicalFlags.has('story_policy_early_project_cast_portraits') ||
+    canonicalFlags.has('article_family_business_or_platform') ||
+    canonicalFlags.has('story_policy_entertainment_business_person_first');
+  const articleHeroLike =
+    image.source === 'feed' ||
+    containsKeyword(text, ['exclusive image', 'official image', 'hero image', 'article image', 'header image', 'featured image']);
 
   if (!image.imageUrl) {
     return { approved: false, reason: 'missing image url', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
@@ -5349,7 +5376,7 @@ function validateImageCandidate(
     return { approved: false, reason: 'non-official illustration style detected', reasonCode: 'IMAGE_MEDIA_TYPE_MISMATCH' };
   }
 
-  if (primaryPersonLed && !mentionsPrimarySubject && !allowPersonCommentaryProjectFallback) {
+  if (primaryPersonLed && !mentionsPrimarySubject && !mentionsVisualSubject && !allowPersonCommentaryProjectFallback) {
     return {
       approved: false,
       reason: 'person-led story requires the speaking subject as the primary image anchor',
@@ -5362,7 +5389,8 @@ function validateImageCandidate(
     analysis.contextProject &&
     !mentionsPrimarySubject &&
     !mentionsContextProject &&
-    mentionsSecondaryOnly
+    mentionsSecondaryOnly &&
+    !allowSinglePortraitOrArticleFallback
   ) {
     return {
       approved: false,
@@ -5371,7 +5399,13 @@ function validateImageCandidate(
     };
   }
 
-  if (!mentionsProject) {
+  if (
+    !mentionsProject &&
+    !(
+      allowSinglePortraitOrArticleFallback &&
+      (mentionsPrimarySubject || mentionsVisualSubject || mentionsSecondaryOnly || articleHeroLike)
+    )
+  ) {
     return { approved: false, reason: 'image does not map to resolved article subject', reasonCode: 'IMAGE_CANONICAL_ENTITY_MISMATCH' };
   }
 
@@ -5730,7 +5764,11 @@ export async function resolveRelevantRSSImages(
   }
 ): Promise<RSSResolvedImage[]> {
   const limit = Math.max(options.limit, 1);
-  if (article.canonicalEntity?.ambiguityFlags?.includes('rss_family_no_tmdb_project')) {
+  const canonicalFlags = new Set(article.canonicalEntity?.ambiguityFlags || []);
+  const allowNonProjectPersonFirstResolution =
+    canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+    canonicalFlags.has('story_family_person_commentary_on_project');
+  if (article.canonicalEntity?.ambiguityFlags?.includes('rss_family_no_tmdb_project') && !allowNonProjectPersonFirstResolution) {
     return [];
   }
   const sources = getEnabledImageSources(options);
@@ -5742,7 +5780,6 @@ export async function resolveRelevantRSSImages(
     shouldAllowProjectLinkedFeedFallback(article, analysis) ||
     rawProjectLinkedFeedFallback;
   const revealDrivenFeedFallback = shouldUseFeedFallbackImages(article);
-  const canonicalFlags = new Set(article.canonicalEntity?.ambiguityFlags || []);
   const trustedInlineFallbackOverride =
     (
       canonicalFlags.has('story_policy_force_project_first_image') ||
