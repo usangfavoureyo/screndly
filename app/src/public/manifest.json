@@ -68,7 +68,7 @@
       "name": "Post",
       "short_name": "Post",
       "description": "Open post creation",
-      "url": "/create",
+      "url": "/app/create",
       "icons": [
         {
           "src": "/icons/shortcut-post-192x192.png",
@@ -82,7 +82,7 @@
       "name": "Feeds",
       "short_name": "Feeds",
       "description": "Open feeds hub",
-      "url": "/feeds",
+      "url": "/app/feeds",
       "icons": [
         {
           "src": "/icons/shortcut-feeds-192x192.png",
@@ -96,7 +96,7 @@
       "name": "Video Studio",
       "short_name": "Video Studio",
       "description": "Open Video Studio",
-      "url": "/video-studio",
+      "url": "/app/video-studio",
       "icons": [
         {
           "src": "/icons/shortcut-video-studio-192x192.png",
