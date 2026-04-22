@@ -1761,43 +1761,84 @@ export class YouTubePollerService {
         } as any);
 
         const entries = Array.isArray((playlist as any)?.entries) ? (playlist as any).entries : [];
-        const resolvedVideos = await Promise.all(entries.map(async (entry: any) => {
-            const videoId = typeof entry?.id === 'string' ? entry.id.trim() : '';
-            if (!videoId) {
-                return null;
-            }
 
-            const videoUrl = typeof entry?.url === 'string' && entry.url.trim().length > 0
-                ? entry.url
-                : `https://www.youtube.com/watch?v=${videoId}`;
+        // Concurrency-limited queue: max 5 parallel yt-dlp processes to prevent
+        // unbounded memory growth when many videos are fetched simultaneously,
+        // especially during YouTube auth failures ("Sign in to confirm you're not a bot")
+        // where failed processes can accumulate and exhaust container memory.
+        const YT_DLP_FETCH_CONCURRENCY = 5;
+        const resolvedVideos: (any | null)[] = [];
+        let activeCount = 0;
+        let entryIndex = 0;
 
-            try {
-                const raw = await this.fetchYtDlpVideoInfo(videoUrl, videoId);
-                return {
-                    id: `yt:video:${videoId}`,
-                    link: typeof raw?.webpage_url === 'string' ? raw.webpage_url : videoUrl,
-                    title: typeof raw?.title === 'string' && raw.title.trim().length > 0
-                        ? raw.title
-                        : (typeof entry?.title === 'string' && entry.title.trim().length > 0 ? entry.title : 'Untitled YouTube upload'),
-                    pubDate: this.parseYtDlpPublishedAt(raw),
-                    contentSnippet: typeof raw?.description === 'string'
-                        ? raw.description
-                        : (typeof entry?.description === 'string' ? entry.description : ''),
-                    primaryChannelId: typeof raw?.channel_id === 'string' ? raw.channel_id : channelId,
-                    primaryChannelName: typeof raw?.channel === 'string' ? raw.channel : channelName,
-                    detectedViaChannelId: channelId,
-                    detectedViaChannelName: channelName,
-                    detectedViaChannels: [channelName],
-                    collaboratorChannelIds: [],
-                    collaboratorChannelNames: [],
-                    isCollaborativePost: false,
-                    discoveredVia: 'owned_upload',
-                };
-            } catch (error) {
-                console.warn(`[YouTubePoller] ${channelName}: failed to resolve yt-dlp fallback metadata for ${videoId}; skipping entry`, error);
-                return null;
+        await new Promise<void>((resolve, reject) => {
+            const runNext = () => {
+                if (entryIndex >= entries.length && activeCount === 0) {
+                    resolve();
+                    return;
+                }
+
+                while (activeCount < YT_DLP_FETCH_CONCURRENCY && entryIndex < entries.length) {
+                    const entry = entries[entryIndex++];
+                    const slotIndex = resolvedVideos.length;
+                    resolvedVideos.push(null); // reserve slot to preserve order
+                    activeCount++;
+
+                    const videoId = typeof entry?.id === 'string' ? entry.id.trim() : '';
+                    if (!videoId) {
+                        activeCount--;
+                        runNext();
+                        continue;
+                    }
+
+                    const videoUrl = typeof entry?.url === 'string' && entry.url.trim().length > 0
+                        ? entry.url
+                        : `https://www.youtube.com/watch?v=${videoId}`;
+
+                    this.fetchYtDlpVideoInfo(videoUrl, videoId)
+                        .then((raw) => {
+                            resolvedVideos[slotIndex] = {
+                                id: `yt:video:${videoId}`,
+                                link: typeof raw?.webpage_url === 'string' ? raw.webpage_url : videoUrl,
+                                title: typeof raw?.title === 'string' && raw.title.trim().length > 0
+                                    ? raw.title
+                                    : (typeof entry?.title === 'string' && entry.title.trim().length > 0 ? entry.title : 'Untitled YouTube upload'),
+                                pubDate: this.parseYtDlpPublishedAt(raw),
+                                contentSnippet: typeof raw?.description === 'string'
+                                    ? raw.description
+                                    : (typeof entry?.description === 'string' ? entry.description : ''),
+                                primaryChannelId: typeof raw?.channel_id === 'string' ? raw.channel_id : channelId,
+                                primaryChannelName: typeof raw?.channel === 'string' ? raw.channel : channelName,
+                                detectedViaChannelId: channelId,
+                                detectedViaChannelName: channelName,
+                                detectedViaChannels: [channelName],
+                                collaboratorChannelIds: [],
+                                collaboratorChannelNames: [],
+                                isCollaborativePost: false,
+                                discoveredVia: 'owned_upload',
+                            };
+                        })
+                        .catch((error) => {
+                            console.warn(`[YouTubePoller] ${channelName}: failed to resolve yt-dlp fallback metadata for ${videoId}; skipping entry`, error);
+                            resolvedVideos[slotIndex] = null;
+                        })
+                        .finally(() => {
+                            activeCount--;
+                            runNext();
+                        });
+                }
+
+                if (entryIndex >= entries.length && activeCount === 0) {
+                    resolve();
+                }
+            };
+
+            if (entries.length === 0) {
+                resolve();
+            } else {
+                runNext();
             }
-        }));
+        });
 
         return this.sortRecentChannelVideos(
             resolvedVideos.filter((video): video is any => Boolean(video?.pubDate))
