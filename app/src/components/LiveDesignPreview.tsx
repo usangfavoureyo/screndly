@@ -25,6 +25,7 @@ const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1350;
 const PREVIEW_SAFE_MARGIN = 48;
 const DEFAULT_PREVIEW_OVERLAY_OPACITY = 50;
+const headlinePreviewCache = new Map<string, string>();
 const FALLBACK_BACKGROUND =
   'radial-gradient(circle at 18% 88%, rgba(110, 102, 255, 0.92) 0%, rgba(110, 102, 255, 0.28) 22%, rgba(110, 102, 255, 0) 48%), radial-gradient(circle at 82% 14%, rgba(150, 118, 255, 0.32) 0%, rgba(150, 118, 255, 0) 30%), linear-gradient(180deg, #5b4f8d 0%, #463d78 24%, #2a274f 58%, #171925 100%)';
 
@@ -315,11 +316,6 @@ export function LiveDesignPreview({
   const [fadeAssetError, setFadeAssetError] = useState(false);
   const [brandAssetError, setBrandAssetError] = useState(false);
   const [sourceDimensions, setSourceDimensions] = useState<{ width: number; height: number } | null>(null);
-  const [headlinePreviewLayerUrl, setHeadlinePreviewLayerUrl] = useState<string | null>(null);
-  const [isHeadlinePreviewLoading, setIsHeadlinePreviewLoading] = useState(
-    Boolean(useBackendHeadlinePreview && template && designData?.headerText?.trim()),
-  );
-
   const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
   const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
   const variantKey = designData?.templateVariant || 'bottom_center';
@@ -365,6 +361,39 @@ export function LiveDesignPreview({
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
   const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine, lineHeightMultiplier);
+  const headlinePreviewRequestKey = useMemo(() => {
+    if (!useBackendHeadlinePreview || !template || !designData?.headerText?.trim()) {
+      return null;
+    }
+
+    return JSON.stringify({
+      templateId: template.id,
+      templateUpdatedAt: template.updatedAt,
+      templateVariant: designData.templateVariant,
+      headerText: designData.headerText,
+      headerTextColor: designData.headerTextColor,
+      fontScale: designData.fontScale,
+      headlineWidthScale: designData.headlineWidthScale,
+      headlineDensity: designData.headlineDensity,
+      lineHeightMultiplier: designData.lineHeightMultiplier,
+    });
+  }, [
+    designData?.fontScale,
+    designData?.headerText,
+    designData?.headerTextColor,
+    designData?.headlineDensity,
+    designData?.headlineWidthScale,
+    designData?.lineHeightMultiplier,
+    designData?.templateVariant,
+    template,
+    useBackendHeadlinePreview,
+  ]);
+  const [headlinePreviewLayerUrl, setHeadlinePreviewLayerUrl] = useState<string | null>(() =>
+    headlinePreviewRequestKey ? headlinePreviewCache.get(headlinePreviewRequestKey) || null : null,
+  );
+  const [isHeadlinePreviewLoading, setIsHeadlinePreviewLoading] = useState(
+    Boolean(headlinePreviewRequestKey && !headlinePreviewCache.get(headlinePreviewRequestKey)),
+  );
   const showPreviewImage = Boolean(sourceUrl) && !previewImageError;
   const brandAssetUrl = brandMode === 'black' ? '/design-studio/brand-block-black.png' : '/design-studio/brand-block-white.png';
   const previewImageStyle = useMemo(() => {
@@ -449,13 +478,20 @@ export function LiveDesignPreview({
   }, [brandAssetUrl]);
 
   useEffect(() => {
-    const shouldUseBackendHeadlinePreview = Boolean(useBackendHeadlinePreview && template && designData?.headerText?.trim());
-    setIsHeadlinePreviewLoading(shouldUseBackendHeadlinePreview);
-
-    if (!shouldUseBackendHeadlinePreview) {
+    if (!headlinePreviewRequestKey || !template || !designData?.headerText?.trim()) {
+      setIsHeadlinePreviewLoading(false);
       setHeadlinePreviewLayerUrl(null);
       return;
     }
+
+    const cachedLayer = headlinePreviewCache.get(headlinePreviewRequestKey);
+    if (cachedLayer) {
+      setHeadlinePreviewLayerUrl(cachedLayer);
+      setIsHeadlinePreviewLoading(false);
+      return;
+    }
+
+    setIsHeadlinePreviewLoading(true);
 
     let isCancelled = false;
     const controller = new AbortController();
@@ -478,6 +514,7 @@ export function LiveDesignPreview({
         });
 
         if (!isCancelled) {
+          headlinePreviewCache.set(headlinePreviewRequestKey, dataUrl);
           setHeadlinePreviewLayerUrl(dataUrl);
           setIsHeadlinePreviewLoading(false);
         }
@@ -495,17 +532,7 @@ export function LiveDesignPreview({
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [
-    designData?.fontScale,
-    designData?.headerText,
-    designData?.headerTextColor,
-    designData?.headlineDensity,
-    designData?.headlineWidthScale,
-    designData?.lineHeightMultiplier,
-    designData?.templateVariant,
-    template,
-    useBackendHeadlinePreview,
-  ]);
+  }, [designData?.headerText, headlinePreviewRequestKey, template]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
@@ -589,7 +616,7 @@ export function LiveDesignPreview({
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ zIndex: 30 }}
         />
-      ) : designData?.headerText && !isHeadlinePreviewLoading ? (
+      ) : designData?.headerText && !useBackendHeadlinePreview && !isHeadlinePreviewLoading ? (
         <div
           className="absolute"
           style={{

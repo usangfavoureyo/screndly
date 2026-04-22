@@ -494,10 +494,10 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
     subtext: '',
     fontFamily: template.fontFamily,
     headerTextColor: template.fontColor || '#FFFFFF',
-    fontScale: 1,
+    fontScale: 1.2,
     headlineWidthScale: 1,
     headlineDensity: 1,
-    lineHeightMultiplier: template.lineHeightMultiplier || 1.1,
+    lineHeightMultiplier: 1.1,
     backgroundImage: '',
     imageFocalPoint: { x: 50, y: 50 },
     imageZoom: 1,
@@ -505,7 +505,7 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
     overlayColor: '#000000',
     overlayOpacity: typeof template.overlayStrength === 'number'
       ? Math.round(template.overlayStrength * 100)
-      : 70,
+      : 50,
     gradientPosition: (template.overlayDirection as DesignData['gradientPosition']) || 'top',
     templateVariant: template.layoutVariant || template.baseVariant || 'bottom_center',
     useCircleInset: false,
@@ -1811,12 +1811,50 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
       const nextItems = Array.from(dedupedByStory.values()).slice(0, 120);
       const nextIds = new Set(nextItems.map((item) => item.id));
+      const selectedFeedIds = new Set(toStringArraySetting(settings.designStudioSelectedRssFeedIds));
+      const selectedFeedNames = new Set(
+        feeds
+          .filter((feed) => selectedFeedIds.has(feed.id))
+          .map((feed) => normalizeKeywordMatch(feed.name || ''))
+          .filter(Boolean),
+      );
+      const triggerKeywords = toStringArraySetting(settings.designStudioTriggerKeywords);
+      const bannedKeywords = toStringArraySetting(settings.designStudioBannedKeywords);
+      const matchesManualQueueNotificationScope = (item: RSSActivityItem) => {
+        if (selectedFeedIds.size > 0) {
+          const itemFeedName = normalizeKeywordMatch(item.feedName || '');
+          const matchesSelectedFeed =
+            (Boolean(item.feedId) && selectedFeedIds.has(item.feedId))
+            || (Boolean(itemFeedName) && selectedFeedNames.has(itemFeedName));
+
+          if (!matchesSelectedFeed) {
+            return false;
+          }
+        }
+
+        const title = item.title || '';
+        if (!title.trim()) {
+          return false;
+        }
+
+        if (bannedKeywords.length > 0 && findMatchedKeyword(title, bannedKeywords)) {
+          return false;
+        }
+
+        if (triggerKeywords.length === 0) {
+          return true;
+        }
+
+        return Boolean(findMatchedKeyword(title, triggerKeywords));
+      };
 
       if (!initializedNewsQueueSeenSetRef.current) {
         seenNewsQueueItemIdsRef.current = nextIds;
         initializedNewsQueueSeenSetRef.current = true;
       } else {
-        const newlyQueuedItems = nextItems.filter((item) => !seenNewsQueueItemIdsRef.current.has(item.id));
+        const newlyQueuedItems = nextItems.filter((item) =>
+          !seenNewsQueueItemIdsRef.current.has(item.id) && matchesManualQueueNotificationScope(item),
+        );
         if (newlyQueuedItems.length > 0) {
           const latestItem = newlyQueuedItems[0];
           const feedName = (latestItem.feedName || 'RSS Feed').trim() || 'RSS Feed';
@@ -1842,7 +1880,14 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         setIsLoadingNewsQueue(false);
       }
     }
-  }, [addNotification, getActivity]);
+  }, [
+    addNotification,
+    feeds,
+    getActivity,
+    settings.designStudioBannedKeywords,
+    settings.designStudioSelectedRssFeedIds,
+    settings.designStudioTriggerKeywords,
+  ]);
 
   useEffect(() => {
     if (studioTopTab !== 'manual') {

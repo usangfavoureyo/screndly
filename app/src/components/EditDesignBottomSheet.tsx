@@ -35,6 +35,7 @@ const EXPANDED_PREVIEW_TAP_MOVE_TOLERANCE = 24;
 const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
 const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
 const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV2';
+const DEFAULT_TEXT_SCALE = 1.2;
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.1;
 const DEFAULT_OVERLAY_OPACITY = 50;
 const DEFAULT_CIRCLE_SIZE = 420;
@@ -169,7 +170,7 @@ export function EditDesignBottomSheet({
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
-  const [fontScale, setFontScale] = useState(initialData?.fontScale ?? 1);
+  const [fontScale, setFontScale] = useState(initialData?.fontScale ?? DEFAULT_TEXT_SCALE);
   const [headlineWidthScale, setHeadlineWidthScale] = useState(1);
   const [headlineDensity, setHeadlineDensity] = useState(1);
   const [lineHeightMultiplier, setLineHeightMultiplier] = useState(initialData?.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
@@ -312,7 +313,7 @@ export function EditDesignBottomSheet({
       subtext: initialData.subtext || '',
       headerTextColor: initialData.headerTextColor || '#FFFFFF',
       subtextColor: initialData.subtextColor || '#000000',
-      fontScale: initialData.fontScale ?? 1,
+      fontScale: initialData.fontScale ?? DEFAULT_TEXT_SCALE,
       headlineWidthScale: initialData.headlineWidthScale ?? 1,
       headlineDensity: initialData.headlineDensity ?? 1,
       lineHeightMultiplier: initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER,
@@ -363,11 +364,7 @@ export function EditDesignBottomSheet({
         ? persistedPrefs.subtextColor
         : initialData.subtextColor || '#000000',
     );
-    setFontScale(
-      typeof persistedPrefs?.fontScale === 'number'
-        ? persistedPrefs.fontScale
-        : initialData.fontScale ?? 1,
-    );
+    setFontScale(initialData.fontScale ?? DEFAULT_TEXT_SCALE);
     setHeadlineWidthScale(1);
     setHeadlineDensity(1);
     setLineHeightMultiplier(initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
@@ -579,7 +576,7 @@ export function EditDesignBottomSheet({
     setSubtext(snapshot.subtext || '');
     setHeaderTextColor(snapshot.headerTextColor || '#FFFFFF');
     setSubtextColor(snapshot.subtextColor || '#000000');
-    setFontScale(snapshot.fontScale ?? 1);
+    setFontScale(snapshot.fontScale ?? DEFAULT_TEXT_SCALE);
     setHeadlineWidthScale(1);
     setHeadlineDensity(1);
     setLineHeightMultiplier(snapshot.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
@@ -1565,7 +1562,7 @@ export function EditDesignBottomSheet({
                 </div>
                 <input
                   type="range"
-                  min="0.8"
+                  min="0"
                   max={MAX_TEXT_SCALE}
                   step="0.02"
                   value={fontScale}
@@ -1589,8 +1586,8 @@ export function EditDesignBottomSheet({
                 </div>
                 <input
                   type="range"
-                  min="1.1"
-                  max="1.15"
+                  min="0"
+                  max="1.2"
                   step="0.01"
                   value={lineHeightMultiplier}
                   {...sliderInteractionProps}

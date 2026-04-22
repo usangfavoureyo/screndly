@@ -879,23 +879,30 @@ export function DesignStudioSettings({ onSave, onBack }: DesignStudioSettingsPro
                 {feeds.map((feed) => {
                   const selected = (settings.designStudioSelectedRssFeedIds || []).includes(feed.id);
                   return (
-                    <button
+                    <div
                       key={feed.id}
-                      type="button"
-                      onClick={() => toggleRssFeedSelection(feed.id)}
                       className="w-full rounded-2xl border border-gray-200 dark:border-[#333333] bg-white dark:bg-[#000000] p-4 text-left"
                     >
                       <div className="flex items-center justify-between gap-4">
-                        <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleRssFeedSelection(feed.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
                           <p className="truncate text-sm text-gray-900 dark:text-white">{feed.name}</p>
                           <p className="truncate text-xs text-[#6B7280] dark:text-[#9CA3AF] mt-1">{feed.url}</p>
-                        </div>
+                        </button>
                         <Switch
                           checked={selected}
-                          onCheckedChange={() => toggleRssFeedSelection(feed.id)}
+                          onCheckedChange={(checked) => {
+                            const currentlySelected = (settings.designStudioSelectedRssFeedIds || []).includes(feed.id);
+                            if (checked !== currentlySelected) {
+                              toggleRssFeedSelection(feed.id);
+                            }
+                          }}
                         />
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
