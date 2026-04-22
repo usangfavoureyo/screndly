@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { YouTubePollerService } from '../services/youtube-poller.service';
 import { getYtDlpAuthOptions } from '../lib/yt-dlp';
+import prisma from '../lib/prisma';
 
 function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => Promise<T> | T): Promise<T> | T {
     const previous = new Map<string, string | undefined>();
@@ -601,4 +602,76 @@ test('collaborative discovery is throttled onto a slower background cadence', ()
 
     assert.equal(service.shouldRunCollaborativeDiscovery(channel, {}), false);
     assert.equal(service.shouldRunCollaborativeDiscovery(channel, { force: true }), true);
+});
+
+test('boundary-based owned scan keeps trailer candidate even with repeated non-matching noise above it', () => {
+    const service = new YouTubePollerService() as any;
+    const now = Date.now();
+    const videos = [
+        { id: 'v1', link: 'https://www.youtube.com/watch?v=v1', title: 'The Devil Wears Prada 2 | In Theaters May 1', pubDate: new Date(now - 1 * 60 * 1000).toISOString() },
+        { id: 'v2', link: 'https://www.youtube.com/watch?v=v2', title: 'The Devil Wears Prada 2 | In Theaters May 1', pubDate: new Date(now - 2 * 60 * 1000).toISOString() },
+        { id: 'v3', link: 'https://www.youtube.com/watch?v=v3', title: 'The Devil Wears Prada 2 | In Theaters May 1', pubDate: new Date(now - 3 * 60 * 1000).toISOString() },
+        { id: 'v4', link: 'https://www.youtube.com/watch?v=v4', title: 'Send Help | Official Trailer | In Theaters Jan 30', pubDate: new Date(now - 4 * 60 * 1000).toISOString() },
+        { id: 'known1', link: 'https://www.youtube.com/watch?v=known1', title: 'Older Known Upload', pubDate: new Date(now - 5 * 60 * 1000).toISOString() },
+    ];
+    const knownVideoIds = new Set<string>(['known1']);
+    const trailerKeywords = ['trailer', 'teaser', 'official'];
+    const plan = service.buildOwnedScanCandidatesFromRecentVideos(
+        videos,
+        trailerKeywords,
+        knownVideoIds,
+        now - (2 * 24 * 60 * 60 * 1000)
+    );
+
+    const titles = plan.candidates.map((video: any) => video.title);
+    assert.ok(titles.some((title: string) => /send help/i.test(title)));
+    assert.equal(plan.knownBoundaryHit, true);
+    assert.ok(plan.dedupedNoiseCount >= 1);
+});
+
+test('tryClaimChannel allows reclaiming stale locks before lockUntil expiry', async () => {
+    const service = new YouTubePollerService() as any;
+    const channelModel = (prisma as any).channel;
+    const originalUpdateMany = channelModel.updateMany;
+    let capturedWhere: any = null;
+
+    channelModel.updateMany = async (args: any) => {
+        capturedWhere = args.where;
+        return { count: 0 };
+    };
+
+    try {
+        await service.tryClaimChannel(
+            {
+                id: 'db-channel-id',
+                status: 'active',
+                channelId: 'UC_TEST',
+                name: 'Test Channel',
+                nextPollAt: new Date(Date.now() - 60_000).toISOString(),
+                failureCount: 0,
+            },
+            { fetchInterval: 2 }
+        );
+    } finally {
+        channelModel.updateMany = originalUpdateMany;
+    }
+
+    const staleLockBranch = capturedWhere?.OR?.[2];
+    assert.ok(staleLockBranch?.AND);
+    assert.equal(Array.isArray(staleLockBranch.AND), true);
+});
+
+test('catch-up prioritization moves heavily overdue channels to the front', () => {
+    const service = new YouTubePollerService() as any;
+    const now = new Date();
+    const dueChannels = [
+        { id: 'normal', name: 'Normal', nextPollAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString() },
+        { id: 'overdue', name: 'Overdue', nextPollAt: new Date(now.getTime() - 25 * 60 * 1000).toISOString() },
+        { id: 'mild', name: 'Mild', nextPollAt: new Date(now.getTime() - 5 * 60 * 1000).toISOString() },
+    ];
+
+    const result = service.prioritizeDueChannelsForCatchUp(dueChannels, now);
+    assert.equal(result.catchUpSweepTriggered, true);
+    assert.equal(result.overdueChannels.length, 1);
+    assert.equal(result.prioritizedDueChannels[0].id, 'overdue');
 });

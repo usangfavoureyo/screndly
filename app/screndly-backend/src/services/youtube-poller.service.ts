@@ -259,6 +259,17 @@ interface ChannelVideoSourceResult {
     source: 'rss' | 'yt-dlp' | 'merged';
 }
 
+interface OwnedVideoScanPlan {
+    candidates: any[];
+    recentItemsFetched: number;
+    recentItemsScanned: number;
+    knownBoundaryHit: boolean;
+    timeBoundaryHit: boolean;
+    hardCeilingHit: boolean;
+    dedupedNoiseCount: number;
+    timeBoundaryIso: string | null;
+}
+
 type YouTubeAccessIssueKind = 'bot_challenge' | 'unavailable' | 'restricted' | 'other' | 'identity_unhealthy';
 
 type YouTubeDownloadFailureCategory =
@@ -308,6 +319,7 @@ interface SchedulerTickSummary {
     activeWorkerCount: number;
     scheduleOpen?: boolean;
     scheduleReason?: string;
+    catchUpSweepTriggered?: boolean;
 }
 
 interface PublishIntervalReservation {
@@ -371,10 +383,12 @@ const PLATFORM_NOTIFICATION_LABELS: Record<string, string> = {
     YouTubeShorts: 'YouTube Shorts',
     Pinterest: 'Pinterest',
 };
-const MAX_RECENT_FEED_ITEMS = 15;
-const MAX_OWNED_VIDEO_CANDIDATES = 8;
+const MAX_RECENT_FEED_ITEMS = 40;
+const MAX_RECENT_SCAN_ITEMS = 50;
+const MAX_NON_MATCHING_DUPLICATE_TITLES_PER_SCAN = 2;
+const MAX_OWNED_VIDEO_CANDIDATES = MAX_RECENT_SCAN_ITEMS;
 const MAX_COLLAB_CANDIDATES = 6;
-const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 8;
+const MAX_VIDEOS_TO_PROCESS_PER_CHANNEL = 16;
 const MAX_COLLAB_KEYWORD_QUERIES = 2;
 const MAX_COLLAB_SEARCH_RESULTS_PER_KEYWORD = 1;
 const MAX_COLLAB_DISCOVERY_MS_PER_CHANNEL = 20 * 1000;
@@ -390,10 +404,12 @@ const DEFAULT_TRAILER_KEYWORDS = ['trailer', 'teaser', 'official', 'first look',
 const NON_STANDALONE_TRAILER_KEYWORDS = new Set(['official']);
 const POLL_STALE_AFTER_MS = 30 * 60 * 1000;
 const SCHEDULER_STALE_AFTER_MS = 2 * 60 * 1000;
-const CHANNEL_POLL_LOCK_MS = 10 * 60 * 1000;
+const CHANNEL_POLL_LOCK_MS = 4 * 60 * 1000;
+const CHANNEL_LOCK_RECLAIM_AFTER_MS = 3 * 60 * 1000;
 const POLL_CLAIM_BATCH_SIZE = 15;
 const MAX_CONCURRENT_CHANNEL_POLLS = 8;
 const POLLING_JITTER_MAX_MS = 10 * 1000;
+const OVERDUE_CATCHUP_THRESHOLD_MS = 15 * 60 * 1000;
 const BACKOFF_CAP_MINUTES = 15;
 const SLOW_STAGE_WARN_MS = 15 * 1000;
 const YOUTUBE_POLLING_STALE_NOTIFICATION_WINDOW_MINUTES = 30;
@@ -728,12 +744,24 @@ export class YouTubePollerService {
         options: { force?: boolean } = {}
     ): Promise<boolean> {
         const now = new Date();
+        const staleLockBoundary = new Date(now.getTime() - CHANNEL_LOCK_RECLAIM_AFTER_MS);
         const claimWhere: Record<string, any> = {
             id: channel.id,
             status: 'active',
             OR: [
                 { lockUntil: null },
                 { lockUntil: { lt: now } },
+                {
+                    AND: [
+                        { lockUntil: { gte: now } },
+                        {
+                            OR: [
+                                { lastPollStartedAt: null },
+                                { lastPollStartedAt: { lt: staleLockBoundary } },
+                            ],
+                        },
+                    ],
+                },
             ],
         };
 
@@ -763,12 +791,16 @@ export class YouTubePollerService {
             const claimLagMs = dueReference && Number.isFinite(dueReference.getTime())
                 ? Math.max(0, now.getTime() - dueReference.getTime())
                 : 0;
+            const lockAgeMs = channel?.lastPollStartedAt
+                ? Math.max(0, now.getTime() - new Date(channel.lastPollStartedAt).getTime())
+                : 0;
             console.log('[YouTubePoller] Channel claimed', {
                 channelId: channel.channelId,
                 channelName: channel.name,
                 dueAt: dueReference?.toISOString(),
                 claimedAt: now.toISOString(),
                 claimLagMs,
+                lockAgeMs,
                 force: options.force === true,
             });
         }
@@ -867,6 +899,32 @@ export class YouTubePollerService {
         }
     }
 
+    private prioritizeDueChannelsForCatchUp(
+        dueChannels: any[],
+        now: Date
+    ): { prioritizedDueChannels: any[]; overdueChannels: any[]; catchUpSweepTriggered: boolean } {
+        const overdueChannels = dueChannels.filter((channel) => {
+            if (!channel?.nextPollAt) {
+                return false;
+            }
+            const nextPollAtMs = new Date(channel.nextPollAt).getTime();
+            return Number.isFinite(nextPollAtMs) && (now.getTime() - nextPollAtMs) >= OVERDUE_CATCHUP_THRESHOLD_MS;
+        });
+        const catchUpSweepTriggered = overdueChannels.length > 0;
+        const prioritizedDueChannels = catchUpSweepTriggered
+            ? [
+                ...overdueChannels,
+                ...dueChannels.filter((channel) => !overdueChannels.some((overdueChannel) => overdueChannel.id === channel.id)),
+            ]
+            : dueChannels;
+
+        return {
+            prioritizedDueChannels,
+            overdueChannels,
+            catchUpSweepTriggered,
+        };
+    }
+
     async runSchedulerTick(): Promise<SchedulerTickSummary> {
         const startedAt = new Date();
 
@@ -951,10 +1009,16 @@ export class YouTubePollerService {
                 take: Math.max(availableSlots * 3, POLL_CLAIM_BATCH_SIZE),
             });
 
+            const {
+                prioritizedDueChannels,
+                overdueChannels,
+                catchUpSweepTriggered,
+            } = this.prioritizeDueChannelsForCatchUp(dueChannels, now);
+
             const claimedChannels: any[] = [];
             let skippedLockedChannels = 0;
 
-            for (const channel of dueChannels) {
+            for (const channel of prioritizedDueChannels) {
                 if (claimedChannels.length >= availableSlots) {
                     break;
                 }
@@ -969,6 +1033,8 @@ export class YouTubePollerService {
 
             console.log('[YouTubePoller] Scheduler tick', {
                 dueChannels: dueChannels.length,
+                overdueChannels: overdueChannels.length,
+                catchUpSweepTriggered,
                 claimedChannels: claimedChannels.length,
                 skippedLockedChannels,
                 activeWorkerCount: this.activeChannelJobs.size,
@@ -987,6 +1053,7 @@ export class YouTubePollerService {
                 activeWorkerCount: this.activeChannelJobs.size,
                 scheduleOpen: true,
                 scheduleReason: scheduleState.reason,
+                catchUpSweepTriggered,
             };
         } finally {
             this.schedulerRunning = false;
@@ -1089,11 +1156,17 @@ export class YouTubePollerService {
             const supportsFeedItemStatus = await this.timeStage(activeChannel.name, 'check_feed_item_status', stageDurations, () => hasFeedItemStatusColumn());
             const { keywords: trailerKeywords, usingDefault: usingDefaultTrailerKeywords } = this.getTrailerKeywords(settings);
             const { items: ownedVideos, source } = await this.timeStage(activeChannel.name, 'discover_owned_uploads', stageDurations, () => this.getRecentChannelVideos(activeChannel, settings));
+            const ownedScanPlan = await this.timeStage(
+                activeChannel.name,
+                'scan_owned_candidates',
+                stageDurations,
+                () => this.buildOwnedVideoScanPlan(activeChannel, trailerKeywords, ownedVideos)
+            );
             const latestVideos = await this.timeStage(
                 activeChannel.name,
                 'prioritize_owned_candidates',
                 stageDurations,
-                () => this.prioritizeQueuedCandidates(ownedVideos, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL)
+                () => this.prioritizeQueuedCandidates(ownedScanPlan.candidates, MAX_VIDEOS_TO_PROCESS_PER_CHANNEL)
             );
             if (source === 'yt-dlp') {
                 console.warn(`[YouTubePoller] ${activeChannel.name}: using yt-dlp channel fallback because the YouTube RSS feed was unavailable`);
@@ -1117,6 +1190,19 @@ export class YouTubePollerService {
                     : `[YouTubePoller] ${activeChannel.name}: using trailer filters (${trailerKeywords.join(', ')})`
             );
             console.log(`[YouTubePoller] ${activeChannel.name}: discovered ${ownedVideos.length} owned uploads in the fast path`);
+            console.log('[YouTubePoller] Owned candidate scan summary', {
+                channelId: activeChannel.channelId,
+                channelName: activeChannel.name,
+                sourceType: source,
+                fallbackUsed: source !== 'rss',
+                recentItemsFetched: ownedScanPlan.recentItemsFetched,
+                recentItemsScanned: ownedScanPlan.recentItemsScanned,
+                knownBoundaryHit: ownedScanPlan.knownBoundaryHit,
+                timeBoundaryHit: ownedScanPlan.timeBoundaryHit,
+                hardCeilingHit: ownedScanPlan.hardCeilingHit,
+                dedupedNoiseCount: ownedScanPlan.dedupedNoiseCount,
+                timeBoundary: ownedScanPlan.timeBoundaryIso,
+            });
             const futureOnlySince = this.getFutureOnlySince(settings);
             const effectiveAgeGateHours = Number.isFinite(options.ageGateOverrideHours as number) && (options.ageGateOverrideHours as number) > 0
                 ? Number(options.ageGateOverrideHours)
@@ -1163,6 +1249,8 @@ export class YouTubePollerService {
                     seenVideoIdsThisPoll.add(currentVideoId);
                 }
                 const videoStartedAtMs = Date.now();
+                const processingStartedAt = new Date(videoStartedAtMs).toISOString();
+                const discoveredAt = video?.pubDate ? new Date(video.pubDate).toISOString() : null;
                 const processed = await this.processFeedVideo(
                     video,
                     activeChannel,
@@ -1179,6 +1267,31 @@ export class YouTubePollerService {
                     reason: processed.reason,
                     sawFreshVideo: processed.sawFreshVideo === true,
                     stopScanning: processed.stopScanning === true,
+                });
+                const processedAt = new Date().toISOString();
+                const finalState = processed.kind === 'return'
+                    ? (processed.result?.published
+                        ? 'published'
+                        : processed.result?.failed
+                            ? 'failed'
+                            : processed.result?.skipped
+                                ? 'skipped'
+                                : 'processed')
+                    : (processed.reason?.includes('queued')
+                        ? 'queued'
+                        : processed.reason?.includes('already')
+                            ? 'already_known'
+                            : 'ignored');
+                console.log('[YouTubePoller] item_pipeline_lag', {
+                    channelId: activeChannel.channelId,
+                    channelName: activeChannel.name,
+                    videoId: currentVideoId,
+                    title: video.title || 'Untitled YouTube upload',
+                    discoveredAt,
+                    queuedAt: finalState === 'queued' ? processedAt : null,
+                    processingStartedAt,
+                    processedAt,
+                    finalState,
                 });
 
                 if (processed.reason) {
@@ -1243,7 +1356,128 @@ export class YouTubePollerService {
     private sortRecentChannelVideos(videos: any[]): any[] {
         return [...videos]
             .sort((left, right) => new Date(right?.pubDate || 0).getTime() - new Date(left?.pubDate || 0).getTime())
-            .slice(0, MAX_RECENT_FEED_ITEMS);
+            .slice(0, MAX_RECENT_SCAN_ITEMS);
+    }
+
+    private getOwnedVideoScanTimeBoundaryMs(channel: any): number {
+        const nowMs = Date.now();
+        const freshnessBoundaryMs = nowMs - (FEED_FRESHNESS_HOURS * 60 * 60 * 1000);
+        const lastCheckMs = channel?.lastCheck ? new Date(channel.lastCheck).getTime() : Number.NaN;
+
+        if (Number.isFinite(lastCheckMs)) {
+            return Math.max(lastCheckMs, freshnessBoundaryMs);
+        }
+
+        return freshnessBoundaryMs;
+    }
+
+    private normalizeNoiseTitleKey(value: string): string {
+        return value
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    private buildOwnedScanCandidatesFromRecentVideos(
+        videos: any[],
+        trailerKeywords: string[],
+        knownVideoIds: Set<string>,
+        timeBoundaryMs: number
+    ): OwnedVideoScanPlan {
+        const sorted = this.sortRecentChannelVideos(videos);
+        const seenVideoIds = new Set<string>();
+        const nonMatchingTitleCounts = new Map<string, number>();
+        const candidates: any[] = [];
+        let recentItemsScanned = 0;
+        let knownBoundaryHit = false;
+        let timeBoundaryHit = false;
+        let hardCeilingHit = false;
+        let dedupedNoiseCount = 0;
+
+        for (const video of sorted) {
+            if (recentItemsScanned >= MAX_RECENT_SCAN_ITEMS) {
+                hardCeilingHit = true;
+                break;
+            }
+
+            const videoId = this.extractVideoId(video?.link || '', video?.id || '');
+            if (!videoId || seenVideoIds.has(videoId)) {
+                continue;
+            }
+            seenVideoIds.add(videoId);
+
+            const publishedAtMs = new Date(video?.pubDate || 0).getTime();
+            if (Number.isFinite(publishedAtMs) && publishedAtMs < timeBoundaryMs && candidates.length > 0) {
+                timeBoundaryHit = true;
+                break;
+            }
+
+            if (knownVideoIds.has(videoId) && candidates.length > 0) {
+                knownBoundaryHit = true;
+                break;
+            }
+
+            const titleLower = String(video?.title || '').toLowerCase();
+            const keywordMatched = this.matchesTrailerFilters(titleLower, trailerKeywords);
+            if (!keywordMatched) {
+                const normalizedTitle = this.normalizeNoiseTitleKey(titleLower);
+                if (normalizedTitle.length > 0) {
+                    const seenCount = nonMatchingTitleCounts.get(normalizedTitle) || 0;
+                    if (seenCount >= MAX_NON_MATCHING_DUPLICATE_TITLES_PER_SCAN) {
+                        dedupedNoiseCount += 1;
+                        continue;
+                    }
+                    nonMatchingTitleCounts.set(normalizedTitle, seenCount + 1);
+                }
+            }
+
+            recentItemsScanned += 1;
+            candidates.push({
+                ...video,
+                _keywordMatched: keywordMatched,
+            });
+        }
+
+        return {
+            candidates,
+            recentItemsFetched: sorted.length,
+            recentItemsScanned,
+            knownBoundaryHit,
+            timeBoundaryHit,
+            hardCeilingHit,
+            dedupedNoiseCount,
+            timeBoundaryIso: new Date(timeBoundaryMs).toISOString(),
+        };
+    }
+
+    private async buildOwnedVideoScanPlan(
+        activeChannel: any,
+        trailerKeywords: string[],
+        ownedVideos: any[]
+    ): Promise<OwnedVideoScanPlan> {
+        const sorted = this.sortRecentChannelVideos(ownedVideos);
+        const recentCandidateVideoIds = sorted
+            .map((video) => this.extractVideoId(video?.link || '', video?.id || ''))
+            .filter((value): value is string => Boolean(value))
+            .slice(0, MAX_RECENT_SCAN_ITEMS);
+
+        let knownVideoIds = new Set<string>();
+        if (recentCandidateVideoIds.length > 0) {
+            const existing = await prisma.feedItem.findMany({
+                where: {
+                    videoId: { in: recentCandidateVideoIds },
+                },
+                select: { videoId: true },
+            });
+            knownVideoIds = new Set(existing.map((item) => item.videoId));
+        }
+
+        return this.buildOwnedScanCandidatesFromRecentVideos(
+            sorted,
+            trailerKeywords,
+            knownVideoIds,
+            this.getOwnedVideoScanTimeBoundaryMs(activeChannel)
+        );
     }
 
     async previewChannelDiscovery(channelDbId: string, limit = 10): Promise<ChannelDiscoveryPreviewItem[]> {
@@ -1906,6 +2140,7 @@ export class YouTubePollerService {
             index,
             videoId: this.extractVideoId(video?.link || '', video?.id || ''),
             publishedAtMs: new Date(video?.pubDate || 0).getTime(),
+            keywordMatched: video?._keywordMatched === true,
         }));
 
         const candidateIds = entries
@@ -1927,15 +2162,15 @@ export class YouTubePollerService {
             },
         });
 
-        if (existingItems.length === 0) {
-            return videos.slice(0, Math.max(1, limit));
-        }
-
         const queuedByVideoId = new Map(
             existingItems.map((item) => [item.videoId, item])
         );
 
         const prioritized = [...entries].sort((left, right) => {
+            if (left.keywordMatched !== right.keywordMatched) {
+                return left.keywordMatched ? -1 : 1;
+            }
+
             const leftQueued = left.videoId ? queuedByVideoId.get(left.videoId) : undefined;
             const rightQueued = right.videoId ? queuedByVideoId.get(right.videoId) : undefined;
 
@@ -1953,6 +2188,13 @@ export class YouTubePollerService {
 
             if (rightQueued) {
                 return 1;
+            }
+
+            if (Number.isFinite(left.publishedAtMs) && Number.isFinite(right.publishedAtMs)) {
+                const publishedDiff = right.publishedAtMs - left.publishedAtMs;
+                if (publishedDiff !== 0) {
+                    return publishedDiff;
+                }
             }
 
             return left.index - right.index;
