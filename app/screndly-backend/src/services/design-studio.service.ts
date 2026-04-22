@@ -409,6 +409,28 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function escapePangoMarkupText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function resolveHeadlineFontFamily(value?: string): string {
+  const normalized = typeof value === 'string' ? value.replace(/["']/g, '').trim() : '';
+  if (!normalized) {
+    return 'PF Din Text Comp Pro';
+  }
+
+  if (normalized.toLowerCase().includes('pfdin')) {
+    return 'PF Din Text Comp Pro';
+  }
+
+  return normalized;
+}
+
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
@@ -1898,7 +1920,7 @@ export async function buildTextLayer(input: {
     ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
     : input.variant.textBox.y;
 
-  const fontFamily = (input.template.fontFamily || 'PFDinTextCompPro').trim();
+  const fontFamily = resolveHeadlineFontFamily(input.template.fontFamily);
   const fontSize = Math.max(1, Math.round(fit.fontSize));
   const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
   const emptyLayer = sharp({
@@ -1921,9 +1943,10 @@ export async function buildTextLayer(input: {
 
   for (const [index, line] of fit.lines.entries()) {
     const lineTop = Math.round(top + (index * fit.lineHeight));
+    const safeLine = escapePangoMarkupText(line);
     const { data: renderedLine, info: renderedLineInfo } = await sharp({
       text: {
-        text: line,
+        text: safeLine,
         rgba: true,
         align: alignment,
         width: scaledBoxWidth,

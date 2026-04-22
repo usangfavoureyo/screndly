@@ -475,6 +475,7 @@ export function LiveDesignPreview({
         }
       } catch (error) {
         if (!isCancelled && !(error instanceof Error && error.name === 'AbortError')) {
+          console.error('Design Studio headline preview failed:', error);
           setHeadlinePreviewLayerUrl(null);
         }
       }
@@ -595,7 +596,7 @@ export function LiveDesignPreview({
             fontWeight: 700,
             textTransform: 'uppercase',
             letterSpacing: '0',
-            fontFamily: `"${previewFontFamily}", "PF Din Text Comp Pro", "Impact", "Arial Narrow Bold", sans-serif`,
+            fontFamily: `"${previewFontFamily}", "PF Din Text Comp Pro"`,
             textShadow: headerColor.toLowerCase() === '#000000' ? 'none' : '0 1px 2px rgba(0,0,0,0.28)',
             zIndex: 30,
           }}
