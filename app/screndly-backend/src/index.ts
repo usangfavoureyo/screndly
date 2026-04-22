@@ -14,6 +14,33 @@ import { getXOAuthClientId, getXOAuthClientSecret } from './lib/xOAuth';
 const app = express();
 const PORT = env.PORT;
 
+function parseMemoryLogIntervalMs(): number {
+    const rawValue = Number.parseInt(String(process.env.MEMORY_LOG_INTERVAL_MS ?? '30000'), 10);
+    return Number.isFinite(rawValue) && rawValue >= 10_000 ? rawValue : 30_000;
+}
+
+function startMemoryTelemetry(): void {
+    if (process.env.MEMORY_LOGGING_ENABLED === '0') {
+        return;
+    }
+
+    const intervalMs = parseMemoryLogIntervalMs();
+    const timer = setInterval(() => {
+        const memory = process.memoryUsage();
+        console.log('[memory]', JSON.stringify({
+            rssMB: Math.round(memory.rss / 1024 / 1024),
+            heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024),
+            heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+            externalMB: Math.round(memory.external / 1024 / 1024),
+            arrayBuffersMB: Math.round(memory.arrayBuffers / 1024 / 1024),
+            uptimeSec: Math.round(process.uptime()),
+            pid: process.pid,
+        }));
+    }, intervalMs);
+
+    timer.unref();
+}
+
 // Middleware
 app.set('trust proxy', 1);
 app.set('etag', 'strong');
@@ -192,6 +219,7 @@ import { initCronJobs } from './services/cron';
 if (require.main === module || process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
+        startMemoryTelemetry();
         if (process.env.DISABLE_CRON === '1') {
             console.log('Cron jobs disabled via DISABLE_CRON=1');
         } else {

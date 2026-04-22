@@ -100,6 +100,8 @@ const VIDEO_STUDIO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; 
 
 let youtubePollingPausedUntil: Date | null = null;
 let lastYouTubePollingHealthNotificationAt: Date | null = null;
+const activeCronTasks = new Set<string>();
+const lastCronSkipLogAt = new Map<string, number>();
 
 async function resolveTMDbPublishImageUrls(post: {
     id?: string | null;
@@ -289,6 +291,29 @@ async function logCron(level: string, message: string, service: string = 'cron')
         });
     } catch (err) {
         console.error('Failed to log to DB:', err);
+    }
+}
+
+async function runNonOverlappingCronTask(
+    taskKey: string,
+    task: () => Promise<void>,
+    service: string = 'cron',
+): Promise<void> {
+    if (activeCronTasks.has(taskKey)) {
+        const now = Date.now();
+        const lastLoggedAt = lastCronSkipLogAt.get(taskKey) ?? 0;
+        if ((now - lastLoggedAt) >= 60_000) {
+            lastCronSkipLogAt.set(taskKey, now);
+            await logCron('warn', `${taskKey} skipped because the previous run is still active`, service);
+        }
+        return;
+    }
+
+    activeCronTasks.add(taskKey);
+    try {
+        await task();
+    } finally {
+        activeCronTasks.delete(taskKey);
     }
 }
 
@@ -636,13 +661,25 @@ export async function initCronJobs() {
 
     // TMDb Master Daily Refresh - Default at 07:00, configurable via settings
     cron.schedule(toDailyCronExpression(tmdbMasterRefreshTime), async () => {
-        await runTMDbRefresh('TMDb master refresh', 'TMDb Daily Refresh');
+        await runNonOverlappingCronTask(
+            'tmdb-master-refresh',
+            async () => {
+                await runTMDbRefresh('TMDb master refresh', 'TMDb Daily Refresh');
+            },
+            'tmdb-cron',
+        );
     }, cronOptions);
 
     // TMDb Secondary Refresh - Daily at 12:00 to catch items that appear later in the day
     if (tmdbMasterRefreshTime !== DEFAULT_TMDB_SECONDARY_REFRESH_TIME) {
         cron.schedule(toDailyCronExpression(DEFAULT_TMDB_SECONDARY_REFRESH_TIME, DEFAULT_TMDB_SECONDARY_REFRESH_TIME), async () => {
-            await runTMDbRefresh('TMDb secondary refresh', 'TMDb Midday Refresh');
+            await runNonOverlappingCronTask(
+                'tmdb-secondary-refresh',
+                async () => {
+                    await runTMDbRefresh('TMDb secondary refresh', 'TMDb Midday Refresh');
+                },
+                'tmdb-cron',
+            );
         }, cronOptions);
     }
 
@@ -684,426 +721,441 @@ export async function initCronJobs() {
 
     // RSS Feed Refresh - Every minute (master tick for per-feed intervals)
     cron.schedule('* * * * *', async () => {
-        try {
-            const result = await refreshAllFeeds(true);
+        await runNonOverlappingCronTask('rss-scheduled-refresh', async () => {
+            try {
+                const result = await refreshAllFeeds(true);
 
-            if (result.results.length > 0) {
-                const added = result.results.reduce((acc, r) => acc + r.itemsAdded, 0);
-                if (added > 0) {
-                    const notification = buildRssSuccessNotification(result.results);
-                    await logCron('info', `RSS scheduled refresh: ${added} new items from ${result.results.length} feeds checked.`);
+                if (result.results.length > 0) {
+                    const added = result.results.reduce((acc, r) => acc + r.itemsAdded, 0);
+                    if (added > 0) {
+                        const notification = buildRssSuccessNotification(result.results);
+                        await logCron('info', `RSS scheduled refresh: ${added} new items from ${result.results.length} feeds checked.`);
+                        if (notification) {
+                            await notificationService.notifyUser({
+                                title: notification.title,
+                                message: notification.message,
+                                type: 'info',
+                                source: 'rss',
+                                actionPage: '/rss-feeds'
+                            });
+                        }
+                    }
+                }
+
+                if (result.failed > 0) {
+                    const failedFeeds = result.results.filter(r => r.error).map(r => `${r.feedName}: ${r.error}`).join(', ');
+                    const notification = buildRssFailureNotification(result.results);
+                    await logCron('warn', `RSS scheduled refresh errors: ${failedFeeds}`);
                     if (notification) {
                         await notificationService.notifyUser({
                             title: notification.title,
                             message: notification.message,
-                            type: 'info',
+                            type: 'warning',
                             source: 'rss',
                             actionPage: '/rss-feeds'
                         });
                     }
                 }
+            } catch (error) {
+                await logCron('error', `RSS Feed refresh failed: ${error}`);
             }
-
-            if (result.failed > 0) {
-                const failedFeeds = result.results.filter(r => r.error).map(r => `${r.feedName}: ${r.error}`).join(', ');
-                const notification = buildRssFailureNotification(result.results);
-                await logCron('warn', `RSS scheduled refresh errors: ${failedFeeds}`);
-                if (notification) {
-                    await notificationService.notifyUser({
-                        title: notification.title,
-                        message: notification.message,
-                        type: 'warning',
-                        source: 'rss',
-                        actionPage: '/rss-feeds'
-                    });
-                }
-            }
-        } catch (error) {
-            await logCron('error', `RSS Feed refresh failed: ${error}`);
-        }
+        }, 'rss');
     }, cronOptions);
 
     // Design Studio Auto Editorial Generation - Every minute
     cron.schedule('* * * * *', async () => {
-        try {
-            const result = await generateDesignStudioAutoEditorials();
-            if (result.generated > 0) {
-                await logCron(
-                    'info',
-                    `Generated ${result.generated} Design Studio auto editorial${result.generated === 1 ? '' : 's'}.`,
-                    'design-studio-cron',
-                );
+        await runNonOverlappingCronTask('design-studio-auto-generate', async () => {
+            try {
+                const result = await generateDesignStudioAutoEditorials();
+                if (result.generated > 0) {
+                    await logCron(
+                        'info',
+                        `Generated ${result.generated} Design Studio auto editorial${result.generated === 1 ? '' : 's'}.`,
+                        'design-studio-cron',
+                    );
+                }
+            } catch (error) {
+                await logCron('error', `Design Studio auto generation failed: ${error}`, 'design-studio-cron');
             }
-        } catch (error) {
-            await logCron('error', `Design Studio auto generation failed: ${error}`, 'design-studio-cron');
-        }
+        }, 'design-studio-cron');
     }, cronOptions);
 
     // Design Studio Auto Editorial Publisher - Every minute
     cron.schedule('* * * * *', async () => {
-        try {
-            const result = await publishScheduledDesignStudioAutoEditorials();
-            if (result.published > 0 || result.failed > 0) {
-                await logCron(
-                    result.failed > 0 ? 'warn' : 'info',
-                    `Design Studio auto publish run: ${result.published} published, ${result.failed} failed.`,
-                    'design-studio-cron',
-                );
+        await runNonOverlappingCronTask('design-studio-auto-publish', async () => {
+            try {
+                const result = await publishScheduledDesignStudioAutoEditorials();
+                if (result.published > 0 || result.failed > 0) {
+                    await logCron(
+                        result.failed > 0 ? 'warn' : 'info',
+                        `Design Studio auto publish run: ${result.published} published, ${result.failed} failed.`,
+                        'design-studio-cron',
+                    );
+                }
+            } catch (error) {
+                await logCron('error', `Design Studio auto publishing failed: ${error}`, 'design-studio-cron');
             }
-        } catch (error) {
-            await logCron('error', `Design Studio auto publishing failed: ${error}`, 'design-studio-cron');
-        }
+        }, 'design-studio-cron');
     }, cronOptions);
 
     // Post Scheduler - Every 1 minute
     cron.schedule('* * * * *', async () => {
-        try {
-            const now = new Date();
-            const postsToPublish = await prisma.tMDbPost.findMany({
-                where: {
-                    status: 'scheduled',
-                    scheduledTime: { lte: now }
-                },
-                orderBy: {
-                    scheduledTime: 'asc',
-                },
-                take: 5
-            });
+        await runNonOverlappingCronTask('tmdb-post-scheduler', async () => {
+            try {
+                const now = new Date();
+                const postsToPublish = await prisma.tMDbPost.findMany({
+                    where: {
+                        status: 'scheduled',
+                        scheduledTime: { lte: now }
+                    },
+                    orderBy: {
+                        scheduledTime: 'asc',
+                    },
+                    take: 5
+                });
 
-            if (postsToPublish.length === 0) return;
+                if (postsToPublish.length === 0) return;
 
-            await logCron('info', `Found ${postsToPublish.length} posts to publish`);
+                await logCron('info', `Found ${postsToPublish.length} posts to publish`);
 
-            for (const post of postsToPublish) {
-                try {
-                    const latestPost = await prisma.tMDbPost.findUnique({
-                        where: { id: post.id },
-                    });
+                for (const post of postsToPublish) {
+                    try {
+                        const latestPost = await prisma.tMDbPost.findUnique({
+                            where: { id: post.id },
+                        });
 
-                    if (!latestPost) {
-                        await logCron('warn', `Skipping TMDb post ${post.id} because it no longer exists`);
-                        continue;
-                    }
+                        if (!latestPost) {
+                            await logCron('warn', `Skipping TMDb post ${post.id} because it no longer exists`);
+                            continue;
+                        }
 
-                    if (latestPost.status !== 'scheduled') {
-                        await logCron('info', `Skipping TMDb post ${latestPost.id} because its status is now ${latestPost.status}`);
-                        continue;
-                    }
+                        if (latestPost.status !== 'scheduled') {
+                            await logCron('info', `Skipping TMDb post ${latestPost.id} because its status is now ${latestPost.status}`);
+                            continue;
+                        }
 
-                    if (latestPost.scheduledTime > now) {
-                        await logCron(
-                            'info',
-                            `Skipping TMDb post ${latestPost.id} because it was rescheduled to ${latestPost.scheduledTime.toISOString()}`
-                        );
-                        continue;
-                    }
+                        if (latestPost.scheduledTime > now) {
+                            await logCron(
+                                'info',
+                                `Skipping TMDb post ${latestPost.id} because it was rescheduled to ${latestPost.scheduledTime.toISOString()}`
+                            );
+                            continue;
+                        }
 
-                    const platforms = latestPost.platforms || [];
-                    if (platforms.length === 0) {
-                        await logCron('warn', `Post ${latestPost.id} has no target platforms, marking skipped`);
-                        await prisma.tMDbPost.update({
-                            where: { id: latestPost.id },
-                            data: {
+                        const platforms = latestPost.platforms || [];
+                        if (platforms.length === 0) {
+                            await logCron('warn', `Post ${latestPost.id} has no target platforms, marking skipped`);
+                            await prisma.tMDbPost.update({
+                                where: { id: latestPost.id },
+                                data: {
+                                    status: 'failed',
+                                    errorMessage: 'No target platforms configured for this TMDb post'
+                                }
+                            });
+                            continue;
+                        }
+
+                        const publishImageUrls = await resolveTMDbPublishImageUrls(latestPost);
+                        const primaryImageUrl = publishImageUrls[0] || latestPost.imageUrl || undefined;
+                        if (!primaryImageUrl) {
+                            const missingImageMessage = 'Auto-post skipped: no image available for this TMDb post';
+                            await updateTMDbPost(latestPost.id, {
                                 status: 'failed',
-                                errorMessage: 'No target platforms configured for this TMDb post'
-                            }
-                        });
-                        continue;
-                    }
+                                errorMessage: missingImageMessage,
+                            });
+                            await logCron('warn', `Skipped TMDb auto-post for ${latestPost.title}: no image available`);
+                            await notificationService.notifyUser({
+                                title: 'TMDb auto-post skipped',
+                                message: `"${latestPost.title}" was due to publish, but it has no image so it was skipped.`,
+                                type: 'warning',
+                                source: 'tmdb',
+                                actionPage: '/tmdb-feeds'
+                            });
+                            continue;
+                        }
 
-                    const publishImageUrls = await resolveTMDbPublishImageUrls(latestPost);
-                    const primaryImageUrl = publishImageUrls[0] || latestPost.imageUrl || undefined;
-                    if (!primaryImageUrl) {
-                        const missingImageMessage = 'Auto-post skipped: no image available for this TMDb post';
+                        const publishCaption = isGenericTMDbOutNowCaption(latestPost.caption, latestPost.title)
+                            ? buildTMDbPromptAlignedFallbackCaption(latestPost)
+                            : latestPost.caption || latestPost.title;
+
+                        if (publishCaption !== latestPost.caption) {
+                            await updateTMDbPost(latestPost.id, { caption: publishCaption });
+                        }
+
+                        const content = {
+                            text: publishCaption,
+                            title: latestPost.title,
+                            imageUrl: primaryImageUrl,
+                            imageUrls: publishImageUrls.length > 0 ? publishImageUrls : undefined,
+                        };
+
+                        const results = await publisherService.publish(platforms, content);
+                        const success = results.some(r => r.status === 'posted');
+                        const partialSuccess = success && results.some(r => r.status !== 'posted');
+                        const failureMessage = results
+                            .filter(r => r.status !== 'posted')
+                            .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
+                            .join(', ');
+
                         await updateTMDbPost(latestPost.id, {
+                            status: success ? 'published' : 'failed',
+                            publishedTime: now,
+                            dispatchedAt: now,
+                            errorMessage: success ? (failureMessage || null) : (failureMessage || 'Failed to publish TMDb post'),
+                        });
+
+                        if (success && !partialSuccess) {
+                            await logCron('info', `Successfully published post: ${latestPost.title}`);
+                        } else if (partialSuccess) {
+                            await logCron('warn', `Partially published post ${latestPost.title}: ${failureMessage}`);
+                            await notificationService.notifyUser({
+                                title: 'Auto-Post partially published',
+                                message: `"${latestPost.title}" posted to some platforms, but failed on: ${failureMessage}`,
+                                type: 'warning',
+                                source: 'tmdb',
+                                actionPage: '/tmdb-feeds'
+                            });
+                        } else {
+                            const errors = results.map(r => `${r.platform}: ${r.error}`).join(', ');
+                            await logCron('error', `Failed to publish post ${latestPost.title}: ${errors}`);
+
+                            await notificationService.notifyUser({
+                                title: 'Auto-Post Failed',
+                                message: `Failed to publish "${latestPost.title}". Check logs.`,
+                                type: 'error',
+                                source: 'tmdb',
+                                actionPage: '/tmdb-feeds'
+                            });
+                        }
+
+                    } catch (postError) {
+                        console.error(`Failed to process post ${post.id}`, postError);
+                        await updateTMDbPost(post.id, {
                             status: 'failed',
-                            errorMessage: missingImageMessage,
+                            errorMessage: postError instanceof Error ? postError.message : 'Failed to process TMDb post'
                         });
-                        await logCron('warn', `Skipped TMDb auto-post for ${latestPost.title}: no image available`);
-                        await notificationService.notifyUser({
-                            title: 'TMDb auto-post skipped',
-                            message: `"${latestPost.title}" was due to publish, but it has no image so it was skipped.`,
-                            type: 'warning',
-                            source: 'tmdb',
-                            actionPage: '/tmdb-feeds'
-                        });
-                        continue;
+                        await logCron('error', `Error processing post ${post.title}: ${postError}`);
                     }
-
-                    const publishCaption = isGenericTMDbOutNowCaption(latestPost.caption, latestPost.title)
-                        ? buildTMDbPromptAlignedFallbackCaption(latestPost)
-                        : latestPost.caption || latestPost.title;
-
-                    if (publishCaption !== latestPost.caption) {
-                        await updateTMDbPost(latestPost.id, { caption: publishCaption });
-                    }
-
-                    const content = {
-                        text: publishCaption,
-                        title: latestPost.title,
-                        imageUrl: primaryImageUrl,
-                        imageUrls: publishImageUrls.length > 0 ? publishImageUrls : undefined,
-                    };
-
-                    const results = await publisherService.publish(platforms, content);
-                    const success = results.some(r => r.status === 'posted');
-                    const partialSuccess = success && results.some(r => r.status !== 'posted');
-                    const failureMessage = results
-                        .filter(r => r.status !== 'posted')
-                        .map(r => `${r.platform}: ${r.error || 'Publish failed'}`)
-                        .join(', ');
-
-                    await updateTMDbPost(latestPost.id, {
-                        status: success ? 'published' : 'failed',
-                        publishedTime: now,
-                        dispatchedAt: now,
-                        errorMessage: success ? (failureMessage || null) : (failureMessage || 'Failed to publish TMDb post'),
-                    });
-
-                    if (success && !partialSuccess) {
-                        await logCron('info', `Successfully published post: ${latestPost.title}`);
-                    } else if (partialSuccess) {
-                        await logCron('warn', `Partially published post ${latestPost.title}: ${failureMessage}`);
-                        await notificationService.notifyUser({
-                            title: 'Auto-Post partially published',
-                            message: `"${latestPost.title}" posted to some platforms, but failed on: ${failureMessage}`,
-                            type: 'warning',
-                            source: 'tmdb',
-                            actionPage: '/tmdb-feeds'
-                        });
-                    } else {
-                        const errors = results.map(r => `${r.platform}: ${r.error}`).join(', ');
-                        await logCron('error', `Failed to publish post ${latestPost.title}: ${errors}`);
-
-                        await notificationService.notifyUser({
-                            title: 'Auto-Post Failed',
-                            message: `Failed to publish "${latestPost.title}". Check logs.`,
-                            type: 'error',
-                            source: 'tmdb',
-                            actionPage: '/tmdb-feeds'
-                        });
-                    }
-
-                } catch (postError) {
-                    console.error(`Failed to process post ${post.id}`, postError);
-                    await updateTMDbPost(post.id, {
-                        status: 'failed',
-                        errorMessage: postError instanceof Error ? postError.message : 'Failed to process TMDb post'
-                    });
-                    await logCron('error', `Error processing post ${post.title}: ${postError}`);
                 }
+            } catch (error) {
+                await logCron('error', `Post scheduler failed: ${error}`);
             }
-        } catch (error) {
-            await logCron('error', `Post scheduler failed: ${error}`);
-        }
+        }, 'tmdb-cron');
     }, cronOptions);
 
     // Compose Post Scheduler - Every 1 minute
     cron.schedule('* * * * *', async () => {
-        try {
-            const now = Date.now();
-            const state = await getComposeState();
-            const postsToPublish = state.items
-                .filter((item) =>
-                    item.status === 'scheduled'
-                    && typeof item.scheduledAt === 'string'
-                    && new Date(item.scheduledAt).getTime() <= now
-                    && (!item.publishLockExpiresAt || new Date(item.publishLockExpiresAt).getTime() <= now)
-                )
-                .sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime())
-                .slice(0, 5);
+        await runNonOverlappingCronTask('compose-post-scheduler', async () => {
+            try {
+                const now = Date.now();
+                const state = await getComposeState();
+                const postsToPublish = state.items
+                    .filter((item) =>
+                        item.status === 'scheduled'
+                        && typeof item.scheduledAt === 'string'
+                        && new Date(item.scheduledAt).getTime() <= now
+                        && (!item.publishLockExpiresAt || new Date(item.publishLockExpiresAt).getTime() <= now)
+                    )
+                    .sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime())
+                    .slice(0, 5);
 
-            if (postsToPublish.length === 0) {
-                return;
-            }
-
-            await logCron('info', `Found ${postsToPublish.length} compose posts to publish`, 'compose-cron');
-
-            for (const item of postsToPublish) {
-                const attemptStartedAt = new Date().toISOString();
-                const publishLockExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-                await mutateComposeItem(item.id, (currentItem) => ({
-                    ...currentItem,
-                    publishLockExpiresAt,
-                    lastPublishAttemptAt: attemptStartedAt,
-                    error: undefined,
-                    updatedAt: new Date().toISOString(),
-                }));
-
-                try {
-                    const refreshedState = await getComposeState();
-                    const latestItem = refreshedState.items.find((entry) => entry.id === item.id);
-                    if (!latestItem || latestItem.status !== 'scheduled' || latestItem.scheduledAt !== item.scheduledAt) {
-                        continue;
-                    }
-
-                    const result = await publishComposeItemFromState(latestItem);
-                    const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
-                    const nextError =
-                        nextStatus === 'failed'
-                            ? result.errorMessage || 'Failed to publish scheduled post.'
-                            : result.failedResults.length > 0
-                                ? result.errorMessage
-                                : undefined;
-
-                    await mutateComposeItem(item.id, (currentItem) => ({
-                        ...currentItem,
-                        status: nextStatus,
-                        scheduledAt: nextStatus === 'published' ? undefined : currentItem.scheduledAt,
-                        publishLockExpiresAt: undefined,
-                        lastPublishAttemptAt: attemptStartedAt,
-                        publishRetryCount: nextStatus === 'failed' ? (currentItem.publishRetryCount ?? 0) + 1 : 0,
-                        error: nextError,
-                        updatedAt: new Date().toISOString(),
-                    }));
-
-                    if (result.postedPlatforms.length > 0) {
-                        await logCron(
-                            result.failedResults.length > 0 ? 'warn' : 'info',
-                            result.failedResults.length > 0
-                                ? `Compose post partially published to ${result.postedPlatforms.join(', ')} with errors: ${result.errorMessage}`
-                                : `Compose post published to ${result.postedPlatforms.join(', ')}`,
-                            'compose-cron',
-                        );
-                    } else {
-                        await logCron('error', `Compose publish failed: ${nextError}`, 'compose-cron');
-                    }
-                } catch (error) {
-                    const message = error instanceof Error ? error.message : 'Failed to publish scheduled compose post';
-                    await mutateComposeItem(item.id, (currentItem) => ({
-                        ...currentItem,
-                        status: 'failed',
-                        publishLockExpiresAt: undefined,
-                        lastPublishAttemptAt: attemptStartedAt,
-                        publishRetryCount: (currentItem.publishRetryCount ?? 0) + 1,
-                        error: message,
-                        updatedAt: new Date().toISOString(),
-                    }));
-                    await logCron('error', `Compose post scheduler failed: ${message}`, 'compose-cron');
+                if (postsToPublish.length === 0) {
+                    return;
                 }
+
+                await logCron('info', `Found ${postsToPublish.length} compose posts to publish`, 'compose-cron');
+
+                for (const item of postsToPublish) {
+                    const attemptStartedAt = new Date().toISOString();
+                    const publishLockExpiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+
+                    await mutateComposeItem(item.id, (currentItem) => ({
+                        ...currentItem,
+                        publishLockExpiresAt,
+                        lastPublishAttemptAt: attemptStartedAt,
+                        error: undefined,
+                        updatedAt: new Date().toISOString(),
+                    }));
+
+                    try {
+                        const refreshedState = await getComposeState();
+                        const latestItem = refreshedState.items.find((entry) => entry.id === item.id);
+                        if (!latestItem || latestItem.status !== 'scheduled' || latestItem.scheduledAt !== item.scheduledAt) {
+                            continue;
+                        }
+
+                        const result = await publishComposeItemFromState(latestItem);
+                        const nextStatus = result.postedPlatforms.length > 0 ? 'published' : 'failed';
+                        const nextError =
+                            nextStatus === 'failed'
+                                ? result.errorMessage || 'Failed to publish scheduled post.'
+                                : result.failedResults.length > 0
+                                    ? result.errorMessage
+                                    : undefined;
+
+                        await mutateComposeItem(item.id, (currentItem) => ({
+                            ...currentItem,
+                            status: nextStatus,
+                            scheduledAt: nextStatus === 'published' ? undefined : currentItem.scheduledAt,
+                            publishLockExpiresAt: undefined,
+                            lastPublishAttemptAt: attemptStartedAt,
+                            publishRetryCount: nextStatus === 'failed' ? (currentItem.publishRetryCount ?? 0) + 1 : 0,
+                            error: nextError,
+                            updatedAt: new Date().toISOString(),
+                        }));
+
+                        if (result.postedPlatforms.length > 0) {
+                            await logCron(
+                                result.failedResults.length > 0 ? 'warn' : 'info',
+                                result.failedResults.length > 0
+                                    ? `Compose post partially published to ${result.postedPlatforms.join(', ')} with errors: ${result.errorMessage}`
+                                    : `Compose post published to ${result.postedPlatforms.join(', ')}`,
+                                'compose-cron',
+                            );
+                        } else {
+                            await logCron('error', `Compose publish failed: ${nextError}`, 'compose-cron');
+                        }
+                    } catch (error) {
+                        const message = error instanceof Error ? error.message : 'Failed to publish scheduled compose post';
+                        await mutateComposeItem(item.id, (currentItem) => ({
+                            ...currentItem,
+                            status: 'failed',
+                            publishLockExpiresAt: undefined,
+                            lastPublishAttemptAt: attemptStartedAt,
+                            publishRetryCount: (currentItem.publishRetryCount ?? 0) + 1,
+                            error: message,
+                            updatedAt: new Date().toISOString(),
+                        }));
+                        await logCron('error', `Compose post scheduler failed: ${message}`, 'compose-cron');
+                    }
+                }
+            } catch (error) {
+                await logCron('error', `Compose scheduler failed: ${error}`, 'compose-cron');
             }
-        } catch (error) {
-            await logCron('error', `Compose scheduler failed: ${error}`, 'compose-cron');
-        }
+        }, 'compose-cron');
     }, cronOptions);
 
     // Comment Processing - Every 10 minutes
     cron.schedule('*/10 * * * *', async () => {
-        try {
-            // 1. Poll (Ingest) new comments (Mock/Stub for now, or real if adapters exist)
-            await commentsService.pollComments();
+        await runNonOverlappingCronTask('comment-processing', async () => {
+            try {
+                // 1. Poll (Ingest) new comments (Mock/Stub for now, or real if adapters exist)
+                await commentsService.pollComments();
 
-            // 2. Process (Reply) to pending comments
-            await commentsService.processUnrepliedComments();
-        } catch (error) {
-            await logCron('error', `Comment processing failed: ${error}`);
-        }
+                // 2. Process (Reply) to pending comments
+                await commentsService.processUnrepliedComments();
+            } catch (error) {
+                await logCron('error', `Comment processing failed: ${error}`);
+            }
+        }, 'comments');
     }, cronOptions);
 
     // TMDb queued item cleanup - Every hour
     cron.schedule('0 * * * *', async () => {
-        try {
-            const settings = await getTMDbSettings();
-            const deletedCount = await cleanupQueuedTMDbPosts(settings.tmdbQueuedRetentionHours || 168);
+        await runNonOverlappingCronTask('tmdb-queued-cleanup', async () => {
+            try {
+                const settings = await getTMDbSettings();
+                const deletedCount = await cleanupQueuedTMDbPosts(settings.tmdbQueuedRetentionHours || 168);
 
-            if (deletedCount > 0) {
-                await logCron('info', `Deleted ${deletedCount} stale queued TMDb posts`);
+                if (deletedCount > 0) {
+                    await logCron('info', `Deleted ${deletedCount} stale queued TMDb posts`);
+                }
+            } catch (error) {
+                await logCron('error', `TMDb queued cleanup failed: ${error}`);
             }
-        } catch (error) {
-            await logCron('error', `TMDb queued cleanup failed: ${error}`);
-        }
+        }, 'tmdb-cron');
     }, cronOptions);
 
     // Cleanup - Daily at 03:00 UTC
     cron.schedule('0 3 * * *', async () => {
-        await logCron('info', 'Running cleanup tasks...');
-        try {
-            const now = new Date();
-            const keys = [
-                'cleanupEnabled',
-                'cleanupInterval',
-                'storageRetention',
-                'videoCleanupInterval',
-                'videoStorageRetention',
-                'imageCleanupInterval',
-                'imageStorageRetention',
-                'videoStudioCleanupInterval',
-                'videoStudioStorageRetention',
-                'logsRetention',
-                'recentActivityRetention',
-                'retentionDays',
-                'commentRetention',
-                'rssActivityRetention',
-                'videoActivityRetention',
-                'designStudioActivityRetention',
-                'videoStudioActivityRetention',
-                'tmdbActivityRetention',
-            ];
-            const settings = await prisma.setting.findMany({
-                where: { key: { in: keys } },
-                select: { key: true, value: true },
-            });
-            const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
+        await runNonOverlappingCronTask('global-cleanup', async () => {
+            await logCron('info', 'Running cleanup tasks...');
+            try {
+                const now = new Date();
+                const keys = [
+                    'cleanupEnabled',
+                    'cleanupInterval',
+                    'storageRetention',
+                    'videoCleanupInterval',
+                    'videoStorageRetention',
+                    'imageCleanupInterval',
+                    'imageStorageRetention',
+                    'videoStudioCleanupInterval',
+                    'videoStudioStorageRetention',
+                    'logsRetention',
+                    'recentActivityRetention',
+                    'retentionDays',
+                    'commentRetention',
+                    'rssActivityRetention',
+                    'videoActivityRetention',
+                    'designStudioActivityRetention',
+                    'videoStudioActivityRetention',
+                    'tmdbActivityRetention',
+                ];
+                const settings = await prisma.setting.findMany({
+                    where: { key: { in: keys } },
+                    select: { key: true, value: true },
+                });
+                const settingsMap = new Map(settings.map((setting) => [setting.key, setting.value]));
 
-            const cleanupEnabled = parseBooleanSettingValue(settingsMap.get('cleanupEnabled'), true);
-            if (!cleanupEnabled) {
-                await logCron('info', 'Cleanup skipped because Auto Cleanup is disabled.');
-                return;
-            }
+                const cleanupEnabled = parseBooleanSettingValue(settingsMap.get('cleanupEnabled'), true);
+                if (!cleanupEnabled) {
+                    await logCron('info', 'Cleanup skipped because Auto Cleanup is disabled.');
+                    return;
+                }
 
-            const globalCleanupInterval = parseCleanupIntervalValue(settingsMap.get('cleanupInterval'), 'daily');
-            const globalStorageRetentionHours = parsePositiveIntSettingValue(settingsMap.get('storageRetention'), 48);
-            const legacyLogRetentionHours = parsePositiveIntSettingValue(settingsMap.get('retentionDays'), 7) * 24;
-            const recentActivityRetentionHours = parsePositiveIntSettingValue(settingsMap.get('recentActivityRetention'), 24);
+                const globalCleanupInterval = parseCleanupIntervalValue(settingsMap.get('cleanupInterval'), 'daily');
+                const globalStorageRetentionHours = parsePositiveIntSettingValue(settingsMap.get('storageRetention'), 48);
+                const legacyLogRetentionHours = parsePositiveIntSettingValue(settingsMap.get('retentionDays'), 7) * 24;
+                const recentActivityRetentionHours = parsePositiveIntSettingValue(settingsMap.get('recentActivityRetention'), 24);
 
-            const logsRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('logsRetention'),
-                legacyLogRetentionHours
-            );
-            const commentRetentionHours = parsePositiveIntSettingValue(settingsMap.get('commentRetention'), 168);
-            const rssActivityRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('rssActivityRetention'),
-                recentActivityRetentionHours
-            );
-            const designStudioActivityRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('designStudioActivityRetention'),
-                recentActivityRetentionHours
-            );
-            const videoStudioActivityRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('videoStudioActivityRetention'),
-                recentActivityRetentionHours
-            );
-            const tmdbActivityRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('tmdbActivityRetention'),
-                recentActivityRetentionHours
-            );
+                const logsRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('logsRetention'),
+                    legacyLogRetentionHours
+                );
+                const commentRetentionHours = parsePositiveIntSettingValue(settingsMap.get('commentRetention'), 168);
+                const rssActivityRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('rssActivityRetention'),
+                    recentActivityRetentionHours
+                );
+                const designStudioActivityRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('designStudioActivityRetention'),
+                    recentActivityRetentionHours
+                );
+                const videoStudioActivityRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('videoStudioActivityRetention'),
+                    recentActivityRetentionHours
+                );
+                const tmdbActivityRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('tmdbActivityRetention'),
+                    recentActivityRetentionHours
+                );
 
-            const videoCleanupInterval = parseCleanupIntervalValue(
-                settingsMap.get('videoCleanupInterval'),
-                globalCleanupInterval
-            );
-            const imageCleanupInterval = parseCleanupIntervalValue(
-                settingsMap.get('imageCleanupInterval'),
-                globalCleanupInterval
-            );
-            const videoStudioCleanupInterval = parseCleanupIntervalValue(
-                settingsMap.get('videoStudioCleanupInterval'),
-                globalCleanupInterval
-            );
+                const videoCleanupInterval = parseCleanupIntervalValue(
+                    settingsMap.get('videoCleanupInterval'),
+                    globalCleanupInterval
+                );
+                const imageCleanupInterval = parseCleanupIntervalValue(
+                    settingsMap.get('imageCleanupInterval'),
+                    globalCleanupInterval
+                );
+                const videoStudioCleanupInterval = parseCleanupIntervalValue(
+                    settingsMap.get('videoStudioCleanupInterval'),
+                    globalCleanupInterval
+                );
 
-            const videoStorageRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('videoStorageRetention'),
-                globalStorageRetentionHours
-            );
-            const imageStorageRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('imageStorageRetention'),
-                globalStorageRetentionHours
-            );
-            const videoStudioStorageRetentionHours = parsePositiveIntSettingValue(
-                settingsMap.get('videoStudioStorageRetention'),
-                globalStorageRetentionHours
-            );
+                const videoStorageRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('videoStorageRetention'),
+                    globalStorageRetentionHours
+                );
+                const imageStorageRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('imageStorageRetention'),
+                    globalStorageRetentionHours
+                );
+                const videoStudioStorageRetentionHours = parsePositiveIntSettingValue(
+                    settingsMap.get('videoStudioStorageRetention'),
+                    globalStorageRetentionHours
+                );
 
             let logsDeleted = 0;
             if (shouldRunCleanupInterval(globalCleanupInterval, now)) {
@@ -1217,6 +1269,7 @@ export async function initCronJobs() {
         } catch (error) {
             await logCron('error', `Cleanup failed: ${error}`);
         }
+        }, 'cleanup');
     }, cronOptions);
 
     console.log('✅ Cron Jobs started successfully');
