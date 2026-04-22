@@ -110,7 +110,21 @@ interface RSSItem {
   canonicalEntityVersion?: string;
   captionGenerationPath?: RSSCaptionGenerationPath;
   captionGenerationVersion?: string;
+  runtimeDiagnostics?: RSSRuntimeDiagnostics;
   editorialBrain?: RSSEditorialBrainStoredDecision;
+}
+
+export interface RSSRuntimeDiagnostics {
+  rulesetVersion?: string;
+  codeVersion?: string;
+  canonicalEntityVersion?: string;
+  captionGenerationVersion?: string;
+  captionPath?: RSSCaptionGenerationPath;
+  reusedStoredCaption?: boolean;
+  promotedImageStrategy?: string;
+  promotedCaptionStrategy?: string;
+  finalFailureCodes?: string[];
+  updatedAt?: string;
 }
 
 interface RSSFeedData {
@@ -168,6 +182,7 @@ export interface RSSActivityItem {
   duplicateEventKey?: string;
   winningSource?: string;
   suppressedSources?: string[];
+  runtime?: RSSRuntimeDiagnostics;
   editorialBrain?: RSSEditorialBrainActivityView;
   error?: string;
 }
@@ -262,6 +277,7 @@ interface RSSActivityMetadata {
   duplicateEventKey?: string;
   winningSource?: string;
   suppressedSources?: string[];
+  runtime?: RSSRuntimeDiagnostics;
   editorialBrain?: RSSEditorialBrainActivityView;
   errorMessage?: string;
 }
@@ -5177,6 +5193,7 @@ function serializeRSSItem(item: RSSItem): Prisma.InputJsonValue {
     guid: item.guid ?? null,
     canonicalEntity: item.canonicalEntity ?? null,
     canonicalEntityVersion: item.canonicalEntityVersion ?? null,
+    runtimeDiagnostics: item.runtimeDiagnostics ?? null,
   }) as Prisma.InputJsonValue;
 }
 
@@ -5284,6 +5301,57 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
       ? value.canonicalEntity as RSSCanonicalEntity
       : undefined,
     canonicalEntityVersion: typeof value.canonicalEntityVersion === 'string' ? value.canonicalEntityVersion : undefined,
+    runtimeDiagnostics: value.runtimeDiagnostics && typeof value.runtimeDiagnostics === 'object' && !Array.isArray(value.runtimeDiagnostics)
+      ? normalizeRSSRuntimeDiagnostics(value.runtimeDiagnostics)
+      : undefined,
+  };
+}
+
+function normalizeRSSRuntimeDiagnostics(value: unknown): RSSRuntimeDiagnostics | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const finalFailureCodes = Array.isArray(record.finalFailureCodes)
+    ? record.finalFailureCodes
+        .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+        .map((entry) => entry.trim())
+    : undefined;
+
+  return {
+    rulesetVersion: typeof record.rulesetVersion === 'string' ? record.rulesetVersion : undefined,
+    codeVersion: typeof record.codeVersion === 'string' ? record.codeVersion : undefined,
+    canonicalEntityVersion: typeof record.canonicalEntityVersion === 'string' ? record.canonicalEntityVersion : undefined,
+    captionGenerationVersion: typeof record.captionGenerationVersion === 'string' ? record.captionGenerationVersion : undefined,
+    captionPath:
+      record.captionPath === 'ai_prompted' ||
+      record.captionPath === 'repaired_caption' ||
+      record.captionPath === 'deterministic_template' ||
+      record.captionPath === 'excerpt_fallback'
+        ? record.captionPath
+        : undefined,
+    reusedStoredCaption: typeof record.reusedStoredCaption === 'boolean' ? record.reusedStoredCaption : undefined,
+    promotedImageStrategy: typeof record.promotedImageStrategy === 'string' ? record.promotedImageStrategy : undefined,
+    promotedCaptionStrategy: typeof record.promotedCaptionStrategy === 'string' ? record.promotedCaptionStrategy : undefined,
+    finalFailureCodes,
+    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : undefined,
+  };
+}
+
+function applyRSSRuntimeDiagnosticsToItem(
+  item: RSSItem,
+  diagnostics: RSSRuntimeDiagnostics,
+  options: { now?: Date } = {}
+): RSSItem {
+  const updatedAt = (options.now || new Date()).toISOString();
+  return {
+    ...item,
+    runtimeDiagnostics: {
+      ...item.runtimeDiagnostics,
+      ...diagnostics,
+      updatedAt,
+    },
   };
 }
 
@@ -6397,6 +6465,7 @@ function parseRSSActivityLog(log: { id: string; timestamp: Date; metadata: Prism
           .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
           .map((entry) => entry.trim())
       : undefined,
+    runtime: normalizeRSSRuntimeDiagnostics(metadata.runtime),
     editorialBrain: metadata.editorialBrain && typeof metadata.editorialBrain === 'object' && !Array.isArray(metadata.editorialBrain)
       ? metadata.editorialBrain as unknown as RSSEditorialBrainActivityView
       : undefined,
@@ -6461,6 +6530,7 @@ function buildRSSActivityItemFromFeedRecord(record: {
     duplicateEventKey: undefined,
     winningSource: undefined,
     suppressedSources: undefined,
+    runtime: item?.runtimeDiagnostics,
     editorialBrain: buildRSSEditorialBrainActivityView(item || undefined),
     error: record.errorMessage || undefined,
   };
@@ -6621,6 +6691,7 @@ function rememberRSSActivity(items: RSSActivityItem[], metadata: RSSActivityMeta
     duplicateEventKey: metadata.duplicateEventKey,
     winningSource: metadata.winningSource,
     suppressedSources: metadata.suppressedSources,
+    runtime: metadata.runtime,
     error: metadata.errorMessage,
   });
 }
@@ -6838,6 +6909,18 @@ async function attemptRSSPublish(
     const hadStoredImageUrls = Boolean((item.imageUrls || []).length || item.imageUrl);
 
     if (remainingPlatforms.length === 0) {
+      const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+        codeVersion: getRSSRuntimeCodeVersion(),
+        canonicalEntityVersion: item.canonicalEntityVersion,
+        captionGenerationVersion: item.captionGenerationVersion,
+        captionPath: item.captionGenerationPath,
+        reusedStoredCaption: true,
+        promotedImageStrategy,
+        promotedCaptionStrategy,
+        finalFailureCodes: [],
+      });
+      Object.assign(item, runtimeDiagnosticItem);
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -6866,6 +6949,18 @@ async function attemptRSSPublish(
     const publishImageUrls = publishImages.map((image) => image.url);
     const publishImageUrl = publishImageUrls[0];
     if (publishImageUrls.length === 0) {
+      const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+        codeVersion: getRSSRuntimeCodeVersion(),
+        canonicalEntityVersion: item.canonicalEntityVersion,
+        captionGenerationVersion: item.captionGenerationVersion,
+        captionPath: item.captionGenerationPath,
+        reusedStoredCaption: false,
+        promotedImageStrategy,
+        promotedCaptionStrategy,
+        finalFailureCodes: ['IMAGE_NOT_RESOLVED_RUNTIME'],
+      });
+      Object.assign(item, runtimeDiagnosticItem);
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -6961,6 +7056,18 @@ async function attemptRSSPublish(
         captionPreview: (caption || '').slice(0, 220),
         rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
       });
+      const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+        codeVersion: getRSSRuntimeCodeVersion(),
+        canonicalEntityVersion: item.canonicalEntityVersion,
+        captionGenerationVersion: item.captionGenerationVersion,
+        captionPath: captionResult.path,
+        reusedStoredCaption: shouldReuseStoredCaption,
+        promotedImageStrategy,
+        promotedCaptionStrategy,
+        finalFailureCodes: publishValidation.reasonCodes,
+      });
+      Object.assign(item, runtimeDiagnosticItem);
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -7017,6 +7124,19 @@ async function attemptRSSPublish(
       editorialBrainPromotedCaptionStrategy: promotedCaptionStrategy,
     });
 
+    const readyRuntimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+      rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+      codeVersion: getRSSRuntimeCodeVersion(),
+      canonicalEntityVersion: item.canonicalEntityVersion,
+      captionGenerationVersion: item.captionGenerationVersion,
+      captionPath: captionResult.path,
+      reusedStoredCaption: shouldReuseStoredCaption,
+      promotedImageStrategy,
+      promotedCaptionStrategy,
+      finalFailureCodes: [],
+    });
+    Object.assign(item, readyRuntimeDiagnosticItem);
+
     console.log('[RSS][Publish] Starting platform publish batch', {
       feedId: feed.id,
       title: item.title,
@@ -7064,6 +7184,18 @@ async function attemptRSSPublish(
     const unresolvedPlatforms = platforms.filter((platform) => !platformPostIds[platform]);
 
     if (successfulPlatforms.length === 0) {
+      const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+        codeVersion: getRSSRuntimeCodeVersion(),
+        canonicalEntityVersion: item.canonicalEntityVersion,
+        captionGenerationVersion: item.captionGenerationVersion,
+        captionPath: item.captionGenerationPath,
+        reusedStoredCaption: shouldReuseStoredCaption,
+        promotedImageStrategy,
+        promotedCaptionStrategy,
+        finalFailureCodes: ['PLATFORM_PUBLISH_FAILED'],
+      });
+      Object.assign(item, runtimeDiagnosticItem);
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -7086,6 +7218,18 @@ async function attemptRSSPublish(
     }
 
     if (unresolvedPlatforms.length > 0) {
+      const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+        rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+        codeVersion: getRSSRuntimeCodeVersion(),
+        canonicalEntityVersion: item.canonicalEntityVersion,
+        captionGenerationVersion: item.captionGenerationVersion,
+        captionPath: item.captionGenerationPath,
+        reusedStoredCaption: shouldReuseStoredCaption,
+        promotedImageStrategy,
+        promotedCaptionStrategy,
+        finalFailureCodes: ['PLATFORM_PUBLISH_PENDING_RETRY'],
+      });
+      Object.assign(item, runtimeDiagnosticItem);
       const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -7107,6 +7251,18 @@ async function attemptRSSPublish(
       };
     }
 
+    const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+      rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+      codeVersion: getRSSRuntimeCodeVersion(),
+      canonicalEntityVersion: item.canonicalEntityVersion,
+      captionGenerationVersion: item.captionGenerationVersion,
+      captionPath: item.captionGenerationPath,
+      reusedStoredCaption: shouldReuseStoredCaption,
+      promotedImageStrategy,
+      promotedCaptionStrategy,
+      finalFailureCodes: [],
+    });
+    Object.assign(item, runtimeDiagnosticItem);
     const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
       promotedImageStrategy,
       promotedCaptionStrategy,
@@ -7126,6 +7282,15 @@ async function attemptRSSPublish(
       errorMessage: partialFailureMessage,
     };
   } catch (error) {
+    const runtimeDiagnosticItem = applyRSSRuntimeDiagnosticsToItem(item, {
+      rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+      codeVersion: getRSSRuntimeCodeVersion(),
+      canonicalEntityVersion: item.canonicalEntityVersion,
+      captionGenerationVersion: item.captionGenerationVersion,
+      captionPath: item.captionGenerationPath,
+      finalFailureCodes: ['RUNTIME_EXCEPTION'],
+    });
+    Object.assign(item, runtimeDiagnosticItem);
     const resolvedItem = applyRSSEditorialBrainRuntimeOutcomeToItem(item, {
       finalFailureCodes: ['RUNTIME_EXCEPTION'],
       lastOutcome: 'failed',
@@ -8144,6 +8309,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           platforms: publishAttempt.successfulPlatforms,
           platformPostIds: publishAttempt.platformPostIds,
           platformResults: publishAttempt.platformResults,
+          runtime: resolvedActivityItem.runtimeDiagnostics,
           errorMessage: publishAttempt.errorMessage,
         };
         await logRSSActivity(publishedMetadata);
@@ -8183,6 +8349,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           platforms: publishAttempt.remainingPlatforms,
           platformPostIds: publishAttempt.platformPostIds,
           platformResults: publishAttempt.platformResults,
+          runtime: resolvedActivityItem.runtimeDiagnostics,
           errorMessage: publishAttempt.errorMessage,
         };
         await logRSSActivity(pendingMetadata);
@@ -8221,6 +8388,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
         platforms,
         platformPostIds: publishAttempt.platformPostIds,
         platformResults: publishAttempt.platformResults,
+        runtime: resolvedActivityItem.runtimeDiagnostics,
         errorMessage: publishAttempt.errorMessage,
       };
       await logRSSActivity(failedMetadata);
@@ -8940,14 +9108,11 @@ async function saveRSSEditorialBrainReview(
   }));
 }
 
-async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
-  const support = await getRSSFeedColumnSupport();
-  if (!support.feedItemsTable) {
-    throw new Error('RSS activity retry is not available in this build.');
-  }
-
-  const feedSelect = await getRSSFeedSelect();
-  const record = await prisma.rSSFeedItem.findUnique({
+async function findRSSFeedItemRecordByActivityId(
+  id: string,
+  feedSelect: Prisma.RSSFeedSelect
+) {
+  const directRecord = await prisma.rSSFeedItem.findUnique({
     where: { id },
     include: {
       feed: {
@@ -8955,6 +9120,69 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
       },
     },
   });
+
+  if (directRecord?.feed) {
+    return directRecord;
+  }
+
+  const activityLog = await prisma.log.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      metadata: true,
+    },
+  });
+
+  const activityItem = activityLog ? parseRSSActivityLog({
+    id: activityLog.id,
+    timestamp: new Date(),
+    metadata: activityLog.metadata,
+  }) : null;
+
+  if (!activityItem?.feedId) {
+    return null;
+  }
+
+  const matchClauses: Prisma.RSSFeedItemWhereInput[] = [];
+  if (activityItem.link) {
+    matchClauses.push({ link: activityItem.link });
+  }
+  if (activityItem.title) {
+    matchClauses.push({ title: activityItem.title });
+  }
+  if (matchClauses.length === 0) {
+    return null;
+  }
+
+  const candidates = await prisma.rSSFeedItem.findMany({
+    where: {
+      feedId: activityItem.feedId,
+      OR: matchClauses,
+    },
+    orderBy: [
+      { publishedAt: 'desc' },
+      { firstSeenAt: 'desc' },
+      { createdAt: 'desc' },
+    ],
+    take: 1,
+    include: {
+      feed: {
+        select: feedSelect,
+      },
+    },
+  });
+
+  return candidates[0] || null;
+}
+
+async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
+  const support = await getRSSFeedColumnSupport();
+  if (!support.feedItemsTable) {
+    throw new Error('RSS activity retry is not available in this build.');
+  }
+
+  const feedSelect = await getRSSFeedSelect();
+  const record = await findRSSFeedItemRecordByActivityId(id, feedSelect);
 
   if (!record?.feed) {
     throw new Error('RSS activity item not found.');
@@ -9055,6 +9283,7 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
         platforms: publishAttempt.successfulPlatforms,
         platformPostIds: publishAttempt.platformPostIds,
         platformResults: publishAttempt.platformResults,
+        runtime: resolvedActivityItem.runtimeDiagnostics,
         errorMessage: publishAttempt.errorMessage,
       };
       await logRSSActivity(publishedMetadata);
@@ -9092,6 +9321,7 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
         platforms: publishAttempt.remainingPlatforms,
         platformPostIds: publishAttempt.platformPostIds,
         platformResults: publishAttempt.platformResults,
+        runtime: resolvedActivityItem.runtimeDiagnostics,
         errorMessage: publishAttempt.errorMessage,
       };
       await logRSSActivity(pendingMetadata);
@@ -9127,6 +9357,7 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
       platforms,
       platformPostIds: publishAttempt.platformPostIds,
       platformResults: publishAttempt.platformResults,
+      runtime: resolvedActivityItem.runtimeDiagnostics,
       errorMessage: publishAttempt.errorMessage,
     };
     await logRSSActivity(failedMetadata);
@@ -9296,6 +9527,10 @@ export const __rssAuditTestUtils = {
   buildRSSEditorialBrainActivityView,
   applyRSSEditorialBrainRuntimeOutcomeToItem,
   applyRSSEditorialBrainReviewToItem,
+  normalizeRSSRuntimeDiagnostics,
+  applyRSSRuntimeDiagnosticsToItem,
+  buildRSSActivityItemFromFeedRecord,
+  parseRSSActivityLog,
   planRssEditorialBrainInvocation,
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,

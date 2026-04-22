@@ -3043,30 +3043,92 @@ function classifyRSSFallbackPath(caption: string): RSSCaptionGenerationPath {
     return 'deterministic_template';
 }
 
+function buildPublisherSafeRSSFallbackSupportLine(context: RSSContext): string | undefined {
+    const candidates = [
+        stripHtmlTags(context.summary || ''),
+        stripHtmlTags(context.articleBody || ''),
+        stripHtmlTags(context.articleContentHtml || ''),
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = sanitizeRSSCaptionSurfaceText(candidate).replace(/\s+/g, ' ').trim();
+        if (!normalized) {
+            continue;
+        }
+
+        const firstSentence = normalized.match(/(.{20,220}?[.!?])(?:\s|$)/)?.[1]?.trim() || normalized.slice(0, 180).trim();
+        if (
+            !firstSentence ||
+            hasRSSArticlePackageLabel(firstSentence) ||
+            /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])|â€¦/.test(firstSentence) ||
+            /\bthis (?:article|piece|review|recap)\b/i.test(firstSentence) ||
+            containsRSSOutletName(firstSentence)
+        ) {
+            continue;
+        }
+
+        return ensureRSSSentenceTerminal(firstSentence);
+    }
+
+    return undefined;
+}
+
+function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string {
+    const normalizedTitle = normalizeRSSHeadlineInput(context.articleTitle)
+        .replace(/\s*\((?:exclusive|first look|tv news roundup|review|spoiler alert|watch|listen)\)\s*$/i, '')
+        .replace(/\s*:\s*["'“”].+$/, '')
+        .trim();
+    const lead = ensureRSSSentenceTerminal(normalizedTitle);
+    if (!lead) {
+        return '';
+    }
+
+    const support = buildPublisherSafeRSSFallbackSupportLine(context);
+    if (!support) {
+        return lead;
+    }
+
+    const normalizedLead = normalizeRSSHeadlineInput(lead);
+    const normalizedSupport = normalizeRSSHeadlineInput(support);
+    if (!normalizedSupport || normalizedLead === normalizedSupport) {
+        return lead;
+    }
+
+    return `${lead}\n\n${support}`;
+}
+
 function buildRSSPublishSafeDeterministicResult(
     caption: string,
     context: RSSContext,
 ): RSSCaptionGenerationResult {
     const normalized = enforceRSSCaptionPunctuation(caption);
-    if (!normalized) {
-        return buildRSSFallbackResult(caption);
+    const rebuilt = buildPublisherSafeRSSDeterministicCaption(context);
+    const candidate = normalized && classifyRSSFallbackPath(normalized) !== 'excerpt_fallback' && !failsRSSCaptionFormatting(normalized, context)
+        ? normalized
+        : rebuilt;
+
+    if (candidate && !failsRSSCaptionFormatting(candidate, context)) {
+        return {
+            caption: candidate,
+            path: 'repaired_caption',
+        };
     }
 
-    if (classifyRSSFallbackPath(normalized) !== 'excerpt_fallback') {
+    if (normalized && !failsRSSCaptionFormatting(normalized, context)) {
         return {
             caption: normalized,
             path: 'repaired_caption',
         };
     }
 
-    if (!failsRSSCaptionFormatting(normalized, context)) {
+    if (rebuilt) {
         return {
-            caption: normalized,
+            caption: rebuilt,
             path: 'repaired_caption',
         };
     }
 
-    return buildRSSFallbackResult(normalized);
+    return buildRSSFallbackResult(normalized || caption);
 }
 
 function shouldAllowDeterministicPublisherSafeCaption(

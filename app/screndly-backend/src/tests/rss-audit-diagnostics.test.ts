@@ -21,6 +21,9 @@ const {
   applyRSSEditorialBrainImageStrategyPromotion,
   buildRSSEditorialBrainCaptionStrategyCalibration,
   selectRSSEditorialBrainPromotedCaptionStrategy,
+  applyRSSRuntimeDiagnosticsToItem,
+  buildRSSActivityItemFromFeedRecord,
+  parseRSSActivityLog,
 } = __rssAuditTestUtils;
 
 function projectAnalysis(overrides: Record<string, any> = {}): any {
@@ -2527,6 +2530,105 @@ test('editorial brain runtime outcome metadata is exposed in activity views for 
   assert.equal(view?.runtime?.promotedCaptionStrategy, 'first_look');
   assert.deepEqual(view?.runtime?.finalFailureCodes, ['CAPTION_HEADLINE_JUNK']);
   assert.equal(view?.runtime?.lastOutcome, 'failed');
+});
+
+test('activity item projection exposes stored runtime diagnostics for live debugging', () => {
+  const runtimeItem = applyRSSRuntimeDiagnosticsToItem({
+    title: 'Hilary Duff Felt "Quite Sad" Watching Docs on Britney Spears',
+    link: 'https://example.com/hilary-duff',
+    description: 'Hilary Duff reflected on child-star documentaries.',
+    pubDate: new Date('2026-04-22T15:14:18.000Z'),
+    imageUrls: [],
+    generatedCaption: 'Hilary Duff felt "quite sad" watching documentaries about Britney Spears and exploited child stars.',
+    captionGenerationPath: 'repaired_caption',
+    captionGenerationVersion: '2026-04-22-live-lanes-1',
+    canonicalEntityVersion: '2026-04-22-live-lanes-1',
+  }, {
+    rulesetVersion: '2026-04-22-live-lanes-1',
+    codeVersion: '6355b41d',
+    captionGenerationVersion: '2026-04-22-live-lanes-1',
+    canonicalEntityVersion: '2026-04-22-live-lanes-1',
+    captionPath: 'repaired_caption',
+    reusedStoredCaption: false,
+    finalFailureCodes: ['CAPTION_NON_PUBLISHER_FALLBACK'],
+  }, {
+    now: new Date('2026-04-22T15:15:21.193Z'),
+  });
+
+  const activity = buildRSSActivityItemFromFeedRecord({
+    id: 'record-1',
+    feedId: 'feed-1',
+    title: runtimeItem.title,
+    link: runtimeItem.link,
+    status: 'failed',
+    itemData: runtimeItem as any,
+    firstSeenAt: new Date('2026-04-22T15:14:18.000Z'),
+    publishedAt: new Date('2026-04-22T15:14:18.000Z'),
+    errorMessage: 'Publishing blocked by RSS validation: CAPTION_NON_PUBLISHER_FALLBACK.',
+    feed: {
+      id: 'feed-1',
+      name: 'Variety | TV',
+      platformsEnabled: { facebook: true },
+    },
+  });
+
+  assert.equal(activity.runtime?.rulesetVersion, '2026-04-22-live-lanes-1');
+  assert.equal(activity.runtime?.captionPath, 'repaired_caption');
+  assert.equal(activity.runtime?.reusedStoredCaption, false);
+  assert.deepEqual(activity.runtime?.finalFailureCodes, ['CAPTION_NON_PUBLISHER_FALLBACK']);
+});
+
+test('legacy log activity projection preserves runtime diagnostics for retry investigation', () => {
+  const activity = parseRSSActivityLog({
+    id: 'log-1',
+    timestamp: new Date('2026-04-22T15:15:21.193Z'),
+    metadata: {
+      category: 'rss_activity',
+      status: 'failed',
+      feedId: 'feed-1',
+      feedName: 'Variety | TV',
+      itemTitle: 'Hilary Duff Felt Quite Sad Watching Docs on Britney Spears',
+      itemLink: 'https://example.com/hilary-duff',
+      platforms: ['Facebook'],
+      errorMessage: 'Publishing blocked by RSS validation: CAPTION_NON_PUBLISHER_FALLBACK.',
+      runtime: {
+        rulesetVersion: '2026-04-22-live-lanes-1',
+        codeVersion: '6355b41d',
+        captionGenerationVersion: '2026-04-22-live-lanes-1',
+        canonicalEntityVersion: '2026-04-22-live-lanes-1',
+        captionPath: 'excerpt_fallback',
+        reusedStoredCaption: false,
+        finalFailureCodes: ['CAPTION_NON_PUBLISHER_FALLBACK'],
+      },
+    },
+  } as any);
+
+  assert.equal(activity?.runtime?.rulesetVersion, '2026-04-22-live-lanes-1');
+  assert.equal(activity?.runtime?.captionPath, 'excerpt_fallback');
+  assert.deepEqual(activity?.runtime?.finalFailureCodes, ['CAPTION_NON_PUBLISHER_FALLBACK']);
+});
+
+test('publisher-safe deterministic fallback rewrites excerpt-shaped live caption failures', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Hilary Duff reflected on her child star upbringing at the TIME100 Summit in Manhattan, where Time executive editor Dan Macsai asked if documentaries like "Quiet on Set" changed her perspective [...]',
+    {
+      articleTitle: 'Hilary Duff Felt "Quite Sad" Watching Docs on Britney Spears and Exploited Child Stars: "I\'m Grateful I Wasn\'t Put in Too Many Positions That Left Battle Wounds"',
+      feedName: 'Variety | TV',
+      summary: 'Hilary Duff reflected on her child star upbringing at the TIME100 Summit in Manhattan.',
+      articleBody: 'Hilary Duff said she felt quite sad watching documentaries about Britney Spears and exploited child stars.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Hilary Duff',
+        entityType: 'person',
+        eventType: 'reflection',
+        confidence: 0.92,
+      },
+    }
+  );
+
+  assert.equal(result.path, 'repaired_caption');
+  assert.ok(!result.caption.includes('[...]'));
+  assert.match(result.caption, /Hilary Duff Felt "Quite Sad" Watching Docs on Britney Spears and Exploited Child Stars\./);
 });
 
 test('editorial brain review persistence normalizes review payloads onto stored RSS items', () => {
