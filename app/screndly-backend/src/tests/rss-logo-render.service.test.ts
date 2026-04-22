@@ -82,6 +82,22 @@ test('getTMDbLogoCardDiagnosticsFromBuffer scales very wide logos down for 16:9 
     const diagnostics = await getTMDbLogoCardDiagnosticsFromBuffer(pngBuffer, 'logo');
 
     assert.equal(diagnostics.chosenCanvas, '16:9');
-    assert.ok(diagnostics.dimensions.maxWidth <= 1080);
-    assert.ok(diagnostics.dimensions.maxHeight <= 280);
+    assert.ok(diagnostics.dimensions.maxWidth <= 820);
+    assert.ok(diagnostics.dimensions.maxHeight <= 190);
+});
+
+test('getTMDbLogoCardDiagnosticsFromBuffer keeps square-card logo sizing comfortably inset', async () => {
+    const mediumLogo = Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="900" height="760" viewBox="0 0 900 760">
+            <rect width="900" height="760" fill="transparent" />
+            <rect x="200" y="235" width="500" height="290" rx="12" fill="#111111" />
+        </svg>
+    `);
+
+    const pngBuffer = await sharp(mediumLogo).png().toBuffer();
+    const diagnostics = await getTMDbLogoCardDiagnosticsFromBuffer(pngBuffer, 'logo');
+
+    assert.equal(diagnostics.chosenCanvas, '1:1');
+    assert.ok(diagnostics.dimensions.maxWidth <= 620);
+    assert.ok(diagnostics.dimensions.maxHeight <= 300);
 });

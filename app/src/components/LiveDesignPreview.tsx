@@ -287,10 +287,10 @@ function resolveBrandMode(requestedMode: DesignStudioBrandBlockMode | undefined,
 function normalizePreviewFontFamily(value?: string): string {
   const normalized = typeof value === 'string' ? value.replace(/["']/g, '').trim() : '';
   if (!normalized) {
-    return 'PFDinTextCompPro';
+    return 'PF Din Text Comp Pro';
   }
   if (normalized.toLowerCase().includes('pfdin')) {
-    return 'PFDinTextCompPro';
+    return 'PF Din Text Comp Pro';
   }
   return normalized;
 }
@@ -435,7 +435,7 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
         @font-face {
-          font-family: 'PFDinTextCompPro';
+          font-family: 'PF Din Text Comp Pro';
           src: url('/design-studio/z-PFDinTextCompPro-Bold.ttf') format('truetype');
           font-weight: 700;
           font-style: normal;
@@ -519,10 +519,10 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
             display: 'flex',
             flexDirection: 'column',
             justifyContent: variantKey.startsWith('bottom') ? 'flex-end' : 'flex-start',
-            fontWeight: 800,
+            fontWeight: 700,
             textTransform: 'uppercase',
-            letterSpacing: '-0.03em',
-            fontFamily: `"${previewFontFamily}", "PFDinTextCompPro", "Impact", "Arial Narrow Bold", sans-serif`,
+            letterSpacing: '0',
+            fontFamily: `"${previewFontFamily}", "PF Din Text Comp Pro", "Impact", "Arial Narrow Bold", sans-serif`,
             textShadow: headerColor.toLowerCase() === '#000000' ? 'none' : '0 1px 2px rgba(0,0,0,0.28)',
             zIndex: 30,
           }}

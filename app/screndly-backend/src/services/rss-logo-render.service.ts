@@ -235,21 +235,55 @@ function chooseLogoCardDimensions(
 ): { width: number; height: number; maxWidth: number; maxHeight: number } {
   if (intent === 'brand_backdrop' || logoAspectRatio >= LOGO_WIDE_RATIO || contrastRatio < LOGO_LOW_CONTRAST_RATIO) {
     if (logoAspectRatio >= 3.4) {
-      return { width: 1600, height: 900, maxWidth: 1040, maxHeight: 240 };
+      return { width: 1600, height: 900, maxWidth: 820, maxHeight: 190 };
     }
 
     if (logoAspectRatio >= 2.2) {
-      return { width: 1600, height: 900, maxWidth: 980, maxHeight: 280 };
+      return { width: 1600, height: 900, maxWidth: 780, maxHeight: 220 };
     }
 
-    return { width: 1600, height: 900, maxWidth: 820, maxHeight: 340 };
+    return { width: 1600, height: 900, maxWidth: 700, maxHeight: 250 };
   }
 
   if (logoAspectRatio >= 1.35) {
-    return { width: 1200, height: 1200, maxWidth: 820, maxHeight: 420 };
+    return { width: 1200, height: 1200, maxWidth: 620, maxHeight: 300 };
   }
 
-  return { width: 1200, height: 1200, maxWidth: 660, maxHeight: 520 };
+  return { width: 1200, height: 1200, maxWidth: 520, maxHeight: 360 };
+}
+
+function getLogoCardPadding(
+  canvasWidth: number,
+  canvasHeight: number,
+  logoAspectRatio: number,
+): { paddingX: number; paddingY: number } {
+  if (canvasWidth > canvasHeight) {
+    const paddingX = logoAspectRatio >= 3.4
+      ? Math.round(canvasWidth * 0.18)
+      : logoAspectRatio >= 2.2
+        ? Math.round(canvasWidth * 0.16)
+        : Math.round(canvasWidth * 0.14);
+    const paddingY = logoAspectRatio >= 3.4
+      ? Math.round(canvasHeight * 0.26)
+      : Math.round(canvasHeight * 0.22);
+
+    return {
+      paddingX: clamp(paddingX, 180, 320),
+      paddingY: clamp(paddingY, 140, 250),
+    };
+  }
+
+  const paddingX = logoAspectRatio >= 1.35
+    ? Math.round(canvasWidth * 0.16)
+    : Math.round(canvasWidth * 0.18);
+  const paddingY = logoAspectRatio >= 1.35
+    ? Math.round(canvasHeight * 0.18)
+    : Math.round(canvasHeight * 0.2);
+
+  return {
+    paddingX: clamp(paddingX, 150, 240),
+    paddingY: clamp(paddingY, 170, 260),
+  };
 }
 
 function buildBackdropLogoSurface(accent: RGB): { fill: RGB; edge: RGB; border: RGB } {
@@ -630,11 +664,18 @@ export async function renderTMDbLogoCard(
   const originalBuffer = await fetchBuffer(sourceUrl);
   const { trimmedBuffer, diagnostics } = await buildTMDbLogoCardDiagnostics(originalBuffer, intent);
   const { background, dimensions } = diagnostics;
+  const padding = getLogoCardPadding(
+    dimensions.width,
+    dimensions.height,
+    diagnostics.logoAspectRatio,
+  );
+  const safeWidth = Math.max(1, dimensions.width - (padding.paddingX * 2));
+  const safeHeight = Math.max(1, dimensions.height - (padding.paddingY * 2));
 
   const logoBuffer = await sharp(trimmedBuffer, { animated: false })
     .resize({
-      width: dimensions.maxWidth,
-      height: dimensions.maxHeight,
+      width: Math.min(dimensions.maxWidth, safeWidth),
+      height: Math.min(dimensions.maxHeight, safeHeight),
       fit: 'inside',
       withoutEnlargement: true,
       background: TRANSPARENT_BACKGROUND,

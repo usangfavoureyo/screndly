@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildDefaultComposeIntentResult,
   coerceComposePlaylistSelection,
+  extractComposeMetadataPreviewText,
 } from '../services/ai.service';
 
 test('classifies metadata-heavy input as direct post generation', () => {
@@ -58,4 +59,22 @@ test('matches exact playlist ids and falls back to titles only from real playlis
     availablePlaylists,
   );
   assert.equal(invalid.playlistId, null);
+});
+
+test('uses extracted description verbatim for metadata preview text', () => {
+  const result = extractComposeMetadataPreviewText(
+    [
+      'Source Platform: Instagram',
+      'Title: Man of Tomorrow',
+      'Creator: dcuofficial',
+      'Description: ‘Man of Tomorrow’ has officially begun filming! In theaters July 9, 2027. #manoftomorrow #dcstudios #dccomics #jamesgunn #dcu @warnerbrosindia @dcasiaofficial',
+      'Source URL: https://www.instagram.com/p/example/',
+    ].join('\n'),
+    { synopsis: 'fallback synopsis' },
+  );
+
+  assert.equal(
+    result,
+    '‘Man of Tomorrow’ has officially begun filming! In theaters July 9, 2027. #manoftomorrow #dcstudios #dccomics #jamesgunn #dcu @warnerbrosindia @dcasiaofficial',
+  );
 });
