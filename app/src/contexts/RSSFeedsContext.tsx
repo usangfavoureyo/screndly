@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api';
 import {
@@ -310,6 +310,8 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
   const [feeds, setFeeds] = useState<RSSFeed[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const activityCacheRef = useRef<Map<number, { timestamp: number; value: RSSActivityResponse }>>(new Map());
+  const activityInFlightRef = useRef<Map<number, Promise<RSSActivityResponse | null>>>(new Map());
 
   const fetchFeeds = useCallback(async (options: { silent?: boolean } = {}) => {
     const silent = options.silent === true;
@@ -550,13 +552,30 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const getActivity = async (limit: number = 100): Promise<RSSActivityResponse | null> => {
+  const getActivity = async (limit: number = 100, options: { force?: boolean } = {}): Promise<RSSActivityResponse | null> => {
+    const normalizedLimit = Math.max(1, limit);
+    const { force = false } = options;
+    const cached = activityCacheRef.current.get(normalizedLimit);
+    if (!force && cached && Date.now() - cached.timestamp < 15_000) {
+      return cached.value;
+    }
+
+    const existingRequest = activityInFlightRef.current.get(normalizedLimit);
+    if (existingRequest) {
+      return existingRequest;
+    }
+
+    const request = (async () => {
     try {
-      const response = await apiClient.get<RSSActivityResponse>(`/api/rss/activity?limit=${limit}`);
+      const response = await apiClient.get<RSSActivityResponse>(`/api/rss/activity?limit=${normalizedLimit}`);
       if (!response.success || !response.data) {
         throw new Error(response.error?.message || 'Failed to fetch activity');
       }
 
+      activityCacheRef.current.set(normalizedLimit, {
+        timestamp: Date.now(),
+        value: response.data,
+      });
       void saveRSSActivitySnapshot(response.data);
       return response.data;
     } catch (err) {
@@ -569,7 +588,13 @@ export function RSSFeedsProvider({ children }: { children: ReactNode }) {
 
       toast.error(err instanceof Error ? err.message : 'Failed to fetch RSS activity');
       return null;
+    } finally {
+      activityInFlightRef.current.delete(normalizedLimit);
     }
+    })();
+
+    activityInFlightRef.current.set(normalizedLimit, request);
+    return request;
   };
 
   const retryActivity = async (activityId: string): Promise<RSSActivityItem | null> => {

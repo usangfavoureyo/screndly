@@ -5,6 +5,8 @@ import { authenticate } from '../middleware/auth';
 import { getApiUsageActivitySummary } from '../services/api-usage.service';
 
 const router = Router();
+const DASHBOARD_STATS_CACHE_TTL_MS = 15_000;
+let dashboardStatsCache: { timestamp: number; payload: unknown } | null = null;
 
 function logDashboardFallback(segment: string, error: unknown) {
   console.error(`Dashboard fallback for ${segment}:`, error);
@@ -83,6 +85,10 @@ function resolveDesignStudioActivityTitle(details: unknown): string {
 
 router.get('/stats', authenticate, async (_req, res) => {
   try {
+    if (dashboardStatsCache && Date.now() - dashboardStatsCache.timestamp < DASHBOARD_STATS_CACHE_TTL_MS) {
+      return res.json({ success: true, data: dashboardStatsCache.payload });
+    }
+
     const today = startOfToday();
     const sevenDaysAgo = daysAgo(6);
     const thirtyDaysAgo = daysAgo(30);
@@ -435,9 +441,7 @@ router.get('/stats', authenticate, async (_req, res) => {
       ? Math.round((tmdbCacheHits / tmdbCacheRateTotal) * 100)
       : 0;
 
-    res.json({
-      success: true,
-      data: {
+    const payload = {
         system: {
           cacheHitRate,
           systemErrors,
@@ -497,7 +501,16 @@ router.get('/stats', authenticate, async (_req, res) => {
           total: usageTotal,
         },
         recentActivity,
-      },
+      };
+
+    dashboardStatsCache = {
+      timestamp: Date.now(),
+      payload,
+    };
+
+    res.json({
+      success: true,
+      data: payload,
     });
   } catch (error) {
     console.error('Dashboard Stats Error:', error);

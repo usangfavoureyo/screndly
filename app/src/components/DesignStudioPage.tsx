@@ -1794,7 +1794,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     setNewsQueueError(null);
 
     try {
-      const response = await getActivity(300);
+      const response = await getActivity(160);
       const activityItems = response?.items || [];
 
       const ordered = [...activityItems]
@@ -1896,8 +1896,10 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
 
     void loadNewsQueue();
     const intervalId = window.setInterval(() => {
-      void loadNewsQueue({ silent: true });
-    }, 60000);
+      if (document.visibilityState === 'visible') {
+        void loadNewsQueue({ silent: true });
+      }
+    }, 120000);
 
     return () => {
       window.clearInterval(intervalId);

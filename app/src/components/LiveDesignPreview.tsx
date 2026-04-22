@@ -625,7 +625,7 @@ export function LiveDesignPreview({
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ zIndex: 30 }}
         />
-      ) : designData?.headerText?.trim() ? (
+      ) : designData?.headerText?.trim() && !useBackendHeadlinePreview ? (
         <div
           className="absolute"
           style={{
@@ -658,6 +658,17 @@ export function LiveDesignPreview({
               {line}
             </div>
           ))}
+        </div>
+      ) : null}
+
+      {useBackendHeadlinePreview && isHeadlinePreviewLoading ? (
+        <div
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+          style={{ zIndex: 31 }}
+        >
+          <div className="rounded-full bg-black/55 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em] text-white/85">
+            Updating Preview
+          </div>
         </div>
       ) : null}
 

@@ -6616,6 +6616,10 @@ async function resolveRSSActivityImageUrl(url?: string): Promise<string | undefi
     return undefined;
   }
 
+  if (!/backblazeb2\.com|backblaze\.com|\/file\//i.test(url)) {
+    return url;
+  }
+
   try {
     return await getBackblazeAuthorizedDownloadUrl(url, 7 * 24 * 60 * 60);
   } catch {
@@ -8953,6 +8957,11 @@ async function getRSSActivity(limit: number = 100): Promise<{ items: RSSActivity
     where: { service: 'rss' },
     orderBy: { timestamp: 'desc' },
     take: Math.max(limit * 5, 200),
+    select: {
+      id: true,
+      timestamp: true,
+      metadata: true,
+    },
   });
 
   const logItems = logs

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { useSettings } from './SettingsContext';
 import { desktopNotifications } from '../utils/desktopNotifications';
 import { apiClient } from '../lib/api/client';
@@ -94,29 +94,68 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { settings } = useSettings();
+  const lastFetchAtRef = useRef(0);
+  const inFlightFetchRef = useRef<Promise<void> | null>(null);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const fetchNotifications = useCallback(async () => {
-    try {
-      const response = await apiClient.get<Notification[]>('/api/notifications');
-      if (response.success && response.data) {
-        setNotifications(response.data.map(normalizeNotification));
-      }
-    } catch (error) {
-      console.error('Failed to fetch notifications:', error);
-    } finally {
-      setIsLoading(false);
+  const fetchNotifications = useCallback(async (options: { force?: boolean; silent?: boolean } = {}) => {
+    const { force = false, silent = false } = options;
+    const now = Date.now();
+
+    if (!force && now - lastFetchAtRef.current < 15_000) {
+      return;
     }
-  }, []);
+
+    if (inFlightFetchRef.current) {
+      return inFlightFetchRef.current;
+    }
+
+    const request = (async () => {
+      try {
+        if (!silent && notifications.length === 0) {
+          setIsLoading(true);
+        }
+
+        const response = await apiClient.get<Notification[]>('/api/notifications');
+        if (response.success && response.data) {
+          setNotifications(response.data.map(normalizeNotification));
+          lastFetchAtRef.current = Date.now();
+        }
+      } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+      } finally {
+        setIsLoading(false);
+        inFlightFetchRef.current = null;
+      }
+    })();
+
+    inFlightFetchRef.current = request;
+    return request;
+  }, [notifications.length]);
 
   // Initial fetch and polling
   useEffect(() => {
-    fetchNotifications();
+    void fetchNotifications({ force: true });
 
-    // Poll every 30 seconds
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchNotifications({ force: true, silent: true });
+      }
+    };
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchNotifications({ silent: true });
+      }
+    }, 60_000);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [fetchNotifications]);
 
   useEffect(() => {
@@ -148,8 +187,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
     try {
       await apiClient.post('/api/notifications', notification);
-      // Refresh to get the real ID from server (optional, but good for consistency)
-      fetchNotifications();
+      void fetchNotifications({ force: true, silent: true });
     } catch (error) {
       console.error('Failed to create notification on server:', error);
     }
@@ -247,7 +285,7 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
         deleteNotification,
         removeNotificationLocal,
         restoreNotification,
-        refreshNotifications: fetchNotifications
+        refreshNotifications: () => fetchNotifications({ force: true })
       }}
     >
       {children}
