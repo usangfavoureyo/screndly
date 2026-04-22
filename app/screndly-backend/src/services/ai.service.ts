@@ -3938,6 +3938,25 @@ function normalizeComposeMetadataText(value: string): string {
     return value.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
 }
 
+function normalizeComposeParagraphText(value: string): string {
+    const normalized = value.replace(/\r\n/g, '\n').trim();
+    if (!normalized) {
+        return '';
+    }
+
+    return normalized
+        .split(/\n\s*\n+/)
+        .map((paragraph) => paragraph
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .join(' ')
+            .replace(/[ \t]+/g, ' ')
+            .trim())
+        .filter(Boolean)
+        .join('\n\n');
+}
+
 export function extractComposeMetadataPreviewText(
     requestText: string,
     mediaMetadata?: Partial<ComposeMediaMetadata> | null
@@ -4542,9 +4561,11 @@ Return this exact JSON shape:
     }
 
     const parsed = JSON.parse(response.content) as Record<string, unknown>;
-    const sharedCaption = typeof parsed.sharedCaption === 'string' ? parsed.sharedCaption.trim() : '';
+    const sharedCaption = typeof parsed.sharedCaption === 'string' ? normalizeComposeParagraphText(parsed.sharedCaption) : '';
     const youtubeTitle = includeYouTube && typeof parsed.youtubeTitle === 'string' ? parsed.youtubeTitle.trim() : '';
-    const youtubeDescription = includeYouTube && typeof parsed.youtubeDescription === 'string' ? parsed.youtubeDescription.trim() : '';
+    const youtubeDescription = includeYouTube && typeof parsed.youtubeDescription === 'string'
+        ? normalizeComposeParagraphText(parsed.youtubeDescription)
+        : '';
     let playlistSelection = includeYouTube
         ? coerceComposePlaylistSelection(parsed.playlistSelection, availablePlaylists)
         : {

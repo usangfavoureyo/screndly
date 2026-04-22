@@ -5,6 +5,7 @@ import {
   getComposePlatformCompatibility,
   getComposeCompatibilityMap,
   getComposeAssetPreviewUrl,
+  normalizeComposeParagraphText,
   normalizeComposeItem,
   sanitizeComposeItem,
 } from '../../lib/create/composeMedia';
@@ -211,5 +212,33 @@ describe('composeMedia story compatibility', () => {
     expect(getComposeAssetPreviewUrl(normalized.mediaAssets[0])).toBe(
       'https://f005.backblazeb2.com/file/screndly-bucket/compose/videos/video-old.mp4',
     );
+  });
+
+  it('normalizes multi-line captions into spaced paragraphs', () => {
+    expect(normalizeComposeParagraphText('First line\nsecond line\n\nThird line\nfourth line')).toBe(
+      'First line second line\n\nThird line fourth line',
+    );
+  });
+
+  it('sanitizes shared captions and youtube descriptions with paragraph spacing', () => {
+    const sanitized = sanitizeComposeItem({
+      id: 'caption-item',
+      title: 'Caption item',
+      status: 'draft',
+      mediaAssets: [buildImageAsset('asset-caption')],
+      platforms: ['instagram_feed', 'youtube_longform'],
+      sharedCaption: 'Paragraph one line one\nParagraph one line two\n\nParagraph two line one',
+      platformFields: {
+        youtube: {
+          title: 'Video title',
+          description: 'Intro line\nnext line\n\nSecond paragraph',
+        },
+      },
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:00:00.000Z',
+    } as ComposeItem);
+
+    expect(sanitized.sharedCaption).toBe('Paragraph one line one Paragraph one line two\n\nParagraph two line one');
+    expect(sanitized.platformFields.youtube?.description).toBe('Intro line next line\n\nSecond paragraph');
   });
 });

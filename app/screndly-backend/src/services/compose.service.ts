@@ -405,10 +405,32 @@ export function validateScheduledComposeItem(item: ComposeStateItem): string | u
 }
 
 function buildPublishContent(item: ComposeStateItem, platform: string, primaryAsset: Record<string, any>): PublishContent {
+  const normalizeComposeParagraphText = (value?: string) => {
+    if (typeof value !== 'string') {
+      return '';
+    }
+
+    const normalized = value.replace(/\r\n/g, '\n').trim();
+    if (!normalized) {
+      return '';
+    }
+
+    return normalized
+      .split(/\n\s*\n+/)
+      .map((paragraph) => paragraph
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .join(' ')
+        .replace(/[ \t]+/g, ' ')
+        .trim())
+      .filter(Boolean)
+      .join('\n\n');
+  };
   const mediaSummary = summarizeMediaAssets(item);
   const assetUrls = getAssetUrls(item);
   const caption = typeof item.sharedCaption === 'string' && item.sharedCaption.trim().length > 0
-    ? item.sharedCaption.trim()
+    ? normalizeComposeParagraphText(item.sharedCaption)
     : (typeof item.title === 'string' ? item.title : 'Untitled post');
   const videoUrl = mediaSummary.kind === 'single-video' ? getVideoUrlForPlatform(item, platform, primaryAsset) : undefined;
   const imageUrl =
@@ -425,7 +447,7 @@ function buildPublishContent(item: ComposeStateItem, platform: string, primaryAs
       || item.platformFields?.pinterest?.title
       || (typeof item.title === 'string' ? item.title : caption),
     description:
-      item.platformFields?.youtube?.description
+      normalizeComposeParagraphText(item.platformFields?.youtube?.description)
       || caption,
     imageUrl,
     imageUrls: mediaSummary.kind === 'multi-image' ? assetUrls : undefined,

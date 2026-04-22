@@ -140,6 +140,29 @@ function resolveComposeStorageUrl(previewUrl?: string, storageUrl?: string) {
   return canonicalizeComposeRemoteStorageUrl(storageUrl || previewUrl);
 }
 
+export function normalizeComposeParagraphText(value?: string | null) {
+  if (typeof value !== 'string') {
+    return '';
+  }
+
+  const normalized = value.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized
+    .split(/\n\s*\n+/)
+    .map((paragraph) => paragraph
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .join(' ')
+      .replace(/[ \t]+/g, ' ')
+      .trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 function legacyMediaToAsset(media: ComposeMedia): ComposeMediaAsset {
   const previewUrl = media.previewUrl || media.storageUrl;
   const storageUrl = resolveComposeStorageUrl(previewUrl, media.storageUrl);
@@ -189,11 +212,18 @@ export function normalizeComposeItem(item: ComposeItem): ComposeItem {
 
   return {
     ...item,
+    sharedCaption: normalizeComposeParagraphText(item.sharedCaption),
     mediaAssets,
     platforms: normalizeComposePlatforms(item.platforms as string[] | undefined),
     media: undefined,
     platformFields: {
       ...item.platformFields,
+      youtube: item.platformFields?.youtube
+        ? {
+            ...item.platformFields.youtube,
+            description: normalizeComposeParagraphText(item.platformFields.youtube.description),
+          }
+        : undefined,
       thumbnails: normalizeThumbnails(item.platformFields?.thumbnails),
       videoProcessing: item.platformFields?.videoProcessing
         ? {
@@ -211,6 +241,7 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
 
   return {
     ...normalized,
+    sharedCaption: normalizeComposeParagraphText(normalized.sharedCaption),
     mediaAssets: normalized.mediaAssets.map((asset) => {
       const previewUrl = asset.previewUrl?.startsWith('blob:') ? undefined : asset.previewUrl;
       const storageUrl = resolveComposeStorageUrl(previewUrl, asset.storageUrl);
@@ -226,6 +257,12 @@ export function sanitizeComposeItem(item: ComposeItem): ComposeItem {
     }),
     platformFields: {
       ...normalized.platformFields,
+      youtube: normalized.platformFields?.youtube
+        ? {
+            ...normalized.platformFields.youtube,
+            description: normalizeComposeParagraphText(normalized.platformFields.youtube.description),
+          }
+        : undefined,
       thumbnails: sanitizeThumbnails(normalized.platformFields?.thumbnails),
       videoProcessing: normalized.platformFields.videoProcessing
         ? {

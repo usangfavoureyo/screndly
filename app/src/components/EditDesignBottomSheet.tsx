@@ -36,8 +36,10 @@ const EXPANDED_PREVIEW_DOUBLE_TAP_PROXIMITY = 32;
 const EXPANDED_PREVIEW_PAN_START_TOLERANCE = 10;
 const DESIGN_STUDIO_EDIT_SHEET_PREFS_KEY = 'designStudioEditSheetPrefsV2';
 const DEFAULT_LINE_HEIGHT_MULTIPLIER = 1.1;
+const DEFAULT_OVERLAY_OPACITY = 50;
 const DEFAULT_CIRCLE_SIZE = 420;
 const DEFAULT_CIRCLE_STROKE_WIDTH = 3;
+const MAX_TEXT_SCALE = 2.5;
 const VARIANT_OVERLAY_DIRECTION_MAP: Record<DesignStudioLayoutVariant, 'top' | 'bottom' | 'left' | 'right'> = {
   bottom_center: 'bottom',
   bottom_left: 'left',
@@ -187,7 +189,7 @@ export function EditDesignBottomSheet({
   const [showFocalPointAdjuster, setShowFocalPointAdjuster] = useState(false);
   const [overlayEnabled, setOverlayEnabled] = useState(initialData?.overlayEnabled || false);
   const [overlayColor, setOverlayColor] = useState(initialData?.overlayColor || '#000000');
-  const [overlayOpacity, setOverlayOpacity] = useState(initialData?.overlayOpacity || 70);
+  const [overlayOpacity, setOverlayOpacity] = useState(initialData?.overlayOpacity ?? DEFAULT_OVERLAY_OPACITY);
   const [gradientPosition, setGradientPosition] = useState(initialData?.gradientPosition || 'top');
   const [templateVariant, setTemplateVariant] = useState<DesignStudioLayoutVariant>(initialData?.templateVariant || 'bottom_center');
   const [useCircleInset, setUseCircleInset] = useState(initialData?.useCircleInset ?? false);
@@ -319,7 +321,7 @@ export function EditDesignBottomSheet({
       imageZoom: initialData.imageZoom || 1,
       overlayEnabled: initialData.overlayEnabled || false,
       overlayColor: initialData.overlayColor || '#000000',
-      overlayOpacity: initialData.overlayOpacity || 70,
+      overlayOpacity: initialData.overlayOpacity ?? DEFAULT_OVERLAY_OPACITY,
       gradientPosition: initialData.gradientPosition || 'top',
       templateVariant: initialData.templateVariant || 'bottom_center',
       useCircleInset: initialData.useCircleInset ?? false,
@@ -368,11 +370,7 @@ export function EditDesignBottomSheet({
     );
     setHeadlineWidthScale(1);
     setHeadlineDensity(1);
-    setLineHeightMultiplier(
-      typeof persistedPrefs?.lineHeightMultiplier === 'number'
-        ? persistedPrefs.lineHeightMultiplier
-        : initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER,
-    );
+    setLineHeightMultiplier(initialData.lineHeightMultiplier ?? DEFAULT_LINE_HEIGHT_MULTIPLIER);
     setBackgroundImage(initialData.backgroundImage || '');
     setPreviewBackgroundImage(initialData.backgroundImage || '');
     setImageFocalPoint(initialData.imageFocalPoint || { x: 50, y: 50 });
@@ -387,11 +385,7 @@ export function EditDesignBottomSheet({
         ? persistedPrefs.overlayColor
         : initialData.overlayColor || '#000000',
     );
-    setOverlayOpacity(
-      typeof persistedPrefs?.overlayOpacity === 'number'
-        ? persistedPrefs.overlayOpacity
-        : initialData.overlayOpacity || 70,
-    );
+    setOverlayOpacity(initialData.overlayOpacity ?? DEFAULT_OVERLAY_OPACITY);
     setTemplateVariant(resolvedVariant);
     setGradientPosition(resolvedGradientPosition);
     setUseCircleInset(initialData.useCircleInset ?? false);
@@ -597,7 +591,7 @@ export function EditDesignBottomSheet({
     setImageZoom(snapshot.imageZoom || 1);
     setOverlayEnabled(snapshot.overlayEnabled || false);
     setOverlayColor(snapshot.overlayColor || '#000000');
-    setOverlayOpacity(snapshot.overlayOpacity || 70);
+    setOverlayOpacity(snapshot.overlayOpacity ?? DEFAULT_OVERLAY_OPACITY);
     setGradientPosition(snapshot.gradientPosition || 'top');
     setTemplateVariant(snapshot.templateVariant || 'bottom_center');
     setUseCircleInset(snapshot.useCircleInset ?? false);
@@ -1572,7 +1566,7 @@ export function EditDesignBottomSheet({
                 <input
                   type="range"
                   min="0.8"
-                  max="1.4"
+                  max={MAX_TEXT_SCALE}
                   step="0.02"
                   value={fontScale}
                   {...sliderInteractionProps}
@@ -1595,7 +1589,7 @@ export function EditDesignBottomSheet({
                 </div>
                 <input
                   type="range"
-                  min="0.85"
+                  min="1.1"
                   max="1.15"
                   step="0.01"
                   value={lineHeightMultiplier}
@@ -2595,7 +2589,7 @@ export function EditDesignBottomSheet({
                   onClick={() => {
                     haptics.light();
                     setOverlayColor('#000000');
-                    setOverlayOpacity(70);
+                    setOverlayOpacity(DEFAULT_OVERLAY_OPACITY);
                     setGradientPosition('top');
                     toast.success('Overlay reset to defaults');
                   }}

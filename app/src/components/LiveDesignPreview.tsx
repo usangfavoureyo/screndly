@@ -24,6 +24,7 @@ type PreviewLayout = {
 const CANVAS_WIDTH = 1080;
 const CANVAS_HEIGHT = 1350;
 const PREVIEW_SAFE_MARGIN = 48;
+const DEFAULT_PREVIEW_OVERLAY_OPACITY = 50;
 const FALLBACK_BACKGROUND =
   'radial-gradient(circle at 18% 88%, rgba(110, 102, 255, 0.92) 0%, rgba(110, 102, 255, 0.28) 22%, rgba(110, 102, 255, 0) 48%), radial-gradient(circle at 82% 14%, rgba(150, 118, 255, 0.32) 0%, rgba(150, 118, 255, 0) 30%), linear-gradient(180deg, #5b4f8d 0%, #463d78 24%, #2a274f 58%, #171925 100%)';
 
@@ -315,6 +316,9 @@ export function LiveDesignPreview({
   const [brandAssetError, setBrandAssetError] = useState(false);
   const [sourceDimensions, setSourceDimensions] = useState<{ width: number; height: number } | null>(null);
   const [headlinePreviewLayerUrl, setHeadlinePreviewLayerUrl] = useState<string | null>(null);
+  const [isHeadlinePreviewLoading, setIsHeadlinePreviewLoading] = useState(
+    Boolean(useBackendHeadlinePreview && template && designData?.headerText?.trim()),
+  );
 
   const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
   const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
@@ -324,7 +328,7 @@ export function LiveDesignPreview({
   const zoom = designData?.imageZoom || 1;
   const headerColor = designData?.headerTextColor || '#ffffff';
   const overlayColor = designData?.overlayColor || '#000000';
-  const overlayOpacity = designData?.overlayOpacity ?? 70;
+  const overlayOpacity = designData?.overlayOpacity ?? DEFAULT_PREVIEW_OVERLAY_OPACITY;
   const overlayDirection = designData?.gradientPosition || getDefaultOverlayDirection(variantKey);
   const fadeEnabled = designData?.fadeEnabled ?? true;
   const fadeOpacity = designData?.fadeOpacity ?? 90;
@@ -445,7 +449,10 @@ export function LiveDesignPreview({
   }, [brandAssetUrl]);
 
   useEffect(() => {
-    if (!useBackendHeadlinePreview || !template || !designData?.headerText?.trim()) {
+    const shouldUseBackendHeadlinePreview = Boolean(useBackendHeadlinePreview && template && designData?.headerText?.trim());
+    setIsHeadlinePreviewLoading(shouldUseBackendHeadlinePreview);
+
+    if (!shouldUseBackendHeadlinePreview) {
       setHeadlinePreviewLayerUrl(null);
       return;
     }
@@ -472,11 +479,13 @@ export function LiveDesignPreview({
 
         if (!isCancelled) {
           setHeadlinePreviewLayerUrl(dataUrl);
+          setIsHeadlinePreviewLoading(false);
         }
       } catch (error) {
         if (!isCancelled && !(error instanceof Error && error.name === 'AbortError')) {
           console.error('Design Studio headline preview failed:', error);
           setHeadlinePreviewLayerUrl(null);
+          setIsHeadlinePreviewLoading(false);
         }
       }
     }, 120);
@@ -580,7 +589,7 @@ export function LiveDesignPreview({
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ zIndex: 30 }}
         />
-      ) : designData?.headerText ? (
+      ) : designData?.headerText && !isHeadlinePreviewLoading ? (
         <div
           className="absolute"
           style={{

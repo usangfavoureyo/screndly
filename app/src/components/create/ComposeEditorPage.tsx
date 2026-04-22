@@ -32,6 +32,7 @@ import {
   buildComposeMediaAsset,
   getComposeCompatibilityMap,
   getComposeAssetPreviewUrl,
+  normalizeComposeParagraphText,
   normalizeComposeItem,
   summarizeComposeMedia,
 } from '../../lib/create/composeMedia';
@@ -1558,9 +1559,9 @@ export function ComposeEditorPage({
     if (action.kind === 'direct-fill') {
       setFormState((current) => ({
         ...current,
-        ...(typeof action.fields.sharedCaption === 'string' ? { sharedCaption: action.fields.sharedCaption } : {}),
+        ...(typeof action.fields.sharedCaption === 'string' ? { sharedCaption: normalizeComposeParagraphText(action.fields.sharedCaption) } : {}),
         ...(typeof action.fields.youtubeTitle === 'string' ? { youtubeTitle: action.fields.youtubeTitle } : {}),
-        ...(typeof action.fields.youtubeDescription === 'string' ? { youtubeDescription: action.fields.youtubeDescription } : {}),
+        ...(typeof action.fields.youtubeDescription === 'string' ? { youtubeDescription: normalizeComposeParagraphText(action.fields.youtubeDescription) } : {}),
         ...(typeof action.fields.youtubePlaylist === 'string' ? { youtubePlaylist: action.fields.youtubePlaylist } : {}),
       }));
       setFieldManualEdits((current) => ({
@@ -1591,8 +1592,8 @@ export function ComposeEditorPage({
     setFormState((current) => ({
       ...current,
       ...(action.targetField === 'sharedCaption'
-        ? { sharedCaption: action.text }
-        : { youtubeDescription: action.text }),
+        ? { sharedCaption: normalizeComposeParagraphText(action.text) }
+        : { youtubeDescription: normalizeComposeParagraphText(action.text) }),
     }));
     setFieldManualEdits((current) => ({
       ...current,
@@ -2900,6 +2901,9 @@ export function ComposeEditorPage({
                 setFieldManualEdits((current) => ({ ...current, sharedCaption: true }));
                 haptics.selection();
               }}
+              onBlur={() => {
+                setFormState((current) => ({ ...current, sharedCaption: normalizeComposeParagraphText(current.sharedCaption) }));
+              }}
               onFocus={() => haptics.light()}
               placeholder="Write the shared caption"
               className="min-h-[180px] border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]"
@@ -2955,6 +2959,8 @@ export function ComposeEditorPage({
                       <Textarea value={formState.youtubeDescription} onChange={(event) => {
                         setFormState((current) => ({ ...current, youtubeDescription: event.target.value }));
                         setFieldManualEdits((current) => ({ ...current, youtubeDescription: true }));
+                      }} onBlur={() => {
+                        setFormState((current) => ({ ...current, youtubeDescription: normalizeComposeParagraphText(current.youtubeDescription) }));
                       }} className="mt-1 border-gray-200 bg-white dark:border-[#333333] dark:bg-[#000000]" />
                     </div>
                     <div>
