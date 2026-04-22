@@ -30,6 +30,7 @@ export interface PushNotificationPayload {
   url?: string;
   icon?: string;
   badge?: string;
+  badgeCount?: number;
   tag?: string;
   requireInteraction?: boolean;
   source?: string;
@@ -263,6 +264,7 @@ class WebPushService {
       url: payload.url || '/',
       icon: payload.icon || '/icons/icon-192x192.png',
       badge: payload.badge || '/icons/icon-72x72.png',
+      badgeCount: typeof payload.badgeCount === 'number' ? payload.badgeCount : 0,
       tag: payload.tag || 'screndly-notification',
       requireInteraction: Boolean(payload.requireInteraction),
       source: payload.source || 'system',

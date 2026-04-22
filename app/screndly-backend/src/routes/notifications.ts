@@ -270,6 +270,7 @@ router.post('/push/test', authenticate, async (req, res) => {
                 title: 'Screndly Push Notifications',
                 body: 'Push notifications are now fully enabled on this device.',
                 url: '/',
+                badgeCount: 1,
                 source: 'system',
                 type: 'success',
                 tag: 'screndly-push-test',

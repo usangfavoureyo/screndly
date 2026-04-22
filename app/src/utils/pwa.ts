@@ -22,6 +22,11 @@ const SERVICE_WORKER_URL = `/sw.js?build=${encodeURIComponent(__APP_BUILD_ID__)}
 export const SERVICE_WORKER_UPDATE_EVENT = 'screndly:service-worker-update-available';
 let pendingServiceWorker: ServiceWorker | null = null;
 
+type BadgeCapableNavigator = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
 async function syncInstalledBuildId(): Promise<void> {
   const previousBuildId = localStorage.getItem(BUILD_ID_STORAGE_KEY);
   if (previousBuildId === __APP_BUILD_ID__) {
@@ -318,6 +323,53 @@ export async function sendTestPushNotification(endpoint: string): Promise<void> 
 
 export function isPushNotificationSupported(): boolean {
   return 'serviceWorker' in navigator && 'PushManager' in window;
+}
+
+export function isAppBadgeSupported(): boolean {
+  const badgeNavigator = navigator as BadgeCapableNavigator;
+  return typeof badgeNavigator.setAppBadge === 'function' || typeof badgeNavigator.clearAppBadge === 'function';
+}
+
+async function postBadgeCountToServiceWorker(count: number): Promise<void> {
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
+
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) {
+    return;
+  }
+
+  const target = registration.active || registration.waiting || registration.installing;
+  if (!target) {
+    return;
+  }
+
+  target.postMessage({
+    type: 'SCR_UPDATE_APP_BADGE',
+    count,
+  });
+}
+
+export async function syncAppBadgeCount(count: number): Promise<void> {
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  const badgeNavigator = navigator as BadgeCapableNavigator;
+
+  try {
+    if (safeCount > 0) {
+      await badgeNavigator.setAppBadge?.(safeCount);
+    } else {
+      await badgeNavigator.clearAppBadge?.();
+    }
+  } catch (error) {
+    console.warn('[PWA] Failed to update app badge via navigator API:', error);
+  }
+
+  try {
+    await postBadgeCountToServiceWorker(safeCount);
+  } catch (error) {
+    console.warn('[PWA] Failed to send app badge update to service worker:', error);
+  }
 }
 
 export async function getPushSubscription(

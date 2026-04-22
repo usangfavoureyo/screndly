@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { useSettings } from './SettingsContext';
 import { desktopNotifications } from '../utils/desktopNotifications';
 import { apiClient } from '../lib/api/client';
+import { syncAppBadgeCount } from '../utils/pwa';
 
 export type NotificationSource =
   | 'upload'
@@ -117,6 +118,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
+
+  useEffect(() => {
+    void syncAppBadgeCount(unreadCount);
+  }, [unreadCount]);
 
   const addNotification = async (notification: {
     title: string;

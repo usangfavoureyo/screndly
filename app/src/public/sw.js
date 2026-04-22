@@ -30,6 +30,37 @@ const MAX_CACHE_SIZE = {
   runtime: 100,
 };
 
+function getBadgeNavigator() {
+  const candidate = self.navigator;
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate.setAppBadge !== 'function' && typeof candidate.clearAppBadge !== 'function') {
+    return null;
+  }
+
+  return candidate;
+}
+
+async function updateAppBadge(count) {
+  const badgeNavigator = getBadgeNavigator();
+  if (!badgeNavigator) {
+    return;
+  }
+
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+
+  if (safeCount > 0 && typeof badgeNavigator.setAppBadge === 'function') {
+    await badgeNavigator.setAppBadge(safeCount);
+    return;
+  }
+
+  if (typeof badgeNavigator.clearAppBadge === 'function') {
+    await badgeNavigator.clearAppBadge();
+  }
+}
+
 // Core assets to cache on install
 const CORE_ASSETS = [
   '/',
@@ -378,8 +409,20 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(payload.title || 'Screndly', options)
+    Promise.all([
+      self.registration.showNotification(payload.title || 'Screndly', options),
+      updateAppBadge(payload.badgeCount ?? 0),
+    ])
   );
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data;
+  if (!data || data.type !== 'SCR_UPDATE_APP_BADGE') {
+    return;
+  }
+
+  event.waitUntil(updateAppBadge(data.count));
 });
 
 // Handle notification clicks

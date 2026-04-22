@@ -125,6 +125,7 @@ function fitHeadline(
   textBox: PreviewLayout['textBox'],
   targetWordsPerLine: number,
   lineHeightMultiplier: number,
+  fontScale: number,
 ) {
   const normalizedText = text.replace(/\r\n/g, '\n');
   const hasManualBreaks = normalizedText.includes('\n');
@@ -139,11 +140,12 @@ function fitHeadline(
     const maxFontSize = 96;
     const minFontSize = 34;
     for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
-      const lineHeight = fontSize * lineHeightMultiplier;
+      const scaledFontSize = fontSize * fontScale;
+      const lineHeight = scaledFontSize * lineHeightMultiplier;
       const totalHeight = manualLines.length * lineHeight;
-      const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, fontSize)));
+      const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, scaledFontSize)));
       if (widestLine <= textBox.width && totalHeight <= textBox.height) {
-        return { lines: manualLines, fontSize, lineHeight };
+        return { lines: manualLines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
       }
     }
     const fallbackFontSize = minFontSize;
@@ -160,7 +162,7 @@ function fitHeadline(
   const maxLines = layout.alignment === 'center' ? 4 : 5;
 
   const lineWidth = (lineWords: string[], fontSize: number) =>
-    estimateWordWidth(lineWords.join(' '), fontSize);
+    estimateWordWidth(lineWords.join(' '), fontSize * fontScale);
 
   const buildBalancedLines = (fontSize: number) => {
     const bestByEnd = new Map<string, { lines: string[][]; score: number }>();
@@ -225,18 +227,17 @@ function fitHeadline(
   const preferredMinFontSize = Math.max(minFontSize, Math.round(maxFontSize * 0.8));
   for (let fontSize = maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
-
-    const lineHeight = fontSize * lineHeightMultiplier;
+    const lineHeight = fontSize * fontScale * lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
-      return { lines, fontSize, lineHeight };
+      return { lines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
     }
   }
 
   for (let fontSize = preferredMinFontSize - 2; fontSize >= minFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
-    const lineHeight = fontSize * lineHeightMultiplier;
+    const lineHeight = fontSize * fontScale * lineHeightMultiplier;
     if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
-      return { lines, fontSize, lineHeight };
+      return { lines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
     }
   }
 
@@ -360,7 +361,14 @@ export function LiveDesignPreview({
   const circleImageFit = designData?.circleImageFit === 'cover' ? 'cover' : 'contain';
   const brandMode = resolveBrandMode(designData?.brandBlockMode, headerColor);
   const resolvedTextBox = resolvePreviewTextBox(variant, headlineWidthScale, headlineDensity);
-  const fittedHeadline = fitHeadline(designData?.headerText || '', variant, resolvedTextBox, targetWordsPerLine, lineHeightMultiplier);
+  const fittedHeadline = fitHeadline(
+    designData?.headerText || '',
+    variant,
+    resolvedTextBox,
+    targetWordsPerLine,
+    lineHeightMultiplier,
+    fontScale,
+  );
   const headlinePreviewRequestKey = useMemo(() => {
     if (!useBackendHeadlinePreview || !template || !designData?.headerText?.trim()) {
       return null;
@@ -491,6 +499,7 @@ export function LiveDesignPreview({
       return;
     }
 
+    setHeadlinePreviewLayerUrl(null);
     setIsHeadlinePreviewLoading(true);
 
     let isCancelled = false;
@@ -525,7 +534,7 @@ export function LiveDesignPreview({
           setIsHeadlinePreviewLoading(false);
         }
       }
-    }, 120);
+    }, 40);
 
     return () => {
       isCancelled = true;
@@ -616,7 +625,7 @@ export function LiveDesignPreview({
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ zIndex: 30 }}
         />
-      ) : designData?.headerText && !useBackendHeadlinePreview && !isHeadlinePreviewLoading ? (
+      ) : designData?.headerText?.trim() ? (
         <div
           className="absolute"
           style={{

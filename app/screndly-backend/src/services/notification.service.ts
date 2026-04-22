@@ -87,16 +87,23 @@ export class NotificationService {
             }
 
             // 2. Create In-App Notification (Database)
-            await prisma.notification.create({
-                data: {
-                    type,
-                    title,
-                    message,
-                    source,
-                    actionPage,
-                    read: false,
-                }
-            });
+            const [, unreadCount] = await prisma.$transaction([
+                prisma.notification.create({
+                    data: {
+                        type,
+                        title,
+                        message,
+                        source,
+                        actionPage,
+                        read: false,
+                    }
+                }),
+                prisma.notification.count({
+                    where: {
+                        read: false,
+                    },
+                }),
+            ]);
 
             console.log(`[NotificationService] Sent: ${title}`);
 
@@ -105,6 +112,7 @@ export class NotificationService {
                 title,
                 body: message,
                 url: normalizePushTarget(actionPage),
+                badgeCount: unreadCount,
                 source,
                 type,
                 tag: `screndly-${source}`,
