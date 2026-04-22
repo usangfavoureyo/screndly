@@ -3119,21 +3119,30 @@ async function processManualRenderJob(
         failureReason: null,
       });
 
-      await createDesignStudioActivity('design_rendered', {
-        templateId: template.id,
-        templateName: template.name,
-        headerText: input.data.headerText,
-        sourceHeadline: input.data.sourceHeadline,
-        sourceSummary: input.data.sourceSummary,
-        sourceUrl: input.data.sourceUrl,
-        sourceName: input.data.sourceName,
-        sourceTitle: input.data.sourceHeadline || input.data.headerText,
-        renderJobId: jobId,
-        variant: renderedDesign.templateVariant,
-        previewUrl: renderedDesign.previewUrl,
-        outputUrl: renderedDesign.outputUrl,
-        exportFormat: renderedDesign.exportFormat,
-      });
+      try {
+        await createDesignStudioActivity('design_rendered', {
+          templateId: template.id,
+          templateName: template.name,
+          headerText: input.data.headerText,
+          sourceHeadline: input.data.sourceHeadline,
+          sourceSummary: input.data.sourceSummary,
+          sourceUrl: input.data.sourceUrl,
+          sourceName: input.data.sourceName,
+          sourceTitle: input.data.sourceHeadline || input.data.headerText,
+          renderJobId: jobId,
+          designId: renderedDesign.id,
+          variant: renderedDesign.templateVariant,
+          previewUrl: renderedDesign.previewUrl,
+          outputUrl: renderedDesign.outputUrl,
+          exportFormat: renderedDesign.exportFormat,
+        });
+      } catch (activityError) {
+        console.warn('[DesignStudio] Render activity logging failed after render save', {
+          jobId,
+          renderedDesignId: renderedDesign.id,
+          message: activityError instanceof Error ? activityError.message : String(activityError),
+        });
+      }
     })(), DESIGN_STUDIO_RENDER_TIMEOUT_MS, 'Manual design render timed out after 3 minutes');
   } catch (error) {
     const failureReason = error instanceof Error ? error.message : 'Failed to render design';

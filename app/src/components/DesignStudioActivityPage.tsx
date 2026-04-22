@@ -255,6 +255,36 @@ function normalizeRenderedDesignRecord(renderedDesign: any): DesignStudioRendere
   };
 }
 
+function buildSyntheticRenderedActivity(renderedDesign: DesignStudioRenderedDesignRecord): DesignStudioActivityRecord {
+  const status = String(renderedDesign.status || '').toLowerCase();
+  const resolvedType = status === 'published'
+    ? 'design_published'
+    : status === 'scheduled'
+      ? 'design_scheduled'
+      : status === 'failed'
+        ? 'design_render_failed'
+        : 'design_rendered';
+
+  return {
+    id: `rendered-design-${renderedDesign.id}`,
+    type: resolvedType,
+    details: {
+      designId: renderedDesign.id,
+      templateName: renderedDesign.templateName,
+      headerText: typeof renderedDesign.data?.headerText === 'string' ? renderedDesign.data.headerText : undefined,
+      sourceTitle: renderedDesign.articleTitle,
+      sourceSummary: renderedDesign.articleSummary,
+      sourceUrl: renderedDesign.sourceUrl,
+      previewUrl: renderedDesign.previewUrl || renderedDesign.outputUrl,
+      outputUrl: renderedDesign.outputUrl,
+      exportFormat: renderedDesign.exportFormat,
+      scheduleTime: renderedDesign.scheduledFor || undefined,
+      status: renderedDesign.status,
+    },
+    createdAt: renderedDesign.createdAt,
+  };
+}
+
 function compactTemplateForCache(template: DesignStudioTemplateRecord) {
   return {
     id: template.id,
@@ -836,7 +866,40 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         createdAt: job.createdAt,
       }));
 
-    const scopedActivities = [...manualRenderActivityRecords, ...activities]
+    const orphanRenderedActivities = activeTab === 'manual'
+      ? renderedDesigns
+          .filter((renderedDesign) => (renderedDesign.mode || 'manual') === 'manual')
+          .filter((renderedDesign) => {
+            const renderedOutputKey = normalizeMediaKey(renderedDesign.outputUrl);
+            const renderedPreviewKey = normalizeMediaKey(renderedDesign.previewUrl || renderedDesign.outputUrl);
+            const renderedHeaderText = String(renderedDesign.data?.headerText || '').trim();
+            return !activities.some((activity) => {
+              if (!MANUAL_ACTIVITY_TYPES.has(activity.type)) {
+                return false;
+              }
+
+              if (activity.details.designId === renderedDesign.id) {
+                return true;
+              }
+
+              const activityOutputKey = normalizeMediaKey(activity.details.outputUrl || '');
+              const activityPreviewKey = normalizeMediaKey(activity.details.previewUrl || '');
+              if (
+                (renderedOutputKey && (activityOutputKey === renderedOutputKey || activityPreviewKey === renderedOutputKey))
+                || (renderedPreviewKey && (activityOutputKey === renderedPreviewKey || activityPreviewKey === renderedPreviewKey))
+              ) {
+                return true;
+              }
+
+              return Boolean(renderedHeaderText)
+                && activity.details.templateName === renderedDesign.templateName
+                && String(activity.details.headerText || '').trim() === renderedHeaderText;
+            });
+          })
+          .map(buildSyntheticRenderedActivity)
+      : [];
+
+    const scopedActivities = [...manualRenderActivityRecords, ...orphanRenderedActivities, ...activities]
       .filter((activity) => !dismissedActivityIds.includes(activity.id))
       .filter((activity) => {
         const timestamp = new Date(activity.createdAt).getTime();
@@ -898,7 +961,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         ? activity.type === 'design_published'
         : activity.type === 'auto_editorial_posted'
     ));
-  }, [activeStatusTab, activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, retentionMs, templatePreviewUrls]);
+  }, [activeStatusTab, activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, renderedDesigns, retentionMs, templatePreviewUrls]);
 
   useEffect(() => {
     const targetActivityId = window.localStorage.getItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
@@ -2309,6 +2372,60 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
   const handleDelete = async (id: string) => {
     haptics.medium();
+    if (id.startsWith('rendered-design-')) {
+      const renderedDesignId = id.replace('rendered-design-', '');
+      const deletedRenderedDesign = renderedDesigns.find((item) => item.id === renderedDesignId);
+      const deletedIndex = renderedDesigns.findIndex((item) => item.id === renderedDesignId);
+      if (!deletedRenderedDesign || deletedIndex === -1) {
+        return;
+      }
+
+      const nextRenderedDesigns = renderedDesigns.filter((item) => item.id !== renderedDesignId);
+      setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setRenderedDesigns(nextRenderedDesigns);
+
+      try {
+        await saveDesignStudioState({
+          templates: designTemplates,
+          renderedDesigns: nextRenderedDesigns,
+          autoEditorials,
+        });
+
+        showUndo({
+          id,
+          itemName: deletedRenderedDesign.templateName || 'Rendered design',
+          onUndo: async () => {
+            const restoredRenderedDesigns = [...nextRenderedDesigns];
+            restoredRenderedDesigns.splice(Math.min(deletedIndex, restoredRenderedDesigns.length), 0, deletedRenderedDesign);
+            await saveDesignStudioState({
+              templates: designTemplates,
+              renderedDesigns: restoredRenderedDesigns,
+              autoEditorials,
+            });
+            setRenderedDesigns(restoredRenderedDesigns);
+            setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+            toast.success('Rendered design restored');
+          },
+          onConfirm: async () => {
+            toast.success('Rendered design deleted');
+          },
+        });
+      } catch (error) {
+        console.error('Failed to delete rendered design:', error);
+        setRenderedDesigns((prev) => {
+          if (prev.some((item) => item.id === deletedRenderedDesign.id)) {
+            return prev;
+          }
+          const restored = [...prev];
+          restored.splice(Math.min(deletedIndex, restored.length), 0, deletedRenderedDesign);
+          return restored;
+        });
+        setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+        toast.error(error instanceof Error ? error.message : 'Failed to delete rendered design');
+      }
+      return;
+    }
+
     if (id.startsWith('render-job-')) {
       const deletedJob = manualRenderJobs.find((job) => `render-job-${job.id}` === id);
       const deletedIndex = manualRenderJobs.findIndex((job) => `render-job-${job.id}` === id);
@@ -2344,16 +2461,37 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const deletedIndex = activities.findIndex((activity) => activity.id === id);
     if (!deletedActivity || deletedIndex === -1) return;
     const linkedRenderJobDismissals = getLinkedRenderJobDismissals(deletedActivity, manualRenderJobs);
+    const unifiedRecord = resolveUnifiedRecordFromActivity(deletedActivity);
     const dismissIds = [id, ...linkedRenderJobDismissals];
     const previousRenderedDesigns = [...renderedDesigns];
     const previousAutoEditorials = [...autoEditorials];
+    const nextRenderedDesigns = unifiedRecord?.sourceType === 'manual' && unifiedRecord.renderDesignId
+      ? renderedDesigns.filter((item) => item.id !== unifiedRecord.renderDesignId)
+      : renderedDesigns;
+    const nextAutoEditorials = unifiedRecord?.sourceType === 'auto' && unifiedRecord.autoEditorialId
+      ? autoEditorials.filter((item) => item.id !== unifiedRecord.autoEditorialId)
+      : autoEditorials;
 
     setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
     setActivities((prev) => prev.filter((activity) => activity.id !== id));
+    if (nextRenderedDesigns !== renderedDesigns) {
+      setRenderedDesigns(nextRenderedDesigns);
+    }
+    if (nextAutoEditorials !== autoEditorials) {
+      setAutoEditorials(nextAutoEditorials);
+    }
     try {
       const response = await apiClient.delete(`/api/design-studio/activity/${id}`);
       if (!response.success) {
         throw new Error(response.error?.message || 'Failed to delete activity');
+      }
+
+      if (nextRenderedDesigns !== renderedDesigns || nextAutoEditorials !== autoEditorials) {
+        await saveDesignStudioState({
+          templates: designTemplates,
+          renderedDesigns: nextRenderedDesigns,
+          autoEditorials: nextAutoEditorials,
+        });
       }
 
       void loadActivities({ silent: true });
@@ -2395,6 +2533,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         next.splice(Math.min(deletedIndex, next.length), 0, deletedActivity);
         return next;
       });
+      setRenderedDesigns(previousRenderedDesigns);
+      setAutoEditorials(previousAutoEditorials);
       toast.error(error instanceof Error ? error.message : 'Failed to delete activity');
     }
   };

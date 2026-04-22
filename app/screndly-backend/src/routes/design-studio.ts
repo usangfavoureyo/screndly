@@ -8,6 +8,8 @@ import { z } from 'zod';
 import { authenticate } from '../middleware/auth';
 import { getBackblazeAuthorizedDownloadUrl, listBackblazeFiles, uploadLocalFileToBackblaze } from '../services/backblaze';
 import {
+  buildTextLayer,
+  type DesignStudioVariantRecord,
   deleteDesignStudioActivityArtifacts,
   generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
@@ -280,6 +282,22 @@ const manualRenderRequestSchema = z.object({
   }),
 });
 
+const headlinePreviewRequestSchema = z.object({
+  template: templateSchema,
+  data: z.object({
+    template_variant: z.enum(['top_left', 'top_right', 'top_center', 'bottom_left', 'bottom_right', 'bottom_center']).optional(),
+    headerText: z.string(),
+    headerTextColor: z.string().optional(),
+    headerAlignment: z.enum(['left', 'center', 'right']).optional(),
+    fontScale: z.number().optional(),
+    headlineWidthScale: z.number().optional(),
+    headlineDensity: z.number().optional(),
+    lineHeightMultiplier: z.number().optional(),
+    maxLines: z.number().optional(),
+    useTemplateDefaultStyling: z.boolean().optional(),
+  }),
+});
+
 router.get('/state', authenticate, async (_req, res) => {
   try {
     const { templates, renderedDesigns, autoEditorials } = await getDesignStudioStateSnapshot();
@@ -334,6 +352,53 @@ router.put('/state', authenticate, async (req, res) => {
 
     console.error('Error saving Design Studio state:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to save Design Studio state' } });
+  }
+});
+
+router.post('/preview-text-layer', authenticate, async (req, res) => {
+  try {
+    const payload = headlinePreviewRequestSchema.parse(req.body);
+    const variant =
+      payload.template.variants?.find((entry) => entry?.variant === payload.data.template_variant)
+      || payload.template.variants?.find((entry) => entry?.variant === payload.template.layoutVariant)
+      || payload.template.variants?.find((entry) => entry?.variant === payload.template.baseVariant)
+      || payload.template.variants?.[0];
+
+    if (!variant) {
+      return res.status(400).json({ success: false, error: { message: 'Template preview variant is missing' } });
+    }
+
+    const textLayer = await buildTextLayer({
+      width: payload.template.width,
+      height: payload.template.height,
+      variant: variant as DesignStudioVariantRecord,
+      template: payload.template,
+      payload: {
+        template_variant: payload.data.template_variant,
+        headerText: payload.data.headerText,
+        headerTextColor: payload.data.headerTextColor,
+        headerAlignment: payload.data.headerAlignment,
+        fontScale: payload.data.fontScale,
+        headlineWidthScale: payload.data.headlineWidthScale,
+        headlineDensity: payload.data.headlineDensity,
+        lineHeightMultiplier: payload.data.lineHeightMultiplier,
+        maxLines: payload.data.maxLines,
+        useTemplateDefaultStyling: payload.data.useTemplateDefaultStyling,
+      },
+    });
+
+    res.json({
+      success: true,
+      data: {
+        dataUrl: `data:image/png;base64,${textLayer.toString('base64')}`,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: { message: 'Invalid Design Studio headline preview request', details: error.errors } });
+    }
+    console.error('Error generating Design Studio headline preview:', error);
+    res.status(500).json({ success: false, error: { message: error instanceof Error ? error.message : 'Failed to generate Design Studio headline preview' } });
   }
 });
 

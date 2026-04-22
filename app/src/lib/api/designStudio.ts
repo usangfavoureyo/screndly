@@ -196,6 +196,33 @@ export interface DesignStudioTMDbImagePool {
   profiles?: DesignStudioTMDbImageAsset[];
 }
 
+export async function fetchDesignStudioHeadlinePreview(payload: {
+  template: DesignStudioTemplateRecord;
+  data: {
+    template_variant?: DesignStudioLayoutVariant;
+    headerText: string;
+    headerTextColor?: string;
+    headerAlignment?: 'left' | 'center' | 'right';
+    fontScale?: number;
+    headlineWidthScale?: number;
+    headlineDensity?: number;
+    lineHeightMultiplier?: number;
+    maxLines?: number;
+    useTemplateDefaultStyling?: boolean;
+  };
+}, options?: RequestInit & { timeout?: number }): Promise<string> {
+  const response = await apiClient.post<{ dataUrl: string }>(
+    '/api/design-studio/preview-text-layer',
+    payload,
+    options,
+  );
+  if (!response.success || !response.data?.dataUrl) {
+    throw new Error(response.error?.message || 'Failed to generate Design Studio headline preview');
+  }
+
+  return response.data.dataUrl;
+}
+
 export async function fetchDesignStudioState(): Promise<DesignStudioStateResponse> {
   const response = await apiClient.get<DesignStudioStateResponse>('/api/design-studio/state');
   if (!response.success || !response.data) {

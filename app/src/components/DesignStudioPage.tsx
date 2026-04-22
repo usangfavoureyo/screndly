@@ -2819,6 +2819,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
             }
           }}
           templateName={selectedTemplate.name}
+          template={selectedTemplate}
           aspectRatio={selectedTemplate.aspectRatio}
           initialData={editorInitialData || buildTemplateInitialData(selectedTemplate, settings.exportFormat === 'png' ? 'png' : 'jpeg')}
           hasHeader={selectedTemplate.hasHeader}

@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DesignStudioBrandBlockMode, DesignStudioLayoutVariant } from '../lib/api/designStudio';
+import {
+  fetchDesignStudioHeadlinePreview,
+  type DesignStudioBrandBlockMode,
+  type DesignStudioLayoutVariant,
+  type DesignStudioTemplateRecord,
+} from '../lib/api/designStudio';
 import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { DesignData } from './EditDesignBottomSheet';
 
 interface LiveDesignPreviewProps {
   templatePreviewUrl: string;
   designData: DesignData | null;
+  template?: DesignStudioTemplateRecord | null;
+  useBackendHeadlinePreview?: boolean;
 }
 
 type PreviewLayout = {
@@ -295,13 +302,19 @@ function normalizePreviewFontFamily(value?: string): string {
   return normalized;
 }
 
-export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesignPreviewProps) {
+export function LiveDesignPreview({
+  templatePreviewUrl,
+  designData,
+  template,
+  useBackendHeadlinePreview = false,
+}: LiveDesignPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [frameScale, setFrameScale] = useState(1);
   const [previewImageError, setPreviewImageError] = useState(false);
   const [fadeAssetError, setFadeAssetError] = useState(false);
   const [brandAssetError, setBrandAssetError] = useState(false);
   const [sourceDimensions, setSourceDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [headlinePreviewLayerUrl, setHeadlinePreviewLayerUrl] = useState<string | null>(null);
 
   const rawSourceUrl = templatePreviewUrl || designData?.backgroundImage || '';
   const sourceUrl = useMemo(() => buildDesignStudioMediaStreamUrl(rawSourceUrl) || rawSourceUrl, [rawSourceUrl]);
@@ -431,6 +444,59 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
     setBrandAssetError(false);
   }, [brandAssetUrl]);
 
+  useEffect(() => {
+    if (!useBackendHeadlinePreview || !template || !designData?.headerText?.trim()) {
+      setHeadlinePreviewLayerUrl(null);
+      return;
+    }
+
+    let isCancelled = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const dataUrl = await fetchDesignStudioHeadlinePreview({
+          template,
+          data: {
+            template_variant: designData.templateVariant,
+            headerText: designData.headerText,
+            headerTextColor: designData.headerTextColor,
+            fontScale: designData.fontScale,
+            headlineWidthScale: designData.headlineWidthScale,
+            headlineDensity: designData.headlineDensity,
+            lineHeightMultiplier: designData.lineHeightMultiplier,
+          },
+        }, {
+          signal: controller.signal,
+          timeout: 15000,
+        });
+
+        if (!isCancelled) {
+          setHeadlinePreviewLayerUrl(dataUrl);
+        }
+      } catch (error) {
+        if (!isCancelled && !(error instanceof Error && error.name === 'AbortError')) {
+          setHeadlinePreviewLayerUrl(null);
+        }
+      }
+    }, 120);
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    designData?.fontScale,
+    designData?.headerText,
+    designData?.headerTextColor,
+    designData?.headlineDensity,
+    designData?.headlineWidthScale,
+    designData?.lineHeightMultiplier,
+    designData?.templateVariant,
+    template,
+    useBackendHeadlinePreview,
+  ]);
+
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
       <style>{`
@@ -506,7 +572,14 @@ export function LiveDesignPreview({ templatePreviewUrl, designData }: LiveDesign
         </div>
       ) : null}
 
-      {designData?.headerText ? (
+      {headlinePreviewLayerUrl ? (
+        <img
+          src={headlinePreviewLayerUrl}
+          alt=""
+          className="pointer-events-none absolute inset-0 h-full w-full"
+          style={{ zIndex: 30 }}
+        />
+      ) : designData?.headerText ? (
         <div
           className="absolute"
           style={{

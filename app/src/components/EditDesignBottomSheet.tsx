@@ -19,6 +19,7 @@ import {
   searchDesignStudioTMDb,
   uploadDesignStudioAsset,
   type DesignStudioBrandBlockMode,
+  type DesignStudioTemplateRecord,
   type DesignStudioTMDbImagePool,
   type DesignStudioLayoutVariant,
   type DesignStudioTMDbSearchResult,
@@ -55,6 +56,7 @@ interface EditDesignBottomSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   templateName: string;
+  template?: DesignStudioTemplateRecord | null;
   aspectRatio?: string; // Template aspect ratio (e.g., '4:5', '1:1', '16:9')
   initialData?: {
     headerText?: string;
@@ -148,6 +150,7 @@ export function EditDesignBottomSheet({
   open,
   onOpenChange,
   templateName,
+  template,
   aspectRatio,
   initialData,
   hasHeader = true,
@@ -2125,6 +2128,8 @@ export function EditDesignBottomSheet({
                       <LiveDesignPreview
                         templatePreviewUrl={resolvedPreviewBackgroundSrc}
                         designData={currentPreviewData}
+                        template={template}
+                        useBackendHeadlinePreview
                       />
                       <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                         Tap to Expand
@@ -2576,6 +2581,8 @@ export function EditDesignBottomSheet({
                     <LiveDesignPreview
                       templatePreviewUrl={resolvedPreviewBackgroundSrc}
                       designData={currentPreviewData}
+                      template={template}
+                      useBackendHeadlinePreview
                     />
                     <div className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
                       Tap to Expand
@@ -2820,6 +2827,8 @@ export function EditDesignBottomSheet({
                 <LiveDesignPreview
                   templatePreviewUrl={resolvedPreviewBackgroundSrc}
                   designData={currentPreviewData}
+                  template={template}
+                  useBackendHeadlinePreview
                 />
               </div>
             </div>
