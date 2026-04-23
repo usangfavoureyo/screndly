@@ -59,6 +59,13 @@ interface VideoPreflightResult {
     bytes?: number;
 }
 
+interface VideoEncodingProbeResult {
+    container?: string;
+    videoCodec?: string;
+    audioCodec?: string;
+    pixelFormat?: string;
+}
+
 class MediaPreflightError extends Error {
     constructor(
         message: string,
@@ -686,6 +693,124 @@ export class PublisherService {
         };
     }
 
+    private async probeVideoEncoding(filePath: string): Promise<VideoEncodingProbeResult | null> {
+        try {
+            const { stdout } = await execFileAsync('ffprobe', [
+                '-v',
+                'error',
+                '-show_entries',
+                'stream=codec_type,codec_name,pix_fmt',
+                '-show_entries',
+                'format=format_name',
+                '-of',
+                'json',
+                filePath,
+            ], {
+                timeout: 30_000,
+                maxBuffer: 2 * 1024 * 1024,
+            });
+
+            const parsed = JSON.parse(stdout || '{}') as {
+                streams?: Array<{ codec_type?: string; codec_name?: string; pix_fmt?: string }>;
+                format?: { format_name?: string };
+            };
+
+            const streams = Array.isArray(parsed.streams) ? parsed.streams : [];
+            const videoStream = streams.find((stream) => stream.codec_type === 'video');
+            const audioStream = streams.find((stream) => stream.codec_type === 'audio');
+
+            return {
+                container: parsed.format?.format_name,
+                videoCodec: videoStream?.codec_name,
+                audioCodec: audioStream?.codec_name,
+                pixelFormat: videoStream?.pix_fmt,
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    private isMetaCompatibleVideoEncoding(probe: VideoEncodingProbeResult | null): boolean {
+        if (!probe) {
+            return false;
+        }
+
+        const container = String(probe.container || '').toLowerCase();
+        const hasMp4Container = container.includes('mp4') || container.includes('mov');
+        const hasH264Video = String(probe.videoCodec || '').toLowerCase() === 'h264';
+        const hasAacAudio = !probe.audioCodec || String(probe.audioCodec || '').toLowerCase() === 'aac';
+        const hasSupportedPixelFormat = !probe.pixelFormat || String(probe.pixelFormat || '').toLowerCase() === 'yuv420p';
+
+        return hasMp4Container && hasH264Video && hasAacAudio && hasSupportedPixelFormat;
+    }
+
+    private async transcodeVideoForMeta(filePath: string): Promise<string> {
+        const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-meta-video-'));
+        const targetPath = path.join(targetDir, `${path.parse(filePath).name}-meta.mp4`);
+
+        await execFileAsync('ffmpeg', [
+            '-y',
+            '-i',
+            filePath,
+            '-vf',
+            'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
+            '-c:v',
+            'libx264',
+            '-preset',
+            'veryfast',
+            '-crf',
+            '22',
+            '-c:a',
+            'aac',
+            '-movflags',
+            '+faststart',
+            targetPath,
+        ], {
+            timeout: 8 * 60 * 1000,
+            maxBuffer: 10 * 1024 * 1024,
+        });
+
+        return targetPath;
+    }
+
+    private async prepareMetaCompatibleVideoPath(mediaFilePath: string): Promise<{
+        uploadPath: string;
+        cleanupPath: string | null;
+        transcoded: boolean;
+        probe: VideoEncodingProbeResult | null;
+    }> {
+        const probe = await this.probeVideoEncoding(mediaFilePath);
+        if (this.isMetaCompatibleVideoEncoding(probe)) {
+            return {
+                uploadPath: mediaFilePath,
+                cleanupPath: null,
+                transcoded: false,
+                probe,
+            };
+        }
+
+        try {
+            const transcodedPath = await this.transcodeVideoForMeta(mediaFilePath);
+            return {
+                uploadPath: transcodedPath,
+                cleanupPath: transcodedPath,
+                transcoded: true,
+                probe,
+            };
+        } catch (error) {
+            console.warn('[Publisher] Failed to transcode meta video; using original source', {
+                sourcePath: mediaFilePath,
+                reason: error instanceof Error ? error.message : String(error),
+            });
+            return {
+                uploadPath: mediaFilePath,
+                cleanupPath: null,
+                transcoded: false,
+                probe,
+            };
+        }
+    }
+
     private async buildMediaFingerprintParts(
         resolvedImageUrls: string[],
         videoSource?: string | null
@@ -1265,7 +1390,8 @@ export class PublisherService {
         content: PublishContent,
         mediaFilePath: string | null | undefined,
         directVideoUrl: string | undefined,
-        cache: Map<string, string>
+        cache: Map<string, string>,
+        profile: 'default' | 'meta' = 'default'
     ): Promise<string> {
         if (this.isDirectVideoUrl(directVideoUrl)) {
             return this.normalizeRemoteMediaUrl(directVideoUrl.trim());
@@ -1275,24 +1401,48 @@ export class PublisherService {
             throw new Error('A local video file or direct video URL is required');
         }
 
-        const cacheKey = mediaFilePath;
+        const cacheKey = `${profile}:${mediaFilePath}`;
         const cached = cache.get(cacheKey);
         if (cached) {
             return cached;
         }
 
+        let uploadPath = mediaFilePath;
+        let cleanupPath: string | null = null;
+
+        if (profile === 'meta') {
+            const prepared = await this.prepareMetaCompatibleVideoPath(mediaFilePath);
+            uploadPath = prepared.uploadPath;
+            cleanupPath = prepared.cleanupPath;
+            console.log('[Publisher] Meta video upload profile prepared', {
+                transcoded: prepared.transcoded,
+                sourcePath: mediaFilePath,
+                uploadPath,
+                probe: prepared.probe,
+            });
+        }
+
+        const uploadName = profile === 'meta'
+            ? `${path.parse(this.buildHostedVideoOriginalName(content, mediaFilePath)).name}.mp4`
+            : this.buildHostedVideoOriginalName(content, mediaFilePath);
+
         const uploaded = await uploadLocalFileToBackblaze(
-            mediaFilePath,
-            this.buildHostedVideoOriginalName(content, mediaFilePath),
+            uploadPath,
+            uploadName,
             {
                 bucketTypes: ['videos', 'general'],
                 prefix: 'youtube-poller/videos',
-                contentType: this.getMimeType(mediaFilePath),
+                contentType: profile === 'meta' ? 'video/mp4' : this.getMimeType(uploadPath),
             }
         );
 
         const hostedUrl = await getBackblazeAuthorizedDownloadUrl(uploaded.url, 7 * 24 * 60 * 60);
         cache.set(cacheKey, hostedUrl);
+
+        if (cleanupPath) {
+            await this.cleanupTempPath(cleanupPath);
+        }
+
         return hostedUrl;
     }
 
@@ -1569,7 +1719,7 @@ export class PublisherService {
                                     );
                                 } else {
                                     const hostedVideoUrl = mediaKind === 'video'
-                                        ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache)
+                                        ? await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache, 'meta')
                                         : undefined;
                                     if (platform === 'InstagramReels' && hostedVideoUrl) {
                                         await this.preflightRemoteVideoSource(hostedVideoUrl, platform);
@@ -1638,7 +1788,7 @@ export class PublisherService {
                                     ? await metaService.postVideoToThreads(
                                         threadsUserId,
                                         platformContent.text,
-                                        await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache),
+                                        await this.resolveHostedVideoUrl(platformContent, localVideoFile, directVideoUrl, hostedVideoUrlCache, 'meta'),
                                         threadsAccessToken
                                     )
                                     : await metaService.postToThreads(

@@ -343,6 +343,29 @@ function normalizeMediaKey(value?: string | null): string {
   }
 }
 
+function buildActivityDismissalKeys(activity: DesignStudioActivityRecord): string[] {
+  const outputKey = normalizeMediaKey(activity.details.outputUrl || '');
+  const previewKey = normalizeMediaKey(activity.details.previewUrl || '');
+  return [
+    `activity:${activity.id}`,
+    activity.details.designId ? `design:${activity.details.designId}` : '',
+    activity.details.renderJobId ? `render-job:${activity.details.renderJobId}` : '',
+    outputKey ? `media:${outputKey}` : '',
+    previewKey ? `media:${previewKey}` : '',
+  ].filter(Boolean);
+}
+
+function buildRenderedDesignDismissalKeys(renderedDesign: DesignStudioRenderedDesignRecord): string[] {
+  const outputKey = normalizeMediaKey(renderedDesign.outputUrl);
+  const previewKey = normalizeMediaKey(renderedDesign.previewUrl || renderedDesign.outputUrl);
+  return [
+    `activity:rendered-design-${renderedDesign.id}`,
+    `design:${renderedDesign.id}`,
+    outputKey ? `media:${outputKey}` : '',
+    previewKey ? `media:${previewKey}` : '',
+  ].filter(Boolean);
+}
+
 interface DesignStudioActivityPageProps {
   onNavigate: (page: string) => void;
   previousPage?: string | null;
@@ -382,6 +405,7 @@ interface UnifiedRenderedDesignRecord {
 
 const DESIGN_STUDIO_ACTIVITY_CACHE_KEY = 'designStudioActivityCache';
 const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY = 'designStudioActivityDismissed';
+const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY = 'designStudioActivityDismissedKeys';
 
 const MANUAL_ACTIVITY_TYPES = new Set([
   'template_uploaded',
@@ -693,6 +717,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return [];
     }
   });
+  const [dismissedActivityKeys, setDismissedActivityKeys] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const retentionHours = settings.designStudioActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
   const logLevel = settings.designStudioLogLevel || 'standard';
@@ -789,8 +822,14 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY, JSON.stringify(dismissedActivityIds));
   }, [dismissedActivityIds]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY, JSON.stringify(dismissedActivityKeys));
+  }, [dismissedActivityKeys]);
+
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
+    const dismissedKeySet = new Set(dismissedActivityKeys);
     const resolvedRenderJobIds = new Set(
       activities
         .filter((activity) => activity.type === 'design_rendered' || activity.type === 'design_render_failed')
@@ -901,6 +940,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
 
     const scopedActivities = [...manualRenderActivityRecords, ...orphanRenderedActivities, ...activities]
       .filter((activity) => !dismissedActivityIds.includes(activity.id))
+      .filter((activity) => !buildActivityDismissalKeys(activity).some((key) => dismissedKeySet.has(key)))
       .filter((activity) => {
         const timestamp = new Date(activity.createdAt).getTime();
         return Number.isNaN(timestamp) || timestamp >= cutoff;
@@ -961,7 +1001,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         ? activity.type === 'design_published'
         : activity.type === 'auto_editorial_posted'
     ));
-  }, [activeStatusTab, activeTab, activities, dismissedActivityIds, logLevel, manualRenderJobs, renderedDesigns, retentionMs, templatePreviewUrls]);
+  }, [activeStatusTab, activeTab, activities, dismissedActivityIds, dismissedActivityKeys, logLevel, manualRenderJobs, renderedDesigns, retentionMs, templatePreviewUrls]);
 
   useEffect(() => {
     const targetActivityId = window.localStorage.getItem(DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY);
@@ -2393,9 +2433,16 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         })
         .map((activity) => activity.id);
       const dismissIds = Array.from(new Set([id, ...relatedActivityIds]));
+      const dismissKeys = Array.from(new Set([
+        ...buildRenderedDesignDismissalKeys(deletedRenderedDesign),
+        ...activities
+          .filter((activity) => relatedActivityIds.includes(activity.id))
+          .flatMap(buildActivityDismissalKeys),
+      ]));
       const previousActivities = [...activities];
       const nextRenderedDesigns = renderedDesigns.filter((item) => item.id !== renderedDesignId);
       setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
+      setDismissedActivityKeys((prev) => Array.from(new Set([...prev, ...dismissKeys])));
       setActivities((prev) => prev.filter((activity) => !relatedActivityIds.includes(activity.id)));
       setRenderedDesigns(nextRenderedDesigns);
 
@@ -2419,6 +2466,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
             });
             setRenderedDesigns(restoredRenderedDesigns);
             setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+            setDismissedActivityKeys((prev) => prev.filter((key) => !dismissKeys.includes(key)));
             await loadActivities({ silent: true });
             toast.success('Rendered design restored');
           },
@@ -2438,6 +2486,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         });
         setActivities(previousActivities);
         setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+        setDismissedActivityKeys((prev) => prev.filter((key) => !dismissKeys.includes(key)));
         toast.error(error instanceof Error ? error.message : 'Failed to delete rendered design');
       }
       return;
@@ -2450,7 +2499,9 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         return;
       }
 
+      const dismissKeys = [`activity:${id}`, `render-job:${deletedJob.id}`];
       setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setDismissedActivityKeys((prev) => Array.from(new Set([...prev, ...dismissKeys])));
       setManualRenderJobs((prev) => prev.filter((job) => `render-job-${job.id}` !== id));
 
       showUndo({
@@ -2458,6 +2509,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         itemName: deletedJob.templateName || 'Queued design activity',
         onUndo: () => {
           setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+          setDismissedActivityKeys((prev) => prev.filter((key) => !dismissKeys.includes(key)));
           setManualRenderJobs((prev) => {
             if (prev.some((job) => job.id === deletedJob.id)) {
               return prev;
@@ -2480,6 +2532,15 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     const linkedRenderJobDismissals = getLinkedRenderJobDismissals(deletedActivity, manualRenderJobs);
     const unifiedRecord = resolveUnifiedRecordFromActivity(deletedActivity);
     const dismissIds = [id, ...linkedRenderJobDismissals];
+    const dismissedLinkedJobKeys = linkedRenderJobDismissals.map((linkedId) => `activity:${linkedId}`);
+    const dismissKeys = Array.from(new Set([
+      ...buildActivityDismissalKeys(deletedActivity),
+      ...dismissedLinkedJobKeys,
+      unifiedRecord?.sourceType === 'manual' && unifiedRecord.renderDesignId ? `design:${unifiedRecord.renderDesignId}` : '',
+      unifiedRecord?.sourceType === 'auto' && unifiedRecord.autoEditorialId ? `auto:${unifiedRecord.autoEditorialId}` : '',
+      normalizeMediaKey(deletedActivity.details.outputUrl || '') ? `media:${normalizeMediaKey(deletedActivity.details.outputUrl || '')}` : '',
+      normalizeMediaKey(deletedActivity.details.previewUrl || '') ? `media:${normalizeMediaKey(deletedActivity.details.previewUrl || '')}` : '',
+    ].filter(Boolean)));
     const previousRenderedDesigns = [...renderedDesigns];
     const previousAutoEditorials = [...autoEditorials];
     const nextRenderedDesigns = unifiedRecord?.sourceType === 'manual' && unifiedRecord.renderDesignId
@@ -2490,6 +2551,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       : autoEditorials;
 
     setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
+    setDismissedActivityKeys((prev) => Array.from(new Set([...prev, ...dismissKeys])));
     setActivities((prev) => prev.filter((activity) => activity.id !== id));
     if (nextRenderedDesigns !== renderedDesigns) {
       setRenderedDesigns(nextRenderedDesigns);
@@ -2528,6 +2590,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               autoEditorials: previousAutoEditorials,
             });
             setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+            setDismissedActivityKeys((prev) => prev.filter((key) => !dismissKeys.includes(key)));
             await loadActivities({ silent: true });
             toast.success('Activity restored');
           } catch (error) {
@@ -2542,6 +2605,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     } catch (error) {
       console.error('Failed to delete design studio activity:', error);
       setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+      setDismissedActivityKeys((prev) => prev.filter((key) => !dismissKeys.includes(key)));
       setActivities((prev) => {
         if (prev.some((activity) => activity.id === deletedActivity.id)) {
           return prev;

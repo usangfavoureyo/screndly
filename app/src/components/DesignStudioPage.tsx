@@ -801,6 +801,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
   const [uploadingTemplateName, setUploadingTemplateName] = useState('');
   const [isGeneratingAutoEditorials, setIsGeneratingAutoEditorials] = useState(false);
   const [previewEditorial, setPreviewEditorial] = useState<AutoEditorial | null>(null);
+  const [previewNewsImageItem, setPreviewNewsImageItem] = useState<RSSActivityItem | null>(null);
   const templatePreviewLastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const [selectedEditorial, setSelectedEditorial] = useState<AutoEditorial | null>(null);
   const [isEditorialActionsOpen, setIsEditorialActionsOpen] = useState(false);
@@ -2510,7 +2511,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           <article>
                             <div className="flex gap-3">
                               {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPreviewNewsImageItem(item);
+                                  }}
+                                  className="h-20 w-28 shrink-0 overflow-hidden rounded-xl cursor-zoom-in text-left transition-opacity hover:opacity-90"
+                                  aria-label={`View image for ${item.title}`}
+                                >
+                                  <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" />
+                                </button>
                               ) : (
                                 <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                                   No image
@@ -2616,7 +2627,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                           <article>
                             <div className="flex gap-3">
                               {item.imageUrl ? (
-                                <img src={item.imageUrl} alt={item.title} className="h-20 w-28 rounded-xl object-cover" />
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setPreviewNewsImageItem(item);
+                                  }}
+                                  className="h-20 w-28 shrink-0 overflow-hidden rounded-xl cursor-zoom-in text-left transition-opacity hover:opacity-90"
+                                  aria-label={`View image for ${item.title}`}
+                                >
+                                  <img src={item.imageUrl} alt={item.title} className="h-full w-full object-cover" />
+                                </button>
                               ) : (
                                 <div className="h-20 w-28 rounded-xl border border-dashed border-gray-200 dark:border-[#333333] flex items-center justify-center text-xs text-[#6B7280] dark:text-[#9CA3AF]">
                                   No image
@@ -3415,6 +3436,19 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         onOpenChange={(open) => {
           if (!open) {
             setPreviewEditorial(null);
+          }
+        }}
+      />
+
+      <MediaPreviewDialog
+        open={Boolean(previewNewsImageItem)}
+        src={previewNewsImageItem?.imageUrl}
+        mediaType="image"
+        title={previewNewsImageItem?.title || 'Fetched news image'}
+        badgeLabel={previewNewsImageItem?.feedName || 'Fetched News'}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPreviewNewsImageItem(null);
           }
         }}
       />

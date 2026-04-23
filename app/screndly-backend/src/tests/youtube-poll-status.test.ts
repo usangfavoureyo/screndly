@@ -464,6 +464,29 @@ test('preserves paragraph spacing when hashtags remain enabled', () => {
     assert.equal(text, 'Paragraph one.\n\nParagraph two with #Tag');
 });
 
+test('upgrades single newline paragraph breaks to blank-line paragraph spacing', () => {
+    const service = new YouTubePollerService() as any;
+    const captions = {
+        generated: 'Prime Video has released the trailer for Off Campus Season 1.\nElla Bright, Belmont Cameli, and Mika Abdalla star in the college drama.',
+        fallback: 'Fallback text',
+    };
+    const settings = {
+        platformSettings: {
+            facebook: {
+                autoCaption: true,
+                autoHashtag: false,
+            },
+        },
+    };
+
+    const text = service.buildPlatformPostText('Facebook', captions, {}, settings);
+
+    assert.equal(
+        text,
+        'Prime Video has released the trailer for Off Campus Season 1.\n\nElla Bright, Belmont Cameli, and Mika Abdalla star in the college drama.'
+    );
+});
+
 test('respects the configured polling schedule window', () => {
     const service = new YouTubePollerService() as any;
     const schedule = {

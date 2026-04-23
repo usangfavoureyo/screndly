@@ -3926,7 +3926,13 @@ Respond ONLY as strict JSON:
             previousWasBlank = false;
         }
 
-        return compactedLines.join('\n').trim();
+        const nonEmptyLines = compactedLines.filter((line) => line.length > 0);
+        if (nonEmptyLines.length >= 2 && !compactedLines.includes('')) {
+            const [headline, ...rest] = nonEmptyLines;
+            return [headline, '', ...rest].join('\n').trim();
+        }
+
+        return compactedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
     }
 
     private buildFallbackCaption(video: any, metadata: { cleanedTitle: string; tmdbMatch?: { title: string } }): string {
