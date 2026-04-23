@@ -3126,11 +3126,27 @@ function determineSmartImagePlan(
   const primaryStreamingPlatform = getPrimaryStreamingPlatform(articleText);
   const projectLedCastingStory = isProjectLedCastingStory(article.title, articleText);
 
-  if (canonicalFlags.has('editorial_brain_image_strategy_person_first')) {
+  if (
+    canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+    canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+    canonicalFlags.has('article_family_person_interview_or_reaction')
+  ) {
+    const canonicalNamedPerson = (analysis.canonicalEntity?.namedPeople || [])
+      .find((person) => typeof person === 'string' && person.trim().length > 0);
+    const businessHeadlinePerson = article.title
+      .match(/\bwith\s+([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,3})(?=\s+(?:on board|attached|to star|starring|set to star)\b)/i)?.[1]
+      ?.replace(/\s+(?:On\s+Board|Attached|To\s+Star|Starring|Set\s+To\s+Star).*$/i, '')
+      ?.trim();
     const personSubject =
-      (analysis.canonicalEntity?.primarySubject && looksLikeNamedPerson(analysis.canonicalEntity.primarySubject))
+      (
+        analysis.canonicalEntity?.entityType === 'person' &&
+        analysis.canonicalEntity?.primarySubject &&
+        looksLikeNamedPerson(analysis.canonicalEntity.primarySubject)
+      )
         ? analysis.canonicalEntity.primarySubject
         :
+      businessHeadlinePerson ||
+      canonicalNamedPerson ||
       canonicalPortraitPeople[0] ||
       preferredPersonSubject ||
       leadPerson ||
@@ -3154,7 +3170,7 @@ function determineSmartImagePlan(
               false
             )
           : null,
-        'editorial-brain promotion prefers a person-led primary image'
+        'person-led business/interview stories prefer a person-led primary image'
       );
     }
   }
@@ -5731,6 +5747,7 @@ function canUseExplicitFeedFallback(
   if (
     flags.has('story_family_person_commentary_on_project') ||
     flags.has('story_policy_entertainment_business_person_first') ||
+    flags.has('editorial_brain_image_strategy_person_first') ||
     flags.has('article_family_person_interview_or_reaction')
   ) {
     return true;
@@ -5774,7 +5791,9 @@ export async function resolveRelevantRSSImages(
   const canonicalFlags = new Set(article.canonicalEntity?.ambiguityFlags || []);
   const allowNonProjectPersonFirstResolution =
     canonicalFlags.has('story_policy_entertainment_business_person_first') ||
-    canonicalFlags.has('story_family_person_commentary_on_project');
+    canonicalFlags.has('story_family_person_commentary_on_project') ||
+    canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+    canonicalFlags.has('article_family_person_interview_or_reaction');
   if (article.canonicalEntity?.ambiguityFlags?.includes('rss_family_no_tmdb_project') && !allowNonProjectPersonFirstResolution) {
     return [];
   }
@@ -5791,7 +5810,11 @@ export async function resolveRelevantRSSImages(
     (
       canonicalFlags.has('story_policy_force_project_first_image') ||
       canonicalFlags.has('story_policy_early_project_cast_portraits') ||
-      canonicalFlags.has('story_policy_memorial_feed_fallback')
+      canonicalFlags.has('story_policy_memorial_feed_fallback') ||
+      canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+      canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+      canonicalFlags.has('article_family_person_interview_or_reaction') ||
+      canonicalFlags.has('story_policy_article_image_first')
     ) &&
     Array.isArray(article.fallbackImages) &&
     article.fallbackImages.length > 0
@@ -5838,6 +5861,9 @@ export async function resolveRelevantRSSImages(
         isStreamingAvailabilityStory(article, analysis) ||
         isMemorialStory(article) ||
         canonicalFlags.has('story_family_person_commentary_on_project') ||
+        canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+        canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+        canonicalFlags.has('article_family_person_interview_or_reaction') ||
         canonicalFlags.has('story_policy_early_project_cast_portraits') ||
         canonicalFlags.has('story_policy_force_project_first_image')
       );
@@ -5855,6 +5881,9 @@ export async function resolveRelevantRSSImages(
     const memorialStory = isMemorialStory(article);
     const allowTargetedPrimaryRecovery =
       canonicalFlags.has('story_family_person_commentary_on_project') ||
+      canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+      canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+      canonicalFlags.has('article_family_person_interview_or_reaction') ||
       canonicalFlags.has('story_policy_early_project_cast_portraits') ||
       canonicalFlags.has('story_policy_force_project_first_image');
 

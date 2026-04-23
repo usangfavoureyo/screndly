@@ -160,6 +160,7 @@ export function normalizeRssEditorialBrainEvent(value: unknown): string {
   }
   if (/\brenew/.test(normalized)) return 'renewal';
   if (/\bfirst look\b|\bexclusive (?:look|images?)\b|\bnew images?\b/.test(normalized)) return 'first_look';
+  if (/\bofficial title\b|\btitle reveal\b|\bofficially titled\b/.test(normalized)) return 'official_title_reveal';
   if (/\bordered to series\b|\bseries order\b/.test(normalized)) return 'series_order';
   if (/\btrailer\b|\bteaser\b/.test(normalized)) return 'trailer';
   if (/\bobit|dies?|death|passed away\b/.test(normalized)) return 'obituary';

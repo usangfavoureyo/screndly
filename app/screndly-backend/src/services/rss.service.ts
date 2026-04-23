@@ -309,6 +309,7 @@ interface RSSRuntimeSettings {
   rssCaptionMaxLength?: number;
   rssEditorialBrainShadowMode: boolean;
   rssEditorialBrainCaptionStrategyPromotion: boolean;
+  rssEditorialBrainCanonicalStoryPromotion: boolean;
   rssEditorialBrainImageStrategyPromotion: boolean;
   rssEditorialBrainModel?: string;
   rssOpenaiWebSearchEnabled: boolean;
@@ -325,7 +326,7 @@ interface RSSRuntimeSettings {
 }
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
-const RSS_RUNTIME_RULESET_VERSION = '2026-04-22-live-lanes-1';
+const RSS_RUNTIME_RULESET_VERSION = '2026-04-23-stage3-canonical-1';
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE = 0.8;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS = 2;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS = 3;
@@ -409,6 +410,7 @@ const RSS_SETTINGS_KEYS = [
   'rssCaptionMaxLength',
   'rssEditorialBrainShadowMode',
   'rssEditorialBrainCaptionStrategyPromotion',
+  'rssEditorialBrainCanonicalStoryPromotion',
   'rssEditorialBrainImageStrategyPromotion',
   'rssEditorialBrainModel',
   'rssPostingInterval',
@@ -3551,13 +3553,14 @@ function planRssEditorialBrainInvocation(
 async function prepareRssEditorialBrainShadow(
   feedName: string,
   item: RSSItem,
-  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainShadowMode' | 'rssEditorialBrainCaptionStrategyPromotion' | 'rssEditorialBrainImageStrategyPromotion' | 'rssEditorialBrainModel'>,
+  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainShadowMode' | 'rssEditorialBrainCaptionStrategyPromotion' | 'rssEditorialBrainCanonicalStoryPromotion' | 'rssEditorialBrainImageStrategyPromotion' | 'rssEditorialBrainModel'>,
   canonical: RSSCanonicalEntity,
   options?: { force?: boolean },
 ): Promise<RSSEditorialBrainStoredDecision | undefined> {
   if (
     !runtimeSettings.rssEditorialBrainShadowMode &&
     !runtimeSettings.rssEditorialBrainCaptionStrategyPromotion &&
+    !runtimeSettings.rssEditorialBrainCanonicalStoryPromotion &&
     !runtimeSettings.rssEditorialBrainImageStrategyPromotion &&
     !options?.force
   ) {
@@ -3609,6 +3612,7 @@ async function prepareRssEditorialBrainShadow(
     enabled: (
       runtimeSettings.rssEditorialBrainShadowMode ||
       runtimeSettings.rssEditorialBrainCaptionStrategyPromotion ||
+      runtimeSettings.rssEditorialBrainCanonicalStoryPromotion ||
       runtimeSettings.rssEditorialBrainImageStrategyPromotion ||
       Boolean(options?.force)
     ) && invocationPlan.enabled,
@@ -5727,6 +5731,10 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
       asBoolean(settingsMap.get('rssEditorialBrainCaptionStrategyPromotion'), false)
       || process.env.RSS_EDITORIAL_BRAIN_CAPTION_STRATEGY_PROMOTION === '1'
       || process.env.RSS_EDITORIAL_BRAIN_CAPTION_STRATEGY_PROMOTION?.toLowerCase() === 'true',
+    rssEditorialBrainCanonicalStoryPromotion:
+      asBoolean(settingsMap.get('rssEditorialBrainCanonicalStoryPromotion'), false)
+      || process.env.RSS_EDITORIAL_BRAIN_CANONICAL_STORY_PROMOTION === '1'
+      || process.env.RSS_EDITORIAL_BRAIN_CANONICAL_STORY_PROMOTION?.toLowerCase() === 'true',
     rssEditorialBrainImageStrategyPromotion:
       asBoolean(settingsMap.get('rssEditorialBrainImageStrategyPromotion'), false)
       || process.env.RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION === '1'
@@ -6217,6 +6225,135 @@ function applyRSSEditorialBrainImageStrategyPromotionToItem(
   return {
     ...item,
     canonicalEntity: applyRSSEditorialBrainImageStrategyPromotion(canonicalEntity, mode),
+  };
+}
+
+function mapRssEditorialBrainPrimaryEntityType(
+  decision: RssEditorialBrainDecision
+): RSSCanonicalEntity['entityType'] {
+  switch (decision.primary_entity_type) {
+    case 'project':
+      return decision.format === 'tv' || decision.format === 'anime' ? 'tv' : 'movie';
+    case 'person':
+      return 'person';
+    case 'franchise':
+      return 'franchise';
+    default:
+      return 'unknown';
+  }
+}
+
+function storyFamilyFlagForEditorialBrainDecision(decision: RssEditorialBrainDecision): string | undefined {
+  switch (decision.story_family) {
+    case 'person_commentary_on_project':
+      return 'story_family_person_commentary_on_project';
+    case 'first_look':
+      return 'story_family_visual_reveal_event';
+    case 'project_announcement':
+      return 'story_family_project_announcement';
+    case 'spoiler_sensitive':
+      return 'story_family_spoiler_sensitive';
+    case 'casting':
+      return 'story_family_casting';
+    case 'trailer':
+      return 'story_family_trailer';
+    case 'renewal':
+      return 'story_family_renewal';
+    default:
+      return undefined;
+  }
+}
+
+function selectRSSEditorialBrainCanonicalStoryPromotion(
+  stored: Pick<RSSEditorialBrainStoredDecision, 'usedFallback' | 'disagreements' | 'decision' | 'review'> | undefined,
+  runtimeSettings: Pick<RSSRuntimeSettings, 'rssEditorialBrainCanonicalStoryPromotion'>
+): RssEditorialBrainDecision | undefined {
+  if (!runtimeSettings.rssEditorialBrainCanonicalStoryPromotion || !stored || stored.usedFallback) {
+    return undefined;
+  }
+
+  const disagreements = new Set(stored.disagreements || []);
+  const hasCanonicalOrStoryDisagreement =
+    disagreements.has('canonical_disagreement') ||
+    disagreements.has('event_disagreement') ||
+    disagreements.has('caption_strategy_disagreement') ||
+    disagreements.has('image_strategy_disagreement');
+
+  if (!hasCanonicalOrStoryDisagreement || disagreements.has('lane_disagreement')) {
+    return undefined;
+  }
+
+  if (stored.review?.outcome !== 'brain_better') {
+    return undefined;
+  }
+
+  if ((stored.decision.confidence || 0) < 0.75) {
+    return undefined;
+  }
+
+  if (stored.decision.lane !== 'core_auto_publish' && stored.decision.lane !== 'core_manual_review_spoiler') {
+    return undefined;
+  }
+
+  const primary = sanitizeRSSCanonicalEntityValue(stored.decision.primary_entity);
+  if (!primary) {
+    return undefined;
+  }
+
+  return stored.decision;
+}
+
+function applyRSSEditorialBrainCanonicalStoryPromotion(
+  canonicalEntity: RSSCanonicalEntity,
+  decision: RssEditorialBrainDecision
+): RSSCanonicalEntity {
+  const primary = sanitizeRSSCanonicalEntityValue(decision.primary_entity);
+  if (!primary) {
+    return canonicalEntity;
+  }
+
+  const entityType = mapRssEditorialBrainPrimaryEntityType(decision);
+  const nextFlags = new Set(canonicalEntity.ambiguityFlags || []);
+  nextFlags.add('editorial_brain_canonical_story_promoted');
+  nextFlags.add(`editorial_brain_story_family_${decision.story_family}`);
+  const familyFlag = storyFamilyFlagForEditorialBrainDecision(decision);
+  if (familyFlag) {
+    nextFlags.add(familyFlag);
+  }
+
+  const normalizedEvent = normalizeRssEditorialBrainEvent(decision.event || canonicalEntity.eventType || 'other');
+  const secondary = sanitizeRSSCanonicalEntityValue(decision.secondary_entities?.[0]);
+  const isProject = decision.primary_entity_type === 'project';
+
+  return {
+    ...canonicalEntity,
+    primarySubject: primary,
+    secondarySubject: secondary || canonicalEntity.secondarySubject,
+    mediaTitle: isProject ? primary : canonicalEntity.mediaTitle,
+    franchise: decision.primary_entity_type === 'franchise' ? primary : canonicalEntity.franchise,
+    entityType,
+    eventType: normalizedEvent,
+    confidence: Math.max(canonicalEntity.confidence || 0, decision.confidence || 0),
+    allowedEntities: Array.from(new Set([
+      primary,
+      secondary,
+      ...(canonicalEntity.allowedEntities || []),
+      ...(decision.secondary_entities || []),
+      ...(decision.canonical_aliases || []),
+      ...(decision.development_title_aliases || []),
+    ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0))),
+    ambiguityFlags: Array.from(nextFlags),
+  };
+}
+
+function applyRSSEditorialBrainCanonicalStoryPromotionToItem(
+  item: RSSItem,
+  decision: RssEditorialBrainDecision
+): RSSItem {
+  const canonicalEntity = ensureRSSCanonicalEntity(item);
+  return {
+    ...item,
+    canonicalEntity: applyRSSEditorialBrainCanonicalStoryPromotion(canonicalEntity, decision),
   };
 }
 
@@ -6904,10 +7041,18 @@ async function attemptRSSPublish(
 > {
   try {
     const canonicalState = getRSSCanonicalEntityRuntimeState(item);
-    const canonicalEntity = canonicalState.canonicalEntity;
+    let canonicalEntity = canonicalState.canonicalEntity;
     await prepareRssEditorialBrainShadow(feed.name, item, runtimeSettings, canonicalEntity);
-    const promotedImageStrategy = await getRSSEditorialBrainPromotedImageStrategyForItem(feed.name, item, runtimeSettings);
-    const promotedCaptionStrategy = await getRSSEditorialBrainPromotedCaptionStrategyForItem(feed.name, item, runtimeSettings);
+    const promotedCanonicalStoryDecision = selectRSSEditorialBrainCanonicalStoryPromotion(item.editorialBrain, runtimeSettings);
+    if (promotedCanonicalStoryDecision) {
+      const canonicalPromotedItem = applyRSSEditorialBrainCanonicalStoryPromotionToItem(item, promotedCanonicalStoryDecision);
+      Object.assign(item, canonicalPromotedItem);
+      canonicalEntity = ensureRSSCanonicalEntity(item);
+    }
+    const calibratedImageStrategy = await getRSSEditorialBrainPromotedImageStrategyForItem(feed.name, item, runtimeSettings);
+    const calibratedCaptionStrategy = await getRSSEditorialBrainPromotedCaptionStrategyForItem(feed.name, item, runtimeSettings);
+    const promotedImageStrategy = calibratedImageStrategy || promotedCanonicalStoryDecision?.image_strategy?.mode;
+    const promotedCaptionStrategy = calibratedCaptionStrategy || promotedCanonicalStoryDecision?.caption_strategy?.mode;
     const imageResolutionItem = promotedImageStrategy
       ? applyRSSEditorialBrainImageStrategyPromotionToItem(item, promotedImageStrategy)
       : item;
@@ -9553,6 +9698,8 @@ export const __rssAuditTestUtils = {
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,
   applyRSSEditorialBrainImageStrategyPromotion,
+  selectRSSEditorialBrainCanonicalStoryPromotion,
+  applyRSSEditorialBrainCanonicalStoryPromotion,
   buildRSSEditorialBrainCaptionStrategyCalibration,
   selectRSSEditorialBrainPromotedCaptionStrategy,
   canReuseStoredRSSCaption,

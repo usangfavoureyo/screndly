@@ -19,6 +19,8 @@ const {
   buildRSSEditorialBrainImageStrategyCalibration,
   selectRSSEditorialBrainPromotedImageStrategy,
   applyRSSEditorialBrainImageStrategyPromotion,
+  selectRSSEditorialBrainCanonicalStoryPromotion,
+  applyRSSEditorialBrainCanonicalStoryPromotion,
   buildRSSEditorialBrainCaptionStrategyCalibration,
   selectRSSEditorialBrainPromotedCaptionStrategy,
   applyRSSRuntimeDiagnosticsToItem,
@@ -1786,6 +1788,41 @@ test('person-led interview and commentary flags allow explicit feed fallback ima
   assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
 });
 
+test('adjacent business person-first stories plan a lead-person image without TMDb project art', () => {
+  const analysis = projectAnalysis({
+    primarySubject: { name: 'White Smoke', type: 'movie' },
+    visualSubject: 'White Smoke',
+    canonicalEntity: {
+      primarySubject: 'White Smoke',
+      mediaTitle: 'White Smoke',
+      entityType: 'tv',
+      eventType: 'business',
+      namedPeople: ['Benedict Cumberbatch'],
+      confidence: 0.88,
+      ambiguityFlags: [
+        'rss_family_no_tmdb_project',
+        'story_lane_entertainment_adjacent',
+        'article_family_business_or_platform',
+        'story_policy_entertainment_business_person_first',
+      ],
+    },
+    secondarySubjects: ['Benedict Cumberbatch'],
+    contextType: 'industry',
+    imageIntent: 'still',
+  });
+
+  const plan = determineSmartImagePlan({
+    title: "A24 Adapting Novel 'White Smoke' Into TV Series With Benedict Cumberbatch On Board To Star And Produce",
+    description: 'A24 is adapting White Smoke with Benedict Cumberbatch attached.',
+    fallbackImages: ['https://example.com/benedict-cumberbatch.jpg'],
+    canonicalEntity: analysis.canonicalEntity,
+  } as any, analysis);
+
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(plan.primary.subject, 'Benedict Cumberbatch');
+  assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
 test('obituary stories stay person-led even when project references appear in the headline', () => {
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
     title: "John Nolan Dies: 'Dark Knight Rises' & 'Person of Interest' Actor Was 87",
@@ -2943,6 +2980,136 @@ test('editorial brain image strategy promotion maps promoted image modes onto ca
   assert.ok(canonical.ambiguityFlags?.includes('story_policy_article_image_first'));
   assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_promoted'));
   assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_image_strategy_article_image_first'));
+});
+
+test('editorial brain canonical story promotion is review-gated for wrapper title recovery', () => {
+  const decision = normalizeRssEditorialBrainDecision({
+    lane: 'core_auto_publish',
+    story_family: 'project_announcement',
+    primary_entity_type: 'project',
+    primary_entity: 'The Odyssey',
+    secondary_entities: ['Christopher Nolan'],
+    canonical_aliases: [],
+    current_title_over_development_title: true,
+    development_title_aliases: [],
+    format: 'movie',
+    event: 'project announcement',
+    headline_trust: 'low',
+    body_recovery_required: true,
+    spoiler_risk: 'none',
+    manual_review_reason: '',
+    image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+    caption_strategy: { mode: 'headline_news', lead_subject: 'The Odyssey', must_name: ['The Odyssey'], must_not_use: ['New Odyssey Movie'], must_not_spoil: false },
+    caption_facts: { headline_fact: "'The Odyssey' has a new project update.", supporting_fact: '', quote: '', bullets: [] },
+    evidence: { body_titles: ['The Odyssey'], people: ['Christopher Nolan'], projects: ['The Odyssey'], networks_platforms: [], years: [], quotes: [] },
+    confidence: 0.78,
+    notes: '',
+  }, {
+    lane: 'core_auto_publish',
+    story_family: 'project_announcement',
+    primary_entity_type: 'project',
+    primary_entity: 'The Odyssey',
+    secondary_entities: [],
+    canonical_aliases: [],
+    current_title_over_development_title: true,
+    development_title_aliases: [],
+    format: 'movie',
+    event: 'project announcement',
+    headline_trust: 'low',
+    body_recovery_required: true,
+    spoiler_risk: 'none',
+    manual_review_reason: '',
+    image_strategy: { mode: 'article_image_first', primary_preference: [], secondary_preference: [], avoid: [] },
+    caption_strategy: { mode: 'headline_news', lead_subject: 'The Odyssey', must_name: [], must_not_use: [], must_not_spoil: false },
+    caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+    evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+    confidence: 0.78,
+    notes: '',
+  }).decision;
+
+  const promoted = selectRSSEditorialBrainCanonicalStoryPromotion(
+    {
+      usedFallback: false,
+      disagreements: ['canonical_disagreement', 'event_disagreement', 'image_strategy_disagreement'],
+      decision,
+      review: { outcome: 'brain_better' },
+    } as any,
+    { rssEditorialBrainCanonicalStoryPromotion: true } as any
+  );
+
+  assert.equal(promoted?.primary_entity, 'The Odyssey');
+
+  const blocked = selectRSSEditorialBrainCanonicalStoryPromotion(
+    {
+      usedFallback: false,
+      disagreements: ['canonical_disagreement', 'lane_disagreement'],
+      decision,
+      review: { outcome: 'brain_better' },
+    } as any,
+    { rssEditorialBrainCanonicalStoryPromotion: true } as any
+  );
+
+  assert.equal(blocked, undefined);
+});
+
+test('editorial brain canonical story promotion rewrites wrapper canonical without taking lane authority', () => {
+  const decision = normalizeRssEditorialBrainDecision({
+    lane: 'core_auto_publish',
+    story_family: 'project_announcement',
+    primary_entity_type: 'project',
+    primary_entity: "Miami Vice '85",
+    secondary_entities: ['Michael B. Jordan', 'Austin Butler'],
+    canonical_aliases: ['Miami Vice'],
+    current_title_over_development_title: true,
+    development_title_aliases: [],
+    format: 'movie',
+    event: 'official title reveal',
+    headline_trust: 'high',
+    body_recovery_required: true,
+    spoiler_risk: 'none',
+    manual_review_reason: '',
+    image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+    caption_strategy: { mode: 'headline_news', lead_subject: "Miami Vice '85", must_name: ["Miami Vice '85"], must_not_use: [], must_not_spoil: false },
+    caption_facts: { headline_fact: "The 'Miami Vice' reboot has an official title.", supporting_fact: '', quote: '', bullets: [] },
+    evidence: { body_titles: ["Miami Vice '85"], people: ['Michael B. Jordan', 'Austin Butler'], projects: ['Miami Vice'], networks_platforms: [], years: [], quotes: [] },
+    confidence: 0.98,
+    notes: '',
+  }, {
+    lane: 'core_auto_publish',
+    story_family: 'project_announcement',
+    primary_entity_type: 'project',
+    primary_entity: "Miami Vice '85",
+    secondary_entities: [],
+    canonical_aliases: [],
+    current_title_over_development_title: true,
+    development_title_aliases: [],
+    format: 'movie',
+    event: 'official title reveal',
+    headline_trust: 'high',
+    body_recovery_required: true,
+    spoiler_risk: 'none',
+    manual_review_reason: '',
+    image_strategy: { mode: 'project_first', primary_preference: [], secondary_preference: [], avoid: [] },
+    caption_strategy: { mode: 'headline_news', lead_subject: "Miami Vice '85", must_name: [], must_not_use: [], must_not_spoil: false },
+    caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+    evidence: { body_titles: [], people: [], projects: [], networks_platforms: [], years: [], quotes: [] },
+    confidence: 0.98,
+    notes: '',
+  }).decision;
+
+  const canonical = applyRSSEditorialBrainCanonicalStoryPromotion({
+    primarySubject: 'Miami Vice',
+    mediaTitle: 'Miami Vice',
+    entityType: 'movie',
+    eventType: 'spoiler_sensitive',
+    ambiguityFlags: [],
+  }, decision);
+
+  assert.equal(canonical.primarySubject, "Miami Vice '85");
+  assert.equal(canonical.mediaTitle, "Miami Vice '85");
+  assert.equal(canonical.eventType, 'official_title_reveal');
+  assert.ok(canonical.ambiguityFlags?.includes('editorial_brain_canonical_story_promoted'));
+  assert.ok(canonical.allowedEntities?.includes('Miami Vice'));
 });
 
 test('editorial brain caption strategy promotion only activates for calibrated high-confidence caption disagreements', () => {
