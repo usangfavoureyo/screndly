@@ -1420,6 +1420,18 @@ test('person-led moviemaking commentary canonicals promote the speaker instead o
   assert.notEqual(canonical.secondarySubject, 'Will Become');
 });
 
+test('person-led reflective interview headlines recover the lead person and route as person interview', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Hilary Duff Felt 'Quite Sad' Watching Docs on Britney Spears and Exploited Child Stars",
+    description: 'Hilary Duff reflected on child-star documentaries at the TIME100 Summit.',
+    contentHtml: '<p>Hilary Duff reflected on documentaries about Britney Spears and exploited child stars.</p>',
+  });
+
+  assert.equal(canonical.primarySubject, 'Hilary Duff');
+  assert.equal(canonical.entityType, 'person');
+  assert.ok(canonical.ambiguityFlags?.includes('article_family_person_interview_or_reaction'));
+});
+
 test('overall-deal stories are not misclassified as shopping and keep a person-led business lane', () => {
   const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
     title: "Rachel Shukert Strikes Overall Deal With UCP; 'Listen For The Lie' & 'Summer Sisters' Adaptations In The Works At Peacock",
@@ -1743,6 +1755,35 @@ test('targeted cleanup image policies prefer reveal stills and cast portraits in
   assert.equal(seriesOrderPlan.primary.intent, 'person_portrait');
   assert.ok(seriesOrderPlan.secondary);
   assert.equal(seriesOrderPlan.secondary?.intent, 'person_portrait');
+});
+
+test('person-led interview and commentary flags allow explicit feed fallback images without TMDb project anchors', () => {
+  const analysis = projectAnalysis({
+    primarySubject: { name: 'Hilary Duff', type: 'actor' },
+    canonicalEntity: {
+      primarySubject: 'Hilary Duff',
+      entityType: 'person',
+      eventType: 'reflection',
+      confidence: 0.9,
+      ambiguityFlags: [
+        'rss_family_no_tmdb_project',
+        'article_family_person_interview_or_reaction',
+        'story_policy_entertainment_business_person_first',
+      ],
+    },
+    contextType: 'interview',
+    imageIntent: 'person_portrait',
+  });
+
+  const plan = determineSmartImagePlan({
+    title: "Hilary Duff Felt 'Quite Sad' Watching Docs on Britney Spears and Exploited Child Stars",
+    description: 'Hilary Duff reflected on child-star documentaries.',
+    fallbackImages: ['https://example.com/hilary-duff.jpg'],
+    canonicalEntity: analysis.canonicalEntity,
+  } as any, analysis);
+
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
 });
 
 test('obituary stories stay person-led even when project references appear in the headline', () => {

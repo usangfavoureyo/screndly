@@ -2073,7 +2073,7 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
     return 'person_interview_or_reaction';
   }
 
-  if (/^[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){1,3}\s+(?:says|said|jokes|walks|airs|called|reacts|addresses|discusses|teases|reveals|slams|breaks down)\b/i.test(title)) {
+  if (/^[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){1,3}\s+(?:says|said|jokes|walks|airs|called|reacts|addresses|discusses|teases|reveals|slams|breaks down|felt|feels|reflects|reflected|opens up)\b/i.test(title)) {
     return 'person_interview_or_reaction';
   }
 
@@ -2421,8 +2421,8 @@ function extractRSSLeadPersonCandidate(item: Pick<RSSItem, 'title' | 'descriptio
 
   for (const source of sources) {
     const titleAnchored =
-      source.match(/^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:says?|said|joins?|joined|strikes?|lands?|boards?|talks about|reacts?|addresses|opens up|in talks\b|to star\b))/i)
-      || source.match(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:has joined|joined|is in talks|will star|strikes an overall deal|strikes overall deal|spoke to|recently spoke|talked to))/i);
+      source.match(/^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:says?|said|joins?|joined|strikes?|lands?|boards?|talks about|reacts?|addresses|opens up|felt|feels|reflects|reflected|in talks\b|to star\b))/i)
+      || source.match(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:has joined|joined|is in talks|will star|strikes an overall deal|strikes overall deal|spoke to|recently spoke|talked to|reflected on))/i);
 
     if (titleAnchored?.[1] && looksLikeRSSValidPersonName(titleAnchored[1])) {
       return titleAnchored[1];
@@ -2591,6 +2591,11 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     (
       !primarySubject ||
       !looksLikeRSSValidPersonName(primarySubject) ||
+      (
+        Boolean(primarySubject) &&
+        extractStrictRSSQuotedSubjects(item.title || '').some((entry) => normalizeRSSDedupeValue(entry) === normalizeRSSDedupeValue(primarySubject)) &&
+        new RegExp(`^${escapeRegExp(leadPersonCandidate || '')}\\s+(?:says?|said|felt|feels|reflects|reflected|opens\\s+up)\\b`, 'i').test(sanitizeRSSPlainText(item.title || ''))
+      ) ||
       ambiguityFlags.includes('quote_led_headline_junk') ||
       ambiguityFlags.includes('unsafe_canonical_entity_removed')
     );
@@ -4567,6 +4572,10 @@ function normalizeRSSDedupeValue(value?: string | null): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function getRSSItemDedupeKey(item: RSSItem): string {
@@ -9553,3 +9562,4 @@ export const __rssAuditTestUtils = {
   getRSSSourcePriority,
   resolveRSSDuplicateEventDecision,
 };
+

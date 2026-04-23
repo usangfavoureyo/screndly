@@ -5728,6 +5728,13 @@ function canUseExplicitFeedFallback(
   if (flags.has('story_policy_early_project_cast_portraits')) {
     return true;
   }
+  if (
+    flags.has('story_family_person_commentary_on_project') ||
+    flags.has('story_policy_entertainment_business_person_first') ||
+    flags.has('article_family_person_interview_or_reaction')
+  ) {
+    return true;
+  }
 
   if (
     analysis.imageIntent === 'person_portrait' ||
