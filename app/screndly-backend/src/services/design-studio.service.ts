@@ -1675,6 +1675,17 @@ async function fetchSourceBuffer(value?: string): Promise<Buffer | null> {
     const [, content] = value.split(',');
     return Buffer.from(content, 'base64');
   }
+  if (value.startsWith('/api/design-studio/media-stream')) {
+    try {
+      const parsed = new URL(value, 'http://localhost');
+      const originalUrl = parsed.searchParams.get('url');
+      if (originalUrl) {
+        return fetchSourceBuffer(originalUrl);
+      }
+    } catch {
+      return null;
+    }
+  }
   const remoteUrl = await resolveRemoteTemplateUrl(value);
   return fetchBytesFromUrl(remoteUrl);
 }
@@ -2520,78 +2531,68 @@ async function buildBackgroundLayer(input: {
       }).png().toBuffer();
     }
 
-    const zoom = clamp(input.zoom || 1, 0.8, 2);
+    const zoom = clamp(input.zoom || 1, 0.5, 4);
     const cropMode = input.cropMode || 'cover';
     const meta = await sharp(source).metadata();
     const srcWidth = meta.width || input.width;
     const srcHeight = meta.height || input.height;
-    let targetWidth = input.width;
-    let targetHeight = input.height;
+    const canvasAspect = input.width / input.height;
+    const sourceAspect = srcWidth / srcHeight;
+    let baseWidth = input.width;
+    let baseHeight = input.height;
     if (cropMode === 'contain') {
-      const ratio = Math.min(input.width / srcWidth, input.height / srcHeight) * zoom;
-      targetWidth = Math.max(1, Math.round(srcWidth * ratio));
-      targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+      if (sourceAspect > canvasAspect) {
+        baseWidth = input.width;
+        baseHeight = input.width / sourceAspect;
+      } else {
+        baseHeight = input.height;
+        baseWidth = input.height * sourceAspect;
+      }
     } else {
-      const ratio = Math.max(input.width / srcWidth, input.height / srcHeight) * zoom;
-      targetWidth = Math.max(1, Math.round(srcWidth * ratio));
-      targetHeight = Math.max(1, Math.round(srcHeight * ratio));
+      if (sourceAspect > canvasAspect) {
+        baseHeight = input.height;
+        baseWidth = input.height * sourceAspect;
+      } else {
+        baseWidth = input.width;
+        baseHeight = input.width / sourceAspect;
+      }
     }
 
+    const targetWidth = Math.max(1, Math.round(baseWidth * zoom));
+    const targetHeight = Math.max(1, Math.round(baseHeight * zoom));
     const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
     const normalizedFocalX = (clamp(input.focalPoint?.x ?? 50, 0, 100) - 50) / 50;
     const normalizedFocalY = (clamp(input.focalPoint?.y ?? 50, 0, 100) - 50) / 50;
     const centeredLeft = (input.width - targetWidth) / 2;
     const centeredTop = (input.height - targetHeight) / 2;
-
-    if (cropMode === 'contain') {
-      const containRangeX = Math.max(0, input.width - targetWidth) / 2;
-      const containRangeY = Math.max(0, input.height - targetHeight) / 2;
-      const containLeft = clamp(
-        Math.round(centeredLeft + (normalizedFocalX * containRangeX)),
-        0,
-        Math.max(0, input.width - targetWidth),
-      );
-      const containTop = clamp(
-        Math.round(centeredTop + (normalizedFocalY * containRangeY)),
-        0,
-        Math.max(0, input.height - targetHeight),
-      );
-      return sharp({
-        create: {
-          width: input.width,
-          height: input.height,
-          channels: 4,
-          background: { r: 0, g: 0, b: 0, alpha: 1 },
-        },
-      })
-        .composite([{ input: resized, left: Math.round(containLeft), top: Math.round(containTop) }])
-        .png()
-        .toBuffer();
-    }
-
     const overflowX = Math.max(0, targetWidth - input.width);
     const overflowY = Math.max(0, targetHeight - input.height);
-    const coverLeft = clamp(
-      Math.round(centeredLeft - (normalizedFocalX * (overflowX / 2))),
-      input.width - targetWidth,
-      0,
+    const underflowX = Math.max(0, input.width - targetWidth);
+    const underflowY = Math.max(0, input.height - targetHeight);
+    const left = clamp(
+      Math.round(centeredLeft - (normalizedFocalX * (overflowX / 2)) + (normalizedFocalX * (underflowX / 2))),
+      Math.min(0, input.width - targetWidth),
+      Math.max(0, input.width - targetWidth),
     );
-    const coverTop = clamp(
-      Math.round(centeredTop - (normalizedFocalY * (overflowY / 2))),
-      input.height - targetHeight,
-      0,
+    const top = clamp(
+      Math.round(centeredTop - (normalizedFocalY * (overflowY / 2)) + (normalizedFocalY * (underflowY / 2))),
+      Math.min(0, input.height - targetHeight),
+      Math.max(0, input.height - targetHeight),
     );
-    const extractLeft = Math.max(0, Math.round(-coverLeft));
-    const extractTop = Math.max(0, Math.round(-coverTop));
 
-    return sharp(resized)
-      .extract({
-        left: extractLeft,
-        top: extractTop,
-        width: Math.min(input.width, targetWidth - extractLeft),
-        height: Math.min(input.height, targetHeight - extractTop),
-      })
-      .resize(input.width, input.height, { fit: 'fill' })
+    return sharp({
+      create: {
+        width: input.width,
+        height: input.height,
+        channels: 4,
+        background: { r: 0, g: 0, b: 0, alpha: 1 },
+      },
+    })
+      .composite([{
+        input: resized,
+        left,
+        top,
+      }])
       .png()
       .toBuffer();
   } catch (error) {
