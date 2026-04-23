@@ -78,3 +78,16 @@ test('uses extracted description verbatim for metadata preview text', () => {
     '‘Man of Tomorrow’ has officially begun filming! In theaters July 9, 2027. #manoftomorrow #dcstudios #dccomics #jamesgunn #dcu @warnerbrosindia @dcasiaofficial',
   );
 });
+
+test('uses extracted source title as metadata preview fallback when description is missing', () => {
+  const result = extractComposeMetadataPreviewText(
+    [
+      'Source Platform: Instagram',
+      'Title: Netflix on Instagram: New teaser drops tomorrow.',
+      'Source URL: https://www.instagram.com/reel/example/',
+    ].join('\n'),
+    { synopsis: '' },
+  );
+
+  assert.equal(result, 'Netflix on Instagram: New teaser drops tomorrow.');
+});

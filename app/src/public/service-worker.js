@@ -40,6 +40,7 @@ const CACHE_EXPIRATION = {
 // Static assets to pre-cache
 const STATIC_ASSETS = [
   '/',
+  '/app',
   '/index.html',
   '/manifest.json',
   '/offline.html',
@@ -112,6 +113,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  if (request.mode === 'navigate') {
+    event.respondWith(navigationNetworkFirst(request));
+    return;
+  }
+
   // Determine cache strategy based on request type
   if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(request, CACHE_NAMES.STATIC));
@@ -125,6 +131,50 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(staleWhileRevalidate(request, CACHE_NAMES.DYNAMIC));
   }
 });
+
+async function getNavigationFallback(request) {
+  const candidates = [
+    request,
+    '/app',
+    '/index.html',
+    '/',
+    '/offline.html',
+  ];
+
+  for (const candidate of candidates) {
+    const response = await caches.match(candidate);
+    if (response) {
+      return response;
+    }
+  }
+
+  return new Response(
+    '<!doctype html><html><head><title>Screndly</title></head><body><p>Screndly is offline. Reconnect and reload.</p></body></html>',
+    {
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
+    },
+  );
+}
+
+async function navigationNetworkFirst(request) {
+  const cache = await caches.open(CACHE_NAMES.DYNAMIC);
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse && networkResponse.status === 200) {
+      await cache.put(request, networkResponse.clone());
+      await cache.put('/app', networkResponse.clone());
+      await cache.put('/index.html', networkResponse.clone());
+      await setCacheTime(CACHE_NAMES.DYNAMIC, request.url);
+      await trimCache(CACHE_NAMES.DYNAMIC);
+    }
+    return networkResponse || getNavigationFallback(request);
+  } catch (error) {
+    console.warn('[SW] Navigation network failed, serving app shell fallback:', request.url, error);
+    const cachedResponse = await cache.match(request);
+    return cachedResponse || getNavigationFallback(request);
+  }
+}
 
 /**
  * Cache-First Strategy
@@ -166,7 +216,7 @@ async function cacheFirst(request, cacheName) {
 
     // Return offline page for navigation requests
     if (request.mode === 'navigate') {
-      return caches.match('/offline.html');
+      return getNavigationFallback(request);
     }
 
     throw error;
@@ -199,7 +249,7 @@ async function networkFirst(request, cacheName) {
 
     // Return offline page for navigation requests
     if (request.mode === 'navigate') {
-      return caches.match('/offline.html');
+      return getNavigationFallback(request);
     }
 
     throw error;

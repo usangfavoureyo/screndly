@@ -1188,50 +1188,44 @@ export class PublisherService {
                 const clipRanges = this.buildStoryClipRanges(durationSeconds, segmentSeconds);
                 const baseName = this.buildStoryClipBaseName(source.source);
 
-                if (clipRanges.length === 1) {
-                    const mediaUrl =
-                        source.sourceType === 'remote-url'
-                            ? await this.getAccessibleRemoteVideoUrl(source.source)
-                            : await this.resolveHostedVideoUrl(content, localSourcePath, undefined, cache);
-                    queue.push({ kind: 'video', mediaUrl });
-                } else {
-                    for (let index = 0; index < clipRanges.length; index += 1) {
-                        const clipRange = clipRanges[index];
-                        const clipDir = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-story-clip-'));
-                        const clipPath = path.join(clipDir, `${baseName}-${index + 1}.mp4`);
+                for (let index = 0; index < clipRanges.length; index += 1) {
+                    const clipRange = clipRanges[index];
+                    const clipDir = await fs.mkdtemp(path.join(os.tmpdir(), 'screndly-story-clip-'));
+                    const clipPath = path.join(clipDir, `${baseName}-${index + 1}.mp4`);
 
-                        try {
-                            await execFileAsync('ffmpeg', [
-                                '-y',
-                                '-ss',
-                                clipRange.startSeconds.toString(),
-                                '-i',
-                                localSourcePath,
-                                '-t',
-                                clipRange.clipDurationSeconds.toString(),
-                                '-c:v',
-                                'libx264',
-                                '-preset',
-                                'veryfast',
-                                '-crf',
-                                '22',
-                                '-c:a',
-                                'aac',
-                                '-movflags',
-                                '+faststart',
-                                clipPath,
-                            ], {
-                                timeout: 5 * 60 * 1000,
-                                maxBuffer: 10 * 1024 * 1024,
-                            });
+                    try {
+                        await execFileAsync('ffmpeg', [
+                            '-y',
+                            '-ss',
+                            clipRange.startSeconds.toString(),
+                            '-i',
+                            localSourcePath,
+                            '-t',
+                            clipRange.clipDurationSeconds.toString(),
+                            '-vf',
+                            'scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p',
+                            '-c:v',
+                            'libx264',
+                            '-preset',
+                            'veryfast',
+                            '-crf',
+                            '22',
+                            '-c:a',
+                            'aac',
+                            '-movflags',
+                            '+faststart',
+                            clipPath,
+                        ], {
+                            timeout: 5 * 60 * 1000,
+                            maxBuffer: 10 * 1024 * 1024,
+                        });
 
-                            queue.push({
-                                kind: 'video',
-                                mediaUrl: await this.uploadStoryVideoClip(clipPath, baseName, index, clipRanges.length),
-                            });
-                        } finally {
-                            await this.cleanupTempPath(clipPath);
-                        }
+                        queue.push({
+                            kind: 'video',
+                            mediaUrl: await this.uploadStoryVideoClip(clipPath, baseName, index, clipRanges.length),
+                        });
+                    } finally {
+                        await this.cleanupTempPath(clipPath);
                     }
                 }
             } finally {
@@ -1393,8 +1387,29 @@ export class PublisherService {
         cache: Map<string, string>,
         profile: 'default' | 'meta' = 'default'
     ): Promise<string> {
-        if (this.isDirectVideoUrl(directVideoUrl)) {
-            return this.normalizeRemoteMediaUrl(directVideoUrl.trim());
+        const normalizedDirectVideoUrl = this.isDirectVideoUrl(directVideoUrl)
+            ? this.normalizeRemoteMediaUrl(directVideoUrl.trim())
+            : undefined;
+
+        if (normalizedDirectVideoUrl && profile !== 'meta') {
+            return normalizedDirectVideoUrl;
+        }
+
+        if (normalizedDirectVideoUrl && profile === 'meta') {
+            const remoteCacheKey = `${profile}:remote:${normalizedDirectVideoUrl}`;
+            const cached = cache.get(remoteCacheKey);
+            if (cached) {
+                return cached;
+            }
+
+            const localVideoPath = await this.downloadRemoteVideoToTemp(normalizedDirectVideoUrl);
+            try {
+                const hostedUrl = await this.resolveHostedVideoUrl(content, localVideoPath, undefined, cache, profile);
+                cache.set(remoteCacheKey, hostedUrl);
+                return hostedUrl;
+            } finally {
+                await this.cleanupTempPath(localVideoPath);
+            }
         }
 
         if (!mediaFilePath || !this.isVideo(mediaFilePath)) {

@@ -83,6 +83,7 @@ function getPushBadgeCount(payload) {
 // Core assets to cache on install
 const CORE_ASSETS = [
   '/',
+  '/app',
   '/index.html',
   '/manifest.json',
   '/offline.html',
@@ -187,13 +188,48 @@ function isStaticAssetRequest(request, url) {
   );
 }
 
-async function getNavigationFallback() {
-  const rootDocument = await caches.match('/');
-  if (rootDocument) {
-    return rootDocument;
+async function getNavigationFallback(request) {
+  const candidates = [
+    request,
+    '/app',
+    '/index.html',
+    '/',
+    '/offline.html',
+  ];
+
+  for (const candidate of candidates) {
+    const response = await caches.match(candidate);
+    if (response) {
+      return response;
+    }
   }
 
-  return caches.match('/offline.html');
+  return new Response(
+    '<!doctype html><html><head><title>Screndly</title></head><body><p>Screndly is offline. Reconnect and reload.</p></body></html>',
+    {
+      status: 200,
+      headers: new Headers({ 'Content-Type': 'text/html; charset=utf-8' }),
+    },
+  );
+}
+
+async function navigationNetworkFirst(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  try {
+    const networkResponse = await fetch(request);
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = await createCachedResponse(networkResponse);
+      await cache.put(request, responseToCache.clone());
+      await cache.put('/app', responseToCache.clone());
+      await cache.put('/index.html', responseToCache.clone());
+      await trimCache(RUNTIME_CACHE, MAX_CACHE_SIZE.runtime);
+    }
+    return networkResponse || getNavigationFallback(request);
+  } catch (error) {
+    console.warn('[SW] Navigation network failed, serving app shell fallback:', request.url, error);
+    const cachedResponse = await cache.match(request);
+    return cachedResponse || getNavigationFallback(request);
+  }
 }
 
 // Strategy: Cache First (for images)
@@ -335,7 +371,7 @@ self.addEventListener('fetch', (event) => {
   if (isOAuthCallbackRequest(url)) {
     event.respondWith(
       fetch(event.request).catch(() => {
-        return getNavigationFallback();
+        return getNavigationFallback(event.request);
       })
     );
     return;
@@ -343,17 +379,7 @@ self.addEventListener('fetch', (event) => {
 
   // Strategy 3: Network First for HTML navigations with cache fallback for resume/offline recovery.
   if (isNavigationRequest(event.request, url)) {
-    event.respondWith(
-      networkFirst(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
-          }
-
-          return getNavigationFallback();
-        });
-      })
-    );
+    event.respondWith(navigationNetworkFirst(event.request));
     return;
   }
 
@@ -386,7 +412,7 @@ self.addEventListener('fetch', (event) => {
     staleWhileRevalidate(event.request, RUNTIME_CACHE, CACHE_EXPIRATION.runtime).catch(() => {
       // Fallback for navigation requests
       if (event.request.mode === 'navigate') {
-        return getNavigationFallback();
+        return getNavigationFallback(event.request);
       }
       return new Response('Offline', {
         status: 503,

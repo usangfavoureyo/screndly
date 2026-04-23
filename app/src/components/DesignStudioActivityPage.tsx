@@ -405,7 +405,6 @@ interface UnifiedRenderedDesignRecord {
 
 const DESIGN_STUDIO_ACTIVITY_CACHE_KEY = 'designStudioActivityCache';
 const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY = 'designStudioActivityDismissed';
-const DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY = 'designStudioActivityDismissedKeys';
 
 const MANUAL_ACTIVITY_TYPES = new Set([
   'template_uploaded',
@@ -717,15 +716,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
       return [];
     }
   });
-  const [dismissedActivityKeys, setDismissedActivityKeys] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
-    try {
-      const raw = window.localStorage.getItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [dismissedActivityKeys, setDismissedActivityKeys] = useState<string[]>([]);
   const retentionHours = settings.designStudioActivityRetention || 24;
   const retentionMs = retentionHours * 60 * 60 * 1000;
   const logLevel = settings.designStudioLogLevel || 'standard';
@@ -821,11 +812,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (typeof window === 'undefined') return;
     safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEY, JSON.stringify(dismissedActivityIds));
   }, [dismissedActivityIds]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    safeStorageSetItem(DESIGN_STUDIO_ACTIVITY_DISMISSED_KEYS_KEY, JSON.stringify(dismissedActivityKeys));
-  }, [dismissedActivityKeys]);
 
   const visibleActivities = useMemo(() => {
     const cutoff = Date.now() - retentionMs;
@@ -950,6 +936,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         if (logLevel === 'minimal') return activity.type === 'design_published';
         if (logLevel === 'standard') {
           return activity.type === 'design_rendered'
+            || activity.type === 'design_render_failed'
             || activity.type === 'design_render_queued'
             || activity.type === 'design_published';
         }

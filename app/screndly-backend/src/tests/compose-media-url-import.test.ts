@@ -230,3 +230,20 @@ test('extractComposeSourceMetadataFromHtml reads Instagram meta tags for source 
   assert.equal(metadata.title, 'Instagram post by @animalfarmmovie');
   assert.equal(metadata.description, 'Behind the scenes from the new video.');
 });
+
+test('extractComposeSourceMetadataFromHtml falls back to Instagram og:title captions', () => {
+  const metadata = extractComposeSourceMetadataFromHtml(`
+    <html>
+      <head>
+        <meta property="og:title" content="DC Official on Instagram: &quot;Man of Tomorrow has officially begun filming! In theaters July 9, 2027. #manoftomorrow @dc&quot;" />
+        <meta property="og:description" content="" />
+        <meta name="description" content="" />
+      </head>
+    </html>
+  `);
+
+  assert.equal(
+    metadata.description,
+    'Man of Tomorrow has officially begun filming! In theaters July 9, 2027. #manoftomorrow @dc',
+  );
+});

@@ -4104,6 +4104,15 @@ export function extractComposeMetadataPreviewText(
         return descriptionLine.replace(/^Description:\s+/i, '').trim();
     }
 
+    const titleLine = normalized
+        .split('\n')
+        .map((line) => line.trim())
+        .find((line) => /^Title:\s+/i.test(line));
+    const extractedTitle = titleLine ? titleLine.replace(/^Title:\s+/i, '').trim() : '';
+    if (extractedTitle && !/^(instagram|instagram post|instagram reel)$/i.test(extractedTitle)) {
+        return extractedTitle;
+    }
+
     return normalizeComposeMetadataText(mediaMetadata?.synopsis || '');
 }
 

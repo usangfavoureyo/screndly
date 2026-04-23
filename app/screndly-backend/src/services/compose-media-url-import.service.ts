@@ -321,6 +321,12 @@ function normalizeInstagramDescription(value: string): string {
   return normalized;
 }
 
+function normalizeInstagramCaptionCandidate(value: string): string {
+  const normalized = normalizeSourceLine(value);
+  const match = normalized.match(/on Instagram:\s*["'“”]?(.+?)["'“”]?$/iu);
+  return match?.[1] ? normalizeSourceLine(match[1]) : normalized;
+}
+
 export function extractComposeSourceMetadataFromHtml(html: string): Record<string, any> {
   const dom = new JSDOM(html);
   const document = dom.window.document;
@@ -331,10 +337,15 @@ export function extractComposeSourceMetadataFromHtml(html: string): Record<strin
   const ogTitle = readMeta('meta[property="og:title"]');
   const ogDescription = readMeta('meta[property="og:description"]');
   const metaDescription = readMeta('meta[name="description"]');
+  const description = firstNonEmptyString(
+    normalizeInstagramCaptionCandidate(ogDescription),
+    normalizeInstagramCaptionCandidate(metaDescription),
+    normalizeInstagramCaptionCandidate(ogTitle),
+  );
 
   return {
     title: ogTitle,
-    description: normalizeInstagramDescription(ogDescription || metaDescription),
+    description,
   };
 }
 
