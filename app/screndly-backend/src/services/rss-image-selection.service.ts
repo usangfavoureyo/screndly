@@ -5841,12 +5841,18 @@ export async function resolveRelevantRSSImages(
   const renderableFallbackImages = rawAllowedFallbackImages.length > 0
     ? await filterRenderableFeedFallbackUrls(rawAllowedFallbackImages)
     : [];
+  const allowRawTrustedFallbackImages =
+    rawAllowedFallbackImages.length > 0 &&
+    (
+      canonicalFlags.has('story_policy_force_project_first_image') ||
+      canonicalFlags.has('story_policy_entertainment_business_person_first') ||
+      canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
+      canonicalFlags.has('article_family_person_interview_or_reaction') ||
+      canonicalFlags.has('story_policy_article_image_first')
+    );
   const fallbackImages = renderableFallbackImages.length > 0
     ? renderableFallbackImages
-    : (
-        canonicalFlags.has('story_policy_force_project_first_image') &&
-        rawAllowedFallbackImages.length > 0
-      )
+    : allowRawTrustedFallbackImages
         ? rawAllowedFallbackImages
         : [];
     if (sources.length === 0) {

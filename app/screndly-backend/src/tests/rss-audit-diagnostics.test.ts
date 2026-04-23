@@ -2706,7 +2706,7 @@ test('publisher-safe deterministic fallback rewrites excerpt-shaped live caption
 
   assert.equal(result.path, 'repaired_caption');
   assert.ok(!result.caption.includes('[...]'));
-  assert.match(result.caption, /Hilary Duff Felt "Quite Sad" Watching Docs on Britney Spears and Exploited Child Stars\./);
+  assert.match(result.caption, /Hilary Duff reflected on her child star upbringing at the TIME100 Summit in Manhattan\./);
 });
 
 test('editorial brain review persistence normalizes review payloads onto stored RSS items', () => {

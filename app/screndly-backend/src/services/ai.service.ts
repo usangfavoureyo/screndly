@@ -3078,7 +3078,9 @@ function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string 
         .replace(/\s*\((?:exclusive|first look|tv news roundup|review|spoiler alert|watch|listen)\)\s*$/i, '')
         .replace(/\s*:\s*["'“”].+$/, '')
         .trim();
-    const lead = ensureRSSSentenceTerminal(normalizedTitle);
+    const extraction = buildHeuristicRssCaptionExtraction(context);
+    const lead = buildPublisherSafeRSSDeterministicLead(context, extraction) ||
+        ensureRSSSentenceTerminal(normalizedTitle);
     if (!lead) {
         return '';
     }
@@ -3095,6 +3097,71 @@ function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string 
     }
 
     return `${lead}\n\n${support}`;
+}
+
+function buildPublisherSafeRSSDeterministicLead(
+    context: RSSContext,
+    extraction: RssCaptionExtraction
+): string | undefined {
+    const eventType = String(normalizeCanonicalEventTypeForCaption(context.canonicalEntity?.eventType) || extraction.event_type || '');
+    const primary = getSafeRSSResolvedSubject(context, extraction);
+    const secondary = getSafeRSSSecondarySubject(context, extraction, primary);
+    const mediaTitle = getPreferredRssTitleEntity(context, extraction) ||
+        extraction.media_title ||
+        context.canonicalEntity?.mediaTitle;
+    const formattedTitle = formatRssMediaTitle(mediaTitle);
+    const headline = normalizeRSSHeadlineInput(context.articleTitle);
+    const distributionLike = /\b(?:distribution|distributor|distributes?|rights|secures?|acquires?|boards?|sales|selling|cannes)\b/i.test(headline);
+
+    if (formattedTitle) {
+        if (eventType === 'release_date') {
+            return `${formattedTitle} has a new release update.`;
+        }
+        if (eventType === 'casting') {
+            return secondary && looksLikeRSSPersonName(secondary)
+                ? `${secondary} joins ${formattedTitle}.`
+                : `${formattedTitle} has added new cast.`;
+        }
+        if (eventType === 'renewal') {
+            return `${formattedTitle} has been renewed.`;
+        }
+        if (eventType === 'trailer') {
+            return `A new trailer for ${formattedTitle} has been released.`;
+        }
+        if (eventType === 'first_look') {
+            return `A first look at ${formattedTitle} has been revealed.`;
+        }
+        if (eventType === 'official_title_reveal') {
+            return `${formattedTitle} has been confirmed as the project's official title.`;
+        }
+        if (distributionLike || eventType === 'business') {
+            return `${formattedTitle} has a new distribution update.`;
+        }
+        if (eventType === 'development' || eventType === 'project_announcement') {
+            return `${formattedTitle} is in development.`;
+        }
+    }
+
+    if (primary && looksLikeRSSPersonName(primary)) {
+        if (eventType === 'reflection') {
+            const support = buildPublisherSafeRSSFallbackSupportLine(context);
+            return support && headlineMentionsRSSSubject(support, primary)
+                ? support
+                : `${primary} reflected on the latest entertainment industry discussion.`;
+        }
+        if (eventType === 'interview_quote') {
+            const support = buildPublisherSafeRSSFallbackSupportLine(context);
+            return support && headlineMentionsRSSSubject(support, primary)
+                ? support
+                : `${primary} discussed the latest entertainment industry update.`;
+        }
+        if (eventType === 'business') {
+            return `${primary} is part of a new entertainment industry update.`;
+        }
+        return `${primary} has a new entertainment update.`;
+    }
+
+    return primary ? `${primary} has a new entertainment update.` : undefined;
 }
 
 function buildRSSPublishSafeDeterministicResult(
@@ -3408,7 +3475,7 @@ Write ONLY the final caption.`;
             reasonCodes: getRSSCaptionHardInvalidReasonCodes(rebuiltCaption, context),
             path: 'repaired_caption',
         });
-        const fallbackResult = buildRSSFallbackResult(deterministicFallback);
+        const fallbackResult = buildRSSPublishSafeDeterministicResult(deterministicFallback, context);
         logCaptionDiagnostics('deterministic_fallback_selected', {
             responseSuccess: true,
             caption: fallbackResult.caption,
