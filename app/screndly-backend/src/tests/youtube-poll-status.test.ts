@@ -698,3 +698,48 @@ test('catch-up prioritization moves heavily overdue channels to the front', () =
     assert.equal(result.overdueChannels.length, 1);
     assert.equal(result.prioritizedDueChannels[0].id, 'overdue');
 });
+
+test('owned-upload yt-dlp fallback does not trigger just because RSS has no newer upload than last check', () => {
+    const service = new YouTubePollerService() as any;
+    const now = Date.now();
+    const channel = {
+        id: 'db-channel-id',
+        channelId: 'UC_RSS',
+        name: 'RSS Channel',
+        lastCheck: new Date(now).toISOString(),
+    };
+    const rssItems = [
+        {
+            id: 'yt:video:abc123',
+            title: 'Older upload',
+            pubDate: new Date(now - (10 * 60 * 1000)).toISOString(),
+        },
+    ];
+
+    const decision = service.shouldRunOwnedVideoYtDlpFallback(channel, { fetchInterval: 2 }, rssItems);
+    assert.equal(decision.shouldFallback, false);
+});
+
+test('owned-upload yt-dlp fallback applies per-channel cooldown after a stale-RSS fallback run', () => {
+    const service = new YouTubePollerService() as any;
+    const now = Date.now();
+    const channel = {
+        id: 'db-channel-id',
+        channelId: 'UC_STALE',
+        name: 'Stale Channel',
+    };
+    const rssItems = [
+        {
+            id: 'yt:video:old',
+            title: 'Old upload',
+            pubDate: new Date(now - (8 * 60 * 60 * 1000)).toISOString(),
+        },
+    ];
+
+    const firstDecision = service.shouldRunOwnedVideoYtDlpFallback(channel, { fetchInterval: 2 }, rssItems);
+    assert.equal(firstDecision.shouldFallback, true);
+
+    service.ownedVideoYtDlpFallbackLastRunAtByChannel.set(channel.channelId, Date.now());
+    const secondDecision = service.shouldRunOwnedVideoYtDlpFallback(channel, { fetchInterval: 2 }, rssItems);
+    assert.equal(secondDecision.shouldFallback, false);
+});

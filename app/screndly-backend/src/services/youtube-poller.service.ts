@@ -409,6 +409,8 @@ const CHANNEL_LOCK_RECLAIM_AFTER_MS = 3 * 60 * 1000;
 const POLL_CLAIM_BATCH_SIZE = 15;
 const MAX_CONCURRENT_CHANNEL_POLLS = 3;
 const MAX_CONCURRENT_YT_DLP_FALLBACK_METADATA_FETCHES = 2;
+const OWNED_YT_DLP_FALLBACK_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const OWNED_YT_DLP_STALE_RSS_MIN_AGE_MINUTES = 240;
 const POLLING_JITTER_MAX_MS = 10 * 1000;
 const OVERDUE_CATCHUP_THRESHOLD_MS = 15 * 60 * 1000;
 const BACKOFF_CAP_MINUTES = 15;
@@ -525,6 +527,7 @@ export class YouTubePollerService {
     }> = [];
     private collaborativeDiscoveryQueuedKeys = new Set<string>();
     private activeCollaborativeDiscoveryJobs = new Set<string>();
+    private ownedVideoYtDlpFallbackLastRunAtByChannel = new Map<string, number>();
     private downloaderIdentityState = new Map<string, DownloaderIdentityState>();
 
     getPollStatus(): PollStatus {
@@ -1669,21 +1672,22 @@ export class YouTubePollerService {
             return { shouldFallback: true, reason: 'RSS returned no items' };
         }
 
-        const newestPublishedAt = this.getNewestChannelVideoPublishedAt(rssItems);
-        const lastCheckAt = channel?.lastCheck ? new Date(channel.lastCheck) : null;
-        if (newestPublishedAt && lastCheckAt && !Number.isNaN(lastCheckAt.getTime()) && newestPublishedAt.getTime() <= lastCheckAt.getTime()) {
-            return {
-                shouldFallback: true,
-                reason: `RSS newest item ${newestPublishedAt.toISOString()} is not newer than lastCheck ${lastCheckAt.toISOString()}`,
-            };
+        const channelKey = String(channel?.channelId || channel?.id || '').trim();
+        const now = Date.now();
+        if (channelKey) {
+            const lastFallbackAt = this.ownedVideoYtDlpFallbackLastRunAtByChannel.get(channelKey);
+            if (typeof lastFallbackAt === 'number' && now - lastFallbackAt < OWNED_YT_DLP_FALLBACK_COOLDOWN_MS) {
+                return { shouldFallback: false };
+            }
         }
 
+        const newestPublishedAt = this.getNewestChannelVideoPublishedAt(rssItems);
         const pollIntervalMinutes = settings
             ? this.getChannelPollIntervalMinutes(channel, settings)
             : (Number(channel?.pollIntervalMinutesOverride) > 0 ? Number(channel.pollIntervalMinutesOverride) : 10);
-        const freshnessThresholdMinutes = Math.max(15, pollIntervalMinutes * 3);
+        const freshnessThresholdMinutes = Math.max(OWNED_YT_DLP_STALE_RSS_MIN_AGE_MINUTES, pollIntervalMinutes * 24);
         if (newestPublishedAt) {
-            const rssAgeMinutes = (Date.now() - newestPublishedAt.getTime()) / (1000 * 60);
+            const rssAgeMinutes = (now - newestPublishedAt.getTime()) / (1000 * 60);
             if (rssAgeMinutes > freshnessThresholdMinutes) {
                 return {
                     shouldFallback: true,
@@ -1748,6 +1752,11 @@ export class YouTubePollerService {
 
         if (rssItems.length > 0) {
             console.warn(`[YouTubePoller] ${channel.name}: RSS appears stale; merging yt-dlp fallback (${fallbackDecision.reason})`);
+        }
+
+        const fallbackChannelKey = String(channel?.channelId || channel?.id || '').trim();
+        if (fallbackChannelKey) {
+            this.ownedVideoYtDlpFallbackLastRunAtByChannel.set(fallbackChannelKey, Date.now());
         }
 
         const ytDlpItems = await this.fetchRecentChannelVideosWithYtDlp(channel.channelId, channel.name);
