@@ -7,9 +7,9 @@ import {
   Film,
   Image as ImageIcon,
   MoreVertical,
-  Play,
   Rss,
   Settings as SettingsIcon,
+  Video02,
   X,
   AlertCircle,
   WifiNoSignal,
@@ -329,7 +329,7 @@ export function NotificationPanel({
 
   const getIcon = (notification: Notification) => {
     if (isYouTubeRelatedNotification(notification)) {
-      return <Play className="w-5 h-5 text-[#ec1e24]" />;
+      return <Video02 className="w-5 h-5 text-[#ec1e24]" />;
     }
 
     if (isDesignStudioNotification(notification)) {

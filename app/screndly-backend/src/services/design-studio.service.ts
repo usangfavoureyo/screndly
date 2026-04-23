@@ -1915,13 +1915,7 @@ export async function buildTextLayer(input: {
         tracking: input.template.tracking || 0,
       });
 
-  const totalTextHeight = Math.max(1, Math.ceil(fit.lines.length * fit.lineHeight));
-  const top = input.variant.variant.startsWith('bottom')
-    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
-    : input.variant.textBox.y;
-
   const fontFamily = resolveHeadlineFontFamily(input.template.fontFamily);
-  const fontSize = Math.max(1, Math.round(fit.fontSize));
   const shadowOpacity = fontColor.toLowerCase() === '#000000' ? 0 : 0.24;
   const emptyLayer = sharp({
     create: {
@@ -1940,11 +1934,9 @@ export async function buildTextLayer(input: {
     ? DESIGN_STUDIO_HEADLINE_FONT_PATH
     : undefined;
   const composites: Array<{ input: Buffer; left: number; top: number }> = [];
-
-  for (const [index, line] of fit.lines.entries()) {
-    const lineTop = Math.round(top + (index * fit.lineHeight));
+  const renderHeadlineLine = async (line: string, fontSize: number) => {
     const safeLine = escapePangoMarkupText(line);
-    const { data: renderedLine, info: renderedLineInfo } = await sharp({
+    return sharp({
       text: {
         text: safeLine,
         rgba: true,
@@ -1955,7 +1947,33 @@ export async function buildTextLayer(input: {
         ...(fontFile ? { fontfile: fontFile } : {}),
       },
     }).png().toBuffer({ resolveWithObject: true });
+  };
 
+  let fontSize = Math.max(1, Math.round(fit.fontSize));
+  let renderedLines = await Promise.all(fit.lines.map((line) => renderHeadlineLine(line, fontSize)));
+  let maxRenderedLineHeight = Math.max(1, ...renderedLines.map(({ info }) => info.height));
+  let maxRenderedLineWidth = Math.max(1, ...renderedLines.map(({ info }) => info.width));
+  let actualLineHeight = Math.max(Math.ceil(fit.lineHeight), maxRenderedLineHeight + 2);
+  let totalTextHeight = Math.max(1, Math.ceil(((fit.lines.length - 1) * actualLineHeight) + maxRenderedLineHeight));
+
+  while (
+    fontSize > 1
+    && (totalTextHeight > input.variant.textBox.height || maxRenderedLineWidth > scaledBoxWidth)
+  ) {
+    fontSize -= 1;
+    renderedLines = await Promise.all(fit.lines.map((line) => renderHeadlineLine(line, fontSize)));
+    maxRenderedLineHeight = Math.max(1, ...renderedLines.map(({ info }) => info.height));
+    maxRenderedLineWidth = Math.max(1, ...renderedLines.map(({ info }) => info.width));
+    actualLineHeight = Math.max(Math.ceil(fontSize * lineHeightMultiplier), maxRenderedLineHeight + 2);
+    totalTextHeight = Math.max(1, Math.ceil(((fit.lines.length - 1) * actualLineHeight) + maxRenderedLineHeight));
+  }
+
+  const top = input.variant.variant.startsWith('bottom')
+    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
+    : input.variant.textBox.y;
+
+  for (const [index, { data: renderedLine, info: renderedLineInfo }] of renderedLines.entries()) {
+    const lineTop = Math.round(top + (index * actualLineHeight));
     const lineLeft = alignment === 'center'
       ? Math.round(scaledTextBoxX + ((scaledBoxWidth - renderedLineInfo.width) / 2))
       : alignment === 'right'

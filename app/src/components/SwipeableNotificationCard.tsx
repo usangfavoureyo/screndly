@@ -7,8 +7,8 @@ import {
   Settings as SettingsIcon,
   Film,
   Image as ImageIcon,
-  Play,
   Rss,
+  Video02,
   WifiNoSignal,
 } from 'lucide-react';
 import { haptics } from '../utils/haptics';
@@ -275,7 +275,7 @@ export function SwipeableNotificationCard({
 
   const getIcon = (currentNotification: Notification) => {
     if (isYouTubeRelatedNotification(currentNotification)) {
-      return <Play className="w-5 h-5 text-[#ec1e24]" />;
+      return <Video02 className="w-5 h-5 text-[#ec1e24]" />;
     }
 
     if (isDesignStudioNotification(currentNotification)) {

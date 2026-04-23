@@ -2380,8 +2380,23 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         return;
       }
 
+      const deletedOutputKey = normalizeMediaKey(deletedRenderedDesign.outputUrl);
+      const deletedPreviewKey = normalizeMediaKey(deletedRenderedDesign.previewUrl || deletedRenderedDesign.outputUrl);
+      const relatedActivityIds = activities
+        .filter((activity) => {
+          const activityDesignId = typeof activity.details.designId === 'string' ? activity.details.designId : '';
+          const activityOutputKey = normalizeMediaKey(activity.details.outputUrl || '');
+          const activityPreviewKey = normalizeMediaKey(activity.details.previewUrl || '');
+          return activityDesignId === renderedDesignId
+            || (!!deletedOutputKey && (activityOutputKey === deletedOutputKey || activityPreviewKey === deletedOutputKey))
+            || (!!deletedPreviewKey && (activityOutputKey === deletedPreviewKey || activityPreviewKey === deletedPreviewKey));
+        })
+        .map((activity) => activity.id);
+      const dismissIds = Array.from(new Set([id, ...relatedActivityIds]));
+      const previousActivities = [...activities];
       const nextRenderedDesigns = renderedDesigns.filter((item) => item.id !== renderedDesignId);
-      setDismissedActivityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setDismissedActivityIds((prev) => Array.from(new Set([...prev, ...dismissIds])));
+      setActivities((prev) => prev.filter((activity) => !relatedActivityIds.includes(activity.id)));
       setRenderedDesigns(nextRenderedDesigns);
 
       try {
@@ -2403,7 +2418,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               autoEditorials,
             });
             setRenderedDesigns(restoredRenderedDesigns);
-            setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+            setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
+            await loadActivities({ silent: true });
             toast.success('Rendered design restored');
           },
           onConfirm: async () => {
@@ -2420,7 +2436,8 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
           restored.splice(Math.min(deletedIndex, restored.length), 0, deletedRenderedDesign);
           return restored;
         });
-        setDismissedActivityIds((prev) => prev.filter((activityId) => activityId !== id));
+        setActivities(previousActivities);
+        setDismissedActivityIds((prev) => prev.filter((activityId) => !dismissIds.includes(activityId)));
         toast.error(error instanceof Error ? error.message : 'Failed to delete rendered design');
       }
       return;

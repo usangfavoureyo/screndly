@@ -61,6 +61,25 @@ async function updateAppBadge(count) {
   }
 }
 
+function getPushBadgeCount(payload) {
+  const candidates = [
+    payload?.badgeCount,
+    payload?.unreadCount,
+    payload?.count,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+
+  // Android launcher badges for PWAs are tied to unread system notifications.
+  // If a push arrives without an explicit count, keep at least a dot/badge hint.
+  return 1;
+}
+
 // Core assets to cache on install
 const CORE_ASSETS = [
   '/',
@@ -394,15 +413,20 @@ self.addEventListener('push', (event) => {
   }
 
   const targetUrl = payload.url || '/';
+  const badgeCount = getPushBadgeCount(payload);
+  const notificationTag = payload.tag || `screndly-${payload.source || 'system'}-${payload.notificationId || Date.now()}`;
   const options = {
     body: payload.body || 'New notification from Screndly',
     icon: payload.icon || '/icons/icon-192x192.png',
     badge: payload.badge || '/icons/icon-72x72.png',
     vibrate: [200, 100, 200],
-    tag: payload.tag || 'screndly-notification',
+    tag: notificationTag,
+    renotify: payload.renotify !== false,
     requireInteraction: Boolean(payload.requireInteraction),
     data: {
       url: targetUrl,
+      badgeCount,
+      notificationId: payload.notificationId,
       source: payload.source || 'system',
       type: payload.type || 'info',
     }
@@ -411,7 +435,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(payload.title || 'Screndly', options),
-      updateAppBadge(payload.badgeCount ?? 0),
+      updateAppBadge(badgeCount),
     ])
   );
 });

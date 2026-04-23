@@ -87,7 +87,7 @@ export class NotificationService {
             }
 
             // 2. Create In-App Notification (Database)
-            const [, unreadCount] = await prisma.$transaction([
+            const [createdNotification, unreadCount] = await prisma.$transaction([
                 prisma.notification.create({
                     data: {
                         type,
@@ -115,7 +115,9 @@ export class NotificationService {
                 badgeCount: unreadCount,
                 source,
                 type,
-                tag: `screndly-${source}`,
+                tag: `screndly-${source}-${createdNotification.id}`,
+                notificationId: createdNotification.id,
+                renotify: true,
             });
 
         } catch (error) {

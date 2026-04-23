@@ -1,5 +1,5 @@
 import { Switch } from '../ui/switch';
-import { Check, WifiNoSignal } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { haptics } from '../../utils/haptics';
 import { desktopNotifications } from '../../utils/desktopNotifications';
 import { Label } from '../ui/label';
@@ -145,14 +145,11 @@ export function NotificationsSettings({ settings, updateSetting, onBack }: Notif
             </div>
 
             <div className="flex items-start justify-between gap-4">
-              <div className="flex flex-1 items-start gap-3">
-                <WifiNoSignal className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#ec1e24]" />
-                <div className="flex-1">
-                  <Label className="text-[#9CA3AF]">TMDb Feeds Notifications</Label>
-                  <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-0.5">
-                    Movie/TV updates from TMDb
-                  </p>
-                </div>
+              <div className="flex-1">
+                <Label className="text-[#9CA3AF]">TMDb Feeds Notifications</Label>
+                <p className="text-xs text-gray-600 dark:text-[#9CA3AF] mt-0.5">
+                  Movie/TV updates from TMDb
+                </p>
               </div>
               <Switch
                 checked={settings.notifyTMDb ?? true}

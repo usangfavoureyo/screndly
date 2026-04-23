@@ -396,9 +396,14 @@ export function LiveDesignPreview({
     template,
     useBackendHeadlinePreview,
   ]);
-  const [headlinePreviewLayerUrl, setHeadlinePreviewLayerUrl] = useState<string | null>(() =>
-    headlinePreviewRequestKey ? headlinePreviewCache.get(headlinePreviewRequestKey) || null : null,
-  );
+  const [headlinePreviewLayer, setHeadlinePreviewLayer] = useState<{ key: string; url: string } | null>(() => {
+    if (!headlinePreviewRequestKey) return null;
+    const cachedLayer = headlinePreviewCache.get(headlinePreviewRequestKey);
+    return cachedLayer ? { key: headlinePreviewRequestKey, url: cachedLayer } : null;
+  });
+  const activeHeadlinePreviewLayerUrl = headlinePreviewLayer?.key === headlinePreviewRequestKey
+    ? headlinePreviewLayer.url
+    : null;
   const [isHeadlinePreviewLoading, setIsHeadlinePreviewLoading] = useState(
     Boolean(headlinePreviewRequestKey && !headlinePreviewCache.get(headlinePreviewRequestKey)),
   );
@@ -488,18 +493,18 @@ export function LiveDesignPreview({
   useEffect(() => {
     if (!headlinePreviewRequestKey || !template || !designData?.headerText?.trim()) {
       setIsHeadlinePreviewLoading(false);
-      setHeadlinePreviewLayerUrl(null);
+      setHeadlinePreviewLayer(null);
       return;
     }
 
     const cachedLayer = headlinePreviewCache.get(headlinePreviewRequestKey);
     if (cachedLayer) {
-      setHeadlinePreviewLayerUrl(cachedLayer);
+      setHeadlinePreviewLayer({ key: headlinePreviewRequestKey, url: cachedLayer });
       setIsHeadlinePreviewLoading(false);
       return;
     }
 
-    setHeadlinePreviewLayerUrl(null);
+    setHeadlinePreviewLayer(null);
     setIsHeadlinePreviewLoading(true);
 
     let isCancelled = false;
@@ -524,13 +529,13 @@ export function LiveDesignPreview({
 
         if (!isCancelled) {
           headlinePreviewCache.set(headlinePreviewRequestKey, dataUrl);
-          setHeadlinePreviewLayerUrl(dataUrl);
+          setHeadlinePreviewLayer({ key: headlinePreviewRequestKey, url: dataUrl });
           setIsHeadlinePreviewLoading(false);
         }
       } catch (error) {
         if (!isCancelled && !(error instanceof Error && error.name === 'AbortError')) {
           console.error('Design Studio headline preview failed:', error);
-          setHeadlinePreviewLayerUrl(null);
+          setHeadlinePreviewLayer(null);
           setIsHeadlinePreviewLoading(false);
         }
       }
@@ -618,9 +623,9 @@ export function LiveDesignPreview({
         </div>
       ) : null}
 
-      {headlinePreviewLayerUrl ? (
+      {activeHeadlinePreviewLayerUrl ? (
         <img
-          src={headlinePreviewLayerUrl}
+          src={activeHeadlinePreviewLayerUrl}
           alt=""
           className="pointer-events-none absolute inset-0 h-full w-full"
           style={{ zIndex: 30 }}

@@ -369,24 +369,91 @@ async function syncUploads() {
   console.log('[SW] Syncing uploads...');
 }
 
+function getBadgeNavigator() {
+  const candidate = self.navigator;
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate.setAppBadge !== 'function' && typeof candidate.clearAppBadge !== 'function') {
+    return null;
+  }
+
+  return candidate;
+}
+
+async function updateAppBadge(count) {
+  const badgeNavigator = getBadgeNavigator();
+  if (!badgeNavigator) {
+    return;
+  }
+
+  const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+
+  if (safeCount > 0 && typeof badgeNavigator.setAppBadge === 'function') {
+    await badgeNavigator.setAppBadge(safeCount);
+    return;
+  }
+
+  if (typeof badgeNavigator.clearAppBadge === 'function') {
+    await badgeNavigator.clearAppBadge();
+  }
+}
+
+function getPushBadgeCount(payload) {
+  const candidates = [
+    payload?.badgeCount,
+    payload?.unreadCount,
+    payload?.count,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+
+  return 1;
+}
+
 /**
  * Push Notifications
  */
 self.addEventListener('push', (event) => {
   console.log('[SW] Push notification received');
   
-  const data = event.data ? event.data.json() : {};
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (error) {
+      data = { body: event.data.text() };
+    }
+  }
+  const badgeCount = getPushBadgeCount(data);
+  const notificationTag = data.tag || `screndly-${data.source || 'system'}-${data.notificationId || Date.now()}`;
   
   const options = {
     body: data.body || 'New notification from Screndly',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/badge-72.png',
+    icon: data.icon || '/icons/icon-192x192.png',
+    badge: data.badge || '/icons/icon-72x72.png',
     vibrate: [200, 100, 200],
-    data: data,
+    tag: notificationTag,
+    renotify: data.renotify !== false,
+    requireInteraction: Boolean(data.requireInteraction),
+    data: {
+      ...data,
+      badgeCount,
+      url: data.url || '/',
+    },
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Screndly', options)
+    Promise.all([
+      self.registration.showNotification(data.title || 'Screndly', options),
+      updateAppBadge(badgeCount),
+    ])
   );
 });
 
@@ -421,6 +488,10 @@ self.addEventListener('message', (event) => {
         );
       })
     );
+  }
+
+  if (event.data.type === 'SCR_UPDATE_APP_BADGE') {
+    event.waitUntil(updateAppBadge(event.data.count));
   }
 });
 
