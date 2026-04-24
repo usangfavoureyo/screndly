@@ -2,9 +2,9 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { generateCompletion, normalizeAIModel, type AIModel } from './ai.service';
 
-export const RSS_EDITORIAL_BRAIN_VERSION = 'rss-editorial-brain-2026-04-18-v2';
-export const RSS_EDITORIAL_BRAIN_PROMPT_VERSION = '2026-04-18-gated-v1';
-export const RSS_EDITORIAL_BRAIN_SCHEMA_VERSION = '2026-04-17-schema-v1';
+export const RSS_EDITORIAL_BRAIN_VERSION = 'rss-editorial-brain-2026-04-23-v3';
+export const RSS_EDITORIAL_BRAIN_PROMPT_VERSION = '2026-04-23-lane-taxonomy-v2';
+export const RSS_EDITORIAL_BRAIN_SCHEMA_VERSION = '2026-04-23-schema-v2';
 export const DEFAULT_RSS_EDITORIAL_BRAIN_MODEL: AIModel = 'gpt-5.4-mini';
 
 const laneSchema = z.enum([
@@ -31,6 +31,14 @@ const storyFamilySchema = z.enum([
   'editorial_feature',
   'retrospective',
   'comics_only',
+  'entertainment_business',
+  'company_industry_news',
+  'rights_sales_deal',
+  'festival_market_news',
+  'programming_lineup',
+  'executive_commentary',
+  'platform_distribution',
+  'franchise_expansion',
   'non_target_media_business',
 ]);
 
@@ -158,24 +166,46 @@ export function normalizeRssEditorialBrainEvent(value: unknown): string {
   if (!normalized) {
     return 'other';
   }
+
+  if (/\bofficial title reveal\b|\bgets? (?:an? )?(?:official )?(?:new )?title\b|\bnew title\b|\btitled?\b/.test(normalized)) return 'official_title_reveal';
+  if (/\bfirst look\b|\bexclusive (?:look|images?)\b|\bnew images?\b|\bfirst images?\b/.test(normalized)) return 'first_look';
+  if (/\bposter(?:s)?\b|\bkey art\b/.test(normalized)) return 'poster_reveal';
+  if (/\bspinoff\b|\bspin-off\b/.test(normalized)) return 'spinoff_announcement';
+  if (/\breboot\b|\brevival\b|\brelaunch\b/.test(normalized)) return 'reboot_revival';
   if (/\brenew/.test(normalized)) return 'renewal';
-  if (/\bfirst look\b|\bexclusive (?:look|images?)\b|\bnew images?\b/.test(normalized)) return 'first_look';
-  if (/\bofficial title\b|\btitle reveal\b|\bofficially titled\b/.test(normalized)) return 'official_title_reveal';
-  if (/\bordered to series\b|\bseries order\b/.test(normalized)) return 'series_order';
+  if (/\bordered to series\b|\bseries order\b|\bpicked up to series\b/.test(normalized)) return 'series_order';
   if (/\btrailer\b|\bteaser\b/.test(normalized)) return 'trailer';
   if (/\bobit|dies?|death|passed away\b/.test(normalized)) return 'obituary';
   if (/\btribute|memorial|honor(?:s|ed)?\b/.test(normalized)) return 'tribute';
-  if (/\bcommentary\b|\binterview\b|\bquote\b|\bjoke\b/.test(normalized)) return 'interview_quote';
-  if (/\bspoiler\b|\bspotted\b|\breveal\b/.test(normalized)) return 'spoiler_sensitive';
-  if (/\bcast|joins?|boards?|returns?\b/.test(normalized)) return 'casting';
-  if (/\bdevelopment\b|\bannouncement\b|\bnew project\b|\bin development\b/.test(normalized)) return 'project_announcement';
+  if (/\boverall deal\b|\bfirst[- ]look deal\b|\bproduction deal\b/.test(normalized)) return 'deal';
+  if (/\brights?\b|\bsales\b|\bsells?\b|\bdistribution\b|\bdistributor\b|\bboards?\b/.test(normalized)) return 'rights_sales_distribution';
+  if (/\bfestival\b|\bcannes\b|\bvenice\b|\btribeca\b|\bsundance\b|\bmarket\b|\bcompetition premiere\b/.test(normalized)) return 'festival_market';
+  if (/\blineup\b|\bprogramming\b|\bschedule\b|\bpremiere date\b|\brelease window\b|\brelease date\b/.test(normalized)) return 'programming_release';
+  if (/\bcommentary\b|\binterview\b|\bquote\b|\bjoke\b|\bsays?\b|\bexplains?\b|\breflects?\b/.test(normalized)) return 'interview_quote';
+  if (/\bspoiler\b|\bpost[- ]credits?\b|\bending explained\b|\bplot twist\b|\bcharacter death\b|\bspotted\b/.test(normalized)) return 'spoiler_sensitive';
+  if (/\bcast|joins?|returns?\b/.test(normalized)) return 'casting';
+  if (/\bdevelopment\b|\bannouncement\b|\bnew project\b|\bin development\b|\badapting\b|\badaptation\b/.test(normalized)) return 'project_announcement';
   if (/\bin production\b|\bfilming\b|\bstarts? production\b/.test(normalized)) return 'in_production';
   return normalized.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'other';
+}
+
+function normalizeRssEditorialBrainStoryFamily(decision: RssEditorialBrainDecision): RssEditorialBrainDecision['story_family'] {
+  const event = normalizeRssEditorialBrainEvent(decision.event);
+  const family = decision.story_family;
+
+  if (event === 'rights_sales_distribution' || event === 'deal') return 'rights_sales_deal';
+  if (event === 'festival_market') return 'festival_market_news';
+  if (event === 'programming_release') return 'programming_lineup';
+  if (event === 'official_title_reveal' || event === 'spinoff_announcement' || event === 'reboot_revival') return 'project_announcement';
+  if (event === 'interview_quote' && decision.primary_entity_type === 'person') return 'executive_commentary';
+
+  return family;
 }
 
 function normalizeDecision(decision: RssEditorialBrainDecision): RssEditorialBrainDecision {
   const normalized: RssEditorialBrainDecision = {
     ...decision,
+    story_family: normalizeRssEditorialBrainStoryFamily(decision),
     primary_entity: normalizeString(decision.primary_entity, 160),
     secondary_entities: normalizeList(decision.secondary_entities),
     canonical_aliases: normalizeList(decision.canonical_aliases),
@@ -291,11 +321,11 @@ Core rules:
 2. Reject wrapper canonicals.
 3. Prefer the current project title over an older development title.
 4. Route correctly using only the allowed lanes.
-5. Route reviews, recaps, rankings, quizzes, what-to-watch, evergreen retrospectives, ratings reports, comics-only coverage, and non-target media-business coverage out of core.
-6. Keep supported casting, renewals, trailers, first look, project announcements, tribute stories, person commentary on real projects, and early-stage cast-led project stories in core when warranted by evidence.
+5. Route reviews, recaps, rankings, quizzes, what-to-watch, evergreen retrospectives, ratings reports, and comics-only coverage out of core. Do not mark entertainment-industry stories as non-target just because they are business/rights/deal/festival/programming stories; use the correct publishable adjacent family when Screen Render can cover them.
+6. Keep supported casting, renewals, trailers, first look, project announcements, tribute stories, person commentary on real projects, title reveals, spinoffs, reboots, early-stage cast-led project stories, rights/sales/deal stories, festival-market stories, programming-lineup stories, and entertainment-company stories in the correct core or adjacent lane when warranted by evidence.
 7. Spoiler-sensitive stories should be core_manual_review_spoiler, not auto-blocked if otherwise valid.
 8. Image strategy must use one of the allowed modes.
-9. Caption strategy must use one of the allowed modes and must reflect the real news.
+9. Caption strategy must use one of the allowed modes and must reflect the real news. Fill caption_facts with one clean publishable headline fact and one clean support fact; do not output generic phrases like "entertainment update."
 10. Return only strict JSON matching the requested schema.`;
 }
 
@@ -328,7 +358,7 @@ ${input.tmdbCandidates && input.tmdbCandidates.length > 0
 Return this exact JSON shape:
 {
   "lane": "core_auto_publish | core_manual_review_spoiler | entertainment_adjacent | blocked_non_core | ignore_completely",
-  "story_family": "project_news | casting | renewal | trailer | first_look | project_announcement | tribute | obituary | person_commentary_on_project | spoiler_sensitive | review | recap | editorial_feature | retrospective | comics_only | non_target_media_business",
+  "story_family": "project_news | casting | renewal | trailer | first_look | project_announcement | tribute | obituary | person_commentary_on_project | spoiler_sensitive | review | recap | editorial_feature | retrospective | comics_only | entertainment_business | company_industry_news | rights_sales_deal | festival_market_news | programming_lineup | executive_commentary | platform_distribution | franchise_expansion | non_target_media_business",
   "primary_entity_type": "project | person | franchise | none",
   "primary_entity": "",
   "secondary_entities": [],

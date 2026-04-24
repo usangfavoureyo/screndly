@@ -1337,6 +1337,53 @@ test('publisher-safe deterministic captions are promoted out of fallback mode wh
   assert.doesNotMatch(promoted.caption, /\[\.\.\.\]|This article|This piece/i);
 });
 
+test('publisher-safe deterministic fallback rewrites generic non-publisher lead phrases', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Hilary Duff has a new entertainment update.',
+    {
+      articleTitle: 'Hilary Duff Felt "Quite Sad" Watching Docs on Britney Spears',
+      feedName: 'Variety',
+      summary: 'Hilary Duff reflected on child-star documentaries at the TIME100 Summit.',
+      articleBody: 'Hilary Duff reflected on child-star documentaries at the TIME100 Summit.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Hilary Duff',
+        entityType: 'person',
+        eventType: 'reflection',
+        confidence: 0.92,
+        allowedEntities: ['Hilary Duff'],
+      },
+      allowedEntities: ['Hilary Duff'],
+    } as any
+  );
+
+  assert.equal(result.path, 'repaired_caption');
+  assert.doesNotMatch(result.caption, /\bhas a new entertainment update\b/i);
+  assert.doesNotMatch(result.caption, /\blatest entertainment industry update\b/i);
+});
+
+test('caption validator rejects duplicated joins lead fragments', () => {
+  const reasonCodes = getRSSCaptionHardInvalidReasonCodes(
+    "Luke Kleintank joins 'The Interrogator' joins Stephen Fry.",
+    {
+      articleTitle: "Luke Kleintank Joins Stephen Fry in 'The Interrogator'",
+      feedName: 'Deadline',
+      summary: 'Luke Kleintank is set as a series regular opposite Stephen Fry in The Interrogator.',
+      articleBody: 'Luke Kleintank is set as a series regular opposite Stephen Fry in The Interrogator.',
+      canonicalEntity: {
+        primarySubject: 'The Interrogator',
+        mediaTitle: 'The Interrogator',
+        entityType: 'tv',
+        eventType: 'casting',
+        confidence: 0.9,
+      },
+      allowedEntities: ['The Interrogator', 'Luke Kleintank', 'Stephen Fry'],
+    } as any
+  );
+
+  assert.ok(reasonCodes.includes('CAPTION_HEADLINE_JUNK'));
+});
+
 test('RSS caption system prompt preserves saved settings prompt as the authoritative instruction block', () => {
   const systemPrompt = __rssAuditTestUtils.buildRSSCaptionSystemPrompt(
     'CUSTOM CULTURE CRAVE PROMPT',
@@ -1821,6 +1868,52 @@ test('adjacent business person-first stories plan a lead-person image without TM
   assert.equal(plan.primary.intent, 'person_portrait');
   assert.equal(plan.primary.subject, 'Benedict Cumberbatch');
   assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
+test('entertainment-business interview and deal stories can use explicit feed fallback without TMDb project anchors', () => {
+  const analysis = projectAnalysis({
+    primarySubject: { name: 'Dawn Ostroff', type: 'producer' },
+    canonicalEntity: {
+      primarySubject: 'Dawn Ostroff',
+      entityType: 'person',
+      eventType: 'overall_deal',
+      confidence: 0.86,
+      ambiguityFlags: [
+        'rss_family_no_tmdb_project',
+        'story_lane_entertainment_adjacent',
+        'article_family_business_or_platform',
+      ],
+    },
+    contextType: 'industry',
+    imageIntent: 'person_portrait',
+  });
+
+  const plan = determineSmartImagePlan({
+    title: 'Media And Tech Veteran Dawn Ostroff Joins Board Of AI Advertising Firm Moloco',
+    description: 'Dawn Ostroff has joined the board.',
+    fallbackImages: ['https://example.com/dawn-ostroff.jpg'],
+    canonicalEntity: analysis.canonicalEntity,
+  } as any, analysis);
+
+  assert.equal(plan.primary.intent, 'person_portrait');
+  assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
+test('general person interview stories do not automatically unlock explicit feed fallback without lane/event support', () => {
+  const analysis = projectAnalysis({
+    primarySubject: { name: 'Example Person', type: 'actor' },
+    canonicalEntity: {
+      primarySubject: 'Example Person',
+      entityType: 'person',
+      eventType: 'other',
+      confidence: 0.81,
+      ambiguityFlags: [],
+    },
+    contextType: 'interview',
+    imageIntent: 'person_portrait',
+  });
+
+  assert.equal(canUseExplicitFeedFallback(analysis, { role: 'person', intent: 'person_portrait', subject: 'Example Person' } as any), false);
 });
 
 test('obituary stories stay person-led even when project references appear in the headline', () => {

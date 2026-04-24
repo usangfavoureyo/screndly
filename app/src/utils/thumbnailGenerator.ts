@@ -6,7 +6,9 @@ import {
   getOverlayLabelForTitle,
   getStoredThumbnailConfig,
   renderThumbnailPreviewResult,
+  resolveThumbnailConfigWithSource,
   type ThumbnailConfig,
+  type ThumbnailPersistedSettings,
   type BrandedOverlayAssetKey,
   type BrandedOverlayType,
   type ThumbnailPlatformConfig,
@@ -29,6 +31,19 @@ interface GeneratedThumbnail {
   config: ThumbnailConfig;
   detectedOverlayType?: BrandedOverlayType;
   resolvedOverlayAssetKey?: BrandedOverlayAssetKey;
+}
+
+export interface GenerateThumbnailsOptions {
+  /**
+   * Persisted DB/settings snapshot. Production/server upload paths should pass this
+   * so generation does not fall back to browser localStorage defaults.
+   */
+  persistedSettings?: ThumbnailPersistedSettings;
+  /**
+   * Direct resolved configs can be injected by jobs/tests that already loaded them.
+   */
+  thumbnailConfigs?: Partial<Record<ThumbnailPlatformConfig, ThumbnailConfig | Partial<ThumbnailConfig> | string>>;
+  logConfigResolution?: boolean;
 }
 
 function mapPlatformToConfigType(platform: ThumbnailPlatform): ThumbnailPlatformConfig {
@@ -56,14 +71,50 @@ function getPlatformDimensions(platform: ThumbnailPlatform): { width: number; he
   }
 }
 
-export function getThumbnailConfig(platform: ThumbnailPlatformConfig): ThumbnailConfig {
+export function getThumbnailConfig(
+  platform: ThumbnailPlatformConfig,
+  persistedSettings?: ThumbnailPersistedSettings | ThumbnailConfig | Partial<ThumbnailConfig> | string
+): ThumbnailConfig {
+  if (persistedSettings) {
+    return resolveThumbnailConfigWithSource(platform, persistedSettings).config;
+  }
+
   return getStoredThumbnailConfig(platform);
+}
+
+function resolveConfigForGeneration(
+  platform: ThumbnailPlatform,
+  options: GenerateThumbnailsOptions = {}
+) {
+  const configType = mapPlatformToConfigType(platform);
+  const providedConfig = options.thumbnailConfigs?.[configType];
+
+  if (providedConfig) {
+    return resolveThumbnailConfigWithSource(configType, providedConfig, {
+      source: 'provided',
+      fallbackReason: 'Provided thumbnail config was invalid',
+    });
+  }
+
+  if (options.persistedSettings) {
+    return resolveThumbnailConfigWithSource(configType, options.persistedSettings, {
+      source: 'persisted',
+      fallbackReason: `No persisted thumbnailConfig_${configType} setting found`,
+    });
+  }
+
+  return {
+    config: getStoredThumbnailConfig(configType),
+    source: 'browser_direct' as const,
+    fallbackReason: 'No persisted settings were supplied; using browser/local fallback',
+  };
 }
 
 export async function generateThumbnailsForPublish(
   video: VideoMetadata,
   platformSettings: Record<string, { autoThumbnail: boolean }>,
-  enabledPlatforms: ThumbnailPlatform[]
+  enabledPlatforms: ThumbnailPlatform[],
+  options: GenerateThumbnailsOptions = {}
 ): Promise<Record<ThumbnailPlatform, GeneratedThumbnail | null>> {
   const result: Record<ThumbnailPlatform, GeneratedThumbnail | null> = {
     YouTube: null,
@@ -84,15 +135,28 @@ export async function generateThumbnailsForPublish(
     }
 
     try {
-      const configType = mapPlatformToConfigType(platform);
-      const config = getThumbnailConfig(configType);
+      const configResolution = resolveConfigForGeneration(platform, options);
+      const config = configResolution.config;
       const dimensions = getPlatformDimensions(platform);
+
+      if (options.logConfigResolution ?? true) {
+        console.log('[ThumbnailGenerator] resolved thumbnail config', {
+          platform,
+          configPlatform: config.platform,
+          source: configResolution.source,
+          key: configResolution.key,
+          logoDisplayMode: config.logoDisplayMode,
+          fallbackReason: configResolution.fallbackReason,
+        });
+      }
+
       const previewResult = await renderThumbnailPreviewResult(config, {
         width: dimensions.width,
         height: dimensions.height,
         backdropUrl: video.thumbnailUrl,
         title: video.title,
         trailerLabel: getOverlayLabelForTitle(video.title),
+        brandedOverlayAssets: config.brandedOverlayAssets,
         format: 'jpeg',
       });
 
@@ -109,7 +173,9 @@ export async function generateThumbnailsForPublish(
       const overlaySummary = previewResult.detectedType
         ? ` using ${previewResult.detectedType}${previewResult.resolvedAssetKey ? ` (${previewResult.resolvedAssetKey})` : ''}`
         : '';
-      console.log(`Generated ${platform} thumbnail with ${config.logoPosition} at ${config.maxLogoSize}%${overlaySummary}`);
+      console.log(
+        `[ThumbnailGenerator] generated ${platform} thumbnail style=${config.logoDisplayMode} position=${config.logoPosition} scale=${config.maxLogoSize}%${overlaySummary}`
+      );
     } catch (error) {
       console.error(`Failed to generate thumbnail for ${platform}:`, error);
     }

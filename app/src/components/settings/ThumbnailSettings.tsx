@@ -20,6 +20,7 @@ import {
   getTrailerLabelMetrics,
   renderThumbnailPreviewResult,
   shouldUseThumbnailLogoShadow,
+  THUMBNAIL_CONFIG_STORAGE_PREFIX,
   type ThumbnailConfig,
   type LogoPosition,
   type BrandedOverlayAssetKey,
@@ -45,6 +46,26 @@ const findSetting = (settings: ThumbnailSettingsProps['settings'], key: string) 
   }
 
   return undefined;
+};
+
+const syncThumbnailConfigToBrowserStorage = (platform: Platform, config: ThumbnailConfig) => {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
+
+  const key = `thumbnailConfig_${platform}`;
+  const serialized = JSON.stringify(config);
+
+  localStorage.setItem(`${THUMBNAIL_CONFIG_STORAGE_PREFIX}${platform}`, serialized);
+
+  try {
+    const snapshot = localStorage.getItem('screndlySettings');
+    const parsed = snapshot ? JSON.parse(snapshot) : {};
+    parsed[key] = serialized;
+    localStorage.setItem('screndlySettings', JSON.stringify(parsed));
+  } catch (error) {
+    console.warn('Failed to sync thumbnail config into settings snapshot', error);
+  }
 };
 
 type Platform = 'youtube' | 'x';
@@ -159,7 +180,11 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       try {
         const parsed = typeof ytSetting === 'string' ? JSON.parse(ytSetting) : ytSetting;
         if (parsed && typeof parsed === 'object') {
-          setYoutubeConfig(prev => ({ ...prev, ...parsed }));
+          setYoutubeConfig(prev => {
+            const next = { ...prev, ...parsed };
+            syncThumbnailConfigToBrowserStorage('youtube', next);
+            return next;
+          });
         }
       } catch (e) {
         console.warn('Failed to parse YouTube thumbnail config, using defaults', e);
@@ -171,7 +196,11 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
       try {
         const parsed = typeof xSetting === 'string' ? JSON.parse(xSetting) : xSetting;
         if (parsed && typeof parsed === 'object') {
-          setXConfig(prev => ({ ...prev, ...parsed }));
+          setXConfig(prev => {
+            const next = { ...prev, ...parsed };
+            syncThumbnailConfigToBrowserStorage('x', next);
+            return next;
+          });
         }
       } catch (e) {
         console.warn('Failed to parse X thumbnail config, using defaults', e);
@@ -502,6 +531,7 @@ export function ThumbnailSettings({ settings, updateSetting, onBack }: Thumbnail
     // Persist to DB
     try {
       await updateSetting(key, JSON.stringify(newConfig));
+      syncThumbnailConfigToBrowserStorage(activePlatform, newConfig as ThumbnailConfig);
       toast.success('Settings Saved', {
         description: `${activePlatform === 'youtube' ? 'YouTube' : 'X'} thumbnail settings updated`
       });

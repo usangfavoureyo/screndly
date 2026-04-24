@@ -89,7 +89,7 @@ export const DEFAULT_THUMBNAIL_CONFIG: Record<ThumbnailPlatformConfig, Thumbnail
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 720;
 const CONTRAST_RATIO_THRESHOLD = 2.6;
-const THUMBNAIL_CONFIG_STORAGE_PREFIX = 'screndly_thumbnailConfig_';
+export const THUMBNAIL_CONFIG_STORAGE_PREFIX = 'screndly_thumbnailConfig_';
 const LOCAL_SETTINGS_KEY = 'screndlySettings';
 const LEGACY_LOCAL_SETTINGS_KEY = 'screndly_settings';
 const BRANDED_TEXT_REGION = {
@@ -465,7 +465,132 @@ export function getOverlayLabelForTitle(title: string): string {
   return 'OFFICIAL TRAILER';
 }
 
-function parseThumbnailConfig(
+export type ThumbnailPersistedSettings =
+  | Record<string, unknown>
+  | Array<{ key: string; value: unknown }>
+  | Map<string, unknown>
+  | null
+  | undefined;
+
+export interface ResolvedThumbnailConfig {
+  config: ThumbnailConfig;
+  source: 'persisted' | 'browser_direct' | 'browser_snapshot' | 'default' | 'provided';
+  key?: string;
+  rawValue?: unknown;
+  fallbackReason?: string;
+}
+
+const LOGO_POSITIONS: LogoPosition[] = [
+  'top-left',
+  'top-center',
+  'top-right',
+  'center-left',
+  'center',
+  'center-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+];
+
+function safeParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function hasConfigShape(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Boolean(
+    record.logoDisplayMode
+    || record.thumbnailStyle
+    || record.overlayStyle
+    || record.style
+    || record.logoPosition
+    || record.brandedOverlayAssets
+  );
+}
+
+function normalizeLogoDisplayMode(value: unknown): ThumbnailLogoDisplayMode | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, '-').replace(/_/g, '-');
+
+  if (normalized === 'branded' || normalized === 'brand' || normalized === 'branded-logo' || normalized === 'branded-overlay') {
+    return 'branded';
+  }
+
+  if (normalized === 'logo-only' || normalized === 'logo' || normalized === 'logoonly') {
+    return 'logo-only';
+  }
+
+  if (normalized === 'boxed' || normalized === 'box' || normalized === 'logo-box' || normalized === 'boxed-logo') {
+    return 'boxed';
+  }
+
+  return null;
+}
+
+function normalizeBrandedOverlayAssets(value: unknown): BrandedOverlayAssets | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const assets: BrandedOverlayAssets = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, src]) => {
+    if (typeof src === 'string' && src.trim()) {
+      assets[key as BrandedOverlayAssetKey] = src;
+    }
+  });
+
+  return assets;
+}
+
+function normalizeThumbnailConfigRecord(
+  record: Record<string, unknown>,
+  platform: ThumbnailPlatformConfig
+): ThumbnailConfig {
+  const base = DEFAULT_THUMBNAIL_CONFIG[platform];
+  const displayMode = normalizeLogoDisplayMode(
+    record.logoDisplayMode ?? record.thumbnailStyle ?? record.overlayStyle ?? record.style
+  );
+  const logoPosition = typeof record.logoPosition === 'string' && LOGO_POSITIONS.includes(record.logoPosition as LogoPosition)
+    ? record.logoPosition as LogoPosition
+    : base.logoPosition;
+  const brandedOverlayAppearanceMode = record.brandedOverlayAppearanceMode === 'fixed' ? 'fixed' : 'adaptive';
+  const brandedOverlayFixedVariant = record.brandedOverlayFixedVariant === 'black' ? 'black' : 'white';
+  const brandedOverlayCustomTypes = Array.isArray(record.brandedOverlayCustomTypes)
+    ? record.brandedOverlayCustomTypes.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : base.brandedOverlayCustomTypes;
+  const brandedOverlayAssets = normalizeBrandedOverlayAssets(record.brandedOverlayAssets) ?? base.brandedOverlayAssets;
+
+  return {
+    ...base,
+    ...record,
+    platform,
+    logoPosition,
+    logoDisplayMode: displayMode || base.logoDisplayMode,
+    autoScale: typeof record.autoScale === 'boolean' ? record.autoScale : base.autoScale,
+    maxLogoSize: typeof record.maxLogoSize === 'number' ? record.maxLogoSize : base.maxLogoSize,
+    trailerTextSize: typeof record.trailerTextSize === 'number' ? record.trailerTextSize : base.trailerTextSize,
+    autoContrastBackdrop: typeof record.autoContrastBackdrop === 'boolean' ? record.autoContrastBackdrop : base.autoContrastBackdrop,
+    autoContrastOverlay: typeof record.autoContrastOverlay === 'boolean' ? record.autoContrastOverlay : base.autoContrastOverlay,
+    showTrailerTypeText: typeof record.showTrailerTypeText === 'boolean' ? record.showTrailerTypeText : base.showTrailerTypeText,
+    brandedOverlayAssets,
+    brandedOverlayCustomTypes,
+    brandedOverlayAppearanceMode,
+    brandedOverlayFixedVariant,
+  };
+}
+
+export function parseThumbnailConfig(
   value: unknown,
   platform: ThumbnailPlatformConfig
 ): ThumbnailConfig | null {
@@ -473,16 +598,103 @@ function parseThumbnailConfig(
     return null;
   }
 
-  const parsed = typeof value === 'string' ? JSON.parse(value) : value;
-  if (!parsed || typeof parsed !== 'object') {
+  const parsed = typeof value === 'string' ? safeParseJson(value) : value;
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     return null;
   }
 
+  return normalizeThumbnailConfigRecord(parsed as Record<string, unknown>, platform);
+}
+
+function getPersistedSetting(settings: ThumbnailPersistedSettings, key: string): unknown {
+  if (!settings) {
+    return undefined;
+  }
+
+  if (settings instanceof Map) {
+    return settings.get(key);
+  }
+
+  if (Array.isArray(settings)) {
+    return settings.find((entry) => entry?.key === key)?.value;
+  }
+
+  if (typeof settings === 'object') {
+    return (settings as Record<string, unknown>)[key];
+  }
+
+  return undefined;
+}
+
+function getNestedPlatformConfig(settings: ThumbnailPersistedSettings, platform: ThumbnailPlatformConfig): unknown {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings) || settings instanceof Map) {
+    return undefined;
+  }
+
+  const record = settings as Record<string, unknown>;
+  const containers = [record.thumbnailConfigs, record.thumbnailConfig, record.thumbnails, record.thumbnail];
+
+  for (const container of containers) {
+    if (container && typeof container === 'object' && !Array.isArray(container)) {
+      const value = (container as Record<string, unknown>)[platform];
+      if (value) {
+        return value;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+export function resolveThumbnailConfigWithSource(
+  platform: ThumbnailPlatformConfig,
+  persistedSettings?: ThumbnailPersistedSettings | ThumbnailConfig | Partial<ThumbnailConfig> | string,
+  options: { source?: ResolvedThumbnailConfig['source']; fallbackReason?: string } = {}
+): ResolvedThumbnailConfig {
+  const source = options.source || 'persisted';
+
+  if (persistedSettings) {
+    const directConfig = parseThumbnailConfig(persistedSettings, platform);
+    if (directConfig && (typeof persistedSettings === 'string' || hasConfigShape(persistedSettings))) {
+      return {
+        config: directConfig,
+        source: source === 'persisted' ? 'provided' : source,
+        rawValue: persistedSettings,
+      };
+    }
+
+    const keys = [
+      `thumbnailConfig_${platform}`,
+      `${THUMBNAIL_CONFIG_STORAGE_PREFIX}${platform}`,
+    ];
+
+    for (const key of keys) {
+      const rawValue = getPersistedSetting(persistedSettings as ThumbnailPersistedSettings, key);
+      const config = parseThumbnailConfig(rawValue, platform);
+      if (config) {
+        return { config, source, key, rawValue };
+      }
+    }
+
+    const nested = getNestedPlatformConfig(persistedSettings as ThumbnailPersistedSettings, platform);
+    const nestedConfig = parseThumbnailConfig(nested, platform);
+    if (nestedConfig) {
+      return { config: nestedConfig, source, key: `${platform}`, rawValue: nested };
+    }
+  }
+
   return {
-    ...DEFAULT_THUMBNAIL_CONFIG[platform],
-    ...parsed,
-    platform,
+    config: DEFAULT_THUMBNAIL_CONFIG[platform],
+    source: 'default',
+    fallbackReason: options.fallbackReason || 'No persisted thumbnail config found',
   };
+}
+
+export function resolveThumbnailConfigForPlatform(
+  platform: ThumbnailPlatformConfig,
+  persistedSettings?: ThumbnailPersistedSettings | ThumbnailConfig | Partial<ThumbnailConfig> | string
+): ThumbnailConfig {
+  return resolveThumbnailConfigWithSource(platform, persistedSettings).config;
 }
 
 function getThumbnailConfigFromSettingsSnapshot(
@@ -493,8 +705,9 @@ function getThumbnailConfigFromSettingsSnapshot(
     return null;
   }
 
-  const parsed = JSON.parse(snapshot) as Record<string, unknown>;
-  return parseThumbnailConfig(parsed?.[`thumbnailConfig_${platform}`], platform);
+  const parsed = safeParseJson(snapshot) as ThumbnailPersistedSettings;
+  const rawValue = getPersistedSetting(parsed, `thumbnailConfig_${platform}`);
+  return parseThumbnailConfig(rawValue, platform);
 }
 
 function getBrandedAssetKey(

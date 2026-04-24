@@ -5738,6 +5738,31 @@ function canUseExplicitFeedFallback(
   slot?: ImageSlotPlan | null
 ): boolean {
   const flags = new Set(analysis.canonicalEntity?.ambiguityFlags || []);
+  const eventType = String(analysis.canonicalEntity?.eventType || '').toLowerCase();
+  const personPrimary =
+    analysis.primarySubject.type === 'actor' ||
+    analysis.primarySubject.type === 'director' ||
+    analysis.primarySubject.type === 'producer' ||
+    analysis.primarySubject.type === 'character';
+  const personLedInterviewOrCommentary =
+    personPrimary &&
+    (
+      analysis.contextType === 'interview' ||
+      analysis.contextType === 'industry' ||
+      flags.has('article_family_person_interview_or_reaction') ||
+      flags.has('story_family_person_commentary_on_project') ||
+      eventType === 'interview_quote' ||
+      eventType === 'reflection'
+    );
+  const entertainmentBusinessDealOrFestivalFamily =
+    flags.has('story_policy_entertainment_business_person_first') ||
+    flags.has('article_family_business_or_platform') ||
+    flags.has('story_lane_entertainment_adjacent') ||
+    /\b(?:business|rights|sales_boarding|acquisition|overall_deal|series_order|ordered_to_series|festival|market)\b/.test(eventType);
+  const earlyProjectFamily =
+    flags.has('story_policy_early_project_cast_portraits') ||
+    /\b(?:casting|development|project_announcement|in_production)\b/.test(eventType) ||
+    analysis.contextType === 'casting';
   if (flags.has('story_policy_memorial_feed_fallback')) {
     return true;
   }
@@ -5750,6 +5775,9 @@ function canUseExplicitFeedFallback(
     flags.has('editorial_brain_image_strategy_person_first') ||
     flags.has('article_family_person_interview_or_reaction')
   ) {
+    return true;
+  }
+  if ((personLedInterviewOrCommentary && entertainmentBusinessDealOrFestivalFamily) || earlyProjectFamily) {
     return true;
   }
 

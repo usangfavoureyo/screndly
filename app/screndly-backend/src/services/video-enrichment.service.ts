@@ -1708,6 +1708,39 @@ function buildTrailerTypeOverlay(
     return Buffer.from(svg);
 }
 
+
+function buildBrandedFallbackOverlay(
+    title: string,
+    trailerType: string | undefined,
+    canvasWidth: number,
+    canvasHeight: number,
+    variant: BrandedOverlayVariant
+): Buffer {
+    const label = escapeSvg((trailerType || detectBrandedOverlayType(title)).replace(/_/g, ' ').toUpperCase());
+    const brandText = escapeSvg('SCREEN RENDER');
+    const fill = variant === 'white' ? '#ffffff' : '#101010';
+    const shadow = variant === 'white' ? 'rgba(0,0,0,0.68)' : 'rgba(255,255,255,0.72)';
+    const labelWidth = Math.max(230, Math.min(520, label.length * 24));
+
+    const svg = `
+        <svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="brandedFallbackShade" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="rgba(0,0,0,0.62)" />
+              <stop offset="46%" stop-color="rgba(0,0,0,0.22)" />
+              <stop offset="100%" stop-color="rgba(0,0,0,0.02)" />
+            </linearGradient>
+          </defs>
+          <rect width="${canvasWidth}" height="${canvasHeight}" fill="url(#brandedFallbackShade)" />
+          <rect x="52" y="${Math.round(canvasHeight * 0.66)}" rx="18" ry="18" width="${labelWidth}" height="62" fill="${shadow}" />
+          <text x="82" y="${Math.round(canvasHeight * 0.66) + 41}" fill="${fill}" font-size="32" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="2">${label}</text>
+          <text x="54" y="${canvasHeight - 44}" fill="${fill}" opacity="0.86" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700" letter-spacing="3">${brandText}</text>
+        </svg>
+    `;
+
+    return Buffer.from(svg);
+}
+
 function buildOverlayBackdrop(
     canvasWidth: number,
     canvasHeight: number,
@@ -2126,6 +2159,7 @@ export async function generateLandscapeThumbnail(
             console.log('[VideoEnrichment] Using branded thumbnail renderer branch', {
                 platform,
                 title: originalTitle,
+                persistedStyle: config.logoDisplayMode,
             });
             const resizedBackdrop = await image.png().toBuffer();
             const overlayType = detectBrandedOverlayType(
@@ -2148,6 +2182,8 @@ export async function generateLandscapeThumbnail(
                     allowOppositeVariantFallback: config.brandedOverlayAppearanceMode !== 'fixed',
                 }
             );
+
+            let brandedFallbackReason: string | undefined;
 
             if (resolvedOverlay.url) {
                 try {
@@ -2176,23 +2212,50 @@ export async function generateLandscapeThumbnail(
                         strategy: resolvedOverlay.key ? `tmdb_backdrop_branded_${resolvedOverlay.key}` : 'tmdb_backdrop_branded',
                     };
                 } catch (error) {
-                    console.warn('[VideoEnrichment] Failed to apply branded overlay, falling back to logo renderer', {
+                    brandedFallbackReason = error instanceof Error ? error.message : String(error);
+                    console.warn('[VideoEnrichment] Failed to apply branded overlay asset; using branded fallback renderer instead of logo renderer', {
                         platform,
                         title: originalTitle,
                         overlayType,
                         overlayVariant,
                         resolvedOverlayKey: resolvedOverlay.key,
-                        reason: error instanceof Error ? error.message : String(error),
+                        reason: brandedFallbackReason,
                     });
                 }
             } else {
-                console.warn('[VideoEnrichment] Branded overlay asset missing, falling back to logo renderer', {
+                brandedFallbackReason = 'No branded overlay asset configured for resolved overlay type/variant.';
+                console.warn('[VideoEnrichment] Branded overlay asset missing; using branded fallback renderer instead of logo renderer', {
                     platform,
                     title: originalTitle,
                     overlayType,
                     overlayVariant,
+                    availableOverlayAssetKeys: Object.keys(config.brandedOverlayAssets || {}),
                 });
             }
+
+            const fallbackOverlay = buildBrandedFallbackOverlay(
+                originalTitle,
+                metadata.trailerType,
+                dimensions.width,
+                dimensions.height,
+                overlayVariant
+            );
+            const finalBuffer = await sharp(resizedBackdrop)
+                .composite([{ input: fallbackOverlay, top: 0, left: 0 }])
+                .jpeg({ quality: 88, mozjpeg: true })
+                .toBuffer();
+            const fileName = `${sanitizeFileName(originalTitle)}-${platform}.jpg`;
+            const localPath = await writeTempFile(fileName, finalBuffer);
+            const publicUrl = await uploadGeneratedAsset(finalBuffer, fileName, 'generated-thumbnails/video');
+
+            return {
+                localPath,
+                publicUrl,
+                sourceUrl: baseUrl,
+                strategy: brandedFallbackReason
+                    ? `tmdb_backdrop_branded_fallback_${overlayType}`
+                    : 'tmdb_backdrop_branded_fallback',
+            };
         }
 
         if (config.autoContrastBackdrop) {

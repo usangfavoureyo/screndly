@@ -1558,6 +1558,11 @@ const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }>
     { pattern: /\bIt['’]s Time is the focus\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bPrequel With Season \d+\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /^(?:['"][^'"]+['"]\s+)?(?:Season \d+\s+)?Casts?\s+[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,5}\s+joins\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bhas a new entertainment update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bdiscussed the latest entertainment industry update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\breflected on the latest entertainment industry discussion\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bis part of a new entertainment industry update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bhas a new distribution update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
 ];
 
 const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
@@ -2795,6 +2800,10 @@ function hasInvalidRSSJoinLead(caption: string): boolean {
         return false;
     }
 
+    if ((headline.match(/\bjoins\b/gi) || []).length > 1) {
+        return true;
+    }
+
     const left = sanitizeRSSNamedEntityCandidate(joinMatch[1] || '').replace(/[.,]+$/g, '').trim();
     const right = sanitizeRSSNamedEntityCandidate(joinMatch[2] || '').replace(/[.,]+$/g, '').trim();
     if (!left || !right) {
@@ -3112,14 +3121,19 @@ function buildPublisherSafeRSSDeterministicLead(
     const formattedTitle = formatRssMediaTitle(mediaTitle);
     const headline = normalizeRSSHeadlineInput(context.articleTitle);
     const distributionLike = /\b(?:distribution|distributor|distributes?|rights|secures?|acquires?|boards?|sales|selling|cannes)\b/i.test(headline);
+    const safeSecondaryJoinLead = secondary
+        ? sanitizeRSSNamedEntityCandidate(secondary)
+            .replace(/\bjoins\b.*$/i, '')
+            .trim()
+        : '';
 
     if (formattedTitle) {
         if (eventType === 'release_date') {
             return `${formattedTitle} has a new release update.`;
         }
         if (eventType === 'casting') {
-            return secondary && looksLikeRSSPersonName(secondary)
-                ? `${secondary} joins ${formattedTitle}.`
+            return safeSecondaryJoinLead && looksLikeRSSPersonName(safeSecondaryJoinLead)
+                ? `${safeSecondaryJoinLead} joins ${formattedTitle}.`
                 : `${formattedTitle} has added new cast.`;
         }
         if (eventType === 'renewal') {
@@ -3135,7 +3149,7 @@ function buildPublisherSafeRSSDeterministicLead(
             return `${formattedTitle} has been confirmed as the project's official title.`;
         }
         if (distributionLike || eventType === 'business') {
-            return `${formattedTitle} has a new distribution update.`;
+            return `${formattedTitle} has secured a new distribution deal.`;
         }
         if (eventType === 'development' || eventType === 'project_announcement') {
             return `${formattedTitle} is in development.`;
@@ -3147,21 +3161,21 @@ function buildPublisherSafeRSSDeterministicLead(
             const support = buildPublisherSafeRSSFallbackSupportLine(context);
             return support && headlineMentionsRSSSubject(support, primary)
                 ? support
-                : `${primary} reflected on the latest entertainment industry discussion.`;
+                : `${primary} reflected on the topic in a new interview.`;
         }
         if (eventType === 'interview_quote') {
             const support = buildPublisherSafeRSSFallbackSupportLine(context);
             return support && headlineMentionsRSSSubject(support, primary)
                 ? support
-                : `${primary} discussed the latest entertainment industry update.`;
+                : `${primary} addressed the topic in a new interview.`;
         }
         if (eventType === 'business') {
-            return `${primary} is part of a new entertainment industry update.`;
+            return `${primary} is part of a new business development story.`;
         }
-        return `${primary} has a new entertainment update.`;
+        return `${primary} is at the center of a new report.`;
     }
 
-    return primary ? `${primary} has a new entertainment update.` : undefined;
+    return primary ? `${primary} is at the center of a new report.` : undefined;
 }
 
 function buildRSSPublishSafeDeterministicResult(
@@ -3188,7 +3202,7 @@ function buildRSSPublishSafeDeterministicResult(
         };
     }
 
-    if (rebuilt) {
+    if (rebuilt && !failsRSSCaptionFormatting(rebuilt, context)) {
         return {
             caption: rebuilt,
             path: 'repaired_caption',
