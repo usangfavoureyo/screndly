@@ -1384,6 +1384,184 @@ test('caption validator rejects duplicated joins lead fragments', () => {
   assert.ok(reasonCodes.includes('CAPTION_HEADLINE_JUNK'));
 });
 
+test('brain-backed fallback uses project fact for Lena Dunham and avoids generic fallback phrases', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Lena Dunham has a new entertainment update.',
+    {
+      articleTitle: "Lena Dunham Says She Has the 'Plot Line in My Brain' For a 'Girls' Movie",
+      feedName: 'Variety',
+      summary: 'Lena Dunham discussed a possible Girls movie.',
+      articleBody: 'Lena Dunham said she has an idea for a potential Girls movie.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Lena Dunham',
+        mediaTitle: 'Girls',
+        entityType: 'person',
+        eventType: 'interview_quote',
+        confidence: 0.95,
+      },
+      editorialBrain: {
+        decision: {
+          primary_entity: 'Girls',
+          secondary_entities: ['Lena Dunham'],
+          event: 'interview_quote',
+          story_family: 'person_commentary_on_project',
+          caption_strategy: { mode: 'person_commentary' },
+          caption_facts: {
+            headline_fact: "Lena Dunham says she has an idea for a potential 'Girls' movie.",
+            supporting_fact: 'She has discussed reunion possibilities with the original cast.',
+          },
+        },
+      },
+      allowedEntities: ['Girls', 'Lena Dunham'],
+    } as any
+  );
+
+  assert.equal(result.path, 'repaired_caption');
+  assert.match(result.caption, /'Girls'/);
+  assert.doesNotMatch(result.caption, /\bhas a new entertainment update\b/i);
+});
+
+test('brain-backed fallback uses business facts for Comcast/WBD class items', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Comcast has a new entertainment update.',
+    {
+      articleTitle: 'Comcast Generates an Extra $2.2 Billion From Olympics and Super Bowl',
+      feedName: 'Variety',
+      summary: 'Comcast generated an extra $2.2 billion from major sports events.',
+      articleBody: 'Comcast is focused on reducing cable losses while investors watch media consolidation.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Comcast',
+        entityType: 'company',
+        eventType: 'business',
+        confidence: 0.9,
+      },
+      editorialBrain: {
+        decision: {
+          primary_entity: 'Comcast',
+          event: 'business',
+          story_family: 'entertainment_business',
+          caption_strategy: { mode: 'entertainment_business' },
+          caption_facts: {
+            headline_fact: 'Comcast is focused on reducing cable losses as investors watch media consolidation.',
+            supporting_fact: 'It generated an extra $2.2 billion from the Olympics and Super Bowl.',
+          },
+        },
+      },
+    } as any
+  );
+
+  assert.equal(result.path, 'repaired_caption');
+  assert.match(result.caption, /Comcast is focused on reducing cable losses/i);
+  assert.doesNotMatch(result.caption, /\blatest entertainment industry update\b/i);
+});
+
+test('brain-backed fallback keeps Hannah Davis item clean and person-led', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    "Hannah Davis joins 'CAA' joins department.",
+    {
+      articleTitle: 'Hannah Davis Joins CAA Motion Picture Literary Department',
+      feedName: 'Deadline',
+      summary: 'Hannah Davis has joined CAA.',
+      articleBody: 'Hannah Davis has joined CAA’s Motion Picture Literary department.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Hannah Davis',
+        entityType: 'person',
+        eventType: 'business',
+        confidence: 0.9,
+      },
+      editorialBrain: {
+        decision: {
+          primary_entity: 'Hannah Davis',
+          event: 'business',
+          story_family: 'executive_commentary',
+          caption_strategy: { mode: 'person_commentary' },
+          caption_facts: {
+            headline_fact: 'Hannah Davis has joined CAA’s Motion Picture Literary department.',
+            supporting_fact: '',
+          },
+        },
+      },
+      allowedEntities: ['Hannah Davis', 'CAA'],
+    } as any
+  );
+
+  assert.equal(result.path, 'deterministic_template');
+  assert.equal(result.caption, '');
+});
+
+test('brain-backed fallback keeps Hilary Duff captions clean and person-led', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Hilary Duff discussed the latest entertainment industry update.',
+    {
+      articleTitle: "Hilary Duff Felt 'Quite Sad' Watching Docs on Britney Spears",
+      feedName: 'Variety',
+      summary: 'Hilary Duff reflected on growing up as a child star.',
+      articleBody: 'She discussed documentaries about Britney Spears and other former young performers.',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Hilary Duff',
+        entityType: 'person',
+        eventType: 'reflection',
+        confidence: 0.9,
+      },
+      editorialBrain: {
+        decision: {
+          primary_entity: 'Hilary Duff',
+          event: 'reflection',
+          story_family: 'person_commentary_on_project',
+          caption_strategy: { mode: 'person_commentary' },
+          caption_facts: {
+            headline_fact: 'Hilary Duff reflected on growing up as a child star.',
+            supporting_fact: 'She discussed documentaries about Britney Spears and other former young performers.',
+          },
+        },
+      },
+      allowedEntities: ['Hilary Duff', 'Britney Spears'],
+    } as any
+  );
+
+  assert.equal(result.path, 'repaired_caption');
+  assert.match(result.caption, /^Hilary Duff reflected on growing up as a child star\./);
+  assert.doesNotMatch(result.caption, /\blatest entertainment industry update\b/i);
+});
+
+test('brain-backed fallback blocks when brain facts are present but unusable', () => {
+  const result = buildRSSPublishSafeDeterministicResult(
+    'Someone has a new entertainment update.',
+    {
+      articleTitle: 'Generic Story',
+      feedName: 'Generic',
+      summary: 'Generic summary',
+      articleBody: 'Generic body',
+      platform: 'Facebook',
+      canonicalEntity: {
+        primarySubject: 'Someone',
+        entityType: 'person',
+        eventType: 'other',
+        confidence: 0.6,
+      },
+      editorialBrain: {
+        decision: {
+          primary_entity: 'Someone',
+          event: 'other',
+          story_family: 'editorial_feature',
+          caption_strategy: { mode: 'headline_news' },
+          caption_facts: {
+            headline_fact: 'This article is the focus of the latest update',
+            supporting_fact: '',
+          },
+        },
+      },
+      allowedEntities: ['Someone'],
+    } as any
+  );
+
+  assert.equal(result.caption, '');
+});
+
 test('RSS caption system prompt preserves saved settings prompt as the authoritative instruction block', () => {
   const systemPrompt = __rssAuditTestUtils.buildRSSCaptionSystemPrompt(
     'CUSTOM CULTURE CRAVE PROMPT',

@@ -1403,6 +1403,24 @@ export interface RSSContext {
     selectedVisuals?: string[];
     allowedEntities?: string[];
     canonicalEntity?: RSSCanonicalEntity;
+    editorialBrain?: {
+        decision?: {
+            primary_entity?: string;
+            secondary_entities?: string[];
+            event?: string;
+            story_family?: string;
+            caption_strategy?: { mode?: string };
+            caption_facts?: {
+                headline_fact?: string;
+                supporting_fact?: string;
+                quote?: string;
+                bullets?: string[];
+            };
+        };
+        runtime?: {
+            promotedCaptionStrategy?: string;
+        };
+    };
 }
 
 export interface RSSCanonicalEntity {
@@ -3082,6 +3100,154 @@ function buildPublisherSafeRSSFallbackSupportLine(context: RSSContext): string |
     return undefined;
 }
 
+function hasEditorialBrainFallbackSignal(context: RSSContext): boolean {
+    const decision = context.editorialBrain?.decision;
+    if (!decision) {
+        return false;
+    }
+
+    const facts = decision.caption_facts;
+    return Boolean(
+        (facts?.headline_fact && facts.headline_fact.trim()) ||
+        (facts?.supporting_fact && facts.supporting_fact.trim()) ||
+        (facts?.quote && facts.quote.trim()) ||
+        (facts?.bullets && facts.bullets.some((entry) => entry && entry.trim())) ||
+        (decision.primary_entity && decision.primary_entity.trim()) ||
+        (decision.secondary_entities && decision.secondary_entities.some((entry) => entry && entry.trim())) ||
+        (decision.event && decision.event.trim()) ||
+        (decision.story_family && decision.story_family.trim()) ||
+        (decision.caption_strategy?.mode && decision.caption_strategy.mode.trim())
+    );
+}
+
+function normalizeBrainFactLine(value?: string): string {
+    return sanitizeRSSCaptionSurfaceText(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function hasGenericBrainFallbackPhrase(value: string): boolean {
+    return /\b(?:has a new entertainment update|discussed the latest entertainment industry update|reflected on the latest entertainment industry discussion|is part of a new entertainment industry update)\b/i.test(value);
+}
+
+function isUsableBrainFactLine(value: string): boolean {
+    if (!value) {
+        return false;
+    }
+
+    if (
+        hasRSSArticlePackageLabel(value) ||
+        hasGenericBrainFallbackPhrase(value) ||
+        containsRSSOutletName(value) ||
+        hasTruncatedRSSContent(value) ||
+        /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])/.test(value)
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+function buildBrainFallbackTemplateLine(context: RSSContext, extraction: RssCaptionExtraction): string | undefined {
+    const decision = context.editorialBrain?.decision;
+    if (!decision) {
+        return undefined;
+    }
+
+    const event = String(decision.event || '').trim().toLowerCase();
+    const storyFamily = String(decision.story_family || '').trim().toLowerCase();
+    const strategy = String(
+        context.editorialBrain?.runtime?.promotedCaptionStrategy ||
+        decision.caption_strategy?.mode ||
+        ''
+    ).trim().toLowerCase();
+    const primary = sanitizeRSSNamedEntityCandidate(decision.primary_entity || '') || getSafeRSSResolvedSubject(context, extraction) || '';
+    const secondaryEntities = (decision.secondary_entities || []).map((entry) => sanitizeRSSNamedEntityCandidate(entry || '')).filter(Boolean);
+    const secondary = secondaryEntities[0] || getSafeRSSSecondarySubject(context, extraction, primary);
+    const project = formatRssMediaTitle(
+        context.canonicalEntity?.mediaTitle ||
+        extraction.media_title ||
+        (context.canonicalEntity?.entityType === 'movie' || context.canonicalEntity?.entityType === 'tv' ? primary : '')
+    );
+
+    if (strategy === 'person_commentary' || storyFamily === 'person_commentary_on_project' || event === 'interview_quote' || event === 'reflection') {
+        if (primary && project) return `${primary} shared new comments about ${project}.`;
+        if (primary) return `${primary} shared new comments on the topic.`;
+    }
+
+    if (strategy === 'entertainment_business' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || event === 'business' || event === 'deal' || event === 'rights_sales_distribution') {
+        if (primary) return `${primary} is part of a new business development report.`;
+    }
+
+    if (strategy === 'casting' || storyFamily === 'casting' || event === 'casting') {
+        if (secondary && project && looksLikeRSSPersonName(secondary)) return `${secondary} has joined ${project}.`;
+        if (project) return `${project} has added new cast.`;
+    }
+
+    if (strategy === 'project_announcement' || storyFamily === 'project_announcement' || event === 'project_announcement' || event === 'development') {
+        if (project && primary && primary !== project) return `${project} is in development with ${primary}.`;
+        if (project) return `${project} is in development.`;
+    }
+
+    if (strategy === 'first_look' || storyFamily === 'first_look' || event === 'first_look') {
+        if (project) return `First look at ${project} has been revealed.`;
+    }
+
+    if (strategy === 'trailer' || storyFamily === 'trailer' || event === 'trailer') {
+        if (project) return `New trailer released for ${project}.`;
+    }
+
+    if (strategy === 'tribute' || storyFamily === 'tribute' || event === 'tribute') {
+        if (project && secondary) return `${project} paid tribute to ${secondary}.`;
+    }
+
+    if (strategy === 'obituary' || storyFamily === 'obituary' || event === 'obituary') {
+        if (primary && project) return `${primary}, known for ${project}, has died.`;
+        if (primary) return `${primary} has died.`;
+    }
+
+    return undefined;
+}
+
+function buildBrainBackedPublisherSafeCaption(
+    context: RSSContext,
+    extraction: RssCaptionExtraction
+): string | undefined {
+    const decision = context.editorialBrain?.decision;
+    if (!decision) {
+        return undefined;
+    }
+
+    const facts = decision.caption_facts;
+    const headlineFact = normalizeBrainFactLine(facts?.headline_fact);
+    const supportingFact = normalizeBrainFactLine(facts?.supporting_fact);
+
+    const headline = isUsableBrainFactLine(headlineFact)
+        ? ensureRSSSentenceTerminal(headlineFact)
+        : ensureRSSSentenceTerminal(buildBrainFallbackTemplateLine(context, extraction) || '');
+
+    if (!headline || !isUsableBrainFactLine(headline)) {
+        return undefined;
+    }
+
+    const support = isUsableBrainFactLine(supportingFact)
+        ? ensureRSSSentenceTerminal(supportingFact)
+        : '';
+
+    const caption = support && normalizeRSSHeadlineInput(headline) !== normalizeRSSHeadlineInput(support)
+        ? `${headline}\n\n${support}`
+        : headline;
+
+    if (getRSSCaptionHardInvalidReasonCodes(caption, context).length > 0) {
+        return undefined;
+    }
+    if (hasInvalidRSSJoinLead(caption) || hasDanglingRSSQuoteLine(caption) || hasGenericBrainFallbackPhrase(caption)) {
+        return undefined;
+    }
+
+    return caption;
+}
+
 function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string {
     const normalizedTitle = normalizeRSSHeadlineInput(context.articleTitle)
         .replace(/\s*\((?:exclusive|first look|tv news roundup|review|spoiler alert|watch|listen)\)\s*$/i, '')
@@ -3183,10 +3349,19 @@ function buildRSSPublishSafeDeterministicResult(
     context: RSSContext,
 ): RSSCaptionGenerationResult {
     const normalized = enforceRSSCaptionPunctuation(caption);
+    const extraction = buildHeuristicRssCaptionExtraction(context);
+    const brainBacked = buildBrainBackedPublisherSafeCaption(context, extraction);
+    const hasBrainSignal = hasEditorialBrainFallbackSignal(context);
     const rebuilt = buildPublisherSafeRSSDeterministicCaption(context);
-    const candidate = normalized && classifyRSSFallbackPath(normalized) !== 'excerpt_fallback' && !failsRSSCaptionFormatting(normalized, context)
-        ? normalized
-        : rebuilt;
+    const candidate = hasBrainSignal
+        ? brainBacked
+        : (
+            normalized &&
+            classifyRSSFallbackPath(normalized) !== 'excerpt_fallback' &&
+            !failsRSSCaptionFormatting(normalized, context)
+                ? normalized
+                : rebuilt
+        );
 
     if (candidate && !failsRSSCaptionFormatting(candidate, context)) {
         return {
@@ -3195,18 +3370,22 @@ function buildRSSPublishSafeDeterministicResult(
         };
     }
 
-    if (normalized && !failsRSSCaptionFormatting(normalized, context)) {
+    if (!hasBrainSignal && normalized && !failsRSSCaptionFormatting(normalized, context)) {
         return {
             caption: normalized,
             path: 'repaired_caption',
         };
     }
 
-    if (rebuilt && !failsRSSCaptionFormatting(rebuilt, context)) {
+    if (!hasBrainSignal && rebuilt && !failsRSSCaptionFormatting(rebuilt, context)) {
         return {
             caption: rebuilt,
             path: 'repaired_caption',
         };
+    }
+
+    if (hasBrainSignal) {
+        return buildRSSFallbackResult('');
     }
 
     return buildRSSFallbackResult(normalized || caption);

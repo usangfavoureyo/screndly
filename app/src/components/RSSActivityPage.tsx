@@ -489,8 +489,8 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
           <div className="flex-1">
             <h1 className="text-gray-900 dark:text-white mb-2">RSS Feeds Activity</h1>
             <p className="text-[#6B7280] dark:text-[#9CA3AF]">
-              <span className="block">Track processing, publishing,</span>
-              <span className="block">and failures for your RSS feeds.</span>
+              <span className="block lg:inline">Track processing, publishing, </span>
+              <span className="block lg:inline">and failures for your RSS feeds.</span>
             </p>
           </div>
           <Button
@@ -526,33 +526,33 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
 
       <div className="bg-white dark:bg-[#000000] border border-gray-200 dark:border-[#333333] rounded-2xl shadow-sm dark:shadow-[0_2px_8px_rgba(255,255,255,0.05)] p-6 space-y-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="min-w-0 flex-1">
               <h2 className="text-gray-900 dark:text-white text-lg">Editorial Brain Monitoring</h2>
               <p className="text-sm text-[#6B7280] dark:text-[#9CA3AF]">
                 Review shadow disagreements and compare promoted vs non-promoted image/caption decisions.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                haptics.light();
-                setIsEditorialBrainMonitoringCollapsed((current) => !current);
-              }}
-              className="h-8 w-8 shrink-0 border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
-              aria-label={isEditorialBrainMonitoringCollapsed ? 'Show editorial brain monitoring' : 'Hide editorial brain monitoring'}
-            >
-              <img
-                src={isEditorialBrainMonitoringCollapsed
-                  ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
-                  : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
-                alt=""
-                className="h-4 w-4 dark:invert"
-              />
-            </Button>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              haptics.light();
+              setIsEditorialBrainMonitoringCollapsed((current) => !current);
+            }}
+            className="h-8 w-8 shrink-0 self-end border-gray-200 bg-white p-0 text-gray-900 hover:bg-gray-50 lg:self-start dark:border-[#333333] dark:bg-black dark:text-white dark:hover:bg-[#111111]"
+            aria-label={isEditorialBrainMonitoringCollapsed ? 'Show editorial brain monitoring' : 'Hide editorial brain monitoring'}
+          >
+            <img
+              src={isEditorialBrainMonitoringCollapsed
+                ? '/icons/icons/hugeroundedicons/arrow-down-01-stroke-rounded.svg'
+                : '/icons/icons/hugeroundedicons/arrow-up-01-stroke-rounded.svg'}
+              alt=""
+              className="h-4 w-4 dark:invert"
+            />
+          </Button>
         </div>
 
         {!isEditorialBrainMonitoringCollapsed ? (
