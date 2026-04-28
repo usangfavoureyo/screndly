@@ -1298,6 +1298,39 @@ test('publish validation allows deterministic captions that are already publishe
   );
 
   assert.equal(result.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.equal(result.effectiveCaptionPath, 'repaired_caption');
+});
+
+test('publish validation promotes clean excerpt fallback captions before final fallback blocking', () => {
+  const result = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "'Enola Holmes 3' first-look images have been unveiled.\n\nMillie Bobby Brown and Henry Cavill return in the new installment.",
+    [
+      {
+        url: 'https://example.com/enola-first-look.jpg',
+        reason: "First-look image for 'Enola Holmes 3'",
+        source: 'feed',
+      },
+    ] as any,
+    {
+      primarySubject: 'Enola Holmes 3',
+      mediaTitle: 'Enola Holmes 3',
+      entityType: 'movie',
+      confidence: 0.95,
+      ambiguityFlags: ['story_policy_article_image_first'],
+      allowedEntities: ['Enola Holmes 3', 'Millie Bobby Brown', 'Henry Cavill'],
+    } as any,
+    'excerpt_fallback',
+    {
+      articleTitle: "Henry Cavill's Sherlock Holmes Returns in New Enola Holmes 3 First Look",
+      feedName: 'MovieWeb',
+      summary: 'First-look images from Enola Holmes 3 have surfaced.',
+      articleBody: 'First-look images from Enola Holmes 3 show Millie Bobby Brown and Henry Cavill returning.',
+      allowedEntities: ['Enola Holmes 3', 'Millie Bobby Brown', 'Henry Cavill'],
+    }
+  );
+
+  assert.equal(result.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.equal(result.effectiveCaptionPath, 'repaired_caption');
 });
 
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
@@ -2046,6 +2079,48 @@ test('adjacent business person-first stories plan a lead-person image without TM
   assert.equal(plan.primary.intent, 'person_portrait');
   assert.equal(plan.primary.subject, 'Benedict Cumberbatch');
   assert.equal(canUseExplicitFeedFallback(analysis, plan.primary), true);
+});
+
+test('selected feed fallback images are carried into runtime image resolution when item imageUrls are empty', async () => {
+  const resolved = await __rssAuditTestUtils.resolveRSSItemImages(
+    {
+      id: 'feed-parity-test',
+      serperEnabled: false,
+      tmdbEnabled: false,
+      openaiWebSearchEnabled: false,
+      serperPriority: false,
+      imageSourcePriority: 'tmdb_first',
+      imageCount: 'single',
+      rehostImages: false,
+    } as any,
+    {
+      title: "Hilary Duff reflected on child star docs at TIME100 Summit",
+      description: 'Hilary Duff discussed documentaries about child stars.',
+      contentHtml: 'Hilary Duff discussed documentaries about child stars and industry pressure.',
+      imageUrl: undefined,
+      imageUrls: [],
+      selectedImages: [
+        {
+          url: 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png',
+          reason: 'Explicit article/feed fallback image',
+          source: 'feed',
+        },
+      ],
+      canonicalEntity: {
+        primarySubject: 'Hilary Duff',
+        entityType: 'person',
+        eventType: 'reflection',
+        confidence: 0.94,
+        ambiguityFlags: ['story_family_person_commentary_on_project', 'story_policy_article_image_first'],
+        allowedEntities: ['Hilary Duff'],
+      },
+    } as any,
+    1
+  );
+
+  assert.equal(resolved.length > 0, true);
+  assert.equal(resolved[0]?.url, 'https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png');
+  assert.equal(resolved[0]?.source, 'feed');
 });
 
 test('entertainment-business interview and deal stories can use explicit feed fallback without TMDb project anchors', () => {
