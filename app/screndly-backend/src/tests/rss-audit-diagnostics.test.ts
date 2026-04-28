@@ -1396,6 +1396,25 @@ test('publish validation allows clean brain rebuilt captions and blocks unsafe b
   assert.equal(unsafe.captionHardInvalidReasonCodes.length > 0, true);
 });
 
+test('caption hard-invalid checks reject empty fallback captions', () => {
+  const codes = getRSSCaptionHardInvalidReasonCodes('', {
+    articleTitle: 'Stranger Things: Tales From 85 Renewed For Season 2 At Netflix',
+    summary: 'Stranger Things: Tales From 85 has been renewed for Season 2 at Netflix.',
+    articleBody: 'Stranger Things: Tales From 85 has been renewed for Season 2 at Netflix.',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: 'Stranger Things: Tales From 85',
+      mediaTitle: 'Stranger Things: Tales From 85',
+      entityType: 'tv',
+      eventType: 'renewal',
+      confidence: 0.99,
+      allowedEntities: ['Stranger Things: Tales From 85'],
+    } as any,
+  } as any);
+
+  assert.equal(codes.includes('CAPTION_EMPTY'), true);
+});
+
 test('publish validation allows clean repaired captions and blocks unsafe repaired captions', () => {
   const clean = __rssAuditTestUtils.validateRSSFinalPublishState(
     "Zoe Saldana is set for a new business development tied to the project.",
@@ -1456,6 +1475,39 @@ test('publish validation allows clean repaired captions and blocks unsafe repair
 
   assert.equal(unsafe.valid, false);
   assert.equal(unsafe.captionHardInvalidReasonCodes.length > 0, true);
+});
+
+test('brain-backed fallback handles renewal stories without empty deterministic fallback', () => {
+  const result = buildRSSPublishSafeDeterministicResult('', {
+    articleTitle: 'Stranger Things: Tales From 85 Renewed For Season 2 At Netflix',
+    summary: 'Stranger Things: Tales From 85 has been renewed for Season 2 at Netflix.',
+    articleBody: 'Stranger Things: Tales From 85 has been renewed for Season 2 at Netflix.',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: 'Stranger Things: Tales From 85',
+      mediaTitle: 'Stranger Things: Tales From 85',
+      entityType: 'tv',
+      eventType: 'renewal',
+      confidence: 0.99,
+      allowedEntities: ['Stranger Things: Tales From 85'],
+    } as any,
+    editorialBrain: {
+      decision: {
+        lane: 'core_auto_publish',
+        canonical: 'Stranger Things: Tales From 85',
+        story_family: 'renewal',
+        event: 'renewal',
+        image_strategy: 'project_first',
+        caption_strategy: { mode: 'headline_news' },
+        primary_entity: 'Stranger Things: Tales From 85',
+        confidence: 0.99,
+      },
+    } as any,
+  } as any);
+
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(result.source, 'editorial_brain_facts');
+  assert.equal(result.caption, "'Stranger Things: Tales From 85' has been renewed.");
 });
 
 test('RSS fallback path classifier detects excerpt-style leakage', () => {

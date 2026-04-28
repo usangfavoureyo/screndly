@@ -2895,6 +2895,10 @@ function getRSSCaptionHardInvalidReasonCodes(caption: string, context: RSSContex
     const trailerCleanupTolerant = canonicalFlags.has('story_policy_trailer_cleanup_tolerant') &&
         (context.canonicalEntity?.entityType === 'movie' || context.canonicalEntity?.entityType === 'tv');
 
+    if (!normalized) {
+        reasonCodes.add('CAPTION_EMPTY');
+    }
+
     for (const entry of RSS_HARD_BLOCKED_OUTPUT_PATTERNS) {
         if (entry.pattern.test(caption)) {
             reasonCodes.add(entry.code);
@@ -3186,6 +3190,16 @@ function buildBrainFallbackTemplateLine(context: RSSContext, extraction: RssCapt
     if (strategy === 'casting' || storyFamily === 'casting' || event === 'casting') {
         if (secondary && project && looksLikeRSSPersonName(secondary)) return `${secondary} has joined ${project}.`;
         if (project) return `${project} has added new cast.`;
+    }
+
+    if (storyFamily === 'renewal' || event === 'renewal') {
+        if (project) return `${project} has been renewed.`;
+        if (primary) return `${primary} has been renewed.`;
+    }
+
+    if (storyFamily === 'cancellation' || event === 'cancellation') {
+        if (project) return `${project} has been canceled.`;
+        if (primary) return `${primary} has been canceled.`;
     }
 
     if (strategy === 'project_announcement' || storyFamily === 'project_announcement' || event === 'project_announcement' || event === 'development') {
