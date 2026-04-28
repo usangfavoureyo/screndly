@@ -1333,6 +1333,131 @@ test('publish validation promotes clean excerpt fallback captions before final f
   assert.equal(result.effectiveCaptionPath, 'repaired_caption');
 });
 
+test('publish validation allows clean brain rebuilt captions and blocks unsafe brain rebuilt captions', () => {
+  const clean = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "'Chad Powers' is set to return for Season 2.",
+    [
+      {
+        url: 'https://example.com/chad-powers.jpg',
+        reason: "Project image for 'Chad Powers'",
+        source: 'tmdb',
+      },
+    ] as any,
+    {
+      primarySubject: 'Chad Powers',
+      mediaTitle: 'Chad Powers',
+      entityType: 'tv',
+      confidence: 0.96,
+      ambiguityFlags: [],
+      allowedEntities: ['Chad Powers'],
+    } as any,
+    'brain_rebuilt_caption',
+    {
+      articleTitle: 'Chad Powers Season 2 Return Confirmed',
+      feedName: 'Deadline',
+      summary: 'Chad Powers is set to return for Season 2.',
+      articleBody: 'Chad Powers is set to return for Season 2.',
+      allowedEntities: ['Chad Powers'],
+    }
+  );
+
+  assert.equal(clean.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.deepEqual(clean.captionHardInvalidReasonCodes, []);
+  assert.equal(clean.valid, true);
+
+  const unsafe = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "'Chad Powers' has a new entertainment update.",
+    [
+      {
+        url: 'https://example.com/chad-powers.jpg',
+        reason: "Project image for 'Chad Powers'",
+        source: 'tmdb',
+      },
+    ] as any,
+    {
+      primarySubject: 'Chad Powers',
+      mediaTitle: 'Chad Powers',
+      entityType: 'tv',
+      confidence: 0.96,
+      ambiguityFlags: [],
+      allowedEntities: ['Chad Powers'],
+    } as any,
+    'brain_rebuilt_caption',
+    {
+      articleTitle: 'Chad Powers Season 2 Return Confirmed',
+      feedName: 'Deadline',
+      summary: 'Chad Powers is set to return for Season 2.',
+      articleBody: 'Chad Powers is set to return for Season 2.',
+      allowedEntities: ['Chad Powers'],
+    }
+  );
+
+  assert.equal(unsafe.valid, false);
+  assert.equal(unsafe.captionHardInvalidReasonCodes.length > 0, true);
+});
+
+test('publish validation allows clean repaired captions and blocks unsafe repaired captions', () => {
+  const clean = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "Zoe Saldana is set for a new business development tied to the project.",
+    [
+      {
+        url: 'https://example.com/zoe.jpg',
+        reason: 'Primary portrait for Zoe Saldana',
+        source: 'feed',
+      },
+    ] as any,
+    {
+      primarySubject: 'Zoe Saldana',
+      entityType: 'person',
+      eventType: 'business',
+      confidence: 0.93,
+      ambiguityFlags: ['story_policy_entertainment_business_person_first'],
+      allowedEntities: ['Zoe Saldana'],
+    } as any,
+    'repaired_caption',
+    {
+      articleTitle: 'Zoe Saldana Boards New Entertainment Business Project',
+      feedName: 'Variety',
+      summary: 'Zoe Saldana is tied to a new project development.',
+      articleBody: 'Zoe Saldana is tied to a new project development.',
+      allowedEntities: ['Zoe Saldana'],
+    }
+  );
+
+  assert.equal(clean.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.deepEqual(clean.captionHardInvalidReasonCodes, []);
+
+  const unsafe = __rssAuditTestUtils.validateRSSFinalPublishState(
+    "Zoe Saldana joins 'Project' joins the cast.",
+    [
+      {
+        url: 'https://example.com/zoe.jpg',
+        reason: 'Primary portrait for Zoe Saldana',
+        source: 'feed',
+      },
+    ] as any,
+    {
+      primarySubject: 'Zoe Saldana',
+      entityType: 'person',
+      eventType: 'business',
+      confidence: 0.93,
+      ambiguityFlags: ['story_policy_entertainment_business_person_first'],
+      allowedEntities: ['Zoe Saldana'],
+    } as any,
+    'repaired_caption',
+    {
+      articleTitle: 'Zoe Saldana Boards New Entertainment Business Project',
+      feedName: 'Variety',
+      summary: 'Zoe Saldana is tied to a new project development.',
+      articleBody: 'Zoe Saldana is tied to a new project development.',
+      allowedEntities: ['Zoe Saldana'],
+    }
+  );
+
+  assert.equal(unsafe.valid, false);
+  assert.equal(unsafe.captionHardInvalidReasonCodes.length > 0, true);
+});
+
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
   assert.equal(
     classifyRSSFallbackPath("This piece contains spoilers for 'Rooster' Episode 6. [...]"),
@@ -1450,7 +1575,9 @@ test('brain-backed fallback uses project fact for Lena Dunham and avoids generic
     } as any
   );
 
-  assert.equal(result.path, 'repaired_caption');
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(result.source, 'editorial_brain_facts');
+  assert.equal(result.usedEditorialBrainFacts, true);
   assert.match(result.caption, /'Girls'/);
   assert.doesNotMatch(result.caption, /\bhas a new entertainment update\b/i);
 });
@@ -1485,7 +1612,9 @@ test('brain-backed fallback uses business facts for Comcast/WBD class items', ()
     } as any
   );
 
-  assert.equal(result.path, 'repaired_caption');
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(result.source, 'editorial_brain_facts');
+  assert.equal(result.usedEditorialBrainFacts, true);
   assert.match(result.caption, /Comcast is focused on reducing cable losses/i);
   assert.doesNotMatch(result.caption, /\blatest entertainment industry update\b/i);
 });
@@ -1556,7 +1685,9 @@ test('brain-backed fallback keeps Hilary Duff captions clean and person-led', ()
     } as any
   );
 
-  assert.equal(result.path, 'repaired_caption');
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(result.source, 'editorial_brain_facts');
+  assert.equal(result.usedEditorialBrainFacts, true);
   assert.match(result.caption, /^Hilary Duff reflected on growing up as a child star\./);
   assert.doesNotMatch(result.caption, /\blatest entertainment industry update\b/i);
 });

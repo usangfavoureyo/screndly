@@ -39,11 +39,15 @@ export type LegacyOpenAIModel = typeof LEGACY_OPENAI_MODELS[number];
 export type AIModel = SupportedOpenAIModel | LegacyOpenAIModel | 'flash-3';
 export type AIReasoningEffort = 'minimal' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
 export const DEFAULT_OPENAI_MODEL: SupportedOpenAIModel = 'gpt-5-mini';
-export type RSSCaptionGenerationPath = 'ai_prompted' | 'repaired_caption' | 'deterministic_template' | 'excerpt_fallback';
+export type RSSCaptionGenerationPath = 'ai_prompted' | 'repaired_caption' | 'brain_rebuilt_caption' | 'deterministic_template' | 'excerpt_fallback';
+export type RSSCaptionGenerationSource = 'ai_prompt' | 'ai_repair' | 'ai_hard_rebuild' | 'editorial_brain_facts' | 'publisher_safe_rebuild' | 'fallback';
 
 export interface RSSCaptionGenerationResult {
     caption: string;
     path: RSSCaptionGenerationPath;
+    source?: RSSCaptionGenerationSource;
+    usedEditorialBrainFacts?: boolean;
+    usedPublisherSafeRebuild?: boolean;
 }
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
@@ -3366,7 +3370,10 @@ function buildRSSPublishSafeDeterministicResult(
     if (candidate && !failsRSSCaptionFormatting(candidate, context)) {
         return {
             caption: candidate,
-            path: 'repaired_caption',
+            path: hasBrainSignal && brainBacked ? 'brain_rebuilt_caption' : 'repaired_caption',
+            source: hasBrainSignal && brainBacked ? 'editorial_brain_facts' : 'publisher_safe_rebuild',
+            usedEditorialBrainFacts: Boolean(hasBrainSignal && brainBacked),
+            usedPublisherSafeRebuild: !Boolean(hasBrainSignal && brainBacked),
         };
     }
 
@@ -3374,6 +3381,8 @@ function buildRSSPublishSafeDeterministicResult(
         return {
             caption: normalized,
             path: 'repaired_caption',
+            source: 'publisher_safe_rebuild',
+            usedPublisherSafeRebuild: true,
         };
     }
 
@@ -3381,6 +3390,8 @@ function buildRSSPublishSafeDeterministicResult(
         return {
             caption: rebuilt,
             path: 'repaired_caption',
+            source: 'publisher_safe_rebuild',
+            usedPublisherSafeRebuild: true,
         };
     }
 
@@ -3404,11 +3415,11 @@ function shouldAllowDeterministicPublisherSafeCaption(
         return false;
     }
 
-    if (captionPath === 'repaired_caption' || captionPath === 'ai_prompted') {
-        return true;
+    const hardInvalidCodes = getRSSCaptionHardInvalidReasonCodes(caption, context);
+    if (captionPath === 'repaired_caption' || captionPath === 'brain_rebuilt_caption' || captionPath === 'ai_prompted') {
+        return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context);
     }
 
-    const hardInvalidCodes = getRSSCaptionHardInvalidReasonCodes(caption, context);
     return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context);
 }
 
@@ -3416,6 +3427,7 @@ function buildRSSFallbackResult(caption: string): RSSCaptionGenerationResult {
     return {
         caption,
         path: classifyRSSFallbackPath(caption),
+        source: 'fallback',
     };
 }
 
@@ -3544,6 +3556,7 @@ Write ONLY the caption.`;
         return {
             caption: normalizedCaption,
             path: 'ai_prompted',
+            source: 'ai_prompt',
         };
     }
     logCaptionDiagnostics('initial_generation_rejected', {
@@ -3607,6 +3620,7 @@ Write ONLY the corrected caption.`;
         return {
             caption: correctedCaption,
             path: 'repaired_caption',
+            source: 'ai_repair',
         };
     }
     logCaptionDiagnostics('repair_generation_rejected', {
@@ -3680,6 +3694,7 @@ Write ONLY the final caption.`;
     return {
         caption: rebuiltCaption,
         path: 'repaired_caption',
+        source: 'ai_hard_rebuild',
     };
 }
 

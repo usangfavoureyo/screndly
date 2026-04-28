@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { JSDOM } from 'jsdom';
 import Parser from 'rss-parser';
-import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, type RSSCaptionGenerationPath, __rssCaptionTestUtils } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, type RSSCaptionGenerationPath, type RSSCaptionGenerationSource, type RSSContext, __rssCaptionTestUtils } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
@@ -110,6 +110,7 @@ interface RSSItem {
   canonicalEntity?: RSSCanonicalEntity;
   canonicalEntityVersion?: string;
   captionGenerationPath?: RSSCaptionGenerationPath;
+  captionGenerationSource?: RSSCaptionGenerationSource;
   captionGenerationVersion?: string;
   runtimeDiagnostics?: RSSRuntimeDiagnostics;
   editorialBrain?: RSSEditorialBrainStoredDecision;
@@ -121,6 +122,11 @@ export interface RSSRuntimeDiagnostics {
   canonicalEntityVersion?: string;
   captionGenerationVersion?: string;
   captionPath?: RSSCaptionGenerationPath;
+  captionSource?: RSSCaptionGenerationSource;
+  captionHardInvalidReasonCodes?: string[];
+  captionPreview?: string;
+  usedEditorialBrainFacts?: boolean;
+  usedPublisherSafeRebuild?: boolean;
   reusedStoredCaption?: boolean;
   promotedImageStrategy?: string;
   promotedCaptionStrategy?: string;
@@ -327,7 +333,7 @@ interface RSSRuntimeSettings {
 }
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
-const RSS_RUNTIME_RULESET_VERSION = '2026-04-23-stage3-canonical-1';
+const RSS_RUNTIME_RULESET_VERSION = '2026-04-28-caption-path-source-1';
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE = 0.8;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS = 2;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS = 3;
@@ -2974,7 +2980,7 @@ function canReuseStoredRSSCaption(
     return false;
   }
 
-  if (storedCaptionPath !== 'ai_prompted' && storedCaptionPath !== 'repaired_caption') {
+  if (storedCaptionPath !== 'ai_prompted' && storedCaptionPath !== 'repaired_caption' && storedCaptionPath !== 'brain_rebuilt_caption') {
     return false;
   }
 
@@ -3001,6 +3007,27 @@ function getRSSRuntimeCodeVersion(): string {
   );
 }
 
+function isRSSCaptionGenerationPath(value: unknown): value is RSSCaptionGenerationPath {
+  return (
+    value === 'ai_prompted' ||
+    value === 'repaired_caption' ||
+    value === 'brain_rebuilt_caption' ||
+    value === 'deterministic_template' ||
+    value === 'excerpt_fallback'
+  );
+}
+
+function isRSSCaptionGenerationSource(value: unknown): value is RSSCaptionGenerationSource {
+  return (
+    value === 'ai_prompt' ||
+    value === 'ai_repair' ||
+    value === 'ai_hard_rebuild' ||
+    value === 'editorial_brain_facts' ||
+    value === 'publisher_safe_rebuild' ||
+    value === 'fallback'
+  );
+}
+
 function logRSSRuntimeParity(payload: {
   phase: 'image_resolution_failed' | 'validation_failed' | 'ready_to_publish';
   feedId: string;
@@ -3012,6 +3039,11 @@ function logRSSRuntimeParity(payload: {
   storedCaptionVersion?: string;
   storedCaptionPath?: RSSCaptionGenerationPath;
   captionPath?: RSSCaptionGenerationPath;
+  captionSource?: RSSCaptionGenerationSource;
+  captionHardInvalidReasonCodes?: string[];
+  captionPreview?: string;
+  usedEditorialBrainFacts?: boolean;
+  usedPublisherSafeRebuild?: boolean;
   resolvedImages: RSSResolvedImage[];
   hadStoredSelectedImages: boolean;
   hadStoredImageUrls: boolean;
@@ -3033,6 +3065,11 @@ function logRSSRuntimeParity(payload: {
     entityType: payload.canonicalEntity.entityType || null,
     primarySubject: payload.canonicalEntity.primarySubject || payload.canonicalEntity.mediaTitle || null,
     captionStrategy: payload.captionPath || null,
+    captionSource: payload.captionSource || null,
+    captionHardInvalidReasonCodes: payload.captionHardInvalidReasonCodes || [],
+    captionPreview: payload.captionPreview || null,
+    usedEditorialBrainFacts: payload.usedEditorialBrainFacts ?? null,
+    usedPublisherSafeRebuild: payload.usedPublisherSafeRebuild ?? null,
     reusedStoredCaption: payload.reusedStoredCaption,
     cachedCaptionVersion: payload.storedCaptionVersion || null,
     cachedCaptionPath: payload.storedCaptionPath || null,
@@ -3103,8 +3140,14 @@ function validateRSSFinalPublishState(
     articleContentHtml?: string;
     allowedEntities?: string[];
   },
-): { valid: boolean; reasonCodes: string[]; resolvedImages: RSSResolvedImage[]; effectiveCaptionPath?: RSSCaptionGenerationPath } {
-  const reasonCodes = new Set<string>(getRSSCaptionHardInvalidReasonCodes(caption, {
+): {
+  valid: boolean;
+  reasonCodes: string[];
+  resolvedImages: RSSResolvedImage[];
+  effectiveCaptionPath?: RSSCaptionGenerationPath;
+  captionHardInvalidReasonCodes: string[];
+} {
+  const captionValidationContext: RSSContext = {
     articleTitle: contextOverride?.articleTitle || canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
     feedName: contextOverride?.feedName || '',
     summary: contextOverride?.summary || '',
@@ -3113,23 +3156,16 @@ function validateRSSFinalPublishState(
     platform: 'Threads',
     allowedEntities: contextOverride?.allowedEntities || canonicalEntity.allowedEntities,
     canonicalEntity,
-  }));
+  };
+  const captionHardInvalidReasonCodes = getRSSCaptionHardInvalidReasonCodes(caption, captionValidationContext);
+  const reasonCodes = new Set<string>(captionHardInvalidReasonCodes);
   let resolvedImages = [...images];
   const canonicalFlags = new Set(canonicalEntity.ambiguityFlags || []);
   const isFallbackCaptionPath = captionPath === 'deterministic_template' || captionPath === 'excerpt_fallback';
   const canPromoteFallbackCaptionPath =
     isFallbackCaptionPath &&
     reasonCodes.size === 0 &&
-    !failsRSSCaptionFormatting(caption, {
-      articleTitle: contextOverride?.articleTitle || canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
-      feedName: contextOverride?.feedName || '',
-      summary: contextOverride?.summary || '',
-      articleBody: contextOverride?.articleBody || '',
-      articleContentHtml: contextOverride?.articleContentHtml,
-      platform: 'Threads',
-      allowedEntities: contextOverride?.allowedEntities || canonicalEntity.allowedEntities,
-      canonicalEntity,
-    });
+    !failsRSSCaptionFormatting(caption, captionValidationContext);
   const effectiveCaptionPath: RSSCaptionGenerationPath | undefined = canPromoteFallbackCaptionPath
     ? 'repaired_caption'
     : captionPath;
@@ -3138,16 +3174,7 @@ function validateRSSFinalPublishState(
     reasonCodes.add('SPOILER_SAFE_MANUAL_REVIEW_REQUIRED');
   }
 
-  if (!shouldAllowDeterministicPublisherSafeCaption(caption, {
-    articleTitle: contextOverride?.articleTitle || canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
-    feedName: contextOverride?.feedName || '',
-    summary: contextOverride?.summary || '',
-    articleBody: contextOverride?.articleBody || '',
-    articleContentHtml: contextOverride?.articleContentHtml,
-    platform: 'Threads',
-    allowedEntities: contextOverride?.allowedEntities || canonicalEntity.allowedEntities,
-    canonicalEntity,
-  }, effectiveCaptionPath) && (effectiveCaptionPath === 'deterministic_template' || effectiveCaptionPath === 'excerpt_fallback')) {
+  if (!shouldAllowDeterministicPublisherSafeCaption(caption, captionValidationContext, effectiveCaptionPath) && (effectiveCaptionPath === 'deterministic_template' || effectiveCaptionPath === 'excerpt_fallback')) {
     reasonCodes.add('CAPTION_NON_PUBLISHER_FALLBACK');
   }
 
@@ -3182,6 +3209,7 @@ function validateRSSFinalPublishState(
     reasonCodes: [...reasonCodes],
     resolvedImages,
     effectiveCaptionPath,
+    captionHardInvalidReasonCodes,
   };
 }
 
@@ -5283,13 +5311,12 @@ function deserializeRSSItem(itemData: Prisma.JsonValue | null): RSSItem | null {
           .filter((entry): entry is RSSResolvedImage => Boolean(entry))
       : undefined,
     generatedCaption: typeof value.generatedCaption === 'string' ? value.generatedCaption : undefined,
-    captionGenerationPath:
-      value.captionGenerationPath === 'ai_prompted' ||
-      value.captionGenerationPath === 'repaired_caption' ||
-      value.captionGenerationPath === 'deterministic_template' ||
-      value.captionGenerationPath === 'excerpt_fallback'
-        ? value.captionGenerationPath
-        : undefined,
+    captionGenerationPath: isRSSCaptionGenerationPath(value.captionGenerationPath)
+      ? value.captionGenerationPath
+      : undefined,
+    captionGenerationSource: isRSSCaptionGenerationSource(value.captionGenerationSource)
+      ? value.captionGenerationSource
+      : undefined,
     captionGenerationVersion: typeof value.captionGenerationVersion === 'string' ? value.captionGenerationVersion : undefined,
     editorialBrain: value.editorialBrain && typeof value.editorialBrain === 'object' && !Array.isArray(value.editorialBrain)
       ? value.editorialBrain as RSSEditorialBrainStoredDecision
@@ -5356,13 +5383,16 @@ function normalizeRSSRuntimeDiagnostics(value: unknown): RSSRuntimeDiagnostics |
     codeVersion: typeof record.codeVersion === 'string' ? record.codeVersion : undefined,
     canonicalEntityVersion: typeof record.canonicalEntityVersion === 'string' ? record.canonicalEntityVersion : undefined,
     captionGenerationVersion: typeof record.captionGenerationVersion === 'string' ? record.captionGenerationVersion : undefined,
-    captionPath:
-      record.captionPath === 'ai_prompted' ||
-      record.captionPath === 'repaired_caption' ||
-      record.captionPath === 'deterministic_template' ||
-      record.captionPath === 'excerpt_fallback'
-        ? record.captionPath
-        : undefined,
+    captionPath: isRSSCaptionGenerationPath(record.captionPath) ? record.captionPath : undefined,
+    captionSource: isRSSCaptionGenerationSource(record.captionSource) ? record.captionSource : undefined,
+    captionHardInvalidReasonCodes: Array.isArray(record.captionHardInvalidReasonCodes)
+      ? record.captionHardInvalidReasonCodes
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim())
+      : undefined,
+    captionPreview: typeof record.captionPreview === 'string' ? record.captionPreview : undefined,
+    usedEditorialBrainFacts: typeof record.usedEditorialBrainFacts === 'boolean' ? record.usedEditorialBrainFacts : undefined,
+    usedPublisherSafeRebuild: typeof record.usedPublisherSafeRebuild === 'boolean' ? record.usedPublisherSafeRebuild : undefined,
     reusedStoredCaption: typeof record.reusedStoredCaption === 'boolean' ? record.reusedStoredCaption : undefined,
     promotedImageStrategy: typeof record.promotedImageStrategy === 'string' ? record.promotedImageStrategy : undefined,
     promotedCaptionStrategy: typeof record.promotedCaptionStrategy === 'string' ? record.promotedCaptionStrategy : undefined,
@@ -7207,11 +7237,15 @@ async function attemptRSSPublish(
     const caption = sanitizeRSSCaptionText(captionResult.caption, runtimeSettings.rssCaptionMaxLength);
     item.generatedCaption = caption;
     item.captionGenerationPath = captionResult.path;
+    item.captionGenerationSource = captionResult.source;
     item.captionGenerationVersion = RSS_RUNTIME_RULESET_VERSION;
     console.log('[RSS][CaptionPath]', {
       feedId: feed.id,
       title: item.title,
       path: captionResult.path,
+      source: captionResult.source || null,
+      usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+      usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
       reusedStoredCaption: shouldReuseStoredCaption,
       promotedCaptionStrategy: promotedCaptionStrategy || null,
       model: normalizeAIModel(runtimeSettings.rssCaptionModel),
@@ -7226,6 +7260,7 @@ async function attemptRSSPublish(
     });
     const finalCaptionPath = publishValidation.effectiveCaptionPath || captionResult.path;
     item.captionGenerationPath = finalCaptionPath;
+    item.captionGenerationSource = captionResult.source;
     const resolvedPublishImages = publishValidation.resolvedImages;
     const resolvedPublishImageUrls = resolvedPublishImages.map((image) => image.url).filter(Boolean);
     const resolvedPublishImageUrl = resolvedPublishImageUrls[0];
@@ -7235,6 +7270,10 @@ async function attemptRSSPublish(
         feedId: feed.id,
         title: item.title,
         captionPath: finalCaptionPath,
+        captionSource: captionResult.source || null,
+        captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+        usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
         reusedStoredCaption: shouldReuseStoredCaption,
         reasonCodes: publishValidation.reasonCodes,
         captionPreview: (caption || '').slice(0, 220),
@@ -7246,6 +7285,11 @@ async function attemptRSSPublish(
         canonicalEntityVersion: item.canonicalEntityVersion,
         captionGenerationVersion: item.captionGenerationVersion,
         captionPath: finalCaptionPath,
+        captionSource: captionResult.source,
+        captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        captionPreview: (caption || '').slice(0, 220),
+        usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+        usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
         reusedStoredCaption: shouldReuseStoredCaption,
         promotedImageStrategy,
         promotedCaptionStrategy,
@@ -7270,6 +7314,11 @@ async function attemptRSSPublish(
         storedCaptionVersion,
         storedCaptionPath,
         captionPath: finalCaptionPath,
+        captionSource: captionResult.source,
+        captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        captionPreview: (caption || '').slice(0, 220),
+        usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+        usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
         resolvedImages: resolvedPublishImages,
         hadStoredSelectedImages,
         hadStoredImageUrls,
@@ -7300,6 +7349,11 @@ async function attemptRSSPublish(
       storedCaptionVersion,
       storedCaptionPath,
       captionPath: finalCaptionPath,
+      captionSource: captionResult.source,
+      captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+      captionPreview: (caption || '').slice(0, 220),
+      usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+      usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
       resolvedImages: resolvedPublishImages,
       hadStoredSelectedImages,
       hadStoredImageUrls,
@@ -7314,6 +7368,11 @@ async function attemptRSSPublish(
       canonicalEntityVersion: item.canonicalEntityVersion,
       captionGenerationVersion: item.captionGenerationVersion,
       captionPath: finalCaptionPath,
+      captionSource: captionResult.source,
+      captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+      captionPreview: (caption || '').slice(0, 220),
+      usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
+      usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
       reusedStoredCaption: shouldReuseStoredCaption,
       promotedImageStrategy,
       promotedCaptionStrategy,
