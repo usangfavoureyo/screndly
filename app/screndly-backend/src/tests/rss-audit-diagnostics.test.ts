@@ -1553,6 +1553,43 @@ test('brain-backed fallback handles activity-view camelCase editorial brain deci
   } as any), []);
 });
 
+test('runtime retry caption recovery rebuilds empty brain-backed renewal captions', () => {
+  const item = {
+    title: "Stranger Things: Tales From '85 Renewed For Season 2 At Netflix",
+    description: "Stranger Things: Tales From '85 has been renewed for Season 2 at Netflix.",
+    contentHtml: "Stranger Things: Tales From '85 has been renewed for Season 2 at Netflix.",
+    editorialBrain: {
+      decision: {
+        primary_entity: "Stranger Things: Tales From '85",
+        story_family: 'renewal',
+        event: 'renewal',
+        caption_strategy: { mode: 'headline_news' },
+      },
+    },
+  } as any;
+  const canonical = {
+    primarySubject: "Stranger Things: Tales From '85",
+    mediaTitle: "Stranger Things: Tales From '85",
+    entityType: 'tv',
+    eventType: 'renewal',
+    allowedEntities: ["Stranger Things: Tales From '85"],
+  } as any;
+
+  const result = __rssAuditTestUtils.buildRSSRuntimeBrainCaptionRecovery(item, canonical, {
+    articleTitle: item.title,
+    feedName: 'Deadline | TV',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    editorialBrain: item.editorialBrain,
+  } as any);
+
+  assert.equal(result?.path, 'brain_rebuilt_caption');
+  assert.equal(result?.source, 'editorial_brain_facts');
+  assert.equal(result?.caption, "'Stranger Things: Tales From '85' has been renewed.");
+});
+
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
   assert.equal(
     classifyRSSFallbackPath("This piece contains spoilers for 'Rooster' Episode 6. [...]"),
