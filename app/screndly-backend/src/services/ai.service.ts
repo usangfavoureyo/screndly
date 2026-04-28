@@ -3109,22 +3109,22 @@ function buildPublisherSafeRSSFallbackSupportLine(context: RSSContext): string |
 }
 
 function hasEditorialBrainFallbackSignal(context: RSSContext): boolean {
-    const decision = context.editorialBrain?.decision;
+    const decision = normalizeEditorialBrainCaptionDecision(context);
     if (!decision) {
         return false;
     }
 
-    const facts = decision.caption_facts;
+    const facts = decision.captionFacts;
     return Boolean(
-        (facts?.headline_fact && facts.headline_fact.trim()) ||
-        (facts?.supporting_fact && facts.supporting_fact.trim()) ||
+        (facts?.headlineFact && facts.headlineFact.trim()) ||
+        (facts?.supportingFact && facts.supportingFact.trim()) ||
         (facts?.quote && facts.quote.trim()) ||
         (facts?.bullets && facts.bullets.some((entry) => entry && entry.trim())) ||
-        (decision.primary_entity && decision.primary_entity.trim()) ||
-        (decision.secondary_entities && decision.secondary_entities.some((entry) => entry && entry.trim())) ||
+        (decision.primaryEntity && decision.primaryEntity.trim()) ||
+        (decision.secondaryEntities && decision.secondaryEntities.some((entry) => entry && entry.trim())) ||
         (decision.event && decision.event.trim()) ||
-        (decision.story_family && decision.story_family.trim()) ||
-        (decision.caption_strategy?.mode && decision.caption_strategy.mode.trim())
+        (decision.storyFamily && decision.storyFamily.trim()) ||
+        (decision.captionStrategyMode && decision.captionStrategyMode.trim())
     );
 }
 
@@ -3156,21 +3156,72 @@ function isUsableBrainFactLine(value: string): boolean {
     return true;
 }
 
+interface NormalizedEditorialBrainCaptionDecision {
+    primaryEntity?: string;
+    secondaryEntities: string[];
+    event?: string;
+    storyFamily?: string;
+    captionStrategyMode?: string;
+    captionFacts?: {
+        headlineFact?: string;
+        supportingFact?: string;
+        quote?: string;
+        bullets?: string[];
+    };
+}
+
+function normalizeEditorialBrainCaptionDecision(context: RSSContext): NormalizedEditorialBrainCaptionDecision | undefined {
+    const decision = context.editorialBrain?.decision as Record<string, any> | undefined;
+    if (!decision) {
+        return undefined;
+    }
+
+    const rawCaptionStrategy = decision.caption_strategy || decision.captionStrategy;
+    const rawCaptionFacts = decision.caption_facts || decision.captionFacts;
+    const rawSecondaryEntities = decision.secondary_entities || decision.secondaryEntities || [];
+    const secondaryEntities = Array.isArray(rawSecondaryEntities)
+        ? rawSecondaryEntities.map((entry) => String(entry || '').trim()).filter(Boolean)
+        : String(rawSecondaryEntities || '').trim()
+            ? [String(rawSecondaryEntities).trim()]
+            : [];
+
+    return {
+        primaryEntity: String(
+            decision.primary_entity ||
+            decision.primaryEntity ||
+            decision.canonical ||
+            ''
+        ).trim() || undefined,
+        secondaryEntities,
+        event: String(decision.event || '').trim() || undefined,
+        storyFamily: String(decision.story_family || decision.storyFamily || '').trim() || undefined,
+        captionStrategyMode: String(
+            context.editorialBrain?.runtime?.promotedCaptionStrategy ||
+            (typeof rawCaptionStrategy === 'string' ? rawCaptionStrategy : rawCaptionStrategy?.mode) ||
+            ''
+        ).trim() || undefined,
+        captionFacts: rawCaptionFacts ? {
+            headlineFact: String(rawCaptionFacts.headline_fact || rawCaptionFacts.headlineFact || '').trim() || undefined,
+            supportingFact: String(rawCaptionFacts.supporting_fact || rawCaptionFacts.supportingFact || '').trim() || undefined,
+            quote: String(rawCaptionFacts.quote || '').trim() || undefined,
+            bullets: Array.isArray(rawCaptionFacts.bullets)
+                ? rawCaptionFacts.bullets.map((entry: unknown) => String(entry || '').trim()).filter(Boolean)
+                : [],
+        } : undefined,
+    };
+}
+
 function buildBrainFallbackTemplateLine(context: RSSContext, extraction: RssCaptionExtraction): string | undefined {
-    const decision = context.editorialBrain?.decision;
+    const decision = normalizeEditorialBrainCaptionDecision(context);
     if (!decision) {
         return undefined;
     }
 
     const event = String(decision.event || '').trim().toLowerCase();
-    const storyFamily = String(decision.story_family || '').trim().toLowerCase();
-    const strategy = String(
-        context.editorialBrain?.runtime?.promotedCaptionStrategy ||
-        decision.caption_strategy?.mode ||
-        ''
-    ).trim().toLowerCase();
-    const primary = sanitizeRSSNamedEntityCandidate(decision.primary_entity || '') || getSafeRSSResolvedSubject(context, extraction) || '';
-    const secondaryEntities = (decision.secondary_entities || []).map((entry) => sanitizeRSSNamedEntityCandidate(entry || '')).filter(Boolean);
+    const storyFamily = String(decision.storyFamily || '').trim().toLowerCase();
+    const strategy = String(decision.captionStrategyMode || '').trim().toLowerCase();
+    const primary = sanitizeRSSNamedEntityCandidate(decision.primaryEntity || '') || getSafeRSSResolvedSubject(context, extraction) || '';
+    const secondaryEntities = decision.secondaryEntities.map((entry) => sanitizeRSSNamedEntityCandidate(entry || '')).filter(Boolean);
     const secondary = secondaryEntities[0] || getSafeRSSSecondarySubject(context, extraction, primary);
     const project = formatRssMediaTitle(
         context.canonicalEntity?.mediaTitle ||
@@ -3231,14 +3282,14 @@ function buildBrainBackedPublisherSafeCaption(
     context: RSSContext,
     extraction: RssCaptionExtraction
 ): string | undefined {
-    const decision = context.editorialBrain?.decision;
+    const decision = normalizeEditorialBrainCaptionDecision(context);
     if (!decision) {
         return undefined;
     }
 
-    const facts = decision.caption_facts;
-    const headlineFact = normalizeBrainFactLine(facts?.headline_fact);
-    const supportingFact = normalizeBrainFactLine(facts?.supporting_fact);
+    const facts = decision.captionFacts;
+    const headlineFact = normalizeBrainFactLine(facts?.headlineFact);
+    const supportingFact = normalizeBrainFactLine(facts?.supportingFact);
 
     const headline = isUsableBrainFactLine(headlineFact)
         ? ensureRSSSentenceTerminal(headlineFact)

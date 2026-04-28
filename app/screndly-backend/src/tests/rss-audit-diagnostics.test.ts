@@ -1510,6 +1510,49 @@ test('brain-backed fallback handles renewal stories without empty deterministic 
   assert.equal(result.caption, "'Stranger Things: Tales From 85' has been renewed.");
 });
 
+test('brain-backed fallback handles activity-view camelCase editorial brain decisions', () => {
+  const result = buildRSSPublishSafeDeterministicResult('', {
+    articleTitle: "Stranger Things: Tales From '85 Renewed For Season 2 At Netflix",
+    summary: "Stranger Things: Tales From '85 has been renewed for Season 2 at Netflix.",
+    articleBody: "Stranger Things: Tales From '85 has been renewed for Season 2 at Netflix.",
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: "Stranger Things: Tales From '85",
+      mediaTitle: "Stranger Things: Tales From '85",
+      entityType: 'tv',
+      eventType: 'renewal',
+      confidence: 0.99,
+      allowedEntities: ["Stranger Things: Tales From '85"],
+    } as any,
+    editorialBrain: {
+      decision: {
+        canonical: "Stranger Things: Tales From '85",
+        storyFamily: 'renewal',
+        event: 'renewal',
+        imageStrategy: 'project_first',
+        captionStrategy: 'headline_news',
+        confidence: 0.99,
+      },
+    } as any,
+  } as any);
+
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(result.source, 'editorial_brain_facts');
+  assert.equal(result.caption, "'Stranger Things: Tales From '85' has been renewed.");
+  assert.deepEqual(getRSSCaptionHardInvalidReasonCodes(result.caption, {
+    articleTitle: "Stranger Things: Tales From '85 Renewed For Season 2 At Netflix",
+    summary: '',
+    platform: 'Facebook',
+    canonicalEntity: {
+      primarySubject: "Stranger Things: Tales From '85",
+      mediaTitle: "Stranger Things: Tales From '85",
+      entityType: 'tv',
+      eventType: 'renewal',
+      allowedEntities: ["Stranger Things: Tales From '85"],
+    } as any,
+  } as any), []);
+});
+
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
   assert.equal(
     classifyRSSFallbackPath("This piece contains spoilers for 'Rooster' Episode 6. [...]"),
