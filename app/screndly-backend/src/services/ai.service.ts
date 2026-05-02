@@ -48,6 +48,21 @@ export interface RSSCaptionGenerationResult {
     source?: RSSCaptionGenerationSource;
     usedEditorialBrainFacts?: boolean;
     usedPublisherSafeRebuild?: boolean;
+    captionEditorialQuality?: RSSCaptionEditorialQuality;
+}
+
+export interface RSSCaptionEditorialQuality {
+    score: number;
+    flags: string[];
+    tooBrief: boolean;
+    missingContext: boolean;
+    missingWhyItMatters: boolean;
+    missingSecondaryFact: boolean;
+    duplicativeOfHeadline: boolean;
+    singleLineOnly: boolean;
+    factCount: number;
+    hasContextLine: boolean;
+    allowedForAutopublish: boolean;
 }
 
 export function normalizeAIModel(value?: string | null, fallback: AIModel = DEFAULT_OPENAI_MODEL): AIModel {
@@ -2992,6 +3007,116 @@ function lacksRSSLineTerminalPunctuation(caption: string): boolean {
     return getRSSCaptionLines(caption).some((line) => !/[.!?…"”'"]$/.test(line));
 }
 
+function isRSSCaptionEditorialQualityRequired(context: RSSContext): boolean {
+    const eventType = String(context.canonicalEntity?.eventType || '').toLowerCase();
+    const flags = new Set(context.canonicalEntity?.ambiguityFlags || []);
+    const entityType = context.canonicalEntity?.entityType;
+
+    if (flags.has('story_lane_core_manual_review_spoiler_safe')) {
+        return false;
+    }
+
+    if (
+        flags.has('story_lane_entertainment_adjacent') ||
+        flags.has('article_family_business_or_platform') ||
+        flags.has('story_policy_entertainment_business_person_first') ||
+        flags.has('article_family_person_interview_or_reaction') ||
+        flags.has('story_policy_article_image_first') ||
+        flags.has('story_policy_early_project_cast_portraits')
+    ) {
+        return true;
+    }
+
+    if (
+        /\b(?:casting|renewal|cancellation|development|project_announcement|in_production|trailer|release_date|first_look|business|deal|rights|sales|distribution|overall_deal|series_order|ordered_to_series|director_attachment|writer_attachment|interview_quote|reflection|return|reboot|revival|official_title_reveal|production_start|licensing|tribute|obituary)\b/.test(eventType)
+    ) {
+        return true;
+    }
+
+    return entityType === 'movie' || entityType === 'tv' || entityType === 'person' || entityType === 'company' || entityType === 'platform';
+}
+
+function countRSSCaptionFactSignals(caption: string, context: RSSContext): number {
+    const normalized = sanitizeRSSCaptionSurfaceText(caption);
+    const lines = getRSSCaptionLines(normalized);
+    const sentenceCount = Math.max(0, normalized.match(/[.!?](?:\s|$)/g)?.length || 0);
+    const entities = uniqueStrings([
+        context.canonicalEntity?.primarySubject,
+        context.canonicalEntity?.mediaTitle,
+        context.canonicalEntity?.secondarySubject,
+        ...(context.canonicalEntity?.namedPeople || []),
+        ...(context.allowedEntities || []),
+    ]).filter(Boolean);
+    const mentionedEntities = entities.filter((entity) => entityMatches(normalized, entity)).length;
+    const eventWords = /\b(?:joins?|joined|casts?|cast|renewed|canceled|cancelled|return(?:s|ed)?|release|premiere|trailer|first-look|first look|revealed|confirmed|sets?|secures?|acquires?|boards?|direct|write|produce|tribute|dies|died|appointed|promoted|reboot|revival|production|filming|distribution|rights|deal|lawsuit|settlement)\b/i.test(normalized)
+        ? 1
+        : 0;
+    const contextSignals = /\b(?:season|series|film|movie|show|project|studio|network|streamer|platform|company|festival|market|cannes|exclusive|reported|according|after|ahead|amid|following|with|from|at)\b/i.test(normalized)
+        ? 1
+        : 0;
+
+    return Math.max(sentenceCount, lines.length) + Math.min(mentionedEntities, 3) + eventWords + contextSignals;
+}
+
+function evaluateRSSCaptionEditorialQuality(caption: string, context: RSSContext): RSSCaptionEditorialQuality {
+    const rawCaption = String(caption || '').trim();
+    const normalized = sanitizeRSSCaptionSurfaceText(rawCaption).trim();
+    const lines = getRSSCaptionLines(rawCaption);
+    const requiresQuality = isRSSCaptionEditorialQualityRequired(context);
+    const eventType = String(context.canonicalEntity?.eventType || '').toLowerCase();
+    const shortAlertClass = /\b(?:trailer|first_look|official_title_reveal|release_date)\b/.test(eventType);
+    const hardInvalidCodes = getRSSCaptionHardInvalidReasonCodes(normalized, context);
+    const factCount = countRSSCaptionFactSignals(normalized, context);
+    const singleLineOnly = lines.length <= 1;
+    const hasContextLine = lines.length >= 2 || /(?:\.\s+)[A-Z0-9'"]/.test(normalized);
+    const tooBrief = requiresQuality && !shortAlertClass && normalized.length < 120;
+    const missingContext = requiresQuality && !shortAlertClass && !hasContextLine;
+    const missingSecondaryFact = requiresQuality && !shortAlertClass && factCount < 4;
+    const missingWhyItMatters = requiresQuality && !shortAlertClass && missingContext;
+    const duplicativeOfHeadline = mirrorsRSSHeadlineTooClosely(normalized, context);
+    const flags: string[] = [];
+
+    if (!normalized) flags.push('QUALITY_EMPTY');
+    if (tooBrief) flags.push('QUALITY_TOO_THIN');
+    if (missingContext) flags.push('QUALITY_MISSING_CONTEXT');
+    if (missingWhyItMatters) flags.push('QUALITY_MISSING_WHY_IT_MATTERS');
+    if (missingSecondaryFact) flags.push('QUALITY_MISSING_SECONDARY_FACT');
+    if (duplicativeOfHeadline) flags.push('QUALITY_RESTATES_HEADLINE');
+    if (singleLineOnly && requiresQuality && !shortAlertClass) flags.push('QUALITY_SINGLE_LINE_ONLY');
+    if (hasGenericBrainFallbackPhrase(normalized)) flags.push('QUALITY_GENERIC_FALLBACK');
+
+    const score = Math.max(
+        0,
+        Math.min(
+            100,
+            42 +
+                Math.min(factCount, 6) * 8 +
+                (hasContextLine ? 16 : 0) +
+                (normalized.length >= 140 ? 10 : 0) -
+                hardInvalidCodes.length * 25 -
+                flags.length * 8
+        )
+    );
+    const allowedForAutopublish = hardInvalidCodes.length === 0 &&
+        !duplicativeOfHeadline &&
+        !hasGenericBrainFallbackPhrase(normalized) &&
+        (!requiresQuality || shortAlertClass || (!tooBrief && !missingContext && !missingSecondaryFact));
+
+    return {
+        score,
+        flags,
+        tooBrief,
+        missingContext,
+        missingWhyItMatters,
+        missingSecondaryFact,
+        duplicativeOfHeadline,
+        singleLineOnly,
+        factCount,
+        hasContextLine,
+        allowedForAutopublish,
+    };
+}
+
 function isCoreProjectRSSContext(context: RSSContext): boolean {
     return context.canonicalEntity?.entityType === 'movie'
         || context.canonicalEntity?.entityType === 'tv'
@@ -3278,6 +3403,64 @@ function buildBrainFallbackTemplateLine(context: RSSContext, extraction: RssCapt
     return undefined;
 }
 
+function buildPublisherSafeRSSFallbackSupportLineExcluding(context: RSSContext, excludedLine: string): string | undefined {
+    const excluded = normalizeRSSHeadlineInput(excludedLine);
+    const candidates = [
+        stripHtmlTags(context.summary || ''),
+        stripHtmlTags(context.articleBody || ''),
+        stripHtmlTags(context.articleContentHtml || ''),
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = sanitizeRSSCaptionSurfaceText(candidate).replace(/\s+/g, ' ').trim();
+        if (!normalized) {
+            continue;
+        }
+
+        const firstSentence = normalized.match(/(.{20,220}?[.!?])(?:\s|$)/)?.[1]?.trim() || normalized.slice(0, 180).trim();
+        const sentence = ensureRSSSentenceTerminal(firstSentence || '');
+        if (
+            !sentence ||
+            normalizeRSSHeadlineInput(sentence) === excluded ||
+            hasRSSArticlePackageLabel(sentence) ||
+            hasTruncatedRSSContent(sentence) ||
+            /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])/.test(sentence) ||
+            /\bthis (?:article|piece|review|recap)\b/i.test(sentence) ||
+            containsRSSOutletName(sentence)
+        ) {
+            continue;
+        }
+
+        return sentence;
+    }
+
+    return undefined;
+}
+
+function buildPublisherSafeRSSGenericSupportLine(context: RSSContext, extraction: RssCaptionExtraction): string | undefined {
+    const primary = getSafeRSSResolvedSubject(context, extraction) || context.canonicalEntity?.primarySubject || context.canonicalEntity?.mediaTitle;
+    const eventType = String(normalizeCanonicalEventTypeForCaption(context.canonicalEntity?.eventType) || extraction.event_type || '');
+
+    if (!primary) {
+        return undefined;
+    }
+
+    if (eventType === 'reflection' || eventType === 'interview_quote') {
+        return `${primary} also discussed the broader context behind the remarks.`;
+    }
+    if (eventType === 'business' || eventType === 'platform_move') {
+        return `The report adds context around the latest industry move involving ${primary}.`;
+    }
+    if (eventType === 'casting' || eventType === 'development' || eventType === 'project_announcement') {
+        return `The update adds context around the project's latest development.`;
+    }
+    if (eventType === 'renewal' || eventType === 'release_date' || eventType === 'trailer' || eventType === 'first_look') {
+        return `The update clarifies the latest status for ${primary}.`;
+    }
+
+    return `The report adds context around the latest development involving ${primary}.`;
+}
+
 function buildBrainBackedPublisherSafeCaption(
     context: RSSContext,
     extraction: RssCaptionExtraction
@@ -3299,9 +3482,12 @@ function buildBrainBackedPublisherSafeCaption(
         return undefined;
     }
 
+    const fallbackSupport = normalizeBrainFactLine(buildPublisherSafeRSSFallbackSupportLine(context));
     const support = isUsableBrainFactLine(supportingFact)
         ? ensureRSSSentenceTerminal(supportingFact)
-        : '';
+        : isUsableBrainFactLine(fallbackSupport)
+            ? ensureRSSSentenceTerminal(fallbackSupport)
+            : '';
 
     const caption = support && normalizeRSSHeadlineInput(headline) !== normalizeRSSHeadlineInput(support)
         ? `${headline}\n\n${support}`
@@ -3311,6 +3497,9 @@ function buildBrainBackedPublisherSafeCaption(
         return undefined;
     }
     if (hasInvalidRSSJoinLead(caption) || hasDanglingRSSQuoteLine(caption) || hasGenericBrainFallbackPhrase(caption)) {
+        return undefined;
+    }
+    if (!evaluateRSSCaptionEditorialQuality(caption, context).allowedForAutopublish) {
         return undefined;
     }
 
@@ -3331,13 +3520,21 @@ function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string 
 
     const support = buildPublisherSafeRSSFallbackSupportLine(context);
     if (!support) {
-        return lead;
+        const preferGeneric = String(normalizeCanonicalEventTypeForCaption(context.canonicalEntity?.eventType) || extraction.event_type || '') === 'reflection';
+        const alternateSupport = preferGeneric
+            ? (buildPublisherSafeRSSGenericSupportLine(context, extraction) || buildPublisherSafeRSSFallbackSupportLineExcluding(context, lead))
+            : (buildPublisherSafeRSSFallbackSupportLineExcluding(context, lead) || buildPublisherSafeRSSGenericSupportLine(context, extraction));
+        return alternateSupport ? `${lead}\n\n${alternateSupport}` : lead;
     }
 
     const normalizedLead = normalizeRSSHeadlineInput(lead);
     const normalizedSupport = normalizeRSSHeadlineInput(support);
     if (!normalizedSupport || normalizedLead === normalizedSupport) {
-        return lead;
+        const preferGeneric = String(normalizeCanonicalEventTypeForCaption(context.canonicalEntity?.eventType) || extraction.event_type || '') === 'reflection';
+        const alternateSupport = preferGeneric
+            ? (buildPublisherSafeRSSGenericSupportLine(context, extraction) || buildPublisherSafeRSSFallbackSupportLineExcluding(context, lead))
+            : (buildPublisherSafeRSSFallbackSupportLineExcluding(context, lead) || buildPublisherSafeRSSGenericSupportLine(context, extraction));
+        return alternateSupport ? `${lead}\n\n${alternateSupport}` : lead;
     }
 
     return `${lead}\n\n${support}`;
@@ -3432,31 +3629,43 @@ function buildRSSPublishSafeDeterministicResult(
                 : rebuilt
         );
 
-    if (candidate && !failsRSSCaptionFormatting(candidate, context)) {
+    const candidateQuality = candidate
+        ? evaluateRSSCaptionEditorialQuality(candidate, context)
+        : undefined;
+    if (candidate && !failsRSSCaptionFormatting(candidate, context) && candidateQuality?.allowedForAutopublish) {
         return {
             caption: candidate,
             path: hasBrainSignal && brainBacked ? 'brain_rebuilt_caption' : 'repaired_caption',
             source: hasBrainSignal && brainBacked ? 'editorial_brain_facts' : 'publisher_safe_rebuild',
             usedEditorialBrainFacts: Boolean(hasBrainSignal && brainBacked),
             usedPublisherSafeRebuild: !Boolean(hasBrainSignal && brainBacked),
+            captionEditorialQuality: candidateQuality,
         };
     }
 
-    if (!hasBrainSignal && normalized && !failsRSSCaptionFormatting(normalized, context)) {
+    const normalizedQuality = normalized
+        ? evaluateRSSCaptionEditorialQuality(normalized, context)
+        : undefined;
+    if (!hasBrainSignal && normalized && !failsRSSCaptionFormatting(normalized, context) && normalizedQuality?.allowedForAutopublish) {
         return {
             caption: normalized,
             path: 'repaired_caption',
             source: 'publisher_safe_rebuild',
             usedPublisherSafeRebuild: true,
+            captionEditorialQuality: normalizedQuality,
         };
     }
 
-    if (!hasBrainSignal && rebuilt && !failsRSSCaptionFormatting(rebuilt, context)) {
+    const rebuiltQuality = rebuilt
+        ? evaluateRSSCaptionEditorialQuality(rebuilt, context)
+        : undefined;
+    if (!hasBrainSignal && rebuilt && !failsRSSCaptionFormatting(rebuilt, context) && rebuiltQuality?.allowedForAutopublish) {
         return {
             caption: rebuilt,
             path: 'repaired_caption',
             source: 'publisher_safe_rebuild',
             usedPublisherSafeRebuild: true,
+            captionEditorialQuality: rebuiltQuality,
         };
     }
 
@@ -3482,10 +3691,12 @@ function shouldAllowDeterministicPublisherSafeCaption(
 
     const hardInvalidCodes = getRSSCaptionHardInvalidReasonCodes(caption, context);
     if (captionPath === 'repaired_caption' || captionPath === 'brain_rebuilt_caption' || captionPath === 'ai_prompted') {
-        return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context);
+        const quality = evaluateRSSCaptionEditorialQuality(caption, context);
+        return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context) && quality.allowedForAutopublish;
     }
 
-    return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context);
+    const quality = evaluateRSSCaptionEditorialQuality(caption, context);
+    return hardInvalidCodes.length === 0 && !failsRSSCaptionFormatting(caption, context) && quality.allowedForAutopublish;
 }
 
 function buildRSSFallbackResult(caption: string): RSSCaptionGenerationResult {
@@ -3617,11 +3828,13 @@ Write ONLY the caption.`;
         normalizeGeneratedText(response.content, ['caption', 'text', 'content'])
     );
     const initialInvalidCodes = getRSSCaptionHardInvalidReasonCodes(normalizedCaption, context);
-    if (!failsRSSCaptionFormatting(normalizedCaption, context)) {
+    const initialQuality = evaluateRSSCaptionEditorialQuality(normalizedCaption, context);
+    if (!failsRSSCaptionFormatting(normalizedCaption, context) && initialQuality.allowedForAutopublish) {
         return {
             caption: normalizedCaption,
             path: 'ai_prompted',
             source: 'ai_prompt',
+            captionEditorialQuality: initialQuality,
         };
     }
     logCaptionDiagnostics('initial_generation_rejected', {
@@ -3681,11 +3894,13 @@ Write ONLY the corrected caption.`;
         normalizeGeneratedText(retryResponse.content, ['caption', 'text', 'content'])
     );
     const repairedInvalidCodes = getRSSCaptionHardInvalidReasonCodes(correctedCaption, context);
-    if (!failsRSSCaptionFormatting(correctedCaption, context)) {
+    const repairedQuality = evaluateRSSCaptionEditorialQuality(correctedCaption, context);
+    if (!failsRSSCaptionFormatting(correctedCaption, context) && repairedQuality.allowedForAutopublish) {
         return {
             caption: correctedCaption,
             path: 'repaired_caption',
             source: 'ai_repair',
+            captionEditorialQuality: repairedQuality,
         };
     }
     logCaptionDiagnostics('repair_generation_rejected', {
@@ -3740,7 +3955,8 @@ Write ONLY the final caption.`;
         normalizeGeneratedText(hardRebuildResponse.content, ['caption', 'text', 'content'])
     );
 
-    if (failsRSSCaptionFormatting(rebuiltCaption, context)) {
+    const rebuiltQuality = evaluateRSSCaptionEditorialQuality(rebuiltCaption, context);
+    if (failsRSSCaptionFormatting(rebuiltCaption, context) || !rebuiltQuality.allowedForAutopublish) {
         logCaptionDiagnostics('hard_rebuild_rejected', {
             responseSuccess: true,
             caption: rebuiltCaption,
@@ -3760,6 +3976,7 @@ Write ONLY the final caption.`;
         caption: rebuiltCaption,
         path: 'repaired_caption',
         source: 'ai_hard_rebuild',
+        captionEditorialQuality: rebuiltQuality,
     };
 }
 
@@ -3792,6 +4009,7 @@ export const __rssCaptionTestUtils = {
     hasDanglingRSSQuoteLine,
     hasMissingRSSPersonLeadSubject,
     mirrorsRSSHeadlineTooClosely,
+    evaluateRSSCaptionEditorialQuality,
     normalizeRSSHeadlineInput,
 };
 

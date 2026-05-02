@@ -6,7 +6,7 @@ import prisma from '../lib/prisma';
 import { Prisma } from '@prisma/client';
 import { JSDOM } from 'jsdom';
 import Parser from 'rss-parser';
-import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, type RSSCaptionGenerationPath, type RSSCaptionGenerationSource, type RSSContext, __rssCaptionTestUtils } from './ai.service';
+import aiService, { DEFAULT_OPENAI_MODEL, normalizeAIModel, type RSSCanonicalEntity, type RSSCaptionEditorialQuality, type RSSCaptionGenerationPath, type RSSCaptionGenerationSource, type RSSContext, __rssCaptionTestUtils } from './ai.service';
 import { publisherService, type PublishResult } from './publisher.service';
 import { resolveRelevantRSSImages, type RSSResolvedImage } from './rss-image-selection.service';
 import { getBackblazeAuthorizedDownloadUrl, uploadBufferToBackblaze } from './backblaze';
@@ -30,6 +30,7 @@ const {
   getRSSCaptionHardInvalidReasonCodes,
   normalizeRSSHeadlineInput,
   shouldAllowDeterministicPublisherSafeCaption,
+  evaluateRSSCaptionEditorialQuality,
 } = __rssCaptionTestUtils;
 
 function formatRSSRuntimeFallbackTitle(value?: string): string {
@@ -44,6 +45,39 @@ function formatRSSRuntimeFallbackTitle(value?: string): string {
   }
 
   return `'${clean.replace(/'/g, "'")}'`;
+}
+
+function getRSSRuntimeFallbackSupportSentence(item: RSSItem, lead: string): string | undefined {
+  const normalizedLead = normalizeRSSHeadlineInput(lead);
+  const candidates = [
+    sanitizeRSSPlainText(item.description),
+    sanitizeRSSPlainText(item.contentHtml || ''),
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = candidate.replace(/\s+/g, ' ').trim();
+    if (!normalized || /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])|this (?:article|piece|recap|review)/i.test(normalized)) {
+      continue;
+    }
+
+    const firstSentence = normalized.match(/(.{40,220}?[.!?])(?:\s|$)/)?.[1]?.trim() || normalized.slice(0, 180).trim();
+    const sentence = sanitizeRSSCaptionText(firstSentence, 220);
+    if (!sentence || normalizeRSSHeadlineInput(sentence) === normalizedLead) {
+      continue;
+    }
+
+    return sentence;
+  }
+
+  return undefined;
+}
+
+function buildRSSRuntimeEditorialCaption(lead: string, item: RSSItem): string {
+  const cleanLead = sanitizeRSSCaptionText(lead, 180);
+  const support = getRSSRuntimeFallbackSupportSentence(item, cleanLead);
+  const resolvedSupport = support || 'The update adds context around the latest status of the story.';
+
+  return sanitizeRSSCaptionText(`${cleanLead}\n\n${resolvedSupport}`, 280);
 }
 
 function buildRSSRuntimeBrainCaptionRecovery(
@@ -71,31 +105,51 @@ function buildRSSRuntimeBrainCaptionRecovery(
   const strategy = String(typeof strategySource === 'string' ? strategySource : strategySource?.mode || '').trim().toLowerCase();
   const project = formatRSSRuntimeFallbackTitle(canonicalEntity.mediaTitle || primary);
   const person = secondaryEntities[0] || canonicalEntity.secondarySubject || canonicalEntity.namedPeople?.[0] || '';
+  const factLead = sanitizeRSSCaptionText(String(
+    decision?.caption_facts?.headline_fact ||
+    decision?.captionFacts?.headlineFact ||
+    ''
+  ), 180);
+  const factSupport = sanitizeRSSCaptionText(String(
+    decision?.caption_facts?.supporting_fact ||
+    decision?.captionFacts?.supportingFact ||
+    ''
+  ), 180);
 
   let caption = '';
-  if (event === 'renewal' || storyFamily === 'renewal') {
-    caption = `${project || primary} has been renewed.`;
+  if (factLead && !/has a new entertainment update|latest entertainment industry update|joins .* joins/i.test(factLead)) {
+    caption = factSupport && normalizeRSSHeadlineInput(factLead) !== normalizeRSSHeadlineInput(factSupport)
+      ? sanitizeRSSCaptionText(`${factLead}\n\n${factSupport}`, 280)
+      : buildRSSRuntimeEditorialCaption(factLead, item);
+  } else if (event === 'renewal' || storyFamily === 'renewal' || /season \d+ return|return confirmed/i.test(item.title)) {
+    caption = buildRSSRuntimeEditorialCaption(`${project || primary} has been renewed.`, item);
   } else if (event === 'cancellation' || storyFamily === 'cancellation') {
-    caption = `${project || primary} has been canceled.`;
+    caption = buildRSSRuntimeEditorialCaption(`${project || primary} has been canceled.`, item);
   } else if (event === 'casting' || storyFamily === 'casting' || strategy === 'casting') {
-    caption = person && project ? `${person} has joined ${project}.` : project ? `${project} has added new cast.` : '';
+    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} has joined ${project}.` : project ? `${project} has added new cast.` : '', item);
   } else if (event === 'trailer' || storyFamily === 'trailer' || strategy === 'trailer') {
-    caption = project ? `New trailer released for ${project}.` : '';
-  } else if (event === 'release_date' || storyFamily === 'release_date') {
-    caption = project ? `${project} has set a release date.` : '';
+    caption = buildRSSRuntimeEditorialCaption(project ? `New trailer released for ${project}.` : '', item);
+  } else if (event === 'release_date' || storyFamily === 'release_date' || event === 'release_date_set') {
+    caption = buildRSSRuntimeEditorialCaption(project ? `${project} has set a release date.` : '', item);
   } else if (event === 'first_look' || storyFamily === 'first_look' || strategy === 'first_look') {
-    caption = project ? `First look at ${project} has been revealed.` : '';
-  } else if (event === 'business' || event === 'deal' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal') {
-    caption = primary ? `${primary} is part of a new entertainment business report.` : '';
+    caption = buildRSSRuntimeEditorialCaption(project ? `First look at ${project} has been revealed.` : '', item);
+  } else if (event === 'business' || event === 'deal' || event === 'executive_appointment' || event === 'rights_sales_distribution' || event === 'lost_and_found_update' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || storyFamily === 'company_industry_news') {
+    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} is part of a new entertainment business report.` : '', item);
+  } else if (event === 'director_attachment' || event === 'writer_attachment' || event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival') {
+    caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward with a new project update.` : primary ? `${primary} is moving forward with a new project update.` : '', item);
+  } else if (event === 'interview_quote' || event === 'reflection' || event === 'person_commentary' || strategy === 'person_commentary') {
+    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} shared new comments in an entertainment interview.` : '', item);
   } else if (event === 'obituary' || storyFamily === 'obituary' || strategy === 'obituary') {
-    caption = primary ? `${primary} has died.` : '';
+    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} has died.` : '', item);
   }
 
   const normalizedCaption = sanitizeRSSCaptionText(caption, 280);
+  const quality = evaluateRSSCaptionEditorialQuality(normalizedCaption, context);
   if (
     !normalizedCaption.trim() ||
     getRSSCaptionHardInvalidReasonCodes(normalizedCaption, context).length > 0 ||
-    failsRSSCaptionFormatting(normalizedCaption, context)
+    failsRSSCaptionFormatting(normalizedCaption, context) ||
+    !quality.allowedForAutopublish
   ) {
     return undefined;
   }
@@ -200,6 +254,12 @@ export interface RSSRuntimeDiagnostics {
   captionPath?: RSSCaptionGenerationPath;
   captionSource?: RSSCaptionGenerationSource;
   captionHardInvalidReasonCodes?: string[];
+  captionQualityScore?: number;
+  captionQualityFlags?: string[];
+  captionFactCount?: number;
+  captionHasContextLine?: boolean;
+  captionQualityAllowedForAutopublish?: boolean;
+  qualityGateBlockReason?: string;
   captionPreview?: string;
   usedEditorialBrainFacts?: boolean;
   usedPublisherSafeRebuild?: boolean;
@@ -409,7 +469,7 @@ interface RSSRuntimeSettings {
 }
 
 const RSS_ACTIVITY_CATEGORY = 'rss_activity';
-const RSS_RUNTIME_RULESET_VERSION = '2026-04-28-caption-path-source-1';
+const RSS_RUNTIME_RULESET_VERSION = '2026-05-02-caption-quality-image-retry-1';
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_CONFIDENCE = 0.8;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_SOURCE_DECISIVE_REVIEWS = 2;
 const RSS_EDITORIAL_BRAIN_IMAGE_STRATEGY_PROMOTION_MIN_GLOBAL_DECISIVE_REVIEWS = 3;
@@ -3117,6 +3177,11 @@ function logRSSRuntimeParity(payload: {
   captionPath?: RSSCaptionGenerationPath;
   captionSource?: RSSCaptionGenerationSource;
   captionHardInvalidReasonCodes?: string[];
+  captionQualityScore?: number;
+  captionQualityFlags?: string[];
+  captionFactCount?: number;
+  captionHasContextLine?: boolean;
+  captionQualityAllowedForAutopublish?: boolean;
   captionPreview?: string;
   usedEditorialBrainFacts?: boolean;
   usedPublisherSafeRebuild?: boolean;
@@ -3143,6 +3208,11 @@ function logRSSRuntimeParity(payload: {
     captionStrategy: payload.captionPath || null,
     captionSource: payload.captionSource || null,
     captionHardInvalidReasonCodes: payload.captionHardInvalidReasonCodes || [],
+    captionQualityScore: payload.captionQualityScore ?? null,
+    captionQualityFlags: payload.captionQualityFlags || [],
+    captionFactCount: payload.captionFactCount ?? null,
+    captionHasContextLine: payload.captionHasContextLine ?? null,
+    captionQualityAllowedForAutopublish: payload.captionQualityAllowedForAutopublish ?? null,
     captionPreview: payload.captionPreview || null,
     usedEditorialBrainFacts: payload.usedEditorialBrainFacts ?? null,
     usedPublisherSafeRebuild: payload.usedPublisherSafeRebuild ?? null,
@@ -3222,6 +3292,7 @@ function validateRSSFinalPublishState(
   resolvedImages: RSSResolvedImage[];
   effectiveCaptionPath?: RSSCaptionGenerationPath;
   captionHardInvalidReasonCodes: string[];
+  captionEditorialQuality: RSSCaptionEditorialQuality;
 } {
   const captionValidationContext: RSSContext = {
     articleTitle: contextOverride?.articleTitle || canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '',
@@ -3234,6 +3305,7 @@ function validateRSSFinalPublishState(
     canonicalEntity,
   };
   const captionHardInvalidReasonCodes = getRSSCaptionHardInvalidReasonCodes(caption, captionValidationContext);
+  const captionEditorialQuality = evaluateRSSCaptionEditorialQuality(caption, captionValidationContext);
   const reasonCodes = new Set<string>(captionHardInvalidReasonCodes);
   let resolvedImages = [...images];
   const canonicalFlags = new Set(canonicalEntity.ambiguityFlags || []);
@@ -3241,7 +3313,8 @@ function validateRSSFinalPublishState(
   const canPromoteFallbackCaptionPath =
     isFallbackCaptionPath &&
     reasonCodes.size === 0 &&
-    !failsRSSCaptionFormatting(caption, captionValidationContext);
+    !failsRSSCaptionFormatting(caption, captionValidationContext) &&
+    captionEditorialQuality.allowedForAutopublish;
   const effectiveCaptionPath: RSSCaptionGenerationPath | undefined = canPromoteFallbackCaptionPath
     ? 'repaired_caption'
     : captionPath;
@@ -3252,6 +3325,21 @@ function validateRSSFinalPublishState(
 
   if (!shouldAllowDeterministicPublisherSafeCaption(caption, captionValidationContext, effectiveCaptionPath) && (effectiveCaptionPath === 'deterministic_template' || effectiveCaptionPath === 'excerpt_fallback')) {
     reasonCodes.add('CAPTION_NON_PUBLISHER_FALLBACK');
+  }
+
+  if (
+    captionHardInvalidReasonCodes.length === 0 &&
+    !captionEditorialQuality.allowedForAutopublish &&
+    (effectiveCaptionPath === 'brain_rebuilt_caption' ||
+      effectiveCaptionPath === 'repaired_caption' ||
+      effectiveCaptionPath === 'ai_prompted' ||
+      effectiveCaptionPath === 'deterministic_template' ||
+      effectiveCaptionPath === 'excerpt_fallback')
+  ) {
+    for (const flag of captionEditorialQuality.flags) {
+      reasonCodes.add(flag);
+    }
+    reasonCodes.add('CAPTION_EDITORIAL_QUALITY_TOO_LOW');
   }
 
   if (resolvedImages.length > 1 && resolvedImages.slice(1).some((image) => !image.url || !image.url.trim())) {
@@ -3286,6 +3374,7 @@ function validateRSSFinalPublishState(
     resolvedImages,
     effectiveCaptionPath,
     captionHardInvalidReasonCodes,
+    captionEditorialQuality,
   };
 }
 
@@ -5466,6 +5555,16 @@ function normalizeRSSRuntimeDiagnostics(value: unknown): RSSRuntimeDiagnostics |
           .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
           .map((entry) => entry.trim())
       : undefined,
+    captionQualityScore: typeof record.captionQualityScore === 'number' ? record.captionQualityScore : undefined,
+    captionQualityFlags: Array.isArray(record.captionQualityFlags)
+      ? record.captionQualityFlags
+          .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+          .map((entry) => entry.trim())
+      : undefined,
+    captionFactCount: typeof record.captionFactCount === 'number' ? record.captionFactCount : undefined,
+    captionHasContextLine: typeof record.captionHasContextLine === 'boolean' ? record.captionHasContextLine : undefined,
+    captionQualityAllowedForAutopublish: typeof record.captionQualityAllowedForAutopublish === 'boolean' ? record.captionQualityAllowedForAutopublish : undefined,
+    qualityGateBlockReason: typeof record.qualityGateBlockReason === 'string' ? record.qualityGateBlockReason : undefined,
     captionPreview: typeof record.captionPreview === 'string' ? record.captionPreview : undefined,
     usedEditorialBrainFacts: typeof record.usedEditorialBrainFacts === 'boolean' ? record.usedEditorialBrainFacts : undefined,
     usedPublisherSafeRebuild: typeof record.usedPublisherSafeRebuild === 'boolean' ? record.usedPublisherSafeRebuild : undefined,
@@ -7132,7 +7231,8 @@ async function attemptRSSPublish(
   platforms: string[],
   imagePlan: { maxImageCount: number },
   runtimeSettings: RSSRuntimeSettings,
-  speculationAssessment?: RSSSpeculationAssessment | null
+  speculationAssessment?: RSSSpeculationAssessment | null,
+  options?: { forceEditorialBrain?: boolean }
 ): Promise<
   | {
       status: 'published';
@@ -7171,7 +7271,9 @@ async function attemptRSSPublish(
   try {
     const canonicalState = getRSSCanonicalEntityRuntimeState(item);
     let canonicalEntity = canonicalState.canonicalEntity;
-    await prepareRssEditorialBrainShadow(feed.name, item, runtimeSettings, canonicalEntity);
+    await prepareRssEditorialBrainShadow(feed.name, item, runtimeSettings, canonicalEntity, {
+      force: options?.forceEditorialBrain,
+    });
     const promotedCanonicalStoryDecision = selectRSSEditorialBrainCanonicalStoryPromotion(item.editorialBrain, runtimeSettings);
     if (promotedCanonicalStoryDecision) {
       const canonicalPromotedItem = applyRSSEditorialBrainCanonicalStoryPromotionToItem(item, promotedCanonicalStoryDecision);
@@ -7355,6 +7457,9 @@ async function attemptRSSPublish(
         captionPath: finalCaptionPath,
         captionSource: captionResult.source || null,
         captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        captionQualityScore: publishValidation.captionEditorialQuality.score,
+        captionQualityFlags: publishValidation.captionEditorialQuality.flags,
+        captionQualityAllowedForAutopublish: publishValidation.captionEditorialQuality.allowedForAutopublish,
         usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
         usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
         reusedStoredCaption: shouldReuseStoredCaption,
@@ -7370,6 +7475,14 @@ async function attemptRSSPublish(
         captionPath: finalCaptionPath,
         captionSource: captionResult.source,
         captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        captionQualityScore: publishValidation.captionEditorialQuality.score,
+        captionQualityFlags: publishValidation.captionEditorialQuality.flags,
+        captionFactCount: publishValidation.captionEditorialQuality.factCount,
+        captionHasContextLine: publishValidation.captionEditorialQuality.hasContextLine,
+        captionQualityAllowedForAutopublish: publishValidation.captionEditorialQuality.allowedForAutopublish,
+        qualityGateBlockReason: publishValidation.captionEditorialQuality.allowedForAutopublish
+          ? undefined
+          : publishValidation.captionEditorialQuality.flags.join(',') || 'CAPTION_EDITORIAL_QUALITY_TOO_LOW',
         captionPreview: (caption || '').slice(0, 220),
         usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
         usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
@@ -7399,6 +7512,11 @@ async function attemptRSSPublish(
         captionPath: finalCaptionPath,
         captionSource: captionResult.source,
         captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+        captionQualityScore: publishValidation.captionEditorialQuality.score,
+        captionQualityFlags: publishValidation.captionEditorialQuality.flags,
+        captionFactCount: publishValidation.captionEditorialQuality.factCount,
+        captionHasContextLine: publishValidation.captionEditorialQuality.hasContextLine,
+        captionQualityAllowedForAutopublish: publishValidation.captionEditorialQuality.allowedForAutopublish,
         captionPreview: (caption || '').slice(0, 220),
         usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
         usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
@@ -7434,6 +7552,11 @@ async function attemptRSSPublish(
       captionPath: finalCaptionPath,
       captionSource: captionResult.source,
       captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+      captionQualityScore: publishValidation.captionEditorialQuality.score,
+      captionQualityFlags: publishValidation.captionEditorialQuality.flags,
+      captionFactCount: publishValidation.captionEditorialQuality.factCount,
+      captionHasContextLine: publishValidation.captionEditorialQuality.hasContextLine,
+      captionQualityAllowedForAutopublish: publishValidation.captionEditorialQuality.allowedForAutopublish,
       captionPreview: (caption || '').slice(0, 220),
       usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
       usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
@@ -7453,6 +7576,11 @@ async function attemptRSSPublish(
       captionPath: finalCaptionPath,
       captionSource: captionResult.source,
       captionHardInvalidReasonCodes: publishValidation.captionHardInvalidReasonCodes,
+      captionQualityScore: publishValidation.captionEditorialQuality.score,
+      captionQualityFlags: publishValidation.captionEditorialQuality.flags,
+      captionFactCount: publishValidation.captionEditorialQuality.factCount,
+      captionHasContextLine: publishValidation.captionEditorialQuality.hasContextLine,
+      captionQualityAllowedForAutopublish: publishValidation.captionEditorialQuality.allowedForAutopublish,
       captionPreview: (caption || '').slice(0, 220),
       usedEditorialBrainFacts: captionResult.usedEditorialBrainFacts || false,
       usedPublisherSafeRebuild: captionResult.usedPublisherSafeRebuild || false,
@@ -9565,6 +9693,18 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
       runtimeRulesetVersion: RSS_RUNTIME_RULESET_VERSION,
       codeVersion: getRSSRuntimeCodeVersion(),
     });
+    item.generatedCaption = undefined;
+    item.captionGenerationPath = undefined;
+    item.captionGenerationSource = undefined;
+    item.captionGenerationVersion = undefined;
+    item.canonicalEntityVersion = undefined;
+    item.runtimeDiagnostics = {
+      ...item.runtimeDiagnostics,
+      rulesetVersion: RSS_RUNTIME_RULESET_VERSION,
+      codeVersion: getRSSRuntimeCodeVersion(),
+      reusedStoredCaption: false,
+      updatedAt: new Date().toISOString(),
+    };
     const imagePlan = getRSSPublishImagePlan(feed, platforms);
     const publishAttempt = await attemptRSSPublish(
       feed as any,
@@ -9572,7 +9712,8 @@ async function retryRSSActivity(id: string): Promise<RSSActivityItem> {
       retryPlatforms,
       imagePlan,
       runtimeSettings,
-      speculationAssessment
+      speculationAssessment,
+      { forceEditorialBrain: true }
     );
     const resolvedActivityItem = applyResolvedImagesToRSSItem(item, publishAttempt.resolvedImages);
     resolvedActivityItem.generatedCaption = publishAttempt.caption;

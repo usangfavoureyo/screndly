@@ -9,7 +9,7 @@ import { buildDuplicateGroups, buildRssAuditReport } from '../audit/rss-audit-re
 import { analyzeRssAuditCase, buildDiagnosisAndFixes, getRssAuditImageResolverOptions, hasCanonicalTokenOverlap } from '../audit/rss-audit-runner';
 import type { RssAuditResult } from '../audit/rss-audit-types';
 
-const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, buildRSSPublishSafeDeterministicResult, classifyRSSFallbackPath } = __rssCaptionTestUtils;
+const { getRSSCaptionHardInvalidReasonCodes, headlineAnchorsToCoreProject, failsRSSCaptionFormatting, hasDanglingRSSQuoteLine, hasMissingRSSPersonLeadSubject, buildDeterministicRssCaption, buildRSSPublishSafeDeterministicResult, classifyRSSFallbackPath, evaluateRSSCaptionEditorialQuality } = __rssCaptionTestUtils;
 const { validateImageCandidate, shouldRestrictPersonLedSecondaryToPeople, getPersonLedSupportingSecondarySubject, shouldKeepSecondaryCarouselImage, shouldUseFeedFallbackImages, determineSmartImagePlan, guessPrimarySubject, canUseExplicitFeedFallback } = __rssImageSelectionTestUtils;
 const { titleCandidateMatchesResolvedContext, isExactResolvedProjectTitle } = __rssTmdbDisambiguationTestUtils;
 const { computeRssEditorialBrainDisagreements, normalizeRssEditorialBrainDecision, buildRssEditorialBrainContentHash } = __rssEditorialBrainTestUtils;
@@ -1270,7 +1270,7 @@ test('publish validation blocks non-publisher fallback captions', () => {
 
 test('publish validation allows deterministic captions that are already publisher-safe for early-project casting stories', () => {
   const result = __rssAuditTestUtils.validateRSSFinalPublishState(
-    "'Paradise' Season 3 has added Julianna Margulies.\n\nProduction is now underway.",
+    "'Paradise' Season 3 has added Julianna Margulies.\n\nThe casting update keeps the Hulu drama moving forward as production continues on the new season.",
     [
       {
         url: 'https://example.com/julianna.jpg',
@@ -1335,7 +1335,7 @@ test('publish validation promotes clean excerpt fallback captions before final f
 
 test('publish validation allows clean brain rebuilt captions and blocks unsafe brain rebuilt captions', () => {
   const clean = __rssAuditTestUtils.validateRSSFinalPublishState(
-    "'Chad Powers' is set to return for Season 2.",
+    "'Chad Powers' is set to return for Season 2.\n\nThe update keeps the Hulu comedy active after its latest season announcement.",
     [
       {
         url: 'https://example.com/chad-powers.jpg',
@@ -1362,6 +1362,7 @@ test('publish validation allows clean brain rebuilt captions and blocks unsafe b
   );
 
   assert.equal(clean.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.equal(clean.reasonCodes.includes('CAPTION_EDITORIAL_QUALITY_TOO_LOW'), false);
   assert.deepEqual(clean.captionHardInvalidReasonCodes, []);
   assert.equal(clean.valid, true);
 
@@ -1417,7 +1418,7 @@ test('caption hard-invalid checks reject empty fallback captions', () => {
 
 test('publish validation allows clean repaired captions and blocks unsafe repaired captions', () => {
   const clean = __rssAuditTestUtils.validateRSSFinalPublishState(
-    "Zoe Saldana is set for a new business development tied to the project.",
+    "Zoe Saldana is attached to a new entertainment business development.\n\nThe report centers on the project move and its latest industry context.",
     [
       {
         url: 'https://example.com/zoe.jpg',
@@ -1444,6 +1445,7 @@ test('publish validation allows clean repaired captions and blocks unsafe repair
   );
 
   assert.equal(clean.reasonCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK'), false);
+  assert.equal(clean.reasonCodes.includes('CAPTION_EDITORIAL_QUALITY_TOO_LOW'), false);
   assert.deepEqual(clean.captionHardInvalidReasonCodes, []);
 
   const unsafe = __rssAuditTestUtils.validateRSSFinalPublishState(
@@ -1507,7 +1509,8 @@ test('brain-backed fallback handles renewal stories without empty deterministic 
 
   assert.equal(result.path, 'brain_rebuilt_caption');
   assert.equal(result.source, 'editorial_brain_facts');
-  assert.equal(result.caption, "'Stranger Things: Tales From 85' has been renewed.");
+  assert.match(result.caption, /^'Stranger Things: Tales From 85' has been renewed\./);
+  assert.match(result.caption, /Season 2 at Netflix\./);
 });
 
 test('brain-backed fallback handles activity-view camelCase editorial brain decisions', () => {
@@ -1538,7 +1541,8 @@ test('brain-backed fallback handles activity-view camelCase editorial brain deci
 
   assert.equal(result.path, 'brain_rebuilt_caption');
   assert.equal(result.source, 'editorial_brain_facts');
-  assert.equal(result.caption, "'Stranger Things: Tales From '85' has been renewed.");
+  assert.match(result.caption, /^'Stranger Things: Tales From '85' has been renewed\./);
+  assert.match(result.caption, /Season 2 at Netflix\./);
   assert.deepEqual(getRSSCaptionHardInvalidReasonCodes(result.caption, {
     articleTitle: "Stranger Things: Tales From '85 Renewed For Season 2 At Netflix",
     summary: '',
@@ -1587,7 +1591,8 @@ test('runtime retry caption recovery rebuilds empty brain-backed renewal caption
 
   assert.equal(result?.path, 'brain_rebuilt_caption');
   assert.equal(result?.source, 'editorial_brain_facts');
-  assert.equal(result?.caption, "'Stranger Things: Tales From '85' has been renewed.");
+  assert.match(result?.caption || '', /^'Stranger Things: Tales From '85' has been renewed\./);
+  assert.match(result?.caption || '', /Season 2 at Netflix\./);
 });
 
 test('RSS fallback path classifier detects excerpt-style leakage', () => {
