@@ -1862,6 +1862,33 @@ function fitTextBlock(input: {
   return { fontSize, lines, lineHeight };
 }
 
+function resolveEffectiveHeadlineVariant(
+  variant: DesignStudioVariantRecord,
+  width: number,
+  height: number,
+): DesignStudioVariantRecord {
+  if (!['bottom_left', 'bottom_right', 'top_left', 'top_right'].includes(variant.variant)) {
+    return variant;
+  }
+
+  const safeMargin = variant.safeMargin || Math.round(Math.min(width, height) * 0.045);
+  const textBoxHeight = Math.round(Math.min(height - safeMargin * 2, height * 0.445));
+  const topY = variant.variant.startsWith('bottom')
+    ? Math.round(height - safeMargin - textBoxHeight)
+    : variant.textBox.y;
+
+  return {
+    ...variant,
+    textBox: {
+      x: safeMargin,
+      y: Math.max(0, topY),
+      width: Math.round(width - safeMargin * 2),
+      height: textBoxHeight,
+    },
+    maxLines: Math.max(variant.maxLines || 4, 5),
+  };
+}
+
 export async function buildTextLayer(input: {
   width: number;
   height: number;
@@ -1869,7 +1896,8 @@ export async function buildTextLayer(input: {
   template: DesignStudioTemplateRecord;
   payload: DesignStudioRenderPayload;
 }): Promise<Buffer> {
-  const alignment = input.payload.headerAlignment || input.variant.alignment;
+  const variant = resolveEffectiveHeadlineVariant(input.variant, input.width, input.height);
+  const alignment = input.payload.headerAlignment || variant.alignment;
   const fontScale = input.payload.fontScale ?? 1;
   const normalizedHeadline = input.payload.headerText.replace(/\r\n/g, '\n');
   const hasManualLineBreaks = normalizedHeadline.includes('\n');
@@ -1885,41 +1913,41 @@ export async function buildTextLayer(input: {
     2.20,
   );
   const targetWordsPerLine = clamp(Math.round(2 + (headlineDensity * 2)), 2, 8);
-  const maxLines = input.payload.maxLines || input.variant.maxLines;
+  const maxLines = input.payload.maxLines || variant.maxLines;
   const fontColor = input.payload.useTemplateDefaultStyling
     ? (input.template.fontColor || '#ffffff')
     : (input.payload.headerTextColor || input.template.fontColor || '#ffffff');
-  const safeMargin = input.variant.safeMargin || 48;
+  const safeMargin = variant.safeMargin || 48;
   const scaledBoxWidth = clamp(
-    Math.round(input.variant.textBox.width * headlineWidthScale * headlineDensity),
-    Math.round(input.variant.textBox.width * 0.70),
+    Math.round(variant.textBox.width * headlineWidthScale * headlineDensity),
+    Math.round(variant.textBox.width * 0.70),
     Math.round(input.width - (safeMargin * 2)),
   );
   const scaledTextBoxX = alignment === 'center'
-    ? Math.round(input.variant.textBox.x + (input.variant.textBox.width - scaledBoxWidth) / 2)
+    ? Math.round(variant.textBox.x + (variant.textBox.width - scaledBoxWidth) / 2)
     : alignment === 'right'
-      ? Math.round(input.variant.textBox.x + input.variant.textBox.width - scaledBoxWidth)
-      : input.variant.textBox.x;
+      ? Math.round(variant.textBox.x + variant.textBox.width - scaledBoxWidth)
+      : variant.textBox.x;
   const lineHeightMultiplier = input.payload.lineHeightMultiplier
-    || input.variant.lineHeightMultiplier
+    || variant.lineHeightMultiplier
     || input.template.lineHeightMultiplier
     || 1.05;
   const fit = hasManualLineBreaks
     ? fitManualComposedLines({
         text: normalizedHeadline.toUpperCase(),
         boxWidth: scaledBoxWidth,
-        boxHeight: input.variant.textBox.height,
-        minFontSize: Math.round(input.variant.minFontSize * fontScale),
-        maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
+        boxHeight: variant.textBox.height,
+        minFontSize: Math.round(variant.minFontSize * fontScale),
+        maxFontSize: Math.round(variant.maxFontSize * fontScale),
         lineHeightMultiplier,
         tracking: input.template.tracking || 0,
       })
     : fitTextBlock({
         text: normalizedHeadline.toUpperCase(),
         boxWidth: scaledBoxWidth,
-        boxHeight: input.variant.textBox.height,
-        minFontSize: Math.round(input.variant.minFontSize * fontScale),
-        maxFontSize: Math.round(input.variant.maxFontSize * fontScale),
+        boxHeight: variant.textBox.height,
+        minFontSize: Math.round(variant.minFontSize * fontScale),
+        maxFontSize: Math.round(variant.maxFontSize * fontScale),
         maxLines,
         targetWordsPerLine,
         lineHeightMultiplier,
@@ -1969,7 +1997,7 @@ export async function buildTextLayer(input: {
 
   while (
     fontSize > 1
-    && (totalTextHeight > input.variant.textBox.height || maxRenderedLineWidth > scaledBoxWidth)
+    && (totalTextHeight > variant.textBox.height || maxRenderedLineWidth > scaledBoxWidth)
   ) {
     fontSize -= 1;
     renderedLines = await Promise.all(fit.lines.map((line) => renderHeadlineLine(line, fontSize)));
@@ -1979,9 +2007,9 @@ export async function buildTextLayer(input: {
     totalTextHeight = Math.max(1, Math.ceil(((fit.lines.length - 1) * actualLineHeight) + maxRenderedLineHeight));
   }
 
-  const top = input.variant.variant.startsWith('bottom')
-    ? Math.round(input.variant.textBox.y + input.variant.textBox.height - totalTextHeight)
-    : input.variant.textBox.y;
+  const top = variant.variant.startsWith('bottom')
+    ? Math.round(variant.textBox.y + variant.textBox.height - totalTextHeight)
+    : variant.textBox.y;
 
   for (const [index, { data: renderedLine, info: renderedLineInfo }] of renderedLines.entries()) {
     const lineTop = Math.round(top + (index * actualLineHeight));

@@ -36,12 +36,12 @@ const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
     brandBox: { x: 369, y: 48, width: 341, height: 73 },
   },
   bottom_left: {
-    textBox: { x: 49, y: 895, width: 982, height: 372 },
+    textBox: { x: 49, y: 701, width: 982, height: 600 },
     alignment: 'left',
     brandBox: { x: 49, y: 49, width: 341, height: 73 },
   },
   bottom_right: {
-    textBox: { x: 49, y: 844, width: 982, height: 423 },
+    textBox: { x: 49, y: 701, width: 982, height: 600 },
     alignment: 'right',
     brandBox: { x: 688, y: 49, width: 341, height: 73 },
   },
@@ -51,12 +51,12 @@ const PREVIEW_VARIANTS: Record<DesignStudioLayoutVariant, PreviewLayout> = {
     brandBox: { x: 369, y: 1221, width: 341, height: 73 },
   },
   top_left: {
-    textBox: { x: 46, y: 36, width: 988, height: 438 },
+    textBox: { x: 46, y: 36, width: 988, height: 600 },
     alignment: 'left',
     brandBox: { x: 49, y: 1223, width: 341, height: 73 },
   },
   top_right: {
-    textBox: { x: 46, y: 34, width: 988, height: 432 },
+    textBox: { x: 46, y: 34, width: 988, height: 600 },
     alignment: 'right',
     brandBox: { x: 688, y: 1223, width: 341, height: 73 },
   },

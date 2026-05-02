@@ -301,27 +301,35 @@ const headlinePreviewRequestSchema = z.object({
 router.get('/state', authenticate, async (_req, res) => {
   try {
     const { templates, renderedDesigns, autoEditorials } = await getDesignStudioStateSnapshot();
+    const safeAuthorize = async (url?: string | null): Promise<string> => {
+      if (!url) return '';
+      try {
+        return (await authorizeDesignStudioMediaUrl(url)) || url;
+      } catch {
+        return url;
+      }
+    };
 
     const hydratedTemplates = await Promise.all(
       (Array.isArray(templates) ? templates : []).map(async (template) => ({
         ...template,
-        previewImage: await authorizeDesignStudioMediaUrl(template.previewImage),
-        previewUrl: (await authorizeDesignStudioMediaUrl(template.previewUrl)) || template.previewUrl,
+        previewImage: await safeAuthorize(template.previewImage),
+        previewUrl: await safeAuthorize(template.previewUrl),
       })),
     );
 
     const hydratedRenderedDesigns = await Promise.all(
       (Array.isArray(renderedDesigns) ? renderedDesigns : []).map(async (renderedDesign) => ({
         ...renderedDesign,
-        outputUrl: (await authorizeDesignStudioMediaUrl(renderedDesign.outputUrl)) || renderedDesign.outputUrl,
-        previewUrl: await authorizeDesignStudioMediaUrl(renderedDesign.previewUrl || renderedDesign.outputUrl),
+        outputUrl: await safeAuthorize(renderedDesign.outputUrl),
+        previewUrl: await safeAuthorize(renderedDesign.previewUrl || renderedDesign.outputUrl),
       })),
     );
 
     const hydratedAutoEditorials = await Promise.all(
       (Array.isArray(autoEditorials) ? autoEditorials : []).map(async (editorial) => ({
         ...editorial,
-        renderedImage: (await authorizeDesignStudioMediaUrl(editorial.renderedImage)) || editorial.renderedImage,
+        renderedImage: await safeAuthorize(editorial.renderedImage),
       })),
     );
 
