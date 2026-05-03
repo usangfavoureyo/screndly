@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
-import { AlertTriangle, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ArrowDownWideNarrow, Check, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 import { haptics } from '../utils/haptics';
 import { toast } from 'sonner';
@@ -15,6 +15,12 @@ import { BackIconButton } from './BackIconButton';
 import { OptimizedImage } from './ui/optimized-image';
 import { saveRSSActivitySnapshot } from '../utils/rssOfflineStore';
 import { RSSEditorialBrainReviewPanel } from './rss/RSSEditorialBrainReviewPanel';
+import {
+  BottomSheet,
+  BottomSheetBody,
+  BottomSheetHeader,
+  BottomSheetTitle,
+} from './ui/bottom-sheet';
 import {
   buildEditorialBrainCalibrationSummary,
   buildEditorialBrainPromotionSummary,
@@ -134,6 +140,11 @@ interface RSSActivityViewModel {
 
 type RSSActivitySortOrder = 'recent' | 'oldest';
 
+const RSS_ACTIVITY_SORT_LABELS: Record<RSSActivitySortOrder, string> = {
+  recent: 'Recently Added',
+  oldest: 'Oldest Added',
+};
+
 function getActivityTimeMs(item: RSSActivityItem): number {
   const timestamp = new Date(item.timestamp).getTime();
   return Number.isNaN(timestamp) ? 0 : timestamp;
@@ -145,6 +156,7 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
   const [sortOrder, setSortOrder] = useState<RSSActivitySortOrder>('recent');
+  const [sortSheetOpen, setSortSheetOpen] = useState(false);
   const [editorialFilters, setEditorialFilters] = useState<EditorialBrainReviewFilters>({
     source: 'all',
     disagreement: 'all',
@@ -163,6 +175,12 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
   const itemRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleSortChange = (sort: RSSActivitySortOrder) => {
+    haptics.light();
+    setSortOrder(sort);
+    setSortSheetOpen(false);
+  };
 
   const loadActivity = async () => {
     setIsRefreshing(true);
@@ -492,6 +510,39 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
 
   return (
     <div className="space-y-6">
+      <BottomSheet
+        open={sortSheetOpen}
+        onOpenChange={setSortSheetOpen}
+        heightMode="auto"
+        showHandle
+      >
+        <BottomSheetHeader>
+          <BottomSheetTitle>Sort RSS Activity</BottomSheetTitle>
+        </BottomSheetHeader>
+        <BottomSheetBody className="px-4 pb-6">
+          <div className="rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#333333] dark:bg-[#000000]">
+            {(['recent', 'oldest'] as const).map((option) => {
+              const selected = sortOrder === option;
+
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => handleSortChange(option)}
+                  className={`relative flex w-full items-center gap-2 rounded-sm px-3 py-3 text-left text-sm transition-colors ${
+                    selected
+                      ? 'font-medium text-gray-900 dark:text-white'
+                      : 'text-gray-900 hover:bg-gray-100 dark:text-white dark:hover:bg-[#333333]'
+                  }`}
+                >
+                  <span className="flex-1 truncate">{RSS_ACTIVITY_SORT_LABELS[option]}</span>
+                  {selected ? <Check className="h-4 w-4 text-[#ec1e24]" /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheetBody>
+      </BottomSheet>
       <div>
         <div className="flex items-start gap-4 mb-4">
           <BackIconButton
@@ -757,51 +808,42 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             itemLabel="activity items"
           />
         )}
-        <div className="mb-6 flex flex-wrap items-center gap-2 overflow-x-auto pb-2">
-          <div className="flex gap-2">
-            {[
-              { value: 'all', label: 'All' },
-              { value: 'published', label: 'Published' },
-              { value: 'pending', label: 'Pending' },
-              { value: 'failures', label: 'Failures' },
-            ].map((option) => (
-              <button
-                key={option.value}
-                onClick={() => {
-                  haptics.light();
-                  setFilter(option.value as typeof filter);
-                }}
-                className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === option.value
-                  ? 'bg-[#ec1e24] text-white'
-                  : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
-                  }`}
-              >
-                {option.label}
-              </button>
-            ))}
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <div className="flex gap-2 overflow-x-auto pb-2">
+          {[
+            { value: 'all', label: 'All' },
+            { value: 'published', label: 'Published' },
+            { value: 'pending', label: 'Pending' },
+            { value: 'failures', label: 'Failures' },
+          ].map((option) => (
+            <button
+              key={option.value}
+              onClick={() => {
+                haptics.light();
+                setFilter(option.value as typeof filter);
+              }}
+              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === option.value
+                ? 'bg-[#ec1e24] text-white'
+                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
+                }`}
+            >
+              {option.label}
+            </button>
+          ))}
           </div>
-          <div className="flex gap-2 sm:ml-auto" aria-label="RSS activity sort order">
-            {[
-              { value: 'recent', label: 'Recently Added' },
-              { value: 'oldest', label: 'Oldest Added' },
-            ].map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={sortOrder === option.value}
-                onClick={() => {
-                  haptics.light();
-                  setSortOrder(option.value as RSSActivitySortOrder);
-                }}
-                className={`px-3 py-2 rounded-lg whitespace-nowrap text-sm transition-colors ${sortOrder === option.value
-                  ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#111111] dark:text-[#D1D5DB] dark:hover:bg-[#1F1F1F]'
-                  }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            type="button"
+            onClick={() => {
+              haptics.light();
+              setSortSheetOpen(true);
+            }}
+            className="h-9 w-9 shrink-0 p-0 !bg-white dark:!bg-[#000000] !text-gray-900 dark:!text-white border-gray-300 dark:border-[#333333]"
+            aria-label={`Sort RSS activity. Current: ${RSS_ACTIVITY_SORT_LABELS[sortOrder]}`}
+          >
+            <ArrowDownWideNarrow size={16} className="shrink-0" />
+          </Button>
         </div>
 
         <div className="space-y-3">

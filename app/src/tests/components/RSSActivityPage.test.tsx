@@ -82,6 +82,13 @@ vi.mock('../../components/rss/RSSEditorialBrainReviewPanel', () => ({
   RSSEditorialBrainReviewPanel: () => <div>Review Panel</div>,
 }));
 
+vi.mock('../../components/ui/bottom-sheet', () => ({
+  BottomSheet: ({ open, children }: { open: boolean; children: ReactNode }) => (open ? <div>{children}</div> : null),
+  BottomSheetBody: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetHeader: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  BottomSheetTitle: ({ children }: { children: ReactNode }) => <h2>{children}</h2>,
+}));
+
 vi.mock('../../lib/api/client', () => ({
   apiClient: {
     delete: vi.fn(),
@@ -198,6 +205,7 @@ describe('RSSActivityPage', () => {
 
     expect(getRenderedTitles()).toEqual(['Recent RSS item', 'Older RSS item']);
 
+    fireEvent.click(screen.getByRole('button', { name: /Sort RSS activity/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Oldest Added' }));
 
     expect(getRenderedTitles()).toEqual(['Older RSS item', 'Recent RSS item']);
