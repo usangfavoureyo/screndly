@@ -2608,6 +2608,24 @@ async function buildBackgroundLayer(input: {
       Math.max(0, input.height - targetHeight),
     );
 
+    const srcLeft = Math.max(0, -left);
+    const srcTop = Math.max(0, -top);
+    const dstLeft = Math.max(0, left);
+    const dstTop = Math.max(0, top);
+    const visibleWidth = Math.max(0, Math.min(targetWidth - srcLeft, input.width - dstLeft));
+    const visibleHeight = Math.max(0, Math.min(targetHeight - srcTop, input.height - dstTop));
+    const visibleRegion = visibleWidth > 0 && visibleHeight > 0
+      ? await sharp(resized)
+        .extract({
+          left: Math.floor(srcLeft),
+          top: Math.floor(srcTop),
+          width: Math.floor(visibleWidth),
+          height: Math.floor(visibleHeight),
+        })
+        .png()
+        .toBuffer()
+      : null;
+
     return sharp({
       create: {
         width: input.width,
@@ -2616,11 +2634,11 @@ async function buildBackgroundLayer(input: {
         background: { r: 0, g: 0, b: 0, alpha: 1 },
       },
     })
-      .composite([{
-        input: resized,
-        left,
-        top,
-      }])
+      .composite(visibleRegion ? [{
+        input: visibleRegion,
+        left: dstLeft,
+        top: dstTop,
+      }] : [])
       .png()
       .toBuffer();
   } catch (error) {
