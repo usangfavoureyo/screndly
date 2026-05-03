@@ -14,6 +14,18 @@ test('sanitizeTMDbCaption rejects orphan trailing fragments like Originally.', (
   assert.equal(result.issue, 'orphan_fragment');
 });
 
+test('sanitizeTMDbCaption strips markdown source links and raw URLs', () => {
+  const result = sanitizeTMDbCaption(
+    "'I Saw the TV Glow' released 2 years ago today.\n\nOpened May 3, 2024. ([en.wikipedia.org](https://en.wikipedia.org/wiki/I_Saw_the_TV_Glow?utm_source=openai))",
+  );
+
+  assert.equal(result.isValid, true);
+  assert.match(result.caption, /Opened May 3, 2024\./);
+  assert.doesNotMatch(result.caption, /wikipedia\.org/i);
+  assert.doesNotMatch(result.caption, /https?:\/\//i);
+  assert.doesNotMatch(result.caption, /\]\(/);
+});
+
 test('buildDeterministicTMDbCaption produces a one-or-two paragraph anniversary caption', () => {
   const caption = buildDeterministicTMDbCaption({
     title: 'Dead Ringers',

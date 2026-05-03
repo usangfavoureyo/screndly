@@ -21,6 +21,7 @@ import {
     generateDesignStudioAutoEditorials,
     publishScheduledDesignStudioAutoEditorials,
 } from './design-studio.service';
+import { sanitizeTMDbCaption } from './tmdb-caption-helpers';
 
 const VIDEO_FILE_EXTENSIONS = new Set(['.mp4', '.mov', '.m4v', '.webm', '.avi', '.mkv']);
 const IMAGE_FILE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif']);
@@ -75,6 +76,25 @@ function buildTMDbPromptAlignedFallbackCaption(post: {
     }
 
     return `${title} arrives soon.${castLine}`;
+}
+
+function resolveTMDbPublishCaption(post: {
+    title: string;
+    mediaType: string;
+    moduleType?: string | null;
+    cast?: string[] | null;
+    caption?: string | null;
+}): string {
+    if (isGenericTMDbOutNowCaption(post.caption, post.title)) {
+        return buildTMDbPromptAlignedFallbackCaption(post);
+    }
+
+    const sanitized = sanitizeTMDbCaption(post.caption || '');
+    if (sanitized.isValid && sanitized.caption.trim()) {
+        return sanitized.caption;
+    }
+
+    return buildTMDbPromptAlignedFallbackCaption(post);
 }
 
 const VIDEO_STORAGE_TARGETS: Array<{ bucketTypes: BackblazeBucketType[]; prefixes: string[] }> = [
@@ -874,9 +894,7 @@ export async function initCronJobs() {
                             continue;
                         }
 
-                        const publishCaption = isGenericTMDbOutNowCaption(latestPost.caption, latestPost.title)
-                            ? buildTMDbPromptAlignedFallbackCaption(latestPost)
-                            : latestPost.caption || latestPost.title;
+                        const publishCaption = resolveTMDbPublishCaption(latestPost);
 
                         if (publishCaption !== latestPost.caption) {
                             await updateTMDbPost(latestPost.id, { caption: publishCaption });

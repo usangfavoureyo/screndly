@@ -92,7 +92,7 @@ vi.mock('../../utils/rssOfflineStore', () => ({
   saveRSSActivitySnapshot: vi.fn(),
 }));
 
-function buildItem(): RSSActivityItem {
+function buildItem(overrides: Partial<RSSActivityItem> = {}): RSSActivityItem {
   return {
     id: 'item-1',
     feedId: 'feed-1',
@@ -132,6 +132,7 @@ function buildItem(): RSSActivityItem {
         lastOutcome: 'failed',
       },
     },
+    ...overrides,
   };
 }
 
@@ -164,5 +165,41 @@ describe('RSSActivityPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Show editorial brain monitoring' }));
     expect(screen.getByText('Export JSON')).toBeInTheDocument();
     expect(screen.getByText('Shadow Items')).toBeInTheDocument();
+  });
+
+  it('sorts activity items by recently added and oldest added', async () => {
+    const now = Date.now();
+    getActivityMock.mockResolvedValueOnce({
+      items: [
+        buildItem({
+          id: 'older-item',
+          title: 'Older RSS item',
+          timestamp: new Date(now - 60 * 60 * 1000).toISOString(),
+        }),
+        buildItem({
+          id: 'recent-item',
+          title: 'Recent RSS item',
+          timestamp: new Date(now - 5 * 60 * 1000).toISOString(),
+        }),
+      ],
+      summary: {
+        total: 2,
+        published: 0,
+        pending: 0,
+        failed: 2,
+        filtered: 0,
+      },
+    });
+
+    render(<RSSActivityPage onNavigate={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText('Recent RSS item')).toBeInTheDocument());
+    const getRenderedTitles = () => screen.getAllByText(/RSS item$/).map((element) => element.textContent);
+
+    expect(getRenderedTitles()).toEqual(['Recent RSS item', 'Older RSS item']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Oldest Added' }));
+
+    expect(getRenderedTitles()).toEqual(['Older RSS item', 'Recent RSS item']);
   });
 });

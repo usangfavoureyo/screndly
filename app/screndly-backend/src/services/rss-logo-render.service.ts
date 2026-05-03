@@ -137,7 +137,7 @@ function isDarkSurface(color: RGB): boolean {
   return getRelativeLuminance(color) < 0.22;
 }
 
-function detectLogoColorFamily(accent: RGB): 'red' | 'yellow' | 'gray' | 'light' | 'dark' | 'other' {
+function detectLogoColorFamily(accent: RGB): 'red' | 'yellow' | 'blue_purple' | 'gray' | 'light' | 'dark' | 'other' {
   const { h, s, l } = rgbToHsl(accent);
 
   if (s < 0.14) {
@@ -152,6 +152,10 @@ function detectLogoColorFamily(accent: RGB): 'red' | 'yellow' | 'gray' | 'light'
 
   if (h >= 42 && h <= 72) {
     return 'yellow';
+  }
+
+  if (h >= 190 && h <= 285) {
+    return 'blue_purple';
   }
 
   if (h >= 190 && h <= 245 && s <= 0.24) {
@@ -188,8 +192,9 @@ function pickBestBackgroundColor(accent: RGB): { color: RGB; contrast: number } 
   const colorFamily = detectLogoColorFamily(accent);
   const bestDark = pickHighestContrastCandidate(accent, DARK_SURFACE_CANDIDATES);
   const bestLight = pickHighestContrastCandidate(accent, LIGHT_SURFACE_CANDIDATES);
+  const { l } = rgbToHsl(accent);
 
-  if (colorFamily === 'red' || colorFamily === 'yellow' || colorFamily === 'gray') {
+  if (colorFamily === 'red' || colorFamily === 'yellow' || colorFamily === 'blue_purple' || colorFamily === 'gray') {
     if ((bestLight.contrast - bestDark.contrast) <= LOGO_DARK_BIAS_CONTRAST_TOLERANCE) {
       return bestDark;
     }
@@ -202,6 +207,10 @@ function pickBestBackgroundColor(accent: RGB): { color: RGB; contrast: number } 
 
   if (colorFamily === 'dark') {
     return bestLight;
+  }
+
+  if (l >= 0.48 && bestDark.contrast >= 3) {
+    return bestDark;
   }
 
   return bestLight.contrast > bestDark.contrast ? bestLight : bestDark;

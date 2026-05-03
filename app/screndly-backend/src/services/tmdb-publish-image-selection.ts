@@ -22,6 +22,20 @@ function isRenderedLogoCardUrl(value: string): boolean {
   return value.includes('/rss/logo-cards/');
 }
 
+function inferTMDbImageTypeFromUrl(value: string): string | undefined {
+  const normalized = value.toLowerCase();
+  if (
+    normalized.includes('/tmdb/logo-assets/')
+    || normalized.includes('/rss/logo-cards/')
+    || normalized.includes('trimmed-logo')
+    || /(?:^|[-_/])logo(?:[-_.?/]|$)/i.test(value)
+  ) {
+    return 'logo';
+  }
+
+  return undefined;
+}
+
 export function normalizeTMDbPublishImages(
   input: TMDbPublishImageSelectionInput,
 ): TMDbPublishImageSelectionResult {
@@ -44,9 +58,9 @@ export function normalizeTMDbPublishImages(
     ? input.imageType.trim()
     : 'poster';
   const imageTypes = normalizedImageTypes.length > 0
-    ? normalizedImageTypes
+    ? imageUrls.map((url, index) => normalizedImageTypes[index] || inferTMDbImageTypeFromUrl(url) || fallbackImageType)
     : imageUrls.length > 0
-      ? [fallbackImageType]
+      ? imageUrls.map((url) => inferTMDbImageTypeFromUrl(url) || fallbackImageType)
       : [];
 
   return {

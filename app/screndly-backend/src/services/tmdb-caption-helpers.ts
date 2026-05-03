@@ -30,6 +30,20 @@ function normalizeSpacing(value: string): string {
         .trim();
 }
 
+function stripCaptionLinks(value: string): string {
+    return value
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/gi, '$1')
+        .replace(/\(\s*\[[^\]]+\]\((?:https?:\/\/|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,})[^)\s]*\)\s*/gi, ' ')
+        .replace(/\[[^\]]+\]\((?:https?:\/\/|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,})[^)\s]*\)/gi, ' ')
+        .replace(/\[[^\]]+\]\([^)]+$/gi, ' ')
+        .replace(/\((https?:\/\/[^)]+|www\.[^)]+)\)/gi, '')
+        .replace(/\bhttps?:\/\/\S+/gi, '')
+        .replace(/\bwww\.\S+/gi, '')
+        .replace(/\(([a-z0-9-]+\.)+[a-z]{2,}[^)]*\)/gi, '')
+        .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi, '')
+        .replace(/[([]\s*$/g, '');
+}
+
 function getOrphanParagraphIssue(paragraphs: string[]): string | undefined {
     const lastParagraph = paragraphs[paragraphs.length - 1];
     if (!lastParagraph) {
@@ -49,7 +63,7 @@ function getOrphanParagraphIssue(paragraphs: string[]): string | undefined {
 }
 
 export function sanitizeTMDbCaption(rawCaption: string): TMDbCaptionSanitizeResult {
-    const normalized = normalizeSpacing(rawCaption || '');
+    const normalized = normalizeSpacing(stripCaptionLinks(rawCaption || ''));
     if (!normalized) {
         return { caption: '', isValid: false, issue: 'empty_caption' };
     }

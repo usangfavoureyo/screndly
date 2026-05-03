@@ -101,3 +101,33 @@ test('getTMDbLogoCardDiagnosticsFromBuffer keeps square-card logo sizing comfort
     assert.ok(diagnostics.dimensions.maxWidth <= 620);
     assert.ok(diagnostics.dimensions.maxHeight <= 300);
 });
+
+test('getTMDbLogoCardDiagnosticsFromBuffer keeps pale yellow logos on a dark surface', async () => {
+    const paleYellowLogo = Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="360" viewBox="0 0 1200 360">
+            <rect width="1200" height="360" fill="transparent" />
+            <text x="80" y="235" font-size="180" font-family="Arial" font-weight="700" fill="#e7d990">A MAN IN FULL</text>
+        </svg>
+    `);
+
+    const pngBuffer = await sharp(paleYellowLogo).png().toBuffer();
+    const diagnostics = await getTMDbLogoCardDiagnosticsFromBuffer(pngBuffer, 'logo');
+
+    assert.ok(getColorLuminance(diagnostics.background.startHex) < 0.25);
+    assert.ok(getColorLuminance(diagnostics.background.endHex) < 0.4);
+});
+
+test('getTMDbLogoCardDiagnosticsFromBuffer keeps light blue-purple logos on a dark surface', async () => {
+    const bluePurpleLogo = Buffer.from(`
+        <svg xmlns="http://www.w3.org/2000/svg" width="1300" height="340" viewBox="0 0 1300 340">
+            <rect width="1300" height="340" fill="transparent" />
+            <text x="80" y="225" font-size="160" font-family="Arial" font-weight="700" fill="#a47cff">I SAW THE TV GLOW</text>
+        </svg>
+    `);
+
+    const pngBuffer = await sharp(bluePurpleLogo).png().toBuffer();
+    const diagnostics = await getTMDbLogoCardDiagnosticsFromBuffer(pngBuffer, 'logo');
+
+    assert.ok(getColorLuminance(diagnostics.background.startHex) < 0.25);
+    assert.ok(getColorLuminance(diagnostics.background.endHex) < 0.4);
+});

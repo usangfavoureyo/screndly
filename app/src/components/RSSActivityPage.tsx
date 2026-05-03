@@ -132,11 +132,19 @@ interface RSSActivityViewModel {
   publishSummary: string | null;
 }
 
+type RSSActivitySortOrder = 'recent' | 'oldest';
+
+function getActivityTimeMs(item: RSSActivityItem): number {
+  const timestamp = new Date(item.timestamp).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
 export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPageProps) {
   const { getActivity, retryActivity, saveEditorialBrainReview } = useRSSFeeds();
   const { settings } = useSettings();
   const { showUndo } = useUndo();
   const [filter, setFilter] = useState<'all' | 'failures' | 'published' | 'pending'>('all');
+  const [sortOrder, setSortOrder] = useState<RSSActivitySortOrder>('recent');
   const [editorialFilters, setEditorialFilters] = useState<EditorialBrainReviewFilters>({
     source: 'all',
     disagreement: 'all',
@@ -268,7 +276,11 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
   }).filter(({ item }) => matchesEditorialBrainReviewFilters(item, {
     ...editorialFilters,
     publishOutcome: editorialFilters.publishOutcome === 'all' ? 'all' : editorialFilters.publishOutcome,
-  })).sort((left, right) => compareEditorialBrainReviewPriority(left.item, right.item));
+  })).sort((left, right) => {
+    const timeDelta = getActivityTimeMs(right.item) - getActivityTimeMs(left.item);
+    if (timeDelta !== 0) return sortOrder === 'recent' ? timeDelta : -timeDelta;
+    return compareEditorialBrainReviewPriority(left.item, right.item);
+  });
   const selection = useBulkSelection(filteredItems.map(({ item }) => item.id));
 
   const summary = {
@@ -745,27 +757,51 @@ export function RSSActivityPage({ onNavigate, previousPage }: RSSActivityPagePro
             itemLabel="activity items"
           />
         )}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {[
-            { value: 'all', label: 'All' },
-            { value: 'published', label: 'Published' },
-            { value: 'pending', label: 'Pending' },
-            { value: 'failures', label: 'Failures' },
-          ].map((option) => (
-            <button
-              key={option.value}
-              onClick={() => {
-                haptics.light();
-                setFilter(option.value as typeof filter);
-              }}
-              className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === option.value
-                ? 'bg-[#ec1e24] text-white'
-                : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
-                }`}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="mb-6 flex flex-wrap items-center gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2">
+            {[
+              { value: 'all', label: 'All' },
+              { value: 'published', label: 'Published' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'failures', label: 'Failures' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                onClick={() => {
+                  haptics.light();
+                  setFilter(option.value as typeof filter);
+                }}
+                className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${filter === option.value
+                  ? 'bg-[#ec1e24] text-white'
+                  : 'bg-white dark:bg-[#000000] text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-[#1F1F1F]'
+                  }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 sm:ml-auto" aria-label="RSS activity sort order">
+            {[
+              { value: 'recent', label: 'Recently Added' },
+              { value: 'oldest', label: 'Oldest Added' },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={sortOrder === option.value}
+                onClick={() => {
+                  haptics.light();
+                  setSortOrder(option.value as RSSActivitySortOrder);
+                }}
+                className={`px-3 py-2 rounded-lg whitespace-nowrap text-sm transition-colors ${sortOrder === option.value
+                  ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-[#111111] dark:text-[#D1D5DB] dark:hover:bg-[#1F1F1F]'
+                  }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-3">

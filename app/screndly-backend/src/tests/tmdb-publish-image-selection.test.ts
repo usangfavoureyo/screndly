@@ -49,6 +49,26 @@ test('renders logo slot into a publish-ready logo card while keeping separate TM
   assert.equal(result.imageUrl, 'https://example.com/backdrop.jpg');
 });
 
+test('infers missing logo image types from prepared TMDb logo URLs', async () => {
+  const result = await resolveTMDbPublishImages({
+    imageUrl: 'https://example.com/backdrop.jpg',
+    imageType: 'backdrop',
+    imageUrls: [
+      'https://example.com/backdrop.jpg',
+      'https://f005.backblazeb2.com/file/Screndly/tmdb/logo-assets/example-trimmed-logo.png',
+    ],
+    imageTypes: ['backdrop'],
+  }, {
+    renderLogoCard: async (sourceUrl) => `https://example.com/rendered-logo-card.png?source=${encodeURIComponent(sourceUrl)}`,
+  });
+
+  assert.deepEqual(result.imageTypes, ['backdrop', 'logo']);
+  assert.deepEqual(result.imageUrls, [
+    'https://example.com/backdrop.jpg',
+    'https://example.com/rendered-logo-card.png?source=https%3A%2F%2Ff005.backblazeb2.com%2Ffile%2FScrendly%2Ftmdb%2Flogo-assets%2Fexample-trimmed-logo.png',
+  ]);
+});
+
 test('does not re-render an already prepared TMDb logo card asset', async () => {
   let renderCount = 0;
 
