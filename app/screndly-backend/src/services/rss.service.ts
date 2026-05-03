@@ -462,6 +462,7 @@ interface RSSRuntimeSettings {
   dailyQuotaThreads: number;
   dailyQuotaFacebook: number;
   dailyQuotaPinterest: number;
+  rssPinterestBoard?: string;
   quietHoursEnabled: boolean;
   quietHoursStart: number;
   quietHoursEnd: number;
@@ -561,6 +562,7 @@ const RSS_SETTINGS_KEYS = [
   'dailyQuotaThreads',
   'dailyQuotaFacebook',
   'dailyQuotaPinterest',
+  'rssPinterestBoard',
   'quietHoursEnabled',
   'quietHoursStart',
   'quietHoursEnd',
@@ -5982,6 +5984,7 @@ async function getRuntimeSettings(): Promise<RSSRuntimeSettings> {
     dailyQuotaThreads: Math.max(1, asNumber(settingsMap.get('dailyQuotaThreads'), 100) || 100),
     dailyQuotaFacebook: Math.max(1, asNumber(settingsMap.get('dailyQuotaFacebook'), 25) || 25),
     dailyQuotaPinterest: Math.max(1, asNumber(settingsMap.get('dailyQuotaPinterest'), 100) || 100),
+    rssPinterestBoard: asString(settingsMap.get('rssPinterestBoard')),
     quietHoursEnabled: asBoolean(settingsMap.get('quietHoursEnabled'), true),
     quietHoursStart: Math.max(0, Math.min(23, asNumber(settingsMap.get('quietHoursStart'), 0) || 0)),
     quietHoursEnd: Math.max(0, Math.min(23, asNumber(settingsMap.get('quietHoursEnd'), 7) || 7)),
@@ -7164,7 +7167,8 @@ function buildRSSPublishPayload(
     imageCount?: string | null;
     platformImageCounts?: PlatformImageCounts | Prisma.JsonValue | null;
   },
-  platforms: string[]
+  platforms: string[],
+  settings?: RSSRuntimeSettings
 ) {
   const sanitizedCaption = sanitizeRSSCaptionText(caption);
   const { platformImageCounts } = getRSSPublishImagePlan(feed, platforms);
@@ -7195,6 +7199,7 @@ function buildRSSPublishPayload(
     link: item.link,
     imageUrls,
     imageUrl: imageUrls[0],
+    pinterestBoardId: settings?.rssPinterestBoard,
     platformOverrides,
   };
 }
@@ -7601,7 +7606,7 @@ async function attemptRSSPublish(
     });
     const publishResults = await publisherService.publish(
       remainingPlatforms,
-      buildRSSPublishPayload(item, caption, resolvedPublishImageUrls, feed, remainingPlatforms)
+      buildRSSPublishPayload(item, caption, resolvedPublishImageUrls, feed, remainingPlatforms, runtimeSettings)
     );
     console.log('[RSS][Publish] Completed platform publish batch', {
       feedId: feed.id,

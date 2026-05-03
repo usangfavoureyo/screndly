@@ -657,6 +657,8 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
         } = parsedContent;
         const text = asNonEmptyString(parsedContent?.text) || '';
         const link = asNonEmptyString(parsedContent?.link);
+        const pinterestRequestedBoard = asNonEmptyString(parsedContent?.pinterestBoardId)
+            || asNonEmptyString(parsedContent?.pinterestBoardName);
         const youtubePlaylists = Array.isArray(parsedContent?.youtubePlaylistIds)
             ? parsedContent.youtubePlaylistIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0)
             : typeof parsedContent?.youtubePlaylistIds === 'string'
@@ -1054,6 +1056,21 @@ router.post('/post', authenticate, upload.single('mediaFile'), async (req, res) 
                             const metadata = getJsonObject(connection.metadata);
                             let boardId = getJsonString(metadata, 'boardId');
                             let boardName = getJsonString(metadata, 'boardName');
+
+                            if (pinterestRequestedBoard && pinterestRequestedBoard !== boardId) {
+                                if (pinterestRequestedBoard === boardName && boardId) {
+                                    // Keep existing metadata board id when legacy settings store the board name.
+                                } else {
+                                    const boardsResponse = await pinterestService.getBoards(connection.accessToken);
+                                    const matchedBoard = Array.isArray(boardsResponse?.items)
+                                        ? boardsResponse.items.find((board: any) => board?.id === pinterestRequestedBoard || board?.name === pinterestRequestedBoard)
+                                        : null;
+                                    if (matchedBoard?.id) {
+                                        boardId = matchedBoard.id;
+                                        boardName = matchedBoard.name || boardName;
+                                    }
+                                }
+                            }
 
                             if (!boardId) {
                                 const boardsResponse = await pinterestService.getBoards(connection.accessToken);

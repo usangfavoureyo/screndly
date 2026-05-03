@@ -265,6 +265,9 @@ export interface Settings {
   designStudioPinterestTitlePrompt?: string;
   designStudioPinterestDescriptionPrompt?: string;
   designStudioPinterestBoardPrompt?: string;
+  designStudioDefaultPinterestBoard?: string;
+  designStudioPinterestLinkStrategy?: string;
+  designStudioPinterestDefaultLink?: string;
   designStudioAutoEnabled?: boolean;
   designStudioAutoPost?: boolean;
   designStudioDefaultAutoTemplateId?: string | null;
@@ -295,6 +298,9 @@ export interface Settings {
   videoStudioPinterestTitlePrompt?: string;
   videoStudioPinterestDescriptionPrompt?: string;
   videoStudioPinterestBoardPrompt?: string;
+  videoStudioDefaultPinterestBoard?: string;
+  videoStudioPinterestLinkStrategy?: string;
+  videoStudioPinterestDefaultLink?: string;
   videoStudioLogLevel?: string;
 
   // Video Studio - Web Search for AI Assist
@@ -638,6 +644,9 @@ function getDefaultSettings(): Settings {
     designStudioMinimumScoreThreshold: 55,
     designStudioTargetPlatforms: ['x', 'threads'],
     designStudioAutoUpdatedAt: new Date().toISOString(),
+    designStudioDefaultPinterestBoard: '',
+    designStudioPinterestLinkStrategy: 'tmdb',
+    designStudioPinterestDefaultLink: '',
     renderQuality: 'high',
     exportFormat: 'jpeg',
     jpegQuality: 90,
@@ -650,6 +659,9 @@ function getDefaultSettings(): Settings {
     videoStudioPinterestTitlePrompt: '',
     videoStudioPinterestDescriptionPrompt: '',
     videoStudioPinterestBoardPrompt: '',
+    videoStudioDefaultPinterestBoard: '',
+    videoStudioPinterestLinkStrategy: 'youtube',
+    videoStudioPinterestDefaultLink: '',
 
     // PAD
     padChatModel: DEFAULT_MODELS.pad,

@@ -2323,6 +2323,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         text: caption,
         title: publishTarget.title,
         imageUrl: publishTarget.outputUrl,
+        pinterestBoardId: platforms.pinterest ? (settings as any).designStudioDefaultPinterestBoard : undefined,
       });
 
       if (!result.success || !result.data) {

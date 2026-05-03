@@ -32,6 +32,8 @@ export interface PublishContent {
     youtubeTitle?: string;
     youtubeDescription?: string;
     youtubePlaylistIds?: string[];
+    pinterestBoardId?: string;
+    pinterestBoardName?: string;
 }
 
 export interface PublishResult {

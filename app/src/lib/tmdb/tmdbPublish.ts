@@ -1,5 +1,5 @@
 import { publishContent, type PlatformSelection, type PublishResult } from '../api/platforms';
-import { getEnabledPlatforms } from './tmdbSettingsService';
+import { getEnabledPlatforms, getTMDbSettings } from './tmdbSettingsService';
 import { getFeedTypeFromSource } from '../../utils/tmdbCaptionGenerator';
 import { type TMDbPlatformResultRecord } from './activityStatus';
 
@@ -98,6 +98,24 @@ function toPlatformSelection(platformKeys: TMDbPlatformKey[]): PlatformSelection
     };
 }
 
+function getPinterestBoardForSource(source: TMDbSource): string | undefined {
+    const settings = getTMDbSettings();
+    const feedType = getFeedTypeFromSource(source);
+
+    switch (feedType) {
+        case 'today':
+            return settings.todayPinterestBoard || undefined;
+        case 'weekly':
+            return settings.weeklyPinterestBoard || undefined;
+        case 'monthly':
+            return settings.monthlyPinterestBoard || undefined;
+        case 'anniversary':
+            return settings.anniversaryPinterestBoard || undefined;
+        default:
+            return undefined;
+    }
+}
+
 function formatFailedResults(results: any[] = []): Array<{ platform: string; error: string }> {
     return results
         .filter((result) => result?.status !== 'posted')
@@ -157,6 +175,7 @@ export async function publishTMDbPost(
             imageUrls: Array.isArray(post.imageUrls) && post.imageUrls.length > 0 ? post.imageUrls : undefined,
             imageTypes: Array.isArray(post.imageTypes) && post.imageTypes.length > 0 ? post.imageTypes : undefined,
             imageStyle: post.imageStyle || undefined,
+            pinterestBoardId: platformKeys.includes('pinterest') ? getPinterestBoardForSource(post.source) : undefined,
         }
     );
 

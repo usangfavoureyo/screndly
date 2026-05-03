@@ -1388,6 +1388,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         text: caption || publishTarget.caption || publishTarget.templateName,
         title: publishTarget.templateName,
         imageUrl: publishTarget.outputUrl,
+        pinterestBoardId: platforms.pinterest ? (settings as any).designStudioDefaultPinterestBoard : undefined,
       });
 
       if (!result.success || !result.data) {
@@ -1560,6 +1561,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         text: editorial.caption,
         title: editorial.headerText,
         imageUrl: editorial.renderedImage,
+        pinterestBoardId: platforms.pinterest ? (settings as any).designStudioDefaultPinterestBoard : undefined,
       });
 
       if (!result.success || !result.data) {

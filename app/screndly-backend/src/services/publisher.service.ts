@@ -27,6 +27,8 @@ export interface PublishContent {
     imagePath?: string;
     videoUrls?: string[];
     videoUrl?: string; // For platforms that support URL (TikTok)
+    pinterestBoardId?: string;
+    pinterestBoardName?: string;
     platformOverrides?: Partial<Record<string, Partial<Omit<PublishContent, 'platformOverrides'>>>>;
 }
 
@@ -175,6 +177,41 @@ const X_PUBLISH_LEDGER_CATEGORY = 'x_publish_success';
 const X_PUBLISH_LEDGER_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export class PublisherService {
+    private getMetadataString(metadata: unknown, key: string): string | undefined {
+        if (!metadata || typeof metadata !== 'object') {
+            return undefined;
+        }
+
+        const value = (metadata as Record<string, unknown>)[key];
+        return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+    }
+
+    private async resolvePinterestBoardId(
+        requestedBoard: string | undefined,
+        accessToken: string,
+        metadata: unknown,
+    ): Promise<string | undefined> {
+        const metadataBoardId = this.getMetadataString(metadata, 'boardId') || this.getMetadataString(metadata, 'defaultBoardId');
+        const metadataBoardName = this.getMetadataString(metadata, 'boardName') || this.getMetadataString(metadata, 'defaultBoardName');
+        const requested = requestedBoard?.trim();
+
+        if (!requested) {
+            return metadataBoardId;
+        }
+
+        if (requested === metadataBoardId || requested === metadataBoardName) {
+            return metadataBoardId || requested;
+        }
+
+        const boardsResponse = await pinterestService.getBoards(accessToken);
+        const boards = Array.isArray(boardsResponse?.items) ? boardsResponse.items : [];
+        const matchedBoard = boards.find((board: any) => (
+            board?.id === requested || board?.name === requested
+        ));
+
+        return matchedBoard?.id || requested;
+    }
+
     private normalizeRemoteMediaUrl(value: string): string {
         try {
             const parsed = new URL(value.trim());
@@ -1916,8 +1953,11 @@ export class PublisherService {
 
                         case 'Pinterest':
                             if (connection.accessToken) {
-                                // Use options boardId OR settings default
-                                const boardId = options.pinterestBoardId || (connection.metadata as any)?.boardId || (connection.metadata as any)?.defaultBoardId;
+                                const boardId = await this.resolvePinterestBoardId(
+                                    options.pinterestBoardId || platformContent.pinterestBoardId || platformContent.pinterestBoardName,
+                                    connection.accessToken,
+                                    connection.metadata,
+                                );
 
                                 if (boardId && (primaryImageUrl || localVideoFile)) {
                                     const pinResult = localVideoFile

@@ -124,6 +124,9 @@ const DESIGN_STUDIO_BACKEND_KEYS = [
   'designStudioPinterestTitlePrompt',
   'designStudioPinterestDescriptionPrompt',
   'designStudioPinterestBoardPrompt',
+  'designStudioDefaultPinterestBoard',
+  'designStudioPinterestLinkStrategy',
+  'designStudioPinterestDefaultLink',
   'designStudioAutoEnabled',
   'designStudioAutoPost',
   'designStudioDefaultAutoTemplateId',
@@ -149,6 +152,9 @@ const VIDEO_STUDIO_BACKEND_KEYS = [
   'videoStudioPinterestTitlePrompt',
   'videoStudioPinterestDescriptionPrompt',
   'videoStudioPinterestBoardPrompt',
+  'videoStudioDefaultPinterestBoard',
+  'videoStudioPinterestLinkStrategy',
+  'videoStudioPinterestDefaultLink',
 ] as const;
 
 const THUMBNAIL_BACKEND_KEYS = [

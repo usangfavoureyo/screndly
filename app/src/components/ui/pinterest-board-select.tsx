@@ -21,6 +21,8 @@ export function PinterestBoardSelect({
 }: PinterestBoardSelectProps) {
   const [boards, setBoards] = useState<PinterestBoard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const selectedBoard = boards.find((board) => board.id === value || board.name === value);
+  const selectedValue = selectedBoard?.id || value;
 
   useEffect(() => {
     let cancelled = false;
@@ -44,7 +46,7 @@ export function PinterestBoardSelect({
 
   return (
     <Select
-      value={value}
+      value={selectedValue}
       onValueChange={(newValue) => {
         haptics.light();
         onChange(newValue);
@@ -52,24 +54,25 @@ export function PinterestBoardSelect({
     >
       <SelectTrigger
         id={id}
+        disabled={isLoading || boards.length === 0}
         className={className || 'bg-white dark:bg-[#000000] border-gray-200 dark:border-[#333333] text-gray-900 dark:text-white mt-1'}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent className="max-h-[300px]">
         {isLoading ? (
-          <SelectItem value="loading" disabled>
+          <SelectItem value="loading">
             <div className="flex w-full items-center justify-center py-1">
               <RedSpinner size="sm" label="Loading Pinterest boards..." />
             </div>
           </SelectItem>
         ) : boards.length === 0 ? (
-          <SelectItem value="no-boards" disabled>
+          <SelectItem value="no-boards">
             No boards found
           </SelectItem>
         ) : (
           boards.map((board) => (
-            <SelectItem key={board.id} value={board.name}>
+            <SelectItem key={board.id} value={board.id}>
               <div className="flex items-center justify-between w-full">
                 <span>{board.name}</span>
                 {board.pin_count !== undefined && (

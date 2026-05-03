@@ -1394,6 +1394,7 @@ export function VideoStudioPage({ onNavigate, onCaptionEditorChange }: VideoStud
       {
         text: generatedCaption,
         title: videoTitle,
+        pinterestBoardId: selectedPlatforms.pinterest ? (settings as any).videoStudioDefaultPinterestBoard : undefined,
       },
       mediaFile
     ).then(result => {
