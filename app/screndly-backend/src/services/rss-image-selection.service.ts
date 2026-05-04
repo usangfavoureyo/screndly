@@ -5835,7 +5835,10 @@ export async function resolveRelevantRSSImages(
     canonicalFlags.has('story_policy_entertainment_business_person_first') ||
     canonicalFlags.has('story_family_person_commentary_on_project') ||
     canonicalFlags.has('editorial_brain_image_strategy_person_first') ||
-    canonicalFlags.has('article_family_person_interview_or_reaction');
+    canonicalFlags.has('article_family_person_interview_or_reaction') ||
+    canonicalFlags.has('story_policy_project_visual_anchor') ||
+    canonicalFlags.has('story_policy_article_image_first') ||
+    canonicalFlags.has('story_policy_force_project_first_image');
   if (article.canonicalEntity?.ambiguityFlags?.includes('rss_family_no_tmdb_project') && !allowNonProjectPersonFirstResolution) {
     return [];
   }

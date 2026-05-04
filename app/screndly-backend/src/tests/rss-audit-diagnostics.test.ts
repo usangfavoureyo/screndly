@@ -3998,3 +3998,73 @@ test('project-update and streaming stories can use explicit article feed fallbac
 
   assert.equal(canUseExplicitFeedFallback(streaming, { role: 'project', intent: 'still', subject: 'Practical Magic' } as any), true);
 });
+
+test('final caption handoff rebuilds empty fallback result when canonical and brain facts exist', () => {
+  const item = {
+    title: "Stephen Colletti Says Returning To 'Laguna Beach' For Roku Reunion Was A Full Circle Moment",
+    description: 'Stephen Colletti was a teenager when he became one of the stars of MTV reality series Laguna Beach.',
+    contentHtml: '<p>Stephen Colletti reflected on returning to Laguna Beach for a Roku reunion during Reality TV Summit.</p>',
+    editorialBrain: {
+      decision: {
+        primary_entity: 'Stephen Colletti',
+        secondary_entities: ['Laguna Beach'],
+        event: 'interview_quote',
+        story_family: 'person_commentary',
+        caption_strategy: { mode: 'person_commentary' },
+        caption_facts: { headline_fact: '', supporting_fact: '' },
+      },
+    },
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+  const context = {
+    articleTitle: item.title,
+    feedName: 'Deadline',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: canonical.allowedEntities || [],
+    editorialBrain: item.editorialBrain,
+  } as any;
+  const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+    caption: '',
+    path: 'excerpt_fallback',
+    source: 'fallback',
+  } as any, 280);
+
+  assert.ok(result.caption.trim());
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.doesNotMatch(result.caption, /has a new entertainment update|latest entertainment industry update/i);
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
+});
+
+test('runtime image resolution promotes stored article preview image for article-image-first lanes', async () => {
+  const item = {
+    title: 'TF1, Netflix Team on WWII Drama Jackdaws',
+    description: 'TF1 and Netflix have teamed on Jackdaws, a premium WWII drama.',
+    contentHtml: '<p>Jackdaws is a premium WWII drama based on Ken Follett.</p>',
+    imageUrls: [],
+    selectedImages: [{ url: 'https://example.com/jackdaws-feed.jpg', source: 'feed', reason: 'Explicit article/feed fallback image' }],
+    canonicalEntity: {
+      primarySubject: 'Jackdaws',
+      mediaTitle: 'Jackdaws',
+      entityType: 'tv',
+      eventType: 'project_announcement',
+      confidence: 0.9,
+      allowedEntities: ['Jackdaws'],
+      ambiguityFlags: ['rss_family_no_tmdb_project', 'story_policy_article_image_first', 'story_policy_project_visual_anchor'],
+    },
+  } as any;
+
+  const images = await __rssAuditTestUtils.resolveRSSItemImages({
+    serperEnabled: false,
+    tmdbEnabled: false,
+    openaiWebSearchEnabled: false,
+    serperPriority: false,
+    imageCount: 'single',
+  } as any, item, 1, { rssOpenaiWebSearchEnabled: false } as any);
+
+  assert.equal(images.length, 1);
+  assert.equal(images[0]?.url, 'https://example.com/jackdaws-feed.jpg');
+  assert.equal(images[0]?.source, 'feed');
+});

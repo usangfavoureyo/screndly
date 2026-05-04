@@ -103,7 +103,14 @@ function buildRSSRuntimeBrainCaptionRecovery(
   const storyFamily = String(decision?.story_family || decision?.storyFamily || '').trim().toLowerCase();
   const strategySource = decision?.caption_strategy || decision?.captionStrategy;
   const strategy = String(typeof strategySource === 'string' ? strategySource : strategySource?.mode || '').trim().toLowerCase();
-  const project = formatRSSRuntimeFallbackTitle(canonicalEntity.mediaTitle || primary);
+  const rawProject = canonicalEntity.mediaTitle || (canonicalEntity.entityType !== 'person' ? primary : '') || secondaryEntities[0] || canonicalEntity.secondarySubject || '';
+  const project = formatRSSRuntimeFallbackTitle(rawProject);
+  const supportingProject = formatRSSRuntimeFallbackTitle(
+    secondaryEntities.find((entry) => normalizeRSSDedupeValue(entry) !== normalizeRSSDedupeValue(primary)) ||
+    canonicalEntity.secondarySubject ||
+    canonicalEntity.mediaTitle ||
+    ''
+  );
   const person = secondaryEntities[0] || canonicalEntity.secondarySubject || canonicalEntity.namedPeople?.[0] || '';
   const factLead = sanitizeRSSCaptionText(String(
     decision?.caption_facts?.headline_fact ||
@@ -126,7 +133,7 @@ function buildRSSRuntimeBrainCaptionRecovery(
   } else if (event === 'cancellation' || storyFamily === 'cancellation') {
     caption = buildRSSRuntimeEditorialCaption(`${project || primary} has been canceled.`, item);
   } else if (event === 'casting' || storyFamily === 'casting' || strategy === 'casting') {
-    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} has joined ${project}.` : project ? `${project} has added new cast.` : '', item);
+    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} has joined ${project}.` : project ? `${project} has a casting update.` : primary ? `${primary} has a casting update.` : '', item);
   } else if (event === 'trailer' || storyFamily === 'trailer' || strategy === 'trailer') {
     caption = buildRSSRuntimeEditorialCaption(project ? `New trailer released for ${project}.` : '', item);
   } else if (event === 'release_date' || storyFamily === 'release_date' || event === 'release_date_set') {
@@ -142,17 +149,39 @@ function buildRSSRuntimeBrainCaptionRecovery(
   } else if (event === 'director_attachment' || event === 'writer_attachment' || event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival' || event === 'reboot_update' || event === 'project_update' || event === 'franchise_update') {
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward with a new project update.` : primary ? `${primary} is moving forward with a new project update.` : '', item);
   } else if (event === 'interview_quote' || event === 'reflection' || event === 'person_commentary' || strategy === 'person_commentary') {
-    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} shared new comments in an entertainment interview.` : '', item);
+    caption = buildRSSRuntimeEditorialCaption(
+      primary && supportingProject
+        ? `${primary} reflected on ${supportingProject}.`
+        : primary && person && normalizeRSSDedupeValue(primary) !== normalizeRSSDedupeValue(person)
+          ? `${primary} discussed ${person}.`
+          : primary
+            ? `${primary} reflected on the story.`
+            : '',
+      item
+    );
   } else if (event === 'obituary' || storyFamily === 'obituary' || strategy === 'obituary') {
     caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} has died.` : '', item);
   }
 
   const normalizedCaption = sanitizeRSSCaptionText(caption, 280);
-  const quality = evaluateRSSCaptionEditorialQuality(normalizedCaption, context);
+  const recoveryAllowedEntities = Array.from(new Set([
+    ...(context.allowedEntities || []),
+    primary,
+    ...secondaryEntities,
+    canonicalEntity.primarySubject,
+    canonicalEntity.secondarySubject,
+    canonicalEntity.mediaTitle,
+    ...(canonicalEntity.allowedEntities || []),
+  ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)));
+  const recoveryContext: RSSContext = {
+    ...context,
+    allowedEntities: recoveryAllowedEntities,
+  };
+  const quality = evaluateRSSCaptionEditorialQuality(normalizedCaption, recoveryContext);
   if (
     !normalizedCaption.trim() ||
-    getRSSCaptionHardInvalidReasonCodes(normalizedCaption, context).length > 0 ||
-    failsRSSCaptionFormatting(normalizedCaption, context) ||
+    getRSSCaptionHardInvalidReasonCodes(normalizedCaption, recoveryContext).length > 0 ||
+    failsRSSCaptionFormatting(normalizedCaption, recoveryContext) ||
     !quality.allowedForAutopublish
   ) {
     return undefined;
@@ -163,6 +192,62 @@ function buildRSSRuntimeBrainCaptionRecovery(
     path: 'brain_rebuilt_caption',
     source: 'editorial_brain_facts',
     usedEditorialBrainFacts: true,
+  };
+}
+
+function recoverRSSCaptionResultAfterSanitization(
+  item: RSSItem,
+  canonicalEntity: RSSCanonicalEntity,
+  context: RSSContext,
+  currentResult: {
+    caption: string;
+    path: RSSCaptionGenerationPath;
+    source?: RSSCaptionGenerationSource;
+    usedEditorialBrainFacts?: boolean;
+    usedPublisherSafeRebuild?: boolean;
+  },
+  maxLength?: number
+): {
+  caption: string;
+  path: RSSCaptionGenerationPath;
+  source?: RSSCaptionGenerationSource;
+  usedEditorialBrainFacts?: boolean;
+  usedPublisherSafeRebuild?: boolean;
+} {
+  const sanitized = sanitizeRSSCaptionText(currentResult.caption, maxLength);
+  const initialValidation = validateRSSFinalPublishState(sanitized, [{ url: 'https://example.com/rss-caption-probe.jpg', source: 'feed', reason: 'caption recovery probe' }], canonicalEntity, currentResult.path, {
+    articleTitle: context.articleTitle,
+    feedName: context.feedName,
+    summary: context.summary,
+    articleBody: context.articleBody,
+    articleContentHtml: context.articleContentHtml,
+    allowedEntities: context.allowedEntities,
+  });
+  const captionOnlyFailureCodes = initialValidation.reasonCodes.filter((code) => !code.startsWith('IMAGE_'));
+  const shouldRecover =
+    !sanitized.trim() ||
+    captionOnlyFailureCodes.includes('CAPTION_EMPTY') ||
+    captionOnlyFailureCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK') ||
+    captionOnlyFailureCodes.includes('CAPTION_EDITORIAL_QUALITY_TOO_LOW');
+
+  if (!shouldRecover) {
+    return {
+      ...currentResult,
+      caption: sanitized,
+    };
+  }
+
+  const recovered = buildRSSRuntimeBrainCaptionRecovery(item, canonicalEntity, context);
+  if (recovered) {
+    return {
+      ...recovered,
+      caption: sanitizeRSSCaptionText(recovered.caption, maxLength),
+    };
+  }
+
+  return {
+    ...currentResult,
+    caption: sanitized,
   };
 }
 
@@ -2612,6 +2697,11 @@ function extractRSSLeadPersonCandidate(item: Pick<RSSItem, 'title' | 'descriptio
   ].filter(Boolean);
 
   for (const source of sources) {
+    const returningCommentaryLead = source.match(/^([A-Z][A-Za-z'.-]+\s+[A-Z][A-Za-z'.-]+)\s+(?:says?|said)\s+returning\b/i);
+    if (returningCommentaryLead?.[1] && looksLikeRSSValidPersonName(returningCommentaryLead[1])) {
+      return returningCommentaryLead[1];
+    }
+
     const titleAnchored =
       source.match(/^([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:says?|said|joins?|joined|strikes?|lands?|boards?|talks about|reacts?|addresses|opens up|felt|feels|reflects|reflected|in talks\b|to star\b))/i)
       || source.match(/\b([A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){1,2})(?=\s+(?:has joined|joined|is in talks|will star|strikes an overall deal|strikes overall deal|spoke to|recently spoke|talked to|reflected on))/i);
@@ -2622,6 +2712,14 @@ function extractRSSLeadPersonCandidate(item: Pick<RSSItem, 'title' | 'descriptio
   }
 
   return undefined;
+}
+
+function extractRSSHeadlineLeadPersonCandidate(title?: string | null): string | undefined {
+  const normalizedTitle = sanitizeRSSPlainText(title || '').replace(/\s+/g, ' ').trim();
+  const match = normalizedTitle.match(/^([A-Z][A-Za-z'.-]+\s+[A-Z][A-Za-z'.-]+)\s+(?:says?|said|joins?|joined|returns?|returning|reflects?|reflected|opens up|talks about|reacts?|addresses)\b/i);
+  return match?.[1] && looksLikeRSSValidPersonName(match[1])
+    ? match[1]
+    : undefined;
 }
 
 function extractRSSEarlyProjectQuotedTitle(item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>): string | undefined {
@@ -2696,7 +2794,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     .filter((entry): entry is string => Boolean(entry));
   const initialPrimarySubject = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.primary_subject);
   const initialMediaTitle = sanitizeRSSCanonicalEntityValue(projectAnchorOverride || extraction.media_title);
-  const leadPersonCandidate = extractRSSLeadPersonCandidate(item);
+  const leadPersonCandidate = extractRSSLeadPersonCandidate(item) || extractRSSHeadlineLeadPersonCandidate(item.title);
   const obituaryPrimarySubject = extraction.event_type === 'obituary'
     ? namedPeople[0] || initialPrimarySubject
     : undefined;
@@ -2786,6 +2884,11 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
     (
       !primarySubject ||
       !looksLikeRSSValidPersonName(primarySubject) ||
+      (
+        Boolean(primarySubject) &&
+        normalizeRSSDedupeValue(primarySubject) !== normalizeRSSDedupeValue(leadPersonCandidate) &&
+        normalizeRSSDedupeValue(primarySubject).includes(normalizeRSSDedupeValue(leadPersonCandidate || ''))
+      ) ||
       (
         Boolean(primarySubject) &&
         extractStrictRSSQuotedSubjects(item.title || '').some((entry) => normalizeRSSDedupeValue(entry) === normalizeRSSDedupeValue(primarySubject)) &&
@@ -5980,6 +6083,9 @@ function buildRSSCaptionAllowedEntities(item: RSSItem, images: RSSResolvedImage[
     item.canonicalEntity?.secondarySubject,
     item.canonicalEntity?.mediaTitle,
     item.canonicalEntity?.franchise,
+    item.editorialBrain?.decision?.primary_entity,
+    item.editorialBrain?.decision?.caption_strategy?.lead_subject,
+    ...(item.editorialBrain?.decision?.secondary_entities || []),
     ...extractQuotedRSSCaptionEntities(item.title || ''),
     ...extractQuotedRSSCaptionEntities(item.description || ''),
     ...extractNamedRSSCaptionEntities(item.title || ''),
@@ -7492,6 +7598,13 @@ async function attemptRSSPublish(
         captionResult = recoveredCaptionResult;
       }
     }
+    captionResult = recoverRSSCaptionResultAfterSanitization(
+      item,
+      canonicalEntity,
+      captionContext,
+      captionResult,
+      runtimeSettings.rssCaptionMaxLength
+    );
     const caption = sanitizeRSSCaptionText(captionResult.caption, runtimeSettings.rssCaptionMaxLength);
     item.generatedCaption = caption;
     item.captionGenerationPath = captionResult.path;
@@ -9419,8 +9532,7 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
     speculationAssessment,
     promotedCaptionStrategy,
   });
-  const captionResult = await aiService.generateRSSCaptionResult(
-    {
+  const previewCaptionContext: RSSContext = {
       articleTitle: previewItem.title,
       feedName: feed.name,
       summary: sanitizeRSSPlainText(previewItem.description),
@@ -9431,10 +9543,19 @@ async function previewFeedPipeline(feedId: string): Promise<RSSPipelinePreview> 
       allowedEntities: buildRSSCaptionAllowedEntities(previewItem, resolvedImages),
       canonicalEntity: previewItem.canonicalEntity,
       editorialBrain: previewItem.editorialBrain,
-    },
+  };
+  let captionResult = await aiService.generateRSSCaptionResult(
+    previewCaptionContext,
     normalizeAIModel(runtimeSettings.rssCaptionModel),
     systemPrompt,
     runtimeSettings.rssCaptionTemperature
+  );
+  captionResult = recoverRSSCaptionResultAfterSanitization(
+    previewItem,
+    previewItem.canonicalEntity,
+    previewCaptionContext,
+    captionResult,
+    runtimeSettings.rssCaptionMaxLength
   );
   const sanitizedCaption = sanitizeRSSCaptionText(captionResult.caption, runtimeSettings.rssCaptionMaxLength);
   console.log('[RSS][CaptionPath][Preview]', {
@@ -10087,6 +10208,7 @@ export const __rssAuditTestUtils = {
   selectRSSEditorialBrainPromotedCaptionStrategy,
   canReuseStoredRSSCaption,
   buildRSSRuntimeBrainCaptionRecovery,
+  recoverRSSCaptionResultAfterSanitization,
   getRSSCanonicalEntityRuntimeState,
   buildRSSNewsEventFingerprint,
   areRSSNewsEventsSimilar,
