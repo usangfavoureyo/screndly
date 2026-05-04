@@ -3883,3 +3883,118 @@ test('caption system prompt includes promoted editorial-brain caption strategy c
   assert.match(prompt || '', /comment or quote/i);
   assert.match(prompt || '', /Base prompt/);
 });
+
+test('live cleanup rejects casting headline fragments and recovers quoted project canonical', () => {
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "Dave Franco Joins Sophie Wilde In Alien Invasion Thriller 'Soon You Will Be Gone And Possibly Eaten'",
+    description: 'Dave Franco is joining Sophie Wilde in the Cannes market title.',
+    contentHtml: '<p>The alien invasion thriller Soon You Will Be Gone And Possibly Eaten is headed to Cannes with Dave Franco and Sophie Wilde attached.</p>',
+  });
+
+  assert.equal(canonical.primarySubject, 'Soon You Will Be Gone And Possibly Eaten');
+  assert.equal(canonical.mediaTitle, 'Soon You Will Be Gone And Possibly Eaten');
+  assert.equal(canonical.eventType, 'casting');
+  assert.equal(canonical.allowedEntities?.includes('Dave Franco Joins Sophie'), false);
+});
+
+test('live cleanup rejects broken project-update canonicals and avoids shopping overclassification', () => {
+  const harryPotter = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: "New Look at HBO's Harry Potter Reboot Changes the Movie Ending (& Teases Another Book Change)",
+    description: 'The HBO reboot is making changes to the movie ending and teasing another book change.',
+    contentHtml: '<p>The Harry Potter reboot update explains how the new series changes the adaptation.</p>',
+  });
+
+  assert.notEqual(harryPotter.primarySubject, '...not really');
+  assert.notEqual(harryPotter.eventType, 'shopping');
+  assert.match(harryPotter.eventType || '', /first_look|project_update|franchise_update|reboot_update/);
+
+  const practicalMagic = __rssAuditTestUtils.buildRSSCanonicalEntity({
+    title: 'A Cult 1990s Fantasy Movie is About to Stop Streaming (Just Before the Sequel Releases)',
+    description: 'Practical Magic is about to stop streaming just before the sequel releases.',
+    contentHtml: '<p>Practical Magic is changing streaming availability ahead of the sequel.</p>',
+  });
+
+  assert.equal(practicalMagic.eventType, 'streaming_availability');
+  assert.notEqual(practicalMagic.eventType, 'shopping');
+});
+
+test('caption-empty recovery builds publisher-safe captions from event and canonical facts', () => {
+  const item = {
+    title: "Kenneth Branagh 'Would Love' To Direct Another Thor Film In The Vein Of 2017's Logan",
+    description: 'Kenneth Branagh has considered returning to the MCU for another cinematic outing with the character.',
+    contentHtml: '<p>Kenneth Branagh said he would love to direct another Thor film if the story had a distinctive approach.</p>',
+    editorialBrain: {
+      decision: {
+        primary_entity: 'Thor',
+        secondary_entities: ['Kenneth Branagh'],
+        event: 'director_attachment',
+        story_family: 'project_announcement',
+        caption_strategy: { mode: 'project_announcement' },
+        caption_facts: { headline_fact: '', supporting_fact: '' },
+      },
+    },
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+  const result = __rssAuditTestUtils.buildRSSRuntimeBrainCaptionRecovery(item, canonical, {
+    articleTitle: item.title,
+    feedName: 'ScreenRant',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: canonical.allowedEntities || [],
+  });
+
+  assert.ok(result?.caption);
+  assert.equal(result?.path, 'brain_rebuilt_caption');
+  assert.doesNotMatch(result?.caption || '', /has a new entertainment update|latest entertainment industry update/i);
+});
+
+test('project visual anchor stories can use project images without canonical mismatch', () => {
+  const codes = __rssAuditTestUtils.getRSSImageReasonCodes([
+    {
+      url: 'https://image.tmdb.org/x-men-97-logo.jpg',
+      source: 'tmdb',
+      reason: "TMDb logo for X-Men '97",
+    },
+  ], {
+    primarySubject: 'Marvin Lee',
+    mediaTitle: "X-Men '97",
+    entityType: 'person',
+    eventType: 'first_look',
+    allowedEntities: ['Marvin Lee', "X-Men '97"],
+    ambiguityFlags: ['story_policy_project_visual_anchor'],
+  } as any);
+
+  assert.equal(codes.includes('IMAGE_CANONICAL_ENTITY_MISMATCH'), false);
+});
+
+test('project-update and streaming stories can use explicit article feed fallback', () => {
+  const projectUpdate = projectAnalysis({
+    canonicalEntity: {
+      primarySubject: 'Harry Potter',
+      mediaTitle: 'Harry Potter',
+      entityType: 'tv',
+      eventType: 'reboot_update',
+      ambiguityFlags: ['story_policy_project_visual_anchor', 'story_policy_article_image_first'],
+    },
+    contextType: 'general',
+    imageIntent: 'still',
+  });
+
+  assert.equal(canUseExplicitFeedFallback(projectUpdate, { role: 'project', intent: 'still', subject: 'Harry Potter' } as any), true);
+
+  const streaming = projectAnalysis({
+    canonicalEntity: {
+      primarySubject: 'Practical Magic',
+      mediaTitle: 'Practical Magic',
+      entityType: 'movie',
+      eventType: 'streaming_availability',
+      ambiguityFlags: ['story_policy_project_visual_anchor', 'story_policy_article_image_first'],
+    },
+    contextType: 'general',
+    imageIntent: 'still',
+  });
+
+  assert.equal(canUseExplicitFeedFallback(streaming, { role: 'project', intent: 'still', subject: 'Practical Magic' } as any), true);
+});

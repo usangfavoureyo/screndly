@@ -131,11 +131,15 @@ function buildRSSRuntimeBrainCaptionRecovery(
     caption = buildRSSRuntimeEditorialCaption(project ? `New trailer released for ${project}.` : '', item);
   } else if (event === 'release_date' || storyFamily === 'release_date' || event === 'release_date_set') {
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} has set a release date.` : '', item);
+  } else if (event === 'release_window' || event === 'programming_release') {
+    caption = buildRSSRuntimeEditorialCaption(project ? `${project} has a new release window.` : primary ? `${primary} has a new release window.` : '', item);
   } else if (event === 'first_look' || storyFamily === 'first_look' || strategy === 'first_look') {
     caption = buildRSSRuntimeEditorialCaption(project ? `First look at ${project} has been revealed.` : '', item);
+  } else if (event === 'streaming_availability') {
+    caption = buildRSSRuntimeEditorialCaption(project ? `${project} is changing its streaming availability.` : primary ? `${primary} is changing its streaming availability.` : '', item);
   } else if (event === 'business' || event === 'deal' || event === 'executive_appointment' || event === 'rights_sales_distribution' || event === 'lost_and_found_update' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || storyFamily === 'company_industry_news') {
     caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} is part of a new entertainment business report.` : '', item);
-  } else if (event === 'director_attachment' || event === 'writer_attachment' || event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival') {
+  } else if (event === 'director_attachment' || event === 'writer_attachment' || event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival' || event === 'reboot_update' || event === 'project_update' || event === 'franchise_update') {
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward with a new project update.` : primary ? `${primary} is moving forward with a new project update.` : '', item);
   } else if (event === 'interview_quote' || event === 'reflection' || event === 'person_commentary' || strategy === 'person_commentary') {
     caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} shared new comments in an entertainment interview.` : '', item);
@@ -2305,15 +2309,56 @@ function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
     return true;
   }
 
+  if (
+    /\b(?:not really|explained|changes|teases|reveals|new look|first look|about to|what happened)\b/i.test(candidate) ||
+    /^(?:why|how|what|when)\b/i.test(candidate) ||
+    /^[A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){0,3}\s+(?:joins?|joined|joining|returns?|returned)\b/i.test(candidate)
+  ) {
+    return true;
+  }
+
   return /[.!?]$/.test(candidate) ||
     hasRSSQuoteLedHeadlineJunk(candidate) ||
     /^[A-Z][A-Za-z'’.-]+(?:\s+[A-Z][A-Za-z'’.-]+){0,2}['’]s\s+(?:new|hit|latest|upcoming)\b/i.test(candidate) ||
     /(?:^|[\s:,'’])(?:revi|review|trailer|season|premiere|finale|creator|boss|breaks|told|gets|lands|confirms|production team|to series)$/i.test(candidate) ||
     /\b(?:sets|walks red|after first lady makes|never been friends|has a new update|fuels rumors|official update|classic cartoon network|legendary horror series confirms|first look|sparks political storm after being denied|troubled movie star in|desperate and unfunny|boards ground breaking|latest boot reveals what|plenty of drama|just break up|jokes zendaya|free to stream|what to watch|movie quiz|tv quiz|ranked|essential tool|meaningful way|what kind of|in any meaningful way)\b/i.test(candidate) ||
     /^(?:s\s+come\s+and\s+gone|did\s+\w+|boards?\s+ground|jimmy kimmel jokes|latest boot reveals)\b/i.test(normalized) ||
-    (tokens.length > 6 && !/^(?:the|a|an)\s+[A-Z]/.test(candidate)) ||
+    (tokens.length > 6 && !/^(?:the|a|an)\s+[A-Z]/.test(candidate) && !/\b(?:and|or|of|in|to|with|without|possibly)\b/i.test(candidate)) ||
     tokens.every((token) => RSS_TOPIC_SIGNATURE_STOP_WORDS.has(token)) ||
     (tokens.length <= 2 && tokens.some((token) => RSS_SUBJECT_SINGLE_TOKEN_BLOCKLIST.has(token)));
+}
+
+function deriveRSSRuntimeEventType(
+  item: Pick<RSSItem, 'title' | 'description' | 'contentHtml'>,
+  fallbackEventType?: string | null
+): string {
+  const title = sanitizeRSSPlainText(item.title || '');
+  const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
+  const normalizedFallback = String(fallbackEventType || '').trim().toLowerCase();
+
+  if (/\b(?:stop streaming|stops streaming|leaving (?:netflix|hulu|max|prime video|disney\+|peacock|paramount\+)|now streaming|now on|free to stream|streaming availability)\b/i.test(text)) {
+    return 'streaming_availability';
+  }
+  if (/\brelease window\b/i.test(text)) {
+    return 'release_window';
+  }
+  if (/\b(?:first look|new look|exclusive images?|first images?)\b/i.test(text)) {
+    return 'first_look';
+  }
+  if (/\b(?:reboot|revival|relaunch)\b/i.test(text)) {
+    return 'reboot_update';
+  }
+  if (/\b(?:changes? (?:the )?(?:ending|story|movie|book)|book change|franchise update|project update|power upgrade|confirmed)\b/i.test(text)) {
+    return /\b(?:franchise|marvel|dc|star wars|harry potter|resident evil|godzilla|x-men)\b/i.test(text)
+      ? 'franchise_update'
+      : 'project_update';
+  }
+
+  return normalizedFallback || 'other';
+}
+
+function isRSSProjectVisualAnchorEvent(eventType?: string | null): boolean {
+  return /\b(?:first_look|trailer|project_update|franchise_update|streaming_availability|release_window|reboot_update|reboot_revival|release_date|project_announcement|development|casting)\b/i.test(String(eventType || ''));
 }
 
 const RSS_TITLE_CONNECTOR_PATTERN = '(?:[A-Z0-9][A-Za-z0-9\'’:&,.-]*|in|of|the|to|and|for|on|at|a|an|vs)';
@@ -2666,7 +2711,9 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   let mediaTitle = sanitizeRSSCanonicalEntityValue(targetedOverride?.mediaTitle || bodyRecoveredTitle || quotedEarlyProjectTitle || projectAnchorOverride || extraction.media_title);
   let secondarySubject = sanitizeRSSCanonicalEntityValue(targetedOverride?.secondarySubject || extraction.secondary_subject);
   const franchise = sanitizeRSSCanonicalEntityValue(targetedOverride?.franchise || extraction.franchise_or_universe);
-  const eventType = targetedOverride?.eventType || (articleFamily === 'business_or_platform'
+  const baseEventType = targetedOverride?.eventType || (projectAnchorOverride
+    ? 'casting'
+    : articleFamily === 'business_or_platform'
     ? 'business'
     : articleFamily === 'event_or_festival'
       ? 'event'
@@ -2675,10 +2722,11 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
         : articleFamily === 'gaming_collab_or_licensing'
           ? 'licensing'
           : articleFamily === 'editorial_listicle'
-            ? 'listicle'
-          : projectAnchorOverride
-            ? 'casting'
-            : extraction.event_type);
+          ? 'listicle'
+          : extraction.event_type);
+  const eventType = targetedOverride?.eventType
+    ? targetedOverride.eventType
+    : deriveRSSRuntimeEventType(item, baseEventType);
   const confidence = targetedOverride?.confidence || (projectAnchorOverride
     ? Math.max(extraction.extraction_confidence || 0, 0.9)
     : bodyRecoveredTitle
@@ -2779,6 +2827,12 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
   if (shouldApplyEarlyProjectCastPortraitPolicy(item, articleFamily, eventType, mediaTitle, namedPeople, targetedOverride)) {
     ambiguityFlags.push('story_policy_early_project_cast_portraits');
   }
+  if (isRSSProjectVisualAnchorEvent(eventType) && (mediaTitle || projectAnchorOverride || franchise)) {
+    ambiguityFlags.push('story_policy_project_visual_anchor');
+    if (/streaming_availability|project_update|franchise_update|reboot_update|first_look/.test(eventType)) {
+      ambiguityFlags.push('story_policy_article_image_first');
+    }
+  }
   if (
     !targetedOverride &&
     articleFamily === 'business_or_platform' &&
@@ -2860,7 +2914,7 @@ function buildRSSCanonicalEntity(item: Pick<RSSItem, 'title' | 'description' | '
 
 function isProjectAnchoredCastingPattern(text: string): boolean {
   return /\b(join|joins|joined|joining)\b/i.test(text)
-    && /\b(cast|voice cast|voice ensemble|starring|voice role|producing team|production team|broadway producing team|broadway production)\b/i.test(text);
+    && /\b(cast|voice cast|voice ensemble|starring|voice role|producing team|production team|broadway producing team|broadway production|invasion thriller|thriller|feature|film|movie|drama|series|show|project)\b/i.test(text);
 }
 
 function extractStrictRSSQuotedSubjects(value: string): string[] {
@@ -2993,6 +3047,13 @@ function sanitizeRSSCanonicalEntityValue(value?: string | null): string | undefi
   const quoted = extractStrictRSSQuotedSubjects(trimmed).find((candidate) => !isWeakRSSCanonicalCandidate(candidate));
   if (quoted) {
     return sanitizeRSSCanonicalEntityValue(quoted);
+  }
+
+  if (
+    /\b(?:not really|explained|changes|teases|reveals|new look|first look|about to|what happened)\b/i.test(trimmed) ||
+    /^[A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){0,3}\s+(?:joins?|joined|joining|returns?|returned)\b/i.test(trimmed)
+  ) {
+    return undefined;
   }
 
   const cleaned = trimmed
@@ -3245,6 +3306,13 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
     canonicalFlags.has('story_policy_early_project_cast_portraits') ||
     canonicalFlags.has('article_family_business_or_platform') ||
     canonicalFlags.has('story_policy_entertainment_business_person_first');
+  const allowVisualAnchorMismatch =
+    allowSingleSubjectFallback ||
+    canonicalFlags.has('story_policy_project_visual_anchor') ||
+    canonicalFlags.has('story_policy_article_image_first') ||
+    canonicalFlags.has('story_policy_force_project_first_image') ||
+    canonicalFlags.has('editorial_brain_image_strategy_project_first') ||
+    isRSSProjectVisualAnchorEvent(canonicalEntity.eventType);
 
   if (!allowSingleSubjectFallback && images.length > 1 && images.some((image) => !image.url || !image.url.trim())) {
     reasonCodes.add('IMAGE_EMPTY_SECONDARY_SLOT');
@@ -3262,7 +3330,7 @@ function getRSSImageReasonCodes(images: RSSResolvedImage[], canonicalEntity: RSS
       index === 0 &&
       expectedPrimary &&
       !canonicalFlags.has('story_family_person_commentary_on_project') &&
-      !allowSingleSubjectFallback &&
+      !allowVisualAnchorMismatch &&
       image.source !== 'feed' &&
       allowed.length > 0 &&
       !allowed.some((entity) => normalizedReason.includes(entity.toLowerCase())) &&

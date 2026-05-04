@@ -1898,7 +1898,14 @@ function normalizeCanonicalEventTypeForCaption(
         case 'release':
         case 'release_update':
         case 'anime_release':
+        case 'release_window':
             return 'release_date';
+        case 'streaming_availability':
+        case 'project_update':
+        case 'franchise_update':
+        case 'reboot_update':
+        case 'reboot_revival':
+            return 'development';
         case 'commentary':
         case 'person_commentary':
             return 'interview_quote';

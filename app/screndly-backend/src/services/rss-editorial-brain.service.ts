@@ -169,9 +169,13 @@ export function normalizeRssEditorialBrainEvent(value: unknown): string {
 
   if (/\bofficial title reveal\b|\bgets? (?:an? )?(?:official )?(?:new )?title\b|\bnew title\b|\btitled?\b/.test(normalized)) return 'official_title_reveal';
   if (/\bfirst look\b|\bexclusive (?:look|images?)\b|\bnew images?\b|\bfirst images?\b/.test(normalized)) return 'first_look';
+  if (/\b(?:stop streaming|stops streaming|leaving (?:netflix|hulu|max|prime video|disney\+|peacock|paramount\+)|now streaming|now on|free to stream|streaming availability)\b/.test(normalized)) return 'streaming_availability';
+  if (/\brelease window\b/.test(normalized)) return 'release_window';
+  if (/\b(?:changes? (?:the )?(?:ending|story|movie|book)|book change|project update|power upgrade)\b/.test(normalized)) return 'project_update';
+  if (/\b(?:franchise update|season return|return confirmed)\b/.test(normalized)) return 'franchise_update';
   if (/\bposter(?:s)?\b|\bkey art\b/.test(normalized)) return 'poster_reveal';
   if (/\bspinoff\b|\bspin-off\b/.test(normalized)) return 'spinoff_announcement';
-  if (/\breboot\b|\brevival\b|\brelaunch\b/.test(normalized)) return 'reboot_revival';
+  if (/\breboot\b|\brevival\b|\brelaunch\b/.test(normalized)) return 'reboot_update';
   if (/\brenew/.test(normalized)) return 'renewal';
   if (/\bordered to series\b|\bseries order\b|\bpicked up to series\b/.test(normalized)) return 'series_order';
   if (/\btrailer\b|\bteaser\b/.test(normalized)) return 'trailer';
@@ -195,8 +199,9 @@ function normalizeRssEditorialBrainStoryFamily(decision: RssEditorialBrainDecisi
 
   if (event === 'rights_sales_distribution' || event === 'deal') return 'rights_sales_deal';
   if (event === 'festival_market') return 'festival_market_news';
+  if (event === 'streaming_availability' || event === 'project_update' || event === 'franchise_update' || event === 'release_window') return 'project_announcement';
   if (event === 'programming_release') return 'programming_lineup';
-  if (event === 'official_title_reveal' || event === 'spinoff_announcement' || event === 'reboot_revival') return 'project_announcement';
+  if (event === 'official_title_reveal' || event === 'spinoff_announcement' || event === 'reboot_revival' || event === 'reboot_update') return 'project_announcement';
   if (event === 'interview_quote' && decision.primary_entity_type === 'person') return 'executive_commentary';
 
   return family;

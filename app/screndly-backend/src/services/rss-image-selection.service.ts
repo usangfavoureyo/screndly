@@ -5761,7 +5761,9 @@ function canUseExplicitFeedFallback(
     /\b(?:business|deal|rights|sales|sales_boarding|distribution|acquisition|overall_deal|series_order|ordered_to_series|festival|market|executive_appointment|industry_appointment|lost_and_found_update|licensing|settlement)\b/.test(eventType);
   const earlyProjectFamily =
     flags.has('story_policy_early_project_cast_portraits') ||
-    /\b(?:casting|development|project_announcement|in_production|director_attachment|writer_attachment|production_start|reboot_status|reboot_revival)\b/.test(eventType) ||
+    flags.has('story_policy_project_visual_anchor') ||
+    flags.has('story_policy_article_image_first') ||
+    /\b(?:casting|development|project_announcement|in_production|director_attachment|writer_attachment|production_start|reboot_status|reboot_revival|reboot_update|project_update|franchise_update|first_look|streaming_availability|release_window|release_date)\b/.test(eventType) ||
     analysis.contextType === 'casting';
   const trustedPersonLedTradeFallback =
     (analysis.contextType === 'industry' || analysis.contextType === 'interview') &&
@@ -5856,6 +5858,7 @@ export async function resolveRelevantRSSImages(
       canonicalFlags.has('article_family_person_interview_or_reaction') ||
       canonicalFlags.has('article_family_business_or_platform') ||
       canonicalFlags.has('story_lane_entertainment_adjacent') ||
+      canonicalFlags.has('story_policy_project_visual_anchor') ||
       canonicalFlags.has('story_policy_article_image_first')
     ) &&
     Array.isArray(article.fallbackImages) &&
@@ -5892,6 +5895,7 @@ export async function resolveRelevantRSSImages(
       canonicalFlags.has('article_family_person_interview_or_reaction') ||
       canonicalFlags.has('article_family_business_or_platform') ||
       canonicalFlags.has('story_lane_entertainment_adjacent') ||
+      canonicalFlags.has('story_policy_project_visual_anchor') ||
       canonicalFlags.has('story_policy_article_image_first')
     );
   const fallbackImages = renderableFallbackImages.length > 0
@@ -5916,6 +5920,7 @@ export async function resolveRelevantRSSImages(
         canonicalFlags.has('article_family_person_interview_or_reaction') ||
         canonicalFlags.has('article_family_business_or_platform') ||
         canonicalFlags.has('story_lane_entertainment_adjacent') ||
+        canonicalFlags.has('story_policy_project_visual_anchor') ||
         canonicalFlags.has('story_policy_early_project_cast_portraits') ||
         canonicalFlags.has('story_policy_force_project_first_image')
       );
@@ -5938,6 +5943,7 @@ export async function resolveRelevantRSSImages(
       canonicalFlags.has('article_family_person_interview_or_reaction') ||
       canonicalFlags.has('article_family_business_or_platform') ||
       canonicalFlags.has('story_lane_entertainment_adjacent') ||
+      canonicalFlags.has('story_policy_project_visual_anchor') ||
       canonicalFlags.has('story_policy_early_project_cast_portraits') ||
       canonicalFlags.has('story_policy_force_project_first_image');
 
