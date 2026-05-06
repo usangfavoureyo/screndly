@@ -1911,6 +1911,9 @@ function normalizeCanonicalEventTypeForCaption(
             return 'interview_quote';
         case 'acquisition':
         case 'sales_boarding':
+        case 'rights_sales_distribution':
+        case 'rights_distribution':
+        case 'rights_sales_deal':
             return 'development';
         default:
             return undefined;
@@ -3547,6 +3550,29 @@ function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string 
     return `${lead}\n\n${support}`;
 }
 
+function buildPublisherSafeRSSFactBackedEmergencyCaption(context: RSSContext): string {
+    const subject = context.canonicalEntity?.mediaTitle || context.canonicalEntity?.primarySubject || context.allowedEntities?.[0] || '';
+    const formattedSubject = formatRssMediaTitle(subject) || subject;
+    const supportCandidates = [
+        context.summary,
+        context.articleBody,
+        context.articleContentHtml,
+    ]
+        .map((entry) => sanitizeRSSCaptionSurfaceText(stripHtmlTags(entry || ''))
+            .replace(/^\s*(?:exclusive|update|spoiler alert)\s*:\s*/i, '')
+            .replace(/\s+/g, ' ')
+            .trim())
+        .map((entry) => entry.match(/(.{40,220}?[.!?])(?:\s|$)/)?.[1]?.trim() || entry.slice(0, 180).trim());
+    const support = supportCandidates.find((entry) => entry && !hasRSSArticlePackageLabel(entry) && !hasTruncatedRSSContent(entry)) ||
+        supportCandidates.find((entry) => entry && !hasTruncatedRSSContent(entry));
+
+    if (!formattedSubject || !support) {
+        return '';
+    }
+
+    return `${formattedSubject} is at the center of a new report.\n\n${ensureRSSSentenceTerminal(support)}`;
+}
+
 function buildPublisherSafeRSSDeterministicLead(
     context: RSSContext,
     extraction: RssCaptionExtraction
@@ -3626,15 +3652,20 @@ function buildRSSPublishSafeDeterministicResult(
     const brainBacked = buildBrainBackedPublisherSafeCaption(context, extraction);
     const hasBrainSignal = hasEditorialBrainFallbackSignal(context);
     const rebuilt = buildPublisherSafeRSSDeterministicCaption(context);
-    const candidate = hasBrainSignal
-        ? brainBacked
-        : (
-            normalized &&
-            classifyRSSFallbackPath(normalized) !== 'excerpt_fallback' &&
-            !failsRSSCaptionFormatting(normalized, context)
-                ? normalized
-                : rebuilt
-        );
+    const emergencyRebuilt = buildPublisherSafeRSSFactBackedEmergencyCaption(context);
+    const normalizedIsPublishable =
+        normalized &&
+        classifyRSSFallbackPath(normalized) !== 'excerpt_fallback' &&
+        !failsRSSCaptionFormatting(normalized, context);
+    const rebuiltQuality = rebuilt
+        ? evaluateRSSCaptionEditorialQuality(rebuilt, context)
+        : undefined;
+    const rebuiltIsPublishable = Boolean(rebuilt && !failsRSSCaptionFormatting(rebuilt, context) && rebuiltQuality?.allowedForAutopublish);
+    const emergencyQuality = emergencyRebuilt
+        ? evaluateRSSCaptionEditorialQuality(emergencyRebuilt, context)
+        : undefined;
+    const emergencyIsPublishable = Boolean(emergencyRebuilt && !failsRSSCaptionFormatting(emergencyRebuilt, context) && emergencyQuality?.allowedForAutopublish);
+    const candidate = brainBacked || (normalizedIsPublishable ? normalized : rebuiltIsPublishable ? rebuilt : emergencyIsPublishable ? emergencyRebuilt : rebuilt);
 
     const candidateQuality = candidate
         ? evaluateRSSCaptionEditorialQuality(candidate, context)
@@ -3642,8 +3673,8 @@ function buildRSSPublishSafeDeterministicResult(
     if (candidate && !failsRSSCaptionFormatting(candidate, context) && candidateQuality?.allowedForAutopublish) {
         return {
             caption: candidate,
-            path: hasBrainSignal && brainBacked ? 'brain_rebuilt_caption' : 'repaired_caption',
-            source: hasBrainSignal && brainBacked ? 'editorial_brain_facts' : 'publisher_safe_rebuild',
+            path: brainBacked && candidate === brainBacked ? 'brain_rebuilt_caption' : 'repaired_caption',
+            source: brainBacked && candidate === brainBacked ? 'editorial_brain_facts' : 'publisher_safe_rebuild',
             usedEditorialBrainFacts: Boolean(hasBrainSignal && brainBacked),
             usedPublisherSafeRebuild: !Boolean(hasBrainSignal && brainBacked),
             captionEditorialQuality: candidateQuality,
@@ -3663,9 +3694,6 @@ function buildRSSPublishSafeDeterministicResult(
         };
     }
 
-    const rebuiltQuality = rebuilt
-        ? evaluateRSSCaptionEditorialQuality(rebuilt, context)
-        : undefined;
     if (!hasBrainSignal && rebuilt && !failsRSSCaptionFormatting(rebuilt, context) && rebuiltQuality?.allowedForAutopublish) {
         return {
             caption: rebuilt,

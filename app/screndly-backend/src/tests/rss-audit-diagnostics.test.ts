@@ -4068,3 +4068,124 @@ test('runtime image resolution promotes stored article preview image for article
   assert.equal(images[0]?.url, 'https://example.com/jackdaws-feed.jpg');
   assert.equal(images[0]?.source, 'feed');
 });
+
+test('fact-backed caption recovery prevents empty fallback for generic project news', () => {
+  const item = {
+    title: "Kevin Spacey To Lead WW2 Drama 'Melodies In The Forest' — Cannes Market",
+    description: 'EXCLUSIVE: Kevin Spacey has signed on to lead a World War 2 drama titled Melodies in the Forest. The project is heading to the Cannes market.',
+    contentHtml: '<p>Kevin Spacey has signed on to lead a World War 2 drama titled Melodies in the Forest. The project is heading to the Cannes market.</p>',
+    editorialBrain: {
+      decision: {
+        primary_entity: 'Melodies In The Forest',
+        event: 'event',
+        story_family: 'headline_news',
+        caption_strategy: { mode: 'headline_news' },
+      },
+    },
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+  const context = {
+    articleTitle: item.title,
+    feedName: 'Deadline',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: canonical.allowedEntities || [],
+    editorialBrain: item.editorialBrain,
+  } as any;
+  const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+    caption: '',
+    path: 'excerpt_fallback',
+    source: 'fallback',
+  } as any, 280);
+
+  assert.match(result.caption, /Melodies In The Forest/);
+  assert.match(result.caption, /Kevin Spacey/);
+  assert.equal(result.path, 'repaired_caption');
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
+});
+
+test('brain-backed project interview recovery avoids malformed deterministic joins captions', () => {
+  const item = {
+    title: "Christopher Nolan Says 'The Odyssey' Has the 'Original Superheroes' and Homer Was the Marvel of Its Day",
+    description: 'The Odyssey director Christopher Nolan joined Stephen Colbert on Monday night to discuss the film and its source material.',
+    contentHtml: '<p>The Odyssey director Christopher Nolan joined Stephen Colbert on Monday night to discuss the film and its source material.</p>',
+    editorialBrain: {
+      decision: {
+        primary_entity: 'The Odyssey',
+        event: 'interview_quote',
+        story_family: 'person_commentary',
+        caption_strategy: { mode: 'person_commentary' },
+      },
+    },
+  } as any;
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+  const context = {
+    articleTitle: item.title,
+    feedName: 'Variety',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: [...(canonical.allowedEntities || []), 'The Odyssey', 'Christopher Nolan'],
+    editorialBrain: item.editorialBrain,
+  } as any;
+  const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+    caption: '',
+    path: 'excerpt_fallback',
+    source: 'fallback',
+  } as any, 280);
+
+  assert.match(result.caption, /The Odyssey/);
+  assert.match(result.caption, /Christopher Nolan/);
+  assert.doesNotMatch(result.caption, /Says joins|joins .* joins/i);
+  assert.equal(result.path, 'brain_rebuilt_caption');
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).length, 0);
+});
+
+test('runtime deterministic fallback does not return empty just because editorial brain signal exists', () => {
+  const item = {
+    title: 'MetFilm Sales Acquires Mongolian Documentary Colors of White Rock Ahead of World Premiere at Tribeca',
+    description: 'London-based MetFilm Sales has acquired Mongolian filmmaker Khoroldorj Choijoovanchig’s debut documentary Colors of White Rock ahead of Tribeca.',
+    contentHtml: '<p>London-based MetFilm Sales has acquired Mongolian filmmaker Khoroldorj Choijoovanchig’s debut documentary Colors of White Rock ahead of Tribeca.</p>',
+    editorialBrain: {
+      decision: {
+        primary_entity: 'Colors of White Rock',
+        event: 'rights_sales_distribution',
+        story_family: 'rights_sales_deal',
+        caption_strategy: { mode: 'headline_news' },
+      },
+    },
+  } as any;
+  const canonical = {
+    primarySubject: 'Colors of White Rock',
+    mediaTitle: 'Colors of White Rock',
+    entityType: 'movie',
+    eventType: 'rights_sales_distribution',
+    confidence: 0.95,
+    allowedEntities: ['Colors of White Rock', 'MetFilm Sales'],
+  } as any;
+  const context = {
+    articleTitle: item.title,
+    feedName: 'Variety',
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    platform: 'Facebook',
+    allowedEntities: ['Colors of White Rock', 'MetFilm Sales'],
+    canonicalEntity: canonical,
+    editorialBrain: item.editorialBrain,
+  } as any;
+  const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+    caption: '',
+    path: 'excerpt_fallback',
+    source: 'fallback',
+  } as any, 280);
+
+  assert.ok(result.caption.trim());
+  assert.notEqual(result.source, 'fallback');
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
+});

@@ -31,6 +31,7 @@ const {
   normalizeRSSHeadlineInput,
   shouldAllowDeterministicPublisherSafeCaption,
   evaluateRSSCaptionEditorialQuality,
+  buildRSSPublishSafeDeterministicResult,
 } = __rssCaptionTestUtils;
 
 function formatRSSRuntimeFallbackTitle(value?: string): string {
@@ -55,7 +56,10 @@ function getRSSRuntimeFallbackSupportSentence(item: RSSItem, lead: string): stri
   ];
 
   for (const candidate of candidates) {
-    const normalized = candidate.replace(/\s+/g, ' ').trim();
+    const normalized = candidate
+      .replace(/^\s*(?:exclusive|update|spoiler alert)\s*:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (!normalized || /\[\.\.\.\]|(?:^|[\s(])\.\.\.(?:$|[\s)])|this (?:article|piece|recap|review)/i.test(normalized)) {
       continue;
     }
@@ -78,6 +82,69 @@ function buildRSSRuntimeEditorialCaption(lead: string, item: RSSItem): string {
   const resolvedSupport = support || 'The update adds context around the latest status of the story.';
 
   return sanitizeRSSCaptionText(`${cleanLead}\n\n${resolvedSupport}`, 280);
+}
+
+function buildRSSRuntimeFactBackedCaptionRecovery(
+  item: RSSItem,
+  canonicalEntity: RSSCanonicalEntity,
+  context: RSSContext,
+): { caption: string; path: RSSCaptionGenerationPath; source: RSSCaptionGenerationSource; usedPublisherSafeRebuild: boolean } | undefined {
+  const deterministic = buildRSSPublishSafeDeterministicResult(
+    sanitizeRSSPlainText(item.description) || sanitizeRSSPlainText(item.title) || context.summary || context.articleTitle || '',
+    context
+  );
+  const deterministicCaption = sanitizeRSSCaptionText(deterministic.caption, 280);
+  const deterministicQuality = evaluateRSSCaptionEditorialQuality(deterministicCaption, context);
+  if (
+    deterministicCaption.trim() &&
+    getRSSCaptionHardInvalidReasonCodes(deterministicCaption, context).length === 0 &&
+    !failsRSSCaptionFormatting(deterministicCaption, context) &&
+    deterministicQuality.allowedForAutopublish
+  ) {
+    return {
+      caption: deterministicCaption,
+      path: deterministic.path === 'brain_rebuilt_caption' ? 'brain_rebuilt_caption' : 'repaired_caption',
+      source: deterministic.source === 'editorial_brain_facts' ? 'editorial_brain_facts' : 'publisher_safe_rebuild',
+      usedPublisherSafeRebuild: deterministic.source !== 'editorial_brain_facts',
+    };
+  }
+
+  const primary = canonicalEntity.mediaTitle || canonicalEntity.primarySubject || context.allowedEntities?.[0] || '';
+  const support = getRSSRuntimeFallbackSupportSentence(item, '');
+  if (!primary || !support) {
+    return undefined;
+  }
+
+  const lead = canonicalEntity.entityType === 'person'
+    ? `${primary} is the subject of a new report.`
+    : `${formatRSSRuntimeFallbackTitle(primary)} is at the center of a new report.`;
+  const rebuilt = sanitizeRSSCaptionText(`${lead}\n\n${support}`, 280);
+  const recoveryContext: RSSContext = {
+    ...context,
+    allowedEntities: Array.from(new Set([
+      ...(context.allowedEntities || []),
+      primary,
+      canonicalEntity.primarySubject,
+      canonicalEntity.mediaTitle,
+      ...(canonicalEntity.allowedEntities || []),
+    ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0))),
+  };
+  const quality = evaluateRSSCaptionEditorialQuality(rebuilt, recoveryContext);
+  if (
+    rebuilt.trim() &&
+    getRSSCaptionHardInvalidReasonCodes(rebuilt, recoveryContext).length === 0 &&
+    !failsRSSCaptionFormatting(rebuilt, recoveryContext) &&
+    quality.allowedForAutopublish
+  ) {
+    return {
+      caption: rebuilt,
+      path: 'repaired_caption',
+      source: 'publisher_safe_rebuild',
+      usedPublisherSafeRebuild: true,
+    };
+  }
+
+  return undefined;
 }
 
 function buildRSSRuntimeBrainCaptionRecovery(
@@ -103,6 +170,7 @@ function buildRSSRuntimeBrainCaptionRecovery(
   const storyFamily = String(decision?.story_family || decision?.storyFamily || '').trim().toLowerCase();
   const strategySource = decision?.caption_strategy || decision?.captionStrategy;
   const strategy = String(typeof strategySource === 'string' ? strategySource : strategySource?.mode || '').trim().toLowerCase();
+  const headlineLeadPerson = extractRSSHeadlineLeadPersonCandidate(item.title);
   const rawProject = canonicalEntity.mediaTitle || (canonicalEntity.entityType !== 'person' ? primary : '') || secondaryEntities[0] || canonicalEntity.secondarySubject || '';
   const project = formatRSSRuntimeFallbackTitle(rawProject);
   const supportingProject = formatRSSRuntimeFallbackTitle(
@@ -150,12 +218,16 @@ function buildRSSRuntimeBrainCaptionRecovery(
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward with a new project update.` : primary ? `${primary} is moving forward with a new project update.` : '', item);
   } else if (event === 'interview_quote' || event === 'reflection' || event === 'person_commentary' || strategy === 'person_commentary') {
     caption = buildRSSRuntimeEditorialCaption(
-      primary && supportingProject
+      headlineLeadPerson && primary && normalizeRSSDedupeValue(primary) !== normalizeRSSDedupeValue(headlineLeadPerson)
+        ? `${headlineLeadPerson} discussed ${formatRSSRuntimeFallbackTitle(primary)}.`
+        : primary && supportingProject
         ? `${primary} reflected on ${supportingProject}.`
         : primary && person && normalizeRSSDedupeValue(primary) !== normalizeRSSDedupeValue(person)
           ? `${primary} discussed ${person}.`
-          : primary
-            ? `${primary} reflected on the story.`
+          : primary && (project || canonicalEntity.entityType !== 'person')
+            ? `${project || formatRSSRuntimeFallbackTitle(primary)} was discussed in a new interview.`
+            : primary
+              ? `${primary} reflected on the story.`
             : '',
       item
     );
@@ -242,6 +314,14 @@ function recoverRSSCaptionResultAfterSanitization(
     return {
       ...recovered,
       caption: sanitizeRSSCaptionText(recovered.caption, maxLength),
+    };
+  }
+
+  const factBacked = buildRSSRuntimeFactBackedCaptionRecovery(item, canonicalEntity, context);
+  if (factBacked) {
+    return {
+      ...factBacked,
+      caption: sanitizeRSSCaptionText(factBacked.caption, maxLength),
     };
   }
 
