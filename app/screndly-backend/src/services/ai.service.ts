@@ -1600,6 +1600,8 @@ const RSS_HARD_BLOCKED_OUTPUT_PATTERNS: Array<{ pattern: RegExp; code: string }>
     { pattern: /\breflected on the latest entertainment industry discussion\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bis part of a new entertainment industry update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
     { pattern: /\bhas a new distribution update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bis at the center of a new report\b/i, code: 'CAPTION_HEADLINE_JUNK' },
+    { pattern: /\bhas a casting update\b/i, code: 'CAPTION_HEADLINE_JUNK' },
 ];
 
 const RSS_SUPPORTING_FACT_REJECTION_PATTERNS = [
@@ -1718,6 +1720,13 @@ function sanitizeRSSNamedEntityCandidate(value: string): string {
 function isMalformedRSSEntityJunk(value: string): boolean {
     const normalized = sanitizeRSSNamedEntityCandidate(value);
     if (!normalized) {
+        return true;
+    }
+
+    if (
+        /^(?:it|i|we|you|he|she|they)\s+(?:has|have|had|is|are|was|were|will|would|could|should|think|know|feel|felt|said|say|believe|want|love|been)\b/i.test(normalized) ||
+        /\b(?:joy to write|write on|wrote on)\b/i.test(normalized)
+    ) {
         return true;
     }
 
@@ -3553,6 +3562,8 @@ function buildPublisherSafeRSSDeterministicCaption(context: RSSContext): string 
 function buildPublisherSafeRSSFactBackedEmergencyCaption(context: RSSContext): string {
     const subject = context.canonicalEntity?.mediaTitle || context.canonicalEntity?.primarySubject || context.allowedEntities?.[0] || '';
     const formattedSubject = formatRssMediaTitle(subject) || subject;
+    const eventType = String(normalizeCanonicalEventTypeForCaption(context.canonicalEntity?.eventType) || '').toLowerCase();
+    const headline = normalizeRSSHeadlineInput(context.articleTitle);
     const supportCandidates = [
         context.summary,
         context.articleBody,
@@ -3570,7 +3581,26 @@ function buildPublisherSafeRSSFactBackedEmergencyCaption(context: RSSContext): s
         return '';
     }
 
-    return `${formattedSubject} is at the center of a new report.\n\n${ensureRSSSentenceTerminal(support)}`;
+    let lead = '';
+    if (eventType === 'casting' || /\b(?:joins?|cast|casting|star|stars|lead|boards?)\b/i.test(headline)) {
+        lead = `${formattedSubject} has added new cast.`;
+    } else if (eventType === 'renewal' || /\b(?:renewed|renewal|season \d+|returning|returns?|picked up)\b/i.test(headline)) {
+        lead = `${formattedSubject} has been renewed.`;
+    } else if (eventType === 'cancellation' || /\b(?:cancelled|canceled|to end|final season|ending)\b/i.test(headline)) {
+        lead = `${formattedSubject} has a new status update.`;
+    } else if (eventType === 'trailer' || /\b(?:trailer|teaser)\b/i.test(headline)) {
+        lead = `A new trailer for ${formattedSubject} has been released.`;
+    } else if (eventType === 'first_look' || /\b(?:first look|new look|preview image|photo|poster)\b/i.test(headline)) {
+        lead = `A first look at ${formattedSubject} has been revealed.`;
+    } else if (eventType === 'release_date' || /\b(?:release date|premiere date|sets? .*date|date confirmed|release window)\b/i.test(headline)) {
+        lead = `${formattedSubject} has a new release update.`;
+    } else if (eventType === 'development' || eventType === 'project_announcement' || /\b(?:development|in development|prequel series|pilot|reboot|revival)\b/i.test(headline)) {
+        lead = `${formattedSubject} is in development.`;
+    } else if (eventType === 'business' || /\b(?:distribution|distributor|rights|secures?|acquires?|deal|sales|cannes|market)\b/i.test(headline)) {
+        lead = `${formattedSubject} has a new business update.`;
+    }
+
+    return lead ? `${lead}\n\n${ensureRSSSentenceTerminal(support)}` : '';
 }
 
 function buildPublisherSafeRSSDeterministicLead(
@@ -3637,10 +3667,10 @@ function buildPublisherSafeRSSDeterministicLead(
         if (eventType === 'business') {
             return `${primary} is part of a new business development story.`;
         }
-        return `${primary} is at the center of a new report.`;
+        return undefined;
     }
 
-    return primary ? `${primary} is at the center of a new report.` : undefined;
+    return undefined;
 }
 
 function buildRSSPublishSafeDeterministicResult(

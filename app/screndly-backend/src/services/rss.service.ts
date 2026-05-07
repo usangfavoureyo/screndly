@@ -84,6 +84,36 @@ function buildRSSRuntimeEditorialCaption(lead: string, item: RSSItem): string {
   return sanitizeRSSCaptionText(`${cleanLead}\n\n${resolvedSupport}`, 280);
 }
 
+function extractRSSRuntimeHeadlineCastSubject(title?: string | null): string | undefined {
+  const normalizedTitle = sanitizeRSSPlainText(title || '').replace(/\s+/g, ' ').trim();
+  if (!normalizedTitle) {
+    return undefined;
+  }
+
+  const subjectTitle = normalizedTitle.replace(/^["'‘’“”][^"'‘’“”]{2,120}["'‘’“”]\s*:\s*/i, '');
+  const match = subjectTitle.match(/^(.{4,150}?)\s+(?:to\s+star|set\s+to\s+star|will\s+star|joins?|joined|join)\b/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const cleaned = sanitizeRSSPlainText(match[1])
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/\s*&\s*/g, ' and ')
+    .replace(/\s*(?:,?\s*(?:&|and)\s*)more$/i, ' and more')
+    .replace(/[,:;.\-–—\s]+$/g, '')
+    .trim();
+
+  if (
+    !cleaned ||
+    isWeakRSSCanonicalCandidate(cleaned) ||
+    /\b(?:trailer|teaser|season|episode|reboot|renewed|canceled|cancelled|first look|release date)\b/i.test(cleaned)
+  ) {
+    return undefined;
+  }
+
+  return cleaned;
+}
+
 function buildRSSRuntimeFactBackedLead(
   item: RSSItem,
   canonicalEntity: RSSCanonicalEntity,
@@ -96,6 +126,7 @@ function buildRSSRuntimeFactBackedLead(
   const person = extractRSSHeadlineLeadPersonCandidate(item.title) || canonicalEntity.namedPeople?.[0] || (
     canonicalEntity.entityType === 'person' ? canonicalEntity.primarySubject : ''
   );
+  const castSubject = extractRSSRuntimeHeadlineCastSubject(item.title);
   const normalizedEvent = normalizeRSSDedupeValue(canonicalEntity.eventType || '');
   const headline = String(item.title || '');
 
@@ -123,9 +154,15 @@ function buildRSSRuntimeFactBackedLead(
       return `${project} has a new production update.`;
     }
     if (/\b(joins?|cast|casting|star|stars|lead|boards?)\b/i.test(headline) || normalizedEvent.includes('casting')) {
-      return person && normalizeRSSDedupeValue(person) !== normalizeRSSDedupeValue(primary)
-        ? `${person} has joined ${project}.`
-        : `${project} has added new cast.`;
+      const subject = castSubject || person;
+      if (subject && normalizeRSSDedupeValue(subject) !== normalizeRSSDedupeValue(primary)) {
+        const plural = /\b(?:and|,|more)\b/i.test(subject);
+        const verb = /\b(?:to star|set to star|will star)\b/i.test(headline)
+          ? `${plural ? 'will' : 'will'} star in`
+          : `${plural ? 'have' : 'has'} joined`;
+        return `${subject} ${verb} ${project}.`;
+      }
+      return `${project} has expanded its cast.`;
     }
     if (/\b(acquires?|rights|sales|deal|distribution|cannes|market)\b/i.test(headline) || normalizedEvent.includes('rights') || normalizedEvent.includes('business')) {
       return `${project} has a new distribution update.`;
@@ -219,11 +256,61 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
   return undefined;
 }
 
+function applyRSSRuntimeBrainCanonicalRepair(
+  item: RSSItem,
+  canonicalEntity: RSSCanonicalEntity
+): RSSCanonicalEntity {
+  const decision = item.editorialBrain?.decision as Record<string, any> | undefined;
+  const brainPrimary = sanitizeRSSCanonicalEntityValue(
+    decision?.primary_entity ||
+    decision?.primaryEntity ||
+    decision?.canonical ||
+    ''
+  );
+  const brainPrimaryType = String(decision?.primary_entity_type || decision?.primaryEntityType || '').trim().toLowerCase();
+  const brainEvent = normalizeRssEditorialBrainEvent(String(decision?.event || canonicalEntity.eventType || ''));
+  if (!brainPrimary || isWeakRSSCanonicalCandidate(brainPrimary)) {
+    return canonicalEntity;
+  }
+
+  const currentPrimary = canonicalEntity.mediaTitle || canonicalEntity.primarySubject || '';
+  const currentWeak = isWeakRSSCanonicalCandidate(currentPrimary);
+  const currentDiffers = normalizeRSSDedupeValue(currentPrimary) !== normalizeRSSDedupeValue(brainPrimary);
+  const shouldRepair = currentWeak || (
+    currentDiffers &&
+    /\b(?:will be|would love|touching hell|officially kills|any chance of|happening on tv|comic-accurate|to direct|will be touching)\b/i.test(currentPrimary)
+  );
+  if (!shouldRepair) {
+    return canonicalEntity;
+  }
+
+  canonicalEntity.primarySubject = brainPrimary;
+  if (brainPrimaryType !== 'person') {
+    canonicalEntity.mediaTitle = brainPrimary;
+    canonicalEntity.entityType = brainPrimaryType === 'franchise' ? 'franchise' : canonicalEntity.entityType === 'person' ? 'tv' : canonicalEntity.entityType;
+  }
+  if (brainEvent && brainEvent !== 'other') {
+    canonicalEntity.eventType = brainEvent;
+  }
+  canonicalEntity.allowedEntities = Array.from(new Set([
+    ...(canonicalEntity.allowedEntities || []),
+    brainPrimary,
+    ...(Array.isArray(decision?.secondary_entities) ? decision.secondary_entities : []),
+  ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)));
+  canonicalEntity.ambiguityFlags = Array.from(new Set([
+    ...(canonicalEntity.ambiguityFlags || []),
+    'runtime_brain_canonical_repaired',
+  ]));
+
+  return canonicalEntity;
+}
+
 function buildRSSRuntimeBrainCaptionRecovery(
   item: RSSItem,
   canonicalEntity: RSSCanonicalEntity,
   context: RSSContext,
 ): { caption: string; path: RSSCaptionGenerationPath; source: RSSCaptionGenerationSource; usedEditorialBrainFacts: boolean } | undefined {
+  canonicalEntity = applyRSSRuntimeBrainCanonicalRepair(item, canonicalEntity);
   const decision = item.editorialBrain?.decision as Record<string, any> | undefined;
   const primary = String(
     decision?.primary_entity ||
@@ -240,18 +327,23 @@ function buildRSSRuntimeBrainCaptionRecovery(
       : [];
   const event = String(decision?.event || canonicalEntity.eventType || '').trim().toLowerCase();
   const storyFamily = String(decision?.story_family || decision?.storyFamily || '').trim().toLowerCase();
+  const primaryType = String(decision?.primary_entity_type || decision?.primaryEntityType || '').trim().toLowerCase();
   const strategySource = decision?.caption_strategy || decision?.captionStrategy;
   const strategy = String(typeof strategySource === 'string' ? strategySource : strategySource?.mode || '').trim().toLowerCase();
   const headlineLeadPerson = extractRSSHeadlineLeadPersonCandidate(item.title);
-  const rawProject = canonicalEntity.mediaTitle || (canonicalEntity.entityType !== 'person' ? primary : '') || secondaryEntities[0] || canonicalEntity.secondarySubject || '';
+  const brainProject = primary && primaryType !== 'person' && !isWeakRSSCanonicalCandidate(primary) ? primary : '';
+  const currentProject = canonicalEntity.mediaTitle || (canonicalEntity.entityType !== 'person' ? canonicalEntity.primarySubject : '') || '';
+  const rawProject = brainProject || currentProject || secondaryEntities[0] || canonicalEntity.secondarySubject || '';
   const project = formatRSSRuntimeFallbackTitle(rawProject);
   const supportingProject = formatRSSRuntimeFallbackTitle(
-    secondaryEntities.find((entry) => normalizeRSSDedupeValue(entry) !== normalizeRSSDedupeValue(primary)) ||
+    secondaryEntities.find((entry) => normalizeRSSDedupeValue(entry) !== normalizeRSSDedupeValue(primary) && !isWeakRSSCanonicalCandidate(entry)) ||
     canonicalEntity.secondarySubject ||
+    brainProject ||
     canonicalEntity.mediaTitle ||
     ''
   );
-  const person = secondaryEntities[0] || canonicalEntity.secondarySubject || canonicalEntity.namedPeople?.[0] || '';
+  const castSubject = extractRSSRuntimeHeadlineCastSubject(item.title);
+  const person = castSubject || secondaryEntities[0] || canonicalEntity.secondarySubject || canonicalEntity.namedPeople?.[0] || '';
   const factLead = sanitizeRSSCaptionText(String(
     decision?.caption_facts?.headline_fact ||
     decision?.captionFacts?.headlineFact ||
@@ -273,7 +365,10 @@ function buildRSSRuntimeBrainCaptionRecovery(
   } else if (event === 'cancellation' || storyFamily === 'cancellation') {
     caption = buildRSSRuntimeEditorialCaption(`${project || primary} has been canceled.`, item);
   } else if (event === 'casting' || storyFamily === 'casting' || strategy === 'casting') {
-    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} has joined ${project}.` : project ? `${project} has a casting update.` : primary ? `${primary} has a casting update.` : '', item);
+    const plural = /\b(?:and|,|more)\b/i.test(person);
+    const starVerb = /\b(?:to star|set to star|will star)\b/i.test(item.title || '');
+    const verb = starVerb ? 'will star in' : plural ? 'have joined' : 'has joined';
+    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} ${verb} ${project}.` : project ? `${project} has expanded its cast.` : primary ? `${primary} has expanded its cast.` : '', item);
   } else if (event === 'trailer' || storyFamily === 'trailer' || strategy === 'trailer') {
     caption = buildRSSRuntimeEditorialCaption(project ? `New trailer released for ${project}.` : '', item);
   } else if (event === 'release_date' || storyFamily === 'release_date' || event === 'release_date_set') {
@@ -285,9 +380,12 @@ function buildRSSRuntimeBrainCaptionRecovery(
   } else if (event === 'streaming_availability') {
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} is changing its streaming availability.` : primary ? `${primary} is changing its streaming availability.` : '', item);
   } else if (event === 'business' || event === 'deal' || event === 'executive_appointment' || event === 'rights_sales_distribution' || event === 'lost_and_found_update' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || storyFamily === 'company_industry_news') {
-    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} is part of a new entertainment business report.` : '', item);
-  } else if (event === 'director_attachment' || event === 'writer_attachment' || event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival' || event === 'reboot_update' || event === 'project_update' || event === 'franchise_update') {
-    caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward with a new project update.` : primary ? `${primary} is moving forward with a new project update.` : '', item);
+    caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} is involved in a new entertainment business development.` : '', item);
+  } else if (event === 'director_attachment' || event === 'writer_attachment') {
+    const role = event === 'writer_attachment' ? 'writing' : 'directing';
+    caption = buildRSSRuntimeEditorialCaption(person && project ? `${person} is interested in ${role} ${project}.` : project ? `${project} is moving forward.` : primary ? `${primary} is moving forward.` : '', item);
+  } else if (event === 'project_announcement' || event === 'development' || event === 'reboot_status' || event === 'reboot_revival' || event === 'reboot_update' || event === 'project_update' || event === 'franchise_update') {
+    caption = buildRSSRuntimeEditorialCaption(project ? `${project} is moving forward.` : primary ? `${primary} is moving forward.` : '', item);
   } else if (event === 'interview_quote' || event === 'reflection' || event === 'person_commentary' || strategy === 'person_commentary') {
     caption = buildRSSRuntimeEditorialCaption(
       headlineLeadPerson && primary && normalizeRSSDedupeValue(primary) !== normalizeRSSDedupeValue(headlineLeadPerson)
@@ -326,7 +424,7 @@ function buildRSSRuntimeBrainCaptionRecovery(
     !normalizedCaption.trim() ||
     getRSSCaptionHardInvalidReasonCodes(normalizedCaption, recoveryContext).length > 0 ||
     failsRSSCaptionFormatting(normalizedCaption, recoveryContext) ||
-    !quality.allowedForAutopublish
+    !isRSSRuntimeFactBackedCaptionPublishable(quality)
   ) {
     return undefined;
   }
@@ -372,6 +470,8 @@ function recoverRSSCaptionResultAfterSanitization(
     !sanitized.trim() ||
     captionOnlyFailureCodes.includes('CAPTION_EMPTY') ||
     captionOnlyFailureCodes.includes('CAPTION_NON_PUBLISHER_FALLBACK') ||
+    captionOnlyFailureCodes.includes('CAPTION_HEADLINE_JUNK') ||
+    captionOnlyFailureCodes.includes('CAPTION_CANONICAL_ENTITY_MISMATCH') ||
     captionOnlyFailureCodes.includes('CAPTION_EDITORIAL_QUALITY_TOO_LOW');
 
   if (!shouldRecover) {
@@ -2547,6 +2647,9 @@ function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
   }
 
   if (
+    /^(?:it|i|we|you|he|she|they)\s+(?:has|have|had|is|are|was|were|will|would|could|should|think|know|feel|felt|said|say|believe|want|love|been)\b/i.test(candidate) ||
+    /\b(?:joy to write|write on|wrote on)\b/i.test(candidate) ||
+    /\b(?:would love|touching hell|officially kills|any chance of|happening on tv)\b/i.test(candidate) ||
     /\b(?:not really|explained|changes|teases|reveals|new look|first look|about to|what happened)\b/i.test(candidate) ||
     /^(?:why|how|what|when)\b/i.test(candidate) ||
     /^[A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){0,3}\s+(?:joins?|joined|joining|returns?|returned)\b/i.test(candidate)
@@ -2576,6 +2679,9 @@ function deriveRSSRuntimeEventType(
   if (/\b(?:stop streaming|stops streaming|leaving (?:netflix|hulu|max|prime video|disney\+|peacock|paramount\+)|now streaming|now on|free to stream|streaming availability)\b/i.test(text)) {
     return 'streaming_availability';
   }
+  if (/\b(?:renewed|renewal|picked up for season|renewed for season|returns? for season)\b/i.test(text)) {
+    return 'renewal';
+  }
   if (/\brelease window\b/i.test(text)) {
     return 'release_window';
   }
@@ -2595,7 +2701,7 @@ function deriveRSSRuntimeEventType(
 }
 
 function isRSSProjectVisualAnchorEvent(eventType?: string | null): boolean {
-  return /\b(?:first_look|trailer|project_update|franchise_update|streaming_availability|release_window|reboot_update|reboot_revival|release_date|project_announcement|development|casting)\b/i.test(String(eventType || ''));
+  return /\b(?:first_look|trailer|project_update|franchise_update|streaming_availability|release_window|reboot_update|reboot_revival|release_date|project_announcement|development|casting|renewal|cancellation)\b/i.test(String(eventType || ''));
 }
 
 const RSS_TITLE_CONNECTOR_PATTERN = '(?:[A-Z0-9][A-Za-z0-9\'’:&,.-]*|in|of|the|to|and|for|on|at|a|an|vs)';
@@ -2614,6 +2720,7 @@ function cleanRecoveredRSSProjectTitleCandidate(value?: string | null): string |
   cleaned = cleaned
     .replace(/^(?:the\s+final\s+season\s+of|final\s+season\s+of|where\s+to\s+watch|what\s+to\s+watch(?:\s+\w+)?\s*:|no\s+superheroes\s+needed:\s*)/i, '')
     .replace(/^the\s+new\s+/i, '')
+    .replace(/^(?:HBO|HBO Max|Max|Netflix|Disney\+|Hulu|Prime Video|Apple TV\+|Paramount\+|Peacock)['â€™]s\s+/i, '')
     .replace(/^(?:did|does|do|why|how|what|when)\s+/i, '')
     .replace(/^(?:(?:vampire|romantic|crime|sci[- ]?fi|science fiction|action|horror|thriller|comedy|drama|rom[- ]?com|mystery|superhero|fantasy|animated|animation|family|kids|teen|adult|period|historical)\s+)+/i, '')
     .replace(/\bmovie\b$/i, '')
@@ -2622,7 +2729,7 @@ function cleanRecoveredRSSProjectTitleCandidate(value?: string | null): string |
     .replace(/\brecap\b\s*:?.*$/i, '')
     .replace(/\b(?:is|are)\s+(?:free to stream|now on|now streaming|coming to|leaving)\b.*$/i, '')
     .replace(/\bseason\s+\d+\b(?:\s+(?:premiere|finale|return|returns?|recap|review|explained))?.*$/i, '')
-    .replace(/\b(?:premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|broadway\s+producing\s+team|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|to\s+series\b|is\b|has\b)\s+.*$/i, '')
+    .replace(/\b(?:officially\s+)?(?:renewed|premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|broadway\s+producing\s+team|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|to\s+series\b|is\b|has\b)\s+.*$/i, '')
     .replace(/\bjust$/i, '')
     .replace(/\btrailer$/i, '')
     .replace(/[,:;.\-–—\s]+$/g, '')
@@ -2730,7 +2837,7 @@ function extractRSSHeadlineTitleRecoveryCandidates(title: string): string[] {
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\s+${RSS_TITLE_CONNECTOR_PATTERN}){2,8}?)['???]s\s+(?:[A-Z][A-Za-z'???.-]+(?:\s+[A-Z][A-Za-z'???.-]+){0,3}|season\s+\d+|worst-rated\s+episode|future|creator|boss|end\s+begins)\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:is|are)\\s+(?:free\\s+to\\s+stream|now\\s+on|now\\s+streaming)\\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:recap)\\b`, 'i'),
-    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+renewed\\b`, 'i'),
+    new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:officially\\s+)?renewed\\b`, 'i'),
     new RegExp(`^\\w+\\s+orders\\s+(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+to\\s+series\\b`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s*:\\s+`, 'i'),
     new RegExp(`^(${RSS_TITLE_CONNECTOR_PATTERN}(?:\\s+${RSS_TITLE_CONNECTOR_PATTERN}){0,8}?)\\s+(?:gets|lands|confirms?|returns?|premiere|finale|creator|boss|production\\s+team|breaks?|told|is|has)\\b`, 'i'),

@@ -3918,6 +3918,40 @@ test('live cleanup rejects broken project-update canonicals and avoids shopping 
   assert.notEqual(practicalMagic.eventType, 'shopping');
 });
 
+test('live cleanup rejects quote sentence fragments for Harry Potter renewal canonicals', () => {
+  const item = {
+    title: "HBO's Harry Potter Reboot Officially Renewed for Season 2 (With a Big Change Behind the Scenes)",
+    description: "HBO is starting to build the buzz around its upcoming Harry Potter reboot series, as Warner Bros. Discovery reveals more details about the show's approach to the franchise.",
+    contentHtml: "<p>HBO is starting to build the buzz around its upcoming <em>Harry Potter</em> reboot series. 'It has been a joy to write on Philosopher' was a quote from the article, not the title.</p>",
+  };
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  assert.equal(canonical.primarySubject, 'Harry Potter Reboot');
+  assert.equal(canonical.mediaTitle, 'Harry Potter Reboot');
+  assert.equal(canonical.eventType, 'renewal');
+  assert.equal(canonical.allowedEntities?.includes('It has been a joy to write on Philosopher'), false);
+  assert.ok(canonical.ambiguityFlags?.includes('story_policy_project_visual_anchor'));
+
+  const context = {
+    articleTitle: item.title,
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    feedName: 'Comicbook',
+    platform: 'Facebook',
+    allowedEntities: canonical.allowedEntities,
+    canonicalEntity: canonical,
+  } as any;
+  const badCaption = "'It has been a joy to write on Philosopher' is in development.\n\nHBO is starting to build the buzz around its upcoming Harry Potter reboot series, as Warner Bros.";
+  assert.ok(getRSSCaptionHardInvalidReasonCodes(badCaption, context).includes('CAPTION_HEADLINE_JUNK'));
+
+  const repaired = buildRSSPublishSafeDeterministicResult(badCaption, context);
+  assert.doesNotMatch(repaired.caption, /It has been a joy to write on Philosopher/i);
+  assert.match(repaired.caption, /Harry Potter Reboot/i);
+  assert.match(repaired.caption, /renewed/i);
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(repaired.caption, context).length, 0);
+});
+
 test('caption-empty recovery builds publisher-safe captions from event and canonical facts', () => {
   const item = {
     title: "Kenneth Branagh 'Would Love' To Direct Another Thor Film In The Vein Of 2017's Logan",
@@ -4294,5 +4328,117 @@ test('caption-empty recovery rebuilds generic headline-news release and trailer 
     assert.match(result.caption, entry.expected);
     assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
     assert.notEqual(result.source, 'fallback');
+  }
+});
+
+test('publisher-safe fallback rejects generic center-of-report captions', () => {
+  const context = {
+    articleTitle: "'American Blue' Adds Maisie Merlock, Gerardo Celasco and Cinthya Carmona To HBO Max Pilot",
+    summary: 'Maisie Merlock, Gerardo Celasco, and Cinthya Carmona are the latest to join the cast of the HBO Max pilot American Blue.',
+    articleBody: 'Maisie Merlock, Gerardo Celasco, and Cinthya Carmona are the latest to join the cast of the HBO Max pilot American Blue.',
+    articleContentHtml: '<p>Maisie Merlock, Gerardo Celasco, and Cinthya Carmona are the latest to join the cast of the HBO Max pilot American Blue.</p>',
+    feedName: 'Deadline',
+    platform: 'Facebook',
+    allowedEntities: ['American Blue', 'Maisie Merlock', 'Gerardo Celasco', 'Cinthya Carmona'],
+    canonicalEntity: {
+      primarySubject: 'American Blue',
+      mediaTitle: 'American Blue',
+      entityType: 'tv',
+      eventType: 'casting',
+      confidence: 0.95,
+      allowedEntities: ['American Blue', 'Maisie Merlock', 'Gerardo Celasco', 'Cinthya Carmona'],
+    },
+  } as any;
+
+  const generic = "'American Blue' is at the center of a new report.\n\nMaisie Merlock, Gerardo Celasco, and Cinthya Carmona are the latest to join the cast of the HBO Max pilot American Blue.";
+  assert.ok(getRSSCaptionHardInvalidReasonCodes(generic, context).includes('CAPTION_HEADLINE_JUNK'));
+
+  const result = buildRSSPublishSafeDeterministicResult(generic, context);
+  assert.doesNotMatch(result.caption, /center of a new report/i);
+  assert.match(result.caption, /American Blue/i);
+  assert.match(result.caption, /cast/i);
+  assert.notEqual(result.source, 'fallback');
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).length, 0);
+});
+
+test('runtime recovery rebuilds empty and too-thin casting captions from clean brain canonicals', () => {
+  const cases = [
+    {
+      title: 'John and Allegra Leguizamo to Star in Father-Daughter Drama Bullet Catch',
+      description: "John Leguizamo and his daughter Allegra are set to star in a drama film titled Bullet Catch.",
+      currentCanonical: 'Bullet Catch',
+      brainCanonical: 'Bullet Catch',
+      expected: /John and Allegra Leguizamo will star in 'Bullet Catch'\./,
+    },
+    {
+      title: "'First Woman': Ben Miles, Jimmy Akingbola, Shazad Latif & More Join ITV & ZDF's Lunar Mystery Thriller",
+      description: 'ITV and ZDF’s space mystery First Woman has rounded out its main cast with Ben Miles, Jimmy Akingbola and more.',
+      currentCanonical: 'First Woman',
+      brainCanonical: 'First Woman',
+      expected: /Ben Miles, Jimmy Akingbola, Shazad Latif and more have joined 'First Woman'\./,
+    },
+    {
+      title: "LISTEN: Kate del Castillo Brings 'La Reina del Sur' Back to Telemundo for Season 4",
+      description: "Kate del Castillo details the return of La Reina del Sur for a new season at Telemundo.",
+      currentCanonical: 'Teresa Mendoza Will be Touching Hell',
+      brainCanonical: 'La Reina del Sur',
+      expected: /La Reina del Sur/,
+    },
+    {
+      title: 'The Boys Officially Kills Off Any Chance Of Homelander’s Comic-Accurate Death Happening on TV',
+      description: 'The Boys Season 5 is steadily building to the show’s conclusion with its latest episode.',
+      currentCanonical: 'Comic-Accurate Death Happening on TV The Boys Officially Kills Off Any Chance Of Homelander',
+      brainCanonical: 'The Boys',
+      expected: /The Boys/,
+    },
+  ];
+
+  for (const entry of cases) {
+    const item = {
+      title: entry.title,
+      description: entry.description,
+      contentHtml: `<p>${entry.description}</p>`,
+      editorialBrain: {
+        decision: {
+          primary_entity_type: 'project',
+          primary_entity: entry.brainCanonical,
+          secondary_entities: [],
+          event: 'casting',
+          story_family: 'casting',
+          caption_strategy: { mode: 'headline_news' },
+          caption_facts: { headline_fact: '', supporting_fact: '', quote: '', bullets: [] },
+        },
+      },
+    } as any;
+    const canonical = {
+      primarySubject: entry.currentCanonical,
+      mediaTitle: entry.currentCanonical,
+      entityType: 'tv',
+      eventType: 'casting',
+      confidence: 0.9,
+      allowedEntities: [entry.currentCanonical, entry.brainCanonical],
+    } as any;
+    const context = {
+      articleTitle: item.title,
+      summary: item.description,
+      articleBody: item.contentHtml,
+      articleContentHtml: item.contentHtml,
+      feedName: 'Variety',
+      platform: 'Facebook',
+      canonicalEntity: canonical,
+      allowedEntities: canonical.allowedEntities,
+      editorialBrain: item.editorialBrain,
+    } as any;
+
+    const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+      caption: "'First Woman' has a casting update.",
+      path: 'repaired_caption',
+      source: 'publisher_safe_rebuild',
+    } as any, 280);
+
+    assert.match(result.caption, entry.expected);
+    assert.doesNotMatch(result.caption, /casting update|Teresa Mendoza Will be Touching Hell|Comic-Accurate Death Happening/i);
+    assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).length, 0);
+    assert.equal(evaluateRSSCaptionEditorialQuality(result.caption, context).flags.includes('QUALITY_TOO_THIN'), false);
   }
 });
