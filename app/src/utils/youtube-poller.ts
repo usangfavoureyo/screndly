@@ -291,6 +291,26 @@ class YouTubeRSSPoller {
     this.createNotification(video, channel);
   }
 
+  private inferNotificationAssetLabel(title: string): 'Announcement' | 'Clip' | 'Teaser' | 'Trailer' | 'Video' {
+    if (/\bannouncements?\b/i.test(title || '')) {
+      return 'Announcement';
+    }
+
+    if (/\bclips?\b/i.test(title || '')) {
+      return 'Clip';
+    }
+
+    if (/\bteasers?\b/i.test(title || '')) {
+      return 'Teaser';
+    }
+
+    if (/\btrailers?\b/i.test(title || '')) {
+      return 'Trailer';
+    }
+
+    return 'Video';
+  }
+
   // Create notification
   private createNotification(video: YouTubeVideo, channel: Channel): void {
     if (!this.onNotification) return;
@@ -299,7 +319,7 @@ class YouTubeRSSPoller {
       id: Date.now().toString(),
       type: 'success',
       source: 'upload',
-      title: 'New Trailer Detected',
+      title: `New ${this.inferNotificationAssetLabel(video.title)} Detected`,
       message: `${video.title} from ${channel.name}`,
       timestamp: new Date().toISOString(),
       read: false,

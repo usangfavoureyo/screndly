@@ -4189,3 +4189,110 @@ test('runtime deterministic fallback does not return empty just because editoria
   assert.notEqual(result.source, 'fallback');
   assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
 });
+
+test('failed cross-feed RSS event duplicates suppress later category variants', () => {
+  const failedDeadlineMovie = {
+    feedName: 'Deadline Movie',
+    title: "'When Calls The Heart' Prequel 'Hope Valley: 1874' Renewed For Season 2 At Hallmark+",
+    link: 'https://deadline.com/hope-valley-1874-movie-feed',
+    timestamp: new Date('2026-05-07T07:00:00.000Z').getTime(),
+    status: 'failed',
+    fingerprint: __rssAuditTestUtils.buildRSSNewsEventFingerprint({
+      title: "'When Calls The Heart' Prequel 'Hope Valley: 1874' Renewed For Season 2 At Hallmark+",
+      link: 'https://deadline.com/hope-valley-1874-movie-feed',
+      description: 'Hope Valley: 1874 will be back for another go-round.',
+      contentHtml: '<p>Hallmark+ has renewed Hope Valley: 1874 for Season 2.</p>',
+      imageUrls: [],
+      pubDate: new Date('2026-05-07T07:00:00.000Z'),
+      canonicalEntity: {
+        primarySubject: 'Hope Valley: 1874',
+        mediaTitle: 'Hope Valley: 1874',
+        entityType: 'tv',
+        eventType: 'renewal',
+      } as any,
+    } as any),
+  };
+
+  const decision = __rssAuditTestUtils.resolveRSSDuplicateEventDecision('Deadline TV', {
+    title: "'When Calls The Heart' Prequel 'Hope Valley: 1874' Renewed For Season 2 At Hallmark+",
+    link: 'https://deadline.com/hope-valley-1874-tv-feed',
+    description: 'Hope Valley: 1874 will be back for another go-round.',
+    contentHtml: '<p>Hallmark+ has renewed Hope Valley: 1874 for Season 2.</p>',
+    imageUrls: [],
+    pubDate: new Date('2026-05-07T07:05:00.000Z'),
+    canonicalEntity: {
+      primarySubject: 'Hope Valley: 1874',
+      mediaTitle: 'Hope Valley: 1874',
+      entityType: 'tv',
+      eventType: 'renewal',
+    } as any,
+  } as any, [failedDeadlineMovie as any]);
+
+  assert.ok(decision);
+  assert.equal(decision?.winningSource, 'Deadline Movie');
+  assert.deepEqual(decision?.suppressedSources, ['Deadline TV']);
+});
+
+test('caption-empty recovery rebuilds generic headline-news release and trailer items', () => {
+  const cases = [
+    {
+      title: "'The Bear' Season 3 Release Date Officially Confirmed",
+      description: 'FX has finally revealed when audiences can expect the new season of The Bear.',
+      canonical: 'The Bear',
+      expected: /'The Bear' has a new release update\./,
+    },
+    {
+      title: "'Del Boys' Trailer: Fred Armisen Joins The Bar Brothers As An Unhinged Casino King In Season 2",
+      description: 'Hulu has released the full Season 2 trailer for Del Boys.',
+      canonical: 'Del Boys',
+      expected: /A new trailer for 'Del Boys' has been released\./,
+    },
+  ];
+
+  for (const entry of cases) {
+    const item = {
+      title: entry.title,
+      link: `https://example.com/${entry.canonical.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      description: entry.description,
+      contentHtml: `<p>${entry.description}</p>`,
+      imageUrls: ['https://example.com/image.jpg'],
+      pubDate: new Date('2026-05-07T08:00:00.000Z'),
+      editorialBrain: {
+        decision: {
+          primary_entity: entry.canonical,
+          event: 'event',
+          story_family: 'headline_news',
+          caption_strategy: 'headline_news',
+        },
+      },
+    } as any;
+    const canonical = {
+      primarySubject: entry.canonical,
+      mediaTitle: entry.canonical,
+      entityType: 'tv',
+      eventType: 'event',
+      confidence: 0.95,
+      allowedEntities: [entry.canonical],
+    } as any;
+    const context = {
+      articleTitle: item.title,
+      summary: item.description,
+      articleBody: item.description,
+      feedName: 'Deadline',
+      platform: 'Facebook',
+      allowedEntities: [entry.canonical],
+      canonicalEntity: canonical,
+      editorialBrain: item.editorialBrain,
+    } as any;
+
+    const result = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item, canonical, context, {
+      caption: '',
+      path: 'deterministic_template',
+      source: 'fallback',
+    } as any, 280);
+
+    assert.match(result.caption, entry.expected);
+    assert.equal(getRSSCaptionHardInvalidReasonCodes(result.caption, context).includes('CAPTION_EMPTY'), false);
+    assert.notEqual(result.source, 'fallback');
+  }
+});

@@ -52,6 +52,38 @@ import type { PollingSchedule, PollingScheduleWindow } from './video-enrichment.
 
 const parser = new Parser();
 
+type YouTubePromoNotificationAssetLabel = 'Announcement' | 'Clip' | 'Teaser' | 'Trailer' | 'Video';
+type YouTubePromoNotificationAction = 'Detected' | 'Published' | 'Failed';
+
+export function inferYouTubePromoNotificationAssetLabel(title: string): YouTubePromoNotificationAssetLabel {
+    const normalizedTitle = title || '';
+
+    if (/\bannouncements?\b/i.test(normalizedTitle)) {
+        return 'Announcement';
+    }
+
+    if (/\bclips?\b/i.test(normalizedTitle)) {
+        return 'Clip';
+    }
+
+    if (/\bteasers?\b/i.test(normalizedTitle)) {
+        return 'Teaser';
+    }
+
+    if (/\btrailers?\b/i.test(normalizedTitle)) {
+        return 'Trailer';
+    }
+
+    return 'Video';
+}
+
+export function formatYouTubePromoNotificationTitle(
+    videoTitle: string,
+    action: YouTubePromoNotificationAction
+): string {
+    return `New ${inferYouTubePromoNotificationAssetLabel(videoTitle)} ${action}`;
+}
+
 interface PollOptions {
     force?: boolean;
     channelDbId?: string;
@@ -3483,7 +3515,7 @@ export class YouTubePollerService {
                     enrichedMetadata.tmdbMatch ? `${enrichedMetadata.tmdbMatch.mediaType}:${enrichedMetadata.tmdbMatch.tmdbId}` : undefined
                 );
                 await notificationService.notifyUser({
-                    title: 'New Trailer Published',
+                    title: formatYouTubePromoNotificationTitle(video.title, 'Published'),
                     message: `${video.title} was posted to ${publishedPlatformLabels.join(', ')}.`,
                     type: 'success',
                     source: 'youtube',
@@ -3518,6 +3550,13 @@ export class YouTubePollerService {
                         sourceAttribution,
                         dedup: dedupResult,
                     },
+                });
+                await notificationService.notifyUser({
+                    title: formatYouTubePromoNotificationTitle(video.title, 'Failed'),
+                    message: `${video.title} failed to publish to ${failedPlatformLabels.join(', ')} and will retry on the next polling cycle.`,
+                    type: 'error',
+                    source: 'youtube',
+                    actionPage: '/channels'
                 });
                 return {
                     kind: 'return',
@@ -3711,7 +3750,7 @@ export class YouTubePollerService {
         const failedPlatforms = results.filter((result) => result.status === 'failed').map((result) => result.platform);
 
         await notificationService.notifyUser({
-            title: 'New Trailer Detected',
+            title: formatYouTubePromoNotificationTitle(video.title, 'Detected'),
             message: `${video.title} from ${channel.name} (${publishedAt.toLocaleDateString()})`,
             type: publishedPlatforms.length > 0 ? 'success' : 'info',
             source: 'youtube',

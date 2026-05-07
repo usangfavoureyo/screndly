@@ -84,6 +84,79 @@ function buildRSSRuntimeEditorialCaption(lead: string, item: RSSItem): string {
   return sanitizeRSSCaptionText(`${cleanLead}\n\n${resolvedSupport}`, 280);
 }
 
+function buildRSSRuntimeFactBackedLead(
+  item: RSSItem,
+  canonicalEntity: RSSCanonicalEntity,
+  context: RSSContext
+): string {
+  const primary = canonicalEntity.mediaTitle || canonicalEntity.primarySubject || context.allowedEntities?.[0] || '';
+  const project = canonicalEntity.entityType === 'person'
+    ? formatRSSRuntimeFallbackTitle(canonicalEntity.mediaTitle || canonicalEntity.secondarySubject || '')
+    : formatRSSRuntimeFallbackTitle(primary);
+  const person = extractRSSHeadlineLeadPersonCandidate(item.title) || canonicalEntity.namedPeople?.[0] || (
+    canonicalEntity.entityType === 'person' ? canonicalEntity.primarySubject : ''
+  );
+  const normalizedEvent = normalizeRSSDedupeValue(canonicalEntity.eventType || '');
+  const headline = String(item.title || '');
+
+  if (project) {
+    const acquisitionMatch = headline.match(/^\s*([A-Z][A-Za-z0-9&.+'\- ]{2,80}?)\s+(?:acquires?|secures?|lands?)\b/i);
+    if (acquisitionMatch?.[1] && /\b(acquires?|rights|sales|deal|distribution|cannes|market)\b/i.test(headline)) {
+      return `${sanitizeRSSPlainText(acquisitionMatch[1])} has acquired ${project}.`;
+    }
+    if (/\b(trailer|teaser)\b/i.test(headline) || normalizedEvent.includes('trailer')) {
+      return `A new trailer for ${project} has been released.`;
+    }
+    if (/\b(first look|new look|preview image|photo|poster)\b/i.test(headline) || normalizedEvent.includes('first look')) {
+      return `A first look at ${project} has been revealed.`;
+    }
+    if (/\b(release date|premiere date|sets? .*date|date confirmed|release window)\b/i.test(headline) || normalizedEvent.includes('release')) {
+      return `${project} has a new release update.`;
+    }
+    if (/\b(renewed|renewal|season \d+|returning|returns?|picked up)\b/i.test(headline) || normalizedEvent.includes('renew')) {
+      return `${project} has a new season update.`;
+    }
+    if (/\b(cancelled|canceled|to end|final season|ending)\b/i.test(headline) || normalizedEvent.includes('cancellation')) {
+      return `${project} has a new status update.`;
+    }
+    if (/\b(filming|shooting|production|begins? production|starts? filming|wraps?)\b/i.test(headline) || normalizedEvent.includes('production')) {
+      return `${project} has a new production update.`;
+    }
+    if (/\b(joins?|cast|casting|star|stars|lead|boards?)\b/i.test(headline) || normalizedEvent.includes('casting')) {
+      return person && normalizeRSSDedupeValue(person) !== normalizeRSSDedupeValue(primary)
+        ? `${person} has joined ${project}.`
+        : `${project} has added new cast.`;
+    }
+    if (/\b(acquires?|rights|sales|deal|distribution|cannes|market)\b/i.test(headline) || normalizedEvent.includes('rights') || normalizedEvent.includes('business')) {
+      return `${project} has a new distribution update.`;
+    }
+    return `${project} has a new project update.`;
+  }
+
+  if (primary && canonicalEntity.entityType === 'person') {
+    if (/\b(dies|dead|died|was \d{2,3})\b/i.test(headline) || normalizedEvent.includes('obituary')) {
+      return `${primary} has died.`;
+    }
+    if (/\b(says?|interview|explains?|reveals?|talks?|responds?|comments?)\b/i.test(headline) || normalizedEvent.includes('interview')) {
+      return `${primary} discussed the story in a new interview.`;
+    }
+    return `${primary} is part of a new entertainment report.`;
+  }
+
+  return primary ? `${primary} has a new update.` : '';
+}
+
+function isRSSRuntimeFactBackedCaptionPublishable(quality: RSSCaptionEditorialQuality): boolean {
+  return quality.allowedForAutopublish || (
+    quality.factCount >= 2 &&
+    quality.hasContextLine &&
+    !quality.missingContext &&
+    !quality.missingSecondaryFact &&
+    !quality.duplicativeOfHeadline &&
+    !quality.singleLineOnly
+  );
+}
+
 function buildRSSRuntimeFactBackedCaptionRecovery(
   item: RSSItem,
   canonicalEntity: RSSCanonicalEntity,
@@ -97,9 +170,10 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
   const deterministicQuality = evaluateRSSCaptionEditorialQuality(deterministicCaption, context);
   if (
     deterministicCaption.trim() &&
+    !/\bis at the center of a new report\b/i.test(deterministicCaption) &&
     getRSSCaptionHardInvalidReasonCodes(deterministicCaption, context).length === 0 &&
     !failsRSSCaptionFormatting(deterministicCaption, context) &&
-    deterministicQuality.allowedForAutopublish
+    isRSSRuntimeFactBackedCaptionPublishable(deterministicQuality)
   ) {
     return {
       caption: deterministicCaption,
@@ -115,9 +189,7 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
     return undefined;
   }
 
-  const lead = canonicalEntity.entityType === 'person'
-    ? `${primary} is the subject of a new report.`
-    : `${formatRSSRuntimeFallbackTitle(primary)} is at the center of a new report.`;
+  const lead = buildRSSRuntimeFactBackedLead(item, canonicalEntity, context);
   const rebuilt = sanitizeRSSCaptionText(`${lead}\n\n${support}`, 280);
   const recoveryContext: RSSContext = {
     ...context,
@@ -134,7 +206,7 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
     rebuilt.trim() &&
     getRSSCaptionHardInvalidReasonCodes(rebuilt, recoveryContext).length === 0 &&
     !failsRSSCaptionFormatting(rebuilt, recoveryContext) &&
-    quality.allowedForAutopublish
+    isRSSRuntimeFactBackedCaptionPublishable(quality)
   ) {
     return {
       caption: rebuilt,
@@ -5254,7 +5326,7 @@ type RSSNewsEventFingerprint = {
   topicFingerprint: ReturnType<typeof buildRSSTopicFingerprint>;
 };
 
-type RSSDuplicateCandidateStatus = 'current' | 'pending' | 'published';
+type RSSDuplicateCandidateStatus = 'current' | 'failed' | 'pending' | 'published';
 
 type RSSDuplicateEventCandidate = {
   feedName: string;
@@ -5301,7 +5373,10 @@ function getRSSDuplicateStatusPriority(status: RSSDuplicateCandidateStatus): num
   if (status === 'pending') {
     return 1;
   }
-  return 2;
+  if (status === 'failed') {
+    return 2;
+  }
+  return 3;
 }
 
 function compareRSSDuplicateCandidates(left: RSSDuplicateEventCandidate, right: RSSDuplicateEventCandidate): number {
@@ -8560,7 +8635,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       ? await prisma.rSSFeedItem.findMany({
           where: {
             feedId: { not: feed.id },
-            status: { in: ['pending', 'published'] },
+            status: { in: ['pending', 'published', 'failed'] },
             firstSeenAt: { gte: new Date(Date.now() - activityLookbackDays * 24 * 60 * 60 * 1000) },
           },
           orderBy: { firstSeenAt: 'desc' },
@@ -8584,7 +8659,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       .map((item) => item.title)
       .filter((title): title is string => Boolean(title && title.trim()));
     const recentTopicFingerprints = recentActivities
-      .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+      .filter((activity) => activity.status === 'pending' || activity.status === 'published' || activity.status === 'failed')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
       .map((activity) => buildRSSTopicFingerprint(activity.title))
       .concat(
@@ -8592,7 +8667,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       )
       .filter((fingerprint) => fingerprint.signature);
     const recentSubjectCooldownFingerprints = recentActivities
-      .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+      .filter((activity) => activity.status === 'pending' || activity.status === 'published' || activity.status === 'failed')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_SUBJECT_COOLDOWN_MS)
       .map((activity) => buildRSSTopicFingerprint(activity.title))
       .concat(
@@ -8600,7 +8675,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
       )
       .filter((fingerprint) => fingerprint.subjectPhrases.size > 0 || fingerprint.entityTokens.size > 0);
     const recentEventCandidates = recentActivities
-      .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+      .filter((activity) => activity.status === 'pending' || activity.status === 'published' || activity.status === 'failed')
       .filter((activity) => Date.now() - new Date(activity.timestamp).getTime() <= RSS_TOPIC_DEDUPE_LOOKBACK_MS)
       .map((activity) => buildRSSDuplicateCandidate(
         activity.feedName,
@@ -8613,7 +8688,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
           pubDate: new Date(activity.publishedAt || activity.timestamp),
           canonicalEntity: undefined,
         },
-        activity.status === 'published' ? 'published' : 'pending',
+        activity.status === 'published' ? 'published' : activity.status === 'failed' ? 'failed' : 'pending',
         new Date(activity.publishedAt || activity.timestamp)
       ))
       .concat(
@@ -8629,7 +8704,7 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
               pubDate: record.firstSeenAt,
               canonicalEntity: undefined,
             },
-            record.status === 'published' ? 'published' : 'pending',
+            record.status === 'published' ? 'published' : record.status === 'failed' ? 'failed' : 'pending',
             record.firstSeenAt
           )
         )
@@ -8765,14 +8840,14 @@ async function runRefreshFeed(id: string, options: RefreshFeedOptions = {}): Pro
     const manualRunBlockedKeys = new Set<string>([
       ...activePendingQueue.map((entry) => getRSSItemLocalSeenKeys(entry.item)).flat(),
       ...knownFeedItems
-        .filter((record) => record.status === 'pending' || record.status === 'published')
+        .filter((record) => record.status === 'pending' || record.status === 'published' || record.status === 'failed')
         .flatMap((record) => {
           const keys = [record.dedupeKey];
           const topicKey = record.title ? getRSSItemTopicDedupeKey({ title: record.title } as RSSItem) : '';
           return topicKey ? [...keys, topicKey] : keys;
         }),
       ...feedRecentActivities
-        .filter((activity) => activity.status === 'pending' || activity.status === 'published')
+        .filter((activity) => activity.status === 'pending' || activity.status === 'published' || activity.status === 'failed')
         .flatMap((activity) => {
           const keys = [getRSSActivityDedupeKey(activity)];
           const topicKey = activity.title ? getRSSItemTopicDedupeKey({ title: activity.title } as RSSItem) : '';

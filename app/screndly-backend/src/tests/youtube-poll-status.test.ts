@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { YouTubePollerService } from '../services/youtube-poller.service';
+import {
+    formatYouTubePromoNotificationTitle,
+    inferYouTubePromoNotificationAssetLabel,
+    YouTubePollerService,
+} from '../services/youtube-poller.service';
 import { getYtDlpAuthOptions } from '../lib/yt-dlp';
 import prisma from '../lib/prisma';
 
@@ -37,6 +41,41 @@ function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => Pro
         throw error;
     }
 }
+
+test('formats YouTube polling notification titles from the detected promo type', () => {
+    assert.equal(
+        inferYouTubePromoNotificationAssetLabel('THE SHEEP DETECTIVES | "I Have A Question As Well" Official Clip'),
+        'Clip'
+    );
+    assert.equal(
+        inferYouTubePromoNotificationAssetLabel('Squid Game Season 3 | Official Teaser | Netflix'),
+        'Teaser'
+    );
+    assert.equal(
+        inferYouTubePromoNotificationAssetLabel('Send Help | Official Trailer | In Theaters Jan 30'),
+        'Trailer'
+    );
+    assert.equal(
+        inferYouTubePromoNotificationAssetLabel('Stranger Things 5 | Date Announcement | Netflix'),
+        'Announcement'
+    );
+    assert.equal(
+        formatYouTubePromoNotificationTitle('OBSESSION - "Nice Date" Official Clip', 'Published'),
+        'New Clip Published'
+    );
+    assert.equal(
+        formatYouTubePromoNotificationTitle('The Witcher Season 5 Cast Announcement', 'Detected'),
+        'New Announcement Detected'
+    );
+    assert.equal(
+        formatYouTubePromoNotificationTitle('Example Title | Official Teaser Trailer', 'Detected'),
+        'New Teaser Detected'
+    );
+    assert.equal(
+        formatYouTubePromoNotificationTitle('Untitled promo announcement', 'Failed'),
+        'New Video Failed'
+    );
+});
 
 test('reports stale poll state when an active channel worker exceeds the stale threshold', () => {
     const service = new YouTubePollerService() as any;
