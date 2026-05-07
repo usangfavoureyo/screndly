@@ -21,12 +21,11 @@ import {
   uploadDesignStudioAsset,
 } from '../lib/api/designStudio';
 import { SwipeableActivityCard } from './SwipeableActivityCard';
-import type { DesignData } from './EditDesignBottomSheet';
+import { EditDesignBottomSheet, type DesignData } from './EditDesignBottomSheet';
 import { toast } from 'sonner';
 import { useBulkSelection } from '../hooks/useBulkSelection';
 
 const DASHBOARD_DESIGN_STUDIO_ACTIVITY_TARGET_STORAGE_KEY = 'screndly_dashboard_design_studio_activity_target';
-const DESIGN_STUDIO_EDITOR_TARGET_KEY = 'screndly_design_studio_editor_target';
 import { ActivitySelectionToolbar } from './ActivitySelectionToolbar';
 import { useUndo } from './UndoContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -91,12 +90,6 @@ interface ActivityPreviewTarget {
   imageUrl: string;
 }
 
-interface DesignStudioEditorTarget {
-  templateId: string;
-  tab?: DesignStudioActivityTab;
-  initialData?: DesignData | null;
-}
-
 type CardEditorMode =
   | 'caption'
   | 'header'
@@ -107,6 +100,21 @@ type CardEditorMode =
 interface CardEditorState {
   mode: CardEditorMode;
   activity: DesignStudioActivityRecord;
+}
+
+interface FullDesignEditorState {
+  activity: DesignStudioActivityRecord;
+  template: DesignStudioTemplateRecord;
+  initialData: DesignData;
+  sourceContext?: {
+    sourceHeadline: string;
+    suggestedHeadline?: string;
+    sourceName?: string;
+    sourceSummary?: string;
+    sourceUrl?: string;
+    fetchedAt?: string;
+    matchedKeyword?: string;
+  };
 }
 
 function safeStorageSetItem(key: string, value: string) {
@@ -678,6 +686,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
   const [renameValue, setRenameValue] = useState('');
   const [isRenameSheetOpen, setIsRenameSheetOpen] = useState(false);
   const [cardEditor, setCardEditor] = useState<CardEditorState | null>(null);
+  const [fullDesignEditor, setFullDesignEditor] = useState<FullDesignEditorState | null>(null);
   const [cardTextDraft, setCardTextDraft] = useState('');
   const [isSavingCardEdit, setIsSavingCardEdit] = useState(false);
   const [backgroundDraftUrl, setBackgroundDraftUrl] = useState('');
@@ -1744,16 +1753,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     }
   };
 
-  const openEditorTarget = (target: DesignStudioEditorTarget) => {
-    if (typeof window !== 'undefined') {
-      safeStorageSetItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
-      safeStorageSetItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
-      safeStorageSetItem('designStudioTopTab', target.tab === 'auto' ? 'auto' : 'manual');
-      window.dispatchEvent(new CustomEvent('screndly:design-studio-edit-target', { detail: target }));
-    }
-    onNavigate('design-studio');
-  };
-
   const getActivityDownloadUrl = (activity: DesignStudioActivityRecord) => {
     const autoEditorial = findAutoEditorialForActivity(activity);
     const mediaUrl = activity.details.previewUrl || activity.details.outputUrl || autoEditorial?.renderedImage;
@@ -1938,6 +1937,65 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     setIsScheduleSheetOpen(true);
   };
 
+  const openFullDesignEditor = (activity: DesignStudioActivityRecord) => {
+    const { autoEditorial, data, renderedDesign, template } = resolveActivityEditContext(activity);
+    const nextTemplate = template
+      || (activeTab === 'auto'
+        ? designTemplates.find((entry) => entry.isDefaultAuto)
+        : designTemplates.find((entry) => entry.isDefaultManual))
+      || designTemplates.find((entry) => entry.isValidated !== false)
+      || designTemplates[0];
+
+    if (!nextTemplate) {
+      toast.error('No editable template was found for this item');
+      return;
+    }
+
+    const initialData = data || buildFallbackEditData(activity, autoEditorial);
+    const sourceContext = getActivitySourceContext(activity, autoEditorial, renderedDesign);
+    setFullDesignEditor({
+      activity,
+      template: nextTemplate,
+      initialData,
+      sourceContext: {
+        sourceHeadline: sourceContext.sourceHeadline || activity.details.headerText || initialData.headerText || 'Rendered design',
+        suggestedHeadline: initialData.headerText || sourceContext.sourceHeadline || activity.details.headerText,
+        sourceName: sourceContext.sourceName || undefined,
+        sourceSummary: sourceContext.sourceSummary || undefined,
+        sourceUrl: sourceContext.sourceUrl || undefined,
+        fetchedAt: activity.createdAt,
+        matchedKeyword: activity.details.matchedKeyword || autoEditorial?.matchedKeyword || undefined,
+      },
+    });
+  };
+
+  const closeFullDesignEditor = () => {
+    if (isSavingCardEdit) {
+      return;
+    }
+    setFullDesignEditor(null);
+  };
+
+  const handleSaveFullDesignEdit = async (data: DesignData) => {
+    if (!fullDesignEditor) {
+      return;
+    }
+
+    setIsSavingCardEdit(true);
+    try {
+      await persistCardEdit(fullDesignEditor.activity, data, 'design');
+      haptics.success();
+      toast.success('Design edit queued');
+      setFullDesignEditor(null);
+      await loadActivities({ silent: true });
+    } catch (error) {
+      console.error('Failed to save full design edit:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to save design edit');
+    } finally {
+      setIsSavingCardEdit(false);
+    }
+  };
+
   const openPreview = (activity: DesignStudioActivityRecord) => {
     const imageUrl = getActivityImageUrl(activity);
     if (!imageUrl) {
@@ -1949,60 +2007,6 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     });
     setPreviewZoom(1);
     setPreviewOffset({ x: 0, y: 0 });
-  };
-
-  const handleEditActivity = (activity: DesignStudioActivityRecord) => {
-    const autoEditorialFromActivity = findAutoEditorialForActivity(activity);
-    const outputUrl = activity.details.outputUrl || activity.details.previewUrl || autoEditorialFromActivity?.renderedImage;
-    const normalizedOutputUrl = normalizeMediaKey(outputUrl);
-    const matchedRenderJob = activity.details.renderJobId
-      ? renderJobById.get(activity.details.renderJobId)
-      : manualRenderJobs.find((job) => job.templateName === activity.details.templateName);
-    const renderedDesign = outputUrl
-      ? renderedDesignByOutputUrl.get(outputUrl)
-        || renderedDesignByOutputUrlNormalized.get(normalizedOutputUrl)
-        || (activity.details.designId ? renderedDesignById.get(activity.details.designId) : undefined)
-      : activity.details.designId
-        ? renderedDesignById.get(activity.details.designId)
-        : undefined;
-    const autoEditorial = outputUrl
-      ? autoEditorialByImageUrl.get(outputUrl)
-        || autoEditorialByImageUrlNormalized.get(normalizedOutputUrl)
-        || autoEditorialFromActivity
-      : autoEditorialFromActivity;
-
-    if (renderedDesign) {
-      openEditorTarget({
-        templateId: renderedDesign.templateId,
-        tab: 'manual',
-        initialData: buildManualEditData(renderedDesign),
-      });
-      return;
-    }
-
-    if (autoEditorial) {
-      openEditorTarget({
-        templateId: autoEditorial.templateId,
-        tab: 'auto',
-        initialData: buildAutoEditData(autoEditorial),
-      });
-      return;
-    }
-
-    const fallbackTemplateId = matchedRenderJob?.templateId
-      || designTemplateByName.get(activity.details.templateName || '')?.id
-      || (activity.details.designId ? designTemplateById.get(activity.details.designId)?.id : undefined);
-
-    if (fallbackTemplateId) {
-      openEditorTarget({
-        templateId: fallbackTemplateId,
-        tab: 'manual',
-        initialData: null,
-      });
-      return;
-    }
-
-    toast.error('No editable design configuration was found for this item');
   };
 
   useEffect(() => {
@@ -2920,6 +2924,31 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         )}
       </div>
 
+      {fullDesignEditor ? (
+        <EditDesignBottomSheet
+          key={`${fullDesignEditor.activity.id}-${fullDesignEditor.template.id}`}
+          open={Boolean(fullDesignEditor)}
+          onOpenChange={(open) => {
+            if (!open) {
+              closeFullDesignEditor();
+            }
+          }}
+          templateName={fullDesignEditor.template.name}
+          template={fullDesignEditor.template}
+          aspectRatio={fullDesignEditor.template.aspectRatio}
+          initialData={fullDesignEditor.initialData}
+          hasHeader={fullDesignEditor.template.hasHeader}
+          hasBackground={fullDesignEditor.template.hasBackground}
+          hasSubtext={fullDesignEditor.template.hasSubtext}
+          hasOverlay={fullDesignEditor.template.hasOverlay}
+          sourceContext={fullDesignEditor.sourceContext}
+          onSave={(data) => {
+            void handleSaveFullDesignEdit(data);
+          }}
+          isRendering={isSavingCardEdit}
+        />
+      ) : null}
+
       {publishTarget ? (
         <BottomSheet
           open={isPublishSheetOpen}
@@ -3037,7 +3066,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
-                closeMenuThen(() => handleEditActivity(current));
+                closeMenuThen(() => openFullDesignEditor(current));
               }}
               className={getActionButtonClass()}
             >
