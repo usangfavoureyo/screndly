@@ -88,6 +88,8 @@ interface PollOptions {
     force?: boolean;
     channelDbId?: string;
     ageGateOverrideHours?: number | null;
+    manualScan?: boolean;
+    skipCollaborativeDiscovery?: boolean;
 }
 
 interface ChannelPollResult {
@@ -806,7 +808,7 @@ export class YouTubePollerService {
     private async tryClaimChannel(
         channel: any,
         settings: LoadedVideoSettings,
-        options: { force?: boolean } = {}
+        options: { force?: boolean; manualScan?: boolean } = {}
     ): Promise<boolean> {
         const now = new Date();
         const staleLockBoundary = new Date(now.getTime() - CHANNEL_LOCK_RECLAIM_AFTER_MS);
@@ -867,6 +869,7 @@ export class YouTubePollerService {
                 claimLagMs,
                 lockAgeMs,
                 force: options.force === true,
+                manualScan: options.manualScan === true,
             });
         }
 
@@ -923,6 +926,8 @@ export class YouTubePollerService {
                 mode,
                 channelId: channel.channelId,
                 channelName: channel.name,
+                manualScan: options.manualScan === true,
+                skipCollaborativeDiscovery: options.skipCollaborativeDiscovery === true,
             });
 
             const result = await this.processChannel(channel, settings, options);
@@ -937,6 +942,7 @@ export class YouTubePollerService {
                 failed: result.failed,
                 published: result.published,
                 newVideoDetected: result.newVideoDetected,
+                manualScan: options.manualScan === true,
             });
 
             return result;
@@ -956,6 +962,7 @@ export class YouTubePollerService {
                 mode,
                 channelId: channel.channelId,
                 channelName: channel.name,
+                manualScan: options.manualScan === true,
                 error: failedResult.message,
             });
             return failedResult;
@@ -1129,7 +1136,7 @@ export class YouTubePollerService {
 
     async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
         const startedAt = new Date();
-        console.log('[YouTubePoller] Starting manual poll...');
+        console.log(options.manualScan ? '[YouTubePoller] Starting manual channel scan...' : '[YouTubePoller] Starting manual poll...');
         console.log(`[YouTubePoller] yt-dlp auth mode: ${describeYtDlpAuthConfiguration()}`);
 
         try {
@@ -1141,12 +1148,15 @@ export class YouTubePollerService {
             }
 
             const channels = await prisma.channel.findMany({ where });
-            console.log(`[YouTubePoller] Found ${channels.length} active channels for manual poll`);
+            console.log(`[YouTubePoller] Found ${channels.length} active channels for ${options.manualScan ? 'manual scan' : 'manual poll'}`);
 
             const results: ChannelPollResult[] = [];
 
             for (const channel of channels) {
-                const claimed = await this.tryClaimChannel(channel, settings, { force: options.force });
+                const claimed = await this.tryClaimChannel(channel, settings, {
+                    force: options.force,
+                    manualScan: options.manualScan,
+                });
                 if (!claimed) {
                     const skippedResult = {
                         channelId: channel.channelId,
@@ -1202,7 +1212,7 @@ export class YouTubePollerService {
                 }]
             };
         } finally {
-            console.log('[YouTubePoller] Manual poll finished');
+            console.log(options.manualScan ? '[YouTubePoller] Manual channel scan finished' : '[YouTubePoller] Manual poll finished');
         }
     }
 
@@ -1258,6 +1268,7 @@ export class YouTubePollerService {
             console.log('[YouTubePoller] Owned candidate scan summary', {
                 channelId: activeChannel.channelId,
                 channelName: activeChannel.name,
+                manualScan: options.manualScan === true,
                 sourceType: source,
                 fallbackUsed: source !== 'rss',
                 recentItemsFetched: ownedScanPlan.recentItemsFetched,
@@ -2023,6 +2034,10 @@ export class YouTubePollerService {
     }
 
     private shouldRunCollaborativeDiscovery(channel: any, options: PollOptions = {}): boolean {
+        if (options.skipCollaborativeDiscovery) {
+            return false;
+        }
+
         if (options.force) {
             return true;
         }

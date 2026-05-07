@@ -102,6 +102,24 @@ test('reports stale poll state when an active channel worker exceeds the stale t
     assert.equal(status.activeChannels[0]?.mode, 'scheduled');
 });
 
+test('manual channel scans skip collaborative discovery while normal forced polls can still run it', () => {
+    const service = new YouTubePollerService() as any;
+    const channel = { channelId: 'UC_TEST', name: 'Test Channel' };
+
+    assert.equal(
+        service.shouldRunCollaborativeDiscovery(channel, {
+            force: true,
+            manualScan: true,
+            skipCollaborativeDiscovery: true,
+        }),
+        false
+    );
+    assert.equal(
+        service.shouldRunCollaborativeDiscovery(channel, { force: true }),
+        true
+    );
+});
+
 test('applies the expected polling backoff multipliers', () => {
     const service = new YouTubePollerService() as any;
 

@@ -12,7 +12,7 @@ import {
   BottomSheetBody,
   BottomSheetFooter
 } from './ui/bottom-sheet';
-import { Trash2, Edit, RefreshCw, Check } from 'lucide-react';
+import { Trash2, Edit, RefreshCw, Check, Search } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useBottomSheet } from '../hooks/useBottomSheet';
@@ -29,11 +29,25 @@ interface Channel {
   videoCount?: number;
 }
 
+interface ChannelScanNowResponse {
+  status: 'completed' | 'already_scanning' | 'failed';
+  message?: string;
+  summary?: {
+    channelsChecked: number;
+    channelsSkipped: number;
+    newVideosDetected: number;
+    successfulPublishes: number;
+    failedPublishes: number;
+  };
+}
+
 interface ChannelCardProps {
   channel: Channel;
   onToggle: (channel: Channel) => void;
+  onScanNow: (channel: Channel) => void;
   onEdit: (channel: Channel) => void;
   onDelete: (id: string) => void;
+  isScanning?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
   onEnterSelectionMode?: (id: string) => void;
@@ -43,8 +57,10 @@ interface ChannelCardProps {
 function ChannelCard({
   channel,
   onToggle,
+  onScanNow,
   onEdit,
   onDelete,
+  isScanning = false,
   selectionMode = false,
   selected = false,
   onEnterSelectionMode,
@@ -318,12 +334,31 @@ function ChannelCard({
               <Switch
                 checked={channel.status === 'active'}
                 onCheckedChange={() => void onToggle(channel)}
-                disabled={selectionMode}
+                disabled={selectionMode || isScanning}
               />
               <span className="text-[#6B7280] dark:text-[#9CA3AF]">
                 {channel.status === 'active' ? 'Active' : 'Inactive'}
               </span>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              data-prevent-swipe="true"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onScanNow(channel);
+              }}
+              disabled={selectionMode || isScanning || channel.status !== 'active'}
+              className="rounded-xl border-gray-300 bg-white text-gray-900 hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+            >
+              {isScanning ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              {isScanning ? 'Scanning' : 'Scan Now'}
+            </Button>
             <div className={`hidden lg:flex items-center gap-2 transition-opacity duration-200 ${selectionMode ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}>
               <Button
                 variant="ghost"
@@ -360,6 +395,7 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
   const [channels, setChannels] = useState<Channel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [scanningChannelIds, setScanningChannelIds] = useState<Set<string>>(() => new Set());
 
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelId, setNewChannelId] = useState('');
@@ -519,6 +555,45 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
     setEditChannelName(channel.name);
     setEditChannelId(channel.channelId);
     editSheet.open();
+  };
+
+  const scanChannelNow = async (channel: Channel) => {
+    if (channel.status !== 'active' || scanningChannelIds.has(channel.id)) {
+      return;
+    }
+
+    haptics.medium();
+    setScanningChannelIds((current) => new Set(current).add(channel.id));
+
+    try {
+      const response = await apiClient.post<ChannelScanNowResponse>(`/api/channels/${channel.id}/scan-now`, {});
+
+      if (!response.success || !response.data) {
+        toast.error(response.error?.message || `Failed to scan ${channel.name}`);
+        return;
+      }
+
+      const { status, message, summary } = response.data;
+      if (status === 'already_scanning') {
+        toast.info(`${channel.name} is already scanning`);
+      } else if (status === 'failed') {
+        toast.error(message || `${channel.name} scan failed`);
+      } else if ((summary?.newVideosDetected || 0) > 0) {
+        toast.success(`${channel.name}: ${summary?.newVideosDetected} new video${summary?.newVideosDetected === 1 ? '' : 's'} detected`);
+      } else {
+        toast.info(`${channel.name}: no new matching videos found`);
+      }
+
+      void fetchChannels();
+    } catch (error: any) {
+      toast.error(error?.message || `Failed to scan ${channel.name}`);
+    } finally {
+      setScanningChannelIds((current) => {
+        const next = new Set(current);
+        next.delete(channel.id);
+        return next;
+      });
+    }
   };
 
   const requestCloseAddChannel = () => {
@@ -708,8 +783,10 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
             key={channel.id}
             channel={channel}
             onToggle={toggleChannel}
+            onScanNow={scanChannelNow}
             onEdit={openEditDialog}
             onDelete={deleteChannel}
+            isScanning={scanningChannelIds.has(channel.id)}
             selectionMode={selection.selectionMode}
             selected={selection.isSelected(channel.id)}
             onEnterSelectionMode={selection.enterSelectionMode}

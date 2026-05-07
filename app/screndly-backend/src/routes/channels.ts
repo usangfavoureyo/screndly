@@ -106,6 +106,49 @@ router.post('/poll', async (req, res) => {
     }
 });
 
+// POST /api/channels/:id/scan-now
+router.post('/:id/scan-now', async (req, res) => {
+    try {
+        const channel = await prisma.channel.findUnique({
+            where: { id: req.params.id }
+        });
+
+        if (!channel) {
+            return res.status(404).json({ success: false, error: { message: 'Channel not found' } });
+        }
+
+        if (channel.status !== 'active') {
+            return res.status(409).json({ success: false, error: { message: 'Channel must be active before scanning' } });
+        }
+
+        const summary = await youtubePollerService.pollChannels({
+            force: true,
+            channelDbId: req.params.id,
+            manualScan: true,
+            skipCollaborativeDiscovery: true,
+        });
+        const result = summary.results[0] || null;
+        const status = result?.skipped
+            ? 'already_scanning'
+            : result?.failed
+                ? 'failed'
+                : 'completed';
+
+        res.json({
+            success: true,
+            data: {
+                status,
+                message: result?.message || 'Manual scan completed',
+                summary,
+                result,
+            }
+        });
+    } catch (error: any) {
+        console.error('Failed to scan channel now:', error);
+        res.status(500).json({ success: false, error: { message: error.message || 'Failed to scan channel now' } });
+    }
+});
+
 // POST /api/channels/poll/targeted
 router.post('/poll/targeted', async (req, res) => {
     if (!hasAdminSecret(req)) {
