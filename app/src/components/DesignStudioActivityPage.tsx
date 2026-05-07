@@ -1748,6 +1748,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
     if (typeof window !== 'undefined') {
       safeStorageSetItem(DESIGN_STUDIO_EDITOR_TARGET_KEY, JSON.stringify(target));
       safeStorageSetItem('designStudioActiveTab', target.tab === 'auto' ? 'auto' : 'manual');
+      safeStorageSetItem('designStudioTopTab', target.tab === 'auto' ? 'auto' : 'manual');
       window.dispatchEvent(new CustomEvent('screndly:design-studio-edit-target', { detail: target }));
     }
     onNavigate('design-studio');
@@ -2088,9 +2089,11 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         scheduleTime: scheduledAt.toISOString(),
       });
 
-      toast.success('Design scheduled', { duration: 5000 });
       setIsScheduleSheetOpen(false);
       setScheduleActivity(null);
+      window.setTimeout(() => {
+        toast.success('Design scheduled', { duration: 5000 });
+      }, 0);
       await loadActivities({ silent: true });
     } catch (error) {
       console.error('Failed to save schedule:', error);
@@ -2360,10 +2363,12 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         scheduledFor: null,
       });
 
-      toast.success('Published', { duration: 5000 });
       setIsPublishSheetOpen(false);
       setPublishTarget(null);
       setScheduleActivity(null);
+      window.setTimeout(() => {
+        toast.success('Published', { duration: 5000 });
+      }, 0);
       await loadActivities({ silent: true });
     } catch (error) {
       console.error('Failed to publish rendered design:', error);

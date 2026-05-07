@@ -20,7 +20,7 @@ interface PublishBottomSheetProps {
   title?: string;
   description?: string;
   initialCaption?: string;
-  onPublish?: (caption: string, platforms: PlatformSelection) => void;
+  onPublish?: (caption: string, platforms: PlatformSelection) => void | Promise<void>;
   onCaptionGenerate?: () => string | Promise<string>;
   isGeneratingCaption?: boolean;
   allowedPlatforms?: Array<'x' | 'threads' | 'facebook' | 'instagram' | 'pinterest'>;
@@ -94,10 +94,10 @@ export function PublishBottomSheet({
     }
   };
 
-  const handlePublish = () => {
+  const handlePublish = async () => {
     haptics.medium();
     if (onPublish) {
-      onPublish(generatedCaption, selectedPlatforms);
+      await onPublish(generatedCaption, selectedPlatforms);
     }
     onOpenChange(false);
     setGeneratedCaption('');

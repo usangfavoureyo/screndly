@@ -526,6 +526,49 @@ function buildTemplateInitialData(template: Template, exportFormat: 'jpeg' | 'pn
   };
 }
 
+function buildAutoEditorialInitialData(
+  editorial: AutoEditorial,
+  template: Template,
+  exportFormat: 'jpeg' | 'png',
+): DesignData {
+  const source = asRecord(editorial);
+  const baseData = buildTemplateInitialData(template, exportFormat);
+  return {
+    ...baseData,
+    headerText: editorial.headerText || editorial.sourceTitle || '',
+    subtext: editorial.subheaderText || '',
+    headerTextColor: editorial.headerTextColor || baseData.headerTextColor,
+    backgroundImage: editorial.backgroundSource || editorial.renderedImage || baseData.backgroundImage,
+    imageFocalPoint: {
+      x: typeof editorial.backgroundOffsetX === 'number' ? 50 + editorial.backgroundOffsetX : baseData.imageFocalPoint.x,
+      y: typeof editorial.backgroundOffsetY === 'number' ? 50 + editorial.backgroundOffsetY : baseData.imageFocalPoint.y,
+    },
+    imageZoom: typeof editorial.zoomLevel === 'number' ? editorial.zoomLevel : baseData.imageZoom,
+    overlayColor: editorial.overlayColor || baseData.overlayColor,
+    overlayOpacity: typeof editorial.overlayStrength === 'number'
+      ? Math.round(editorial.overlayStrength <= 1 ? editorial.overlayStrength * 100 : editorial.overlayStrength)
+      : baseData.overlayOpacity,
+    gradientPosition: (editorial.overlayDirection as DesignData['gradientPosition']) || baseData.gradientPosition,
+    templateVariant: editorial.templateVariant || template.layoutVariant || template.baseVariant || baseData.templateVariant,
+    fadeEnabled: typeof source.fadeEnabled === 'boolean' ? source.fadeEnabled : baseData.fadeEnabled,
+    fadeOpacity: typeof source.fadeOpacity === 'number' ? source.fadeOpacity : baseData.fadeOpacity,
+    brandBlockMode: editorial.brandBlockMode || baseData.brandBlockMode,
+    caption: editorial.caption || editorial.captions?.shared_caption || '',
+    contentType: editorial.contentType || 'announcement',
+    useCircleInset: Boolean(source.useCircleInset),
+    circleInsetImage: typeof source.circleInsetImage === 'string' ? source.circleInsetImage : baseData.circleInsetImage,
+    circleX: typeof source.circleX === 'number' ? source.circleX : baseData.circleX,
+    circleY: typeof source.circleY === 'number' ? source.circleY : baseData.circleY,
+    circleSize: typeof source.circleSize === 'number' ? source.circleSize : baseData.circleSize,
+    circleImageZoom: typeof source.circleImageZoom === 'number' ? source.circleImageZoom : baseData.circleImageZoom,
+    circleImageOffsetX: typeof source.circleImageOffsetX === 'number' ? source.circleImageOffsetX : baseData.circleImageOffsetX,
+    circleImageOffsetY: typeof source.circleImageOffsetY === 'number' ? source.circleImageOffsetY : baseData.circleImageOffsetY,
+    circleStrokeWidth: typeof source.circleStrokeWidth === 'number' ? source.circleStrokeWidth : baseData.circleStrokeWidth,
+    circleStrokeColor: typeof source.circleStrokeColor === 'string' ? source.circleStrokeColor : baseData.circleStrokeColor,
+    circleImageFit: source.circleImageFit === 'cover' ? 'cover' : baseData.circleImageFit,
+  };
+}
+
 function parseTemplate(template: any): Template {
   const source = asRecord(template);
   const lastEditedSource = template.lastEdited || template.updatedAt || template.createdAt || new Date().toISOString();
@@ -888,13 +931,21 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       return;
     }
 
-    const template = templates.find((entry) => entry.id === pendingEditorTarget.templateId);
+    const template = templates.find((entry) => entry.id === pendingEditorTarget.templateId)
+      || (isLoadingState ? undefined : templates.find((entry) => (
+        pendingEditorTarget.tab === 'auto'
+          ? entry.isDefaultAuto
+          : entry.isDefaultManual
+      )))
+      || (isLoadingState ? undefined : templates.find((entry) => entry.isValidated !== false))
+      || (isLoadingState ? undefined : templates[0]);
     if (!template) {
       return;
     }
 
     if (pendingEditorTarget.tab) {
       setActiveTab(pendingEditorTarget.tab);
+      setStudioTopTab(pendingEditorTarget.tab);
     }
 
     setSelectedTemplate(template);
@@ -907,7 +958,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
     if (typeof window !== 'undefined') {
       window.localStorage.removeItem(DESIGN_STUDIO_EDITOR_TARGET_KEY);
     }
-  }, [pendingEditorTarget, settings.exportFormat, templates]);
+  }, [isLoadingState, pendingEditorTarget, settings.exportFormat, templates]);
 
   useEffect(() => {
     const syncPendingTarget = () => {
@@ -1447,14 +1498,21 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         actionPage: 'design-studio-activity',
       });
 
+      setIsPublishSheetOpen(false);
+      setPublishTarget(null);
       if (failedPlatforms.length > 0) {
-        toast.success(`Published to ${platformsList}`, {
-          description: `Failed: ${failedPlatforms.join(' | ')}`,
-        });
+        window.setTimeout(() => {
+          toast.success('Published', {
+            description: `Failed: ${failedPlatforms.join(' | ')}`,
+            duration: 5000,
+          });
+        }, 0);
         return;
       }
 
-      toast.success('Design published to selected platforms!');
+      window.setTimeout(() => {
+        toast.success('Published', { duration: 5000 });
+      }, 0);
     } catch (error) {
       console.error('Failed to finish Design Studio publish flow:', error);
       toast.error(error instanceof Error ? error.message : 'Failed to publish design');
@@ -1585,7 +1643,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       });
 
       if (nextStatus === 'posted') {
-        toast.success('Auto editorial published');
+        window.setTimeout(() => {
+          toast.success('Published', { duration: 5000 });
+        }, 0);
       } else {
         toast.error('Auto editorial failed to publish');
       }
@@ -1596,6 +1656,76 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         failureReason: error instanceof Error ? error.message : 'Failed to publish auto editorial',
       });
       toast.error(error instanceof Error ? error.message : 'Failed to publish auto editorial');
+    }
+  };
+
+  const openAutoEditorialDesignEditor = (editorial: AutoEditorial) => {
+    const template = templates.find((entry) => entry.id === editorial.templateId)
+      || templates.find((entry) => entry.isDefaultAuto)
+      || templates.find((entry) => entry.isValidated !== false)
+      || templates[0];
+
+    if (!template) {
+      toast.error('Upload or load a template first');
+      return;
+    }
+
+    const initialData = buildAutoEditorialInitialData(
+      editorial,
+      template,
+      settings.exportFormat === 'png' ? 'png' : 'jpeg',
+    );
+    const sourceSummary = editorial.subheaderText || editorial.caption || '';
+    setStudioTopTab('auto');
+    setActiveTab('auto');
+    setSelectedTemplate(template);
+    setEditingTemplateId(template.id);
+    setEditorInitialData(initialData);
+    setLivePreviewData(initialData);
+    setManualDraftSource({
+      feedItemId: editorial.sourceFeedItemId || editorial.id,
+      sourceName: editorial.sourceFeedName || 'Auto Editorial',
+      sourceHeadline: editorial.sourceTitle || editorial.headerText || 'Auto editorial',
+      suggestedHeadline: editorial.headerText || editorial.sourceTitle || '',
+      sourceUrl: editorial.sourceUrl,
+      sourceSummary,
+      fetchedAt: editorial.createdAt,
+      matchedKeyword: editorial.matchedKeyword || undefined,
+    });
+    setSelectedEditorial(editorial);
+    setIsEditorialActionsOpen(false);
+    setIsEditSheetOpen(true);
+    haptics.light();
+  };
+
+  const handleDownloadAutoEditorial = async (editorial: AutoEditorial) => {
+    if (!editorial.renderedImage) {
+      toast.error('No rendered image available to download');
+      return;
+    }
+
+    try {
+      const response = await fetch(editorial.renderedImage);
+      if (!response.ok) {
+        throw new Error('Failed to fetch rendered image');
+      }
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const extension = blob.type.includes('png') ? 'png' : 'jpg';
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `${(editorial.headerText || editorial.sourceTitle || 'auto-editorial')
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase() || 'auto-editorial'}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      toast.success('Rendered image downloaded');
+    } catch (error) {
+      console.error('Failed to download auto editorial:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to download rendered image');
     }
   };
 
@@ -1760,7 +1890,9 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
         field: editorialEditorMode,
       });
       setIsEditorialEditorOpen(false);
-      toast.success('Auto editorial updated');
+      window.setTimeout(() => {
+        toast.success(editorialEditorMode === 'schedule' ? 'Design scheduled' : 'Auto editorial updated', { duration: 5000 });
+      }, 0);
     } finally {
       setIsSavingEditorialEdit(false);
     }
@@ -2812,16 +2944,18 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                         <p className="truncate text-sm text-[#6B7280] dark:text-[#9CA3AF]">{editorial.sourceFeedName || 'RSS Feed'}</p>
                         <p className="mt-1 text-sm leading-6 text-gray-900 dark:text-white">{editorial.sourceTitle}</p>
                       </div>
-                      <button
+                      <Button
                         type="button"
+                        size="icon"
+                        variant="outline"
                         onClick={() => {
                           setSelectedEditorial(editorial);
                           setIsEditorialActionsOpen(true);
                         }}
-                        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/70 p-0 text-white shadow-[0_8px_18px_rgba(0,0,0,0.28)] transition-colors hover:bg-black/85"
+                        className="h-9 w-9 border border-gray-200 bg-transparent p-0 text-gray-900 shadow-none hover:bg-gray-50 dark:border-[#333333] dark:bg-transparent dark:text-white dark:hover:bg-[#111111]"
                       >
-                        <MoreVertical className="h-3.5 w-3.5" />
-                      </button>
+                        <MoreVertical className="h-3 w-3 text-gray-900 dark:text-white" />
+                      </Button>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -3039,45 +3173,17 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
               <>
                 <button
                   type="button"
+                  onClick={() => openAutoEditorialDesignEditor(selectedEditorial)}
+                  className={getActionButtonClass()}
+                >
+                  Edit Design
+                </button>
+                <button
+                  type="button"
                   onClick={() => openEditorialEditor(selectedEditorial, 'caption')}
                   className={getActionButtonClass()}
                 >
                   Edit Caption
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEditorialEditor(selectedEditorial, 'header')}
-                  className={getActionButtonClass()}
-                >
-                  Edit Header
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEditorialEditor(selectedEditorial, 'subheader')}
-                  className={getActionButtonClass()}
-                >
-                  Edit Subtext
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEditorialEditor(selectedEditorial, 'background')}
-                  className={getActionButtonClass()}
-                >
-                  Change Background
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEditorialEditor(selectedEditorial, 'overlay')}
-                  className={getActionButtonClass()}
-                >
-                  Adjust Overlay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openEditorialEditor(selectedEditorial, 'template')}
-                  className={getActionButtonClass()}
-                >
-                  Change Template
                 </button>
                 <button
                   type="button"
@@ -3098,10 +3204,13 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
                 </button>
                 <button
                   type="button"
-                  onClick={() => void handleDeleteEditorial(selectedEditorial)}
-                  className={getActionButtonClass(true)}
+                  onClick={() => {
+                    setIsEditorialActionsOpen(false);
+                    void handleDownloadAutoEditorial(selectedEditorial);
+                  }}
+                  className={getActionButtonClass()}
                 >
-                  Delete
+                  Download
                 </button>
               </>
             ) : null}
