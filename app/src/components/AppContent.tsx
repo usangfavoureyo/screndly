@@ -5,6 +5,7 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { InstallPrompt } from "./InstallPrompt";
 import { NotFoundPage } from "./NotFoundPage";
 import { UndoToast } from "./UndoToast";
+import { Toaster } from "./ui/sonner";
 import { useUndo } from "./UndoContext";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { SettingsPanel } from "./SettingsPanel";
@@ -864,6 +865,7 @@ export function AppContent() {
 
       {/* Undo Toast */}
       <UndoToast />
+      <Toaster />
 
       {/* PWA Install Prompt */}
       <InstallPrompt />

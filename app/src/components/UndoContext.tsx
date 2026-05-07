@@ -17,6 +17,7 @@ const UndoContext = createContext<UndoContextType | undefined>(undefined);
 
 export function UndoProvider({ children }: { children: React.ReactNode }) {
   const [currentItem, setCurrentItem] = useState<UndoItem | null>(null);
+  const currentItemRef = useRef<UndoItem | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const hideUndo = useCallback((skipConfirm = false) => {
@@ -25,13 +26,15 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
       timeoutRef.current = null;
     }
 
-    // Execute the confirm callback if it exists
-    if (!skipConfirm && currentItem?.onConfirm) {
-      void currentItem.onConfirm();
-    }
-
+    const itemToConfirm = currentItemRef.current;
+    currentItemRef.current = null;
     setCurrentItem(null);
-  }, [currentItem]);
+
+    // Execute the confirm callback if it exists
+    if (!skipConfirm && itemToConfirm?.onConfirm) {
+      void itemToConfirm.onConfirm();
+    }
+  }, []);
 
   const showUndo = useCallback((item: UndoItem) => {
     // Clear any existing timeout
@@ -39,6 +42,7 @@ export function UndoProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(timeoutRef.current);
     }
 
+    currentItemRef.current = item;
     setCurrentItem(item);
 
     // Auto-hide after 5 seconds

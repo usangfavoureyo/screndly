@@ -16,19 +16,18 @@ export function UndoToast() {
 
   const toastContent = (
     <div
-      // Critical: Using inline styles for positioning/z-index as proven by debug step
       style={{
         position: 'fixed',
-        bottom: '85px', // Sit above bottom nav (approx 60-80px)
+        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 96px)',
         left: '16px',
         right: '16px',
-        zIndex: 99999, // Super high z-index
+        zIndex: 2147483647,
         display: 'flex',
         justifyContent: 'center',
         pointerEvents: 'none', // Allow clicks through empty space
         transform: 'translateZ(0)', // Force GPU layer
       }}
-      role="alert"
+      role="status"
       aria-live="polite"
     >
       <style>{`
