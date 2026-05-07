@@ -206,7 +206,7 @@ export function ComposeActivityPage({ onNavigate, previousPage, isCompactLayout 
         addNotification(
           buildComposePublishSuccessNotification(savedItem, result),
         );
-        toast.success(`Published to ${result.postedPlatforms.join(', ')}.`);
+        toast.success('Published');
         return;
       }
 

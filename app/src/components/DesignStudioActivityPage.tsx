@@ -2088,7 +2088,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         scheduleTime: scheduledAt.toISOString(),
       });
 
-      toast.success(`Scheduled for ${scheduledAt.toLocaleString()}`);
+      toast.success('Design scheduled', { duration: 5000 });
       setIsScheduleSheetOpen(false);
       setScheduleActivity(null);
       await loadActivities({ silent: true });
@@ -2360,7 +2360,7 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
         scheduledFor: null,
       });
 
-      toast.success(`Published to ${platformsList.join(', ')}`);
+      toast.success('Published', { duration: 5000 });
       setIsPublishSheetOpen(false);
       setPublishTarget(null);
       setScheduleActivity(null);
@@ -3032,66 +3032,22 @@ export function DesignStudioActivityPage({ onNavigate, previousPage }: DesignStu
               onClick={() => {
                 if (!menuActivity) return;
                 const current = menuActivity;
+                closeMenuThen(() => handleEditActivity(current));
+              }}
+              className={getActionButtonClass()}
+            >
+              Edit Design
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!menuActivity) return;
+                const current = menuActivity;
                 closeMenuThen(() => openCardEditor(current, 'caption'));
               }}
               className={getActionButtonClass()}
             >
               Edit Caption
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => openCardEditor(current, 'header'));
-              }}
-              className={getActionButtonClass()}
-            >
-              Edit Header
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => openCardEditor(current, 'subtext'));
-              }}
-              className={getActionButtonClass()}
-            >
-              Edit Subtext
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => openCardEditor(current, 'background'));
-              }}
-              className={getActionButtonClass()}
-            >
-              Change Background
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => openCardEditor(current, 'overlay'));
-              }}
-              className={getActionButtonClass()}
-            >
-              Adjust Overlay
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!menuActivity) return;
-                const current = menuActivity;
-                closeMenuThen(() => handleEditActivity(current));
-              }}
-              className={getActionButtonClass()}
-            >
-              Change Template
             </button>
             <button
               type="button"

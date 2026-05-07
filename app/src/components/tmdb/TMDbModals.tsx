@@ -381,11 +381,7 @@ export function TMDbModals() {
                 );
 
                 const failedPlatforms = publishResult.failedResults.map((result) => result.platform);
-                toast.success(
-                    failedPlatforms.length > 0
-                        ? `Published to ${publishResult.postedPlatforms.join(', ')}. Failed on ${failedPlatforms.join(', ')}.`
-                        : `Published to ${publishResult.postedPlatforms.join(', ')}.`
-                );
+                toast.success('Published');
                 return;
             }
 

@@ -21,6 +21,14 @@ test('resolves branded style from legacy thumbnailStyle field', () => {
     assert.equal(config.logoDisplayMode, 'branded');
 });
 
+test('resolves branded style from branded-overlay alias', () => {
+    const config = resolveThumbnailConfigForPlatform('youtube', {
+        overlayStyle: 'branded-overlay',
+    });
+
+    assert.equal(config.logoDisplayMode, 'branded');
+});
+
 test('resolves boxed style from style alias field', () => {
     const config = resolveThumbnailConfigForPlatform('youtube', {
         style: 'boxed',
@@ -51,6 +59,20 @@ test('parses double-encoded json payload and keeps branded mode', () => {
     assert.equal(config.brandedOverlayFixedVariant, 'black');
 });
 
+test('keeps uploaded branded overlay asset URLs from persisted settings', () => {
+    const config = resolveThumbnailConfigForPlatform('youtube', JSON.stringify({
+        logoDisplayMode: 'branded',
+        brandedOverlayAssets: {
+            trailer_white: 'https://example.com/trailer-white.png',
+            teaser_black: 'https://example.com/teaser-black.png',
+        },
+    }));
+
+    assert.equal(config.logoDisplayMode, 'branded');
+    assert.equal(config.brandedOverlayAssets?.trailer_white, 'https://example.com/trailer-white.png');
+    assert.equal(config.brandedOverlayAssets?.teaser_black, 'https://example.com/teaser-black.png');
+});
+
 test('normalizes invalid style values to default boxed mode', () => {
     const config = resolveThumbnailConfigForPlatform('youtube', {
         logoDisplayMode: 'unknown-style',
@@ -58,4 +80,3 @@ test('normalizes invalid style values to default boxed mode', () => {
 
     assert.equal(config.logoDisplayMode, 'boxed');
 });
-

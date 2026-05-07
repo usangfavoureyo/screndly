@@ -4,7 +4,7 @@ import path from 'path';
 import prisma from '../lib/prisma';
 import sharp from 'sharp';
 import aiService, { type AIModel, DEFAULT_OPENAI_MODEL, normalizeAIModel, shouldEnableReleaseResearch } from './ai.service';
-import { uploadBufferToBackblaze } from './backblaze';
+import { getBackblazeDownloadRequests, uploadBufferToBackblaze } from './backblaze';
 import { getTmdbApiKey } from './tmdb.service';
 
 type LandscapePlatform = 'youtube' | 'x';
@@ -710,7 +710,7 @@ function normalizeThumbnailLogoDisplayMode(value: unknown): ThumbnailLogoDisplay
         return 'logo-only';
     }
 
-    if (normalized === 'branded' || normalized === 'brand' || normalized === 'branded-logo') {
+    if (normalized === 'branded' || normalized === 'brand' || normalized === 'branded-logo' || normalized === 'branded-overlay') {
         return 'branded';
     }
 
@@ -1282,12 +1282,31 @@ async function writeTempFile(fileName: string, buffer: Buffer): Promise<string> 
 }
 
 async function fetchBuffer(sourceUrl: string): Promise<Buffer> {
-    const response = await fetch(sourceUrl);
-    if (!response.ok) {
-        throw new Error(`Failed to fetch remote asset: ${response.status} ${response.statusText}`);
+    const requests = await getBackblazeDownloadRequests(sourceUrl, 7 * 24 * 60 * 60).catch((error) => {
+        console.warn('[VideoEnrichment] Failed to resolve Backblaze download request; using direct asset URL', {
+            sourceUrl,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return [{ url: sourceUrl, headers: undefined }];
+    });
+
+    let lastError: string | undefined;
+
+    for (const request of requests) {
+        const response = await fetch(request.url, {
+            headers: request.headers || {},
+        });
+        if (response.ok) {
+            return Buffer.from(await response.arrayBuffer());
+        }
+
+        lastError = `${response.status} ${response.statusText}`;
+        if (response.status !== 401 && response.status !== 403) {
+            break;
+        }
     }
 
-    return Buffer.from(await response.arrayBuffer());
+    throw new Error(`Failed to fetch remote asset: ${lastError || 'no response'}`);
 }
 
 function normalizeRemoteAssetCandidates(value: string | string[] | undefined): string[] {

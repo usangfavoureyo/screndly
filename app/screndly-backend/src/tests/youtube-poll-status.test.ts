@@ -72,7 +72,7 @@ test('formats YouTube polling notification titles from the detected promo type',
         'New Teaser Detected'
     );
     assert.equal(
-        formatYouTubePromoNotificationTitle('Untitled promo announcement', 'Failed'),
+        formatYouTubePromoNotificationTitle('Untitled promo update', 'Failed'),
         'New Video Failed'
     );
 });

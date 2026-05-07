@@ -244,11 +244,7 @@ export function ComposeOverview({ onNavigate, isCompactLayout = false }: Compose
             result,
           ),
         );
-        toast.success(
-          result.failedResults.length > 0
-            ? `Published to ${result.postedPlatforms.join(', ')}.`
-            : `Published to ${result.postedPlatforms.join(', ')}.`,
-        );
+        toast.success('Published');
         return;
       }
 

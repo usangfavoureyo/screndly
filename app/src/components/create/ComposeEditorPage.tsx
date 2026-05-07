@@ -1983,7 +1983,7 @@ export function ComposeEditorPage({
     const nextItem = buildItem('draft');
     saveItem(nextItem);
     addNotification(buildComposeDraftNotification(nextItem, existingItem ? 'updated' : 'created'));
-    toast.success(existingItem ? 'Post draft updated' : 'Post draft saved');
+    toast.success('Saved post');
     onNavigate('create', previousPage || 'create');
   };
 
@@ -2000,7 +2000,7 @@ export function ComposeEditorPage({
     addNotification(buildComposeScheduledNotification(nextItem, scheduledAt));
     scheduleReopenLockUntilRef.current = Date.now() + 450;
     setIsScheduleOpen(false);
-    toast.success(existingItem?.status === 'scheduled' ? 'Schedule updated' : 'Post scheduled');
+    toast.success('Post scheduled');
   };
 
   const isEditingScheduledItem = existingItem?.status === 'scheduled';
@@ -2033,11 +2033,7 @@ export function ComposeEditorPage({
 
       if (result.postedPlatforms.length > 0) {
         addNotification(buildComposePublishSuccessNotification(nextItem, result));
-        toast.success(
-          result.failedResults.length > 0
-            ? `Published to ${result.postedPlatforms.join(', ')}.`
-            : `Published to ${result.postedPlatforms.join(', ')}.`,
-        );
+        toast.success('Published');
       } else {
         addNotification(buildComposePublishFailureNotification(nextItem, nextError || 'Failed to publish post'));
         toast.error(nextError || 'Failed to publish post');
