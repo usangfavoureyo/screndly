@@ -1502,6 +1502,49 @@ async function saveRenderedDesigns(renderedDesigns: DesignStudioRenderedDesignRe
   await writeJsonSetting(DESIGN_STUDIO_RENDERED_KEY, renderedDesigns);
 }
 
+export async function deleteRenderedDesignById(renderedDesignId: string): Promise<void> {
+  const normalizedId = renderedDesignId.trim();
+  if (!normalizedId) {
+    return;
+  }
+
+  const renderedDesigns = await getRenderedDesigns();
+  const target = renderedDesigns.find((item) => item.id === normalizedId);
+  const nextRenderedDesigns = renderedDesigns.filter((item) => item.id !== normalizedId);
+
+  if (nextRenderedDesigns.length !== renderedDesigns.length) {
+    await saveRenderedDesigns(nextRenderedDesigns);
+  }
+
+  if (!target) {
+    return;
+  }
+
+  const outputUrl = typeof target.outputUrl === 'string' ? target.outputUrl.trim() : '';
+  const previewUrl = typeof target.previewUrl === 'string' ? target.previewUrl.trim() : '';
+  const activities = await prisma.designStudioActivity.findMany({
+    select: { id: true, details: true },
+  });
+  const relatedActivities = activities.filter((activity) => {
+    const details = typeof activity.details === 'object' && activity.details !== null
+      ? activity.details as Record<string, unknown>
+      : {};
+    const activityDesignId = typeof details.designId === 'string' ? details.designId.trim() : '';
+    const activityOutputUrl = typeof details.outputUrl === 'string' ? details.outputUrl.trim() : '';
+    const activityPreviewUrl = typeof details.previewUrl === 'string' ? details.previewUrl.trim() : '';
+
+    return activityDesignId === normalizedId
+      || Boolean(outputUrl && (activityOutputUrl === outputUrl || activityPreviewUrl === outputUrl))
+      || Boolean(previewUrl && (activityOutputUrl === previewUrl || activityPreviewUrl === previewUrl));
+  });
+
+  if (relatedActivities.length > 0) {
+    await prisma.designStudioActivity.deleteMany({
+      where: { id: { in: relatedActivities.map((activity) => activity.id) } },
+    });
+  }
+}
+
 async function getAutoEditorials(): Promise<DesignStudioAutoEditorialRecord[]> {
   const editorials = await readJsonSetting<DesignStudioAutoEditorialRecord[]>(DESIGN_STUDIO_AUTO_EDITORIALS_KEY, []);
   return Array.isArray(editorials) ? editorials : [];

@@ -11,6 +11,7 @@ import {
   buildTextLayer,
   type DesignStudioVariantRecord,
   deleteDesignStudioActivityArtifacts,
+  deleteRenderedDesignById,
   findDesignStudioVariant,
   generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
@@ -743,6 +744,16 @@ router.delete('/activity/:id', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Error deleting activity:', error);
     res.status(500).json({ success: false, error: { message: 'Failed to delete activity' } });
+  }
+});
+
+router.delete('/rendered-designs/:id', authenticate, async (req, res) => {
+  try {
+    await deleteRenderedDesignById(req.params.id);
+    res.json({ success: true, message: 'Rendered design deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting rendered design:', error);
+    res.status(500).json({ success: false, error: { message: 'Failed to delete rendered design' } });
   }
 });
 
