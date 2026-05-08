@@ -12,6 +12,7 @@ import { VisuallyHidden } from './ui/visually-hidden';
 import { MediaPreviewDialog } from './media/MediaPreviewDialog';
 import { haptics } from '../utils/haptics';
 import { addRecentActivity, addLogEntry } from '../utils/activityStore';
+import { stripDecorativeSingleQuotes } from '../utils/headlineText';
 import { useNotifications } from '../contexts/NotificationsContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { useRSSFeeds, type RSSActivityItem } from '../contexts/RSSFeedsContext';
@@ -535,7 +536,7 @@ function buildAutoEditorialInitialData(
   const baseData = buildTemplateInitialData(template, exportFormat);
   return {
     ...baseData,
-    headerText: editorial.headerText || editorial.sourceTitle || '',
+    headerText: stripDecorativeSingleQuotes(editorial.headerText || editorial.sourceTitle || ''),
     subtext: editorial.subheaderText || '',
     headerTextColor: editorial.headerTextColor || baseData.headerTextColor,
     backgroundImage: editorial.backgroundSource || editorial.renderedImage || baseData.backgroundImage,
@@ -682,7 +683,7 @@ function buildSuggestedEditorialHeadline(rawTitle: string): string {
     return '';
   }
 
-  const withoutSourceSuffix = trimmed.replace(/\s+[-|]\s+[^-|]{1,45}$/, '').trim();
+  const withoutSourceSuffix = stripDecorativeSingleQuotes(trimmed.replace(/\s+[-|]\s+[^-|]{1,45}$/, '').trim());
   const withoutEditorialTags = withoutSourceSuffix
     .replace(/^\s*(exclusive|report|watch|new)\s*:\s*/i, '')
     .replace(/\s+\((exclusive|report|updated)\)\s*$/i, '')
@@ -1686,7 +1687,7 @@ export default function DesignStudioPage({ onNavigate }: DesignStudioPageProps) 
       feedItemId: editorial.sourceFeedItemId || editorial.id,
       sourceName: editorial.sourceFeedName || 'Auto Editorial',
       sourceHeadline: editorial.sourceTitle || editorial.headerText || 'Auto editorial',
-      suggestedHeadline: editorial.headerText || editorial.sourceTitle || '',
+      suggestedHeadline: stripDecorativeSingleQuotes(editorial.headerText || editorial.sourceTitle || ''),
       sourceUrl: editorial.sourceUrl,
       sourceSummary,
       fetchedAt: editorial.createdAt,

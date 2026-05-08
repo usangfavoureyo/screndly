@@ -28,6 +28,7 @@ import { buildDesignStudioMediaStreamUrl } from '../lib/designStudioMedia';
 import { LiveDesignPreview } from './LiveDesignPreview';
 import { markNextPopStateAsHandled } from '../hooks/useTransientHistoryState';
 import { useDesktopFileDrop } from '../hooks/useDesktopFileDrop';
+import { stripDecorativeSingleQuotes } from '../utils/headlineText';
 import undoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-left-stroke-rounded.svg';
 import redoIcon from '../public/icons/icons/hugeroundedicons/arrow-move-up-right-stroke-rounded.svg';
 
@@ -166,7 +167,7 @@ export function EditDesignBottomSheet({
   isRendering = false,
 }: EditDesignBottomSheetProps) {
   const { settings: persistedSettings } = useSettings();
-  const [headerText, setHeaderText] = useState(initialData?.headerText || '');
+  const [headerText, setHeaderText] = useState(stripDecorativeSingleQuotes(initialData?.headerText || ''));
   const [subtext, setSubtext] = useState(initialData?.subtext || '');
   const [headerTextColor, setHeaderTextColor] = useState(initialData?.headerTextColor || '#FFFFFF');
   const [subtextColor, setSubtextColor] = useState(initialData?.subtextColor || '#000000');
@@ -352,7 +353,7 @@ export function EditDesignBottomSheet({
       || 'bottom_center';
     const resolvedGradientPosition = VARIANT_OVERLAY_DIRECTION_MAP[resolvedVariant] || 'bottom';
 
-    setHeaderText(initialData.headerText || '');
+    setHeaderText(stripDecorativeSingleQuotes(initialData.headerText || ''));
     setSubtext(initialData.subtext || '');
     setHeaderTextColor(
       typeof persistedPrefs?.headerTextColor === 'string'
@@ -1445,9 +1446,10 @@ export function EditDesignBottomSheet({
                   {sourceContext.sourceSummary}
                 </p>
               ) : null}
-              {sourceContext.suggestedHeadline && sourceContext.suggestedHeadline !== sourceContext.sourceHeadline ? (
+              {sourceContext.suggestedHeadline
+                && stripDecorativeSingleQuotes(sourceContext.suggestedHeadline) !== stripDecorativeSingleQuotes(sourceContext.sourceHeadline) ? (
                 <p className="mt-2 text-xs text-[#6B7280] dark:text-[#9CA3AF]">
-                  Suggested headline prefill: {sourceContext.suggestedHeadline}
+                  Suggested headline prefill: {stripDecorativeSingleQuotes(sourceContext.suggestedHeadline)}
                 </p>
               ) : null}
               <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -1614,7 +1614,7 @@ function ensureRenderWorker(): void {
   );
 }
 
-function findVariant(
+export function findDesignStudioVariant(
   template: DesignStudioTemplateRecord,
   variant?: DesignStudioLayoutVariant,
 ): DesignStudioVariantRecord {
@@ -2179,7 +2179,7 @@ async function resolveAutoEditorialRenderPlan(input: {
 }): Promise<DesignStudioAutoRenderPlan> {
   const { template, backgroundImage, cropMode, imageFocalPoint, imageZoom, backgroundProfile = 'photo' } = input;
   const { baseVariant, variants } = getTemplateVariantMetadata(template);
-  const previewVariant = findVariant(template, baseVariant || template.layoutVariant);
+  const previewVariant = findDesignStudioVariant(template, baseVariant || template.layoutVariant);
   const background = await buildBackgroundLayer({
     width: template.width,
     height: template.height,
@@ -2671,7 +2671,7 @@ export async function renderDesignStudioImage(
   template: DesignStudioTemplateRecord,
   payload: DesignStudioRenderPayload,
 ): Promise<ResolvedRenderOutput> {
-  const variant = findVariant(template, payload.template_variant);
+  const variant = findDesignStudioVariant(template, payload.template_variant);
   const width = template.width;
   const height = template.height;
   const background = await buildBackgroundLayer({

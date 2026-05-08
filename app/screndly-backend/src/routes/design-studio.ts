@@ -11,6 +11,7 @@ import {
   buildTextLayer,
   type DesignStudioVariantRecord,
   deleteDesignStudioActivityArtifacts,
+  findDesignStudioVariant,
   generateDesignStudioAutoEditorials,
   getDesignStudioRenderJobs,
   getDesignStudioStateSnapshot,
@@ -366,11 +367,7 @@ router.put('/state', authenticate, async (req, res) => {
 router.post('/preview-text-layer', authenticate, async (req, res) => {
   try {
     const payload = headlinePreviewRequestSchema.parse(req.body);
-    const variant =
-      payload.template.variants?.find((entry) => entry?.variant === payload.data.template_variant)
-      || payload.template.variants?.find((entry) => entry?.variant === payload.template.layoutVariant)
-      || payload.template.variants?.find((entry) => entry?.variant === payload.template.baseVariant)
-      || payload.template.variants?.[0];
+    const variant = findDesignStudioVariant(payload.template, payload.data.template_variant);
 
     if (!variant) {
       return res.status(400).json({ success: false, error: { message: 'Template preview variant is missing' } });
