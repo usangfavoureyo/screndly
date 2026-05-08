@@ -2557,7 +2557,8 @@ async function buildBackgroundLayer(input: {
 
     const zoom = clamp(input.zoom || 1, 0.5, 4);
     const cropMode = input.cropMode || 'cover';
-    const meta = await sharp(source).metadata();
+    const orientedSource = await sharp(source).rotate().toBuffer();
+    const meta = await sharp(orientedSource).metadata();
     const srcWidth = meta.width || input.width;
     const srcHeight = meta.height || input.height;
     const canvasAspect = input.width / input.height;
@@ -2584,7 +2585,9 @@ async function buildBackgroundLayer(input: {
 
     const targetWidth = Math.max(1, Math.round(baseWidth * zoom));
     const targetHeight = Math.max(1, Math.round(baseHeight * zoom));
-    const resized = await sharp(source).resize(targetWidth, targetHeight).toBuffer();
+    const resized = await sharp(orientedSource)
+      .resize(targetWidth, targetHeight, { fit: 'fill' })
+      .toBuffer();
     const normalizedFocalX = (clamp(input.focalPoint?.x ?? 50, 0, 100) - 50) / 50;
     const normalizedFocalY = (clamp(input.focalPoint?.y ?? 50, 0, 100) - 50) / 50;
     const centeredLeft = (input.width - targetWidth) / 2;
