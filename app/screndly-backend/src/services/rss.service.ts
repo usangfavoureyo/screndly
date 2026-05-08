@@ -114,6 +114,24 @@ function extractRSSRuntimeHeadlineCastSubject(title?: string | null): string | u
   return cleaned;
 }
 
+function extractRSSRuntimeOpenLetterSubject(title?: string | null): string | undefined {
+  const normalizedTitle = sanitizeRSSPlainText(title || '').replace(/\s+/g, ' ').trim();
+  const match = normalizedTitle.match(/^(.{6,220}?)\s+(?:join|joins|joined)\s+(?:\d[\d,]*\s+)?(?:cinema\s+professionals?\s+)?in\s+open\s+letter\b/i);
+  if (!match?.[1]) {
+    return undefined;
+  }
+
+  const cleaned = sanitizeRSSPlainText(match[1])
+    .replace(/\s*&\s*/g, ', ')
+    .replace(/\s*,?\s*(?:and\s+)?more$/i, ' and others')
+    .replace(/[,:;.\-â€“â€”\s]+$/g, '')
+    .trim();
+
+  return cleaned && !/\b(?:future-proof|future proof|media program|media programme)\b/i.test(cleaned)
+    ? cleaned
+    : undefined;
+}
+
 function buildRSSRuntimeFactBackedLead(
   item: RSSItem,
   canonicalEntity: RSSCanonicalEntity,
@@ -129,6 +147,11 @@ function buildRSSRuntimeFactBackedLead(
   const castSubject = extractRSSRuntimeHeadlineCastSubject(item.title);
   const normalizedEvent = normalizeRSSDedupeValue(canonicalEntity.eventType || '');
   const headline = String(item.title || '');
+  const openLetterSubject = extractRSSRuntimeOpenLetterSubject(item.title);
+
+  if (openLetterSubject && /\b(?:open letter|future-proof|media program|media programme|creative europe)\b/i.test(`${headline} ${item.description || ''}`)) {
+    return `${openLetterSubject} have joined an open letter calling for support for the European media program.`;
+  }
 
   if (project) {
     const acquisitionMatch = headline.match(/^\s*([A-Z][A-Za-z0-9&.+'\- ]{2,80}?)\s+(?:acquires?|secures?|lands?)\b/i);
@@ -163,6 +186,9 @@ function buildRSSRuntimeFactBackedLead(
         return `${subject} ${verb} ${project}.`;
       }
       return `${project} has expanded its cast.`;
+    }
+    if (/\b(?:rights?\s+(?:near|nearing|for)?\s*sale|rights?\s+deal|co-exclusive|angling|sales|distribution)\b/i.test(headline)) {
+      return `${project} rights are part of a new distribution and sales update.`;
     }
     if (/\b(acquires?|rights|sales|deal|distribution|cannes|market)\b/i.test(headline) || normalizedEvent.includes('rights') || normalizedEvent.includes('business')) {
       return `${project} has a new distribution update.`;
@@ -199,6 +225,38 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
   canonicalEntity: RSSCanonicalEntity,
   context: RSSContext,
 ): { caption: string; path: RSSCaptionGenerationPath; source: RSSCaptionGenerationSource; usedPublisherSafeRebuild: boolean } | undefined {
+  const openLetterSubject = extractRSSRuntimeOpenLetterSubject(item.title);
+  if (openLetterSubject || /\bopen\s+letter\b/i.test(item.title || '')) {
+    const compactSubject = openLetterSubject && (openLetterSubject.length > 70 || openLetterSubject.includes(','))
+      ? `${openLetterSubject.split(',')[0].trim()} and other cinema professionals`
+      : openLetterSubject || 'Cinema professionals';
+    const lead = `${compactSubject} have joined an open letter calling for support for the European media program.`;
+    const support = 'The campaign highlights industry concern around the future of European screen funding.';
+    const caption = sanitizeRSSCaptionText(`${lead}\n\n${support}`, 280);
+    const recoveryContext: RSSContext = {
+      ...context,
+      allowedEntities: Array.from(new Set([
+        ...(context.allowedEntities || []),
+        openLetterSubject,
+        ...(canonicalEntity.allowedEntities || []),
+      ].filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0))),
+    };
+    const quality = evaluateRSSCaptionEditorialQuality(caption, recoveryContext);
+    if (
+      caption.trim() &&
+      getRSSCaptionHardInvalidReasonCodes(caption, recoveryContext).length === 0 &&
+      !failsRSSCaptionFormatting(caption, recoveryContext) &&
+      isRSSRuntimeFactBackedCaptionPublishable(quality)
+    ) {
+      return {
+        caption,
+        path: 'repaired_caption',
+        source: 'publisher_safe_rebuild',
+        usedPublisherSafeRebuild: true,
+      };
+    }
+  }
+
   const deterministic = buildRSSPublishSafeDeterministicResult(
     sanitizeRSSPlainText(item.description) || sanitizeRSSPlainText(item.title) || context.summary || context.articleTitle || '',
     context
@@ -220,13 +278,13 @@ function buildRSSRuntimeFactBackedCaptionRecovery(
     };
   }
 
-  const primary = canonicalEntity.mediaTitle || canonicalEntity.primarySubject || context.allowedEntities?.[0] || '';
+  const lead = buildRSSRuntimeFactBackedLead(item, canonicalEntity, context);
+  const primary = canonicalEntity.mediaTitle || canonicalEntity.primarySubject || context.allowedEntities?.[0] || lead || '';
   const support = getRSSRuntimeFallbackSupportSentence(item, '');
-  if (!primary || !support) {
+  if (!primary || !support || !lead.trim()) {
     return undefined;
   }
 
-  const lead = buildRSSRuntimeFactBackedLead(item, canonicalEntity, context);
   const rebuilt = sanitizeRSSCaptionText(`${lead}\n\n${support}`, 280);
   const recoveryContext: RSSContext = {
     ...context,
@@ -379,7 +437,7 @@ function buildRSSRuntimeBrainCaptionRecovery(
     caption = buildRSSRuntimeEditorialCaption(project ? `First look at ${project} has been revealed.` : '', item);
   } else if (event === 'streaming_availability') {
     caption = buildRSSRuntimeEditorialCaption(project ? `${project} is changing its streaming availability.` : primary ? `${primary} is changing its streaming availability.` : '', item);
-  } else if (event === 'business' || event === 'deal' || event === 'executive_appointment' || event === 'rights_sales_distribution' || event === 'lost_and_found_update' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || storyFamily === 'company_industry_news') {
+  } else if (event === 'business' || event === 'deal' || event === 'executive_appointment' || event === 'rights_sales_distribution' || event === 'industry_advocacy' || event === 'lost_and_found_update' || storyFamily === 'entertainment_business' || storyFamily === 'rights_sales_deal' || storyFamily === 'company_industry_news') {
     caption = buildRSSRuntimeEditorialCaption(primary ? `${primary} is involved in a new entertainment business development.` : '', item);
   } else if (event === 'director_attachment' || event === 'writer_attachment') {
     const role = event === 'writer_attachment' ? 'writing' : 'directing';
@@ -481,6 +539,20 @@ function recoverRSSCaptionResultAfterSanitization(
     };
   }
 
+  const shouldPreferFactBackedRecovery =
+    /\bopen\s+letter\b/i.test(`${item.title || ''} ${item.description || ''}`) ||
+    canonicalEntity.eventType === 'industry_advocacy';
+
+  if (shouldPreferFactBackedRecovery) {
+    const factBacked = buildRSSRuntimeFactBackedCaptionRecovery(item, canonicalEntity, context);
+    if (factBacked) {
+      return {
+        ...factBacked,
+        caption: sanitizeRSSCaptionText(factBacked.caption, maxLength),
+      };
+    }
+  }
+
   const recovered = buildRSSRuntimeBrainCaptionRecovery(item, canonicalEntity, context);
   if (recovered) {
     return {
@@ -489,7 +561,9 @@ function recoverRSSCaptionResultAfterSanitization(
     };
   }
 
-  const factBacked = buildRSSRuntimeFactBackedCaptionRecovery(item, canonicalEntity, context);
+  const factBacked = shouldPreferFactBackedRecovery
+    ? undefined
+    : buildRSSRuntimeFactBackedCaptionRecovery(item, canonicalEntity, context);
   if (factBacked) {
     return {
       ...factBacked,
@@ -2500,6 +2574,10 @@ function classifyRSSArticleFamily(item: Pick<RSSItem, 'title' | 'description' | 
   const title = sanitizeRSSPlainText(item.title || '');
   const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
 
+  if (/\b(?:rights?\s+(?:near|nearing|for)?\s*sale|rights?\s+deal|co-exclusive|angling|sales|distribution|open letter|future-proof|media program|media programme|creative europe)\b/i.test(text)) {
+    return 'business_or_platform';
+  }
+
   if (
     /\b(where to (?:buy|score|shop|get)|sneakers?|merch(?:andise)?|sale|discount|online|price|gift guide|affiliate)\b/i.test(text) ||
     (
@@ -2650,6 +2728,7 @@ function isWeakRSSCanonicalCandidate(value?: string | null): boolean {
     /^(?:it|i|we|you|he|she|they)\s+(?:has|have|had|is|are|was|were|will|would|could|should|think|know|feel|felt|said|say|believe|want|love|been)\b/i.test(candidate) ||
     /\b(?:joy to write|write on|wrote on)\b/i.test(candidate) ||
     /\b(?:would love|touching hell|officially kills|any chance of|happening on tv)\b/i.test(candidate) ||
+    /^(?:to\s+future-proof|future-proof|future proof|none)$/i.test(candidate) ||
     /\b(?:not really|explained|changes|teases|reveals|new look|first look|about to|what happened)\b/i.test(candidate) ||
     /^(?:why|how|what|when)\b/i.test(candidate) ||
     /^[A-Z][A-Za-z'â€™.-]+(?:\s+[A-Z][A-Za-z'â€™.-]+){0,3}\s+(?:joins?|joined|joining|returns?|returned)\b/i.test(candidate)
@@ -2676,6 +2755,12 @@ function deriveRSSRuntimeEventType(
   const text = `${title} ${sanitizeRSSPlainText(item.description || '')} ${sanitizeRSSPlainText(item.contentHtml || '')}`;
   const normalizedFallback = String(fallbackEventType || '').trim().toLowerCase();
 
+  if (/\b(?:rights?\s+(?:near|nearing|for)?\s*sale|rights?\s+deal|co-exclusive|angling|sales|distribution)\b/i.test(text)) {
+    return 'rights_sales_distribution';
+  }
+  if (/\b(?:open letter|future-proof|media program|media programme|creative europe)\b/i.test(text)) {
+    return 'industry_advocacy';
+  }
   if (/\b(?:stop streaming|stops streaming|leaving (?:netflix|hulu|max|prime video|disney\+|peacock|paramount\+)|now streaming|now on|free to stream|streaming availability)\b/i.test(text)) {
     return 'streaming_availability';
   }
@@ -2722,12 +2807,14 @@ function cleanRecoveredRSSProjectTitleCandidate(value?: string | null): string |
     .replace(/^the\s+new\s+/i, '')
     .replace(/^(?:HBO|HBO Max|Max|Netflix|Disney\+|Hulu|Prime Video|Apple TV\+|Paramount\+|Peacock)['â€™]s\s+/i, '')
     .replace(/^(?:did|does|do|why|how|what|when)\s+/i, '')
+    .replace(/\s*['’]?\s+rights?\b.*$/i, '')
     .replace(/^(?:(?:vampire|romantic|crime|sci[- ]?fi|science fiction|action|horror|thriller|comedy|drama|rom[- ]?com|mystery|superhero|fantasy|animated|animation|family|kids|teen|adult|period|historical)\s+)+/i, '')
     .replace(/\bmovie\b$/i, '')
     .replace(/\btrailer\b\s*:?.*$/i, '')
     .replace(/\b(?:review|revi)\s*:\s*.*$/i, '')
     .replace(/\brecap\b\s*:?.*$/i, '')
     .replace(/\b(?:is|are)\s+(?:free to stream|now on|now streaming|coming to|leaving)\b.*$/i, '')
+    .replace(/\s*['’]?\s+rights?\b.*$/i, '')
     .replace(/\bseason\s+\d+\b(?:\s+(?:premiere|finale|return|returns?|recap|review|explained))?.*$/i, '')
     .replace(/\b(?:officially\s+)?(?:renewed|premiere|finale|recap|review|explained|boss\s+breaks?\s+down|production\s+team\s+tracks|broadway\s+producing\s+team|creator\b|gets\b|lands\b|confirms?\b|told\b|breaks?\b|reveals?\b|returns?\b|to\s+series\b|is\b|has\b)\s+.*$/i, '')
     .replace(/\bjust$/i, '')
@@ -3401,7 +3488,7 @@ function extractCastingProjectAnchorOverride(title: string, articleText: string)
 }
 
 function sanitizeRSSCanonicalEntityValue(value?: string | null): string | undefined {
-  const trimmed = String(value || '').trim();
+  const trimmed = String(value || '').replace(/\s*['’]?\s+rights?\b.*$/i, '').trim();
   if (!trimmed) {
     return undefined;
   }

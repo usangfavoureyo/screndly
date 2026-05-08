@@ -4442,3 +4442,69 @@ test('runtime recovery rebuilds empty and too-thin casting captions from clean b
     assert.equal(evaluateRSSCaptionEditorialQuality(result.caption, context).flags.includes('QUALITY_TOO_THIN'), false);
   }
 });
+
+test('live cleanup treats rights-sale stories as distribution news instead of shopping', () => {
+  const item = {
+    title: "'The Walking Dead' Rights Near Sale; AMC Global Angling For Co-Exclusive, But CEO Kristin Dolan Says “Large Players” In Mix",
+    description: 'AMC Global Media is nearing a deal for the next round of rights to The Walking Dead.',
+    contentHtml: '<p>AMC Global Media is nearing a deal for the next round of rights to The Walking Dead, with large players also in the mix.</p>',
+  };
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  assert.equal(canonical.primarySubject, 'The Walking Dead');
+  assert.equal(canonical.eventType, 'rights_sales_distribution');
+  assert.notEqual(canonical.eventType, 'shopping');
+  assert.ok(canonical.ambiguityFlags?.includes('article_family_business_or_platform'));
+
+  const context = {
+    articleTitle: item.title,
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    feedName: 'Deadline',
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: canonical.allowedEntities,
+  } as any;
+  const recovered = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item as any, canonical, context, {
+    caption: '',
+    path: 'fallback',
+    source: 'caption_rebuild_unavailable',
+  } as any, 280);
+
+  assert.match(recovered.caption, /The Walking Dead.+(?:distribution|rights|deal)/i);
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(recovered.caption, context).length, 0);
+});
+
+test('live cleanup rebuilds open-letter media advocacy captions without future-proof fragments', () => {
+  const item = {
+    title: 'Francis Ford Coppola, Sandra Hüller, Stellan Skarsgård, Juliette Binoche & Joachim Trier Join 4,500 Cinema Professionals In Open Letter Calling For EU To “Future-Proof” MEDIA Program',
+    description: 'Juliette Binoche, Francis Ford Coppola and other cinema professionals are calling for the EU to future-proof the MEDIA program.',
+    contentHtml: '<p>More than 4,500 cinema professionals joined an open letter calling for the European Union to future-proof its MEDIA program.</p>',
+  };
+  const canonical = __rssAuditTestUtils.buildRSSCanonicalEntity(item);
+
+  assert.notEqual(canonical.primarySubject, 'to future-proof');
+  assert.equal(canonical.eventType, 'industry_advocacy');
+  assert.ok(canonical.ambiguityFlags?.includes('article_family_business_or_platform'));
+
+  const context = {
+    articleTitle: item.title,
+    summary: item.description,
+    articleBody: item.contentHtml,
+    articleContentHtml: item.contentHtml,
+    feedName: 'Deadline',
+    platform: 'Facebook',
+    canonicalEntity: canonical,
+    allowedEntities: canonical.allowedEntities,
+  } as any;
+  const recovered = __rssAuditTestUtils.recoverRSSCaptionResultAfterSanitization(item as any, canonical, context, {
+    caption: '',
+    path: 'fallback',
+    source: 'caption_rebuild_unavailable',
+  } as any, 280);
+
+  assert.match(recovered.caption, /open letter calling for support for the European media program/i);
+  assert.doesNotMatch(recovered.caption, /to future-proof|CAPTION_EMPTY|new entertainment update/i);
+  assert.equal(getRSSCaptionHardInvalidReasonCodes(recovered.caption, context).length, 0);
+});
