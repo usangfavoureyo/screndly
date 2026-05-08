@@ -12,7 +12,7 @@ import {
   BottomSheetBody,
   BottomSheetFooter
 } from './ui/bottom-sheet';
-import { Trash2, Edit, RefreshCw, Check, Search } from 'lucide-react';
+import { Trash2, Edit, RefreshCw, Check } from 'lucide-react';
 import { haptics } from '../utils/haptics';
 import { toast } from "sonner";
 import { useBottomSheet } from '../hooks/useBottomSheet';
@@ -30,15 +30,8 @@ interface Channel {
 }
 
 interface ChannelScanNowResponse {
-  status: 'completed' | 'already_scanning' | 'failed';
+  status: 'queued' | 'already_scanning';
   message?: string;
-  summary?: {
-    channelsChecked: number;
-    channelsSkipped: number;
-    newVideosDetected: number;
-    successfulPublishes: number;
-    failedPublishes: number;
-  };
 }
 
 interface ChannelCardProps {
@@ -350,14 +343,9 @@ function ChannelCard({
                 onScanNow(channel);
               }}
               disabled={selectionMode || isScanning || channel.status !== 'active'}
-              className="rounded-xl border-gray-300 bg-white text-gray-900 hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:bg-[#050505] dark:text-white"
+              className="h-10 w-24 rounded-lg border-gray-300 bg-white px-4 text-gray-900 hover:border-[#ec1e24] hover:text-[#ec1e24] dark:border-[#333333] dark:bg-[#050505] dark:text-white"
             >
-              {isScanning ? (
-                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="mr-2 h-4 w-4" />
-              )}
-              {isScanning ? 'Scanning' : 'Scan Now'}
+              Scan
             </Button>
             <div className={`hidden lg:flex items-center gap-2 transition-opacity duration-200 ${selectionMode ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}>
               <Button
@@ -573,15 +561,11 @@ export function ChannelsTabContent({ showHeader = false }: ChannelsTabContentPro
         return;
       }
 
-      const { status, message, summary } = response.data;
+      const { status, message } = response.data;
       if (status === 'already_scanning') {
         toast.info(`${channel.name} is already scanning`);
-      } else if (status === 'failed') {
-        toast.error(message || `${channel.name} scan failed`);
-      } else if ((summary?.newVideosDetected || 0) > 0) {
-        toast.success(`${channel.name}: ${summary?.newVideosDetected} new video${summary?.newVideosDetected === 1 ? '' : 's'} detected`);
       } else {
-        toast.info(`${channel.name}: no new matching videos found`);
+        toast.success(message || `${channel.name} scan started`);
       }
 
       void fetchChannels();

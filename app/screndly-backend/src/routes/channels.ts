@@ -121,26 +121,13 @@ router.post('/:id/scan-now', async (req, res) => {
             return res.status(409).json({ success: false, error: { message: 'Channel must be active before scanning' } });
         }
 
-        const summary = await youtubePollerService.pollChannels({
-            force: true,
-            channelDbId: req.params.id,
-            manualScan: true,
-            skipCollaborativeDiscovery: true,
-        });
-        const result = summary.results[0] || null;
-        const status = result?.skipped
-            ? 'already_scanning'
-            : result?.failed
-                ? 'failed'
-                : 'completed';
+        const scan = youtubePollerService.startManualChannelScan(channel);
 
-        res.json({
+        res.status(scan.status === 'queued' ? 202 : 200).json({
             success: true,
             data: {
-                status,
-                message: result?.message || 'Manual scan completed',
-                summary,
-                result,
+                status: scan.status,
+                message: scan.message,
             }
         });
     } catch (error: any) {

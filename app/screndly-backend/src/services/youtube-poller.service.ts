@@ -114,6 +114,11 @@ export interface PollSummary {
     results: ChannelPollResult[];
 }
 
+export interface ManualChannelScanStartResult {
+    status: 'queued' | 'already_scanning';
+    message: string;
+}
+
 interface YtDlpAttemptSummary {
     mode: string;
     identityKey: string;
@@ -174,6 +179,7 @@ export interface PollStatus {
     stale: boolean;
     activeWorkerCount: number;
     activeChannels: Array<{
+        channelDbId: string;
         channelId: string;
         channelName: string;
         startedAt: string;
@@ -563,6 +569,7 @@ export class YouTubePollerService {
     private activeCollaborativeDiscoveryJobs = new Set<string>();
     private ownedVideoYtDlpFallbackLastRunAtByChannel = new Map<string, number>();
     private downloaderIdentityState = new Map<string, DownloaderIdentityState>();
+    private manualScanQueuedChannelIds = new Set<string>();
 
     getPollStatus(): PollStatus {
         const now = Date.now();
@@ -586,6 +593,7 @@ export class YouTubePollerService {
             stale,
             activeWorkerCount: activeChannels.length,
             activeChannels: activeChannels.map((channel) => ({
+                channelDbId: channel.channelDbId,
                 channelId: channel.channelId,
                 channelName: channel.channelName,
                 startedAt: channel.startedAt.toISOString(),
@@ -1132,6 +1140,83 @@ export class YouTubePollerService {
             this.schedulerStartedAt = null;
             this.lastSchedulerFinishedAt = new Date();
         }
+    }
+
+    startManualChannelScan(channel: { id: string; channelId: string; name: string }): ManualChannelScanStartResult {
+        if (this.activeChannelJobs.has(channel.id) || this.manualScanQueuedChannelIds.has(channel.id)) {
+            return {
+                status: 'already_scanning',
+                message: `${channel.name} is already scanning`,
+            };
+        }
+
+        this.manualScanQueuedChannelIds.add(channel.id);
+        void this.pollChannels({
+            force: true,
+            channelDbId: channel.id,
+            manualScan: true,
+            skipCollaborativeDiscovery: true,
+        }).then((summary) => {
+            const result = summary.results[0];
+            console.log('[YouTubePoller] Manual channel scan completed', {
+                channelDbId: channel.id,
+                channelId: channel.channelId,
+                channelName: channel.name,
+                checked: result?.checked,
+                skipped: result?.skipped,
+                newVideoDetected: result?.newVideoDetected,
+                published: result?.published,
+                failed: result?.failed,
+                message: result?.message,
+            });
+            void notificationService.notifyUser({
+                title: result?.newVideoDetected
+                    ? 'Manual YouTube Scan Found Video'
+                    : result?.failed
+                        ? 'Manual YouTube Scan Failed'
+                        : 'Manual YouTube Scan Completed',
+                message: result?.message || `${channel.name} scan completed`,
+                type: result?.failed ? 'error' : result?.newVideoDetected ? 'success' : 'info',
+                source: 'youtube',
+                actionPage: '/connections',
+                metadata: {
+                    channelDbId: channel.id,
+                    channelId: channel.channelId,
+                    channelName: channel.name,
+                    manualScan: true,
+                    newVideoDetected: result?.newVideoDetected === true,
+                    published: result?.published === true,
+                    failed: result?.failed === true,
+                },
+            });
+        }).catch((error) => {
+            console.error('[YouTubePoller] Manual channel scan failed', {
+                channelDbId: channel.id,
+                channelId: channel.channelId,
+                channelName: channel.name,
+                error: error?.message || String(error),
+            });
+            void notificationService.notifyUser({
+                title: 'Manual YouTube Scan Failed',
+                message: `${channel.name} scan failed: ${error?.message || String(error)}`,
+                type: 'error',
+                source: 'youtube',
+                actionPage: '/connections',
+                metadata: {
+                    channelDbId: channel.id,
+                    channelId: channel.channelId,
+                    channelName: channel.name,
+                    manualScan: true,
+                },
+            });
+        }).finally(() => {
+            this.manualScanQueuedChannelIds.delete(channel.id);
+        });
+
+        return {
+            status: 'queued',
+            message: `${channel.name} scan started`,
+        };
     }
 
     async pollChannels(options: PollOptions = {}): Promise<PollSummary> {
