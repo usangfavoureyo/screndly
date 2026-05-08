@@ -141,10 +141,8 @@ function fitHeadline(
     const minFontSize = 34;
     for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 2) {
       const scaledFontSize = fontSize * fontScale;
-      const lineHeight = scaledFontSize * lineHeightMultiplier;
-      const totalHeight = manualLines.length * lineHeight;
       const widestLine = Math.max(...manualLines.map((line) => estimateWordWidth(line, scaledFontSize)));
-      if (widestLine <= textBox.width && totalHeight <= textBox.height) {
+      if (widestLine <= textBox.width) {
         return { lines: manualLines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
       }
     }
@@ -227,16 +225,14 @@ function fitHeadline(
   const preferredMinFontSize = Math.max(minFontSize, Math.round(maxFontSize * 0.8));
   for (let fontSize = maxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
-    const lineHeight = fontSize * fontScale * lineHeightMultiplier;
-    if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
+    if (lines.length > 0 && lines.length <= maxLines) {
       return { lines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
     }
   }
 
   for (let fontSize = preferredMinFontSize - 2; fontSize >= minFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
-    const lineHeight = fontSize * fontScale * lineHeightMultiplier;
-    if (lines.length > 0 && lines.length <= maxLines && lines.length * lineHeight <= textBox.height) {
+    if (lines.length > 0 && lines.length <= maxLines) {
       return { lines, fontSize, lineHeight: fontSize * lineHeightMultiplier };
     }
   }

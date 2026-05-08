@@ -1722,10 +1722,9 @@ function fitManualComposedLines(input: {
     estimateWordWidth(line, fontSize, input.tracking);
 
   for (let fontSize = input.maxFontSize; fontSize >= input.minFontSize; fontSize -= 1) {
-    const lineHeight = fontSize * input.lineHeightMultiplier;
-    const totalHeight = lines.length * lineHeight;
     const widestLine = Math.max(...lines.map((line) => measureLine(line, fontSize)));
-    if (widestLine <= input.boxWidth && totalHeight <= input.boxHeight) {
+    if (widestLine <= input.boxWidth) {
+      const lineHeight = fontSize * input.lineHeightMultiplier;
       return { fontSize, lines, lineHeight };
     }
   }
@@ -1755,10 +1754,7 @@ function fitTextBlock(input: {
     return { fontSize: Math.max(1, input.minFontSize), lines: [], lineHeight: Math.max(1, input.minFontSize) * input.lineHeightMultiplier };
   }
 
-  // Prevent impossible text-fit ranges when templates carry very large font presets,
-  // without forcing the headline into a tiny fixed size.
-  const maxFontByHeight = Math.max(1, Math.floor(input.boxHeight / Math.max(input.lineHeightMultiplier, 0.25)));
-  const effectiveMaxFontSize = Math.max(1, Math.min(input.maxFontSize, maxFontByHeight));
+  const effectiveMaxFontSize = Math.max(1, input.maxFontSize);
   const effectiveMinFontSize = Math.max(1, Math.min(input.minFontSize, effectiveMaxFontSize));
 
   const lineWidth = (lineWords: string[], fontSize: number): number =>
@@ -1832,7 +1828,7 @@ function fitTextBlock(input: {
   for (let fontSize = effectiveMaxFontSize; fontSize >= preferredMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     const lineHeight = fontSize * input.lineHeightMultiplier;
-    if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
+    if (lines.length > 0 && lines.length <= input.maxLines) {
       return { fontSize, lines, lineHeight };
     }
   }
@@ -1840,7 +1836,7 @@ function fitTextBlock(input: {
   for (let fontSize = preferredMinFontSize - 2; fontSize >= effectiveMinFontSize; fontSize -= 2) {
     const lines = buildBalancedLines(fontSize);
     const lineHeight = fontSize * input.lineHeightMultiplier;
-    if (lines.length > 0 && lines.length <= input.maxLines && lines.length * lineHeight <= input.boxHeight) {
+    if (lines.length > 0 && lines.length <= input.maxLines) {
       return { fontSize, lines, lineHeight };
     }
   }
@@ -1848,7 +1844,7 @@ function fitTextBlock(input: {
   let fontSize = Math.max(effectiveMinFontSize, preferredMinFontSize);
   let lineHeight = fontSize * input.lineHeightMultiplier;
   let lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
-  while (fontSize > 1 && (lines.length === 0 || lines.length * lineHeight > input.boxHeight)) {
+  while (fontSize > 1 && lines.length === 0) {
     fontSize -= 1;
     lineHeight = fontSize * input.lineHeightMultiplier;
     lines = buildBalancedLines(fontSize).slice(0, input.maxLines);
@@ -1997,7 +1993,7 @@ export async function buildTextLayer(input: {
 
   while (
     fontSize > 1
-    && (totalTextHeight > variant.textBox.height || maxRenderedLineWidth > scaledBoxWidth)
+    && maxRenderedLineWidth > scaledBoxWidth
   ) {
     fontSize -= 1;
     renderedLines = await Promise.all(fit.lines.map((line) => renderHeadlineLine(line, fontSize)));
